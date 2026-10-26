@@ -67,6 +67,25 @@ test("translates trailing auth and headers and honors allow-failure", () => {
   ]);
 });
 
+for (const value of ["1", "true"]) {
+  test(`SENTRY_ALLOW_FAILURE=${value} turns a failure into exit 0`, () => {
+    const result = runShim(["releases", "new", "1.0.0"], {
+      SENTRY_ALLOW_FAILURE: value,
+      SENTRY_TEST_SHIM_EXIT: "23",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /exiting 0/);
+  });
+}
+
+test("other SENTRY_ALLOW_FAILURE values keep the exit status", () => {
+  const result = runShim(["releases", "new", "1.0.0"], {
+    SENTRY_ALLOW_FAILURE: "0",
+    SENTRY_TEST_SHIM_EXIT: "23",
+  });
+  assert.equal(result.status, 23, result.stderr);
+});
+
 test("translates trailing host URL but preserves release URL", () => {
   const issue = runShim(["issues", "--url", "https://sentry.example.com", "list"], { SENTRY_TEST_SHIM_ENV: "1" });
   assert.equal(issue.status, 0, issue.stderr);

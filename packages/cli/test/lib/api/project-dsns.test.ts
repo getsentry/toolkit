@@ -82,7 +82,7 @@ beforeEach(async () => {
   resetCacheState();
   disableResponseCache();
   resetAuthenticatedFetch();
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://de.sentry.io");
 });
 
@@ -144,7 +144,7 @@ describe.each([
     expect(projectIds.sort()).toEqual(organization ? ["42", "7"] : []);
   });
 
-  test("forwards page budgets and cursors, reusing project lookups across pages", async () => {
+  test("keeps the walk's page size across calls and reuses project lookups", async () => {
     const { requests, projectIds } = mockKeys((url) => {
       expect(url.pathname).toBe(path);
       expect(url.searchParams.get("project")).toBe(organization ? "-1" : null);
@@ -160,10 +160,13 @@ describe.each([
       );
     });
 
-    const first = await list({ limit: 150, cursor: "0:25:0" });
+    // 149 rows split as 2 x 75, so the first call stops inside page 2.
+    const first = await list({ limit: 149, cursor: "0:25:0" });
     expect(projectIds).toEqual(organization ? ["42"] : []);
-    expect(first.data).toHaveLength(150);
-    expect(first.nextCursor).toBe("0:175:0");
+    expect(first.data).toHaveLength(149);
+    // Page 0:100 was partly returned: 74 (0b1001010) rows to skip, in binary
+    // in is_prev.
+    expect(first.nextCursor).toBe("0:100:0_000_00_00");
     const second = await list({ limit: 50, cursor: first.nextCursor });
 
     expect(
@@ -172,9 +175,12 @@ describe.each([
         return [query.get("per_page"), query.get("cursor")];
       }),
     ).toEqual([
-      ["100", "0:25:0"],
-      ["50", "0:125:0"],
-      ["50", "0:175:0"],
+      ["75", "0:25:0"],
+      ["75", "0:100:0"],
+      // -c next refetches the partly returned page; offset cursors take any
+      // page size, so it splits the 74 skipped + 50 requested rows evenly.
+      ["62", "0:100:0"],
+      ["62", "0:162:0"],
     ]);
     expect(second.nextCursor).toBeUndefined();
     expect([...first.data, ...second.data].map((key) => key.name)).toEqual(

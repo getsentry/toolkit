@@ -614,14 +614,33 @@ export const createCommand = buildCommand({
       "cannot contain whitespace.\n\n" +
       "Every project is a name:platform pair. Create several projects at once\n" +
       "by passing multiple pairs as separate arguments. All projects share one org.\n\n" +
-      "Projects are created under a team. If the org has one team, it is used\n" +
-      "automatically. If no teams exist, one is created. Otherwise, specify --team.\n\n" +
-      "Examples:\n" +
-      "  sentry project create my-app:node\n" +
-      "  sentry project create acme-corp/my-app:javascript-nextjs\n" +
-      "  sentry project create web:javascript api:python-django worker:node\n" +
-      "  sentry project create my-app:python-django --team backend\n" +
-      "  sentry project create my-app:go --json",
+      "Projects are created under a team. Without --team, a default team is\n" +
+      "chosen: your teams first, preferring ones you administer, then the oldest.\n" +
+      "If no teams exist, one is created.",
+    examples: [
+      {
+        description: "Create a project (every project is a name:platform pair)",
+        command: "sentry project create my-new-app:javascript-nextjs",
+      },
+      {
+        description: "Create several projects with their own platforms",
+        command:
+          "sentry project create web:javascript api:python-django worker:node",
+      },
+      {
+        description: "Create under a specific organization and team",
+        command:
+          "sentry project create my-org/my-new-app:python --team backend-team",
+      },
+      {
+        description: "Preview without creating",
+        command: "sentry project create my-new-app:node --dry-run",
+      },
+      {
+        description: "Output the created project as JSON",
+        command: "sentry project create my-app:go --json",
+      },
+    ],
   },
   output: {
     human: formatProjectCreateOutput,

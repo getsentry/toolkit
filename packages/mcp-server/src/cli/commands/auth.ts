@@ -55,7 +55,9 @@ async function login(argv: string[]): Promise<void> {
     await writeCachedToken(toCachedToken(tokenResponse, sentryHost, clientId));
   } catch (err) {
     console.error(
-      err instanceof Error ? err.message : `Authentication failed: ${err}`,
+      err instanceof Error
+        ? err.message
+        : `Authentication failed: ${String(err)}`,
     );
     process.exit(1);
   }
@@ -94,11 +96,11 @@ export async function authCommand(argv: string[]): Promise<void> {
 
   switch (sub) {
     case "login":
-      return login(rest);
+      return await login(rest);
     case "logout":
-      return logout(rest);
+      return await logout(rest);
     case "status":
-      return status(rest);
+      return await status(rest);
     default:
       console.error(`Unknown auth command: ${sub}`);
       console.error("Available: auth login, auth logout, auth status");

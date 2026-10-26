@@ -12,6 +12,7 @@ import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import {
+  appendQueryHint,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
@@ -182,9 +183,7 @@ export function appendEventsFlags(
   flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
   const parts: string[] = [];
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   if (flags.full) {
     parts.push("--full");
   }

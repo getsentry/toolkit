@@ -28,6 +28,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   AuthError,
@@ -747,7 +748,7 @@ async function fetchLatestEventData(
   project?: string,
 ): Promise<SingleEventViewData> {
   const event = await getLatestEvent(org, issueId);
-  return buildSingleEventViewData(org, event, spans, project);
+  return await buildSingleEventViewData(org, event, spans, project);
 }
 
 /**
@@ -902,7 +903,7 @@ async function resolveIssueShortIdEvent(
   spans: number,
 ): Promise<SingleEventViewData> {
   const issue = await getIssueByShortId(org, issueShortId);
-  return fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
+  return await fetchLatestEventData(org, issue.id, spans, issue.project?.slug);
 }
 
 /** Result from an issue-based shortcut (URL or short ID) */
@@ -1168,15 +1169,37 @@ export const viewCommand = buildCommand({
     brief: "View details of one or more events",
     fullDescription:
       "View detailed information about Sentry events by their IDs.\n\n" +
-      "Target specification:\n" +
-      "  sentry event view <event-id>                         # auto-detect from DSN or config\n" +
-      "  sentry event view <org>/<proj> <event-id> [<id>...]  # explicit org and project\n" +
-      "  sentry event view <project> <event-id> [<id>...]     # find project across all orgs\n\n" +
       "Multiple event IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument (handy when piping from other commands).\n\n" +
       "Attachment metadata (id, name, size, mimetype, download URL) is included when available.\n" +
-      "Download bytes with:\n" +
-      '  sentry api "<attachments[].download>" > file',
+      "Download the bytes with `sentry api` and the attachment's download URL.",
+    examples: [
+      {
+        description: "View an event",
+        command: "sentry event view abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry event view abc123def456abc123def456abc12345 -w",
+      },
+      {
+        description:
+          "Download an attachment listed by --json (with sentry api)",
+        command:
+          "sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
+      },
+      {
+        description: "View an event in an explicit project",
+        command:
+          "sentry event view my-org/my-project abc123def456abc123def456abc12345",
+      },
+      {
+        description:
+          "View several events, finding the project across organizations",
+        command:
+          "sentry event view my-project abc123def456abc123def456abc12345 def456abc123def456abc123def45678",
+      },
+    ],
   },
   output: {
     human: formatEventView,
@@ -1190,7 +1213,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/event-id",
         brief:
           "[<org>/<project>] <event-id> [<event-id>...] - Target (optional) and one or more event IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

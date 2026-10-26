@@ -1,41 +1,7 @@
 /**
- * Markdown parsing helpers shared by the skill generator and its tests.
+ * Markdown rendering helpers shared by the docs and skill generators.
  */
-import type { PositionalInfo } from "../src/lib/introspect.js";
-
-/** Matches a generated command heading and stops before positional usage. */
-const COMMAND_HEADING_RE =
-  /^`sentry\s+([^<[`\s]+(?:\s+[^<[`\s]+)*)(?:\s*(?:<|\[)[^`]*)?`$/;
-
-/** Extract the literal command path from a generated command heading. */
-export function extractCommandPathFromHeading(
-  heading: string,
-): string | undefined {
-  const match = COMMAND_HEADING_RE.exec(heading);
-  return match?.[1] ? `sentry ${match[1]}` : undefined;
-}
-
-/** Find the command whose literal path appears in a loose example block. */
-export function matchExampleToCommand(
-  code: string,
-  commandPaths: readonly string[],
-  groupFallback: string,
-  defaultCommandPath?: string,
-): string | undefined {
-  // Prefer the longest path so `sentry auth login` wins over bare `sentry auth`
-  // when both would otherwise match via includes().
-  const byLengthDesc = [...commandPaths].sort((a, b) => b.length - a.length);
-  const matched = byLengthDesc.find((path) => code.includes(path));
-  if (matched) {
-    return matched;
-  }
-  if (!code.includes(groupFallback)) {
-    return;
-  }
-  // Bare group examples (`sentry auth`) belong on the default subcommand when
-  // one exists (login), not on a synthetic group-only path.
-  return defaultCommandPath ?? groupFallback;
-}
+import type { CommandInfo, PositionalInfo } from "../src/lib/introspect.js";
 
 /** Render structured command examples in the same form for docs and skills. */
 export function formatCommandExamples(examples: readonly string[]): string {
@@ -45,6 +11,26 @@ export function formatCommandExamples(examples: readonly string[]): string {
   return ["**Examples:**", "", "```bash", examples.join("\n\n"), "```"].join(
     "\n",
   );
+}
+
+/**
+ * Describe a destructive command's risk, or return "" for other commands.
+ *
+ * Driven by the `destructive` command metadata, so the docs and skill
+ * references flag the same commands as the agent Safety Rules.
+ */
+export function formatDestructiveNotice(
+  cmd: Pick<CommandInfo, "destructive" | "flags">,
+): string {
+  if (!cmd.destructive) {
+    return "";
+  }
+  const notice =
+    "This command deletes data or makes changes that can't easily be undone.";
+  const canDryRun = cmd.flags.some((f) => f.name === "dry-run" && !f.hidden);
+  return canDryRun
+    ? `${notice} Use \`--dry-run\` to preview the changes first.`
+    : notice;
 }
 
 /** Format canonical positional syntax as a Markdown argument table. */

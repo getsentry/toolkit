@@ -12,7 +12,6 @@ import {
   closeSync,
   existsSync,
   openSync,
-  realpathSync,
   statSync,
   unlinkSync,
   writeSync,
@@ -37,6 +36,7 @@ import {
   getGitHubRepositoryUrl,
   getPlatformBinaryName,
   type InstallationMethod,
+  isHomebrewInstall,
   isNightlyVersion,
   KNOWN_CURL_DIRS,
   PRIMARY_UPGRADE_SOURCE,
@@ -340,27 +340,6 @@ async function isInstalledWith(pm: PackageManager): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Detect if the CLI binary is running from a Homebrew Cellar.
- *
- * Homebrew places the real binary deep in the Cellar
- * (e.g. `/opt/homebrew/Cellar/sentry/1.2.3/bin/sentry`) and exposes it
- * via a symlink at the prefix bin dir (e.g. `/opt/homebrew/bin/sentry`).
- * `process.execPath` typically reflects the symlink, not the realpath, so
- * we resolve symlinks first before checking for `/Cellar/`. Falls back to
- * the unresolved path if `realpathSync` throws (e.g. binary was deleted).
- */
-function isHomebrewInstall(): boolean {
-  let execPath = process.execPath;
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    execPath = realpathSync(execPath);
-  } catch {
-    // Binary may have been deleted or moved; use the original path
-  }
-  return execPath.includes("/Cellar/");
 }
 
 /**
@@ -833,7 +812,7 @@ async function standaloneVersionExists(
   }
   if (source) {
     if (isNightlyVersion(version)) {
-      return nightlyVersionExists(version, source);
+      return await nightlyVersionExists(version, source);
     }
     const response = await fetchWithUpgradeError(
       getGitHubReleaseByTagUrl(version, source),
@@ -874,7 +853,7 @@ export async function versionExists(
   source?: UpgradeSource,
 ): Promise<boolean> {
   if (isNightlyVersion(version) || method === "curl" || method === "brew") {
-    return standaloneVersionExists(version, source);
+    return await standaloneVersionExists(version, source);
   }
 
   validateStableVersion(version, "Requested package version");
@@ -1477,7 +1456,7 @@ export async function executeUpgrade(
 ): Promise<DownloadResult | null> {
   switch (method) {
     case "curl":
-      return downloadBinaryToTemp(
+      return await downloadBinaryToTemp(
         version,
         downloadTag,
         offline,

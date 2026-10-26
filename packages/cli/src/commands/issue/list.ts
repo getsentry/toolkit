@@ -8,12 +8,10 @@
 import type { SentryContext } from "../../context.js";
 import { buildProjectAliasMap } from "../../lib/alias.js";
 import {
-  API_MAX_PER_PAGE,
   buildIssueListCollapse,
   type IssueCollapseField,
   type IssuesPage,
   listIssuesAllPages,
-  listIssuesPaginated,
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
 import {
@@ -57,8 +55,10 @@ import {
   type OutputConfig,
 } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
+  CURSOR_KEYWORDS,
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
   LIST_TARGET_POSITIONAL,
@@ -87,6 +87,7 @@ import {
 import {
   SEARCH_SYNTAX_REFERENCE,
   sanitizeQuery,
+  unscopedCountFilterKeys,
 } from "../../lib/search-query.js";
 import { isSaaS } from "../../lib/sentry-web-urls.js";
 import {
@@ -98,6 +99,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
+import { tipsSuppressed } from "../../lib/tips.js";
+import { shellQuote } from "../../lib/utils.js";
 import {
   type SentryIssue,
   SentryIssueSchema,
@@ -247,18 +250,99 @@ function shouldCollapseStats(json: boolean, fields?: string[]): boolean {
  * Stats and lifetime are only collapsed in JSON mode with explicit `--fields`
  * that omit the corresponding dependent fields. Human output always requests
  * seen-stats data for the EVENTS, USERS, SEEN, and AGE columns.
+ *
+ * When the query needs query-scoped counts (see {@link shouldScopeCounts}),
+ * `filtered` is requested and `stats` is kept, because the server nests the
+ * `filtered` block under stats. See #1583.
  */
-function buildListApiOptions(json: boolean, fields?: string[]): ListApiOptions {
-  const collapseStats = shouldCollapseStats(json, fields);
+function buildListApiOptions(
+  flags: Pick<ListFlags, "query" | "json" | "fields" | "sort">,
+): ListApiOptions {
+  const scopeCounts = shouldScopeCounts(flags);
+  const collapseStats =
+    !scopeCounts && shouldCollapseStats(flags.json, flags.fields);
   const collapseLifetime =
-    json && shouldCollapseForFields(fields, LIFETIME_FIELDS);
+    flags.json && shouldCollapseForFields(flags.fields, LIFETIME_FIELDS);
   return {
     collapse: buildIssueListCollapse({
       shouldCollapseStats: collapseStats,
       shouldCollapseLifetime: collapseLifetime,
+      shouldCollapseFiltered: !scopeCounts,
     }),
     groupStatsPeriod: collapseStats ? undefined : "auto",
   };
+}
+
+/**
+ * Whether the seen-stats counts (`count`/`userCount`) are displayed for the
+ * given flags. Human output always shows them; JSON only omits them when
+ * `--fields` collapses lifetime fields away. Used to skip requesting
+ * query-scoped counts when the counts aren't shown anyway.
+ */
+function countsShown(json: boolean, fields?: string[]): boolean {
+  return !(json && shouldCollapseForFields(fields, LIFETIME_FIELDS));
+}
+
+/** Whether the issue ordering depends on `count`/`userCount`. */
+function sortUsesCounts(sort: ListFlags["sort"]): boolean {
+  return sort === "freq" || sort === "user";
+}
+
+/**
+ * Whether to request query-scoped counts: the query must filter on a key the
+ * top-level seen-stats ignore, and the counts must either be displayed or
+ * drive the `freq`/`user` ordering.
+ */
+function shouldScopeCounts(
+  flags: Pick<ListFlags, "query" | "json" | "fields" | "sort">,
+): boolean {
+  return Boolean(
+    flags.query &&
+    (countsShown(flags.json, flags.fields) || sortUsesCounts(flags.sort)) &&
+    unscopedCountFilterKeys(flags.query).length > 0,
+  );
+}
+
+/**
+ * Replace each issue's period-wide `count`/`userCount` with the server's
+ * query-scoped `filtered` counts, when the response includes them.
+ *
+ * The issues-list endpoint computes `filtered` seen-stats with the same
+ * event-level conditions (e.g. `release:`) that select and order the issues,
+ * but only when `filtered` is not collapsed (see {@link buildListApiOptions}).
+ * Promoting them right after each fetch keeps the displayed numbers, the
+ * multi-project merge order, and the `--limit` trim consistent with the
+ * query. The `filtered` block is dropped so the JSON output shape is
+ * unchanged. Mutates `issues` in place. See #1583.
+ */
+function applyQueryScopedCounts(issues: SentryIssue[]): SentryIssue[] {
+  for (const issue of issues) {
+    if (issue.filtered) {
+      issue.count = issue.filtered.count;
+      issue.userCount = issue.filtered.userCount;
+    }
+    delete issue.filtered;
+  }
+  return issues;
+}
+
+/**
+ * Combine the framework footer hint from a result's more/footer parts. Only
+ * forwards a hint when items exist — empty results render their hint text
+ * inside {@link formatIssueListHuman}.
+ */
+function buildCombinedHint(result: IssueListResult): string | undefined {
+  if (result.items.length === 0) {
+    return;
+  }
+  const hintParts: string[] = [];
+  if (result.moreHint) {
+    hintParts.push(result.moreHint);
+  }
+  if (result.footer) {
+    hintParts.push(result.footer);
+  }
+  return hintParts.length > 0 ? hintParts.join("\n") : result.hint;
 }
 
 /**
@@ -436,7 +520,12 @@ async function fetchIssuesForTarget(
         end: options.end,
       },
     );
-    return { target, issues, hasMore: !!nextCursor, nextCursor };
+    return {
+      target,
+      issues: applyQueryScopedCounts(issues),
+      hasMore: !!nextCursor,
+      nextCursor,
+    };
   });
 
   if (!result.ok) {
@@ -631,6 +720,35 @@ function trimWithProjectGuarantee(
   );
 }
 
+/** Re-run the failed search with an explicit target, preserving search and output flags. */
+function contextRecoveryCommand(target: string, flags: ListFlags): string {
+  const parts = [
+    `sentry issue list ${shellQuote(target)}`,
+    `--limit ${flags.limit}`,
+    `--sort ${flags.sort}`,
+    `--period ${shellQuote(formatTimeRangeFlag(flags.period))}`,
+  ];
+  appendQueryHint(parts, flags.query);
+  if (flags.cursor !== undefined) {
+    // Navigation state belongs to a resolved target; a candidate may have none.
+    const cursor = CURSOR_KEYWORDS.has(flags.cursor) ? "first" : flags.cursor;
+    parts.push(`--cursor ${shellQuote(cursor)}`);
+  }
+  if (flags.json) {
+    parts.push("--json");
+  }
+  if (flags.fields) {
+    parts.push(`--fields ${shellQuote(flags.fields.join(","))}`);
+  }
+  if (flags.fresh) {
+    parts.push("--fresh");
+  }
+  if (flags.compact !== undefined) {
+    parts.push(flags.compact ? "--compact" : "--no-compact");
+  }
+  return parts.join(" ");
+}
+
 /** Build the CLI hint for fetching the next page, preserving active flags. */
 /** Append active non-default issue list flags to a base command string. */
 function appendIssueFlags(base: string, flags: ListFlags): string {
@@ -638,9 +756,7 @@ function appendIssueFlags(base: string, flags: ListFlags): string {
   if (flags.sort !== defaultIssueSort()) {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD, "-t");
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
@@ -657,8 +773,7 @@ function pageHint(
 /**
  * Fetch issues for an organization, optionally restricted to a project set.
  *
- * When `cursor` is provided (--cursor resume), fetches a single page to keep the
- * cursor chain intact. Otherwise auto-paginates up to the requested limit.
+ * Auto-paginates up to the requested limit, resuming from `cursor` when given.
  */
 async function fetchOrganizationIssues(
   org: string,
@@ -671,30 +786,14 @@ async function fetchOrganizationIssues(
     onPage?: (fetched: number, limit: number) => void;
   },
 ): Promise<IssuesPage> {
-  const apiOpts = buildListApiOptions(flags.json, flags.fields);
+  const apiOpts = buildListApiOptions(flags);
   const timeParams = timeRangeToApiParams(timeRange);
   const { cursor, onPage, projects } = options;
 
-  // When resuming with --cursor, fetch a single page so the cursor chain stays intact.
-  if (cursor) {
-    const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
-    const response = await listIssuesPaginated(org, "", {
-      query: flags.query,
-      cursor,
-      perPage,
-      sort: flags.sort,
-      ...timeParams,
-      projects,
-      groupStatsPeriod: apiOpts.groupStatsPeriod,
-      collapse: apiOpts.collapse,
-    });
-    return { issues: response.data, nextCursor: response.nextCursor };
-  }
-
-  // No cursor — auto-paginate from the beginning via the shared helper.
   const { issues, nextCursor } = await listIssuesAllPages(org, "", {
     query: flags.query,
     limit: flags.limit,
+    startCursor: cursor,
     sort: flags.sort,
     ...timeParams,
     projects,
@@ -702,7 +801,7 @@ async function fetchOrganizationIssues(
     collapse: apiOpts.collapse,
     onPage,
   });
-  return { issues, nextCursor };
+  return { issues: applyQueryScopedCounts(issues), nextCursor };
 }
 
 /** Options for {@link handleOrganizationIssues}. */
@@ -1126,6 +1225,7 @@ async function handleResolvedTargets(
     await resolveProjectBoundTargets(parsed, {
       cwd,
       usageHint: USAGE_HINT,
+      formatRecoveryCommand: (target) => contextRecoveryCommand(target, flags),
       projectSearchResolution,
       enrichProjectIds: true,
       checkIssueShortId: true,
@@ -1175,7 +1275,7 @@ async function handleResolvedTargets(
       ? `Fetching issues from ${targetCount} projects`
       : "Fetching issues";
 
-  const apiOpts = buildListApiOptions(flags.json, flags.fields);
+  const apiOpts = buildListApiOptions(flags);
 
   const { results, hasMore } = await withProgress(
     { message: `${baseMessage} (up to ${flags.limit})...`, json: flags.json },
@@ -1482,7 +1582,7 @@ function formatIssueListHuman(result: IssueListResult): string {
   }
 
   // Footer tip (e.g. "Tip: Use 'sentry issue view <ID>' ...")
-  if (result.footerMode) {
+  if (result.footerMode && !tipsSuppressed()) {
     parts.push(formatListFooter(result.footerMode));
   }
 
@@ -1536,12 +1636,6 @@ export const listCommand = buildListCommand("issue", {
     brief: "List issues in a project",
     fullDescription:
       "List issues from Sentry projects.\n\n" +
-      "Target patterns:\n" +
-      "  sentry issue list               # auto-detect from DSN or config\n" +
-      "  sentry issue list <org>/<proj>  # explicit org and project\n" +
-      "  sentry issue list <org>/a,b     # several projects in the same org\n" +
-      "  sentry issue list <org>/        # all projects in org (trailing / required)\n" +
-      "  sentry issue list <project>     # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows issues from all detected projects.\n\n" +
       "The --limit flag specifies the total number of issues to display (max 1000). " +
@@ -1561,6 +1655,55 @@ export const listCommand = buildListCommand("issue", {
       "  Dates:    age:-24h (last 24h), firstSeen:+7d (older than 7d)\n" +
       "  Docs:     https://docs.sentry.io/concepts/search/\n\n" +
       "Alias: `sentry issues` → `sentry issue list`",
+    examples: [
+      {
+        description: "List issues (project auto-detected)",
+        command: "sentry issue list",
+      },
+      {
+        description: "List issues in a specific project",
+        command: "sentry issue list my-org/frontend",
+      },
+      {
+        description: "Several projects in the same organization",
+        command: "sentry issue list my-org/frontend,backend,worker",
+      },
+      {
+        description: "All projects in an organization",
+        command: "sentry issue list my-org/",
+      },
+      {
+        description: "Search for a project across organizations",
+        command: "sentry issue list frontend",
+      },
+      {
+        description: "Show only unresolved issues",
+        command: 'sentry issue list my-org/frontend --query "is:unresolved"',
+      },
+      {
+        description: "Sort by frequency",
+        command: "sentry issue list my-org/frontend --sort freq --limit 20",
+      },
+      {
+        description: "Sort by Sentry's recommended relevance ranking",
+        command: "sentry issue list my-org/frontend --sort recommended",
+      },
+      {
+        description:
+          "Multiple filters (space-separated terms are combined with AND)",
+        command:
+          'sentry issue list --query "is:unresolved level:error assigned:me"',
+      },
+      {
+        description: "Negation and wildcards",
+        command:
+          'sentry issue list --query "!browser:Chrome message:*timeout*"',
+      },
+      {
+        description: "Match multiple values for one key",
+        command: 'sentry issue list --query "browser:[Chrome,Firefox]"',
+      },
+    ],
   },
   output: issueListOutput,
   parameters: {
@@ -1721,19 +1864,7 @@ export const listCommand = buildListCommand("issue", {
       },
     })) as IssueListResult;
 
-    // Only forward hints to the framework footer when items exist — empty
-    // results already render hint text inside formatIssueListHuman.
-    let combinedHint: string | undefined;
-    if (result.items.length > 0) {
-      const hintParts: string[] = [];
-      if (result.moreHint) {
-        hintParts.push(result.moreHint);
-      }
-      if (result.footer) {
-        hintParts.push(result.footer);
-      }
-      combinedHint = hintParts.length > 0 ? hintParts.join("\n") : result.hint;
-    }
+    const combinedHint = buildCombinedHint(result);
 
     yield new CommandOutput(result);
     return { hint: combinedHint };

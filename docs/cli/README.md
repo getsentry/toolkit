@@ -16,6 +16,11 @@ CLI releases build it from that workspace. Start here for repository guides:
 - [CLI build workflow](../../.github/workflows/cli-build.yml) and
   [release configuration](../../.craft.yml) — binaries, npm packaging, and
   release-gated website artifacts.
+- [CLI nightly watchdog](../../.github/workflows/cli-nightly-watchdog.yml) —
+  hourly and after each main Build, checks for stuck or failed Build runs and a
+  GHCR `nightly` that lags main. It keeps one open alert issue while unhealthy,
+  closes it on recovery, and posts both to Slack when the
+  `CLI_NIGHTLY_ALERT_SLACK_WEBHOOK_URL` secret is set.
 - [CLI AGENTS.md](../../packages/cli/AGENTS.md) — package-specific coding and
   testing rules.
 - [CLI docs fragments](../../apps/cli-docs/src/fragments/commands/index.md)

@@ -1,0 +1,30 @@
+{
+  "name": "docs-mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8788",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy --minify",
+    "generate:cf-types": "wrangler types --env-interface CloudflareBindings",
+    "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/mcp": "^0.2.3",
+    "@mastra/core": "^1.63.2",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@openrouter/ai-sdk-provider": "^1.5.4",
+    "@sentry/cloudflare": "^10.62.0",
+    "ai": "^5.0.0",
+    "hono": "^4.13.11",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.9.3",
+    "wrangler": "catalog:",
+    "vitest": "catalog:"
+  }
+}

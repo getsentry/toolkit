@@ -9,6 +9,7 @@
 import { routes } from "../app.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
+import { detectAgent } from "./detect-agent.js";
 import { TOP_LEVEL_ENV_VARS } from "./env-registry.js";
 import { cyan, magenta, muted } from "./formatters/colors.js";
 import {
@@ -28,7 +29,7 @@ import {
   type RouteMapEntry,
   resolveCommandPath,
 } from "./introspect.js";
-import { sixelBanner } from "./sixel.js";
+import { sixelBanner, sixelBannerRows } from "./sixel.js";
 
 const TAGLINE = "The command-line interface for Sentry";
 
@@ -88,56 +89,138 @@ const COMMON_FLAGS: readonly CommonFlagEntry[] = [
 ];
 
 /**
- * Generate the commands list dynamically from Stricli's route structure.
+ * Top-level commands featured in the bare `sentry` overview, most relevant
+ * first. `auth` moves to the end once the user is logged in.
+ */
+const OVERVIEW_COMMANDS = ["auth", "issue", "event", "trace", "log"] as const;
+
+/** Subcommands featured for each overview command, most relevant first. */
+const OVERVIEW_SUBCOMMANDS: Readonly<Record<string, readonly string[]>> = {
+  auth: ["login", "status", "whoami"],
+  issue: ["list", "view", "explain", "plan", "resolve"],
+  event: ["list", "view"],
+  trace: ["list", "view", "logs"],
+  log: ["list", "view"],
+};
+
+/** Most subcommands listed inline for a command in the overview. */
+const MAX_OVERVIEW_SUBCOMMANDS = 5;
+
+/** Fewest commands the overview shows, even on very short terminals. */
+const MIN_OVERVIEW_COMMANDS = 3;
+
+/** Visible top-level route entries, in registration order. */
+function visibleRouteEntries(): RouteMapEntry[] {
+  // Cast to our introspection types — Stricli's generic types are compatible
+  const routeMap = routes as unknown as RouteMap;
+  return routeMap
+    .getAllEntries()
+    .filter((entry: RouteMapEntry) => !entry.hidden);
+}
+
+/**
+ * Build the help line for a top-level route entry.
+ *
+ * @param entry - Top-level route entry
+ * @param pickSubcommands - Selects which visible subcommand names to list
+ */
+function toHelpCommand(
+  entry: RouteMapEntry,
+  pickSubcommands: (routeName: string, names: string[]) => string[],
+): HelpCommand {
+  const routeName = entry.name.original;
+  const brief = entry.target.brief;
+
+  if (isRouteMap(entry.target)) {
+    const subNames = entry.target
+      .getAllEntries()
+      .filter((sub: RouteMapEntry) => !sub.hidden)
+      .map((sub: RouteMapEntry) => sub.name.original);
+    return {
+      usage: `sentry ${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
+      description: brief,
+    };
+  }
+
+  // Direct command - use any public syntax override before raw parameters
+  if (isCommand(entry.target)) {
+    const placeholder =
+      entry.target.__primaryUsage ??
+      getPositionalString(entry.target.parameters.positional);
+    const usageSuffix = placeholder ? ` ${placeholder}` : "";
+    return {
+      usage: `sentry ${routeName}${usageSuffix}`,
+      description: brief,
+    };
+  }
+
+  return {
+    usage: `sentry ${routeName}`,
+    description: brief,
+  };
+}
+
+/**
+ * Generate the full commands list dynamically from Stricli's route structure.
  * This ensures help text stays in sync with actual registered commands.
  */
 function generateCommands(): HelpCommand[] {
-  // Cast to our introspection types — Stricli's generic types are compatible
-  const routeMap = routes as unknown as RouteMap;
-  const entries = routeMap.getAllEntries();
+  return visibleRouteEntries().map((entry) =>
+    toHelpCommand(entry, (_routeName, names) => names),
+  );
+}
 
-  return entries
-    .filter((entry: RouteMapEntry) => !entry.hidden)
-    .map((entry: RouteMapEntry) => {
-      const routeName = entry.name.original;
-      const brief = entry.target.brief;
+/**
+ * Generate the featured commands for the bare `sentry` overview, most relevant
+ * first, each listing at most {@link MAX_OVERVIEW_SUBCOMMANDS} subcommands.
+ */
+function generateOverviewCommands(loggedIn: boolean): HelpCommand[] {
+  const entries = visibleRouteEntries();
+  const names: readonly string[] = loggedIn
+    ? [...OVERVIEW_COMMANDS.filter((name) => name !== "auth"), "auth"]
+    : OVERVIEW_COMMANDS;
+  return names.flatMap((name) => {
+    const entry = entries.find((e) => e.name.original === name);
+    if (!entry) {
+      return [];
+    }
+    return [
+      toHelpCommand(entry, (routeName, subNames) => {
+        const preferred = OVERVIEW_SUBCOMMANDS[routeName];
+        const picked = preferred
+          ? preferred.filter((sub) => subNames.includes(sub))
+          : subNames;
+        return picked.slice(0, MAX_OVERVIEW_SUBCOMMANDS);
+      }),
+    ];
+  });
+}
 
-      if (isRouteMap(entry.target)) {
-        // Get visible subcommand names and join with pipes
-        const subEntries = entry.target
-          .getAllEntries()
-          .filter((sub: RouteMapEntry) => !sub.hidden);
-        const subNames = subEntries
-          .map((sub: RouteMapEntry) => sub.name.original)
-          .join(" | ");
-        return {
-          usage: `sentry ${routeName} ${subNames}`,
-          description: brief,
-        };
-      }
-
-      // Direct command - use any public syntax override before raw parameters
-      if (isCommand(entry.target)) {
-        const placeholder =
-          entry.target.__primaryUsage ??
-          getPositionalString(entry.target.parameters.positional);
-        const usageSuffix = placeholder ? ` ${placeholder}` : "";
-        return {
-          usage: `sentry ${routeName}${usageSuffix}`,
-          description: brief,
-        };
-      }
-
-      return {
-        usage: `sentry ${routeName}`,
-        description: brief,
-      };
-    });
+/**
+ * Trim overview commands so the help fits the terminal height, keeping at
+ * least {@link MIN_OVERVIEW_COMMANDS}. Non-TTY output is left untouched.
+ *
+ * @param commands - Overview commands, most relevant first
+ * @param reservedRows - Rows used by everything except the command list
+ */
+function fitToTerminalHeight(
+  commands: HelpCommand[],
+  reservedRows: number,
+): HelpCommand[] {
+  const rows = process.stdout.isTTY ? process.stdout.rows : undefined;
+  if (!rows) {
+    return commands;
+  }
+  return commands.slice(
+    0,
+    Math.max(MIN_OVERVIEW_COMMANDS, rows - reservedRows),
+  );
 }
 
 const EXAMPLE_LOGGED_OUT = "sentry auth";
 const EXAMPLE_LOGGED_IN = "sentry issue list";
 const DOCS_URL = "https://cli.sentry.dev/getting-started/";
+const FULL_HELP_COMMAND = "sentry help";
 
 /**
  * Format the command list with aligned descriptions.
@@ -199,15 +282,28 @@ function formatEnvVars(): string {
   }).join("\n");
 }
 
+/** Options for {@link printCustomHelp}. */
+type CustomHelpOptions = {
+  /**
+   * Render the compact overview (featured commands only) instead of the full
+   * command list. Used for bare `sentry`; ignored when an AI agent is
+   * detected so agents always get the full list.
+   */
+  overview?: boolean;
+};
+
 /**
  * Build the custom branded help output string.
  * Shows a contextual example based on authentication status.
  */
-export function printCustomHelp(): string {
+export function printCustomHelp(options: CustomHelpOptions = {}): string {
   const loggedIn = isAuthenticated();
   const example = loggedIn ? EXAMPLE_LOGGED_IN : EXAMPLE_LOGGED_OUT;
+  const overview = Boolean(options.overview) && !detectAgent();
 
-  const lines: string[] = [];
+  const header: string[] = [];
+  // Extra rows the sixel image occupies beyond its single line of text.
+  let sixelExtraRows = 0;
 
   // Skip banner for non-TTY to avoid wasting tokens in agent loops
   if (process.stdout.isTTY) {
@@ -215,20 +311,21 @@ export function printCustomHelp(): string {
     // Prefer a real sixel image on capable terminals; otherwise fall back to the
     // block-art banner sized to the terminal width (returns "" only when the
     // terminal is too narrow for even the compact mark).
-    const banner = sixelBanner(cols) ?? formatBanner(cols);
+    const sixel = sixelBanner(cols);
+    const banner = sixel ?? formatBanner(cols);
     if (banner) {
-      lines.push("");
-      lines.push(banner);
-      lines.push("");
+      header.push("");
+      header.push(banner);
+      header.push("");
+      sixelExtraRows = sixel ? sixelBannerRows() - 1 : 0;
     }
   }
 
   // Tagline
-  lines.push(`  ${TAGLINE}`);
-  lines.push("");
+  header.push(`  ${TAGLINE}`);
+  header.push("");
 
-  // Commands (auto-generated from Stricli routes)
-  lines.push(formatCommands(generateCommands()));
+  const lines: string[] = [];
   lines.push("");
 
   // Common flags
@@ -249,6 +346,9 @@ export function printCustomHelp(): string {
 
   // Example
   lines.push(`  ${muted("try:")} ${magenta(example)}`);
+  if (overview) {
+    lines.push(`  ${muted("all commands:")} ${magenta(FULL_HELP_COMMAND)}`);
+  }
   lines.push("");
 
   // Footer
@@ -256,7 +356,16 @@ export function printCustomHelp(): string {
   lines.push("");
   lines.push("");
 
-  return lines.join("\n");
+  // Commands (auto-generated from Stricli routes). The overview is trimmed to
+  // fit above the fold. Entries such as the flags and env-var sections span
+  // several lines, so count rendered lines rather than array entries.
+  const reservedRows =
+    [...header, ...lines].join("\n").split("\n").length + sixelExtraRows;
+  const commands = overview
+    ? fitToTerminalHeight(generateOverviewCommands(loggedIn), reservedRows)
+    : generateCommands();
+
+  return [...header, formatCommands(commands), ...lines].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +412,8 @@ export type HelpJsonResult =
       routes: RouteInfo[];
       envVars: HelpEnvVarInfo[];
       flags: HelpFlagInfo[];
+      /** Human-only: render the compact overview. Stripped from JSON output. */
+      overview?: boolean;
     }
   | CommandInfo
   | RouteInfo
@@ -766,7 +877,7 @@ export function formatHelpHuman(data: HelpJsonResult): string {
   // command's func) so `--json`, which never calls this human formatter, never
   // triggers printCustomHelp's sixel probe / terminal I/O.
   if ("routes" in data) {
-    return printCustomHelp().trimEnd();
+    return printCustomHelp({ overview: data.overview }).trimEnd();
   }
 
   // Route group

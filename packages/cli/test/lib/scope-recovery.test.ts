@@ -4,6 +4,7 @@ import { OAUTH_SCOPES } from "../../src/lib/oauth.js";
 import {
   captureOAuthScopeRecoveryGate,
   ensureCurrentOAuthScopes,
+  ensureScopesForAction,
   runWithScopeRecovery,
   type ScopeRecoveryRuntime,
 } from "../../src/lib/scope-recovery.js";
@@ -52,6 +53,28 @@ describe("runWithScopeRecovery", () => {
     expect(testRuntime.write).toHaveBeenCalledWith(
       expect.stringContaining("team:admin"),
     );
+  });
+
+  test("re-authorizes the account picked for the target org, not the active one", async () => {
+    const error = new ApiError("Forbidden", 403);
+    const proceed = vi
+      .fn<(argv: string[]) => Promise<void>>()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce();
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+
+    await runWithScopeRecovery(
+      proceed,
+      [],
+      login,
+      runtime({
+        getAuthScopes: vi.fn().mockResolvedValue([]),
+        getReauthorizationAccountId: () => "work-account",
+      }),
+    );
+
+    expect(login).toHaveBeenCalledWith({ accountId: "work-account" });
+    expect(proceed).toHaveBeenCalledTimes(2);
   });
 
   test("does not re-authorize a role or policy 403 when the token has every scope", async () => {
@@ -329,6 +352,122 @@ describe("upgrade scope check", () => {
   test("does nothing when the stored grant is current", async () => {
     const login = vi.fn();
     expect(await ensureCurrentOAuthScopes(login, runtime())).toBe(false);
+    expect(login).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureScopesForAction", () => {
+  const withoutIntegrations = OAUTH_SCOPES.filter(
+    (scope) => scope !== "org:integrations",
+  );
+
+  test("returns ready without prompting when the grant has the scopes", async () => {
+    const login = vi.fn();
+    const testRuntime = runtime();
+
+    await expect(
+      ensureScopesForAction(
+        ["org:integrations"],
+        "Removing an integration",
+        login,
+        testRuntime,
+      ),
+    ).resolves.toBe("ready");
+    expect(login).not.toHaveBeenCalled();
+    expect(testRuntime.write).not.toHaveBeenCalled();
+  });
+
+  test("re-authorizes a grant missing the scope and says why", async () => {
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+    const testRuntime = runtime({
+      getAuthScopes: vi.fn().mockResolvedValue(withoutIntegrations),
+    });
+
+    await expect(
+      ensureScopesForAction(
+        ["org:integrations"],
+        "Removing an integration",
+        login,
+        testRuntime,
+      ),
+    ).resolves.toBe("elevated");
+    expect(testRuntime.assertTrustedHost).toHaveBeenCalledOnce();
+    expect(login).toHaveBeenCalledOnce();
+    expect(testRuntime.write).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Removing an integration needs elevated permissions (org:integrations)",
+      ),
+    );
+  });
+
+  test("elevates the account picked for the target org", async () => {
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+
+    await expect(
+      ensureScopesForAction(
+        ["org:integrations"],
+        "Removing an integration",
+        login,
+        runtime({
+          getAuthScopes: vi.fn().mockResolvedValue(withoutIntegrations),
+          getReauthorizationAccountId: () => "work-account",
+        }),
+      ),
+    ).resolves.toBe("elevated");
+    expect(login).toHaveBeenCalledWith({ accountId: "work-account" });
+  });
+
+  test("reports declined when the login does not complete", async () => {
+    const testRuntime = runtime({
+      getAuthScopes: vi.fn().mockResolvedValue(withoutIntegrations),
+    });
+
+    await expect(
+      ensureScopesForAction(
+        ["org:integrations"],
+        "Removing an integration",
+        vi.fn().mockResolvedValue(null),
+        testRuntime,
+      ),
+    ).resolves.toBe("declined");
+  });
+
+  test("does not prompt without a TTY", async () => {
+    const login = vi.fn();
+    const testRuntime = runtime({
+      getAuthScopes: vi.fn().mockResolvedValue(withoutIntegrations),
+      inputIsTty: () => false,
+    });
+
+    await expect(
+      ensureScopesForAction(["org:integrations"], "x", login, testRuntime),
+    ).resolves.toBe("unavailable");
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  test("does not start the device flow when prompts are disabled (--yes/--json)", async () => {
+    const login = vi.fn();
+    const testRuntime = runtime({
+      getAuthScopes: vi.fn().mockResolvedValue(withoutIntegrations),
+      promptsAllowed: () => false,
+    });
+
+    await expect(
+      ensureScopesForAction(["org:integrations"], "x", login, testRuntime),
+    ).resolves.toBe("unavailable");
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  test("leaves env and auth tokens to the API", async () => {
+    const login = vi.fn();
+    const testRuntime = runtime({
+      getAuthSource: () => "env:SENTRY_AUTH_TOKEN",
+    });
+
+    await expect(
+      ensureScopesForAction(["org:integrations"], "x", login, testRuntime),
+    ).resolves.toBe("ready");
+    expect(testRuntime.getAuthScopes).not.toHaveBeenCalled();
     expect(login).not.toHaveBeenCalled();
   });
 });

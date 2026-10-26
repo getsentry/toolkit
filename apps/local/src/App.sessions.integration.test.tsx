@@ -58,12 +58,12 @@ async function startDaemon(now = Date.now, preferredPort = 0) {
         }),
       },
     );
-    return response.json() as Promise<{
+    return await (response.json() as Promise<{
       id: string;
       streamUrl: string;
       ingestUrl: string;
       directoryUrl: string;
-    }>;
+    }>);
   };
   const ingest = async (
     session: { ingestUrl: string },

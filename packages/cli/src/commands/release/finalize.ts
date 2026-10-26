@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -42,13 +43,26 @@ function formatReleaseFinalized(data: Record<string, unknown>): string {
 export const finalizeCommand = buildCommand({
   docs: {
     brief: "Finalize a release",
-    fullDescription:
-      "Mark a release as finalized by setting its release date.\n\n" +
-      "Examples:\n" +
-      "  sentry release finalize 1.0.0\n" +
-      "  sentry release finalize my-org/1.0.0\n" +
-      "  sentry release finalize 1.0.0 --released 2025-01-01T00:00:00Z\n" +
-      "  sentry release finalize 1.0.0 --dry-run",
+    fullDescription: "Mark a release as finalized by setting its release date.",
+    examples: [
+      {
+        description: "Finalize a release",
+        command: "sentry release finalize 1.0.0",
+      },
+      {
+        description: "Finalize a release in an explicit organization",
+        command: "sentry release finalize my-org/1.0.0",
+      },
+      {
+        description: "Set a custom release timestamp",
+        command:
+          "sentry release finalize 1.0.0 --released 2025-01-01T00:00:00Z",
+      },
+      {
+        description: "Preview without finalizing",
+        command: "sentry release finalize 1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatReleaseFinalized,
@@ -60,7 +74,7 @@ export const finalizeCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to finalize",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

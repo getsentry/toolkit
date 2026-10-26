@@ -271,7 +271,7 @@ export async function claimDaemonOwnership(
           ) {
             await rm(path, { force: true });
             // Claim while the guard is still held, even on the final recovery attempt.
-            return tryClaim();
+            return await tryClaim();
           }
         }
       } catch (error) {
@@ -283,7 +283,7 @@ export async function claimDaemonOwnership(
           )
         )
           throw error;
-        return tryClaim();
+        return await tryClaim();
       }
       return undefined;
     });
@@ -352,7 +352,7 @@ async function discoverLocalDaemon(
     current.port !== state.port ||
     current.version !== state.version
   ) {
-    return discoverLocalDaemon(waitForResponse);
+    return await discoverLocalDaemon(waitForResponse);
   }
   if (responds) return state;
   if (isProcessRunning(state.pid)) {
@@ -368,7 +368,7 @@ async function discoverLocalDaemon(
 export async function getRunningLocalDaemon(): Promise<
   LocalDaemonState | undefined
 > {
-  return discoverLocalDaemon();
+  return await discoverLocalDaemon();
 }
 
 /** Wait for the stopped daemon to relinquish state and ownership, even while its PID lives. */
@@ -446,7 +446,7 @@ export async function ensureLocalDaemon({
       );
     }
     await rm(startupLockPath(directory), { force: true });
-    return ensureLocalDaemon({ host, port });
+    return await ensureLocalDaemon({ host, port });
   }
   let child: ChildProcess | undefined;
   let ready = false;

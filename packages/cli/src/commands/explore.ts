@@ -6,6 +6,11 @@
  * and ad-hoc event queries.
  */
 
+import {
+  isAggregateFieldOrEquation,
+  isTracemetricsAggregate,
+} from "@sentry/toolkit-core/events-fields";
+import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
@@ -30,8 +35,10 @@ import {
   appendSortHint,
   buildListCommand,
   LIST_MAX_LIMIT,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
+  targetPatternExplanation,
 } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
 import { resolveMetricField } from "../lib/metrics-transform.js";
@@ -44,8 +51,11 @@ import {
   listSupportedReplayFields,
   parseReplayEnvironmentFilter,
 } from "../lib/replay-search.js";
-import { resolveOrgOptionalFromArg } from "../lib/resolve-target.js";
 import { sanitizeQuery } from "../lib/search-query.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../lib/target-positional.js";
 import {
   appendPeriodHint,
   PERIOD_BRIEF,
@@ -337,7 +347,7 @@ function appendFieldHints(
 ): void {
   const fields = rawFields ?? [];
   const fieldList = metricActive
-    ? fields.filter((f) => !isAggregate(f))
+    ? fields.filter((f) => !isAggregateFieldOrEquation(f))
     : fields;
   const defaults = defaultFieldsForDataset(dataset).join(",");
   if (fieldList.join(",") !== defaults && fieldList.length > 0) {
@@ -389,32 +399,6 @@ function appendFlagHints(
 }
 
 /**
- * Detect the first aggregate function in the field list.
- * Aggregates contain parentheses, e.g., `count()`, `p50(span.duration)`.
- */
-function findFirstAggregate(fieldList: string[]): string | undefined {
-  return fieldList.find((f) => f.includes("(") && f.includes(")"));
-}
-
-/** True when the field looks like an aggregate call: `fn(...)`. */
-function isAggregate(field: string): boolean {
-  return field.includes("(") && field.endsWith(")");
-}
-
-/**
- * True when the aggregate uses the tracemetrics comma-separated format:
- * `aggregation(value,metric_name,metric_type,unit)`.
- */
-function isTracemetricsAggregate(aggregate: string): boolean {
-  const parenIdx = aggregate.indexOf("(");
-  if (parenIdx < 0) {
-    return false;
-  }
-  const inner = aggregate.slice(parenIdx + 1, -1);
-  return inner.startsWith("value,") && inner.split(",").length === 4;
-}
-
-/**
  * Validate that aggregate fields use the tracemetrics format when querying
  * the `tracemetrics` dataset. Standard aggregates like `count()` or
  * `avg(measurements.fcp)` are invalid — the API requires the four-part
@@ -422,7 +406,7 @@ function isTracemetricsAggregate(aggregate: string): boolean {
  */
 function validateMetricsFields(fieldList: string[]): void {
   const badAggs = fieldList.filter(
-    (f) => isAggregate(f) && !isTracemetricsAggregate(f),
+    (f) => isAggregateFieldOrEquation(f) && !isTracemetricsAggregate(f),
   );
   if (badAggs.length === 0) {
     return;
@@ -446,27 +430,6 @@ function validateMetricsFields(fieldList: string[]): void {
 // ---------------------------------------------------------------------------
 // Dataset configuration
 // ---------------------------------------------------------------------------
-
-/**
- * Datasets whose Events endpoint accepts a `sort` param. A deterministic sort
- * is what makes offset-based cursor pagination stable — without it, multi-page
- * grouped aggregate queries overlap and skip rows (#1519). `metrics`
- * (`tracemetrics`) and `logs` reject `sort` with a 400, so they stay unsorted.
- *
- * This is a hand-curated contract, not a machine-readable capability lookup,
- * because no canonical source for it exists today (#1523):
- *   - The OpenAPI spec (`@sentry/api` `listOrganizationEvents`) models `sort`
- *     as a flat query param whose only documented constraint is "must be in
- *     the `field` list" — it does not encode which datasets accept it.
- *   - There is no dataset-capability introspection endpoint in the spec.
- *   - The spec's `dataset` enum is
- *     `errors | logs | profile_functions | spans | tracemetrics |
- *     uptime_results`; `discover` is a legacy virtual dataset that is not a
- *     valid `--dataset` value here (see {@link DATASET_ALIASES}), so it is
- *     intentionally omitted.
- * Revisit if Sentry ever publishes a per-dataset capability contract.
- */
-const SORTABLE_DATASETS = new Set(["spans", "errors"]);
 
 /**
  * Dataset-specific configuration resolved before the main query loop.
@@ -526,8 +489,9 @@ function resolveEventsDataset(dataset: string, query: string | undefined) {
  * For the `replays` dataset this validates fields, resolves replay-specific
  * sort, and returns a fetch function that calls `listReplays`. For all other
  * datasets it translates `--environment` values into `environment:...` query
- * filter terms, resolves explore sort (spans-only), prepends `project:<slug>`
- * to the query, and returns a `queryEvents` fetch.
+ * filter terms, resolves the sort with {@link resolveEventsSort} (which also
+ * selects the sort column), prepends `project:<slug>` to the query, and
+ * returns a `queryEvents` fetch.
  */
 function resolveDatasetConfig(params: {
   dataset: string;
@@ -587,35 +551,21 @@ function resolveDatasetConfig(params: {
   const queryWithEnv =
     [envPrefix, resolved.query].filter(Boolean).join(" ") || undefined;
 
-  const firstAgg = findFirstAggregate(fieldList);
-  const rawSort = flags.sort ?? (firstAgg ? `-${firstAgg}` : undefined);
-  let sort: string | undefined;
-  if (SORTABLE_DATASETS.has(resolved.dataset)) {
-    // A deterministic sort is required for correct cursor pagination: the
-    // events cursor is offset-based, so without a stable total order the
-    // separate page requests overlap and skip rows, producing duplicate and
-    // missing dimension tuples across the merged result (#1519). Defaulting
-    // to `-<firstAggregate>` gives grouped aggregate queries a stable order.
-    sort = rawSort;
-  } else {
-    // Warn only when the user explicitly passed --sort on a dataset that
-    // rejects it (metrics/logs). An auto-derived sort is silently dropped.
-    if (rawSort && flags.sort) {
-      const displayDataset = API_TO_USER_DATASET.get(dataset) ?? dataset;
-      log.warn(
-        `--sort is not supported on the ${displayDataset} dataset. Ignoring sort.`,
-      );
-    }
-    sort = undefined;
-  }
+  // Every Events dataset honors sort as long as the sort column is selected.
+  // A stable sort is what keeps offset-based cursor pagination from
+  // duplicating and skipping rows (#1519) and makes --limit a top N (#1477).
+  const { fields, sort } = resolveEventsSort({
+    fields: fieldList,
+    sort: flags.sort,
+  });
 
   const query = buildProjectQuery(queryWithEnv, project);
   return {
     sort,
     query,
     fetch: async ({ cursor, limit, timeRange }) =>
-      queryEvents(org, {
-        fields: fieldList,
+      await queryEvents(org, {
+        fields,
         dataset: resolved.dataset,
         query,
         sort,
@@ -656,23 +606,82 @@ export const exploreCommand = buildListCommand("explore", {
       "  metrics  Custom metrics (tracemetrics format)\n" +
       "  logs     Log entries\n" +
       "  replays  Session replay search\n\n" +
-      "Targets:\n" +
-      "  <org>/<project>  Filter by project (auto-adds project:<slug> to query)\n" +
-      "  <org>/           All projects in org\n" +
-      "  <project>        Bare slug — searches across orgs\n" +
-      "  (omitted)        Auto-detect from DSN/config\n\n" +
-      "Examples:\n" +
-      '  sentry explore my-org/cli -F title -F "count()"\n' +
-      '  sentry explore my-org/ -F title -F "count()" -F "count_unique(user)" --period 1h\n' +
-      '  sentry explore my-org/cli -F span.op -F "p50(span.duration)" ' +
-      "--dataset spans\n" +
-      "  sentry explore my-org/cli --dataset replays -F id -F user.email -F count_errors\n" +
-      '  sentry explore -F span.op -F "count()" --dataset spans --period 1h\n' +
-      "  sentry explore --json\n\n" +
-      "Metrics (auto mode — resolves type/unit automatically):\n" +
-      "  sentry explore my-org/ -m llm.token_usage --dataset metrics\n" +
-      "  sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d\n" +
-      "  sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
+      "A <org>/<project> target adds project:<slug> to the query. " +
+      targetPatternExplanation(),
+    examples: [
+      {
+        description: "Top errors in the last 24 hours, scoped to a project",
+        command: "sentry explore my-org/cli",
+      },
+      {
+        description: "All projects in an organization",
+        command: "sentry explore my-org/",
+      },
+      {
+        description: "Bare project slug (searches across organizations)",
+        command: "sentry explore cli",
+      },
+      {
+        description: "Auto-detect the project from DSN/config",
+        command: "sentry explore",
+      },
+      {
+        description: "Errors with user impact for a specific UTC window",
+        command:
+          'sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period "2024-01-15T00:00:00Z..2024-01-16T00:00:00Z"',
+      },
+      {
+        description: "Filter by error type (combined with the project filter)",
+        command:
+          'sentry explore my-org/cli -F title -F "count()" -q "error.type:TypeError" --period 1h',
+      },
+      {
+        description: "Span operation latency",
+        command:
+          'sentry explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.duration)" --dataset spans --period 1h',
+      },
+      {
+        description: "Top spans by count",
+        command:
+          'sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"',
+      },
+      {
+        description:
+          "Sum a custom metric (e.g., LLM token usage) across an organization",
+        command:
+          "sentry explore my-org/ -m llm.token_usage --dataset metrics --period 7d",
+      },
+      {
+        description: "Break a metric down by a tag column",
+        command:
+          "sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d",
+      },
+      {
+        description: "Use a different metric aggregation (default is sum)",
+        command:
+          "sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
+      },
+      {
+        description: "Use the raw tracemetrics format",
+        command:
+          'sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics --period 7d',
+      },
+      {
+        description: "Filter replays by activity level",
+        command:
+          "sentry explore my-org/cli --dataset replays -F activity -F duration -F count_errors --period 7d",
+      },
+      {
+        description: "Log severity counts in the last hour",
+        command:
+          'sentry explore my-org/cli -F severity -F "count()" --dataset logs --period 1h',
+      },
+      {
+        description: "Pipe JSON to jq",
+        command:
+          "sentry explore my-org/cli -F title -F \"count()\" --json | jq '.data[:5]'",
+      },
+    ],
   },
   output: {
     human: formatExploreHuman,
@@ -684,9 +693,8 @@ export const exploreCommand = buildListCommand("explore", {
       parameters: [
         {
           placeholder: "target",
-          brief:
-            "Target: <org>/<project>, <org>/, or <project>. Auto-detected if omitted.",
-          parse: String,
+          brief: ORG_ALL_TARGET_BRIEF,
+          parse: orgOptionalTarget,
           optional: true as const,
         },
       ],
@@ -762,13 +770,12 @@ export const exploreCommand = buildListCommand("explore", {
       n: "limit",
     },
   },
-  async *func(this: SentryContext, flags: ExploreFlags, target?: string) {
-    const { cwd } = this;
-    const { org, project } = await resolveOrgOptionalFromArg(
-      target,
-      cwd,
-      "explore",
-    );
+  async *func(
+    this: SentryContext,
+    flags: ExploreFlags,
+    target: OrgOptionalTarget,
+  ) {
+    const { org, project } = await target.resolved;
 
     let dataset = flags.dataset;
     const userSuppliedFields = flags.field && flags.field.length > 0;
@@ -803,7 +810,7 @@ export const exploreCommand = buildListCommand("explore", {
       const aggField = resolveMetricField(flags.metric, flags.agg, metrics);
       // Prepend any user-supplied grouping fields, then the resolved aggregate
       const groupByFields = userSuppliedFields
-        ? fieldList.filter((f) => !isAggregate(f))
+        ? fieldList.filter((f) => !isAggregateFieldOrEquation(f))
         : [];
       fieldList = [...groupByFields, aggField];
     } else if (dataset === "tracemetrics") {

@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { getOrganization } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatOrgDetails } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -35,6 +36,16 @@ export const viewCommand = buildCommand({
       "  1. Positional argument <org-slug>\n" +
       "  2. Config defaults\n" +
       "  3. SENTRY_DSN environment variable or source code detection",
+    examples: [
+      {
+        description: "View organization details",
+        command: "sentry org view my-org",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry org view my-org -w",
+      },
+    ],
   },
   output: { human: formatOrgDetails },
   parameters: {
@@ -44,7 +55,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (optional if auto-detected)",
-          parse: String,
+          parse: parseOrgTarget,
           optional: true,
         },
       ],

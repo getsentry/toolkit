@@ -22,6 +22,12 @@
 curl https://cli.sentry.dev/install -fsS | bash
 ```
 
+### Windows (PowerShell)
+
+```powershell
+irm https://cli.sentry.dev/install.ps1 | iex
+```
+
 ### Homebrew
 
 ```bash
@@ -38,6 +44,8 @@ bun add -g sentry
 ```
 
 > The npm/pnpm/yarn packages require Node.js 20+. On Node.js 22.15+ the CLI uses the built-in `node:sqlite`; on Node.js 20–22.14 it transparently falls back to a bundled WASM SQLite driver.
+
+Homebrew and package manager installs don't add agent skills (package managers also skip shell completions). Run `sentry cli setup` once afterwards; see the [installation guide](https://cli.sentry.dev/getting-started/).
 
 ### Run Without Installing
 
@@ -94,10 +102,13 @@ const sdk = createSentrySDK({ token: "sntrys_..." });
 // Typed methods for every CLI command
 const orgs = await sdk.org.list();
 const issues = await sdk.issue.list({ orgProject: "acme/frontend", limit: 5 });
-const issue = await sdk.issue.view({ issue: "ACME-123" });
+const issue = await sdk.issue.view({}, "ACME-123");
 
 // Nested commands
-await sdk.dashboard.widget.add({ display: "line", query: "count" }, "my-org/my-dashboard");
+await sdk.dashboard.widget.add(
+  { display: "line", query: ["count"] },
+  "acme/", "my-dashboard", "Errors over time"
+);
 
 // Escape hatch for any CLI command
 const version = await sdk.run("--version");
@@ -105,7 +116,7 @@ const text = await sdk.run("issue", "list", "-l", "5");
 ```
 
 Options (all optional):
-- `token` — Auth token. Falls back to `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` env vars.
+- `token` — Auth token. Falls back to the stored login from `sentry auth login`, then `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` env vars.
 - `url` — Sentry instance URL for self-hosted (e.g., `"sentry.example.com"`).
 - `org` — Default organization slug (avoids passing it on every call).
 - `project` — Default project slug.
@@ -140,11 +151,11 @@ cd packages/cli
 ### Running Locally
 
 ```bash
-# Run CLI in development mode
-pnpm run cli -- --help
+# Run CLI in development mode (generates missing build-time files on first run)
+pnpm run cli --help
 
-# With environment variables (create .env.local first, see DEVELOPMENT.md)
-pnpm run cli -- --help
+# Loads packages/cli/.env.local automatically when present (see DEVELOPMENT.md)
+pnpm run cli auth status
 ```
 
 ### Scripts

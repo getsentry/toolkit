@@ -15,6 +15,12 @@ Work with Sentry teams
 
 List teams
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of teams to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -35,10 +41,13 @@ List teams
 **Examples:**
 
 ```bash
-# List teams
+# List teams (organization auto-detected)
+sentry team list
+
+# List teams in an organization
 sentry team list my-org/
 
-# Paginate through teams
+# Fetch the next page
 sentry team list my-org/ -c next
 
 # Output as JSON

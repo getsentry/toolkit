@@ -2,7 +2,9 @@
  * Help Command
  *
  * Provides help information for the CLI.
- * - `sentry help` or `sentry` (no args): Shows branded help with banner
+ * - `sentry` (no args): Shows branded help with a compact command overview
+ *   (the full list when an AI agent is detected)
+ * - `sentry help`: Shows branded help with every command
  * - `sentry help <command>`: Shows detailed help for that command
  * - `sentry help --json`: Emits full command tree as structured JSON
  * - `sentry help --json <command>`: Emits specific command/group metadata as JSON
@@ -23,12 +25,14 @@ export const helpCommand = buildCommand({
   docs: {
     brief: "Display help for a command",
     fullDescription:
-      "Display help information. Run 'sentry help' for an overview, " +
+      "Display help information. Run 'sentry' for an overview, 'sentry help' " +
+      "to list every command, " +
       "or 'sentry help <command>' for detailed help on a specific command. " +
       "Use --json for machine-readable output suitable for AI agents.",
   },
   output: {
     human: formatHelpHuman,
+    jsonExclude: ["overview"],
   },
   parameters: {
     flags: {},
@@ -48,7 +52,10 @@ export const helpCommand = buildCommand({
       // Yield the full command tree. The branded banner + help is rendered by
       // formatHelpHuman (human output only), so `--json` never triggers the
       // sixel probe or any terminal I/O for a banner it would discard.
-      return yield new CommandOutput(introspectAllCommands());
+      // Bare `sentry` (prefix without `help`) gets the compact overview;
+      // explicit `sentry help` lists every command.
+      const overview = this.commandPrefix?.length === 1;
+      return yield new CommandOutput({ ...introspectAllCommands(), overview });
     }
 
     // Resolve the command path and yield the result.

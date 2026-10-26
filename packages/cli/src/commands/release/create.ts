@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -47,16 +48,39 @@ export const createCommand = buildCommand({
       "Create a new Sentry release.\n\n" +
       "The version must match the `release` value in Sentry.init().\n" +
       "Use `org/version` to specify the org — the `org/` prefix is the org slug, not\n" +
-      "part of the version. E.g., `sentry/1.0.0` means org=sentry, version=1.0.0.\n\n" +
-      "Examples:\n" +
-      "  sentry release create 1.0.0\n" +
-      "  sentry release create my-org/1.0.0\n" +
-      "  sentry release create 1.0.0 --project my-project\n" +
-      "  sentry release create 1.0.0 --project proj-a,proj-b\n" +
-      "  sentry release create 1.0.0 --finalize\n" +
-      "  sentry release create 1.0.0 --ref main\n" +
-      "  sentry release create 1.0.0 --url https://github.com/org/repo/releases/tag/1.0.0\n" +
-      "  sentry release create 1.0.0 --dry-run",
+      "part of the version. E.g., `sentry/1.0.0` means org=sentry, version=1.0.0.",
+    examples: [
+      {
+        description: "Create a release",
+        command: "sentry release create 1.0.0",
+      },
+      {
+        description: "Create a release in an explicit organization",
+        command: "sentry release create my-org/1.0.0",
+      },
+      {
+        description: "Create and finalize a release",
+        command: "sentry release create 1.0.0 --finalize",
+      },
+      {
+        description: "Create a release for specific projects",
+        command: "sentry release create 1.0.0 --project proj-a,proj-b",
+      },
+      {
+        description: "Create a release from a proposed version",
+        command:
+          'sentry release create "$(sentry release propose-version --json | jq -r .version)"',
+      },
+      {
+        description: "Set the release ref and URL",
+        command:
+          "sentry release create 1.0.0 --ref main --url https://github.com/org/repo/releases/tag/1.0.0",
+      },
+      {
+        description: "Preview without creating",
+        command: "sentry release create 1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: (data: Record<string, unknown>) => {
@@ -81,7 +105,7 @@ export const createCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to create",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

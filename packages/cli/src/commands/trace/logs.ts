@@ -13,6 +13,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { toSearchQueryError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { formatLogTable } from "../../lib/formatters/log.js";
@@ -101,19 +102,43 @@ export const logsCommand = buildCommand({
     brief: "View logs associated with a trace",
     fullDescription:
       "View logs associated with a specific distributed trace.\n\n" +
-      "Target specification:\n" +
-      "  sentry trace logs <trace-id>                    # auto-detect org\n" +
-      "  sentry trace logs <org>/<trace-id>              # explicit org\n" +
-      "  sentry trace logs <org>/<project>/<trace-id>    # filter to project\n\n" +
       "When a project is specified, only logs from that project are shown.\n" +
       "Use --query 'project:[a,b]' to filter to multiple projects.\n\n" +
-      "The trace ID is the 32-character hexadecimal identifier.\n\n" +
-      "Examples:\n" +
-      "  sentry trace logs abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs myorg/abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs myorg/backend/abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs --period 7d abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs --json abc123def456abc123def456abc123de",
+      "The trace ID is the 32-character hexadecimal identifier.",
+    examples: [
+      {
+        description: "View logs for a trace",
+        command: "sentry trace logs abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter trace logs to one project",
+        command:
+          "sentry trace logs my-org/cli-server/abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter trace logs to several projects",
+        command:
+          'sentry trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+      },
+      {
+        description: "Search with a longer time window",
+        command:
+          "sentry trace logs --period 30d abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Only error logs",
+        command:
+          "sentry trace logs -q 'severity:error' abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry trace logs --json abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Logs for a trace in an explicit organization",
+        command: "sentry trace logs my-org/abc123def456abc123def456abc12345",
+      },
+    ],
   },
   output: {
     human: formatTraceLogsHuman,
@@ -132,7 +157,7 @@ export const logsCommand = buildCommand({
         placeholder: "org/project/trace-id",
         brief:
           "[<org>/[<project>/]]<trace-id> - Optional org/project and required trace ID",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

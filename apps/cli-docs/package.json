@@ -24,6 +24,6 @@
     "shiki": "^3.21.0"
   },
   "devDependencies": {
-    "wrangler": "^4.118.0"
+    "wrangler": "catalog:"
   }
 }

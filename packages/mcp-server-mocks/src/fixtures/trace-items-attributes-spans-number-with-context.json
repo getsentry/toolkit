@@ -43,5 +43,19 @@
     "key": "custom.db.pool_size",
     "name": "custom.db.pool_size",
     "context": {}
+  },
+  {
+    "key": "deviceMemory",
+    "name": "deviceMemory",
+    "context": {}
+  },
+  {
+    "key": "device.memory",
+    "name": "device.memory",
+    "context": {
+      "isConvention": true,
+      "brief": "The estimated total memory capacity of the device.",
+      "isDeprecated": false
+    }
   }
 ]

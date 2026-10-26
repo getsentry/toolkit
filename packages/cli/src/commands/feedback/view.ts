@@ -108,6 +108,37 @@ export const viewCommand = buildCommand({
       "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
       "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "The resolved issue must have issue.category:feedback. Use 'sentry issue view' for other issue categories.",
+    examples: [
+      {
+        description: "View the most recent unresolved Feedback",
+        command: "sentry feedback view @latest",
+      },
+      {
+        description:
+          "Most recent unresolved Feedback in an explicit organization",
+        command: "sentry feedback view my-org/@latest",
+      },
+      {
+        description: "View by short ID",
+        command: "sentry feedback view FRONTEND-2SDJ",
+      },
+      {
+        description: "View by numeric ID",
+        command: "sentry feedback view 5146636313",
+      },
+      {
+        description: "View in an explicit organization",
+        command: "sentry feedback view my-org/FRONTEND-2SDJ",
+      },
+      {
+        description: "`view` is the default command",
+        command: "sentry feedback my-org/FRONTEND-2SDJ",
+      },
+      {
+        description: "Open the Feedback item in Sentry",
+        command: "sentry feedback view my-org/FRONTEND-2SDJ --web",
+      },
+    ],
   },
   output: {
     human: formatFeedbackView,

@@ -16,6 +16,17 @@ import {
   updateOrganizationDetector,
   updateOrganizationWorkflow,
 } from "@sentry/api";
+import {
+  METRIC_MONITOR_PRIORITY,
+  METRIC_MONITOR_SOURCES,
+  type MetricMonitorSource,
+} from "@sentry/toolkit-core/metric-monitor";
+import {
+  isDetectorConditionList,
+  type MetricTriggers,
+  metricAlertDatasetName,
+  metricAlertSource,
+} from "../../types/metric-alert.js";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -89,6 +100,8 @@ type MetricDetector = {
   owner?: { type: string; name?: string; id?: string } | string | null;
   dateCreated?: string;
   dataSources?: Record<string, unknown>[] | null;
+  /** Detection settings (`detectionType`, `comparisonDelta`, …), kept on edit. */
+  config?: Record<string, unknown> | null;
 };
 
 /**
@@ -205,7 +218,10 @@ function mapDetectorToMetricAlertRule(
     status: detector.enabled === false ? 1 : 0,
     query: pickDetectorString(nested.query),
     aggregate: pickDetectorString(nested.aggregate),
-    dataset: pickDetectorString(nested.dataset),
+    dataset: metricAlertDatasetName(
+      pickDetectorString(nested.dataset),
+      Array.isArray(nested.eventTypes) ? nested.eventTypes : [],
+    ),
     timeWindow: timeWindowSeconds > 0 ? Math.round(timeWindowSeconds / 60) : 0,
     environment,
     owner: pickDetectorOwner(detector.owner),
@@ -221,8 +237,8 @@ function mapDetectorToMetricAlertRule(
 // `/projects/{org}/{project}/rules/` endpoint was deprecated on 2026-05-14 and
 // now returns HTTP 410 during recurring brownouts (getsentry/cli#1182). The
 // workflows endpoint returns rule-shaped payloads, so the existing
-// `IssueAlertRule` shape is preserved. Mutations (create/update/delete) still
-// use the legacy endpoint pending a follow-up migration.
+// `IssueAlertRule` shape is preserved. Mutations (create/update/delete) also
+// use the org-scoped workflows endpoint.
 
 /**
  * Keep only workflows that are attached to a detector.
@@ -428,6 +444,14 @@ export async function getMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<MetricAlertRule> {
+  return mapDetectorToMetricAlertRule(await getMetricDetector(orgSlug, ruleId));
+}
+
+/** Fetch a metric-issue detector, rejecting other detector kinds with a 404. */
+async function getMetricDetector(
+  orgSlug: string,
+  ruleId: string,
+): Promise<MetricDetector> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await getOrganizationDetector({
     ...config,
@@ -453,7 +477,7 @@ export async function getMetricAlertRule(
       `/organizations/${orgSlug}/detectors/${encodeURIComponent(ruleId)}/`,
     );
   }
-  return mapDetectorToMetricAlertRule(data);
+  return data;
 }
 
 // Issue alert write operations
@@ -546,28 +570,70 @@ export async function createIssueAlertRule(
 // command layer unchanged while the transport moves off the retiring
 // `/alert-rules/` endpoint (getsentry/cli#1274, #1277).
 
-/**
- * Datasets whose events flow through the error/transaction pipeline
- * (`queryType: 0`) rather than the trace-item pipeline (`queryType: 1`).
- */
-const ERROR_LIKE_DATASETS = new Set(["errors", "events"]);
+/** Native data source fields sent on a detector write. */
+type DetectorSourceFields = Omit<MetricMonitorSource, "dataset"> & {
+  readonly dataset: string;
+};
 
-/** Detector `queryType` for a metric alert dataset. */
-function datasetQueryType(dataset: string): 0 | 1 {
-  return ERROR_LIKE_DATASETS.has(dataset.trim().toLowerCase()) ? 0 : 1;
+/**
+ * Resolve the native data source fields for a flat metric alert body.
+ *
+ * CLI dataset names come from the shared dataset table. Any other (native)
+ * dataset comes from the edit baseline built by `getMetricAlertRuleDocument`,
+ * which carries the stored `eventTypes`/`queryType`. Missing event types stay
+ * empty rather than defaulting to spans, so an edit never re-targets an
+ * ambiguous EAP monitor onto `trace_item_span`.
+ */
+function detectorSourceFields(
+  body: Record<string, unknown>,
+): DetectorSourceFields {
+  const dataset = pickDetectorString(body.dataset);
+  const named = metricAlertSource(dataset);
+  if (named) {
+    return named;
+  }
+  const stored = body as Partial<DetectorSourceFields>;
+  return {
+    queryType: stored.queryType ?? METRIC_MONITOR_SOURCES.spans.queryType,
+    eventTypes: stored.eventTypes ?? [],
+    dataset,
+  };
 }
 
 /**
- * Default `eventTypes` for a metric alert dataset.
+ * Translate parsed triggers into detector condition-group conditions.
  *
- * Error-like datasets track `error`/`default` events; everything else measures
- * spans. The backend accepts an explicit `eventTypes` on the data source and
- * derives the internal query type from `queryType`.
+ * Threshold triggers become one threshold condition each plus the single
+ * resolution condition the metric detector validator requires. Resolution uses
+ * the first `resolveThreshold` given, else the critical (or first) alert
+ * threshold. Native conditions pass through untouched.
  */
-function datasetEventTypes(dataset: string): string[] {
-  return ERROR_LIKE_DATASETS.has(dataset.trim().toLowerCase())
-    ? ["error", "default"]
-    : ["trace_item_span"];
+function buildDetectorConditions(
+  triggers: MetricTriggers,
+): readonly Record<string, unknown>[] {
+  if (isDetectorConditionList(triggers)) {
+    return triggers;
+  }
+
+  const below = triggers.some((trigger) => trigger.thresholdType === 1);
+  const conditions: Record<string, unknown>[] = triggers.map((trigger) => ({
+    type: below ? "lt" : "gt",
+    comparison: trigger.alertThreshold,
+    conditionResult: METRIC_MONITOR_PRIORITY[trigger.label ?? "critical"],
+  }));
+
+  const critical =
+    triggers.find((trigger) => (trigger.label ?? "critical") === "critical") ??
+    triggers[0];
+  const resolveThreshold =
+    triggers.find((trigger) => trigger.resolveThreshold != null)
+      ?.resolveThreshold ?? critical?.alertThreshold;
+  conditions.push({
+    type: below ? "gte" : "lte",
+    comparison: resolveThreshold,
+    conditionResult: METRIC_MONITOR_PRIORITY.resolved,
+  });
+  return conditions;
 }
 
 /**
@@ -580,15 +646,15 @@ function datasetEventTypes(dataset: string): string[] {
 function buildDetectorDataSource(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
-  const dataset = typeof body.dataset === "string" ? body.dataset : "";
+  const native = detectorSourceFields(body);
   const timeWindowMinutes =
     typeof body.timeWindow === "number" ? body.timeWindow : 0;
   const source: Record<string, unknown> = {
     aggregate: typeof body.aggregate === "string" ? body.aggregate : "",
-    dataset,
+    dataset: native.dataset,
     query: typeof body.query === "string" ? body.query : "",
-    queryType: datasetQueryType(dataset),
-    eventTypes: datasetEventTypes(dataset),
+    queryType: native.queryType,
+    eventTypes: [...native.eventTypes],
     timeWindow: timeWindowMinutes * 60,
   };
   if (typeof body.environment === "string" && body.environment !== "") {
@@ -597,31 +663,47 @@ function buildDetectorDataSource(
   return source;
 }
 
+function isDetectorConfig(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Translate a flat metric alert body into the nested detector write payload.
  *
  * The flat body is what the create/edit commands assemble (and the edit merge
- * baseline, which reuses the `MetricAlertRule` shape). Trigger objects are
- * passed through verbatim as the condition group's conditions — their
- * `alertThreshold`/`actions` shape is already validated command-side. `status`
- * (0 active / 1 disabled) maps onto the detector's `enabled` boolean.
+ * baseline, which reuses the `MetricAlertRule` shape). Triggers are translated
+ * into detector conditions by {@link buildDetectorConditions}; `workflowIds`
+ * connects existing alerts. `status` (0 active / 1 disabled) maps onto the
+ * detector's `enabled` boolean.
  */
 function buildDetectorBody(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
+  // create/edit store triggers already parsed by parseMetricTriggers.
+  const triggers = body.triggers as MetricTriggers | undefined;
+  // Threshold triggers are static thresholds. Otherwise edits carry the stored
+  // config so percent and dynamic detectors keep their detection mode, and
+  // creates default to static.
+  const keepStoredConfig =
+    isDetectorConfig(body.detectorConfig) &&
+    !(triggers && !isDetectorConditionList(triggers));
   const detectorBody: Record<string, unknown> = {
     name: typeof body.name === "string" ? body.name : "",
     type: "metric_issue",
     dataSources: [buildDetectorDataSource(body)],
-    config: { detectionType: "static" },
+    config: keepStoredConfig
+      ? body.detectorConfig
+      : { detectionType: "static" },
   };
 
-  const triggers = Array.isArray(body.triggers) ? body.triggers : undefined;
   if (triggers) {
     detectorBody.conditionGroup = {
       logicType: "any",
-      conditions: triggers,
+      conditions: buildDetectorConditions(triggers),
     };
+  }
+  if (Array.isArray(body.workflowIds)) {
+    detectorBody.workflowIds = body.workflowIds;
   }
 
   if (body.status !== undefined) {
@@ -691,13 +773,30 @@ export async function deleteMetricAlertRule(
  * `MetricAlertRule` shape, then hands the merged body to `putMetricAlertRule`,
  * which translates it into the nested detector document. Returning the flat
  * shape (rather than the raw detector) keeps the command-side merge coherent.
+ * The stored `eventTypes`/`queryType` ride along so an edit of a data source
+ * the CLI does not model (e.g. `trace_item_metric`) keeps its signal, and the
+ * stored detector `config` rides along as `detectorConfig` so an edit keeps a
+ * percent or dynamic detector's detection mode.
  */
 export async function getMetricAlertRuleDocument(
   orgSlug: string,
   ruleId: string,
 ): Promise<Record<string, unknown>> {
-  const rule = await getMetricAlertRule(orgSlug, ruleId);
-  return { ...rule };
+  const detector = await getMetricDetector(orgSlug, ruleId);
+  const source = resolveThresholdSource(detector.dataSources?.[0] ?? {});
+  const document: Record<string, unknown> = {
+    ...mapDetectorToMetricAlertRule(detector),
+  };
+  if (Array.isArray(source.eventTypes)) {
+    document.eventTypes = source.eventTypes;
+  }
+  if (typeof source.queryType === "number") {
+    document.queryType = source.queryType;
+  }
+  if (isDetectorConfig(detector.config)) {
+    document.detectorConfig = detector.config;
+  }
+  return document;
 }
 
 /**

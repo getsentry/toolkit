@@ -29,8 +29,11 @@ import type {
   Writer,
 } from "../../types/index.js";
 import { resolveOrgDisplayName } from "../api-client.js";
+import { stringifyUnknown } from "../errors.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { withSerializeSpan } from "../telemetry.js";
+import { tipsSuppressed } from "../tips.js";
+import { formatAccountLabel } from "./accounts.js";
 import { type FixabilityTier, muted } from "./colors.js";
 import {
   colorTag,
@@ -849,8 +852,12 @@ export function formatIssueDetails(issue: SentryIssue): string {
   const firstReleaseVersion = issue.firstRelease?.shortVersion;
   const lastReleaseVersion = issue.lastRelease?.shortVersion;
   if (firstReleaseVersion || lastReleaseVersion) {
-    const first = escapeMarkdownInline(String(firstReleaseVersion ?? ""));
-    const last = escapeMarkdownInline(String(lastReleaseVersion ?? ""));
+    const first = escapeMarkdownInline(
+      stringifyUnknown(firstReleaseVersion ?? ""),
+    );
+    const last = escapeMarkdownInline(
+      stringifyUnknown(lastReleaseVersion ?? ""),
+    );
     if (firstReleaseVersion && lastReleaseVersion) {
       if (firstReleaseVersion === lastReleaseVersion) {
         kvRows.push(["Release", first]);
@@ -870,14 +877,14 @@ export function formatIssueDetails(issue: SentryIssue): string {
   if (issue.firstSeen) {
     let firstSeenLine = new Date(issue.firstSeen).toLocaleString();
     if (firstReleaseVersion) {
-      firstSeenLine += ` (in ${escapeMarkdownCell(String(firstReleaseVersion))})`;
+      firstSeenLine += ` (in ${escapeMarkdownCell(stringifyUnknown(firstReleaseVersion))})`;
     }
     kvRows.push(["First seen", firstSeenLine]);
   }
   if (issue.lastSeen) {
     let lastSeenLine = new Date(issue.lastSeen).toLocaleString();
     if (lastReleaseVersion && lastReleaseVersion !== firstReleaseVersion) {
-      lastSeenLine += ` (in ${escapeMarkdownCell(String(lastReleaseVersion))})`;
+      lastSeenLine += ` (in ${escapeMarkdownCell(stringifyUnknown(lastReleaseVersion))})`;
     }
     kvRows.push(["Last seen", lastSeenLine]);
   }
@@ -1010,10 +1017,12 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
     if (!message && breadcrumb.data) {
       const data = breadcrumb.data as Record<string, unknown>;
       if (data.url && data.method) {
-        const status = data.status_code ? ` → ${data.status_code}` : "";
-        message = `${data.method} ${data.url}${status}`;
+        const status = data.status_code
+          ? ` → ${stringifyUnknown(data.status_code)}`
+          : "";
+        message = `${stringifyUnknown(data.method)} ${stringifyUnknown(data.url)}${status}`;
       } else if (data.from && data.to) {
-        message = `${data.from} → ${data.to}`;
+        message = `${stringifyUnknown(data.from)} → ${stringifyUnknown(data.to)}`;
       } else if (data.arguments && Array.isArray(data.arguments)) {
         message = String(data.arguments[0] || "").slice(0, 60);
       }
@@ -1759,9 +1768,28 @@ export function formatLogoutResult(data: LogoutResult): string {
     return renderMarkdown(data.message ?? "Not currently authenticated.");
   }
   const lines: string[] = [];
-  lines.push(`${colorTag("green", "✓")} Logged out successfully.`);
+  const removed = data.removed ?? [];
+  const [only] = removed;
+  let removedLabel = "";
+  if (removed.length > 1) {
+    removedLabel = data.all
+      ? ` of all ${removed.length} accounts`
+      : ` of ${removed.length} accounts (${removed
+          .map((a) => escapeMarkdownInline(formatAccountLabel(a)))
+          .join(", ")})`;
+  } else if (only) {
+    removedLabel = ` of ${escapeMarkdownInline(formatAccountLabel(only))}`;
+  }
+  lines.push(
+    `${colorTag("green", "✓")} Logged out${removedLabel} successfully.`,
+  );
   if (data.configPath) {
     lines.push(`Credentials removed from: ${safeCodeSpan(data.configPath)}`);
+  }
+  if (data.activeAccount) {
+    lines.push(
+      `Now using: ${escapeMarkdownInline(formatAccountLabel(data.activeAccount))}`,
+    );
   }
   return renderMarkdown(lines.join("\n\n"));
 }
@@ -1805,6 +1833,15 @@ function buildAuthDetailRows(data: AuthStatusData): [string, string][] {
   }
   if (data.user) {
     rows.push(["User", formatUserIdentity(data.user)]);
+  }
+  if (data.host) {
+    rows.push(["Server", escapeMarkdownInline(data.host)]);
+  }
+  if (data.accounts !== undefined && data.accounts > 1) {
+    rows.push([
+      "Accounts",
+      `${data.accounts} stored (${safeCodeSpan("sentry auth list")})`,
+    ]);
   }
   if (data.token) {
     // Stored credentials do not retain an explicit auth method, so managed
@@ -1931,13 +1968,29 @@ export function formatAuthStatus(data: AuthStatusData): string {
 function formatEnvTokenSection(
   envToken: NonNullable<AuthStatusData["envToken"]>,
 ): string {
-  const status = envToken.active
-    ? "active"
-    : "set but not used (using OAuth credentials)";
+  let status = "active";
+  if (!envToken.active) {
+    status = envToken.host
+      ? "used for organizations it can access (OAuth credentials otherwise)"
+      : "set but not used (using OAuth credentials)";
+  }
   const rows: [string, string][] = [
     ["Env var", safeCodeSpan(envToken.envVar)],
     ["Status", status],
   ];
+  if (envToken.host) {
+    rows.push(["Server", escapeMarkdownInline(envToken.host)]);
+  }
+  const user = envToken.user;
+  const who = user?.name ?? user?.username ?? user?.email;
+  if (who) {
+    rows.push([
+      "User",
+      escapeMarkdownInline(
+        user?.email && user.email !== who ? `${who} <${user.email}>` : who,
+      ),
+    ]);
+  }
   return `\n${mdKvTable(rows, "Environment Token")}`;
 }
 
@@ -2032,7 +2085,7 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   lines.push(mdKvTable(kvRows));
 
   // Tip footer — only when a real project exists to view
-  if (!dry) {
+  if (!dry && !tipsSuppressed()) {
     lines.push("");
     lines.push(
       `*Tip: Use \`sentry project view ${result.orgSlug}/${result.project.slug}\` for details*`,
@@ -2512,6 +2565,7 @@ const DEFAULT_LABELS: Record<string, string> = {
   telemetry: "Telemetry",
   "agent-skills": "Agent Skills",
   graphics: "Graphics",
+  tips: "Tips",
   url: "URL",
   headers: "Headers",
   "ca-cert": "CA Certificate",
@@ -2538,6 +2592,7 @@ function buildDefaultsShowRows(data: DefaultsResult): [string, string][] {
   const telLabel = d.telemetry ?? "on (default)";
   const agentSkillsLabel = d["agent-skills"] ?? "on (default)";
   const graphicsLabel = d.graphics ?? "on (default)";
+  const tipsLabel = d.tips ?? "on (default)";
 
   return [
     ["Organization", d.organization ? safeCodeSpan(d.organization) : notSet],
@@ -2548,6 +2603,7 @@ function buildDefaultsShowRows(data: DefaultsResult): [string, string][] {
     ],
     ["Agent Skills", escapeMarkdownInline(String(agentSkillsLabel))],
     ["Graphics", escapeMarkdownInline(String(graphicsLabel))],
+    ["Tips", escapeMarkdownInline(String(tipsLabel))],
     ["URL", d.url ? safeCodeSpan(d.url) : notSet],
     ["Headers", d.headers ? safeCodeSpan(d.headers) : notSet],
     ["CA Certificate", d["ca-cert"] ? safeCodeSpan(d["ca-cert"]) : notSet],

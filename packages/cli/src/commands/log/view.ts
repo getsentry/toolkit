@@ -19,6 +19,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -357,7 +358,7 @@ async function resolveTarget(
       throw new ContextError("Specific project", USAGE_HINT, []);
 
     case "auto-detect":
-      return resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+      return await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
 
     default: {
       const _exhaustiveCheck: never = parsed;
@@ -562,13 +563,28 @@ export const viewCommand = buildCommand({
     brief: "View details of one or more log entries",
     fullDescription:
       "View detailed information about Sentry log entries by their IDs.\n\n" +
-      "Target specification:\n" +
-      "  sentry log view <log-id>                          # auto-detect from DSN or config\n" +
-      "  sentry log view <org>/<proj> <log-id> [<id>...]   # explicit org and project\n" +
-      "  sentry log view <project> <log-id> [<id>...]      # find project across all orgs\n\n" +
       "Multiple log IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument (handy when piping from other commands).\n\n" +
       "The log ID is the 32-character hexadecimal identifier shown in log listings.",
+    examples: [
+      {
+        description: "View a log entry",
+        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01",
+      },
+      {
+        description: "Specify the project explicitly",
+        command:
+          "sentry log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01 -w",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry log view backend 968c763c740cfda8b6728f27fb9e9b01",
+      },
+    ],
   },
   output: {
     human: formatLogViewHuman,
@@ -586,7 +602,7 @@ export const viewCommand = buildCommand({
         placeholder: "org/project/log-id",
         brief:
           "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

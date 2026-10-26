@@ -10,6 +10,7 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node-core/light";
+import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import {
@@ -18,6 +19,7 @@ import {
   extractMessagePrefix,
   extractResourceKind,
   normalizeEndpoint,
+  reportArgumentError,
   reportCliError,
 } from "../../src/lib/error-reporting.js";
 import {
@@ -256,6 +258,13 @@ describe("classifySilenced", () => {
     );
   });
 
+  test("silences a raw 'terminated' TypeError (mid-body connection drop)", () => {
+    const err = new TypeError("terminated", {
+      cause: new Error("read ETIMEDOUT"),
+    });
+    expect(classifySilenced(err)).toBe("network_error");
+  });
+
   test("does NOT silence a TLS cert error wrapped as ApiError(0)", () => {
     // status 0 is shared by network failures and TLS cert errors; the latter
     // are actionable (missing CA) and must stay captured.
@@ -329,6 +338,18 @@ describe("classifySilenced", () => {
         new ValidationError(
           "File not found: /tmp/does-not-exist.json",
           "input",
+        ),
+      ),
+    ).toBe("user_input_error");
+  });
+
+  test("silences ValidationError with field 'directory' (bad sourcemap directory)", () => {
+    // A missing sourcemap upload/inject directory is user-input noise (CLI-1FN).
+    expect(
+      classifySilenced(
+        new ValidationError(
+          "Directory '/app/.next/static/chunks' does not exist.",
+          "directory",
         ),
       ),
     ).toBe("user_input_error");
@@ -806,5 +827,55 @@ describe("reportCliError integration", () => {
     reportCliError(new ApiError("server fail", 500));
     expect(captureSpy).toHaveBeenCalled();
     expect(metricSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("reportArgumentError", () => {
+  let messageSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    messageSpy = vi.spyOn(Sentry, "captureMessage");
+  });
+
+  afterEach(() => {
+    messageSpy.mockRestore();
+  });
+
+  test("captures one info message with the parser's error class", () => {
+    const error = new ArgumentParseError(
+      "period",
+      "bogus",
+      new ValidationError("Invalid period 'bogus'", "period"),
+    );
+    reportArgumentError(error, 'Failed to parse "bogus" for period');
+    expect(messageSpy).toHaveBeenCalledWith("invalid_argument", {
+      level: "info",
+      tags: { "argument_error.class": "ArgumentParseError" },
+      contexts: {
+        invalid_argument: {
+          error_class: "ArgumentParseError",
+          cause_class: "ValidationError",
+          message: 'Failed to parse "bogus" for period',
+        },
+      },
+    });
+  });
+
+  test("reports scanner errors that wrap no parser error", () => {
+    reportArgumentError(
+      new FlagNotFoundError("nope", []),
+      "No flag registered for --nope",
+    );
+    expect(messageSpy).toHaveBeenCalledWith(
+      "invalid_argument",
+      expect.objectContaining({
+        contexts: {
+          invalid_argument: expect.objectContaining({
+            error_class: "FlagNotFoundError",
+            cause_class: null,
+          }),
+        },
+      }),
+    );
   });
 });

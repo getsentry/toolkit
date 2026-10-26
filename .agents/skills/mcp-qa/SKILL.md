@@ -77,7 +77,6 @@ that is not part of the tool response. Review raw tool output against
 and free of raw API JSON, internal implementation IDs, empty placeholders, and
 unrelated instructions.
 
-
 ## 3. Real Agent Clients
 
 Use these when validating Claude Code, Codex, or behavior that only reproduces
@@ -88,6 +87,7 @@ pnpm -w run build
 ```
 
 What this verifies:
+
 - The CLI is installed and can see the named MCP server
 - The provider can run a connectivity prompt against Sentry MCP
 - The final answer includes the authenticated email from `whoami`

@@ -1,3 +1,5 @@
+import { marked } from "marked";
+
 const name = "sentry-cli";
 
 function member(node, property) {
@@ -25,18 +27,51 @@ function rule(message, visitors) {
   };
 }
 
-function containsIdentifier(node, identifier) {
+function someNode(node, predicate) {
   if (!node || typeof node !== "object") return false;
-  if (node.type === "Identifier" && node.name === identifier) return true;
+  if (predicate(node)) return true;
   return Object.entries(node).some(
     ([key, value]) =>
       key !== "parent" &&
       (Array.isArray(value)
-        ? value.some((child) => containsIdentifier(child, identifier))
-        : value &&
-          typeof value === "object" &&
-          containsIdentifier(value, identifier)),
+        ? value.some((child) => someNode(child, predicate))
+        : value && typeof value === "object" && someNode(value, predicate)),
   );
+}
+
+function containsIdentifier(node, identifier) {
+  return someNode(
+    node,
+    (n) => n.type === "Identifier" && n.name === identifier,
+  );
+}
+
+function readsProperty(node, object, property) {
+  return someNode(
+    node,
+    (n) =>
+      member(n, property) &&
+      n.object.type === "Identifier" &&
+      n.object.name === object,
+  );
+}
+
+/** Target positional types from `src/lib/target-positional.ts`. */
+const BOUND_TARGET_TYPES = new Set([
+  "OrgOptionalTarget",
+  "OrgProjectTarget",
+  "ProjectBoundTarget",
+]);
+
+function boundTargetParams(fn) {
+  return fn.params.filter((param) => {
+    const type = param.typeAnnotation?.typeAnnotation;
+    return (
+      param.type === "Identifier" &&
+      type?.type === "TSTypeReference" &&
+      BOUND_TARGET_TYPES.has(type.typeName.name)
+    );
+  });
 }
 
 function silentBody(block, parameter) {
@@ -49,6 +84,61 @@ function silentBody(block, parameter) {
       parameter.type !== "Identifier" ||
       !containsIdentifier(statement.argument, parameter.name))
   );
+}
+
+/** Static text of a string expression; dynamic parts become line breaks. */
+function staticText(node) {
+  if (node?.type === "Literal") {
+    return typeof node.value === "string" ? node.value : "";
+  }
+  if (node?.type === "TemplateLiteral") {
+    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("\n");
+  }
+  if (node?.type === "BinaryExpression" && node.operator === "+") {
+    return staticText(node.left) + staticText(node.right);
+  }
+  if (node?.type === "ConditionalExpression") {
+    return `${staticText(node.consequent)}\n${staticText(node.alternate)}`;
+  }
+  return "";
+}
+
+/** Matches a heading or label line that opens an Examples section. */
+const EXAMPLES_LABEL_RE = /^examples?:?$/i;
+
+/** Matches an indented `sentry …` usage line, whatever label sits above it. */
+const EXAMPLE_LINE_RE = /^[ \t]+sentry\s/;
+
+/** Whether help text has an Examples section or free-text example lines. */
+function hasExamplesSection(text) {
+  if (text.split("\n").some((line) => EXAMPLE_LINE_RE.test(line))) {
+    return true;
+  }
+  return marked
+    .lexer(text)
+    .some((token) =>
+      token.type === "heading"
+        ? EXAMPLES_LABEL_RE.test(token.text.trim())
+        : token.type === "paragraph" &&
+          token.text
+            .split("\n")
+            .some((line) => EXAMPLES_LABEL_RE.test(line.trim())),
+    );
+}
+
+/** Regex sources that match markdown headings or code fences. */
+const MARKDOWN_STRUCTURE_RE = /(?:(?<!\[)\^|\\n)\(?(?:\?:)?#|`\{3|```|~\{3|~~~/;
+
+/** Source of a regex literal or a `new RegExp("...")` with a static pattern. */
+function regexSource(node) {
+  if (node.type === "Literal" && node.regex) return node.regex.pattern;
+  if (
+    node.type === "NewExpression" &&
+    node.callee.type === "Identifier" &&
+    node.callee.name === "RegExp"
+  )
+    return staticText(node.arguments[0]);
+  return "";
 }
 
 const rules = {
@@ -203,6 +293,22 @@ const rules = {
           }
         : {},
   ),
+  "require-target-resolution": rule(
+    "Await `<target>.resolved`: it runs the target's resolver.",
+    (_context, file, report) => {
+      if (!file.includes("/src/commands/")) return {};
+      const check = (node) => {
+        for (const param of boundTargetParams(node)) {
+          if (!readsProperty(node.body, param.name, "resolved")) report(param);
+        }
+      };
+      return {
+        FunctionDeclaration: check,
+        FunctionExpression: check,
+        ArrowFunctionExpression: check,
+      };
+    },
+  ),
   "no-generic-is-record": rule(
     "Use a shape-specific guard instead of isRecord().",
     (_context, file, report) =>
@@ -226,17 +332,41 @@ const rules = {
   "prefer-paginate-helper": rule(
     "Use paginate() from infrastructure.js instead of a raw limit.",
     (_context, file, report) =>
-      file.includes("/src/lib/api/") && !file.endsWith("/infrastructure.ts")
+      file.includes("/src/") && !file.endsWith("/lib/api/infrastructure.ts")
         ? {
             CallExpression(node) {
+              const limit = node.arguments[1];
               if (
                 node.callee.name === "autoPaginate" &&
-                node.arguments[1]?.name === "limit"
+                (limit?.name === "limit" || member(limit, "limit"))
               )
                 report(node);
             },
           }
         : {},
+  ),
+  "no-manual-pagination": rule(
+    "Use paginate() from infrastructure.js instead of a limit-bounded cursor loop.",
+    (_context, file, report) => {
+      if (
+        !file.includes("/src/") ||
+        file.endsWith("/lib/api/infrastructure.ts")
+      )
+        return {};
+      // A loop that follows cursors and also counts toward a limit is
+      // re-deriving per_page and cursor-after-trim rules that paginate() owns.
+      const check = (node) => {
+        const followsCursors =
+          containsIdentifier(node, "MAX_PAGINATION_PAGES") ||
+          containsIdentifier(node, "nextCursor");
+        if (followsCursors && containsIdentifier(node, "limit")) report(node);
+      };
+      return {
+        ForStatement: check,
+        WhileStatement: check,
+        DoWhileStatement: check,
+      };
+    },
   ),
   "no-namespace-import": rule(
     "Import only the names used by production code.",
@@ -245,6 +375,36 @@ const rules = {
         ? {
             ImportNamespaceSpecifier(node) {
               report(node);
+            },
+          }
+        : {},
+  ),
+  "no-examples-in-full-description": rule(
+    "Move command examples from fullDescription to docs.examples.",
+    (_context, file, report) =>
+      file.includes("/src/commands/") || file.endsWith("/src/app.ts")
+        ? {
+            Property(node) {
+              const key = node.key?.name ?? node.key?.value;
+              if (
+                key === "fullDescription" &&
+                hasExamplesSection(staticText(node.value))
+              )
+                report(node);
+            },
+          }
+        : {},
+  ),
+  "no-regex-markdown-parsing": rule(
+    "Parse markdown structure with marked instead of regexes.",
+    (_context, file, report) =>
+      file.includes("/src/") || file.includes("/script/")
+        ? {
+            Literal(node) {
+              if (MARKDOWN_STRUCTURE_RE.test(regexSource(node))) report(node);
+            },
+            NewExpression(node) {
+              if (MARKDOWN_STRUCTURE_RE.test(regexSource(node))) report(node);
             },
           }
         : {},

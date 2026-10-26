@@ -12,11 +12,8 @@
 
 import type { SentryContext } from "../../../context.js";
 import type { MetricAlertRule } from "../../../lib/api/alerts.js";
-import { MAX_PAGINATION_PAGES } from "../../../lib/api/infrastructure.js";
-import {
-  API_MAX_PER_PAGE,
-  listMetricAlertsPaginated,
-} from "../../../lib/api-client.js";
+import { paginate } from "../../../lib/api/infrastructure.js";
+import { listMetricAlertsPaginated } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import {
@@ -143,39 +140,12 @@ async function fetchRulesForOrg(
   options: { limit: number; startCursor?: string },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
-    const rules: MetricAlertRule[] = [];
-    let serverCursor = options.startCursor;
-
-    for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-      const { data, nextCursor } = await listMetricAlertsPaginated(orgSlug, {
-        perPage: Math.min(options.limit - rules.length, API_MAX_PER_PAGE),
-        cursor: serverCursor,
-      });
-
-      for (const rule of data) {
-        rules.push(rule);
-        if (rules.length >= options.limit) {
-          return {
-            orgSlug,
-            rules,
-            hasMore: !!nextCursor,
-            nextCursor: nextCursor ?? undefined,
-          };
-        }
-      }
-
-      if (!nextCursor) {
-        return { orgSlug, rules, hasMore: false };
-      }
-      serverCursor = nextCursor;
-    }
-
-    return {
-      orgSlug,
-      rules,
-      hasMore: !!serverCursor,
-      nextCursor: serverCursor,
-    };
+    const { data: rules, nextCursor } = await paginate(
+      { limit: options.limit, cursor: options.startCursor },
+      (perPage, cursor) =>
+        listMetricAlertsPaginated(orgSlug, { perPage, cursor }),
+    );
+    return { orgSlug, rules, hasMore: !!nextCursor, nextCursor };
   });
 
   if (!result.ok) {
@@ -527,14 +497,23 @@ export const listCommand = buildListCommand("alert metrics", {
     fullDescription:
       "List metric alert rules for one or more Sentry organizations.\n\n" +
       "Metric alerts trigger notifications when a metric query crosses a threshold.\n\n" +
-      "Target patterns:\n" +
-      "  sentry alert metrics list                     # auto-detect from DSN or config\n" +
-      "  sentry alert metrics list <org>/              # explicit org (paginated)\n" +
-      "  sentry alert metrics list <org>/<project>     # explicit org (project ignored)\n" +
-      "  sentry alert metrics list <project>           # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "Metric alert rules are org-scoped; the project part is ignored when provided.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
+    examples: [
+      {
+        description: "List metric alert rules (organization auto-detected)",
+        command: "sentry alert metrics list",
+      },
+      {
+        description: "List metric alert rules for an organization",
+        command: "sentry alert metrics list my-org/",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry alert metrics list my-org/ -c next",
+      },
+    ],
   },
   output: {
     human: formatMetricAlertListHuman,

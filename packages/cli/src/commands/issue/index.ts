@@ -47,16 +47,6 @@ export const issueRoute = buildRouteMap({
       "Magic selectors (available for view, events, explain, plan, resolve, unresolve, archive):\n" +
       "  @latest          Most recent unresolved issue\n" +
       "  @most_frequent   Issue with the highest event frequency\n\n" +
-      "Examples:\n" +
-      "  sentry issue view @latest\n" +
-      "  sentry issue view FRONT-ABC BACK-2\n" +
-      "  sentry issue explain FRONT-ABC BACK-2\n" +
-      "  sentry issue events CLI-G\n" +
-      "  sentry issue resolve CLI-12Z --in 0.26.1\n" +
-      "  sentry issue archive CLI-AB --until auto\n" +
-      "  sentry issue merge CLI-K9 CLI-15H CLI-15N\n" +
-      "  sentry issue explain @most_frequent\n" +
-      "  sentry issue plan my-org/@latest\n\n" +
       "Alias: `sentry issues` → `sentry issue list`",
     hideRoute: {},
   },

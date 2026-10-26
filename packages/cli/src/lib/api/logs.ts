@@ -420,7 +420,7 @@ export async function getLogs(
 
   // Single batch — no splitting needed
   if (logIds.length <= API_MAX_PER_PAGE) {
-    return getLogsBatch(orgSlug, projectSlug, logIds, batchOptions);
+    return await getLogsBatch(orgSlug, projectSlug, logIds, batchOptions);
   }
 
   // Split into batches of API_MAX_PER_PAGE and fetch in parallel

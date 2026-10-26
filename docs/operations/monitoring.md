@@ -5,6 +5,7 @@ Observability patterns using Sentry across the MCP server.
 ## Architecture
 
 Different Sentry SDKs for different environments:
+
 - **Core server**: `@sentry/core` (platform-agnostic)
 - **Cloudflare Workers**: `@sentry/cloudflare`
 - **Node.js stdio**: `@sentry/node`
@@ -24,7 +25,7 @@ for the `contextType` diagnostic and its privacy constraints.
 ```typescript
 export async function createTracedToolHandler<T extends ToolName>(
   name: T,
-  handler: ToolHandlerFunction<T>
+  handler: ToolHandlerFunction<T>,
 ): Promise<[T, ToolHandlerFunction<T>]> {
   return [
     name,
@@ -34,10 +35,8 @@ export async function createTracedToolHandler<T extends ToolName>(
         ...extractMcpParameters(params),
       };
 
-      return await withActiveSpan(
-        `tools/call ${name}`,
-        attributes,
-        async () => handler(context, params)
+      return await withActiveSpan(`tools/call ${name}`, attributes, async () =>
+        handler(context, params),
       );
     },
   ];
@@ -70,13 +69,13 @@ For values set at startup, put the same keys in both `initialScope.tags` and
 async function withActiveSpan<T>(
   name: string,
   attributes: Record<string, any>,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<T> {
   const activeSpan = getActiveSpan();
   const span = activeSpan?.startSpan(name) ?? startInactiveSpan({ name });
-  
+
   span.setAttributes(attributes);
-  
+
   try {
     return await fn();
   } catch (error) {
@@ -99,9 +98,7 @@ export default function getSentryConfig(env: Env, context: ExecutionContext) {
     dsn: env.VITE_SENTRY_DSN,
     environment: env.VITE_SENTRY_ENVIRONMENT || "development",
     context,
-    integrations: [
-      Sentry.rewriteFramesIntegration({ root: "/" }),
-    ],
+    integrations: [Sentry.rewriteFramesIntegration({ root: "/" })],
     beforeSend(event) {
       // Redact sensitive data
       if (event.request?.headers?.authorization) {
@@ -116,16 +113,13 @@ export default function getSentryConfig(env: Env, context: ExecutionContext) {
 ### Worker Instrumentation
 
 ```typescript
-export default Sentry.withSentry(
-  (env) => getSentryConfig(env),
-  {
-    async fetch(request, env, ctx): Promise<Response> {
-      // Attach OAuth provider to request
-      request.OAUTH_PROVIDER = oAuthProvider.configure(/* ... */);
-      return app.fetch(request, env, ctx);
-    },
-  }
-);
+export default Sentry.withSentry((env) => getSentryConfig(env), {
+  async fetch(request, env, ctx): Promise<Response> {
+    // Attach OAuth provider to request
+    request.OAUTH_PROVIDER = oAuthProvider.configure(/* ... */);
+    return app.fetch(request, env, ctx);
+  },
+});
 ```
 
 ## Node.js Stdio Setup
@@ -137,9 +131,7 @@ import * as Sentry from "@sentry/node";
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   environment: process.env.NODE_ENV || "production",
-  integrations: [
-    Sentry.nodeProfilingIntegration(),
-  ],
+  integrations: [Sentry.nodeProfilingIntegration()],
   tracesSampleRate: 0.1,
   profilesSampleRate: 0.1,
 });
@@ -156,6 +148,7 @@ process.on("uncaughtException", (error) => {
 Sentry follows OpenTelemetry semantic conventions for consistent observability.
 
 ### MCP Attributes (Model Context Protocol)
+
 Based on the current [OpenTelemetry MCP conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/mcp/), the standard MCP semantic attributes are:
 
 - `mcp.method.name` - The name of the request or notification method (e.g., "notifications/cancelled", "initialize", "tools/call")
@@ -175,6 +168,7 @@ Current MCP spans also use related OpenTelemetry attributes outside the `mcp.*` 
 - `gen_ai.tool.call.result.count` - Sentry MCP extension for result counts, including zero-result tool calls
 
 ### Application-Owned Attributes
+
 These are Sentry MCP application attributes that are not part of the MCP semantic convention:
 
 - `app.resource.type` - Resolved Sentry resource type for `get_sentry_resource`
@@ -196,11 +190,13 @@ Following [OpenTelemetry semantic conventions for user agent](https://openteleme
 **Cloudflare Transport**: Captured from the initial SSE/WebSocket connection request headers and cached for the session
 
 ### Network Attributes
+
 Based on [OpenTelemetry network conventions](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/network.md):
 
 - `network.transport` - Transport protocol used ("pipe" for stdio, "tcp" for SSE)
 
 ### GenAI Attributes (Generative AI)
+
 Based on [OpenTelemetry GenAI conventions](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/gen-ai.md):
 
 - `gen_ai.provider.name` - The AI provider name (e.g., "anthropic")
@@ -211,6 +207,7 @@ Based on [OpenTelemetry GenAI conventions](https://github.com/open-telemetry/sem
 - `gen_ai.usage.output_tokens` - Number of tokens in response
 
 ### Span Naming Pattern
+
 Follows the format: `{mcp.method.name} {target}` per OpenTelemetry MCP semantic conventions
 
 - Tools: `tools/call {tool_name}` (e.g., `tools/call find_issues`)
@@ -221,6 +218,7 @@ Follows the format: `{mcp.method.name} {target}` per OpenTelemetry MCP semantic 
 **Note**: Span names are flexible and can be adjusted based on your needs. However, attribute names MUST follow the OpenTelemetry semantic conventions exactly as specified above.
 
 ### Example Attributes
+
 ```typescript
 // MCP Tool Execution
 {
@@ -260,11 +258,13 @@ Follows the format: `{mcp.method.name} {target}` per OpenTelemetry MCP semantic 
 ## Error Classification
 
 ### Skip Logging For:
+
 - `UserInputError` - Expected user errors
 - 4xx API responses (except 429)
 - Validation errors
 
 ### Always Log:
+
 - 5xx errors
 - Network failures
 - Unexpected exceptions
@@ -333,6 +333,7 @@ Interpretation:
   do not include `app.response.reason`
 
 ### Traces Configuration
+
 ```typescript
 {
   tracesSampleRate: 0.1,      // 10% in production
@@ -343,6 +344,7 @@ Interpretation:
 ## Environment Variables
 
 ### Required for Monitoring
+
 ```bash
 # Cloudflare (build-time)
 VITE_SENTRY_DSN=https://...@sentry.io/...

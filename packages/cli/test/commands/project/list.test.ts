@@ -398,7 +398,7 @@ const sampleProjects: SentryProject[] = [
 describe("handleExplicit", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -472,7 +472,7 @@ describe("project list: comma-separated project slugs", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
     func = await listCommand.loader();
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -581,7 +581,7 @@ describe("project list: comma-separated project slugs", () => {
           status: 403,
         });
       }
-      return projectFetch(input, init);
+      return await projectFetch(input, init);
     }) as typeof globalThis.fetch;
     const { context } = createCommandContext();
 
@@ -635,7 +635,7 @@ describe("project list: comma-separated project slugs", () => {
 describe("handleOrgAll", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -668,14 +668,14 @@ describe("handleOrgAll", () => {
 
     const result = await handleOrgAll({
       org: "test-org",
-      flags: { limit: 30, json: true, fresh: false },
+      flags: { limit: 2, json: true, fresh: false },
       contextKey: "type:org:test-org",
       cursor: undefined,
       direction: "next",
     });
 
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("1735689600000:100:0");
+    expect(result.nextCursor).toContain("1735689600000:100:0");
     expect(result.items).toHaveLength(2);
   });
 
@@ -702,7 +702,7 @@ describe("handleOrgAll", () => {
 
     await handleOrgAll({
       org: "test-org",
-      flags: { limit: 30, json: false, fresh: false },
+      flags: { limit: 2, json: false, fresh: false },
       contextKey: "type:org:test-org",
       cursor: undefined,
       direction: "next",
@@ -710,7 +710,7 @@ describe("handleOrgAll", () => {
 
     const state = getPaginationState(PAGINATION_KEY, "type:org:test-org");
     expect(state).toBeDefined();
-    expect(state!.stack).toContain("1735689600000:100:0");
+    expect(state!.stack.at(-1)).toContain("1735689600000:100:0");
   });
 
   test("no hasMore truncates pagination stack", async () => {
@@ -891,7 +891,7 @@ describe("handleOrgAll", () => {
 describe("handleProjectSearch", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -1214,7 +1214,7 @@ describe("displayProjectTable", () => {
 describe("fetchOrgProjects", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("myorg", DEFAULT_SENTRY_URL);
   });
 
@@ -1244,7 +1244,7 @@ describe("fetchOrgProjects", () => {
 describe("fetchOrgProjectsSafe", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("myorg", DEFAULT_SENTRY_URL);
   });
 
@@ -1290,7 +1290,7 @@ describe("fetchOrgProjectsSafe", () => {
 describe("fetchAllOrgProjects", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -1364,7 +1364,7 @@ describe("fetchAllOrgProjects", () => {
 describe("handleAutoDetect", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -1485,7 +1485,7 @@ describe("handleAutoDetect", () => {
     });
 
     const result = await handleAutoDetect("/tmp/test-project", {
-      limit: 30,
+      limit: 2,
       json: false,
       fresh: false,
     });
@@ -1503,7 +1503,7 @@ describe("handleAutoDetect", () => {
     });
 
     const result = await handleAutoDetect("/tmp/test-project", {
-      limit: 30,
+      limit: 2,
       json: true,
       fresh: false,
     });

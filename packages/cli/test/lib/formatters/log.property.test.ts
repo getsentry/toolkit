@@ -82,7 +82,7 @@ function stripAnsi(str: string): string {
 
 describe("formatLogDetails properties", () => {
   test("always returns a non-empty string", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -97,7 +97,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("always contains the log ID", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -111,7 +111,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("always contains timestamp info", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -125,7 +125,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("always contains severity info", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -139,7 +139,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("trace URL only appears when trace ID is present", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -158,7 +158,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("SDK section only appears when sdk.name is present", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -175,7 +175,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("Source Location section only appears when code fields are present", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -194,7 +194,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("formatting is deterministic: same input always produces same output", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -209,7 +209,7 @@ describe("formatLogDetails properties", () => {
   });
 
   test("output is a string (not array)", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,

@@ -55,12 +55,14 @@ type IgnoreState = {
   message: string;
 };
 
+// `string & {}` keeps the known literals in autocomplete without collapsing
+// the union to plain `string`.
 type IssueStatusDisplay =
   | "resolved"
   | "resolvedInNextRelease"
   | "unresolved"
   | "ignored"
-  | string;
+  | (string & {});
 
 type IgnoreParams = {
   status?: string;

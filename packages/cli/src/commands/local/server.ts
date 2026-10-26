@@ -144,6 +144,19 @@ const LOCALHOST_ORIGIN_RE =
 
 export { isLoopbackHost } from "./loopback.js";
 
+/**
+ * Read Spotlight's `__spotlight_envelope_id` envelope header as a string.
+ * Spotlight stores a `uuidv7` UUID object there, which renders through its
+ * own `toString()`.
+ */
+export function spotlightEnvelopeId(header: Record<string, unknown>): string {
+  const id = header.__spotlight_envelope_id as
+    | { toString(): string }
+    | null
+    | undefined;
+  return id == null ? "" : id.toString();
+}
+
 type LocalReceiverOptions = {
   /** Enables stateful UI routes only when the receiver itself is loopback-bound. */
   uiActions?: boolean;
@@ -207,11 +220,10 @@ export function buildSSEHandler(
       if (!parsed) {
         return;
       }
-      const header = parsed.envelope[0];
-      const envelopeId = header.__spotlight_envelope_id;
+      const envelopeId = spotlightEnvelopeId(parsed.envelope[0]);
       stream
         .writeSSE({
-          id: envelopeId ? String(envelopeId) : undefined,
+          id: envelopeId || undefined,
           event: `${container.getContentType()}${base64Indicator}`,
           data: JSON.stringify(parsed.envelope),
         })
@@ -283,7 +295,7 @@ export function buildApp(
     }
 
     if (!hostedStreamRequest && !hostedRetentionRequest) {
-      return localhostCors(c, next);
+      return await localhostCors(c, next);
     }
 
     if (c.req.method === "OPTIONS") {
@@ -315,8 +327,8 @@ export function buildApp(
     }
 
     return hostedRetentionRequest
-      ? hostedRetentionCors(c, next)
-      : hostedStreamCors(c, next);
+      ? await hostedRetentionCors(c, next)
+      : await hostedStreamCors(c, next);
   });
 
   app.get("/health", (c) => c.text("OK"));
@@ -990,6 +1002,33 @@ export const serverCommand = buildCommand({
       "as an SSE consumer and tails events from it. Otherwise it starts\n" +
       "its own server. Use --open to launch the Sentry Local UI.\n\n" +
       "Press Ctrl-C to stop.",
+    examples: [
+      {
+        description: "Start the server and tail events",
+        command: "sentry local",
+      },
+      { description: "Use a custom port", command: "sentry local --port 9000" },
+      {
+        description: "Only show errors and logs (filter out transactions)",
+        command: "sentry local -f error -f log",
+      },
+      {
+        description: "Only show AI/agent spans",
+        command: "sentry local -f ai",
+      },
+      {
+        description: "Suppress per-envelope tail output",
+        command: "sentry local --quiet",
+      },
+      {
+        description: "Stream NDJSON for scripts and agents",
+        command: "sentry local --format json",
+      },
+      {
+        description: "Start the server and open the Sentry Local UI",
+        command: "sentry local --open",
+      },
+    ],
   },
   parameters: {
     flags: {

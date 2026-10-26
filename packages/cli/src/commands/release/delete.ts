@@ -9,6 +9,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { deleteRelease, getRelease } from "../../lib/api-client.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ApiError } from "../../lib/errors.js";
 import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -81,13 +82,21 @@ type DeleteFlags = {
 export const deleteCommand = buildDeleteCommand({
   docs: {
     brief: "Delete a release",
-    fullDescription:
-      "Permanently delete a Sentry release.\n\n" +
-      "Examples:\n" +
-      "  sentry release delete 1.0.0\n" +
-      "  sentry release delete my-org/1.0.0\n" +
-      "  sentry release delete 1.0.0 --yes\n" +
-      "  sentry release delete 1.0.0 --dry-run",
+    fullDescription: "Permanently delete a Sentry release.",
+    examples: [
+      {
+        description: "Delete a release (prompts for confirmation)",
+        command: "sentry release delete my-org/1.0.0",
+      },
+      {
+        description: "Skip confirmation",
+        command: "sentry release delete my-org/1.0.0 --yes",
+      },
+      {
+        description: "Preview without deleting",
+        command: "sentry release delete my-org/1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatReleaseDeleted,
@@ -99,7 +108,7 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to delete",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

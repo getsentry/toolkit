@@ -115,11 +115,23 @@ export const findCommand = buildCommand({
       "Searches Xcode's DerivedData (for dSYMs), the current directory, and " +
       "any extra `--path` directories, matching each file's embedded debug id " +
       "against the requested ids. Local-only — no API calls.\n\n" +
-      "Exits non-zero if any id could not be located.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files find <debug-id> [<debug-id>...]\n" +
-      "  sentry debug-files find <id> --type dsym --path ./build\n" +
-      "  sentry debug-files find <id> --no-cwd --no-well-known -p /symbols",
+      "Exits non-zero if any id could not be located.",
+    examples: [
+      {
+        description: "Locate debug files for a debug identifier on disk",
+        command: "sentry debug-files find <debug-id>",
+      },
+      {
+        description: "Search only for dSYMs, including an extra directory",
+        command:
+          "sentry debug-files find <debug-id> --type dsym --path ./build",
+      },
+      {
+        description: "Search only an explicit directory and output JSON",
+        command:
+          "sentry debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json",
+      },
+    ],
   },
   // Purely local filesystem search — no Sentry API calls, no auth needed.
   auth: false,

@@ -8,6 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -49,11 +50,21 @@ export const restoreCommand = buildCommand({
     brief: "Restore an archived release",
     fullDescription:
       "Restore an archived release by setting its status back to open, " +
-      "making it visible in the default `sentry release list` again.\n\n" +
-      "Examples:\n" +
-      "  sentry release restore 1.0.0\n" +
-      "  sentry release restore my-org/1.0.0\n" +
-      "  sentry release restore 1.0.0 --dry-run",
+      "making it visible in the default `sentry release list` again.",
+    examples: [
+      {
+        description: "Restore a previously archived release",
+        command: "sentry release restore 1.0.0",
+      },
+      {
+        description: "Restore a release in an explicit organization",
+        command: "sentry release restore my-org/1.0.0",
+      },
+      {
+        description: "Preview without restoring",
+        command: "sentry release restore 1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatReleaseRestored,
@@ -65,7 +76,7 @@ export const restoreCommand = buildCommand({
         {
           placeholder: "org/version",
           brief: "[<org>/]<version> - Release version to restore",
-          parse: String,
+          parse: parseOrgTarget,
         },
       ],
     },

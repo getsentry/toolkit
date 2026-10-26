@@ -110,10 +110,18 @@ export const printSourcesCommand = buildCommand({
       "checking what `bundle-sources` would include. Supports Mach-O/dSYM, " +
       "ELF, PE/PDB, Portable PDB, and Breakpad.\n\n" +
       "The format is auto-detected. This command is local-only and makes no " +
-      "network requests.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files print-sources ./libexample.so\n" +
-      "  sentry debug-files print-sources ./app.pdb --json",
+      "network requests.",
+    examples: [
+      {
+        description:
+          "List the source files a debug file references (and whether they're available)",
+        command: "sentry debug-files print-sources ./libexample.so",
+      },
+      {
+        description: "Output the list as JSON",
+        command: "sentry debug-files print-sources ./app.pdb --json",
+      },
+    ],
   },
   output: {
     human: formatPrintSources,

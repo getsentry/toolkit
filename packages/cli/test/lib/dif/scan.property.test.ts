@@ -34,7 +34,9 @@ const NIL_DEBUG_ID = "00000000-0000-0000-0000-000000000000";
 
 const hexGroup = (length: number) =>
   tuple(
-    ...Array.from({ length }, () => constantFrom(..."0123456789abcdef")),
+    ...Array.from({ length }, () =>
+      constantFrom(..."0123456789abcdef".split("")),
+    ),
   ).map((chars) => chars.join(""));
 
 /** A non-nil UUID (8-4-4-4-12). May coincide with nil with negligible odds. */

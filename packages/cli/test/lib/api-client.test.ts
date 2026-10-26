@@ -44,7 +44,7 @@ beforeEach(async () => {
   originalFetch = globalThis.fetch;
 
   // Set up initial auth token with a refresh token so 401 retry can get a new token
-  await setAuthToken("initial-token", 3600, "test-refresh-token");
+  setAuthToken("initial-token", 3600, "test-refresh-token");
 });
 
 afterEach(() => {
@@ -82,7 +82,7 @@ function createMockFetch(
     // OAuth token refresh endpoint
     if (req.url.includes("/oauth/token/")) {
       if (options.oauthHandler) {
-        return options.oauthHandler(req);
+        return await options.oauthHandler(req);
       }
       return new Response(
         JSON.stringify({
@@ -100,7 +100,7 @@ function createMockFetch(
 
     // API requests - delegate to handler
     apiRequestCount += 1;
-    return apiRequestHandler(req, apiRequestCount);
+    return await apiRequestHandler(req, apiRequestCount);
   };
 }
 
@@ -242,7 +242,7 @@ describe("401 retry behavior", () => {
 
   test("does not retry for manual API tokens (no refresh token)", async () => {
     // Manual API tokens have no expiry and no refresh token
-    await setAuthToken("manual-api-token"); // No expiry, no refresh token
+    setAuthToken("manual-api-token"); // No expiry, no refresh token
 
     const requests: RequestLog[] = [];
 
@@ -1489,10 +1489,12 @@ describe("listTransactions", () => {
       return new Response(JSON.stringify({}), { status: 200 });
     };
 
-    const result = await listTransactions("my-org", "my-project");
+    const result = await listTransactions("my-org", "my-project", {
+      limit: 1,
+    });
     expect(Array.isArray(result.data)).toBe(true);
     expect(result.data).toHaveLength(1);
-    expect(result.nextCursor).toBe("1735689600:0:0");
+    expect(result.nextCursor).toContain("1735689600:0:0");
   });
 
   test("returns no nextCursor when link header has results=false", async () => {

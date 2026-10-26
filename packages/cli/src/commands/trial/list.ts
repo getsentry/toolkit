@@ -9,6 +9,7 @@
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -202,11 +203,18 @@ export const listCommand = buildCommand({
     fullDescription:
       "List product trials for an organization, including available,\n" +
       "active, and expired trials.\n\n" +
-      "Examples:\n" +
-      "  sentry trial list\n" +
-      "  sentry trial list my-org\n" +
-      "  sentry trial list --json\n\n" +
       "Alias: `sentry trials` → `sentry trial list`",
+    examples: [
+      {
+        description: "List all trials for the current organization",
+        command: "sentry trial list",
+      },
+      {
+        description: "List trials for a specific organization",
+        command: "sentry trial list my-org",
+      },
+      { description: "Output as JSON", command: "sentry trial list --json" },
+    ],
   },
   output: {
     human: formatTrialListHuman,
@@ -220,7 +228,7 @@ export const listCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (auto-detected if omitted)",
-          parse: String,
+          parse: parseOrgTarget,
           optional: true as const,
         },
       ],

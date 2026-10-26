@@ -116,7 +116,7 @@ describe("Local daemon ownership", () => {
         ),
       ).toBe(String(process.pid));
       contender = claimDaemonOwnership(directory);
-      return fs.stat(owner);
+      return await fs.stat(owner);
     });
     const first = claimDaemonOwnership(directory);
     const firstResult = first.then(

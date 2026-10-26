@@ -5,8 +5,11 @@
  * API call parameters, output formatting, pagination, and dataset handling.
  */
 
+import { execFileSync } from "node:child_process";
+import { buildApplication, run } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { exploreCommand } from "../../src/commands/explore.js";
+import { buildContext } from "../../src/context.js";
 
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -84,6 +87,7 @@ function createContext() {
         }),
       },
       cwd: "/tmp/test-explore",
+      commandPrefix: ["sentry", "explore"],
     },
     getStdout: () => stdoutChunks.join(""),
   };
@@ -147,8 +151,8 @@ beforeEach(async () => {
     nextCursor: undefined,
   });
 
-  // Default: resolveOrgOptionalFromArg returns org-only (auto-detect)
-  resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+  // Default: resolveOrgOptionalTarget returns org-only (auto-detect)
+  resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
   resolveTargetSpy.mockResolvedValue({ org: "test-org" });
 
   resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
@@ -206,7 +210,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS, "my-org/");
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        "my-org/",
+        { type: "org-all", org: "my-org" },
         "/tmp/test-explore",
         "explore",
       );
@@ -254,7 +258,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS, "cli");
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        "cli",
+        { type: "project-search", projectSlug: "cli" },
         "/tmp/test-explore",
         "explore",
       );
@@ -271,7 +275,7 @@ describe("sentry explore", () => {
       await func.call(context, DEFAULT_FLAGS);
 
       expect(resolveTargetSpy).toHaveBeenCalledWith(
-        undefined,
+        { type: "auto-detect" },
         "/tmp/test-explore",
         "explore",
       );
@@ -530,7 +534,29 @@ describe("sentry explore", () => {
       );
     });
 
-    test("omits sort for metrics dataset even when auto-detected", async () => {
+    test("applies explicit sort on errors dataset", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "errors",
+          field: ["failure.node", "count()"],
+          sort: "-count()",
+        },
+        "test-org/",
+      );
+
+      // --sort + --limit must be a real top N, not an arbitrary subset (#1477).
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({ sort: "-count()", dataset: "errors" }),
+      );
+    });
+
+    test("auto-sorts metrics by their aggregate", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       const { context } = createContext();
 
@@ -544,10 +570,62 @@ describe("sentry explore", () => {
         "test-org/",
       );
 
-      // metrics/logs reject sort with 400, so it stays unset.
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "test-org",
-        expect.objectContaining({ sort: undefined }),
+        expect.objectContaining({
+          dataset: "tracemetrics",
+          sort: "-sum(value,llm.token_usage,distribution,none)",
+        }),
+      );
+    });
+
+    test("applies explicit sort on logs dataset", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "logs",
+          field: ["severity", "count()"],
+          sort: "-count()",
+        },
+        "test-org/",
+      );
+
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          dataset: "logs",
+          fields: ["severity", "count()"],
+          sort: "-count()",
+        }),
+      );
+    });
+
+    test("selects an aggregate sort column the user did not request", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "errors",
+          field: ["failure.node", "count()"],
+          sort: "-count_unique(user)",
+        },
+        "test-org/",
+      );
+
+      // Sentry 400s when the sort column is not selected, on every dataset.
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["failure.node", "count()", "count_unique(user)"],
+          sort: "-count_unique(user)",
+        }),
       );
     });
 
@@ -908,6 +986,56 @@ describe("sentry explore", () => {
   });
 
   describe("pagination", () => {
+    test.runIf(process.platform !== "win32")(
+      "a copied next-page hint reuses the cursor for a quoted query",
+      async () => {
+        const actual = await vi.importActual<
+          typeof import("../../src/lib/db/pagination.js")
+        >("../../src/lib/db/pagination.js");
+        resolveCursorSpy.mockImplementation(actual.resolveCursor);
+        advancePaginationStateSpy.mockImplementation(
+          actual.advancePaginationState,
+        );
+        hasPreviousPageSpy.mockImplementation(actual.hasPreviousPage);
+        queryEventsSpy.mockResolvedValue({
+          data: MOCK_EVENTS_RESPONSE,
+          nextCursor: "page-2",
+        });
+        const query = 'transaction:"GET /checkout"';
+        const { context, getStdout } = createContext();
+
+        await func.call(context, { ...DEFAULT_FLAGS, query }, "test-org/");
+
+        const hint = getStdout().match(/Next: (sentry explore[^\n]+)/)?.[1];
+        expect(hint).toBeDefined();
+        const args = execFileSync(
+          "/bin/sh",
+          ["-c", `sentry() { printf '%s\\0' "$@"; }\n${hint}`],
+          { encoding: "utf8" },
+        )
+          .split("\0")
+          .slice(0, -1);
+        const resumedContext = {
+          ...buildContext(process).forCommand({
+            prefix: ["sentry", "explore"],
+          }),
+          ...createContext().context,
+          process: { ...process, exitCode: undefined },
+        };
+        await run(
+          buildApplication(exploreCommand, { name: "explore" }),
+          args.slice(1),
+          resumedContext,
+        );
+        expect(resumedContext.process.exitCode).toBe(0);
+
+        expect(queryEventsSpy).toHaveBeenLastCalledWith(
+          "test-org",
+          expect.objectContaining({ query, cursor: "page-2" }),
+        );
+      },
+    );
+
     test("includes nextCursor in JSON when more results available", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({
@@ -1031,14 +1159,14 @@ describe("sentry explore", () => {
       );
     });
 
-    test("rejects replay detail-only fields on the replay dataset", async () => {
+    test("rejects fields missing from the replay schema", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       const { context } = createContext();
 
       await expect(
         func.call(
           context,
-          { ...DEFAULT_FLAGS, dataset: "replays", field: ["replay_type"] },
+          { ...DEFAULT_FLAGS, dataset: "replays", field: ["device.model_id"] },
           "test-org/",
         ),
       ).rejects.toThrow(ValidationError);

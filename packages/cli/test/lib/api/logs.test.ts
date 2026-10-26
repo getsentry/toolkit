@@ -19,7 +19,7 @@ let originalFetch: typeof globalThis.fetch;
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("fake-token-for-test", 3600);
+  setAuthToken("fake-token-for-test", 3600);
 });
 
 afterEach(() => {
@@ -210,7 +210,7 @@ describe("listLogs", () => {
         link: `<https://sentry.io/next/>; rel="next"; results="true"; cursor="0:100:0"`,
       },
       {
-        body: { data: makeRows(50, 100), meta: { fields: {} } },
+        body: { data: makeRows(100, 100), meta: { fields: {} } },
         link: `<https://sentry.io/next/>; rel="next"; results="false"; cursor=""`,
       },
     ];
@@ -226,10 +226,13 @@ describe("listLogs", () => {
       });
     });
 
-    const logs = await listLogs("test-org", "my-project", { limit: 150 });
+    const logs = await listLogs("test-org", "my-project", { limit: 200 });
 
-    expect(logs).toHaveLength(150);
+    expect(logs).toHaveLength(200);
     expect(urls).toHaveLength(2);
+    for (const url of urls) {
+      expect(url).toContain("per_page=100");
+    }
   });
 });
 

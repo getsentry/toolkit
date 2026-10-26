@@ -29,6 +29,8 @@ import { feedbackRoute } from "./commands/feedback/index.js";
 import { helpCommand } from "./commands/help.js";
 import { infoCommand } from "./commands/info.js";
 import { initCommand } from "./commands/init.js";
+import { integrationRoute } from "./commands/integration/index.js";
+import { listCommand as integrationListCommand } from "./commands/integration/list.js";
 import { issueRoute } from "./commands/issue/index.js";
 import { listCommand as issueListCommand } from "./commands/issue/list.js";
 import { localRoute } from "./commands/local/index.js";
@@ -72,7 +74,7 @@ import {
 } from "./lib/command-suggestions.js";
 import { CLI_VERSION } from "./lib/constants.js";
 import { redactCredentialText } from "./lib/credential-redaction.js";
-import { reportCliError } from "./lib/error-reporting.js";
+import { reportArgumentError, reportCliError } from "./lib/error-reporting.js";
 import {
   ApiError,
   AuthError,
@@ -83,6 +85,7 @@ import {
   WizardError,
 } from "./lib/errors.js";
 import { error as errorColor, warning } from "./lib/formatters/colors.js";
+import { stripAnsi } from "./lib/formatters/plain-detect.js";
 import { buildTopLevelFlags } from "./lib/global-flags.js";
 import { renderJsonHelp } from "./lib/help.js";
 import { isRouteMap, type RouteMap } from "./lib/introspect.js";
@@ -97,6 +100,7 @@ const PLURAL_TO_SINGULAR: Record<string, string> = {
   dashboards: "dashboard",
   dsns: "dsn",
   events: "event",
+  integrations: "integration",
   issues: "issue",
   orgs: "org",
   platforms: "platform",
@@ -137,6 +141,7 @@ export const routes = buildRouteMap({
     release: releaseRoute,
     repo: repoRoute,
     team: teamRoute,
+    integration: integrationRoute,
     issue: issueRoute,
     event: eventRoute,
     events: eventListCommand,
@@ -165,6 +170,7 @@ export const routes = buildRouteMap({
     "agent-conversations": conversationListCommand,
     dashboards: dashboardListCommand,
     dsns: dsnListCommand,
+    integrations: integrationListCommand,
     issues: issueListCommand,
     orgs: orgListCommand,
     platforms: platformListCommand,
@@ -191,6 +197,7 @@ export const routes = buildRouteMap({
       "agent-conversations": true,
       dashboards: true,
       events: true,
+      integrations: true,
       issues: true,
       orgs: true,
       platforms: true,
@@ -306,6 +313,38 @@ function escapesToOuterMiddleware(exc: unknown): boolean {
   return exc instanceof ApiError && (exc.status === 401 || exc.status === 403);
 }
 
+/** Message for an argument that failed to parse, with our hints. */
+function formatArgumentError(exc: unknown, ansiColor: boolean): string {
+  // Case A: bare route group with no subcommand (e.g., `sentry issue`)
+  if (exc instanceof UnsatisfiedPositionalError) {
+    const bareHint = detectBareRouteGroup(ansiColor);
+    if (bareHint) {
+      return bareHint;
+    }
+  }
+
+  // Case B + plural alias: extra args that Stricli can't consume
+  if (exc instanceof UnexpectedPositionalError) {
+    const pluralHint = detectPluralAliasMisuse(ansiColor);
+    if (pluralHint) {
+      return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${pluralHint}`;
+    }
+
+    // With defaultCommand: "view", unknown tokens like "metrics" fill the
+    // positional slot, then extra args (e.g., CLI-AB) trigger this error.
+    // Check if the first non-route token is a known synonym.
+    const synonymHint = getSynonymSuggestionFromArgv();
+    if (synonymHint) {
+      const tip = ansiColor
+        ? warning(`\nTip: ${synonymHint}`)
+        : `\nTip: ${synonymHint}`;
+      return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${tip}`;
+    }
+  }
+
+  return text_en.exceptionWhileParsingArguments(exc, ansiColor);
+}
+
 /**
  * Custom error formatting for CLI errors.
  *
@@ -319,34 +358,10 @@ const customText: ApplicationText = {
     exc: unknown,
     ansiColor: boolean,
   ): string => {
-    // Case A: bare route group with no subcommand (e.g., `sentry issue`)
-    if (exc instanceof UnsatisfiedPositionalError) {
-      const bareHint = detectBareRouteGroup(ansiColor);
-      if (bareHint) {
-        return bareHint;
-      }
-    }
-
-    // Case B + plural alias: extra args that Stricli can't consume
-    if (exc instanceof UnexpectedPositionalError) {
-      const pluralHint = detectPluralAliasMisuse(ansiColor);
-      if (pluralHint) {
-        return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${pluralHint}`;
-      }
-
-      // With defaultCommand: "view", unknown tokens like "metrics" fill the
-      // positional slot, then extra args (e.g., CLI-AB) trigger this error.
-      // Check if the first non-route token is a known synonym.
-      const synonymHint = getSynonymSuggestionFromArgv();
-      if (synonymHint) {
-        const tip = ansiColor
-          ? warning(`\nTip: ${synonymHint}`)
-          : `\nTip: ${synonymHint}`;
-        return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${tip}`;
-      }
-    }
-
-    return text_en.exceptionWhileParsingArguments(exc, ansiColor);
+    const message = formatArgumentError(exc, ansiColor);
+    // Exit 252 never reaches reportCliError; record it for UX research
+    reportArgumentError(exc, stripAnsi(message));
+    return message;
   },
   noCommandRegisteredForInput: ({ input, corrections, ansiColor }): string => {
     // Default error message from Stricli (e.g., "No command registered for `info`")

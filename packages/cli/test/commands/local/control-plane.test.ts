@@ -75,7 +75,7 @@ describe("Local control plane", () => {
   test("discovers sibling streams only with the explicit browser directory capability", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const create = async (label: string) =>
-      (
+      await (
         await plane.app.request("/_local/v1/sessions", {
           method: "POST",
           headers: controlHeaders(),

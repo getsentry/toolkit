@@ -34,7 +34,9 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ## Safety Rules
 
-- Always confirm with the user before running destructive commands: `project delete`, `trial start`
+<!-- GENERATED:START destructive-commands -->
+- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `trial start`
+<!-- GENERATED:END destructive-commands -->
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -52,6 +54,7 @@ The CLI uses semantic exit codes. Key ranges for agents:
 | 40–49 | Feature unavailable | Inform user about plan/settings |
 | 50–59 | Operation error | Report to user |
 | 60–69 | Command-specific | Check stderr for details |
+| 252 | Invalid argument | Check the command's `--help` and fix the argument |
 
 See [Exit Codes](/exit-codes/) for the complete reference.
 
@@ -210,7 +213,7 @@ sentry release deploy my-org/1.0.0 production
 sentry agent-conversation list
 
 # Explicit org, last 24 hours
-sentry agent-conversation list my-org --period 24h
+sentry agent-conversation list my-org/ --period 24h
 
 # View a conversation transcript
 sentry agent-conversation view my-org/conv-123
@@ -325,7 +328,7 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 ## Common Mistakes
 
 - **Wrong issue ID format**: Use `PROJECT-123` (short ID), not the numeric ID `123456789`. The short ID includes the project prefix.
-- **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` if you need to switch accounts.
+- **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` to add an account. With several stored accounts, commands pick the one that knows the target organization or server automatically; use `sentry auth switch` only to change the default.
 - **Missing `--json` for piping**: Human-readable output includes formatting. Use `--json` when parsing output programmatically.
 - **Specifying org/project when not needed**: Auto-detection resolves org/project from `.sentryclirc` config files, DSNs, env vars, and directory names. Let it work first — only add `<org>/<project>` if the CLI says it can't detect the target or detects the wrong one.
 - **Manually discovering the project before running a command**: Don't list the orgs you belong to, then list every project in each, to match the local checkout to a project — the CLI already does exactly this resolution internally on each command. Skip the fan-out and run the command directly; correct the target afterwards only if the output shows the wrong org/project.

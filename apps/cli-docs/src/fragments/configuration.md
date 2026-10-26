@@ -58,7 +58,7 @@ The first source that provides both org and project wins. For org-only commands,
 Full issue short IDs, such as `sentry issue view FRONT-ABC`, only need the org:
 `SENTRY_ORG`, `.sentryclirc`, and persistent defaults scope the lookup in that order.
 Use `sentry issue view other-org/FRONT-ABC` to override the configured organization.
-Project aliases retain their associated organization. See [View an issue](./commands/issue/#view-an-issue).
+Project aliases retain their associated organization. See [View an issue](../commands/issue/#view-an-issue).
 
 ### Backward Compatibility
 
@@ -66,18 +66,30 @@ If you previously used the legacy `sentry-cli` and have a `~/.sentryclirc` file,
 
 ## Persistent Defaults
 
-Use `sentry cli defaults` to set persistent defaults for organization, project, URL, and telemetry. These are stored in the CLI's local database and apply to all commands.
+Use `sentry cli defaults` to set persistent defaults for organization, project, URL, custom headers, CA certificate, telemetry, agent skills, inline graphics, and tips. These are stored in the CLI's local database and apply to all commands.
 
 ```bash
 sentry cli defaults org my-org           # Set default organization
 sentry cli defaults project my-project   # Set default project
 sentry cli defaults url https://...      # Set Sentry URL (self-hosted)
 sentry cli defaults telemetry off        # Disable telemetry
+sentry cli defaults tips off             # Hide Tip: hints in command output
 sentry cli defaults                      # Show all current defaults
 sentry cli defaults org --clear          # Clear a specific default
 ```
 
-See [`sentry cli defaults`](./commands/cli/#sentry-cli-defaults) for full usage.
+See [`sentry cli defaults`](../commands/cli/#sentry-cli-defaults-key-value) for full usage.
+
+### Disabling tips
+
+Some commands print a `Tip: ...` hint below their output. To hide these, store the preference or set an environment variable:
+
+```bash
+sentry cli defaults tips off   # persistent
+export SENTRY_DISABLE_TIPS=1   # per-session, overrides the stored preference
+```
+
+Only the tips are removed. Pagination hints, dry-run and cancellation notices, and the cache-age footer (`cached · 3m ago · use -f to refresh`) are still shown.
 
 ## Global Options
 
@@ -115,7 +127,7 @@ We store credentials and caches in a SQLite database (`cli.db`) inside the confi
 - Region URL mappings
 - Project aliases (for monorepo support)
 
-See [Credential Storage](./commands/auth/#credential-storage) in the auth command docs for more details.
+See [Credential Storage](../commands/auth/#credential-storage) in the auth command docs for more details.
 
 ## Binary Install Location
 
@@ -128,4 +140,4 @@ When installed via the install script, the CLI binary is placed in an XDG-aligne
 
 Older installs placed the binary in `~/.sentry/bin`. Running `sentry cli setup` moves an existing `~/.sentry/bin` binary into the resolved install directory (updating your `PATH` and recorded install metadata to match) and migrates any legacy `~/.sentry` config data (`cli.db`, `config.json`) into the XDG config directory. Both migrations are skipped when a binary or config already exists at the target.
 
-`sentry upgrade` runs `setup` on the new binary, so it migrates too — but conservatively, because upgrade never edits your `PATH`. A legacy `~/.sentry/bin` binary is relocated to the XDG install directory **only when that directory is already on your `PATH`**, so the moved binary stays discoverable. If the XDG directory isn't on `PATH`, upgrade leaves the binary in place (a mislocated binary that vanished from `PATH` would break the command); run `sentry cli setup` explicitly to relocate it and update `PATH`. Legacy config data is migrated on upgrade regardless.
+`sentry cli upgrade` runs `setup` on the new binary, so it migrates too — but conservatively, because upgrade never edits your `PATH`. A legacy `~/.sentry/bin` binary is relocated to the XDG install directory **only when that directory is already on your `PATH`**, so the moved binary stays discoverable. If the XDG directory isn't on `PATH`, upgrade leaves the binary in place (a mislocated binary that vanished from `PATH` would break the command); run `sentry cli setup` explicitly to relocate it and update `PATH`. Legacy config data is migrated on upgrade regardless.

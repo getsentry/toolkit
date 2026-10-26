@@ -15,6 +15,12 @@ Browse the Sentry API schema
 
 Browse the Sentry API schema
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<resource...>` | Resource, exact operation ID, or METHOD /path |
+
 **Flags:**
 - `--all - Show all endpoints in a flat list`
 - `-q, --search <value> - Search endpoints by keyword`

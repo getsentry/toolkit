@@ -516,7 +516,7 @@ export async function resolveTraceOrgOptionalProject(
     );
     return { traceId: parsed.traceId, ...resolved };
   }
-  return resolveTraceOrgProject(parsed, cwd, usageHint);
+  return await resolveTraceOrgProject(parsed, cwd, usageHint);
 }
 
 /**
@@ -544,7 +544,7 @@ export async function resolveTraceOrgProject(
 
     case "project-search":
       // resolveProjectBoundTarget (called inside) sets telemetry context.
-      return resolveProjectSearchTarget(parsed, cwd, usageHint);
+      return await resolveProjectSearchTarget(parsed, cwd, usageHint);
 
     case "org-scoped":
       throw new ContextError("Specific project", usageHint, [
@@ -555,10 +555,10 @@ export async function resolveTraceOrgProject(
     case "auto-detect": {
       // resolveOrgAndProject already sets telemetry context. On a failed
       // auto-detect, guideOrgProjectFailure offers an interactive picker (TTY)
-      // or an actionable error listing the user's accessible orgs.
+      // or an actionable error listing explicit project candidates.
       const resolved =
         (await resolveOrgAndProject({ cwd, usageHint })) ??
-        (await guideOrgProjectFailure({ usageHint }));
+        (await guideOrgProjectFailure({ cwd, usageHint }));
       return {
         traceId: parsed.traceId,
         org: resolved.org,

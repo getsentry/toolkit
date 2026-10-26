@@ -997,14 +997,24 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
+  // String aggregates can return identifiers, even when their values look numeric.
+  const isStringSeries = series.timeSeries[0]?.meta.valueType === "string";
   const points = (series.timeSeries[0]?.values ?? []).map((bucket) => {
     // OUTSIDE_RETENTION buckets start before the retention window: their data
     // is permanently partial. Every other reason means data is still arriving.
     const outsideRetention =
       bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
+    const raw = bucket.value ?? 0;
+    // Date-typed aggregates such as max(timestamp) return ISO datetime
+    // strings. Number() rejects those whole (parseFloat would keep the year),
+    // so order them by parsed time and display the raw string.
+    const numeric = typeof raw === "number" ? raw : Number(raw);
+    const isNumeric = !Number.isNaN(numeric);
     return {
       time: formatBucketTime(bucket.timestamp),
-      value: bucket.value ?? 0,
+      value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
+      display:
+        !isStringSeries && isNumeric ? numeric.toLocaleString() : String(raw),
       filling: bucket.incomplete && !outsideRetention,
       outsideRetention,
     };
@@ -1014,13 +1024,14 @@ export function formatTimeSeriesResults(params: {
 
   // Total is only meaningful for additive aggregates; summing count_unique /
   // avg / percentile buckets would be wrong, so omit it for those.
-  const total = isAdditiveAggregate(yAxis)
-    ? points.reduce((sum, p) => sum + p.value, 0)
-    : null;
+  const total =
+    !isStringSeries && isAdditiveAggregate(yAxis)
+      ? points.reduce((sum, p) => sum + p.value, 0)
+      : null;
   // Buckets still filling can't be the peak yet. Partial retention buckets are
   // final, so if one still tops the rest it is a real peak.
   const peak = points
-    .filter((p) => !p.filling)
+    .filter((p) => !isStringSeries && !p.filling)
     .reduce<(typeof points)[number] | undefined>(
       (max, p) => (max === undefined || p.value > max.value ? p : max),
       undefined,
@@ -1050,7 +1061,7 @@ export function formatTimeSeriesResults(params: {
     );
   }
   if (peak) {
-    lines.push(`- **Peak**: ${peak.value.toLocaleString()} at ${peak.time}`);
+    lines.push(`- **Peak**: ${peak.display} at ${peak.time}`);
   }
   if (ingestion) {
     lines.push(formatIngestionStatus(ingestion));
@@ -1066,7 +1077,7 @@ export function formatTimeSeriesResults(params: {
     );
     for (const p of shown) {
       const marker = p.filling ? " *" : p.outsideRetention ? " †" : "";
-      lines.push(`| ${p.time} | ${p.value.toLocaleString()}${marker} |`);
+      lines.push(`| ${p.time} | ${p.display}${marker} |`);
     }
     // Footnotes describe markers in the visible rows only; older retention
     // buckets may have been cut by MAX_ROWS.

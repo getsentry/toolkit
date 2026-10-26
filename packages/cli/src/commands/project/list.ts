@@ -281,7 +281,7 @@ async function fetchAutoDetectProjects(
   flags: ListFlags,
 ): Promise<{ projects: ProjectWithOrg[]; nextCursor?: string }> {
   if (orgs.length === 1 && !flags.platform) {
-    return fetchPaginatedSafe(orgs[0] as string, flags.limit);
+    return await fetchPaginatedSafe(orgs[0] as string, flags.limit);
   }
   if (orgs.length > 0) {
     const results = await Promise.all(orgs.map(fetchOrgProjectsSafe));
@@ -698,22 +698,42 @@ export const listCommand = buildListCommand("project", {
     brief: "List projects",
     fullDescription:
       "List projects in an organization.\n\n" +
-      "Target patterns:\n" +
-      "  sentry project list                # auto-detect from DSN or config\n" +
-      "  sentry project list <org>/         # all projects in org (paginated)\n" +
-      "  sentry project list <org>/<proj>   # show specific project\n" +
-      "  sentry project list <org>/<proj1>,<proj2>      # show several projects\n" +
-      "  sentry project list <project>      # find project across all orgs\n\n" +
       `${targetPatternExplanation("Cursor pagination (--cursor) requires the <org>/ form.")}\n\n` +
-      "Pagination:\n" +
-      "  sentry project list <org>/ -c next      # next page\n" +
-      "  sentry project list <org>/ -c prev      # previous page\n" +
-      "  sentry project list <org>/ -c <cursor>  # resume at specific cursor\n\n" +
-      "Filtering and output:\n" +
-      "  sentry project list --platform javascript  # filter by platform\n" +
-      "  sentry project list --limit 50              # show more results\n" +
-      "  sentry project list --json                  # output as JSON\n\n" +
       "Alias: `sentry projects` → `sentry project list`",
+    examples: [
+      {
+        description: "List projects (organization auto-detected)",
+        command: "sentry project list",
+      },
+      {
+        description: "List all projects in an organization",
+        command: "sentry project list my-org/",
+      },
+      {
+        description: "Several projects in the same organization",
+        command: "sentry project list my-org/frontend,backend",
+      },
+      {
+        description: "Filter by platform",
+        command: "sentry project list my-org/ --platform javascript",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry project list frontend",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry project list my-org/ -c next",
+      },
+      {
+        description: "Show more results",
+        command: "sentry project list my-org/ --limit 50",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry project list my-org/ --json",
+      },
+    ],
   },
   output: {
     human: (data: ListResult<ProjectWithOrg>) => {

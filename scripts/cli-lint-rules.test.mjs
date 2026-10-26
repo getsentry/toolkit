@@ -143,3 +143,95 @@ tester.run("no-raw-metadata-queries", plugin.rules["no-raw-metadata-queries"], {
     },
   ],
 });
+
+tester.run(
+  "no-examples-in-full-description",
+  plugin.rules["no-examples-in-full-description"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', command: 'sentry list' }] } });",
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Format: count()\\n  Example: p50(value)' } });",
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\nRun `sentry item view` for details.' } });",
+      },
+      {
+        filename: commands,
+        code: "throw new ContextError('Item', 'sentry item view <id>\\n  sentry item list');",
+      },
+      {
+        filename: commands,
+        code: "throw new ValidationError('Bad input.\\n\\nExamples:\\n  sentry list');",
+      },
+      {
+        filename: source,
+        code: "const docs = { fullDescription: `${base}\\n\\nExamples:\\n${rendered}` };",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\n' + 'Examples:\\n' + '  sentry list\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildRouteMap({ docs: { fullDescription: `Manage items.\\n\\nExample:\\n  sentry item view 1` } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Manage items.\\n\\n' + '## Examples\\n\\n' + 'sentry item list\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\n' + 'Target patterns:\\n' + '  sentry item list <org>/  # all items in org\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: `Lists items.\\n\\n  sentry item list -c next\\n\\n${note}` } });",
+        errors: 1,
+      },
+    ],
+  },
+);
+
+tester.run(
+  "no-regex-markdown-parsing",
+  plugin.rules["no-regex-markdown-parsing"],
+  {
+    valid: [
+      { filename: source, code: "const query = /[^/?#\\s]+/;" },
+      { filename: source, code: "const issue = /#(\\d+)/;" },
+      {
+        filename: "/repo/packages/cli/test/example.test.ts",
+        code: "expect(output).toMatch(/^## Usage/m);",
+      },
+    ],
+    invalid: [
+      {
+        filename: "/repo/packages/cli/script/example.ts",
+        code: "const fence = /^(`{3,}|~{3,}).*\\n[\\s\\S]*?\\n\\1\\s*$/gm;",
+        errors: 1,
+      },
+      {
+        filename: source,
+        code: "const heading = /^#{1,6}\\s+examples?/im;",
+        errors: 1,
+      },
+      {
+        filename: "/repo/packages/cli/script/example.ts",
+        code: "const heading = new RegExp(`^#{1,4}\\\\s+${name}`, 'im');",
+        errors: 1,
+      },
+    ],
+  },
+);

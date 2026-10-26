@@ -25,6 +25,7 @@ import {
   type CommandDocumentation,
   numberParser,
 } from "./command.js";
+import { parseOrgProjectTarget, parseOrgTarget } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
 import { logger } from "./logger.js";
 
@@ -43,8 +44,10 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
+import { applyBoundPositionals, rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
+import { shellQuote } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Level A: shared parameter / flag definitions
@@ -66,6 +69,18 @@ export const LIST_MIN_LIMIT = 1;
 export const LIST_DEFAULT_LIMIT = 25;
 
 /**
+ * Accepted forms of an `[<org>/][<project>]` target that supports org-all
+ * mode. Positional briefs render in `--help`, the generated command docs, and
+ * the skill references, so the target syntax is described here once instead
+ * of in each command's `fullDescription`.
+ */
+export const ORG_ALL_TARGET_BRIEF =
+  "<org>/ (all projects), <org>/<project>, or <project> (search)";
+
+/** Accepted forms of a target that names one project (no org-all mode). */
+export const PROJECT_TARGET_BRIEF = "<org>/<project> or <project> (search)";
+
+/**
  * Positional `org/project` parameter shared by all list commands.
  *
  * Accepts `<org>/`, `<org>/<project>`, or bare `<project>` (search).
@@ -76,8 +91,24 @@ export const LIST_TARGET_POSITIONAL = {
   parameters: [
     {
       placeholder: "org/project",
-      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
-      parse: String,
+      brief: ORG_ALL_TARGET_BRIEF,
+      parse: parseOrgProjectTarget,
+      optional: true as const,
+    },
+  ],
+};
+
+/**
+ * {@link LIST_TARGET_POSITIONAL} for org-scoped resources (teams, repos,
+ * releases, …): same syntax, but shell completion suggests org slugs only.
+ */
+export const LIST_ORG_TARGET_POSITIONAL = {
+  kind: "tuple" as const,
+  parameters: [
+    {
+      placeholder: "org/project",
+      brief: ORG_ALL_TARGET_BRIEF,
+      parse: parseOrgTarget,
       optional: true as const,
     },
   ],
@@ -277,18 +308,18 @@ export function paginationHint(opts: {
 }
 
 /**
- * Append `-q "<query>"` to a hint-flag parts array when the user passed `--query`.
+ * Append a shell-quoted `--query` argument when the user passed `--query`.
  *
- * Standard helper for pagination-hint builders that need to preserve the
- * active search filter. Quotes are added unconditionally to handle queries
- * containing spaces.
+ * Preserve the exact query, including quotes and shell metacharacters, so copied
+ * pagination hints resolve the cursor stored for the original search. The inline
+ * flag value also keeps quoted segments in one argument in PowerShell.
  */
 export function appendQueryHint(
   parts: string[],
   query: string | undefined,
 ): void {
   if (query) {
-    parts.push(`-q "${query}"`);
+    parts.push(`--query=${shellQuote(query)}`);
   }
 }
 
@@ -599,21 +630,20 @@ export function buildListCommand<
     // Auto-apply fresh flag before command runs
     applyFreshFlag(flags as unknown as { readonly fresh: boolean });
 
-    // The first positional arg is always the target (org/project pattern).
-    // Intercept it to handle plural alias confusion.
-    if (
-      args.length > 0 &&
-      (typeof args[0] === "string" || args[0] === undefined)
-    ) {
+    // The first positional arg is always the target (org/project pattern),
+    // either a raw string or a parsed value. Intercept it to handle plural
+    // alias confusion.
+    const rawTarget = rawPositional(args[0]);
+    if (typeof rawTarget === "string") {
       // All list commands use SentryContext which has stderr at top level
       const ctx = this as unknown as { stderr: { write(s: string): void } };
-      args[0] = interceptSubcommand(
-        args[0] as string | undefined,
-        ctx.stderr,
-        routeName,
-      );
+      if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
+        args[0] = undefined;
+      }
     }
-    return originalFunc.call(this, flags, ...(args as unknown as ARGS));
+    // A dropped bound target becomes an omitted one (auto-detect)
+    const finalArgs = applyBoundPositionals(args, params.positional, this);
+    return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
   return buildCommand({
@@ -698,7 +728,7 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       schema: config.schema,
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
-      positional: LIST_TARGET_POSITIONAL,
+      positional: LIST_ORG_TARGET_POSITIONAL,
       flags: {
         limit: buildListLimitFlag(config.entityPlural),
       },

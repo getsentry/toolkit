@@ -92,7 +92,9 @@ describe("authenticated fetch bearer validation", () => {
   /** Simulate credentials persisted before setAuthToken validated its input. */
   function storeLegacyToken(token: string): void {
     setAuthToken("legacy-token");
-    getDatabase().query("UPDATE auth SET token = ? WHERE id = 1").run(token);
+    getDatabase()
+      .query("UPDATE accounts SET token = ? WHERE is_active = 1")
+      .run(token);
   }
 
   test.each([...ENV_TOKEN_KEYS, "stored"])(
@@ -250,7 +252,7 @@ describe("authenticated fetch bearer validation", () => {
         const cached = await getCachedResponse("GET", RESOURCE_URL, {
           authorization: "Bearer synthetic-token",
         });
-        return cached?.json();
+        return await cached?.json();
       })
       .toEqual({ source: "network" });
     expect(requests).toEqual([

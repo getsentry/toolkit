@@ -17,6 +17,7 @@ import type {
   IssueEventDetailsResponse,
   DeployResponse as SdkDeployResponse,
   GetOrganizationIssueResponse as SdkIssueDetail,
+  ListOrganizationIssuesResponse as SdkIssueList,
   ListOrganizations as SdkOrganizationList,
   ProjectKey as SdkProjectKey,
   OrganizationProjectResponseDict as SdkProjectList,
@@ -191,6 +192,12 @@ export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> &
      * `null` when Seer has not analyzed this issue; absent when the org has Seer disabled.
      */
     seerFixabilityScore?: number | null;
+    /**
+     * Seen-stats scoped to the query's event-level filters (e.g. `release:`).
+     * Returned by the issues-list endpoint only when `filtered` isn't
+     * collapsed; `null` when the query has no such filters.
+     */
+    filtered?: SdkIssueList[number]["filtered"];
   };
 
 /**
@@ -1056,7 +1063,13 @@ export type DetailedLogsResponse = InferOutput<
  */
 export const TraceItemAttributeSchema = variant("type", [
   object({ name: string(), type: literal("str"), value: string() }),
-  object({ name: string(), type: literal("int"), value: number() }),
+  // Sentry serializes int64 values as strings to avoid precision loss
+  // (e.g. project_id: "4508608809533441"); keep them as strings.
+  object({
+    name: string(),
+    type: literal("int"),
+    value: union([number(), string()]),
+  }),
   object({ name: string(), type: literal("float"), value: number() }),
   object({ name: string(), type: literal("bool"), value: boolean() }),
   // "array" is gated by organizations:trace-item-details-array-fields in Sentry backend
@@ -1252,6 +1265,44 @@ export const SentryRepositorySchema = pipe(
 );
 
 export type SentryRepository = InferOutput<typeof SentryRepositorySchema>;
+
+// Integrations
+
+/** Provider summary embedded in an installed integration. */
+export const IntegrationProviderSchema = looseObject({
+  key: pipe(string(), description("Provider key (e.g. github, slack)")),
+  name: pipe(string(), description("Provider display name")),
+});
+
+/**
+ * An integration installed on a Sentry organization.
+ *
+ * Returned by `/organizations/{org}/integrations/`. The list includes
+ * integrations that are pending deletion, so `organizationIntegrationStatus`
+ * can be `active`, `disabled`, or `pending_deletion`.
+ */
+export const SentryIntegrationSchema = pipe(
+  looseObject({
+    id: pipe(string(), description("Integration ID")),
+    name: pipe(string(), description("Integration name (e.g. GitHub org)")),
+    domainName: pipe(
+      nullable(string()),
+      description("External domain (e.g. github.com/getsentry)"),
+    ),
+    provider: pipe(IntegrationProviderSchema, description("Provider")),
+    status: pipe(string(), description("Integration status")),
+    organizationIntegrationStatus: pipe(
+      string(),
+      description("Status of the install in this organization"),
+    ),
+    externalId: optional(
+      pipe(string(), description("Provider-side installation ID")),
+    ),
+  }),
+  description("Installed Sentry integration"),
+);
+
+export type SentryIntegration = InferOutput<typeof SentryIntegrationSchema>;
 
 // Cron Monitor
 

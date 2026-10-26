@@ -75,20 +75,22 @@ const docs: OrgListCommandDocs = {
   brief: "List cron monitors",
   fullDescription:
     "List cron monitors in an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry monitor list               # auto-detect from DSN or config\n" +
-    "  sentry monitor list <org>/        # list all monitors in org (paginated)\n" +
-    "  sentry monitor list <org>/<proj>  # list monitors in org (project context)\n" +
-    "  sentry monitor list <org>         # list monitors in org\n\n" +
-    "Pagination:\n" +
-    "  sentry monitor list <org>/ -c next  # fetch next page\n" +
-    "  sentry monitor list <org>/ -c prev  # fetch previous page\n\n" +
-    "Examples:\n" +
-    "  sentry monitor list              # auto-detect or list all\n" +
-    "  sentry monitor list my-org/      # list monitors in my-org (paginated)\n" +
-    "  sentry monitor list --limit 10\n" +
-    "  sentry monitor list --json\n\n" +
     "Alias: `sentry monitors` → `sentry monitor list`",
+  examples: [
+    {
+      description: "List monitors (organization auto-detected)",
+      command: "sentry monitor list",
+    },
+    {
+      description: "List cron monitors in an organization",
+      command: "sentry monitor list my-org/",
+    },
+    {
+      description: "Fetch the next page",
+      command: "sentry monitor list my-org/ -c next",
+    },
+    { description: "Output as JSON", command: "sentry monitor list --json" },
+  ],
 };
 
 export const listCommand = buildOrgListCommand(

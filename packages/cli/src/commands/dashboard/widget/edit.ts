@@ -28,7 +28,7 @@ import {
 } from "../../../types/dashboard.js";
 import {
   applyGroupLimitAutoDefault,
-  enrichDashboardError,
+  withDashboardErrors,
   normalizeDataset,
   parseDashboardPositionalArgs,
   resolveDashboardId,
@@ -197,12 +197,29 @@ export const editCommand = buildCommand({
       "Identify the widget by --index (0-based) or --title.\n" +
       "Only provided flags are changed — omitted values are preserved.\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
-      "and size in the 6-column dashboard grid.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard widget edit 12345 --title 'Error Rate' --display bar\n" +
-      "  sentry dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration\n" +
-      "  sentry dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'\n" +
-      "  sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
+      "and size in the 6-column dashboard grid.",
+    examples: [
+      {
+        description: "Change a widget's display type",
+        command:
+          "sentry dashboard widget edit 12345 --title 'Error Rate' --display bar",
+      },
+      {
+        description: "Change the query of a widget selected by index",
+        command:
+          "sentry dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration",
+      },
+      {
+        description: "Rename a widget",
+        command:
+          "sentry dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'",
+      },
+      {
+        description: "Move and resize a widget",
+        command:
+          "sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
+      },
+    ],
   },
   output: {
     human: formatWidgetEdited,
@@ -355,13 +372,13 @@ export const editCommand = buildCommand({
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
     // GET current dashboard → find widget → merge changes → PUT
-    const current = await getDashboard(orgSlug, dashboardId).catch(
-      async (error: unknown) =>
-        enrichDashboardError(error, {
-          orgSlug,
-          dashboardId,
-          operation: "view",
-        }),
+    const current = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "view",
+      },
+      () => getDashboard(orgSlug, dashboardId),
     );
     const widgets = current.widgets ?? [];
     const widgetIndex = resolveWidgetIndex(
@@ -390,16 +407,13 @@ export const editCommand = buildCommand({
 
     updateBody.widgets[widgetIndex] = replacement;
 
-    const updated = await updateDashboard(
-      orgSlug,
-      dashboardId,
-      updateBody,
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const updated = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "update",
-      }),
+      },
+      () => updateDashboard(orgSlug, dashboardId, updateBody),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 

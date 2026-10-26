@@ -2,8 +2,9 @@
 /**
  * Generate Skill Files from Stricli Command Metadata and Docs
  *
- * Introspects the CLI's route tree and merges with documentation
- * to generate structured documentation for AI agents.
+ * Introspects the CLI's route tree (including command-owned examples) and
+ * merges it with hand-written guidance to generate structured documentation
+ * for AI agents.
  *
  * Produces:
  *   - SKILL.md: compact index with agent guidance + command summaries
@@ -23,13 +24,16 @@
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
-import type { Token } from "marked";
-import { marked } from "marked";
 import {
-  extractCommandPathFromHeading,
+  formatCommandArguments,
   formatCommandExamples,
-  matchExampleToCommand,
+  formatDestructiveNotice,
 } from "./generate-skill-markdown.js";
+import {
+  demoteHeadings,
+  markdownCodeBlocks,
+  markdownSection,
+} from "./markdown.js";
 import { DOCS_CONTENT, DOCS_PUBLIC } from "./paths.js";
 
 // Bootstrap: ensure the generated skill-content module exists before
@@ -56,40 +60,7 @@ import type {
   RouteInfo,
   RouteMap,
 } from "../src/lib/introspect.js";
-import {
-  buildCommandInfo,
-  extractRouteGroupCommands,
-  isCommand,
-  isRouteMap,
-} from "../src/lib/introspect.js";
-
-/**
- * Resolve the default subcommand name for a route map, if configured.
- *
- * Hidden dispatcher routes (e.g. auth's `default`) map bare group examples
- * onto the user-facing command they primarily document (login).
- */
-function findDefaultCommandName(routeMap: RouteMap): string | undefined {
-  if (!routeMap.getDefaultCommand) {
-    return;
-  }
-  const defaultCmd = routeMap.getDefaultCommand();
-  if (!defaultCmd) {
-    return;
-  }
-  for (const sub of routeMap.getAllEntries()) {
-    if (sub.target === defaultCmd) {
-      const name = sub.name.original;
-      // Auth uses a hidden "default" dispatcher; bare `sentry auth` examples
-      // document the login path.
-      if (name === "default") {
-        return "login";
-      }
-      return name;
-    }
-  }
-  return;
-}
+import { extractAllRoutes } from "../src/lib/introspect.js";
 
 const SKILL_DIR = "plugins/sentry-cli/skills/sentry-cli";
 const OUTPUT_PATH = `${SKILL_DIR}/SKILL.md`;
@@ -105,9 +76,6 @@ async function getPackageVersion(): Promise<string> {
 
 /** Regex to match YAML frontmatter at the start of a file */
 const FRONTMATTER_REGEX = /^---\n[\s\S]*?\n---\n/;
-
-/** Regex to match code blocks with optional language specifier */
-const CODE_BLOCK_REGEX = /```(\w*)\n([\s\S]*?)```/g;
 
 /** Regex to extract npm command from PackageManagerCode Astro component (handles multi-line) */
 const PACKAGE_MANAGER_REGEX = /<PackageManagerCode[\s\S]*?npm="([^"]+)"/;
@@ -160,54 +128,12 @@ function stripMdxComponents(markdown: string): string {
   return result.trim();
 }
 
-/** Extract a specific section from markdown by heading */
-function extractSection(markdown: string, heading: string): string | null {
-  const headingPattern = new RegExp(
-    `^(#{1,6})\\s+${escapeRegex(heading)}\\s*$`,
-    "m",
-  );
-  const match = markdown.match(headingPattern);
-  if (!match || match.index === undefined) {
-    return null;
-  }
-  const headingLevel = match[1].length;
-  const startIndex = match.index + match[0].length;
-  const nextHeadingPattern = new RegExp(`^#{1,${headingLevel}}\\s+`, "m");
-  const remainingContent = markdown.slice(startIndex);
-  const nextMatch = remainingContent.match(nextHeadingPattern);
-  const endIndex = nextMatch?.index
-    ? startIndex + nextMatch.index
-    : markdown.length;
-  return markdown.slice(startIndex, endIndex).trim();
-}
-
-/** Extract all code blocks from markdown */
-function extractCodeBlocks(
-  markdown: string,
-  language?: string,
-): { code: string; lang: string }[] {
-  const blocks: { code: string; lang: string }[] = [];
-  const pattern = new RegExp(CODE_BLOCK_REGEX.source, CODE_BLOCK_REGEX.flags);
-  let match = pattern.exec(markdown);
-  while (match !== null) {
-    const lang = match[1] || "";
-    const code = match[2].trim();
-    if (!language || lang === language) {
-      blocks.push({ code, lang });
-    }
-    match = pattern.exec(markdown);
-  }
-  return blocks;
-}
-
-/** Escape special regex characters in a string */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 // ---------------------------------------------------------------------------
 // Documentation Loading
 // ---------------------------------------------------------------------------
+
+/** `<!-- GENERATED:START name -->` / `END` lines from generate-docs-sections.ts */
+const GENERATED_MARKER_LINE_RE = /^<!-- GENERATED:(?:START|END) [\w-]+ -->\n/gm;
 
 /** Load and parse a documentation file */
 async function loadDoc(relativePath: string): Promise<string | null> {
@@ -220,7 +146,9 @@ async function loadDoc(relativePath: string): Promise<string | null> {
     return null;
   }
   const content = await readFile(fullPath, "utf-8");
-  return stripMdxComponents(stripFrontmatter(content));
+  return stripMdxComponents(
+    stripFrontmatter(content).replace(GENERATED_MARKER_LINE_RE, ""),
+  );
 }
 
 /** Extract npm command from PackageManagerCode Astro component */
@@ -237,7 +165,9 @@ function generateInstallSection(
   const lines: string[] = [];
   lines.push("### Installation");
   lines.push("");
-  const codeBlocks = extractCodeBlocks(installSection, "bash");
+  const codeBlocks = markdownCodeBlocks(installSection).filter(
+    ({ lang }) => lang === "bash",
+  );
   const npmCommand = extractPackageManagerCommand(rawContent);
   if (codeBlocks.length > 0 || npmCommand) {
     lines.push("```bash");
@@ -261,7 +191,9 @@ function generateAuthSection(authSection: string): string[] {
   const lines: string[] = [];
   lines.push("### Authentication");
   lines.push("");
-  const codeBlocks = extractCodeBlocks(authSection, "bash");
+  const codeBlocks = markdownCodeBlocks(authSection).filter(
+    ({ lang }) => lang === "bash",
+  );
   if (codeBlocks.length > 0) {
     lines.push("```bash");
     for (const block of codeBlocks) {
@@ -289,12 +221,12 @@ async function loadPrerequisites(): Promise<string> {
   lines.push("");
   lines.push("The CLI must be installed and authenticated before use.");
   lines.push("");
-  const installSection = extractSection(content, "Install Script");
+  const installSection = markdownSection(content, "Install Script");
   if (installSection) {
     lines.push(...generateInstallSection(installSection, rawContent));
   }
   lines.push("");
-  const authSection = extractSection(content, "Authentication");
+  const authSection = markdownSection(content, "Authentication");
   if (authSection) {
     lines.push(...generateAuthSection(authSection));
   }
@@ -331,115 +263,6 @@ sentry auth status
 \`\`\``;
 }
 
-/** Append a code block to a map entry, creating the array if needed */
-function appendExample(
-  map: Map<string, string[]>,
-  key: string,
-  code: string,
-): void {
-  const list = map.get(key) ?? [];
-  list.push(code);
-  map.set(key, list);
-}
-
-/**
- * Collect all command paths from `### \`sentry ...\`` headings in a token list.
- * Initializes each path with an empty array in the examples map.
- */
-function collectCommandPaths(
-  tokens: Token[],
-  examples: Map<string, string[]>,
-): string[] {
-  const paths: string[] = [];
-  for (const token of tokens) {
-    if (token.type !== "heading" || token.depth !== 3) {
-      continue;
-    }
-    const cmdPath = extractCommandPathFromHeading(token.text);
-    if (cmdPath) {
-      paths.push(cmdPath);
-      if (!examples.has(cmdPath)) {
-        examples.set(cmdPath, []);
-      }
-    }
-  }
-  return paths;
-}
-
-/**
- * Walk tokens sequentially and associate each bash code block with
- * the appropriate command path — either by heading context or content matching.
- */
-function associateCodeBlocks(
-  tokens: Token[],
-  context: {
-    commandPaths: string[];
-    commandGroup: string;
-    examples: Map<string, string[]>;
-    defaultCommandPath?: string;
-  },
-): void {
-  const { commandPaths, commandGroup, examples, defaultCommandPath } = context;
-  const groupFallback = `sentry ${commandGroup}`;
-  let currentCmd: string | null = null;
-
-  for (const token of tokens) {
-    if (token.type === "heading" && token.depth === 3) {
-      currentCmd = extractCommandPathFromHeading(token.text) ?? null;
-    }
-    if (token.type !== "code" || token.lang !== "bash") {
-      continue;
-    }
-    const code = token.text.trim();
-    if (currentCmd && examples.has(currentCmd)) {
-      appendExample(examples, currentCmd, code);
-    } else {
-      const target = matchExampleToCommand(
-        code,
-        commandPaths,
-        groupFallback,
-        defaultCommandPath,
-      );
-      if (target) {
-        appendExample(examples, target, code);
-      }
-    }
-  }
-}
-
-/**
- * Load examples for a specific command group from docs using the `marked`
- * AST parser. Walks the token tree to find command headings and associate
- * bash code blocks with each command.
- *
- * Handles both auto-generated reference sections (`### \`sentry ...\`` headings)
- * and hand-written custom sections (`## Examples` with descriptive headings)
- * by matching code blocks to commands via heading context or content analysis.
- */
-async function loadCommandExamples(
-  commandGroup: string,
-  defaultCommandName?: string,
-): Promise<Map<string, string[]>> {
-  const docContent = await loadDoc(`commands/${commandGroup}.md`);
-  if (!docContent) {
-    return new Map();
-  }
-
-  const tokens = marked.lexer(docContent);
-  const examples = new Map<string, string[]>();
-  const commandPaths = collectCommandPaths(tokens, examples);
-  const defaultCommandPath = defaultCommandName
-    ? `sentry ${commandGroup} ${defaultCommandName}`
-    : undefined;
-  associateCodeBlocks(tokens, {
-    commandPaths,
-    commandGroup,
-    examples,
-    defaultCommandPath,
-  });
-  return examples;
-}
-
 /** Load supplementary content from commands/index.md */
 async function loadCommandsOverview(): Promise<{
   globalOptions: string;
@@ -450,9 +273,9 @@ async function loadCommandsOverview(): Promise<{
   if (!content) {
     return null;
   }
-  const globalSection = extractSection(content, "Global Options");
-  const jsonSection = extractSection(content, "JSON Output");
-  const webSection = extractSection(content, "Opening in Browser");
+  const globalSection = markdownSection(content, "Global Options");
+  const jsonSection = markdownSection(content, "JSON Output");
+  const webSection = markdownSection(content, "Opening in Browser");
   return {
     globalOptions: globalSection || "",
     jsonOutput: jsonSection || "",
@@ -466,48 +289,6 @@ async function loadCommandsOverview(): Promise<{
  */
 async function loadAgentGuidance(): Promise<string | null> {
   return await loadDoc("agent-guidance.md");
-}
-
-// ---------------------------------------------------------------------------
-// Route Introspection (with async doc loading)
-// ---------------------------------------------------------------------------
-
-/**
- * Walk the route tree and extract command information with doc examples.
- * This is the async version that loads documentation examples from disk.
- */
-async function extractRoutes(routeMap: RouteMap): Promise<RouteInfo[]> {
-  const result: RouteInfo[] = [];
-  for (const entry of routeMap.getAllEntries()) {
-    if (entry.hidden) {
-      continue;
-    }
-    const routeName = entry.name.original;
-    const target = entry.target;
-    const defaultCommandName = isRouteMap(target)
-      ? findDefaultCommandName(target)
-      : undefined;
-    const docExamples = await loadCommandExamples(
-      routeName,
-      defaultCommandName,
-    );
-    if (isRouteMap(target)) {
-      result.push({
-        name: routeName,
-        brief: target.brief,
-        commands: extractRouteGroupCommands(target, routeName, docExamples),
-      });
-    } else if (isCommand(target)) {
-      const path = `sentry ${routeName}`;
-      const examples = docExamples.get(path) ?? [];
-      result.push({
-        name: routeName,
-        brief: target.brief,
-        commands: [buildCommandInfo(target, path, examples)],
-      });
-    }
-  }
-  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +352,18 @@ function generateFullCommandDoc(cmd: CommandInfo): string {
   lines.push(`### \`${signature}\``);
   lines.push("");
   lines.push(cmd.brief);
+
+  const destructiveNotice = formatDestructiveNotice(cmd);
+  if (destructiveNotice) {
+    lines.push(
+      "",
+      `**Destructive:** ${destructiveNotice} Confirm with the user before running it.`,
+    );
+  }
+
+  if (cmd.positionals.length > 0) {
+    lines.push("", formatCommandArguments(cmd.positionals));
+  }
 
   const visibleFlags = getVisibleFlags(cmd);
   if (visibleFlags.length > 0) {
@@ -800,7 +593,7 @@ async function generateAllSkillFiles(
 ): Promise<GeneratedFiles> {
   const files: GeneratedFiles = new Map();
   const version = await getPackageVersion();
-  const routeInfos = await extractRoutes(routeMap);
+  const routeInfos = extractAllRoutes(routeMap);
   const prerequisites = await loadPrerequisites();
   const supplementary = await generateSupplementarySections();
   const agentGuidance = await loadAgentGuidance();
@@ -842,11 +635,7 @@ async function generateAllSkillFiles(
   if (agentGuidance) {
     indexSections.push("## Agent Guidance");
     indexSections.push("");
-    const nestedGuidance = agentGuidance.replace(
-      /^(#{2,6})\s/gm,
-      (_, hashes: string) => `#${hashes} `,
-    );
-    indexSections.push(nestedGuidance);
+    indexSections.push(demoteHeadings(agentGuidance));
     indexSections.push("");
   }
 

@@ -2,10 +2,10 @@
 /**
  * Environment variable documentation coverage.
  *
- * Scans the source tree for environment variables the CLI reads at runtime and
- * fails if any user-facing variable is missing from `ENV_VAR_REGISTRY`
- * (src/lib/env-registry.ts), which is the single source of truth for the
- * generated `configuration.md` docs.
+ * Scans the source tree and the install scripts (`install`, `install.ps1`) for
+ * environment variables they read and fails if any user-facing variable is
+ * missing from `ENV_VAR_REGISTRY` (src/lib/env-registry.ts), which is the
+ * single source of truth for the generated `configuration.md` docs.
  *
  * This closes the class of "code reads an env var but the docs never mention it"
  * bugs: a new `getEnv().SENTRY_FOO` read forces a deliberate choice — either
@@ -20,7 +20,8 @@
  *   tsx script/check-env-coverage.ts
  *
  * Exit codes:
- *   0 - Every referenced user-facing env var is documented or explicitly internal
+ *   0 - Every user-facing env var read by the CLI or an installer is documented
+ *       or explicitly internal
  *   1 - Coverage gap, redundant allowlist entry, or stale allowlist entry
  */
 
@@ -141,7 +142,50 @@ for (const [file, content] of fileContents) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Install scripts: they run before the CLI exists, so src/ never reads their
+// variables. Script-local assignments (`SENTRY_DSN_KEY="..."`) are constants,
+// not inputs.
+// ---------------------------------------------------------------------------
+
+const INSTALLERS: readonly { file: string; read: RegExp; assign?: RegExp }[] = [
+  {
+    file: "install",
+    read: /\$\{?(SENTRY_[A-Z0-9_]+)/g,
+    assign: /^\s*(?:local\s+)?(SENTRY_[A-Z0-9_]+)=/gm,
+  },
+  { file: "install.ps1", read: /\$env:(SENTRY_[A-Z0-9_]+)/g },
+];
+
+/** name -> first "file:line" where an installer reads it. */
+const installerReads = new Map<string, string>();
+
+for (const { file, read, assign } of INSTALLERS) {
+  const content = await readFile(file, "utf-8");
+  const assigned = new Set(
+    assign ? [...content.matchAll(assign)].map((m) => m[1]) : [],
+  );
+  for (const match of content.matchAll(read)) {
+    const name = match[1];
+    if (!name || assigned.has(name) || installerReads.has(name)) {
+      continue;
+    }
+    const line = content.slice(0, match.index).split("\n").length;
+    installerReads.set(name, `${file}:${line}`);
+  }
+}
+
 const errors: string[] = [];
+
+for (const [name, location] of installerReads) {
+  if (!registryNames.has(name)) {
+    errors.push(
+      `Undocumented installer env var: ${name} (read at ${location})\n` +
+        "    Add it to ENV_VAR_REGISTRY in src/lib/env-registry.ts (with `installOnly: true`\n" +
+        "    if the CLI itself never reads it) so it appears in configuration.md.",
+    );
+  }
+}
 
 // A user-facing var read in code must be documented or explicitly internal.
 for (const [name, location] of referenced) {
@@ -183,6 +227,7 @@ if (errors.length > 0) {
 }
 
 console.log(
-  `✓ All ${referenced.size} user-facing env var(s) read in src/ are documented ` +
+  `✓ All ${referenced.size} user-facing env var(s) read in src/ and ` +
+    `${installerReads.size} read by the installers are documented ` +
     `(${registryNames.size} in registry, ${INTERNAL_ENV_VARS.size} internal).`,
 );

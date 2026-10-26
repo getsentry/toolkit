@@ -14,6 +14,7 @@ import type { SentryContext } from "../../context.js";
 import type { SpanSortValue } from "../../lib/api/traces.js";
 import { listSpans } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -31,6 +32,7 @@ import { filterFields } from "../../lib/formatters/json.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
+  appendQueryHint,
   buildListCommand,
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -210,9 +212,7 @@ function appendFlagHints(
   if (flags.sort !== DEFAULT_SORT) {
     parts.push(`--sort ${flags.sort}`);
   }
-  if (flags.query) {
-    parts.push(`-q "${flags.query}"`);
-  }
+  appendQueryHint(parts, flags.query);
   appendPeriodHint(parts, flags.period, DEFAULT_PERIOD);
   return parts.length > 0 ? `${base} ${parts.join(" ")}` : base;
 }
@@ -542,28 +542,57 @@ export const listCommand = buildListCommand("span", {
     brief: "List spans in a project or trace",
     fullDescription:
       "List spans from a Sentry project, or within a specific trace.\n\n" +
-      "Project mode (no trace ID):\n" +
-      "  sentry span list                        # auto-detect from DSN or config\n" +
-      "  sentry span list <org>/<project>        # explicit org and project\n" +
-      "  sentry span list <project>              # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
-      "Trace mode (provide a 32-char trace ID):\n" +
-      "  sentry span list <trace-id>                      # auto-detect org/project\n" +
-      "  sentry span list <org>/<project>/<trace-id>      # explicit\n" +
-      "  sentry span list <project> <trace-id>            # find project + trace\n\n" +
-      "Pagination:\n" +
-      "  sentry span list -c next                # fetch next page (project mode)\n" +
-      "  sentry span list -c prev                # fetch previous page\n" +
-      "  sentry span list <trace-id> -c next     # fetch next page (trace mode)\n\n" +
-      "Examples:\n" +
-      "  sentry span list                        # List recent spans in project\n" +
-      '  sentry span list -q "op:db"             # Find all DB spans\n' +
-      '  sentry span list -q "duration:>100ms"   # Slow spans\n' +
-      "  sentry span list --period 24h           # Last 24 hours only\n" +
-      "  sentry span list --sort duration        # Sort by slowest first\n" +
-      "  sentry span list <trace-id>             # Spans in a specific trace\n" +
-      '  sentry span list <trace-id> -q "op:db"  # DB spans in a trace\n\n' +
+      "Pass a 32-character trace ID to list the spans in one trace.\n\n" +
       "Alias: `sentry spans` → `sentry span list`",
+    examples: [
+      {
+        description: "List recent spans in the current project",
+        command: "sentry span list",
+      },
+      {
+        description: "Find all DB spans",
+        command: 'sentry span list -q "op:db"',
+      },
+      {
+        description: "Slow spans in the last 24 hours",
+        command: 'sentry span list -q "duration:>100ms" --period 24h',
+      },
+      {
+        description: "Sort by slowest first",
+        command: "sentry span list --sort duration",
+      },
+      {
+        description: "List spans within a specific trace",
+        command: "sentry span list abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Show only spans from one project within a trace",
+        command:
+          "sentry span list my-org/cli-server/abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter a trace's spans to several projects",
+        command:
+          'sentry span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry span list -c next",
+      },
+      {
+        description: "List spans in an explicit project",
+        command: "sentry span list my-org/cli-server",
+      },
+      {
+        description: "Find a project across organizations, then list a trace",
+        command: "sentry span list cli-server abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Fetch the next page of a trace",
+        command: "sentry span list abc123def456abc123def456abc12345 -c next",
+      },
+    ],
   },
   output: {
     human: formatSpanListHuman,
@@ -576,7 +605,7 @@ export const listCommand = buildListCommand("span", {
       parameter: {
         placeholder: "org/project/trace-id",
         brief: "[<org>/<project>] or [<org>/<project>/]<trace-id>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

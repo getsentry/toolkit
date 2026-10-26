@@ -15,6 +15,12 @@ Work with Sentry repositories
 
 List repositories
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of repositories to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -37,10 +43,13 @@ List repositories
 **Examples:**
 
 ```bash
-# List repositories (auto-detect org)
+# List repositories (organization auto-detected)
 sentry repo list
 
-# List repos in a specific org with pagination
+# List repositories in an organization
+sentry repo list my-org/
+
+# Fetch the next page
 sentry repo list my-org/ -c next
 
 # Output as JSON

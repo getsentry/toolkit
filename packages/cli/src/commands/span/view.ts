@@ -13,6 +13,7 @@ import {
 } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -369,15 +370,25 @@ export const viewCommand = buildCommand({
     brief: "View details of specific spans",
     fullDescription:
       "View detailed information about one or more spans within a trace.\n\n" +
-      "Target specification:\n" +
-      "  sentry span view <trace-id> <span-id>                        # auto-detect\n" +
-      "  sentry span view <org>/<project>/<trace-id> <span-id>        # explicit\n\n" +
       "The first argument is the trace ID (optionally prefixed with org/project),\n" +
-      "followed by one or more span IDs.\n\n" +
-      "Examples:\n" +
-      "  sentry span view <trace-id> a1b2c3d4e5f67890\n" +
-      "  sentry span view <trace-id> a1b2c3d4e5f67890 b2c3d4e5f6789012\n" +
-      "  sentry span view sentry/my-project/<trace-id> a1b2c3d4e5f67890",
+      "followed by one or more span IDs.",
+    examples: [
+      {
+        description: "View a single span",
+        command:
+          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+      },
+      {
+        description: "View multiple spans at once",
+        command:
+          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012",
+      },
+      {
+        description: "Specify the organization and project explicitly",
+        command:
+          "sentry span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+      },
+    ],
   },
   output: {
     human: formatSpanViewHuman,
@@ -390,7 +401,7 @@ export const viewCommand = buildCommand({
         placeholder: "trace-id/span-id",
         brief:
           "[<org>/<project>/]<trace-id> <span-id> [<span-id>...] - Trace ID and one or more span IDs",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {

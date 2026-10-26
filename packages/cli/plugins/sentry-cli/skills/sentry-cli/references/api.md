@@ -15,6 +15,12 @@ Make an authenticated API request
 
 Make an authenticated API request
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<endpoint>` | API endpoint relative to /api/0/, or an absolute HTTP(S) URL |
+
 **Flags:**
 - `-X, --method <value> - The HTTP method for the request - (default: "GET")`
 - `-d, --data <value> - Inline JSON body for the request (like curl -d)`
@@ -36,35 +42,36 @@ sentry api organizations/
 sentry api issues/123456789/
 
 # Create a release
-sentry api organizations/my-org/releases/ \
-  -X POST -F version=1.0.0
-
-# With inline JSON body
-sentry api issues/123456789/ \
-  -X POST -d '{"status": "resolved"}'
+sentry api organizations/my-org/releases/ -X POST -F version=1.0.0
 
 # Update an issue status
-sentry api issues/123456789/ \
-  -X PUT -F status=resolved
+sentry api issues/123456789/ -X PUT -F status=resolved
+
+# Send an inline JSON body
+sentry api issues/123456789/ -X PUT -d '{"status":"resolved"}'
+
+# Set a nested field
+sentry api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5
 
 # Assign an issue
-sentry api issues/123456789/ \
-  -X PUT --field assignedTo="user@example.com"
+sentry api issues/123456789/ -X PUT --field assignedTo="user@example.com"
 
+# Delete a project
 sentry api projects/my-org/my-project/ -X DELETE
 
 # Add custom headers
 sentry api organizations/ -H "X-Custom: value"
 
-# Read body from a file
+# Read the request body from a file
 sentry api projects/my-org/my-project/releases/ -X POST --input release.json
 
-# Verbose mode (shows full HTTP request/response)
+# Show the full HTTP request and response
 sentry api organizations/ --verbose
 
-# Preview the request without sending
+# Preview the request without sending it
 sentry api organizations/ --dry-run
 
+# Save a binary response, such as an event attachment, to a file
 sentry api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png
 ```
 

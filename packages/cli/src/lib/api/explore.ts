@@ -8,12 +8,14 @@
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
+import { stringifyUnknown } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
+  paginate,
   parseLinkHeader,
 } from "./infrastructure.js";
 
@@ -27,8 +29,9 @@ export type ExploreQueryOptions = {
   query?: string;
   /**
    * Sort field. Prefix with `-` for descending.
-   * Supported on the `spans`, `errors`, and `discover` datasets; `metrics` and
-   * `logs` reject it with 400. A stable sort is required for correct
+   * Every Events dataset accepts it as long as the sort column is in
+   * `fields`; resolve both with `resolveEventsSort` from
+   * `@sentry/toolkit-core/events-sort`. A stable sort is required for correct
    * offset-based cursor pagination on grouped aggregate queries (#1519).
    */
   sort?: string;
@@ -148,9 +151,9 @@ export async function queryMetricsMeta(
   }
 
   return allRows.map((row) => ({
-    name: String(row["metric.name"] ?? ""),
-    type: String(row["metric.type"] ?? "distribution"),
-    unit: String(row["metric.unit"] ?? "none"),
+    name: stringifyUnknown(row["metric.name"] ?? ""),
+    type: stringifyUnknown(row["metric.type"] ?? "distribution"),
+    unit: stringifyUnknown(row["metric.unit"] ?? "none"),
   }));
 }
 
@@ -161,9 +164,8 @@ export async function queryMetricsMeta(
  * query, sort, and time range. Supports all standard Sentry Explore fields
  * including aggregates like `count()`, `count_unique(user)`, `p50(span.duration)`.
  *
- * When `limit` exceeds {@link API_MAX_PER_PAGE}, transparently fetches multiple
- * pages using cursor-based pagination (bounded by {@link MAX_PAGINATION_PAGES}).
- * Meta is taken from the first page — it is identical across pages.
+ * Limits above one page are fetched with {@link paginate}. Meta is taken from
+ * the first page — it is identical across pages.
  *
  * @param orgSlug - Organization slug
  * @param options - Query options
@@ -174,52 +176,21 @@ export async function queryEvents(
   options: ExploreQueryOptions,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const limit = options.limit ?? 25;
-  const perPage = Math.min(limit, API_MAX_PER_PAGE);
-
-  // Fast path: single-page fetch when limit fits in one API page
-  if (limit <= API_MAX_PER_PAGE) {
-    return fetchEventsPage(regionUrl, orgSlug, options, perPage);
-  }
-
-  // Multi-page: accumulate rows across pages up to the requested limit
-  const allRows: Record<string, unknown>[] = [];
-  let meta: EventsTableResponse["meta"] | undefined;
-  let cursor: string | undefined = options.cursor;
-
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
-    const result = await fetchEventsPage(
-      regionUrl,
-      orgSlug,
-      { ...options, cursor },
-      perPage,
-    );
-
-    if (page === 0) {
-      meta = result.data.meta;
-    }
-
-    allRows.push(...result.data.data);
-
-    // Stop when we've reached the requested limit or there are no more pages
-    if (allRows.length >= limit || !result.nextCursor) {
-      // Overshot — trim and drop nextCursor (cursor would skip items)
-      if (allRows.length > limit) {
-        return {
-          data: { data: allRows.slice(0, limit), meta },
-        };
-      }
-      return {
-        data: { data: allRows, meta },
-        nextCursor: result.nextCursor,
-      };
-    }
-
-    cursor = result.nextCursor;
-  }
-
-  // Safety limit reached — return what we have, no nextCursor
-  return {
-    data: { data: allRows.slice(0, limit), meta },
-  };
+  let meta: EventsTableResponse["meta"];
+  const { data, nextCursor } = await paginate(
+    options,
+    async (perPage, cursor) => {
+      const page = await fetchEventsPage(
+        regionUrl,
+        orgSlug,
+        { ...options, cursor },
+        perPage,
+      );
+      // Meta is identical across pages; keep the first page's.
+      meta ??= page.data.meta;
+      return { data: page.data.data, nextCursor: page.nextCursor };
+    },
+    25,
+  );
+  return { data: { data, meta }, nextCursor };
 }

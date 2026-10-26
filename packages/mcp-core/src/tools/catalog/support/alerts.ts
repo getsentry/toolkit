@@ -65,7 +65,7 @@ export async function resolveIssueAlertRule(
   });
 
   if (matches.length === 1) {
-    return apiService.getIssueAlertRule({
+    return await apiService.getIssueAlertRule({
       organizationSlug: params.organizationSlug,
       projectSlug: params.projectSlug,
       ruleId: matches[0].id,
@@ -126,7 +126,7 @@ export async function resolveMetricAlertRule(
     }
     monitorId = matches[0].id;
   }
-  return getMetricMonitor(apiService, {
+  return await getMetricMonitor(apiService, {
     organizationSlug,
     projectSlug,
     monitorId,

@@ -27,6 +27,17 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
+import {
+  AliasNotFoundError,
+  ArgumentParseError,
+  EnumValidationError,
+  FlagNotFoundError,
+  InvalidNegatedFlagSyntaxError,
+  UnexpectedFlagError,
+  UnexpectedPositionalError,
+  UnsatisfiedFlagError,
+  UnsatisfiedPositionalError,
+} from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   ApiError,
@@ -76,9 +87,11 @@ export function classifySilenced(error: unknown): SilenceReason | null {
     return "output_error";
   }
   // A raw `TypeError: "fetch failed"` (CLI-16W) means the CLI could not reach
-  // Sentry at all (offline, DNS, connection refused/timeout). There is nothing
-  // actionable in a "user is offline" report, so drop it — same rationale as
-  // EPIPE/EBADF OS noise in `beforeSend`. Note: TLS cert errors are wrapped as
+  // Sentry at all (offline, DNS, connection refused/timeout); a raw
+  // `TypeError: "terminated"` (CLI-2AD) means the connection dropped while
+  // streaming the response body. There is nothing actionable in a "user is
+  // offline" report, so drop it — same rationale as EPIPE/EBADF OS noise in
+  // `beforeSend`. Note: TLS cert errors are wrapped as
   // ApiError(status 0), NOT matched here, so they stay captured/actionable.
   if (isNetworkError(error)) {
     return "network_error";
@@ -114,6 +127,13 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // supplied does not exist on disk. Pure user-input noise, not a CLI bug —
   // the user sees a clear "File not found" message (CLI-1JY).
   if (error instanceof ValidationError && error.field === "input") {
+    return "user_input_error";
+  }
+  // A ValidationError with field "directory" means the sourcemap directory
+  // the user passed is missing, not a directory, or unreadable. Pure
+  // user-input noise, not a CLI bug — the user sees the path and the
+  // reason (CLI-1FN).
+  if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
   // A ResolutionError means the user provided a value (event ID, project slug,
@@ -425,6 +445,66 @@ export function reportCliError(error: unknown): void {
     setGroupingTags(scope, error);
     setCliErrorContext(scope, error);
     Sentry.captureException(error);
+  });
+}
+
+/** The class name of a thrown value, for event context. */
+function errorClassName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+/**
+ * Stricli's argument scanner errors by name. They don't set `name`, and the
+ * minified bundle renames classes, so match them by identity.
+ */
+const ARGUMENT_ERROR_CLASSES = {
+  AliasNotFoundError,
+  ArgumentParseError,
+  EnumValidationError,
+  FlagNotFoundError,
+  InvalidNegatedFlagSyntaxError,
+  UnexpectedFlagError,
+  UnexpectedPositionalError,
+  UnsatisfiedFlagError,
+  UnsatisfiedPositionalError,
+};
+
+/** The Stricli class name of an argument scanner error. */
+function argumentErrorClassName(error: unknown): string {
+  for (const [name, errorClass] of Object.entries(ARGUMENT_ERROR_CLASSES)) {
+    if (error instanceof errorClass) {
+      return name;
+    }
+  }
+  return errorClassName(error);
+}
+
+/**
+ * Report an argument that Stricli could not parse (exit 252) for UX research.
+ *
+ * These are user mistakes rather than CLI bugs, so like `unknown_command`
+ * they go to Sentry as one fixed `info` message that groups into a single
+ * issue. The `invalid_argument` context holds the per-event detail.
+ *
+ * @param error - The error Stricli passed to `exceptionWhileParsingArguments`
+ * @param message - What the user saw, without ANSI color codes
+ */
+export function reportArgumentError(error: unknown, message: string): void {
+  const errorClass = argumentErrorClassName(error);
+  Sentry.captureMessage("invalid_argument", {
+    level: "info",
+    tags: { "argument_error.class": errorClass },
+    contexts: {
+      invalid_argument: {
+        error_class: errorClass,
+        // What the argument's parser threw, e.g. a ValidationError
+        cause_class:
+          error instanceof ArgumentParseError
+            ? errorClassName(error.exception)
+            : null,
+        message: redactCredentialText(message),
+      },
+    },
   });
 }
 

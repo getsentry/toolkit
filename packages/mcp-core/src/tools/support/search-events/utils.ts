@@ -1,3 +1,11 @@
+import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
+import {
+  type FilterToken,
+  type ParseResultToken,
+  parseSearch,
+  TermOperator,
+  Token,
+} from "@sentry/toolkit-core/search-syntax";
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import type {
@@ -30,11 +38,11 @@ export type FlexibleEventData = Record<string, unknown>;
 
 const DEFAULT_MAX_VALUE_LENGTH = 200;
 const DEFAULT_MAX_ARRAY_ITEMS = 20;
+const FIELDS_PAGE_SIZE = 50;
 // Mirrors regex_value in Sentry's event_search.py grammar, which is what
 // separates a key://pattern// filter from prose like http://example.com.
 const REGEX_FILTER_VALUE_SOURCE = String.raw`\/\/(?!\/\/(?:[\t\n )]|$))[^\n]{1,1024}?\/\/(?=[\t\n )]|$)`;
 const REGEX_FILTER_VALUE_PATTERN = new RegExp(`^${REGEX_FILTER_VALUE_SOURCE}`);
-const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?(?<key>[A-Za-z_][A-Za-z0-9_.[\],-]*):`;
 // Sentry would parse `https://host/path// ` as a regex filter too, but no
 // attribute is named after a URL scheme, so treat those as plain text.
 const URL_SCHEME_KEY_SOURCE =
@@ -42,19 +50,24 @@ const URL_SCHEME_KEY_SOURCE =
     /[a-z]/g,
     (letter) => `[${letter}${letter.toUpperCase()}]`,
   );
-const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s()"])!?(?<regexKey>(?:tags|flags)\[[\w.:-]+(?: *, *(?:string|number|boolean|array))?\](?:\[\*\])?|"[\w.:-]+"(?:\[\*\])?|(?!${URL_SCHEME_KEY_SOURCE})[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
+// Array membership on an explicit tag goes inside the brackets,
+// `tags[k[*],array]`, as in Sentry's `array_includes_tag_key` rule.
+const REGEX_FILTER_KEY_SOURCE = String.raw`(^|[\s()"])!?(?<regexKey>(?:tags|flags)\[[\w.:-]+(?:\[\*\])?(?: *, *(?:string|number|boolean|array))?\]|"[\w.:-]+"(?:\[\*\])?|(?!${URL_SCHEME_KEY_SOURCE})[A-Za-z_][A-Za-z0-9_.[\],-]*(?:\[\*\])?):`;
 const REGEX_FILTER_KEY_BEFORE_PATTERN = new RegExp(
   `${REGEX_FILTER_KEY_SOURCE}$`,
 );
 const REGEX_FILTER_KEY_SCAN_LIMIT = 256;
-const SENTRY_SEARCH_TOKEN_PATTERN = new RegExp(
-  String.raw`${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
-  "g",
-);
+const SEARCH_FILTER_KEY_SOURCE = String.raw`(^|\s)!?(?<key>[A-Za-z_][A-Za-z0-9_.[\],-]*):`;
+// Used by the semantic-downgrade comparison below, which still scans the raw
+// query text. `looksLikeSentrySearchSyntax` parses with the shared grammar.
 const SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN = new RegExp(
   String.raw`${REGEX_FILTER_KEY_SOURCE}(?=${REGEX_FILTER_VALUE_SOURCE})|${SEARCH_FILTER_KEY_SOURCE}(?=\S)(?!\/\/)`,
   "g",
 );
+// Sentry would parse `https://host/path// ` as a regex filter too; see
+// URL_SCHEME_KEY_SOURCE.
+const URL_SCHEME_KEY_PATTERN = /^(?:https?|wss?|s?ftp|file|s3|gs)$/i;
+const LINE_BREAK_PATTERN = /[\r\n]+/g;
 const KNOWN_SENTRY_SEARCH_KEYS = new Set([
   "browser",
   "device",
@@ -106,56 +119,92 @@ export function getNumberValue(
 }
 
 // Helper to check if fields contain aggregate functions
-export function isAggregateQuery(fields: string[]): boolean {
-  return fields.some((field) => field.includes("(") && field.includes(")"));
+export function isAggregateQuery(fields: readonly string[]): boolean {
+  return fields.some(isAggregateFieldOrEquation);
 }
 
 type SearchSyntaxDataset = EventsDataset | "replays";
 
-// Sentry only honors key://pattern// as a regex on logs; other datasets match
-// the literal text //pattern//.
-function searchTokenPattern(dataset?: SearchSyntaxDataset): RegExp {
-  return dataset === "logs"
-    ? SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN
-    : SENTRY_SEARCH_TOKEN_PATTERN;
+/** Every filter token, including those inside parenthesized groups. */
+function* filterTokens(
+  tokens: readonly ParseResultToken[],
+): Generator<FilterToken> {
+  for (const token of tokens) {
+    if (token.type === Token.FILTER) {
+      yield token;
+    } else if (token.type === Token.LOGIC_GROUP) {
+      yield* filterTokens(token.inner);
+    }
+  }
+}
+
+/**
+ * Whether a parsed filter is Sentry search syntax rather than prose that
+ * happens to contain a colon, like `Note: ...`, `10:30`, or a URL.
+ */
+function isStructuredFilter(query: string, filter: FilterToken): boolean {
+  const key = query.slice(
+    filter.key.location.start.offset,
+    filter.key.location.end.offset,
+  );
+
+  if (filter.operator === TermOperator.MATCHES) {
+    // No attribute is named after a URL scheme, so `https://host/path//` is
+    // prose even where Sentry would read it as a regex.
+    return !(
+      filter.key.type === Token.KEY_SIMPLE && URL_SCHEME_KEY_PATTERN.test(key)
+    );
+  }
+
+  const value = query.slice(
+    filter.key.location.end.offset + 1,
+    filter.location.end.offset,
+  );
+  // An empty value is `Word: ...`; a `//` value is a URL, or a regex on a
+  // dataset that matches it as literal text.
+  if (!value || value.startsWith("//") || !/^[A-Za-z_]/.test(key)) {
+    return false;
+  }
+
+  if (filter.key.type === Token.KEY_AGGREGATE || /^tags\[[^\]]+\]$/.test(key)) {
+    return true;
+  }
+
+  if (key !== key.toLowerCase()) {
+    return false;
+  }
+
+  return (
+    KNOWN_SENTRY_SEARCH_KEYS.has(key) ||
+    /[.[\],]/.test(key) ||
+    /^[a-z_][a-z0-9_-]*$/.test(key)
+  );
 }
 
 export function looksLikeSentrySearchSyntax(
   query?: string,
   dataset?: SearchSyntaxDataset,
 ): boolean {
-  const trimmedQuery = query?.trim();
+  // The grammar rejects line breaks outside quotes; they only separate terms.
+  const trimmedQuery = query?.trim().replace(LINE_BREAK_PATTERN, " ");
   if (!trimmedQuery) {
     return false;
   }
 
-  for (const match of trimmedQuery.matchAll(searchTokenPattern(dataset))) {
-    if (match.groups?.regexKey) {
-      return true;
-    }
+  // Sentry only honors key://pattern// as a regex on logs; other datasets
+  // match the literal text //pattern//.
+  const tokens = parseSearch(trimmedQuery, {
+    config: { allowRegex: dataset === "logs" },
+  });
+  if (!tokens) {
+    return false;
+  }
 
-    const key = match.groups?.key;
-    if (!key) {
-      continue;
-    }
-
-    if (/^tags\[[^\]]+\]$/.test(key)) {
-      return true;
-    }
-
-    if (key !== key.toLowerCase()) {
-      continue;
-    }
-
-    if (KNOWN_SENTRY_SEARCH_KEYS.has(key) || /[.[\],]/.test(key)) {
-      return true;
-    }
-
-    if (/^[a-z_][a-z0-9_-]*$/.test(key)) {
+  for (const filter of filterTokens(tokens)) {
+    if (isStructuredFilter(trimmedQuery, filter)) {
       return true;
     }
   }
-
   return false;
 }
 
@@ -699,7 +748,11 @@ export function formatEventValue(
     return formatObjectValue(value, maxLength);
   }
 
-  return truncateString(sanitizeWhitespace(String(value)), maxLength);
+  if (typeof value === "bigint") {
+    return String(value);
+  }
+
+  return `<${typeof value}>`;
 }
 
 // Helper function to fetch custom attributes for a dataset
@@ -1001,7 +1054,7 @@ export async function validateEventsSearch(
     end?: string;
   },
 ): Promise<EventsValidationResult> {
-  return apiService.validateEvents({
+  return await apiService.validateEvents({
     organizationSlug,
     dataset,
     fields,
@@ -1183,8 +1236,22 @@ export function createDatasetAttributesTool(options: {
         .describe(
           "Optional attribute types to list. Use ['string','number','boolean'] when unsure.",
         ),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe(
+          "Optional position in the Available Fields list to start from. Use the offset given at the end of the previous response to see the next page of fields.",
+        ),
     }),
-    execute: async ({ dataset, substringMatch, query, attributeTypes }) => {
+    execute: async ({
+      dataset,
+      substringMatch,
+      query,
+      attributeTypes,
+      offset = 0,
+    }) => {
       const {
         BASE_COMMON_FIELDS,
         DATASET_FIELDS,
@@ -1210,13 +1277,37 @@ export function createDatasetAttributesTool(options: {
             attributeTypes,
             substringMatch,
             query,
+            context: true,
           },
         );
 
+      let commonFields: Record<string, string> = {};
+      let datasetFields: Record<string, string> = {};
+      if (substringMatch) {
+        Object.entries(BASE_COMMON_FIELDS).forEach(([key, value]) => {
+          if (key.includes(substringMatch) || value.includes(substringMatch)) {
+            commonFields[key] = value;
+          }
+        });
+        Object.entries(DATASET_FIELDS[normalizedDataset]).forEach(
+          ([key, value]) => {
+            if (
+              key.includes(substringMatch) ||
+              value.includes(substringMatch)
+            ) {
+              datasetFields[key] = value;
+            }
+          },
+        );
+      } else {
+        commonFields = BASE_COMMON_FIELDS;
+        datasetFields = DATASET_FIELDS[normalizedDataset];
+      }
+
       // Combine all available fields
       const allFields: Record<string, AttributeDescriptor> = {
-        ...toAttributeRecord(BASE_COMMON_FIELDS),
-        ...toAttributeRecord(DATASET_FIELDS[normalizedDataset]),
+        ...toAttributeRecord(commonFields),
+        ...toAttributeRecord(datasetFields),
         ...customAttributes,
       };
 
@@ -1225,7 +1316,6 @@ export function createDatasetAttributesTool(options: {
         replaced: replacedFields,
         updatedFieldTypes,
       } = resolveAvailableFields(allFields, fieldTypes);
-      const replacedKeys = new Set(replacedFields.map((field) => field.key));
       const fieldCount = availableFields.size;
 
       const recommendedFields = RECOMMENDED_FIELDS[normalizedDataset];
@@ -1239,20 +1329,48 @@ export function createDatasetAttributesTool(options: {
       for (const field of staticNumericFields) {
         allFieldTypes[field] = "number";
       }
-      const fieldTypeEntries = Object.entries(allFieldTypes).filter(
-        ([key]) => !replacedKeys.has(key),
-      );
 
       recordAgentToolResultCount(fieldCount);
 
+      // Page through fields to avoid overwhelming the agent
+      const pageFields = [...availableFields].slice(
+        offset,
+        offset + FIELDS_PAGE_SIZE,
+      );
+      const pageEnd = offset + pageFields.length;
+      const fieldsHeader =
+        pageFields.length > 0
+          ? `Available Fields (${fieldCount} total, showing ${offset + 1}-${pageEnd}):`
+          : `Available Fields (${fieldCount} total):${offset > 0 ? ` none at offset ${offset}.` : ""}`;
+      const fieldsList = pageFields
+        .map(
+          ([key, field]) =>
+            `- ${key}${allFieldTypes[key] ? ` (${allFieldTypes[key]})` : ""}: ${describeField(field)}`,
+        )
+        .join("\n");
+      const nextPageHint =
+        pageEnd < fieldCount
+          ? `\n... and ${fieldCount - pageEnd} more fields. To see them, call datasetAttributes again with the same arguments and offset: ${pageEnd}`
+          : "";
+
+      // Later pages only list their fields; the deprecated fields, recommended
+      // fields, and examples were already returned with the first page.
+      if (offset > 0) {
+        return `Dataset: ${dataset}
+
+${fieldsHeader}
+${fieldsList}
+${nextPageHint}
+
+IMPORTANT: Only use numeric aggregate functions (avg, sum, min, max, percentiles) with numeric fields. Use count() or count_unique() for non-numeric fields.
+`;
+      }
+
       return `Dataset: ${dataset}
 
-Available Fields (${fieldCount} total):
-${[...availableFields]
-  .slice(0, 50) // Limit to first 50 to avoid overwhelming the agent
-  .map(([key, field]) => `- ${key}: ${describeField(field)}`)
-  .join("\n")}
-${fieldCount > 50 ? `\n... and ${fieldCount - 50} more fields` : ""}
+${fieldsHeader}
+${fieldsList}
+${nextPageHint}
 ${
   replacedFields.length > 0
     ? `
@@ -1266,13 +1384,6 @@ ${replacedFields.length > 30 ? `\n... and ${replacedFields.length - 30} more dep
 }
 Recommended Fields for ${dataset}:
 ${recommendedFields.basic.map((f) => `- ${f}`).join("\n")}
-
-Field Types (CRITICAL for aggregate functions):
-${fieldTypeEntries
-  .slice(0, 30) // Show more field types since this is critical for aggregate functions
-  .map(([key, type]) => `- ${key}: ${type}`)
-  .join("\n")}
-${fieldTypeEntries.length > 30 ? `\n... and ${fieldTypeEntries.length - 30} more fields` : ""}
 
 IMPORTANT: Only use numeric aggregate functions (avg, sum, min, max, percentiles) with numeric fields. Use count() or count_unique() for non-numeric fields.
 

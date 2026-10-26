@@ -241,6 +241,24 @@ export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
 
     pool
       .intercept({
+        path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/?collapse=organization",
+        method: "GET",
+      })
+      .reply(
+        200,
+        {
+          ...projectFixture,
+          organization: {
+            id: organizationFixture.id,
+            slug: organizationFixture.slug,
+          },
+        },
+        { headers: JSON_HEADERS },
+      )
+      .persist();
+
+    pool
+      .intercept({
         path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/",
         method: "PUT",
       })
@@ -250,6 +268,18 @@ export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
     pool
       .intercept({
         path: "/api/0/projects/sentry-mcp-evals/nonexistent-project/",
+      })
+      .reply(
+        404,
+        { detail: "The requested resource does not exist" },
+        { headers: JSON_HEADERS },
+      )
+      .persist();
+
+    pool
+      .intercept({
+        path: "/api/0/projects/sentry-mcp-evals/nonexistent-project/?collapse=organization",
+        method: "GET",
       })
       .reply(
         404,

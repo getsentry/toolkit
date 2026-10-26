@@ -51,11 +51,21 @@ export const deleteCommand = buildDeleteCommand({
     fullDescription:
       "Permanently remove an issue alert rule from a project. This cannot be undone.\n\n" +
       "You will be asked to type org/project/rule-id to confirm, unless you pass " +
-      "--yes or --force, or use --dry-run to preview only.\n\n" +
-      "Examples:\n" +
-      "  sentry alert issues delete my-org/my-app/12345\n" +
-      "  sentry alert issues delete my-org/my-app/'My Rule' --yes\n" +
-      "  sentry alert issues delete my-org/my-app/12345 --dry-run",
+      "--yes or --force, or use --dry-run to preview only.",
+    examples: [
+      {
+        description: "Delete an issue alert rule (prompts for confirmation)",
+        command: "sentry alert issues delete my-org/my-project/12345",
+      },
+      {
+        description: "Delete a rule selected by name without prompting",
+        command: "sentry alert issues delete my-org/my-project/'My Rule' --yes",
+      },
+      {
+        description: "Preview the deletion",
+        command: "sentry alert issues delete my-org/my-project/12345 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatDeleted,

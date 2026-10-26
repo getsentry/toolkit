@@ -29,7 +29,7 @@ import {
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
-  LIST_TARGET_POSITIONAL,
+  LIST_ORG_TARGET_POSITIONAL,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -640,23 +640,38 @@ export const listCommand = buildListCommand("release", {
       "  users                # by total users\n" +
       "  crash_free_sessions  # by crash-free session rate (aliases: stable_sessions, cfs)\n" +
       "  crash_free_users     # by crash-free user rate (aliases: stable_users, cfu)\n\n" +
-      "Target specification:\n" +
-      "  sentry release list               # auto-detect from DSN (project-scoped)\n" +
-      "  sentry release list <org>/        # list all releases in org (paginated)\n" +
-      "  sentry release list <org>/<proj>  # list releases for project\n" +
-      "  sentry release list <org>         # list releases in org\n\n" +
-      "Pagination:\n" +
-      "  sentry release list <org>/ -c next  # fetch next page\n" +
-      "  sentry release list <org>/ -c prev  # fetch previous page\n\n" +
-      "Examples:\n" +
-      "  sentry release list                         # auto-detect project\n" +
-      "  sentry release list my-org/                  # all releases in org\n" +
-      "  sentry release list my-org/my-proj           # project-scoped\n" +
-      "  sentry release list --sort cfs               # sort by crash-free sessions\n" +
-      "  sentry release list --environment production  # filter by env\n" +
-      "  sentry release list --period 7d              # last 7 days of health data\n" +
-      "  sentry release list --json\n\n" +
       "Alias: `sentry releases` → `sentry release list`",
+    examples: [
+      {
+        description: "List releases (project auto-detected)",
+        command: "sentry release list",
+      },
+      {
+        description: "List all releases in an organization",
+        command: "sentry release list my-org/",
+      },
+      {
+        description: "List releases for one project",
+        command: "sentry release list my-org/my-project",
+      },
+      {
+        description: "Sort by crash-free sessions",
+        command: "sentry release list --sort cfs",
+      },
+      {
+        description: "Filter by environment",
+        command: "sentry release list --environment production",
+      },
+      {
+        description: "Show the last 7 days of health data",
+        command: "sentry release list --period 7d",
+      },
+      { description: "Output as JSON", command: "sentry release list --json" },
+      {
+        description: "Fetch the next page",
+        command: "sentry release list my-org/ -c next",
+      },
+    ],
   },
   output: {
     human: formatListHuman,
@@ -664,7 +679,7 @@ export const listCommand = buildListCommand("release", {
       jsonTransformListResult(result, fields),
   },
   parameters: {
-    positional: LIST_TARGET_POSITIONAL,
+    positional: LIST_ORG_TARGET_POSITIONAL,
     flags: {
       limit: buildListLimitFlag("releases"),
       sort: {

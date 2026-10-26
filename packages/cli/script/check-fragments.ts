@@ -8,6 +8,9 @@
  *   3. Fragment files don't accidentally contain frontmatter or the generated marker
  *   4. Top-level fragments (e.g., configuration.md) exist
  *   5. Fragment content covers all subcommands in a route (warnings only)
+ *   6. Fragments don't contain Examples sections (examples belong in docs.examples)
+ *   7. Fragment shell code blocks don't run `sentry` commands unless marked
+ *      with `<!-- allow-commands: <reason> -->` (see fragment-commands.ts)
  *
  * Usage:
  *   tsx script/check-fragments.ts            # Warnings for missing subcommands
@@ -17,6 +20,8 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
+import { findFragmentCommandIssues } from "./fragment-commands.js";
+import { markdownHeadings } from "./markdown.js";
 import { DOCS_FRAGMENTS } from "./paths.js";
 
 // Ensure skill-content stub exists (see generate-command-docs.ts for rationale)
@@ -89,6 +94,9 @@ for (const name of actualFragments) {
   }
 }
 
+/** Matches heading text that starts an Examples section. */
+const EXAMPLES_HEADING_RE = /^examples?\b/i;
+
 // Check 3: Fragment content validation
 for (const file of fragmentFiles) {
   const content = await readFile(`${FRAGMENTS_DIR}/${file}`, "utf-8");
@@ -103,6 +111,20 @@ for (const file of fragmentFiles) {
     errors.push(
       `Fragment contains generated marker: ${FRAGMENTS_DIR}/${file} (the "${GENERATED_END_MARKER}" marker should not appear in fragment files)`,
     );
+  }
+
+  if (
+    markdownHeadings(content).some(({ text }) =>
+      EXAMPLES_HEADING_RE.test(text.trim()),
+    )
+  ) {
+    errors.push(
+      `Fragment contains an Examples section: ${FRAGMENTS_DIR}/${file} (move command examples to the command's docs.examples metadata so they appear in help, generated docs, and skills)`,
+    );
+  }
+
+  for (const { line, message } of findFragmentCommandIssues(content)) {
+    errors.push(`${FRAGMENTS_DIR}/${file}:${line}: ${message}`);
   }
 }
 
@@ -133,13 +155,6 @@ for (const name of REQUIRED_TOP_LEVEL_FRAGMENTS) {
 // ---------------------------------------------------------------------------
 
 const warnings: string[] = [];
-
-const FENCED_CODE_BLOCK_RE = /^(`{3,}|~{3,}).*\n[\s\S]*?\n\1\s*$/gm;
-
-/** Strip fenced code blocks from markdown to avoid matching bash comments as headings. */
-function stripCodeBlocks(md: string): string {
-  return md.replace(FENCED_CODE_BLOCK_RE, "");
-}
 
 /**
  * Check whether a fragment mentions a specific subcommand.
@@ -182,15 +197,12 @@ function fragmentMentionsSubcommand(
     }
   }
 
-  // Check 3: Heading that mentions the leaf name (outside code blocks)
-  const proseOnly = stripCodeBlocks(content);
+  // Check 3: Heading (levels 1-4, outside code blocks) that mentions the leaf name
   const escapedLeaf = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const headingRe = new RegExp(`^#{1,4}\\s+.*\\b${escapedLeaf}\\b`, "im");
-  if (headingRe.test(proseOnly)) {
-    return true;
-  }
-
-  return false;
+  const leafRe = new RegExp(`\\b${escapedLeaf}\\b`, "i");
+  return markdownHeadings(content).some(
+    ({ depth, text }) => depth <= 4 && leafRe.test(text),
+  );
 }
 
 /**
@@ -278,7 +290,7 @@ for (const [routeName, route] of multiCommandRoutes) {
     const msg =
       `Fragment missing subcommand coverage: ${fragmentPath}\n` +
       `    Not documented: ${missing.join(", ")}\n` +
-      `    Hint: add a heading or code example for each (e.g., "sentry ${routeName} ${missing[0]}")`;
+      `    Hint: add docs.examples to each command, or mention it in a heading or prose (e.g., "sentry ${routeName} ${missing[0]}")`;
     if (isStrict) {
       errors.push(msg);
     } else {

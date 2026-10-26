@@ -386,7 +386,9 @@ function configureServer({
         if (isStructuredToolOutput(output)) {
           return structuredOutputToCallToolResult(output);
         }
-        throw new Error(`Invalid tool output: ${output}`);
+        throw new Error(
+          `Invalid tool output: ${typeof output === "object" ? JSON.stringify(output) : String(output)}`,
+        );
       } catch (error) {
         if (activeSpan) {
           activeSpan.setStatus({

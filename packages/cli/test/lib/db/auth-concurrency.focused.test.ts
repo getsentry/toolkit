@@ -90,8 +90,10 @@ describe("OAuth refresh compare-and-swap", () => {
     const response = deferred<Response>();
     const { pending, started } = startPausedRefresh(response);
     expect((await started).origin).toBe("https://old.example.com");
+    // A newer login replaces the same server's account in place (a login
+    // to another server would add its own account instead).
     setAuthToken("new-access", 3600, "new-refresh", {
-      host: "https://new.example.com",
+      host: "https://old.example.com",
     });
     response.resolve(
       Response.json({
@@ -106,15 +108,17 @@ describe("OAuth refresh compare-and-swap", () => {
       token: "new-access",
       refreshToken: "new-refresh",
     });
-    expect(getCredentialContext()?.host).toBe("https://new.example.com");
+    expect(getCredentialContext()?.host).toBe("https://old.example.com");
   });
 
   test("a late invalid_grant never clears a newer login", async () => {
     const response = deferred<Response>();
     const { pending, started } = startPausedRefresh(response);
     await started;
+    // A newer login replaces the same server's account in place (a login
+    // to another server would add its own account instead).
     setAuthToken("new-access", 3600, "new-refresh", {
-      host: "https://new.example.com",
+      host: "https://old.example.com",
     });
     response.resolve(
       Response.json(
@@ -127,7 +131,7 @@ describe("OAuth refresh compare-and-swap", () => {
       token: "new-access",
       refreshToken: "new-refresh",
     });
-    expect(getCredentialContext()?.host).toBe("https://new.example.com");
+    expect(getCredentialContext()?.host).toBe("https://old.example.com");
   });
 
   test("an unexpected refresh failure retains the stored credential", async () => {

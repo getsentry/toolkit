@@ -13,11 +13,8 @@
 import type { SentryContext } from "../../../context.js";
 import { buildProjectAliasMap } from "../../../lib/alias.js";
 import type { IssueAlertRule } from "../../../lib/api/alerts.js";
-import { MAX_PAGINATION_PAGES } from "../../../lib/api/infrastructure.js";
-import {
-  API_MAX_PER_PAGE,
-  listIssueAlertsPaginated,
-} from "../../../lib/api-client.js";
+import { paginate } from "../../../lib/api/infrastructure.js";
+import { listIssueAlertsPaginated } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import {
@@ -137,43 +134,15 @@ async function fetchRulesForTarget(
   options: { limit: number; startCursor?: string },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
-    const rules: IssueAlertRule[] = [];
-    let serverCursor = options.startCursor;
-
-    for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-      const { data, nextCursor } = await listIssueAlertsPaginated(
-        target.org,
-        target.project,
-        {
-          perPage: Math.min(options.limit - rules.length, API_MAX_PER_PAGE),
-          cursor: serverCursor,
-        },
-      );
-
-      for (const rule of data) {
-        rules.push(rule);
-        if (rules.length >= options.limit) {
-          return {
-            target,
-            rules,
-            hasMore: !!nextCursor,
-            nextCursor: nextCursor ?? undefined,
-          };
-        }
-      }
-
-      if (!nextCursor) {
-        return { target, rules, hasMore: false };
-      }
-      serverCursor = nextCursor;
-    }
-
-    return {
-      target,
-      rules,
-      hasMore: !!serverCursor,
-      nextCursor: serverCursor ?? undefined,
-    };
+    const { data: rules, nextCursor } = await paginate(
+      { limit: options.limit, cursor: options.startCursor },
+      (perPage, cursor) =>
+        listIssueAlertsPaginated(target.org, target.project, {
+          perPage,
+          cursor,
+        }),
+    );
+    return { target, rules, hasMore: !!nextCursor, nextCursor };
   });
 
   if (!result.ok) {
@@ -528,14 +497,32 @@ export const listCommand = buildListCommand("alert issues", {
     fullDescription:
       "List issue alert rules for one or more Sentry projects.\n\n" +
       "Issue alerts trigger notifications when error events match conditions.\n\n" +
-      "Target patterns:\n" +
-      "  sentry alert issues list                     # auto-detect from DSN or config\n" +
-      "  sentry alert issues list <org>/<project>     # explicit org and project\n" +
-      "  sentry alert issues list <org>/              # all projects in org\n" +
-      "  sentry alert issues list <project>           # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows alert rules from all detected projects.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
+    examples: [
+      {
+        description: "List issue alert rules (project auto-detected)",
+        command: "sentry alert issues list",
+      },
+      {
+        description: "List issue alert rules for a project",
+        command: "sentry alert issues list my-org/my-project",
+      },
+      {
+        description: "Filter rules by name",
+        command: 'sentry alert issues list my-org/my-project --query "spike"',
+      },
+      {
+        description:
+          "List issue alert rules for all projects in an organization",
+        command: "sentry alert issues list my-org/",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry alert issues list frontend",
+      },
+    ],
   },
   output: {
     human: formatIssueAlertListHuman,

@@ -12,9 +12,14 @@ import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
+import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
-import { buildSSEHandler, MAX_BODY_BYTES } from "./server.js";
+import {
+  buildSSEHandler,
+  MAX_BODY_BYTES,
+  spotlightEnvelopeId,
+} from "./server.js";
 import { logger } from "../../lib/logger.js";
 import {
   createLocalSessionStore,
@@ -100,14 +105,11 @@ function eventSummary(parsed: {
     return id ? [id] : [];
   })[0];
   return {
-    envelopeId: String(header.__spotlight_envelope_id ?? ""),
-    eventId:
-      eventIdFrom(header) ??
-      itemEventId ??
-      String(header.__spotlight_envelope_id ?? ""),
+    envelopeId: spotlightEnvelopeId(header),
+    eventId: eventIdFrom(header) ?? itemEventId ?? spotlightEnvelopeId(header),
     itemTypes: items.map((item) =>
       Array.isArray(item) && typeof item[0] === "object" && item[0]
-        ? String((item[0] as { type?: unknown }).type ?? "unknown")
+        ? stringifyUnknown((item[0] as { type?: unknown }).type ?? "unknown")
         : "unknown",
     ),
   };
@@ -180,7 +182,7 @@ export function createLocalControlPlane({
       if (!isLoopbackBrowserRequest(c.req.raw)) {
         return c.body(null, 403);
       }
-      return loopbackCors(c, next);
+      return await loopbackCors(c, next);
     },
   );
   const hostedCors = cors({
@@ -216,7 +218,7 @@ export function createLocalControlPlane({
         return c.body(null, 403);
       }
       if (!isHostedUiOrigin(origin)) {
-        return loopbackCors(c, next);
+        return await loopbackCors(c, next);
       }
       if (c.req.method === "OPTIONS") {
         if (c.req.header("access-control-request-method") !== "GET") {
@@ -237,7 +239,7 @@ export function createLocalControlPlane({
       if (c.req.method !== "GET") {
         return c.body(null, 403);
       }
-      return hostedCors(c, next);
+      return await hostedCors(c, next);
     });
   const sessionUiCors = cors({
     allowMethods: ["POST", "OPTIONS"],
@@ -261,7 +263,7 @@ export function createLocalControlPlane({
         c.header("Vary", "Access-Control-Request-Private-Network");
       }
     }
-    return sessionUiCors(c, next);
+    return await sessionUiCors(c, next);
   });
 
   // Choosing the daemon-wide entry point opts into discovering its sessions.
@@ -552,7 +554,7 @@ export function createLocalControlPlane({
     ) {
       return c.body(null, 401);
     }
-    if (c.req.param("action") === "retention") return updateRetention(c);
+    if (c.req.param("action") === "retention") return await updateRetention(c);
     if (c.req.param("action") === "reset") {
       sessionStore.reset(c.req.param("id"));
       return c.body(null, 204);
@@ -569,17 +571,16 @@ export function createLocalControlPlane({
       .read({ all: true })
       .map((container) => {
         const parsed = container.getParsedEnvelope();
-        const header = (parsed?.envelope[0] ?? {}) as {
-          __spotlight_envelope_id?: unknown;
-        };
         return {
-          id: String(header.__spotlight_envelope_id ?? ""),
+          id: spotlightEnvelopeId(parsed?.envelope[0] ?? {}),
           contentType: container.getContentType(),
           itemTypes:
             parsed?.envelope[1]
               .map((item) =>
                 Array.isArray(item) && typeof item[0] === "object" && item[0]
-                  ? String((item[0] as { type?: unknown }).type ?? "unknown")
+                  ? stringifyUnknown(
+                      (item[0] as { type?: unknown }).type ?? "unknown",
+                    )
                   : "unknown",
               )
               .filter(Boolean) ?? [],

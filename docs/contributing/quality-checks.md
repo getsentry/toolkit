@@ -10,6 +10,8 @@ pnpm run tsc && pnpm run lint && pnpm run test
 
 Do not proceed if any check fails.
 
+`pnpm run lint` includes `oxfmt --check`. If it fails, run `pnpm run format`.
+
 ## Tool Count Limits
 
 See [adding-tools.md](adding-tools.md#tool-count-limits) for current limits and guidance on when to add vs. combine tools.

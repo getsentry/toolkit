@@ -59,20 +59,22 @@ const docs: OrgListCommandDocs = {
   brief: "List teams",
   fullDescription:
     "List teams in an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry team list               # auto-detect from DSN or config\n" +
-    "  sentry team list <org>/        # list all teams in org (paginated)\n" +
-    "  sentry team list <org>/<proj>  # list teams in org (project context)\n" +
-    "  sentry team list <org>         # list teams in org\n\n" +
-    "Pagination:\n" +
-    "  sentry team list <org>/ -c next  # fetch next page\n" +
-    "  sentry team list <org>/ -c prev  # fetch previous page\n\n" +
-    "Examples:\n" +
-    "  sentry team list              # auto-detect or list all\n" +
-    "  sentry team list my-org/      # list teams in my-org (paginated)\n" +
-    "  sentry team list --limit 10\n" +
-    "  sentry team list --json\n\n" +
     "Alias: `sentry teams` → `sentry team list`",
+  examples: [
+    {
+      description: "List teams (organization auto-detected)",
+      command: "sentry team list",
+    },
+    {
+      description: "List teams in an organization",
+      command: "sentry team list my-org/",
+    },
+    {
+      description: "Fetch the next page",
+      command: "sentry team list my-org/ -c next",
+    },
+    { description: "Output as JSON", command: "sentry team list --json" },
+  ],
 };
 
 export const listCommand = buildOrgListCommand(teamListConfig, docs, "team");

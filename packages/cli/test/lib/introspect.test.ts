@@ -6,6 +6,12 @@
  */
 
 import { describe, expect, test } from "vitest";
+import {
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+  parseOrgProjectTarget,
+  parseOrgTarget,
+} from "../../src/lib/completion-target.js";
 import type {
   Command,
   FlagDef,
@@ -15,6 +21,7 @@ import type {
 import {
   buildCommandInfo,
   extractAllRoutes,
+  extractCompletionTargets,
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
@@ -235,6 +242,12 @@ describe("buildCommandInfo", () => {
     const cmd = makeCommand({
       brief: "List things",
       fullDescription: "List all the things.",
+      __examples: [
+        {
+          description: "List things in an org",
+          command: "sentry thing list myorg",
+        },
+      ],
       parameters: {
         positional: {
           kind: "tuple",
@@ -251,9 +264,7 @@ describe("buildCommandInfo", () => {
       },
     });
 
-    const info = buildCommandInfo(cmd, "sentry thing list", [
-      "sentry thing list myorg",
-    ]);
+    const info = buildCommandInfo(cmd, "sentry thing list");
     expect(info.path).toBe("sentry thing list");
     expect(info.brief).toBe("List things");
     expect(info.fullDescription).toBe("List all the things.");
@@ -261,7 +272,9 @@ describe("buildCommandInfo", () => {
     expect(info.flags).toHaveLength(1);
     expect(info.flags[0].name).toBe("limit");
     expect(info.aliases).toEqual({ l: "limit" });
-    expect(info.examples).toEqual(["sentry thing list myorg"]);
+    expect(info.examples).toEqual([
+      "# List things in an org\nsentry thing list myorg",
+    ]);
   });
 
   test("handles command with no positional args", () => {
@@ -375,6 +388,77 @@ describe("extractAllRoutes", () => {
     const routes = extractAllRoutes(topLevel);
     expect(routes).toHaveLength(1);
     expect(routes[0].name).toBe("visible");
+  });
+});
+
+describe("extractCompletionTargets", () => {
+  /** Command whose positionals use the given parsers. */
+  function commandWith(...parsers: unknown[]): Command {
+    return makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: parsers.map((parse, i) => ({
+            placeholder: `arg${i}`,
+            parse,
+          })),
+        },
+      },
+    });
+  }
+
+  test("classifies commands by their positional parsers with full nested paths", () => {
+    const orgProject = commandWith(parseOrgProjectTarget);
+    const variadic = makeCommand({
+      parameters: {
+        positional: {
+          kind: "array",
+          parameter: { placeholder: "issue", parse: parseOrgProjectTarget },
+        },
+      },
+    });
+    const orgSecond = commandWith(String, parseOrgTarget);
+    const plain = commandWith(String);
+
+    const nested = makeRouteMap([makeEntry("view", orgProject)]);
+    const issueRoute = makeRouteMap([
+      makeEntry("view", variadic),
+      makeEntry("list", orgProject),
+      makeEntry("help", plain),
+      makeEntry("rules", nested),
+    ]);
+    const topLevel = makeRouteMap([
+      makeEntry("issue", issueRoute),
+      makeEntry("trial", orgSecond),
+      makeEntry("api", makeCommand()),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: ["trial"],
+      [ORG_PROJECT_TARGET]: ["issue list", "issue rules view", "issue view"],
+    });
+  });
+
+  test("skips hidden commands and hidden groups", () => {
+    const annotated = commandWith(parseOrgTarget);
+    const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
+    const topLevel = makeRouteMap([
+      makeEntry("secret", annotated, true),
+      makeEntry("internal", hiddenGroup, true),
+    ]);
+
+    expect(extractCompletionTargets(topLevel)).toEqual({
+      [ORG_TARGET]: [],
+      [ORG_PROJECT_TARGET]: [],
+    });
+  });
+
+  test("rejects commands that mix org and org/project targets", () => {
+    const topLevel = makeRouteMap([
+      makeEntry("bad", commandWith(parseOrgTarget, parseOrgProjectTarget)),
+    ]);
+
+    expect(() => extractCompletionTargets(topLevel)).toThrow(/bad/);
   });
 });
 

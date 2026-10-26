@@ -31,8 +31,8 @@ import {
 import { CLI_VERSION } from "../../lib/constants.js";
 import { getAuthConfig } from "../../lib/db/auth.js";
 import {
-  getAgentSkillsPreference,
-  setAgentSkillsPreference,
+  getOnOffPreference,
+  setOnOffPreference,
 } from "../../lib/db/defaults.js";
 import { closeDatabase, resolveXdgConfigDir } from "../../lib/db/index.js";
 import { setInstallInfo } from "../../lib/db/install-info.js";
@@ -61,6 +61,7 @@ import {
   isInPath,
   type ShellInfo,
 } from "../../lib/shell.js";
+import { addToWindowsUserPath } from "../../lib/windows-path.js";
 
 type SetupFlags = {
   readonly install: boolean;
@@ -243,7 +244,24 @@ async function handleInstall(
 }
 
 /**
+ * Persist the binary directory on the Windows user PATH (registry), which every
+ * new terminal inherits regardless of shell.
+ */
+async function handleWindowsPath(binaryDir: string, emit: Logger) {
+  const result = await addToWindowsUserPath(binaryDir);
+  emit(`PATH: ${result.message}`);
+  if (result.modified) {
+    emit("      Open a new terminal to use it");
+  } else if (result.manualCommand) {
+    emit(`      ${result.manualCommand}`);
+  }
+}
+
+/**
  * Handle PATH modification for a directory.
+ *
+ * On Windows this edits the user PATH in the registry; elsewhere it appends to
+ * the detected shell's config file.
  */
 async function handlePathModification(
   binaryDir: string,
@@ -251,6 +269,15 @@ async function handlePathModification(
   env: NodeJS.ProcessEnv,
   emit: Logger,
 ) {
+  // On Windows the session PATH can come from a profile or a one-off change
+  // that new terminals never see, so always check the persisted user PATH
+  // (the registry update skips entries that are already there).
+  if (process.platform === "win32") {
+    await handleWindowsPath(binaryDir, emit);
+    await handleGitHubPath(binaryDir, env, emit);
+    return;
+  }
+
   const alreadyInPath = isInPath(binaryDir, env.PATH);
 
   if (alreadyInPath) {
@@ -276,7 +303,15 @@ async function handlePathModification(
     emit(`      Add manually to your shell config: ${cmd}`);
   }
 
-  // Handle GitHub Actions
+  await handleGitHubPath(binaryDir, env, emit);
+}
+
+/** Add the binary directory to `$GITHUB_PATH` when running in GitHub Actions. */
+async function handleGitHubPath(
+  binaryDir: string,
+  env: NodeJS.ProcessEnv,
+  emit: Logger,
+) {
   const addedToGitHub = await addToGitHubPath(binaryDir, env);
   if (addedToGitHub) {
     emit("PATH: Added to $GITHUB_PATH");
@@ -564,12 +599,12 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
   if (flags["no-agent-skills"]) {
     await bestEffort(
       "Recording agent skills preference",
-      () => setAgentSkillsPreference(false),
+      () => setOnOffPreference("agent-skills", false),
       warn,
     );
   }
   const skipAgentSkills =
-    flags["no-agent-skills"] || getAgentSkillsPreference() === false;
+    flags["no-agent-skills"] || getOnOffPreference("agent-skills") === false;
   if (!skipAgentSkills) {
     await bestEffort(
       "Agent skills",
@@ -585,21 +620,41 @@ export const setupCommand = buildCommand({
     brief: "Configure shell integration",
     fullDescription:
       "Sets up shell integration for the Sentry CLI:\n\n" +
-      "- Adds binary directory to PATH (if not already in PATH)\n" +
+      "- Adds binary directory to PATH (if not already in PATH): the shell\n" +
+      "  config file, or the user PATH on Windows\n" +
       "- Installs shell completions (bash, zsh, fish)\n" +
       "- Installs agent skills for detected AI coding assistants\n" +
       "- Records installation metadata for upgrades\n\n" +
       "With --install, also handles binary placement from a temporary\n" +
       "download location (used by the install script and upgrade command).\n\n" +
       "This command is called automatically by the install script,\n" +
-      "but can also be run manually after downloading the binary.\n\n" +
-      "Examples:\n" +
-      "  sentry cli setup                    # Auto-detect and configure\n" +
-      "  sentry cli setup --method curl      # Record install method\n" +
-      "  sentry cli setup --install          # Place binary and configure\n" +
-      "  sentry cli setup --no-modify-path   # Skip PATH modification\n" +
-      "  sentry cli setup --no-completions   # Skip shell completions\n" +
-      "  sentry cli setup --no-agent-skills  # Skip agent skill installation",
+      "but can also be run manually after downloading the binary.",
+    examples: [
+      {
+        description: "Run full setup (PATH, completions, agent skills)",
+        command: "sentry cli setup",
+      },
+      {
+        description: "Record the install method",
+        command: "sentry cli setup --method curl",
+      },
+      {
+        description: "Place the binary and configure the shell",
+        command: "sentry cli setup --install",
+      },
+      {
+        description: "Skip PATH modification",
+        command: "sentry cli setup --no-modify-path",
+      },
+      {
+        description: "Skip shell completions",
+        command: "sentry cli setup --no-completions",
+      },
+      {
+        description: "Skip agent skill installation",
+        command: "sentry cli setup --no-agent-skills",
+      },
+    ],
   },
   parameters: {
     flags: {
@@ -611,7 +666,7 @@ export const setupCommand = buildCommand({
       method: {
         kind: "parsed",
         parse: parseInstallationMethod,
-        brief: "Installation method (curl, npm, pnpm, bun, yarn)",
+        brief: "Installation method (curl, brew, npm, pnpm, bun, yarn)",
         placeholder: "method",
         optional: true,
       },

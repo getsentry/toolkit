@@ -27,10 +27,18 @@ export const uuidCommand = buildCommand({
     fullDescription:
       "Compute and print the UUID of a ProGuard/R8 mapping file. The UUID is " +
       "deterministically derived from the file contents and matches the " +
-      "value assigned by `sentry proguard upload`.\n\n" +
-      "Usage:\n" +
-      "  sentry proguard uuid ./app/build/outputs/mapping/release/mapping.txt\n" +
-      "  sentry proguard uuid mapping.txt --json",
+      "value assigned by `sentry proguard upload`.",
+    examples: [
+      {
+        description: "Compute the UUID for a ProGuard/R8 mapping file",
+        command:
+          "sentry proguard uuid ./app/build/outputs/mapping/release/mapping.txt",
+      },
+      {
+        description: "Output as JSON (includes the file path)",
+        command: "sentry proguard uuid mapping.txt --json",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,

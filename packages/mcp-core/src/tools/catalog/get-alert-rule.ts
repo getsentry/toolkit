@@ -130,9 +130,11 @@ export default defineTool({
         ruleName: params.ruleIdOrName,
       });
       matches.push(
-        ...issueRules.map(
-          (rule): AlertRuleMatch => ({ kind: "issue", rule, projectSlug }),
-        ),
+        ...issueRules.map((rule): AlertRuleMatch => ({
+          kind: "issue",
+          rule,
+          projectSlug,
+        })),
       );
 
       const metricMonitors = await findExactMetricMonitorMatches(apiService, {
@@ -141,13 +143,11 @@ export default defineTool({
         name: params.ruleIdOrName,
       });
       matches.push(
-        ...metricMonitors.map(
-          (rule): AlertRuleMatch => ({
-            kind: "metric",
-            rule,
-            projectSlug,
-          }),
-        ),
+        ...metricMonitors.map((rule): AlertRuleMatch => ({
+          kind: "metric",
+          rule,
+          projectSlug,
+        })),
       );
 
       if (matches.length === 0) {

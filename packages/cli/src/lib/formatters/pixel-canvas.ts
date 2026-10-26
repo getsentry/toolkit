@@ -216,7 +216,7 @@ function* normalizeBitmapText(text: string): Iterable<string> {
       .replace(COMBINING_MARK_RE, "");
     if (
       decomposed.length > 0 &&
-      [...decomposed].every((candidate) => hasSpleenGlyph(candidate))
+      Array.from(decomposed).every((candidate) => hasSpleenGlyph(candidate))
     ) {
       yield* decomposed;
       continue;

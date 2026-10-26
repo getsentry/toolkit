@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -16,7 +17,7 @@ import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
 import {
-  enrichDashboardError,
+  withDashboardErrors,
   parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
@@ -57,12 +58,25 @@ export const restoreCommand = buildCommand({
     brief: "Restore a dashboard revision",
     fullDescription:
       "Restore a Sentry dashboard to a previous revision.\n\n" +
-      "Use `sentry dashboard revisions` to list available revisions first.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard restore 12345 --revision 42\n" +
-      "  sentry dashboard restore my-org 12345 --revision 42\n" +
-      "  sentry dashboard restore 'My Dashboard' --revision 42\n" +
-      "  sentry dashboard restore 12345 --revision 42 --json",
+      "Use `sentry dashboard revisions` to list available revisions first.",
+    examples: [
+      {
+        description: "Restore by dashboard title and revision number",
+        command: "sentry dashboard restore 'Frontend Performance' --revision 3",
+      },
+      {
+        description: "Restore by dashboard ID",
+        command: "sentry dashboard restore 12345 --revision 42",
+      },
+      {
+        description: "Pass the organization explicitly",
+        command: "sentry dashboard restore my-org/ 12345 --revision 42",
+      },
+      {
+        description: "Output the restored dashboard as JSON",
+        command: "sentry dashboard restore 12345 --revision 42 --json",
+      },
+    ],
   },
   output: {
     human: formatRestoreHuman,
@@ -73,7 +87,7 @@ export const restoreCommand = buildCommand({
       parameter: {
         placeholder: "org/dashboard",
         brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
+        parse: parseOrgProjectTarget,
       },
     },
     flags: {
@@ -106,15 +120,20 @@ export const restoreCommand = buildCommand({
     );
     const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
 
-    const dashboard = await withProgress(
-      { message: `Restoring revision ${flags.revision}...`, json: flags.json },
-      () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const dashboard = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "update",
-      }),
+      },
+      () =>
+        withProgress(
+          {
+            message: `Restoring revision ${flags.revision}...`,
+            json: flags.json,
+          },
+          () => restoreDashboardRevision(orgSlug, dashboardId, flags.revision),
+        ),
     );
 
     const outputData: RestoreResult = {

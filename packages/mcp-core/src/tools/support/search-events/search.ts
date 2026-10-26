@@ -1,4 +1,6 @@
+import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
+import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
@@ -46,7 +48,12 @@ import {
   formatReplayResults,
   isValidReplaySort,
 } from "./replays";
-import { isSeerSearchDataset, translateWithSeer } from "./seer";
+import {
+  isSeerSearchDataset,
+  type SeerSearchTranslation,
+  trackAiQueryOutcome,
+  translateWithSeer,
+} from "./seer";
 import {
   formatEventsValidationResults,
   isAggregateQuery,
@@ -113,19 +120,6 @@ function parseAgentTimeRange(
   }
 
   return undefined;
-}
-
-function augmentFieldsWithSort(fields: string[], sort: string): string[] {
-  const sortField = sort.startsWith("-") ? sort.slice(1) : sort;
-  const sortIsAggregate = sortField.includes("(") && sortField.includes(")");
-  if (
-    sortField &&
-    !fields.includes(sortField) &&
-    (sortIsAggregate || !isAggregateQuery(fields))
-  ) {
-    return [...fields, sortField];
-  }
-  return fields;
 }
 
 function buildRequestFields(
@@ -607,10 +601,65 @@ export function logSearchEventsError(
 /**
  * Shared handler for search_events and the dataset-specific search tools.
  */
+interface SeerOutcomeState {
+  translation: SeerSearchTranslation | null;
+  tracked: boolean;
+}
+
+// Only Seer's translations are tracked, not the embedded agent's, and at most
+// once per run.
+function trackSeerOutcome(
+  state: SeerOutcomeState,
+  params: SearchEventsParams,
+  resultCount: number,
+  error: unknown = false,
+): void {
+  if (
+    !state.translation ||
+    state.tracked ||
+    !isSeerSearchDataset(params.dataset)
+  ) {
+    return;
+  }
+  state.tracked = true;
+  trackAiQueryOutcome({
+    dataset: normalizeEventsDataset(params.dataset),
+    mode: state.translation.mode,
+    organization: {
+      slug: params.organizationSlug,
+      features: state.translation.organizationFeatures,
+    },
+    resultCount,
+    runId: state.translation.runId,
+    error:
+      typeof error === "boolean" ||
+      typeof error === "string" ||
+      error instanceof Error
+        ? error
+        : true,
+  });
+}
+
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
+): Promise<string> {
+  // Any failure after Seer translates the query counts as `error_on_load`.
+  const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
+  try {
+    return await executeSearchEvents(params, context, options, seerOutcome);
+  } catch (error) {
+    trackSeerOutcome(seerOutcome, params, 0, error);
+    throw error;
+  }
+}
+
+async function executeSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options: RunSearchEventsOptions,
+  seerOutcome: SeerOutcomeState,
 ): Promise<string> {
   const lockDataset = options.lockDataset === true;
   const apiService = apiServiceFromContext(context, {
@@ -687,6 +736,7 @@ export async function runSearchEvents(
           query: params.query,
         })
       : null;
+  seerOutcome.translation = seerTranslation;
   if (seerTranslation && !projectId) {
     projectId = "-1";
   }
@@ -959,6 +1009,14 @@ export async function runSearchEvents(
       dataset,
       ...timeParams,
     });
+    // A series always has buckets, so count the ones with data.
+    trackSeerOutcome(
+      seerOutcome,
+      params,
+      series.timeSeries
+        .flatMap((s) => s.values)
+        .filter((point) => point.value != null && point.value !== 0).length,
+    );
     const statsUrl = apiService.getEventsExplorerUrl(
       organizationSlug,
       timeSeriesQuery,
@@ -989,15 +1047,10 @@ export async function runSearchEvents(
   // Sentry rejects the request if the sort column isn't in the selected
   // fields. The embedded agent's schema enforces this, but the handler can
   // recombine the caller's explicit fields with a default or explicit sort
-  // that the agent never saw — so re-check here.
-  //
-  // Skip the augment when the sort is non-aggregate but the existing fields
-  // are aggregate: adding a non-aggregate column to an aggregate query
-  // changes the GROUP BY and silently corrupts the result. Better to let
-  // Sentry's 400 propagate so the caller can fix the request explicitly.
+  // that the agent never saw — so re-check here with the rule the CLI shares.
   //
   // Note: fields and sortParam use the same function syntax sent to the API.
-  fields = augmentFieldsWithSort(fields, sortParam);
+  fields = ensureSortInFields(fields, sortParam);
 
   const requestFields = buildRequestFields(dataset, fields);
 
@@ -1051,12 +1104,8 @@ export async function runSearchEvents(
     ...timeParams,
   });
 
-  const aggregateFunctions = fields.filter(
-    (field) => field.includes("(") && field.includes(")"),
-  );
-  const groupByFields = fields.filter(
-    (field) => !field.includes("(") && !field.includes(")"),
-  );
+  const { columns: groupByFields, aggregates: aggregateFunctions } =
+    getColumnsAndAggregates(fields);
 
   function isValidResponse(
     response: unknown,
@@ -1084,6 +1133,7 @@ export async function runSearchEvents(
     "gen_ai.tool.call.result.count",
     eventData.length,
   );
+  trackSeerOutcome(seerOutcome, params, eventData.length);
 
   const conversationId = extractConversationIdFromSearchQuery(sentryQuery);
   const explorerUrl = conversationId

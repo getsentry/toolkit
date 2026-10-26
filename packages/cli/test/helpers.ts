@@ -9,12 +9,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
 import {
+  resetAccountSelection,
   resetAuthRowCache,
   resetAuthTokenCache,
   resetHasStoredCredsCache,
   resetIdentityFingerprintCache,
 } from "../src/lib/db/auth.js";
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
+import { ENV_VAR_AGENTS } from "../src/lib/detect-agent.js";
+import { resetTipsCache } from "../src/lib/tips.js";
 
 // re-exporting a single constant, not a barrel
 export { TEST_TMP_DIR } from "./constants.js";
@@ -116,6 +119,8 @@ export function useTestConfigDir(
     resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
+    resetTipsCache();
+    resetAccountSelection();
     dir = await createTestConfigDir(prefix, options);
     process.env[CONFIG_DIR_ENV_VAR] = dir;
   });
@@ -126,6 +131,8 @@ export function useTestConfigDir(
     resetAuthRowCache();
     resetHasStoredCredsCache();
     resetIdentityFingerprintCache();
+    resetTipsCache();
+    resetAccountSelection();
     // Always restore the previous value — never delete.
     // Deleting process.env.SENTRY_CONFIG_DIR causes failures in test files
     // that load after this afterEach runs, because their module-level code
@@ -235,10 +242,12 @@ export type FetchRoute = {
   match: string | RegExp;
   /** HTTP method filter (default: any) */
   method?: string;
+  /* oxlint-disable typescript/no-redundant-type-constituents -- documents the accepted shapes */
   /** Response body (JSON-serialized) or a handler function */
   response:
     | unknown
     | ((url: string, init?: RequestInit) => unknown | Promise<unknown>);
+  /* oxlint-enable typescript/no-redundant-type-constituents */
   /** HTTP status code (default: 200) */
   status?: number;
   /** Response headers */
@@ -340,4 +349,24 @@ export function installFetchMock(
       globalThis.fetch = originalFetch;
     },
   };
+}
+
+/** Env vars `detectAgent()` reads besides the {@link ENV_VAR_AGENTS} table. */
+const AGENT_ENV_VARS = [
+  "AI_AGENT",
+  "AGENT",
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CURSOR_EXTENSION_HOST_ROLE",
+];
+
+/**
+ * A copy of `process.env` without any variable that `detectAgent()` reads, so
+ * code under test behaves as if a human ran it even inside an agent session.
+ */
+export function envWithoutAgent(): NodeJS.ProcessEnv {
+  const agentKeys = new Set([...AGENT_ENV_VARS, ...ENV_VAR_AGENTS.keys()]);
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !agentKeys.has(key)),
+  );
 }

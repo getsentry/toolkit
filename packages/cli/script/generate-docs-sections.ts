@@ -11,6 +11,11 @@
  *   - self-hosted.md:   OAuth scopes, env var table
  *   - README.md:        dev prerequisites, library prerequisites, dev scripts
  *   - getting-started.mdx: platform support table
+ *   - agent-guidance.md: destructive commands (from `destructive` commands)
+ *   - agentic-usage.md: detected agents (from AGENT_DISPLAY_NAMES)
+ *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (from the
+ *     `@form` lines in grammar/org-project-target.pegjs)
+ *   - plugins/README.md: skill file layout (paths checked on disk)
  *
  * Unlike generate-command-docs.ts (which produces gitignored files from scratch),
  * this script edits committed files in-place between marker pairs.
@@ -20,9 +25,10 @@
  *   tsx script/generate-docs-sections.ts --check   # Dry-run, exit 1 if stale
  */
 
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
-import { DOCS_CONTENT } from "./paths.js";
+import peggy from "peggy";
+import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-command-docs.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -44,7 +50,10 @@ const { routes } = await import("../src/app.js");
 const { extractAllRoutes } = await import("../src/lib/introspect.js");
 const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
+const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+const TARGET_GRAMMAR = "grammar/org-project-target.pegjs";
+const targetGrammar = await readFile(TARGET_GRAMMAR, "utf-8");
 const workspace = JSON.parse(await readFile("../../package.json", "utf-8"));
 
 const isCheck = process.argv.includes("--check");
@@ -528,7 +537,7 @@ function generateSelfHostedEnvVarsTable(): string {
 const PLATFORM_ROWS: readonly [string, string, string][] = [
   ["macOS", "x64, arm64 (Apple Silicon)", ""],
   ["Linux", "x64, arm64", "Standalone binary requires glibc"],
-  ["Windows", "x64", "Via Git Bash, MSYS2, or WSL"],
+  ["Windows", "x64", "Via PowerShell, Git Bash, MSYS2, or WSL"],
 ];
 
 /** Generate the platform support table for getting-started.mdx. */
@@ -554,6 +563,172 @@ function generatePlatformSupport(): string {
   lines.push("  </tbody>");
   lines.push("</table>");
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Section: Destructive Commands (agent-guidance.md)
+// ---------------------------------------------------------------------------
+
+const SENTRY_PREFIX_RE = /^sentry /;
+
+/**
+ * Generate the Safety Rules bullet that lists destructive commands.
+ *
+ * Commands opt in with `buildCommand({ destructive: true })`;
+ * `buildDeleteCommand` sets it automatically, so new delete commands are
+ * listed without touching the docs.
+ */
+function generateDestructiveCommands(allRoutes: RouteInfo[]): string {
+  const names = allRoutes
+    .flatMap((route) => route.commands)
+    .filter((cmd) => cmd.destructive)
+    .map((cmd) => cmd.path.replace(SENTRY_PREFIX_RE, ""))
+    .sort((a, b) => a.localeCompare(b));
+  if (names.length === 0) {
+    throw new Error("No destructive commands found in the route tree");
+  }
+  const list = names.map((name) => `\`${name}\``).join(", ");
+  return `- Always confirm with the user before running destructive commands: ${list}`;
+}
+
+// ---------------------------------------------------------------------------
+// Section: Detected Agents (agentic-usage.md)
+// ---------------------------------------------------------------------------
+
+/** Generate the list of agents the CLI detects, from AGENT_DISPLAY_NAMES. */
+function generateDetectedAgents(): string {
+  const names: string[] = Object.values(AGENT_DISPLAY_NAMES);
+  const last = names.pop();
+  return `The CLI detects ${names.join(", ")}, and ${last}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Section: Target Syntax (commands/index.md fragment, CONTRIBUTING.md)
+// ---------------------------------------------------------------------------
+
+/** `// @form <syntax> — <meaning>` or `// @invalid`. */
+const TARGET_ANNOTATION_RE = /^\s*\/\/ @(form|invalid)\b ?(.*)$/;
+/** An indented `//` line continuing the annotation above it. */
+const TARGET_CONTINUATION_RE = /^\s*\/\/ {3}(\S.*)$/;
+const COMMENT_LINE_RE = /^\s*\/\//;
+
+/** One annotation; `start` and `end` are 1-based line numbers. */
+type TargetAnnotation = {
+  start: number;
+  end: number;
+  kind: string;
+  text: string;
+};
+
+/** Collect the `@form` and `@invalid` annotations of a grammar. */
+function readTargetAnnotations(lines: string[]): TargetAnnotation[] {
+  const annotations: TargetAnnotation[] = [];
+  for (const [index, line] of lines.entries()) {
+    const annotation = TARGET_ANNOTATION_RE.exec(line);
+    const continuation = TARGET_CONTINUATION_RE.exec(line);
+    const previous = annotations.at(-1);
+    if (annotation) {
+      annotations.push({
+        start: index + 1,
+        end: index + 1,
+        kind: annotation[1] ?? "",
+        text: annotation[2] ?? "",
+      });
+    } else if (continuation && previous?.end === index) {
+      previous.text += ` ${continuation[1]}`;
+      previous.end = index + 1;
+    }
+  }
+  return annotations;
+}
+
+/**
+ * Generate the target syntax table from the `@form` lines in the target
+ * grammar. Generation fails when an alternative of the `target` rule has no
+ * `@form` or `@invalid` line in the comments right above it, so a new form
+ * cannot ship undocumented.
+ */
+function generateTargetSyntax(): string {
+  // Checkouts with CRLF line endings (Windows) must parse the same.
+  const lines = targetGrammar.split(/\r?\n/);
+  const annotations = readTargetAnnotations(lines);
+
+  const target = peggy.parser
+    .parse(targetGrammar, { grammarSource: TARGET_GRAMMAR })
+    .rules.find((rule) => rule.name === "target");
+  if (target?.expression.type !== "choice") {
+    throw new Error(
+      `${TARGET_GRAMMAR}: expected a "target" rule with alternatives`,
+    );
+  }
+  for (const alternative of target.expression.alternatives) {
+    const line = alternative.location.start.line;
+    let first = line;
+    while (first > 1 && COMMENT_LINE_RE.test(lines[first - 2] ?? "")) {
+      first -= 1;
+    }
+    if (!annotations.some((a) => a.start >= first && a.start < line)) {
+      throw new Error(
+        `${TARGET_GRAMMAR}:${line}: target alternative has no @form or @invalid line`,
+      );
+    }
+  }
+
+  const rows = ["| Target | Meaning |", "|--------|---------|"];
+  for (const { start, kind, text } of annotations) {
+    if (kind !== "form") {
+      continue;
+    }
+    const [syntax, meaning] = text.split(" — ");
+    if (!(syntax && meaning)) {
+      throw new Error(
+        `${TARGET_GRAMMAR}:${start}: expected "@form <syntax> — <meaning>"`,
+      );
+    }
+    rows.push(`| ${syntax} | ${meaning} |`);
+  }
+  return rows.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Section: Skill File Layout (plugins/README.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Skill-related paths under `packages/cli/`, in tree order. Generation fails
+ * when one no longer exists, so the README cannot describe a stale layout.
+ */
+const SKILL_LAYOUT: readonly [path: string, note: string][] = [
+  [".claude-plugin/marketplace.json", "Marketplace manifest"],
+  [".cursor/skills/sentry-cli/SKILL.md", "Symlink to the plugin skill"],
+  [".cursor/skills/sentry-cli/references", "Symlink to the plugin references"],
+  ["plugins/README.md", "This file"],
+  ["plugins/sentry-cli/.claude-plugin/plugin.json", "Plugin manifest"],
+  [
+    "plugins/sentry-cli/skills/sentry-cli/SKILL.md",
+    "CLI usage skill (generated)",
+  ],
+  [
+    "plugins/sentry-cli/skills/sentry-cli/references",
+    "One file per command group (generated)",
+  ],
+  ["script/generate-skill.ts", "Generates SKILL.md and references/"],
+];
+
+/** Render {@link SKILL_LAYOUT} as an annotated path list. */
+function generateSkillLayout(): string {
+  const missing = SKILL_LAYOUT.filter(([path]) => !existsSync(path));
+  if (missing.length > 0) {
+    throw new Error(
+      `plugins/README.md layout lists missing paths: ${missing.map(([p]) => p).join(", ")}`,
+    );
+  }
+  const paths = SKILL_LAYOUT.map(([path]) => `packages/cli/${path}`);
+  const width = Math.max(...paths.map((p) => p.length));
+  const rows = SKILL_LAYOUT.map(
+    ([, note], i) => `${paths[i]?.padEnd(width)}  # ${note}`,
+  );
+  return ["```", ...rows, "```"].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +821,32 @@ const sections: SectionDef[] = [
     sectionName: "platform-support",
     generate: generatePlatformSupport,
     markerStyle: "mdx",
+  },
+  // -- Lists that mirror code --
+  {
+    filePath: `${DOCS_CONTENT}/agent-guidance.md`,
+    sectionName: "destructive-commands",
+    generate: () => generateDestructiveCommands(routeInfos),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/agentic-usage.md`,
+    sectionName: "detected-agents",
+    generate: generateDetectedAgents,
+  },
+  {
+    filePath: `${DOCS_FRAGMENTS}/commands/index.md`,
+    sectionName: "target-syntax",
+    generate: generateTargetSyntax,
+  },
+  {
+    filePath: "CONTRIBUTING.md",
+    sectionName: "target-syntax",
+    generate: generateTargetSyntax,
+  },
+  {
+    filePath: "plugins/README.md",
+    sectionName: "skill-layout",
+    generate: generateSkillLayout,
   },
 ];
 

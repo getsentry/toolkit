@@ -72,7 +72,7 @@ function envelope(transaction: string, options: EnvelopeOptions = {}): string {
 }
 
 async function startReceiver() {
-  return tryListen(
+  return await tryListen(
     buildApp(createSpotlightBuffer(10), { uiActions: true }),
     0,
     "127.0.0.1",
@@ -1858,7 +1858,7 @@ describe("local receiver to viewer integration", () => {
           target: { value: url },
         });
         fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-        return openLatestReceiver();
+        return await openLatestReceiver();
       }
       const firstUrl =
         "http://127.0.0.1:8969/_local/v1/sessions/first/stream?cap=read";

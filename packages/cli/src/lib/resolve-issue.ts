@@ -185,5 +185,5 @@ export async function resolveIssueId(
   }
 
   // 3. Full short ID (e.g., "SPOTLIGHT-5D") or numeric ID (e.g., "123456789")
-  return resolveWithOrgContext(input, options, commandHint);
+  return await resolveWithOrgContext(input, options, commandHint);
 }

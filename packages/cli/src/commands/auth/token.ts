@@ -18,6 +18,12 @@ export const tokenCommand = buildCommand({
       "Print the stored authentication token to stdout.\n\n" +
       "This outputs the raw token without any formatting, making it suitable for " +
       "piping to other commands or scripts.",
+    examples: [
+      {
+        description: "Print the stored auth token",
+        command: "sentry auth token",
+      },
+    ],
   },
   parameters: {},
   output: { human: (token: string) => token },

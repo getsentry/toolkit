@@ -51,7 +51,7 @@ const eventIdArb = stringMatching(/^[0-9a-f]{32}$/);
 
 describe("parseSentryUrl round-trip properties", () => {
   test("buildOrgUrl → parseSentryUrl extracts org", async () => {
-    await fcAssert(
+    fcAssert(
       property(orgSlugArb, (org) => {
         const url = buildOrgUrl(org);
         const parsed = parseSentryUrl(url);
@@ -67,7 +67,7 @@ describe("parseSentryUrl round-trip properties", () => {
   });
 
   test("buildProjectUrl → parseSentryUrl extracts org and project", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, projectSlugArb), ([org, project]) => {
         const url = buildProjectUrl(org, project);
         const parsed = parseSentryUrl(url);
@@ -82,7 +82,7 @@ describe("parseSentryUrl round-trip properties", () => {
   });
 
   test("buildTraceUrl → parseSentryUrl extracts org and traceId", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, traceIdArb), ([org, traceId]) => {
         const url = buildTraceUrl(org, traceId);
         const parsed = parseSentryUrl(url);
@@ -97,7 +97,7 @@ describe("parseSentryUrl round-trip properties", () => {
   });
 
   test("buildReplayUrl → parseSentryUrl extracts org and replayId", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, replayIdArb), ([org, replayId]) => {
         const url = buildReplayUrl(org, replayId);
         const parsed = parseSentryUrl(url);
@@ -112,7 +112,7 @@ describe("parseSentryUrl round-trip properties", () => {
   });
 
   test("issue URL round-trip: org and numeric issueId extracted", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, numericIdArb), ([org, issueId]) => {
         // Construct the URL pattern that Sentry uses for issues
         const url = `https://sentry.io/organizations/${org}/issues/${issueId}/`;
@@ -128,7 +128,7 @@ describe("parseSentryUrl round-trip properties", () => {
   });
 
   test("event URL round-trip: org, issueId, and eventId extracted", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, numericIdArb, eventIdArb),
         ([org, issueId, eventId]) => {
@@ -147,7 +147,7 @@ describe("parseSentryUrl round-trip properties", () => {
 
   test("non-URL strings always return null", async () => {
     // Org slugs alone should never parse as URLs
-    await fcAssert(
+    fcAssert(
       property(orgSlugArb, (org) => {
         expect(parseSentryUrl(org)).toBeNull();
       }),
@@ -156,7 +156,7 @@ describe("parseSentryUrl round-trip properties", () => {
   });
 
   test("baseUrl always contains scheme and host", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, numericIdArb), ([org, issueId]) => {
         const url = `https://sentry.io/organizations/${org}/issues/${issueId}/`;
         const parsed = parseSentryUrl(url);

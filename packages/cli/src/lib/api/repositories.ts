@@ -51,13 +51,14 @@ export async function listRepositories(
  * Returns a single page of results with cursor metadata.
  *
  * @param orgSlug - Organization slug
- * @param options - Pagination options
+ * @param options - Pagination options, plus `query` to keep only repositories
+ *   whose name contains it (case-insensitive, matched by the server)
  * @returns Single page of repositories with cursor metadata
  * @throws {ApiError} When the response is not an array of repositories
  */
 export async function listRepositoriesPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {},
+  options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryRepository[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -67,7 +68,8 @@ export async function listRepositoriesPaginated(
     query: {
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
-    } as { cursor?: string; per_page?: number },
+      query: options.query,
+    },
   });
 
   const paginated = unwrapPaginatedResult<SentryRepository[]>(

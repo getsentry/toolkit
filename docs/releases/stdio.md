@@ -5,6 +5,7 @@ npm package release process for the MCP server stdio transport.
 ## Overview
 
 The MCP server is published to npm as `@sentry/mcp-server` for use with:
+
 - Claude Desktop
 - Cursor IDE
 - VS Code with MCP extension
@@ -13,6 +14,7 @@ The MCP server is published to npm as `@sentry/mcp-server` for use with:
 ## Package Structure
 
 Published package includes:
+
 - Compiled TypeScript (`dist/`)
 - stdio transport implementation
 - Type definitions
@@ -32,6 +34,7 @@ Update version in `packages/mcp-server/package.json`:
 ```
 
 Follow semantic versioning:
+
 - **Major**: Breaking changes to tool interfaces
 - **Minor**: New tools or non-breaking features
 - **Patch**: Bug fixes
@@ -44,9 +47,11 @@ Document changes in `CHANGELOG.md`:
 ## [1.2.3] - 2025-01-16
 
 ### Added
+
 - New `search_docs` tool for documentation search
 
 ### Fixed
+
 - Fix context propagation in tool handlers
 ```
 
@@ -123,6 +128,7 @@ Users install via npx in their MCP client configuration:
 ```
 
 Config location:
+
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
@@ -148,10 +154,12 @@ Add to `.cursor/mcp.json`:
 ## Environment Variables
 
 Required:
+
 - `SENTRY_ACCESS_TOKEN` - Sentry API access token
 - `SENTRY_HOST` - Sentry instance hostname (default: `sentry.io`)
 
 Optional:
+
 - `SENTRY_ORG` - Default organization slug
 - `SENTRY_PROJECT` - Default project slug
 - `MCP_DISABLE_SKILLS` - Disable specific skills, comma-separated (e.g. `seer`)
@@ -193,6 +201,7 @@ npm publish --tag beta
 ```
 
 Users install with:
+
 ```json
 {
   "args": ["-y", "@sentry/mcp-server@beta"]
@@ -202,14 +211,17 @@ Users install with:
 ## Troubleshooting
 
 ### Package Not Found
+
 - Verify package name: `@sentry/mcp-server` (with scope)
 - Check npm registry: `npm view @sentry/mcp-server`
 
 ### Version Mismatch
+
 - Users may have cached version: `npx clear-npx-cache`
 - Recommend version pinning for stability
 
 ### Build Failures
+
 - Ensure `pnpm run build` succeeds before publishing
 - Check TypeScript compilation errors
 - Verify all dependencies are listed in package.json

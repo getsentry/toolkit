@@ -33,6 +33,7 @@ import {
   getDefaultSdkConfig,
   getSdkConfig,
 } from "../sentry-client.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -376,7 +377,7 @@ export function appendSearchParams(
  */
 export async function getOrgSdkConfig(orgSlug: string) {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkConfig(regionUrl);
+  return getSdkClientConfig(regionUrl);
 }
 
 /**
@@ -446,7 +447,7 @@ export async function autoPaginate<T>(
 ): Promise<PaginatedResponse<T[]>> {
   // Fast path: single-page fetch when limit fits in one API page
   if (limit <= API_MAX_PER_PAGE) {
-    return fetchPage(initialCursor);
+    return await fetchPage(initialCursor);
   }
 
   // Multi-page: accumulate rows across pages up to the requested limit
@@ -477,22 +478,184 @@ export async function autoPaginate<T>(
 }
 
 /**
- * Wire a single-page fetcher into a limit-bounded, auto-paginating list call.
+ * A Sentry next-page cursor, `<value>:<offset>:<is_prev>`, split before
+ * `is_prev`, which may carry a skip count ({@link encodeSkip}).
+ */
+const NEXT_CURSOR_RE = /^(.*:\d+):(0(?:_?0)*)$/;
+
+/** Resumes at the first row for every paginator the CLI uses. */
+const FIRST_PAGE_CURSOR = "0:0:0";
+
+/** `OffsetPaginator` cursors are `<per_page>:<page>:<is_prev>`. */
+const PAGE_NUMBER_CURSOR_RE = /^(\d+):\d+:[01]$/;
+
+/**
+ * Prefix of `cli1~<perPage>~<skip>~<server cursor>` cursors, which nightly
+ * builds returned. Read so their saved history still resumes; never written,
+ * because older CLIs send cursors to the API unchanged.
+ */
+const CLI_CURSOR_PREFIX = "cli1~";
+
+/**
+ * Where a {@link paginate} walk resumes: the server cursor that fetches the
+ * page, the page size it must be fetched with, and how many of that page's
+ * rows were already returned.
+ */
+type PagePosition = {
+  cursor: string | undefined;
+  perPage: number;
+  skip: number;
+};
+
+/**
+ * Write how many rows of a page were already returned into a cursor's
+ * `is_prev` field, so the cursor stays a valid Sentry cursor.
  *
- * Centralizes the two things every list endpoint kept re-deriving by hand and
- * occasionally got wrong (see #1458): capping `per_page` at
- * {@link API_MAX_PER_PAGE} and threading `limit` plus the initial cursor into
- * {@link autoPaginate}. Each request asks only for the remaining item budget,
- * so a partial final page can return a cursor without skipping trimmed rows.
- * Callers still own region resolution and
- * endpoint-specific query building inside `fetchPage`.
+ * Sentry parses `is_prev` with Python's `int()` (`Cursor.from_string` in
+ * `src/sentry/utils/cursors.py`). `int()` ignores leading zeros and allows a
+ * single `_` between digits (PEP 515), so any string of `0`s joined by
+ * single `_`s is 0: "next page". The skip count is written in binary in that
+ * alphabet: a leading `0`, then `_0` for each 1 bit and `0` for each 0 bit,
+ * most significant first. 82 is `1010010`, so `0` + `_0 0 _0 0 0 _0 0`
+ * gives `0_00_000_00`.
+ *
+ * The API and older CLIs read the cursor as the page's own cursor and return
+ * the page from its first row; {@link decodeSkip} recovers the count.
+ *
+ * @param skip - Rows of the page already returned; must be at least 1
+ */
+function encodeSkip(skip: number): string {
+  return `0${skip.toString(2).replaceAll("1", "_0")}`;
+}
+
+/** Read the skip count {@link encodeSkip} wrote; plain `0` is no skip. */
+function decodeSkip(isPrev: string): number {
+  return Number.parseInt(isPrev.slice(1).replaceAll("_0", "1"), 2) || 0;
+}
+
+/**
+ * Encode where a walk resumes as a Sentry cursor. A server cursor that is not
+ * a Sentry next-page cursor cannot carry the skip, so it is returned as is and
+ * resuming returns that page's rows again rather than missing any.
+ */
+function encodePageCursor(cursor: string | undefined, skip: number): string {
+  const server = cursor ?? FIRST_PAGE_CURSOR;
+  const next = skip > 0 ? NEXT_CURSOR_RE.exec(server) : null;
+  return next ? `${next[1]}:${encodeSkip(skip)}` : server;
+}
+
+/**
+ * Decode a cursor from {@link paginate}, an older CLI, or an API response.
+ *
+ * A damaged `cli1~` cursor is ignored with a warning and the walk starts from
+ * the first page, so it never fails a command or reaches the API.
+ */
+function decodePageCursor(
+  raw: string | undefined,
+): Partial<PagePosition> & { cursor: string | undefined } {
+  if (!raw) {
+    return { cursor: undefined };
+  }
+  if (raw.startsWith(CLI_CURSOR_PREFIX)) {
+    return decodeCliCursor(raw);
+  }
+  const next = NEXT_CURSOR_RE.exec(raw);
+  const cursor = next ? `${next[1]}:0` : raw;
+  const position = {
+    cursor: cursor === FIRST_PAGE_CURSOR ? undefined : cursor,
+    skip: next?.[2] ? decodeSkip(next[2]) : 0,
+  };
+  const perPage = serverCursorPageSize(cursor);
+  return perPage === undefined ? position : { ...position, perPage };
+}
+
+function decodeCliCursor(
+  raw: string,
+): Partial<PagePosition> & { cursor: string | undefined } {
+  const [perPage, skip, ...server] = raw
+    .slice(CLI_CURSOR_PREFIX.length)
+    .split("~");
+  const position = {
+    perPage: Number(perPage),
+    skip: Number(skip),
+    cursor: server.join("~") || undefined,
+  };
+  if (
+    Number.isInteger(position.perPage) &&
+    position.perPage >= 1 &&
+    position.perPage <= API_MAX_PER_PAGE &&
+    Number.isInteger(position.skip) &&
+    position.skip >= 0
+  ) {
+    return position;
+  }
+  logger.warn(
+    "Ignoring an unreadable pagination cursor; starting from the first page.",
+  );
+  return { cursor: undefined };
+}
+
+/**
+ * Page size a server cursor must be resumed with, if it carries one.
+ *
+ * `OffsetPaginator` cursors are only valid with the page size that produced
+ * them. Other paginators put an offset of 0 or a sort value there; a sort
+ * value that happens to be in range only changes the page size, which they
+ * tolerate.
+ */
+function serverCursorPageSize(cursor: string): number | undefined {
+  const value = Number(PAGE_NUMBER_CURSOR_RE.exec(cursor)?.[1]);
+  return Number.isInteger(value) && value >= 1 && value <= API_MAX_PER_PAGE
+    ? value
+    : undefined;
+}
+
+/**
+ * Page size for a walk that starts fresh: the fewest requests that can hold
+ * `limit` rows, split as evenly as possible so the last request is not a
+ * full page for a few rows (201 rows → 3 pages of 67, not 100 + 100 + 100).
+ */
+function pageSizeForLimit(limit: number): number {
+  if (limit <= API_MAX_PER_PAGE) {
+    return Math.max(1, limit);
+  }
+  return Math.ceil(limit / Math.ceil(limit / API_MAX_PER_PAGE));
+}
+
+/**
+ * Fetch up to `limit` rows and a cursor that resumes after the last one.
+ *
+ * This is the only supported way to build a limit-bounded list; the
+ * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops. It
+ * owns the decisions those loops kept getting wrong (#1458, #1608):
+ *
+ * - A fresh walk splits `limit` evenly over the fewest requests
+ *   ({@link pageSizeForLimit}). Resuming a page-number cursor
+ *   (`OffsetPaginator`, used by projects, teams, members, repositories, and
+ *   dashboard revisions) reuses the page size the cursor encodes
+ *   (`<per_page>:<page>:<is_prev>`), whatever the new `limit`: pairing it with
+ *   another `per_page` reads the wrong window and silently skips rows.
+ * - The returned cursor always resumes at the first row the caller has not
+ *   received. When a call stops inside a page (a smaller `--limit`, or a
+ *   server that ignored `per_page`), the cursor refetches that page and skips
+ *   the rows already returned.
+ *
+ * Returned cursors are Sentry cursors, so older CLI versions and the API
+ * accept them too; mid-page cursors record the rows to skip in `is_prev`
+ * ({@link encodeSkip}), which a caller that does not know about them sees
+ * again rather than misses (given the page size a page-number
+ * cursor encodes). Pass cursors back through this function
+ * to resume exactly. Raw server cursors are accepted as a starting point.
+ *
+ * Callers own region resolution and query building inside `fetchPage`, and
+ * must send `perPage` as the request's `per_page` unchanged.
  *
  * @param options - Caller list options; `limit` bounds total rows, `cursor` is the start cursor
- * @param fetchPage - Fetches one page given the capped `perPage` and a page cursor
+ * @param fetchPage - Fetches one page given the page size and a server cursor
  * @param defaultLimit - Applied when `options.limit` is undefined
- * @returns Accumulated items with optional nextCursor
+ * @returns Up to `limit` items with optional nextCursor
  */
-export function paginate<T>(
+export async function paginate<T>(
   options: { limit?: number; cursor?: string },
   fetchPage: (
     perPage: number,
@@ -501,19 +664,47 @@ export function paginate<T>(
   defaultLimit = 10,
 ): Promise<PaginatedResponse<T[]>> {
   const limit = options.limit ?? defaultLimit;
-  let remaining = limit;
-  return autoPaginate(
-    async (cursor) => {
-      const result = await fetchPage(
-        Math.min(remaining, API_MAX_PER_PAGE),
-        cursor,
-      );
-      remaining -= result.data.length;
-      return result;
-    },
-    limit,
-    options.cursor,
-  );
+  const start = decodePageCursor(options.cursor);
+  let cursor = start.cursor;
+  let skip = start.skip ?? 0;
+  // Cursors without a page size accept any, so fetch the skipped rows too.
+  const perPage = start.perPage ?? pageSizeForLimit(limit + skip);
+  const rows: T[] = [];
+
+  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
+    const { data, nextCursor } = await fetchPage(perPage, cursor);
+    const unseen = data.slice(skip);
+    const remaining = limit - rows.length;
+
+    if (unseen.length > remaining) {
+      rows.push(...unseen.slice(0, remaining));
+      return {
+        data: rows,
+        nextCursor: encodePageCursor(cursor, skip + remaining),
+      };
+    }
+    rows.push(...unseen);
+    if (!nextCursor) {
+      return { data: rows };
+    }
+    cursor = nextCursor;
+    // A resumed walk can fetch pages smaller than the rows it must skip.
+    skip = Math.max(0, skip - data.length);
+    if (rows.length === limit) {
+      break;
+    }
+  }
+
+  if (rows.length < limit) {
+    logger.warn(
+      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${rows.length} items). ` +
+        "Use the returned cursor to continue.",
+    );
+  }
+  return {
+    data: rows,
+    nextCursor: encodePageCursor(cursor, skip),
+  };
 }
 
 /**
@@ -584,7 +775,11 @@ export async function apiRequestToRegion<T>(
     credential,
     validatedRedirects,
   } = options;
-  const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
+  const config = getSdkConfig(regionUrl, {
+    credential,
+    validatedRedirects,
+    bufferResponseBody: true,
+  });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
@@ -736,7 +931,7 @@ export async function apiRequestToRegionNoContent(
   options: Omit<ApiRequestOptions, "schema"> = {},
 ): Promise<void> {
   const { method = "GET", body, params } = options;
-  const config = getSdkConfig(regionUrl);
+  const config = getSdkConfig(regionUrl, { bufferResponseBody: true });
 
   const searchParams = buildSearchParams(params);
   const queryString = searchParams ? `?${searchParams.toString()}` : "";
@@ -863,7 +1058,9 @@ export async function rawApiRequest(
 
   // Both configs share createAuthenticatedFetch(), whose prepareHeaders()
   // enforces isRequestOriginTrusted() before attaching Authorization.
-  const config = baseUrl ? getSdkConfig(baseUrl) : getDefaultSdkConfig();
+  const config = baseUrl
+    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
+    : getDefaultSdkConfig({ bufferResponseBody: true });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);

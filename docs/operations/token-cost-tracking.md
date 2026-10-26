@@ -5,21 +5,25 @@ Measures the static overhead of MCP tool definitions - the tokens sent to LLM cl
 ## What's Being Measured
 
 The token cost of tool metadata that MCP sends to clients via `tools/list`:
+
 - Tool names and descriptions
 - Parameter schemas (JSON Schema)
 - Total overhead per tool and across all tools
 
 **Exclusions:**
+
 - Runtime token usage by embedded agents (search_events, search_issues, search_issue_events)
 
 ## Running Locally
 
 **Display table (default):**
+
 ```bash
 pnpm run measure-tokens
 ```
 
 **Output:**
+
 ```
 📊 MCP Server Token Cost Report
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -40,6 +44,7 @@ Per-Tool Breakdown:
 ```
 
 **Write JSON to file:**
+
 ```bash
 # From repository root
 pnpm run measure-tokens -- -o token-stats.json
@@ -50,6 +55,7 @@ pnpm run measure-tokens -- -o token-stats.json
 ```
 
 JSON format:
+
 ```json
 {
   "total_tokens": 14068,
@@ -67,11 +73,13 @@ JSON format:
 GitHub Actions workflow runs on every PR and push to main:
 
 **On Pull Requests:**
+
 - 📝 **PR Comment:** Automatic comment with full report (updated on each push)
 - 📊 **Job Summary:** Detailed per-tool breakdown in Actions tab
 - 📦 **Artifact:** `token-stats-{sha}.json` stored for 90 days
 
 **On Main Branch:**
+
 - 📊 **Job Summary:** Detailed per-tool breakdown in Actions tab
 - 📦 **Artifact:** `token-stats-{sha}.json` stored for 90 days
 
@@ -83,10 +91,12 @@ GitHub Actions workflow runs on every PR and push to main:
 - ~586 tokens/tool average
 
 **Tool count limits:**
+
 - **Target:** ≤20 tools (current best practice)
 - **Maximum:** ≤25 tools (hard limit for AI agents)
 
 **When to investigate:**
+
 - Total tokens increase >10% without new tools
 - Individual tool >1,000 tokens (indicates overly verbose descriptions)
 - New tool adds >500 tokens (review description clarity)
@@ -98,6 +108,7 @@ GitHub Actions workflow runs on every PR and push to main:
 **Script location:** `packages/mcp-core/scripts/measure-token-cost.ts`
 
 **CLI options:**
+
 ```bash
 tsx measure-token-cost.ts              # Display table
 tsx measure-token-cost.ts -o file.json # Write JSON to file
@@ -107,16 +118,19 @@ tsx measure-token-cost.ts --help       # Show help
 ## Optimizing Token Cost
 
 **Reduce description verbosity:**
+
 - Be concise - LLMs don't need hand-holding
 - Remove redundant examples
 - Focus on unique, non-obvious details
 
 **Simplify parameter schemas:**
+
 - Use `.describe()` sparingly
 - Avoid duplicate descriptions in nested schemas
 - Combine related parameters
 
 **Consolidate tools:**
+
 - Before adding a new tool, check if existing tools can handle it
 - Consider parameter variants instead of separate tools
 

@@ -127,6 +127,7 @@ import {
   setInstallInfo,
 } from "../../src/lib/db/install-info.js";
 import { UpgradeError } from "../../src/lib/errors.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import { isProcessRunning } from "../../src/lib/process-utils.js";
 
 const {
@@ -193,7 +194,7 @@ describe("fetchLatestFromGitHub", () => {
   test("selects the first CLI release after sentry-mcp is renamed to Toolkit", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       requests.push(request);
       if (request.endsWith("/releases?per_page=100")) {
         return Response.json([
@@ -224,7 +225,7 @@ describe("fetchLatestFromGitHub", () => {
   test("selects the latest CLI-prefixed Toolkit release", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response(
         JSON.stringify([
           { tag_name: "mcp@9.0.0" },
@@ -246,7 +247,7 @@ describe("fetchLatestFromGitHub", () => {
   test("follows Toolkit release pagination to find the latest CLI release", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       if (requests.length === 1) {
         return new Response(
           JSON.stringify(
@@ -318,7 +319,7 @@ describe("fetchLatestFromGitHub", () => {
   test("rejects GitHub release pagination outside the selected source", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response(JSON.stringify([{ tag_name: "mcp@9.0.0" }]), {
         status: 200,
         headers: {
@@ -353,7 +354,7 @@ describe("fetchLatestFromGitHub", () => {
   test("rejects cyclic GitHub release pagination", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response(JSON.stringify([{ tag_name: "mcp@9.0.0" }]), {
         status: 200,
         headers: {
@@ -371,7 +372,7 @@ describe("fetchLatestFromGitHub", () => {
   test("falls back to the legacy latest release only on Toolkit HTTP 404", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       if (requests.length === 1) {
         return new Response("Not Found", { status: 404 });
       }
@@ -413,7 +414,7 @@ describe("fetchLatestFromGitHub", () => {
   test("does not use an MCP release as the latest CLI release", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response(JSON.stringify([{ tag_name: "mcp@9.0.0" }]), {
         status: 200,
       });
@@ -746,7 +747,7 @@ describe("fetchLatestVersion", () => {
   test("uses GHCR manifest when channel is nightly (curl method)", async () => {
     // Nightly version is now fetched from GHCR manifest annotation, not version.json
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -773,7 +774,7 @@ describe("fetchLatestVersion", () => {
   test("uses GHCR manifest when channel is nightly (npm method)", async () => {
     // Even npm method uses GHCR when channel=nightly (nightly is curl-only distribution)
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -886,7 +887,7 @@ describe("versionExists", () => {
   test("probes prefixed Toolkit tags and retains the selected source", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response(JSON.stringify({ tag_name: "cli@1.0.0" }), {
         status: 200,
       });
@@ -901,7 +902,7 @@ describe("versionExists", () => {
   test("falls back to an unprefixed legacy tag on Toolkit HTTP 404", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return requests.length === 1
         ? new Response("Not Found", { status: 404 })
         : new Response(JSON.stringify({ tag_name: "1.0.0" }), { status: 200 });
@@ -936,7 +937,7 @@ describe("versionExists", () => {
     async (_name, body) => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        requests.push(String(url));
+        requests.push(extractInputUrl(url));
         return new Response(body, { status: 200 });
       });
 
@@ -956,7 +957,7 @@ describe("versionExists", () => {
     async (annotation) => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        const request = String(url);
+        const request = extractInputUrl(url);
         requests.push(request);
         if (request === "https://api.github.com/repos/getsentry/toolkit") {
           return new Response(null, { status: 200 });
@@ -990,7 +991,7 @@ describe("versionExists", () => {
   test("does not fall back from an explicit selected source", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response("Not Found", { status: 404 });
     });
 
@@ -1123,7 +1124,7 @@ describe("versionExists", () => {
       annotations: { version: "0.14.0-dev.1772661724" },
     };
     mockFetch(async (url) => {
-      const u = String(url);
+      const u = extractInputUrl(url);
       if (u === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -1142,7 +1143,7 @@ describe("versionExists", () => {
 
   test("checks GHCR for nightly version - version does not exist", async () => {
     mockFetch(async (url) => {
-      const u = String(url);
+      const u = extractInputUrl(url);
       if (u === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -1166,7 +1167,7 @@ describe("versionExists", () => {
       annotations: { version: "0.14.0-dev.1772661724" },
     };
     mockFetch(async (url) => {
-      const u = String(url);
+      const u = extractInputUrl(url);
       if (u === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -1185,7 +1186,7 @@ describe("versionExists", () => {
 
   test("rejects a mismatched nightly annotation for an explicit source", async () => {
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       if (request.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -1220,7 +1221,7 @@ describe("versionExists", () => {
 
   test("does not classify nightly transport error text as not found", async () => {
     mockFetch(async (url) => {
-      if (String(url).includes("ghcr.io/token")) {
+      if (extractInputUrl(url).includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
       throw new Error("HTTP 404");
@@ -1233,7 +1234,7 @@ describe("versionExists", () => {
 
   test("throws on GHCR server error for nightly version", async () => {
     mockFetch(async (url) => {
-      const u = String(url);
+      const u = extractInputUrl(url);
       if (u.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
       }
@@ -1248,7 +1249,7 @@ describe("versionExists", () => {
   test("does not classify GHCR HTTP 403 as a missing nightly version", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const urlString = String(url);
+      const urlString = extractInputUrl(url);
       requests.push(urlString);
       if (urlString.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
@@ -2084,7 +2085,7 @@ describe("fetchLatestNightlyVersion", () => {
   test("falls back to legacy when the Toolkit nightly manifest returns 404", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       requests.push(request);
       if (request === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
@@ -2129,7 +2130,7 @@ describe("fetchLatestNightlyVersion", () => {
   test("does not fall back from a non-404 Toolkit nightly failure", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       requests.push(request);
       if (request === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
@@ -2151,7 +2152,7 @@ describe("fetchLatestNightlyVersion", () => {
   test("does not fall back when nightly transport error text says HTTP 404", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       requests.push(request);
       if (request === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
@@ -2177,7 +2178,7 @@ describe("fetchLatestNightlyVersion", () => {
     // Mock the two requests: token exchange + manifest fetch
     let callCount = 0;
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -2213,7 +2214,7 @@ describe("fetchLatestNightlyVersion", () => {
 
   test("throws UpgradeError when GHCR token exchange fails", async () => {
     mockFetch(async (url) =>
-      String(url) === "https://api.github.com/repos/getsentry/toolkit"
+      extractInputUrl(url) === "https://api.github.com/repos/getsentry/toolkit"
         ? new Response(null, { status: 200 })
         : new Response("Unauthorized", { status: 401 }),
     );
@@ -2226,7 +2227,7 @@ describe("fetchLatestNightlyVersion", () => {
 
   test("throws UpgradeError when manifest has no version annotation", async () => {
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -2297,7 +2298,7 @@ describe("executeUpgrade with curl method (nightly)", () => {
 
     // Mock: token exchange + manifest + blob (200 with gzipped content)
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), {
           status: 200,
@@ -2347,7 +2348,7 @@ describe("executeUpgrade with curl method (nightly)", () => {
   test("rejects a mismatched versioned manifest before downloading its blob", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       requests.push(request);
       if (request.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "tok" }), { status: 200 });
@@ -2484,7 +2485,7 @@ describe("downloadBinaryToTemp verifies download integrity (CLI-1D3)", () => {
     // with "Executable not found in $PATH" (the CLI-1D3 symptom).
     const emptyGzip = gzipSync(new Uint8Array(0));
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.endsWith(".gz")) {
         return new Response(emptyGzip, { status: 200 });
       }
@@ -2506,7 +2507,7 @@ describe("downloadBinaryToTemp verifies download integrity (CLI-1D3)", () => {
   test("releases the download lock when verification fails", async () => {
     const emptyGzip = gzipSync(new Uint8Array(0));
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.endsWith(".gz")) {
         return new Response(emptyGzip, { status: 200 });
       }
@@ -2538,7 +2539,7 @@ describe("downloadBinaryToTemp verifies download integrity (CLI-1D3)", () => {
     const mockBinaryContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]); // ELF
     const emptyGzip = gzipSync(new Uint8Array(0));
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.endsWith(".gz")) {
         return new Response(emptyGzip, { status: 200 });
       }

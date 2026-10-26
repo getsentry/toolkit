@@ -28,21 +28,21 @@ ApiError (base class)
 
 ### Application Errors (`packages/mcp-core/src/internal/errors.ts`)
 
-| Error Type | Sentry Issue? | Use Case |
-|------------|---------------|----------|
-| `UserInputError` | No | Validation failures the user can fix |
-| `ConfigurationError` | No | Missing or invalid configuration |
-| `LLMProviderError` | No | AI provider service unavailable (e.g., region restrictions) |
+| Error Type           | Sentry Issue? | Use Case                                                    |
+| -------------------- | ------------- | ----------------------------------------------------------- |
+| `UserInputError`     | No            | Validation failures the user can fix                        |
+| `ConfigurationError` | No            | Missing or invalid configuration                            |
+| `LLMProviderError`   | No            | AI provider service unavailable (e.g., region restrictions) |
 
 ## Logging Functions (`packages/mcp-core/src/telem/logging.ts`)
 
-| Function | Creates Sentry Issue? | Use For |
-|----------|----------------------|---------|
-| `logDebug()` | No | Development debugging information |
-| `logInfo()` | No | Routine operational information |
-| `logWarn()` | No | Expected errors (4xx), recoverable conditions |
-| `logError()` | No | Errors that do NOT need alerting |
-| `logIssue()` | **Yes** | System failures (5xx), unexpected errors that need investigation |
+| Function     | Creates Sentry Issue? | Use For                                                          |
+| ------------ | --------------------- | ---------------------------------------------------------------- |
+| `logDebug()` | No                    | Development debugging information                                |
+| `logInfo()`  | No                    | Routine operational information                                  |
+| `logWarn()`  | No                    | Expected errors (4xx), recoverable conditions                    |
+| `logError()` | No                    | Errors that do NOT need alerting                                 |
+| `logIssue()` | **Yes**               | System failures (5xx), unexpected errors that need investigation |
 
 ### When to Use Each Function
 
@@ -63,7 +63,7 @@ ApiError (base class)
 ```typescript
 // WRONG: Creates Sentry noise from user errors
 if (error instanceof ApiClientError) {
-  logIssue(error);  // Creates unnecessary Sentry issue
+  logIssue(error); // Creates unnecessary Sentry issue
 }
 
 // CORRECT: Log without creating an issue
@@ -79,7 +79,7 @@ if (error instanceof ApiClientError) {
 ```typescript
 // WRONG: Server errors go undetected
 if (error instanceof ApiServerError) {
-  logError(error);  // No Sentry issue created
+  logError(error); // No Sentry issue created
   return formatError(error);
 }
 
@@ -114,7 +114,7 @@ logError(error, {
 try {
   await apiService.fetchData();
 } catch (error) {
-  logIssue(error);  // Even 404s create issues
+  logIssue(error); // Even 404s create issues
 }
 
 // CORRECT: Discriminate by error type
@@ -126,7 +126,7 @@ try {
   } else if (error instanceof ApiClientError) {
     logWarn(error, { loggerScope: ["api"] });
   } else {
-    logIssue(error);  // Unknown errors need investigation
+    logIssue(error); // Unknown errors need investigation
   }
 }
 ```
@@ -179,6 +179,7 @@ export async function handleTool(params: Params) {
 ```
 
 The MCP server wrapper (`formatErrorForUser`) automatically:
+
 - Formats `ApiClientError` as "Input Error" (no Sentry issue)
 - Formats `ApiServerError` as "Error" with Event ID (creates Sentry issue)
 - Formats `UserInputError` as "Input Error" (no Sentry issue)
@@ -204,6 +205,7 @@ export function createMyTool(apiService: SentryApiService) {
 ```
 
 The `agentTool()` wrapper automatically:
+
 - Returns `{ result: data }` on success
 - Returns `{ error: "Input Error: ..." }` for `UserInputError` and `ApiClientError`
 - Returns `{ error: "Server Error: ..." }` with Event ID for `ApiServerError`
@@ -285,14 +287,14 @@ When reviewing code for logging correctness, verify each item:
 
 ### Common Issues
 
-| Pattern Found | Severity | Action |
-|---------------|----------|--------|
-| `logIssue(ApiClientError)` | High | Change to `logWarn()` |
-| Missing `logIssue(ApiServerError)` | High | Add `logIssue()` call |
-| Raw `console.error()` | Medium | Change to `logError()` or `logIssue()` |
-| `captureException()` directly | Medium | Change to `logIssue()` |
-| Missing `loggerScope` | Low | Add component identifier |
-| Missing `contexts`/`extra` | Low | Add structured debugging info |
+| Pattern Found                      | Severity | Action                                 |
+| ---------------------------------- | -------- | -------------------------------------- |
+| `logIssue(ApiClientError)`         | High     | Change to `logWarn()`                  |
+| Missing `logIssue(ApiServerError)` | High     | Add `logIssue()` call                  |
+| Raw `console.error()`              | Medium   | Change to `logError()` or `logIssue()` |
+| `captureException()` directly      | Medium   | Change to `logIssue()`                 |
+| Missing `loggerScope`              | Low      | Add component identifier               |
+| Missing `contexts`/`extra`         | Low      | Add structured debugging info          |
 
 ## Reference Files
 

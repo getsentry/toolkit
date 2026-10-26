@@ -58,20 +58,22 @@ const docs: OrgListCommandDocs = {
   brief: "List repositories",
   fullDescription:
     "List repositories connected to an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry repo list               # auto-detect from DSN or config\n" +
-    "  sentry repo list <org>/        # list all repos in org (paginated)\n" +
-    "  sentry repo list <org>/<proj>  # list repos in org (project context)\n" +
-    "  sentry repo list <org>         # list repos in org\n\n" +
-    "Pagination:\n" +
-    "  sentry repo list <org>/ -c next  # fetch next page\n" +
-    "  sentry repo list <org>/ -c prev  # fetch previous page\n\n" +
-    "Examples:\n" +
-    "  sentry repo list              # auto-detect or list all\n" +
-    "  sentry repo list my-org/      # list repositories in my-org (paginated)\n" +
-    "  sentry repo list --limit 10\n" +
-    "  sentry repo list --json\n\n" +
     "Alias: `sentry repos` → `sentry repo list`",
+  examples: [
+    {
+      description: "List repositories (organization auto-detected)",
+      command: "sentry repo list",
+    },
+    {
+      description: "List repositories in an organization",
+      command: "sentry repo list my-org/",
+    },
+    {
+      description: "Fetch the next page",
+      command: "sentry repo list my-org/ -c next",
+    },
+    { description: "Output as JSON", command: "sentry repo list --json" },
+  ],
 };
 
 export const listCommand = buildOrgListCommand(repoListConfig, docs, "repo");

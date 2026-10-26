@@ -64,12 +64,25 @@ export const injectCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.\n\n" +
-      "Usage:\n" +
-      "  sentry sourcemap inject ./dist\n" +
-      "  sentry sourcemap inject ./build --ext .js,.mjs\n" +
-      "  sentry sourcemap inject ./out --dry-run\n" +
-      "  sentry sourcemap inject ./maybe-empty --allow-empty",
+      "legitimately be empty.",
+    examples: [
+      {
+        description: "Inject debug IDs into all JS files in dist/",
+        command: "sentry sourcemap inject ./dist",
+      },
+      {
+        description: "Preview changes without writing",
+        command: "sentry sourcemap inject ./dist --dry-run",
+      },
+      {
+        description: "Only process specific extensions",
+        command: "sentry sourcemap inject ./build --ext .js,.mjs",
+      },
+      {
+        description: "Allow a directory with no sourcemaps",
+        command: "sentry sourcemap inject ./maybe-empty --allow-empty",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,

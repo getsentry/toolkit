@@ -12,8 +12,6 @@ export const monitorRoute = buildRouteMap({
     brief: "Work with Sentry cron monitors",
     fullDescription:
       "Run commands with cron monitor check-ins and list configured monitors.\n\n" +
-      "  sentry monitor run <slug> -- <command>  # wrap a command with check-ins\n" +
-      "  sentry monitor list                     # list configured monitors\n\n" +
       "Alias: `sentry monitors` → `sentry monitor list`",
   },
 });

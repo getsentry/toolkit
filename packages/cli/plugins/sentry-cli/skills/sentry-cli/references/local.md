@@ -36,17 +36,41 @@ Restart the Local control-plane daemon
 
 List retained envelopes for a Local session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local envelope view <session envelope...>`
 
 View a raw Local envelope
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session envelope...>` | Session and envelope ID |
 
 ### `sentry local event list <session...>`
 
 List decoded events for a Local session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local event view <session event...>`
 
 View a decoded Local event
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session event...>` | Session and event ID |
 
 ### `sentry local serve`
 
@@ -63,9 +87,40 @@ Start the local dev server and tail events
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
 - `--session <value> - Create a daemon-owned telemetry session with this label`
 
+**Examples:**
+
+```bash
+# Start the server and tail events
+sentry local
+
+# Use a custom port
+sentry local --port 9000
+
+# Only show errors and logs (filter out transactions)
+sentry local -f error -f log
+
+# Only show AI/agent spans
+sentry local -f ai
+
+# Suppress per-envelope tail output
+sentry local --quiet
+
+# Stream NDJSON for scripts and agents
+sentry local --format json
+
+# Start the server and open the Sentry Local UI
+sentry local --open
+```
+
 ### `sentry local session create <name...>`
 
 Create a Local telemetry session
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<name...>` | Optional session label |
 
 **Flags:**
 - `--clientId <value> - Idempotency key for retried agent session creation`
@@ -76,6 +131,12 @@ Create a Local telemetry session
 ### `sentry local session retention <session...>`
 
 View or change session envelope retention
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
 
 **Flags:**
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
@@ -88,17 +149,41 @@ List Local telemetry sessions
 
 View a Local telemetry session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local session close <session...>`
 
 Close a Local telemetry session
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
 
 ### `sentry local session reset <session...>`
 
 Clear a Local telemetry session
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<session...>` | Session ID or unique name |
+
 ### `sentry local run <command...>`
 
 Run a command with the local dev server enabled
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<command...>` | Command to run |
 
 **Flags:**
 - `-p, --port <value> - Port for the local server (default 8969) - (default: "8969")`
@@ -115,60 +200,17 @@ Run a command with the local dev server enabled
 **Examples:**
 
 ```bash
-# Start the server and tail events (default)
-sentry local
-
-# Run your app with the local server auto-enabled
+# Run a Node.js dev server with the local server enabled
 sentry local run -- npm run dev
+
+# Run a Django dev server with the local server enabled
 sentry local run -- python manage.py runserver
 
-# Use a custom port
-sentry local --port 9000
-
-# Only show errors and logs (filter out transactions)
-sentry local -f error -f log
-
-# Run quietly (suppress per-envelope tail output)
-sentry local --quiet
-
-# Start the server and open the UI
-sentry local --open
-
-# Run your app with the UI
+# Run your app and open the Sentry Local UI
 sentry local run --open -- npm run dev
 
-sentry local -f error -f log    # only errors and logs
-
-sentry local -f ai          # only AI/agent spans
-sentry local -f ai -f error # agent spans and errors
-
-sentry local --format json
-
-sentry local run --format json \
-  --filter error --filter transaction --filter log --filter ai \
-  -- npm run dev
-
-sentry local serve --format json --attributes
-
-SENTRY_SPOTLIGHT=http://localhost:8969/stream \
-  pnpm --filter sentry exec tsx test/fixtures/local-agent-server.ts
-
-curl http://127.0.0.1:3030/api/users/42
-curl -X POST http://127.0.0.1:3030/api/agent/run \
-  -H 'content-type: application/json' \
-  -d '{"prompt":"Where is the rate limit configured?"}'
-curl -i http://127.0.0.1:3030/api/broken
-
-sentry local run --session web -- npm run dev
-sentry local serve --session worker
-sentry local session list --json
-sentry local event list web --json
-sentry local event view web <event-id> --json
-sentry local envelope list web --json
-sentry local session reset web
-sentry local session close web
-sentry local daemon status
-sentry local daemon stop
+# Stream agent-relevant NDJSON without SDK housekeeping envelopes
+sentry local run --format json -f error -f transaction -f log -f ai -- npm run dev
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
