@@ -2,6 +2,7 @@ import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
 import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
+import { ApiValidationError } from "../../../api-client";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
@@ -34,6 +35,7 @@ import {
   RECOMMENDED_FIELDS,
   TRACE_METRICS_SAMPLE_IDENTITY_FIELDS,
 } from "./config";
+import { getFieldRecoveryHints } from "./field-hints";
 import {
   formatErrorResults,
   formatLogResults,
@@ -139,6 +141,10 @@ function isTraceItemDataset(dataset: PublicEventsDataset | "replays"): boolean {
 
 function hasFields(fields?: string[] | null): fields is string[] {
   return Array.isArray(fields) && fields.length > 0;
+}
+
+function appendHints(message: string, hints: readonly string[]): string {
+  return hints.length > 0 ? `${message}\n\n${hints.join("\n")}` : message;
 }
 
 function formatSearchValue(value: string): string {
@@ -1080,7 +1086,15 @@ async function executeSearchEvents(
     const formatted = formatEventsValidationResults(lastValidation);
     throw new UserInputError(
       formatted
-        ? `Search validation failed:\n${formatted}`
+        ? appendHints(
+            `Search validation failed:\n${formatted}`,
+            getFieldRecoveryHints({
+              dataset,
+              fields: requestFields,
+              sort: sortParam,
+              detail: formatted,
+            }),
+          )
         : "Search validation failed.",
     );
   }
@@ -1092,17 +1106,38 @@ async function executeSearchEvents(
     environment,
   );
 
-  const eventsResponse = await apiService.searchEvents({
-    organizationSlug,
-    query: sentryQuery,
-    fields: finalRequestFields,
-    limit: params.limit,
-    projectId,
-    dataset,
-    sort: sortParam,
-    crossEventQueries: seerTranslation?.crossEventQueries,
-    ...timeParams,
-  });
+  let eventsResponse: Awaited<ReturnType<typeof apiService.searchEvents>>;
+  try {
+    eventsResponse = await apiService.searchEvents({
+      organizationSlug,
+      query: sentryQuery,
+      fields: finalRequestFields,
+      limit: params.limit,
+      projectId,
+      dataset,
+      sort: sortParam,
+      crossEventQueries: seerTranslation?.crossEventQueries,
+      ...timeParams,
+    });
+  } catch (error) {
+    // The validate endpoint misses some errors-dataset rejections, such as
+    // `first_seen()` and sorting by `issue`, so check the final API error too.
+    if (!(error instanceof ApiValidationError)) {
+      throw error;
+    }
+    const hints = getFieldRecoveryHints({
+      dataset,
+      fields: finalRequestFields,
+      sort: sortParam,
+      detail: error.message,
+    });
+    if (hints.length === 0) {
+      throw error;
+    }
+    throw new UserInputError(appendHints(error.toUserMessage(), hints), {
+      cause: error,
+    });
+  }
 
   const { columns: groupByFields, aggregates: aggregateFunctions } =
     getColumnsAndAggregates(fields);
