@@ -12,7 +12,14 @@ import { validateResourceId, validateSlug } from "./utils/slug-validation";
 // Sentry slug lookups can be exact and case-sensitive on legacy instances.
 // Preserve caller casing for resource slugs; only trim and validate shape.
 export const ParamOrganizationSlug = z
-  .string()
+  .string({
+    // The MCP SDK rejects a missing slug before the handler runs, so this
+    // message is the only recovery hint the caller gets.
+    error: (issue) =>
+      issue.input == null
+        ? "Required. Call `find_organizations()` to list your organizations, then retry with `organizationSlug` set to one of their slugs."
+        : undefined,
+  })
   .trim()
   .superRefine(validateSlug)
   .describe(
