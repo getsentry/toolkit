@@ -483,7 +483,7 @@ Manage Sentry alert rules
 
 Explore span, log, and metric attributes
 
-- `sentry attribute list [<org/project>] [<filter>]` — List attribute keys for spans, logs, or metrics
+- `sentry attribute list [<target>] [<filter>]` — List attribute keys for spans, logs, or metrics
 
 → Full flags and examples: `references/attribute.md`
 

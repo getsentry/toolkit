@@ -591,6 +591,41 @@ describe("listCommand.func", () => {
     ]);
   });
 
+  test("keeps the -c next cursor bounded across many pages", async () => {
+    resolveSpy.mockResolvedValue({ org: "my-org" });
+    const data = Array.from({ length: 40 }, (_, index) =>
+      attr(`key.${String(index).padStart(3, "0")}`),
+    );
+    mockAttributes(data);
+
+    const collected: string[] = [];
+    const cursorLengths: number[] = [];
+    for (let index = 0; index < 30; index++) {
+      const page = JSON.parse(
+        await run(
+          {
+            json: true,
+            limit: 2,
+            type: ["string"],
+            cursor: index ? "next" : undefined,
+          },
+          "my-org/",
+        ),
+      );
+      collected.push(...page.data.map((row: { key: string }) => row.key));
+      if (!page.hasMore) {
+        break;
+      }
+      cursorLengths.push(page.nextCursor.length);
+    }
+
+    // No key repeats across pages
+    expect(collected).toEqual(data.map((row) => row.key));
+    expect(cursorLengths.length).toBeGreaterThan(10);
+    // Cursor stops growing once paging reaches a steady state
+    expect(Math.max(...cursorLengths) - cursorLengths[0]!).toBeLessThan(64);
+  });
+
   test("continues mixed types past 100 rows without losing partially selected pages", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
     const data = Array.from({ length: 180 }, (_, index) =>

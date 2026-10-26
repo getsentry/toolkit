@@ -23,8 +23,13 @@ export type AttributeTypePage = {
   data: TraceItemAttributeDefinition[];
   start: AttributeBookmark;
   positions: (string | undefined)[];
+  /** Keys on each raw page fetched, by that page's cursor ("" for the first). */
+  pageKeys: Map<string, Set<string>>;
   nextCursor?: string;
 };
+
+/** Map key for a raw page's cursor (the first page has none). */
+const pageId = (cursor: string | null | undefined): string => cursor ?? "";
 
 /** Versioned resume token: replay this raw page and skip delivered keys. */
 function encodeBookmark(
@@ -81,9 +86,10 @@ export async function fetchAttributeTypePage(
   rawCursor: string | undefined,
 ): Promise<AttributeTypePage> {
   const start = decodeBookmark(rawCursor);
-  const seen = new Set(start.seen);
+  let seen = new Set(start.seen);
   const data: TraceItemAttributeDefinition[] = [];
   const positions: (string | undefined)[] = [];
+  const pageKeys = new Map<string, Set<string>>();
   let cursor = start.cursor ?? undefined;
 
   // Attribute pages overlap and include rows outside the server's offset
@@ -96,6 +102,8 @@ export async function fetchAttributeTypePage(
       perPage: limit,
       cursor,
     });
+    const keysOnPage = new Set(page.data.map((row) => row.key));
+    pageKeys.set(pageId(cursor), keysOnPage);
     for (const [index, attribute] of page.data.entries()) {
       if (seen.has(attribute.key)) {
         continue;
@@ -113,14 +121,23 @@ export async function fetchAttributeTypePage(
           data,
           start,
           positions,
-          nextCursor: pending || next ? encodeBookmark(next, seen) : undefined,
+          pageKeys,
+          nextCursor:
+            pending || next
+              ? encodeBookmark(
+                  next,
+                  [...seen].filter((key) => keysOnPage.has(key)),
+                )
+              : undefined,
         };
       }
     }
     if (!page.nextCursor) {
-      return { type, data, start, positions };
+      return { type, data, start, positions, pageKeys };
     }
+    // Moving on to the next raw page: only this page's keys can reappear.
     cursor = page.nextCursor;
+    seen = keysOnPage;
   }
   logger.warn(
     `Attribute pagination reached ${MAX_PAGINATION_PAGES} pages. Use the returned cursor to continue.`,
@@ -130,6 +147,7 @@ export async function fetchAttributeTypePage(
     data,
     start,
     positions,
+    pageKeys,
     nextCursor: encodeBookmark(cursor, seen),
   };
 }
@@ -146,8 +164,12 @@ export function attributeCursorAfter(
   for (const attribute of page.data.slice(0, count)) {
     seen.add(attribute.key);
   }
+  // Resuming partway through a page: keep only keys on that page.
+  const replay =
+    count > 0 ? page.positions[count - 1] : (page.start.cursor ?? undefined);
+  const keysOnPage = page.pageKeys.get(pageId(replay)) ?? new Set<string>();
   return encodeBookmark(
-    count > 0 ? page.positions[count - 1] : (page.start.cursor ?? undefined),
-    seen,
+    replay,
+    [...seen].filter((key) => keysOnPage.has(key)),
   );
 }

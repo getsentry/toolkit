@@ -63,11 +63,11 @@ describe("listTraceItemAttributes", () => {
       dataset: "spans",
     });
 
-    expect(capturedUrl?.pathname).toBe(
+    expect(capturedUrl!.pathname).toBe(
       "/api/0/organizations/test-org/trace-items/attributes/",
     );
     expect([...capturedUrl!.searchParams.keys()]).toEqual(["dataset"]);
-    expect(capturedUrl?.searchParams.get("dataset")).toBe("spans");
+    expect(capturedUrl!.searchParams.get("dataset")).toBe("spans");
     expect(data).toEqual(ATTRIBUTES);
   });
 
@@ -103,27 +103,33 @@ describe("listTraceItemAttributes", () => {
 
   test("sends perPage as per_page", async () => {
     mockOk([]);
+
     await listTraceItemAttributes("test-org", {
       dataset: "spans",
       perPage: 25,
     });
-    expect(capturedUrl?.searchParams.get("per_page")).toBe("25");
+
+    expect(capturedUrl!.searchParams.get("per_page")).toBe("25");
   });
 
   test("sends expand=context only when context is requested", async () => {
     mockOk([]);
+
     await listTraceItemAttributes("test-org", {
       dataset: "spans",
       context: true,
     });
-    expect(capturedUrl?.searchParams.getAll("expand")).toEqual(["context"]);
+
+    expect(capturedUrl!.searchParams.getAll("expand")).toEqual(["context"]);
 
     mockOk([]);
+
     await listTraceItemAttributes("test-org", {
       dataset: "spans",
       context: false,
     });
-    expect(capturedUrl?.searchParams.has("expand")).toBe(false);
+
+    expect(capturedUrl!.searchParams.has("expand")).toBe(false);
   });
 
   test("reports that more results exist when Sentry's Link header says so", async () => {
@@ -144,6 +150,7 @@ describe("listTraceItemAttributes", () => {
     );
 
     const promise = listTraceItemAttributes("test-org", { dataset: "logs" });
+
     await expect(promise).rejects.toBeInstanceOf(ApiError);
     await expect(promise).rejects.toThrow(/logs attributes/);
   });

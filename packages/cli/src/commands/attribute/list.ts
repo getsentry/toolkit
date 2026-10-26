@@ -52,6 +52,7 @@ import {
   LIST_PERIOD_FLAG,
   PERIOD_ALIASES,
   paginationHint,
+  ORG_ALL_TARGET_BRIEF,
 } from "../../lib/list-command.js";
 import {
   jsonTransformListResult,
@@ -165,9 +166,17 @@ export function parseAttributeFilter(
   };
 }
 
+/** Whether `value` is one of the attribute types `--type` accepts. */
+function isTraceItemAttributeValueType(
+  value: string,
+): value is TraceItemAttributeValueType {
+  return VALID_TYPES.includes(value as TraceItemAttributeValueType);
+}
+
 /**
  * Normalize repeated and/or comma-separated `--type` values into a
  * deduplicated list of attribute types.
+ *
  * @internal Exported for testing
  */
 export function parseAttributeTypes(
@@ -179,13 +188,13 @@ export function parseAttributeTypes(
   const types = new Set<TraceItemAttributeValueType>();
   for (const raw of values.flatMap(parseFieldsList)) {
     const value = raw.toLowerCase();
-    if (!VALID_TYPES.includes(value as TraceItemAttributeValueType)) {
+    if (!isTraceItemAttributeValueType(value)) {
       throw new ValidationError(
         `Invalid attribute type "${raw}". Must be one of: ${VALID_TYPES.join(", ")}`,
         "type",
       );
     }
-    types.add(value as TraceItemAttributeValueType);
+    types.add(value);
   }
   return types.size > 0 ? [...types] : undefined;
 }
@@ -194,6 +203,7 @@ export function parseAttributeTypes(
  * Order a page by display name, then type. The API concatenates one result
  * set per attribute type, so without sorting a trimmed page would show only
  * the first type's keys.
+ *
  * @internal Exported for testing
  */
 export function compareAttributes(
@@ -208,6 +218,7 @@ export function compareAttributes(
 
 /**
  * Build a `Tip:` line showing how to use a attribute keys in other commands.
+ *
  * @internal Exported for testing
  */
 export function buildUsageTip(
@@ -380,11 +391,10 @@ export const listCommand = buildListCommand("attribute", {
       kind: "tuple",
       parameters: [
         {
-          placeholder: "org/project",
-          brief:
-            "<org>/ (all projects), <org>/<project>, or <project> (search)",
+          placeholder: "target",
+          brief: ORG_ALL_TARGET_BRIEF,
           parse: orgOptionalTarget,
-          optional: true,
+          optional: true as const,
         },
         {
           placeholder: "filter",

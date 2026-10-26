@@ -11,7 +11,7 @@ requires:
 
 Explore span, log, and metric attributes
 
-### `sentry attribute list [<org/project>] [<filter>]`
+### `sentry attribute list [<target>] [<filter>]`
 
 List attribute keys for spans, logs, or metrics
 
@@ -19,7 +19,7 @@ List attribute keys for spans, logs, or metrics
 
 | Argument | Description |
 |----------|-------------|
-| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+| `[<target>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
 | `[<filter>]` | Text in attribute names and/or has:&lt;key&gt; terms, e.g. 'gen_ai has:http.method' |
 
 **Flags:**
