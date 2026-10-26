@@ -107,6 +107,21 @@ describe("rewriteSearchQuery: parentheses in issue search", () => {
     );
   });
 
+  it("merges a rewritten is: group into a surrounding is: OR", () => {
+    expect(rewriteIssues("(is:unresolved OR is:resolved) OR is:ignored")).toBe(
+      "status:[unresolved,resolved,ignored]",
+    );
+    expect(rewriteIssues("is:new OR (is:regressed OR is:escalating)")).toBe(
+      "substatus:[new,regressed,escalating]",
+    );
+  });
+
+  it("keeps a rewritten group's field when merging", () => {
+    expect(() =>
+      rewriteIssues("(is:regressed OR is:escalating) OR is:resolved"),
+    ).toThrow(SearchQueryError);
+  });
+
   it("merges a single-term group into a surrounding OR", () => {
     expect(rewriteIssues("(level:error) OR level:warning")).toBe(
       "level:[error,warning]",

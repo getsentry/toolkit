@@ -474,30 +474,55 @@ function tryMergeGroup(
  * `is:` rejects in-lists, but the issues endpoint translates each `is:`
  * value to a `status` or `substatus` filter, and those accept lists. Returns
  * `null` unless every operand is a non-negated `is:` whose value maps to the
- * same field (and, for substatuses, the same parent status).
+ * same field (and, for substatuses, the same parent status). Operands may
+ * also be `status:[…]`/`substatus:[…]` in-lists, such as one already merged
+ * from a parenthesized group, as long as the result keeps their field.
  */
 function tryMergeIsGroup(group: SearchNode[]): SearchNode | null {
   const values: string[] = [];
+  const listFields = new Set<string>();
   for (const node of group) {
-    if (node.type !== "is_filter" || node.negated) {
+    if (node.type === "is_filter" && !node.negated) {
+      values.push(node.value);
+    } else if (
+      node.type === "text_in_filter" &&
+      !node.negated &&
+      (node.key === "status" || node.key === "substatus")
+    ) {
+      listFields.add(node.key);
+      values.push(...node.values);
+    } else {
       return null;
     }
-    if (!values.includes(node.value)) {
-      values.push(node.value);
-    }
   }
 
+  const uniqueValues = [...new Set(values)];
+  const field = isListField(uniqueValues);
+  if (!field || [...listFields].some((listField) => listField !== field)) {
+    return null;
+  }
+  return {
+    type: "text_in_filter",
+    negated: false,
+    key: field,
+    values: uniqueValues,
+  };
+}
+
+/**
+ * The in-list field that can hold every value: `status` when all are
+ * statuses, `substatus` when all are substatuses of one status, else `null`.
+ */
+function isListField(values: string[]): "status" | "substatus" | null {
   if (values.every((value) => IS_STATUS_VALUES.has(value))) {
-    return { type: "text_in_filter", negated: false, key: "status", values };
+    return "status";
   }
-
   const parents = new Set(
     values.map((value) => IS_SUBSTATUS_PARENT.get(value)),
   );
   if (parents.size === 1 && !parents.has(undefined)) {
-    return { type: "text_in_filter", negated: false, key: "substatus", values };
+    return "substatus";
   }
-
   return null;
 }
 
