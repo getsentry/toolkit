@@ -183,13 +183,19 @@ export function createLocalSessionStore({
         lastActivityAt: timestamp,
         expiresAt: timestamp + SESSION_RETENTION_MS,
       });
-      notify(session.id, { state: "retained" });
+      notify(session.id, { state: "retained", expiresAt: closed.expiresAt });
       return toPublicSession(closed);
     },
     reset(reference) {
       const session = resolveStored(reference);
       session.buffer.clear();
-      notify(session.id, { state: session.state, action: "reset" });
+      notify(session.id, {
+        state: session.state,
+        action: "reset",
+        ...(session.expiresAt !== undefined && {
+          expiresAt: session.expiresAt,
+        }),
+      });
     },
     subscribe(reference, listener) {
       const session = resolveStored(reference);

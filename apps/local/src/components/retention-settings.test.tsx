@@ -26,10 +26,10 @@ test.each(["-1", "0", "1.5", "50001", "9007199254740992", ""])(
         editable
       />,
     );
-    const input = screen.getByLabelText("Retention limit");
+    const input = screen.getByLabelText("Envelope limit");
     fireEvent.change(input, { target: { value } });
     fireEvent.click(
-      screen.getByRole("button", { name: "Apply retention limit" }),
+      screen.getByRole("button", { name: "Apply envelope limit" }),
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Enter an integer between 1 and 50,000",
@@ -57,12 +57,10 @@ test("reports a receiver-side retention race without claiming a successful save"
       editable
     />,
   );
-  fireEvent.change(screen.getByLabelText("Retention limit"), {
+  fireEvent.change(screen.getByLabelText("Envelope limit"), {
     target: { value: "8" },
   });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Apply retention limit" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Apply envelope limit" }));
   expect((await screen.findByRole("alert")).textContent).toContain(
     "9 retained envelopes",
   );
@@ -70,7 +68,7 @@ test("reports a receiver-side retention race without claiming a successful save"
     expect(
       (
         screen.getByRole("button", {
-          name: "Apply retention limit",
+          name: "Apply envelope limit",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false),
@@ -82,7 +80,7 @@ test("reports a receiver-side retention race without claiming a successful save"
     expect.objectContaining({ body: '{"maxEnvelopes":8}' }),
   );
   expect(
-    (screen.getByLabelText("Retention limit") as HTMLInputElement).value,
+    (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
   ).toBe("8");
   expect(screen.getByText("8 envelopes currently retained.")).not.toBeNull();
 });
@@ -106,7 +104,7 @@ test.each([0, 1, 8])(
     expect(
       (
         screen.getByRole("spinbutton", {
-          name: "Retention limit",
+          name: "Envelope limit",
         }) as HTMLInputElement
       ).value,
     ).toBe("500");
@@ -125,7 +123,7 @@ test.each([1, 1000])(
         editable={false}
       />,
     );
-    expect(screen.getByText("Retention limit")).not.toBeNull();
+    expect(screen.getByText("Envelope limit")).not.toBeNull();
     expect(
       screen.getByText(
         `${limit.toLocaleString()} ${limit === 1 ? "envelope" : "envelopes"}`,
@@ -153,11 +151,11 @@ test.each([1, 50000])(
         editable
       />,
     );
-    fireEvent.change(screen.getByLabelText("Retention limit"), {
+    fireEvent.change(screen.getByLabelText("Envelope limit"), {
       target: { value: String(value) },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Apply retention limit" }),
+      screen.getByRole("button", { name: "Apply envelope limit" }),
     );
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -182,12 +180,10 @@ test("rejects lowering capacity below saved data before sending a request", asyn
       editable
     />,
   );
-  fireEvent.change(screen.getByLabelText("Retention limit"), {
+  fireEvent.change(screen.getByLabelText("Envelope limit"), {
     target: { value: "7" },
   });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Apply retention limit" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Apply envelope limit" }));
   expect((await screen.findByRole("alert")).textContent).toContain(
     "Cannot lower the limit below 8",
   );

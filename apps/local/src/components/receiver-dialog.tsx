@@ -33,7 +33,7 @@ export function ReceiverDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Add receiver</DialogTitle>
+          <DialogTitle>Switch receiver</DialogTitle>
           <DialogDescription>
             Your current feed stays open while you connect.
           </DialogDescription>

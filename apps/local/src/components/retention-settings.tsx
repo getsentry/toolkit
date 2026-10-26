@@ -33,7 +33,7 @@ export function RetentionSettings({
       v.check((value: number) => isValidMaxEnvelopes(value), invalidLimit),
       v.check(
         (value) => value >= count,
-        `Cannot lower the limit below ${count.toLocaleString()} retained ${count === 1 ? "envelope" : "envelopes"}. Clear envelopes first.`,
+        `Cannot lower the limit below ${count.toLocaleString()} retained ${count === 1 ? "envelope" : "envelopes"}. Delete captured events first.`,
       ),
     ),
   });
@@ -91,6 +91,11 @@ export function RetentionSettings({
     form.formState.errors.root?.server?.message;
   return (
     <div className="space-y-4">
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Capacity is measured in SDK envelopes. An SDK envelope can contain
+        several events, such as logs, errors, or a transaction. This limit does
+        not extend how long a saved capture is available.
+      </p>
       <p className="text-sm text-muted-foreground">
         {count.toLocaleString()} {count === 1 ? "envelope" : "envelopes"}{" "}
         currently retained.
@@ -99,7 +104,7 @@ export function RetentionSettings({
         <form noValidate onSubmit={save} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="retention-limit" className="text-sm font-medium">
-              Retention limit
+              Envelope limit
             </label>
             <Input
               id="retention-limit"
@@ -133,14 +138,14 @@ export function RetentionSettings({
             <Button type="submit" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting
                 ? "Applying…"
-                : "Apply retention limit"}
+                : "Apply envelope limit"}
             </Button>
           </div>
         </form>
       ) : (
         <div className="space-y-2">
           <dl className="flex items-center justify-between gap-4 text-sm">
-            <dt>Retention limit</dt>
+            <dt>Envelope limit</dt>
             <dd>
               {limit.toLocaleString()} {limit === 1 ? "envelope" : "envelopes"}
             </dd>

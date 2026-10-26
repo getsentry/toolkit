@@ -408,3 +408,37 @@ describe("buildTraceGroups", () => {
     ]);
   });
 });
+
+test("child spans retain their own raw payload independently of the transaction", () => {
+  const payload = {
+    span_id: "query",
+    parent_span_id: "root",
+    op: "db.query",
+    data: { "db.system": "postgresql" },
+    start_timestamp: 1.1,
+    timestamp: 1.2,
+  };
+  const [trace] = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "GET /orders",
+              start_timestamp: 1,
+              timestamp: 2,
+              contexts: { trace: { trace_id: "trace", span_id: "root" } },
+              spans: [payload],
+            },
+          ],
+        ],
+      ]),
+      "payload",
+    ),
+  );
+  expect(trace?.spans.find((span) => span.id === "query")?.payload).toEqual(
+    payload,
+  );
+});

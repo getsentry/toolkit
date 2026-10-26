@@ -3,6 +3,8 @@ import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
 type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
+  selectedSpanId?: string;
+  onSelectSpan?: (spanId: string) => void;
 };
 
 type PositionedSpan = {
@@ -80,19 +82,24 @@ function SpanRow({
   positionedSpan,
   trace,
   index,
+  selectedSpanId,
+  onSelectSpan,
 }: {
   positionedSpan: PositionedSpan;
   trace: TraceGroup;
   index: number;
+  selectedSpanId?: string;
+  onSelectSpan?: (spanId: string) => void;
 }) {
   const { span, depth, isLastChild } = positionedSpan;
   const position = getSpanPosition(span, trace);
+  const visualDepth = Math.min(depth, 4);
   const failed = isFailingSpan(span);
 
   return (
     <div
       role="row"
-      className={`group grid min-w-[48rem] grid-cols-[minmax(18rem,38%)_minmax(18rem,1fr)_6.5rem] border-b border-border transition-colors hover:bg-muted/45 ${index % 2 === 1 ? "bg-muted/15" : ""}`}
+      className={`group grid min-w-0 w-full grid-cols-[minmax(0,40%)_minmax(0,1fr)_5.5rem] border-b border-border transition-colors hover:bg-muted/45 ${index % 2 === 1 ? "bg-muted/15" : ""}`}
     >
       <div
         role="cell"
@@ -103,29 +110,42 @@ function SpanRow({
             <span
               aria-hidden="true"
               className={`absolute border-l border-border/70 ${isLastChild ? "top-0 h-1/2" : "inset-y-0"}`}
-              style={{ left: `${0.95 + (depth - 1) * 1.05}rem` }}
+              style={{ left: `${0.95 + (visualDepth - 1) * 0.65}rem` }}
             />
             <span
               aria-hidden="true"
               className="absolute top-1/2 h-px w-[0.85rem] -translate-y-1/2 bg-border/70"
-              style={{ left: `${0.95 + (depth - 1) * 1.05}rem` }}
+              style={{ left: `${0.95 + (visualDepth - 1) * 0.65}rem` }}
             />
           </>
         ) : null}
         <span
           aria-hidden="true"
           className={`relative size-1.5 shrink-0 ${failed ? "bg-red-500" : depth === 0 ? "bg-primary" : "bg-muted-foreground"}`}
-          style={{ marginLeft: `${depth * 1.05}rem` }}
+          style={{ marginLeft: `${visualDepth * 0.65}rem` }}
         />
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 flex-col items-start gap-1">
           <span
-            className={`shrink-0 font-mono text-xs font-medium ${failed ? "text-red-500 dark:text-red-400" : "text-primary"}`}
+            className={`max-w-full break-all font-mono text-xs font-medium ${failed ? "text-red-500 dark:text-red-400" : "text-primary"}`}
           >
             {span.operation ?? "span"}
           </span>
-          <span className="truncate text-sm" title={span.description}>
-            {span.description}
-          </span>
+          {onSelectSpan ? (
+            <button
+              type="button"
+              data-span-id={span.id}
+              aria-label={`Inspect span ${span.description}`}
+              aria-pressed={selectedSpanId === span.id}
+              className="w-full whitespace-pre-wrap break-words text-left text-sm outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring aria-pressed:font-semibold aria-pressed:text-primary"
+              onClick={() => onSelectSpan(span.id)}
+            >
+              {span.description}
+            </button>
+          ) : (
+            <span className="whitespace-pre-wrap break-words text-sm">
+              {span.description}
+            </span>
+          )}
         </div>
       </div>
       <div
@@ -153,7 +173,7 @@ function SpanRow({
       <div
         role="cell"
         aria-label={`Duration ${formatDuration(span.durationMs)}`}
-        className="flex items-center justify-end px-3 py-2 font-mono text-xs font-medium tabular-nums text-foreground"
+        className="flex min-w-0 items-center justify-end break-all px-3 py-2 text-right font-mono text-xs font-medium tabular-nums text-foreground"
       >
         {formatDuration(span.durationMs)}
       </div>
@@ -161,10 +181,12 @@ function SpanRow({
   );
 }
 
-/** A compact, read-only timeline for the spans contained in one local trace. */
+/** A compact, selectable timeline for the spans contained in one local trace. */
 export function TraceWaterfall({
   compact = false,
   trace,
+  selectedSpanId,
+  onSelectSpan,
 }: TraceWaterfallProps) {
   const capturedItemLabel = `${trace.itemCount} captured item${trace.itemCount === 1 ? "" : "s"} in this trace`;
 
@@ -177,7 +199,9 @@ export function TraceWaterfall({
               Trace
             </p>
             <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-              <h2 className="font-mono text-sm font-medium">{trace.title}</h2>
+              <h2 className="whitespace-pre-wrap break-words text-sm font-medium">
+                {trace.title}
+              </h2>
               <span className="font-mono text-sm tabular-nums text-foreground">
                 {formatDuration(trace.durationMs)}
               </span>
@@ -187,7 +211,9 @@ export function TraceWaterfall({
               className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
             >
               <span>{capturedItemLabel}</span>
-              <span>Trace ID {trace.id.slice(0, 8)}</span>
+              <span>
+                Trace ID <code>{trace.id.slice(0, 8)}</code>
+              </span>
             </div>
           </header>
         )}
@@ -223,7 +249,9 @@ export function TraceWaterfall({
             Trace
           </p>
           <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-            <h2 className="font-mono text-sm font-medium">{trace.title}</h2>
+            <h2 className="whitespace-pre-wrap break-words text-sm font-medium">
+              {trace.title}
+            </h2>
             <span className="font-mono text-sm tabular-nums text-foreground">
               {formatDuration(trace.durationMs)}
             </span>
@@ -245,14 +273,16 @@ export function TraceWaterfall({
                 {trace.logCount} log{trace.logCount === 1 ? "" : "s"}
               </span>
             ) : null}
-            <span>Trace ID {trace.id.slice(0, 8)}</span>
+            <span>
+              Trace ID <code>{trace.id.slice(0, 8)}</code>
+            </span>
           </div>
         </header>
       )}
-      <div role="table" aria-label="Trace spans" className="min-w-max">
+      <div role="table" aria-label="Trace spans" className="w-full">
         <div
           role="row"
-          className="grid min-w-[48rem] grid-cols-[minmax(18rem,38%)_minmax(18rem,1fr)_6.5rem] border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground"
+          className="grid min-w-0 w-full grid-cols-[minmax(0,40%)_minmax(0,1fr)_5.5rem] border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground"
         >
           <div
             role="columnheader"
@@ -291,6 +321,8 @@ export function TraceWaterfall({
             positionedSpan={positionedSpan}
             trace={trace}
             index={index}
+            selectedSpanId={selectedSpanId}
+            onSelectSpan={onSelectSpan}
           />
         ))}
       </div>

@@ -28,10 +28,10 @@ test("mobile receiver actions dismiss with Escape and restore keyboard focus", a
       onClear={vi.fn()}
     />,
   );
-  const trigger = screen.getByRole("button", { name: "Receiver options" });
+  const trigger = screen.getByRole("button", { name: "Capture actions" });
   fireEvent.click(trigger);
   const dialog = await screen.findByRole("dialog", {
-    name: "Receiver actions",
+    name: "Capture actions",
   });
   fireEvent.keyDown(dialog, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -73,13 +73,13 @@ test("mobile Settings opens the shared modal without its closing popover stealin
     );
   }
   render(<ViewerActions />);
-  const trigger = screen.getByRole("button", { name: "Receiver options" });
+  const trigger = screen.getByRole("button", { name: "Capture actions" });
   fireEvent.click(trigger);
   fireEvent.click(
     await screen.findByRole("button", { name: "Settings", exact: true }),
   );
   await screen.findByRole("dialog", { name: "Settings", exact: true });
-  expect(screen.queryByRole("dialog", { name: "Receiver actions" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Capture actions" })).toBeNull();
   await waitFor(() =>
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Light", exact: true }),
@@ -104,12 +104,12 @@ test("mobile actions prevent empty clears and duplicate close requests", async (
       onAddReceiver={add}
     />,
   );
-  const trigger = screen.getByRole("button", { name: "Receiver options" });
+  const trigger = screen.getByRole("button", { name: "Capture actions" });
   fireEvent.click(trigger);
   const clearButton = await screen.findByRole("button", {
-    name: "Clear all events",
+    name: "Clear view",
   });
-  const closeButton = screen.getByRole("button", { name: "Close session" });
+  const closeButton = screen.getByRole("button", { name: "Stop capture" });
   expect((clearButton as HTMLButtonElement).disabled).toBe(true);
   expect((closeButton as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(clearButton);
@@ -117,7 +117,7 @@ test("mobile actions prevent empty clears and duplicate close requests", async (
   expect(clear).not.toHaveBeenCalled();
   expect(close).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole("button", { name: "Add receiver", exact: true }),
+    screen.getByRole("button", { name: "Switch receiver", exact: true }),
   );
   expect(add).toHaveBeenCalledWith(trigger);
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -136,12 +136,47 @@ test("mobile disconnect returns to connections without clearing or closing", asy
       onDisconnect={disconnect}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Receiver options" }));
+  fireEvent.click(screen.getByRole("button", { name: "Capture actions" }));
   fireEvent.click(
-    await screen.findByRole("button", { name: "Disconnect receiver" }),
+    await screen.findByRole("button", { name: "Disconnect viewer" }),
   );
   expect(disconnect).toHaveBeenCalledOnce();
   expect(clear).not.toHaveBeenCalled();
   expect(close).not.toHaveBeenCalled();
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+test("capture deletion requires its own capability and receives the stable trigger", async () => {
+  const clear = vi.fn();
+  const remove = vi.fn();
+  const { rerender } = render(
+    <ReceiverControls
+      connection={connection}
+      retainedItemCount={2}
+      onClear={clear}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: "Capture actions" });
+  fireEvent.click(trigger);
+  expect(
+    screen.queryByRole("button", { name: "Delete captured events" }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Clear view" }));
+  expect(clear).toHaveBeenCalledOnce();
+  expect(remove).not.toHaveBeenCalled();
+  rerender(
+    <ReceiverControls
+      connection={connection}
+      retainedItemCount={2}
+      onClear={clear}
+      onDeleteCapturedEvents={remove}
+    />,
+  );
+  fireEvent.click(trigger);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Delete captured events" }),
+  );
+  expect(remove).toHaveBeenCalledWith(trigger);
+  expect(trigger.isConnected).toBe(true);
+  expect(clear).toHaveBeenCalledOnce();
 });

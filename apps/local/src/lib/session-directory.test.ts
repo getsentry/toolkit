@@ -72,3 +72,34 @@ test("invalid fragment discovery is never persisted", () => {
   window.history.replaceState(null, "", "/");
   expect(getInitialSessionDirectory(stream)).toBeUndefined();
 });
+
+test("optional saved-capture deadlines preserve older directories and reject invalid timestamps", () => {
+  const saved = {
+    id: "web",
+    label: "web",
+    cwd: "/web",
+    state: "retained",
+    streamUrl: stream,
+  };
+  expect(parseViewerSessions({ sessions: [saved] }, directory)).toEqual([
+    saved,
+  ]);
+  const expiresAt = 1_795_000_000_000;
+  expect(
+    parseViewerSessions({ sessions: [{ ...saved, expiresAt }] }, directory),
+  ).toEqual([{ ...saved, expiresAt }]);
+  for (const expiresAt of [
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Infinity,
+    Number.MAX_SAFE_INTEGER + 1,
+    "1795000000000",
+    null,
+  ]) {
+    expect(() =>
+      parseViewerSessions({ sessions: [{ ...saved, expiresAt }] }, directory),
+    ).toThrow("Invalid session");
+  }
+});

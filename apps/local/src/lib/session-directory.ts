@@ -7,6 +7,7 @@ export type ViewerSession = {
   cwd: string;
   state: "open" | "retained";
   streamUrl: string;
+  expiresAt?: number;
 };
 
 /** Discovery is opt-in and stays on the already selected loopback daemon. */
@@ -81,6 +82,14 @@ export function parseViewerSessions(
       if (!entry || typeof entry !== "object" || Array.isArray(entry))
         throw new Error("Invalid session");
       const session = entry as Record<string, unknown>;
+      const expiresAt = session.expiresAt;
+      if (
+        expiresAt !== undefined &&
+        (typeof expiresAt !== "number" ||
+          !Number.isSafeInteger(expiresAt) ||
+          expiresAt <= 0)
+      )
+        throw new Error("Invalid session");
       if (
         typeof session.id !== "string" ||
         !session.id ||
@@ -106,6 +115,7 @@ export function parseViewerSessions(
         cwd: session.cwd,
         state: session.state,
         streamUrl: stream.url,
+        ...(typeof expiresAt === "number" && { expiresAt }),
       };
     })
     .sort(

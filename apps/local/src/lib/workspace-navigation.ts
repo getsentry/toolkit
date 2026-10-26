@@ -18,7 +18,7 @@ export type WorkspaceNavigationItem = {
   id: WorkspaceView;
   label: string;
   singularLabel: string;
-  section: "Explore" | "Inspect";
+  section: "Explore" | "Diagnostics";
   emptyState: {
     title: string;
     description: string;
@@ -30,7 +30,7 @@ export type WorkspaceNavigationItem = {
 export const workspaceNavigation: WorkspaceNavigationItem[] = [
   {
     id: "live",
-    label: "Live Activity",
+    label: "Events",
     singularLabel: "event",
     section: "Explore",
     emptyState: {
@@ -95,7 +95,7 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
     id: "envelopes",
     label: "Envelopes",
     singularLabel: "envelope",
-    section: "Inspect",
+    section: "Diagnostics",
     emptyState: {
       title: "No envelopes received",
       description: "Raw envelopes received by this viewer will appear here.",
@@ -105,9 +105,9 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
   },
   {
     id: "sdks",
-    label: "Sessions & SDKs",
+    label: "SDK reports",
     singularLabel: "session or client report",
-    section: "Inspect",
+    section: "Diagnostics",
     emptyState: {
       title: "No sessions or client reports",
       description: "SDK sessions and client reports will appear here.",
@@ -119,7 +119,7 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
     id: "feedback",
     label: "Feedback",
     singularLabel: "feedback item",
-    section: "Inspect",
+    section: "Diagnostics",
     emptyState: {
       title: "No feedback received",
       description:
@@ -132,7 +132,7 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
     id: "profiles",
     label: "Profiles",
     singularLabel: "profile",
-    section: "Inspect",
+    section: "Diagnostics",
     emptyState: {
       title: "No profiles captured",
       description: "Profiling data from supported SDKs will appear here.",

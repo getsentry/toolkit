@@ -1,5 +1,5 @@
 import { Check, Copy, History, LoaderCircle, Radio, X } from "lucide-react";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId } from "react";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
 import { connectionLabel } from "../lib/connection-history.ts";
 import { Button } from "./ui/button.tsx";
@@ -35,8 +35,6 @@ export function ConnectionForm({
 }: ConnectionFormProps) {
   const inputId = useId();
   const errorId = useId();
-  const [copied, setCopied] = useState(false);
-  const [, copyToClipboard] = useCopyToClipboard();
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isConnecting) onConnect();
@@ -141,28 +139,6 @@ export function ConnectionForm({
           </TooltipProvider>
         </section>
       ) : null}
-      <div className="flex items-center justify-between gap-3 border-t pt-4">
-        <code className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-          sentry local serve --open
-        </code>
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-8 shrink-0 px-2 text-xs text-muted-foreground"
-          aria-label="Copy local serve command"
-          onClick={() => {
-            void copyToClipboard("sentry local serve --open");
-            setCopied(true);
-          }}
-        >
-          {copied ? (
-            <Check className="size-3.5 text-emerald-500" aria-hidden="true" />
-          ) : (
-            <Copy className="size-3.5" aria-hidden="true" />
-          )}
-          {copied ? "Copied" : "Copy command"}
-        </Button>
-      </div>
     </div>
   );
 }
@@ -175,6 +151,8 @@ export type ConnectionLandingProps = ConnectionFormProps & {
 export function ConnectionLanding({ phase, ...form }: ConnectionLandingProps) {
   const titleId = useId();
   const isProbing = phase === "probing";
+  const [copied, copyToClipboard] = useCopyToClipboard();
+  const command = "sentry local run --session web --open -- <your dev command>";
   return (
     <section
       aria-labelledby={titleId}
@@ -197,7 +175,7 @@ export function ConnectionLanding({ phase, ...form }: ConnectionLandingProps) {
           </div>
           <div>
             <h2 id={titleId} className="text-lg font-semibold tracking-tight">
-              {isProbing ? "Connecting to receiver" : "Connect a receiver"}
+              {isProbing ? "Connecting to receiver" : "Capture a local session"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {isProbing
@@ -206,7 +184,35 @@ export function ConnectionLanding({ phase, ...form }: ConnectionLandingProps) {
             </p>
           </div>
         </div>
-        <ConnectionForm {...form} />
+        <div className="space-y-3">
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Run this in your project to start capturing and open the viewer.
+            Replace {"<your dev command>"} with your app’s development command.
+          </p>
+          <code className="block break-words rounded-md bg-muted p-3 font-mono text-xs leading-relaxed">
+            {command}
+          </code>
+          <Button
+            type="button"
+            className="w-full"
+            aria-label="Copy local run command"
+            onClick={() => copyToClipboard(command)}
+          >
+            {copied === command ? (
+              <Check className="size-4" aria-hidden="true" />
+            ) : (
+              <Copy className="size-4" aria-hidden="true" />
+            )}
+            {copied === command ? "Copied" : "Copy command"}
+          </Button>
+        </div>
+        <section
+          className="space-y-4 border-t pt-5"
+          aria-label="Connect an existing receiver"
+        >
+          <h3 className="text-sm font-medium">Connect an existing receiver</h3>
+          <ConnectionForm {...form} />
+        </section>
       </div>
     </section>
   );

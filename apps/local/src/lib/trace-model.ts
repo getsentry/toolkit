@@ -14,6 +14,7 @@ export type TraceSpan = {
   endTimestamp?: number;
   durationMs?: number;
   item: LocalFeedItem;
+  payload: unknown;
   metadata: EventMetadata;
   children: TraceSpan[];
 };
@@ -97,6 +98,7 @@ function getPayloadSpan(
     endTimestamp,
     durationMs: getDurationMs(startTimestamp, endTimestamp),
     item,
+    payload,
     metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
   };
@@ -129,6 +131,7 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         endTimestamp,
         durationMs: getDurationMs(startTimestamp, endTimestamp),
         item,
+        payload: value,
         metadata: getEventMetadata(value, "span"),
         children: [],
       },

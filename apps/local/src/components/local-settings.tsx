@@ -27,6 +27,8 @@ type Props = {
   editable: boolean;
   supported: boolean;
   unavailableReason?: string;
+  captureLabel?: string;
+  expiresAt?: number;
 };
 
 export function LocalSettings({
@@ -34,9 +36,18 @@ export function LocalSettings({
   onOpenChange,
   supported,
   triggerRef,
+  captureLabel,
+  expiresAt,
   ...retention
 }: Props) {
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const savedUntil =
+    typeof expiresAt === "number" &&
+    Number.isSafeInteger(expiresAt) &&
+    expiresAt > 0 &&
+    expiresAt <= 8.64e15
+      ? new Date(expiresAt)
+      : undefined;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -51,18 +62,21 @@ export function LocalSettings({
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Appearance and session retention.
+            App appearance and capture history.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium">Appearance</p>
+            <h3 className="text-sm font-medium">Appearance</h3>
             {theme === "system" && resolvedTheme ? (
               <p aria-live="polite" className="text-xs text-muted-foreground">
                 System appearance: {resolvedTheme === "dark" ? "Dark" : "Light"}
               </p>
             ) : null}
           </div>
+          <p className="text-xs text-muted-foreground">
+            Applies to all captures in this viewer.
+          </p>
           <div
             role="group"
             aria-label="Color theme"
@@ -83,7 +97,11 @@ export function LocalSettings({
             ))}
           </div>
         </div>
-        <div className="border-t pt-4">
+        <div className="space-y-3 border-t pt-4">
+          <h3 className="text-sm font-medium">History capacity</h3>
+          <p className="text-xs text-muted-foreground">
+            For capture: {captureLabel ?? "current receiver"}
+          </p>
           {supported ? (
             <RetentionSettings {...retention} />
           ) : (
@@ -92,6 +110,16 @@ export function LocalSettings({
             </p>
           )}
         </div>
+        {savedUntil ? (
+          <dl className="space-y-1 border-t pt-4 text-sm">
+            <dt className="font-medium">Saved until</dt>
+            <dd className="text-muted-foreground">
+              <time dateTime={savedUntil.toISOString()}>
+                {savedUntil.toLocaleString()}
+              </time>
+            </dd>
+          </dl>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

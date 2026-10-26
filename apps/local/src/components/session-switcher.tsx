@@ -24,8 +24,12 @@ export function SessionSwitcher({
   selectInitialSession = false,
   refreshKey,
   onRetainedSession,
+  onCurrentSessionChange,
+  showState = true,
 }: {
   selectInitialSession?: boolean;
+  onCurrentSessionChange?: (session: ViewerSession | undefined) => void;
+  showState?: boolean;
   refreshKey?: string;
   onRetainedSession?: (streamUrl: string) => void;
   directoryUrl: string;
@@ -79,12 +83,15 @@ export function SessionSwitcher({
   }, [selectInitialSession, sessions, onSelect]);
   const current = sessions.find((s) => s.streamUrl === streamUrl);
   useEffect(() => {
+    onCurrentSessionChange?.(current);
+  }, [current, onCurrentSessionChange]);
+  useEffect(() => {
     if (current?.state === "retained") onRetainedSession?.(streamUrl);
   }, [current?.state, streamUrl, onRetainedSession]);
   return (
     <section
       aria-label="Local sessions"
-      className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2"
+      className="flex min-w-0 shrink-0 flex-wrap items-center gap-2"
     >
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
@@ -102,12 +109,12 @@ export function SessionSwitcher({
             <span className="min-w-0 flex-1 truncate text-left">
               {current?.label ?? "Choose session"}
             </span>
-            {current ? (
+            {current && showState ? (
               <Badge
                 variant={current.state === "open" ? "success" : "default"}
                 className="shrink-0 px-1.5 py-0 text-[10px] font-normal"
               >
-                {current.state === "open" ? "Running" : "Retained"}
+                {current.state === "open" ? "Capturing" : "Saved"}
               </Badge>
             ) : null}
             <ChevronsUpDown
@@ -144,12 +151,12 @@ export function SessionSwitcher({
                 return entries.length ? (
                   <CommandGroup
                     key={state}
-                    heading={state === "open" ? "Running" : "Retained"}
+                    heading={state === "open" ? "Capturing" : "Saved"}
                   >
                     {entries.map((session) => (
                       <CommandItem
                         key={session.id}
-                        aria-label={`${session.label} · ${state === "open" ? "Running" : "Retained"} · ${session.cwd} · ${session.id.slice(-8)}`}
+                        aria-label={`${session.label} · ${state === "open" ? "Capturing" : "Saved"} · ${session.cwd} · ${session.id.slice(-8)}`}
                         value={`${session.id} ${session.label} ${session.cwd}`}
                         className="min-w-0 gap-3 px-2.5 py-2.5"
                         onSelect={() => {

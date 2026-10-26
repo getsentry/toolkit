@@ -214,12 +214,16 @@ describe("Local control plane", () => {
         })
       ).status,
     ).toBe(403);
-    plane.sessionStore.close(worker.id);
+    const closed = plane.sessionStore.close(worker.id);
     expect(
       (await (await plane.app.request(web.directoryUrl)).json()).sessions,
     ).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: worker.id, state: "retained" }),
+        expect.objectContaining({
+          id: worker.id,
+          state: "retained",
+          expiresAt: closed.expiresAt,
+        }),
       ]),
     );
   });
@@ -280,6 +284,41 @@ describe("Local control plane", () => {
       ).status,
     ).toBe(404);
     expect(sessionStore.list()).toHaveLength(1);
+  });
+
+  test("close and finite replay advertise the original saved deadline after reset", async () => {
+    let now = 1000;
+    const sessionStore = createLocalSessionStore({ now: () => now });
+    const plane = createLocalControlPlane({
+      controlToken: CONTROL_TOKEN,
+      sessionStore,
+    });
+    const session = await (
+      await plane.app.request("/_local/v1/sessions", {
+        method: "POST",
+        headers: controlHeaders(),
+        body: JSON.stringify({ label: "web", cwd: "/web" }),
+      })
+    ).json();
+    const live = await plane.app.request(session.streamUrl);
+    const reading = live.text();
+    const closed = sessionStore.close(session.id);
+    const metadata = JSON.stringify({
+      state: "retained",
+      expiresAt: closed.expiresAt,
+    });
+    expect(await reading).toContain(metadata);
+    now += 60_000;
+    expect(await (await plane.app.request(session.streamUrl)).text()).toContain(
+      metadata,
+    );
+    sessionStore.reset(session.id);
+    expect(await (await plane.app.request(session.streamUrl)).text()).toContain(
+      metadata,
+    );
+    expect(sessionStore.resolve(session.id).expiresAt).toBe(
+      1000 + SESSION_RETENTION_MS,
+    );
   });
 
   test("validates retention settings and rejects untrusted scoped mutations", async () => {

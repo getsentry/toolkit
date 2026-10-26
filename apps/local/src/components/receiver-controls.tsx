@@ -3,6 +3,7 @@ import {
   Radio,
   Settings,
   Trash2,
+  Eraser,
   X,
   Unplug,
   type LucideIcon,
@@ -16,6 +17,7 @@ type ReceiverControlsProps = {
   connection: ConnectionPresentation;
   retainedItemCount: number;
   onClear: () => void;
+  onDeleteCapturedEvents?: (trigger: HTMLButtonElement) => void;
   onDisconnect?: () => void;
   isClearing?: boolean;
   onOpenSettings?: (trigger: HTMLButtonElement) => void;
@@ -27,10 +29,10 @@ type ReceiverControlsProps = {
 type ReceiverAction = {
   label: string;
   Icon: LucideIcon;
-  onClick: () => void;
+  onClick?: () => void;
+  onOpenDialog?: (trigger: HTMLButtonElement) => void;
   disabled?: boolean;
   destructive?: boolean;
-  opensDialog?: boolean;
 };
 
 /** Mobile receiver actions share the desktop dialogs and their focus behavior. */
@@ -38,6 +40,7 @@ export function ReceiverControls({
   connection,
   retainedItemCount,
   onClear,
+  onDeleteCapturedEvents,
   onDisconnect,
   isClearing = false,
   onOpenSettings,
@@ -53,12 +56,9 @@ export function ReceiverControls({
     ...(onAddReceiver
       ? [
           {
-            label: "Add receiver",
+            label: "Switch receiver",
             Icon: Radio,
-            opensDialog: true,
-            onClick: () => {
-              if (triggerRef.current) onAddReceiver(triggerRef.current);
-            },
+            onOpenDialog: onAddReceiver,
           },
         ]
       : []),
@@ -67,24 +67,31 @@ export function ReceiverControls({
           {
             label: "Settings",
             Icon: Settings,
-            opensDialog: true,
-            onClick: () => {
-              if (triggerRef.current) onOpenSettings(triggerRef.current);
-            },
+            onOpenDialog: onOpenSettings,
           },
         ]
       : []),
     {
-      label: "Clear all events",
-      Icon: Trash2,
+      label: "Clear view",
+      Icon: Eraser,
       onClick: onClear,
       disabled: retainedItemCount === 0 || isClearing,
-      destructive: true,
     },
+    ...(onDeleteCapturedEvents
+      ? [
+          {
+            label: "Delete captured events",
+            Icon: Trash2,
+            destructive: true,
+            disabled: isClearing,
+            onOpenDialog: onDeleteCapturedEvents,
+          },
+        ]
+      : []),
     ...(onCloseSession
       ? [
           {
-            label: "Close session",
+            label: "Stop capture",
             Icon: X,
             onClick: onCloseSession,
             disabled: isClosingSession || isClearing,
@@ -93,7 +100,7 @@ export function ReceiverControls({
         ]
       : []),
     ...(onDisconnect
-      ? [{ label: "Disconnect receiver", Icon: Unplug, onClick: onDisconnect }]
+      ? [{ label: "Disconnect viewer", Icon: Unplug, onClick: onDisconnect }]
       : []),
   ];
   const dotClass =
@@ -109,23 +116,18 @@ export function ReceiverControls({
           ref={triggerRef}
           type="button"
           variant="outline"
-          aria-label="Receiver options"
+          aria-label="Capture actions"
           title={connection.label}
           className="h-8 gap-2 px-2.5"
         >
-          <span
-            {...(showStatusRole ? { role: "status" } : {})}
-            aria-label={connection.label}
-            className="flex items-center gap-2"
-          >
+          {showStatusRole ? (
             <span
+              role="status"
+              aria-label={connection.label}
               className={`size-2 rounded-full ${dotClass}`}
-              aria-hidden="true"
             />
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              {connection.label.replace(" to local receiver", "")}
-            </span>
-          </span>
+          ) : null}
+          <span>Capture actions</span>
           <ChevronDown
             className="size-3.5 text-muted-foreground"
             aria-hidden="true"
@@ -134,9 +136,9 @@ export function ReceiverControls({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="Receiver actions"
+        aria-label="Capture actions"
         collisionPadding={12}
-        className="w-48 p-1"
+        className="w-56 max-w-[calc(100vw-1.5rem)] p-1"
         onCloseAutoFocus={(event) => {
           // The destination dialog owns focus when an action opens one.
           if (openingDialog.current) event.preventDefault();
@@ -144,7 +146,7 @@ export function ReceiverControls({
         }}
       >
         {actions.map(
-          ({ label, Icon, onClick, disabled, destructive, opensDialog }) => (
+          ({ label, Icon, onClick, disabled, destructive, onOpenDialog }) => (
             <Button
               key={label}
               type="button"
@@ -152,9 +154,13 @@ export function ReceiverControls({
               disabled={disabled}
               className={`h-9 w-full justify-start px-2 text-sm ${destructive ? "text-destructive hover:bg-destructive/10" : ""}`}
               onClick={() => {
-                openingDialog.current = Boolean(opensDialog);
+                openingDialog.current = Boolean(onOpenDialog);
                 setOpen(false);
-                onClick();
+                if (onOpenDialog && triggerRef.current) {
+                  onOpenDialog(triggerRef.current);
+                } else {
+                  onClick?.();
+                }
               }}
             >
               <Icon className="size-4" aria-hidden="true" />

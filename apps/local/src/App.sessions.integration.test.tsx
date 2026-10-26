@@ -86,6 +86,10 @@ async function startDaemon(now = Date.now, preferredPort = 0) {
     ingest,
     stop: () =>
       new Promise<void>((resolve, reject) => {
+        if (!server.listening) {
+          resolve();
+          return;
+        }
         server.close((error) => (error ? reject(error) : resolve()));
         server.closeAllConnections();
       }),
@@ -125,6 +129,20 @@ async function selectSession(label: string) {
   fireEvent.click(
     await screen.findByRole("option", { name: new RegExp(`^${label} ·`) }),
   );
+}
+
+function captureAction(name: string): HTMLButtonElement {
+  let action = screen.queryByRole("button", { name, exact: true });
+  if (!action) {
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: "Capture actions",
+        exact: true,
+      })[0]!,
+    );
+    action = screen.getByRole("button", { name, exact: true });
+  }
+  return action as HTMLButtonElement;
 }
 
 beforeEach(() => {
@@ -171,12 +189,12 @@ test("hosted viewer switches live sessions without mixing events and replays ret
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
     const limit = (await screen.findByLabelText(
-      "Retention limit",
+      "Envelope limit",
     )) as HTMLInputElement;
     expect(limit.value).toBe("1000");
     fireEvent.change(limit, { target: { value: "2000" } });
     fireEvent.click(
-      screen.getByRole("button", { name: "Apply retention limit" }),
+      screen.getByRole("button", { name: "Apply envelope limit" }),
     );
     await waitFor(() =>
       expect(daemon.plane.sessionStore.resolve(worker.id).maxEnvelopes).toBe(
@@ -187,9 +205,7 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     expect(
       daemon.plane.sessionStore.getBuffer(worker.id).read({ all: true }),
     ).toHaveLength(1);
-    expect(
-      screen.queryByRole("button", { name: "Close telemetry session" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop capture" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
     await daemon.ingest(web, "/web-after-switch");
     await daemon.ingest(worker, "/worker-after-switch");
@@ -203,7 +219,7 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     fireEvent.click(picker);
     await screen.findByRole(
       "option",
-      { name: /api.*Running/ },
+      { name: /api.*Capturing/ },
       { timeout: 7000 },
     );
     const search = screen.getByRole("combobox", {
@@ -224,7 +240,7 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     daemon.plane.sessionStore.close(worker.id);
     fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
     fireEvent.click(picker);
-    await screen.findByRole("option", { name: /worker.*Retained/ });
+    await screen.findByRole("option", { name: /worker.*Saved/ });
     fireEvent.keyDown(
       screen.getByRole("combobox", { name: "Search sessions", exact: true }),
       { key: "Escape" },
@@ -288,6 +304,48 @@ test("a scoped stream alone never enables sibling discovery", async () => {
   }
 });
 
+test("hosted viewer offers tab-local Clear view while delete and stop stay unavailable", async () => {
+  const daemon = await startDaemon();
+  let restoreFetch: (() => void) | undefined;
+  try {
+    const web = await daemon.create("web");
+    await daemon.ingest(web, "/hosted-private-history");
+    renderSession({ streamUrl: web.streamUrl });
+    await screen.findAllByText("/hosted-private-history");
+    expect(window.location.origin).toBe("https://local.sentry.dev");
+    const requests = vi.spyOn(globalThis, "fetch");
+    restoreFetch = () => requests.mockRestore();
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: "Capture actions",
+        exact: true,
+      })[0]!,
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: "Delete captured events",
+        exact: true,
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Stop capture", exact: true }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear view", exact: true }),
+    );
+    await screen.findByRole("heading", { name: "No events displayed" });
+    expect(requests).not.toHaveBeenCalled();
+    expect(
+      daemon.plane.sessionStore.getBuffer(web.id).read({ all: true }),
+    ).toHaveLength(1);
+    expect(daemon.plane.sessionStore.resolve(web.id).state).toBe("open");
+  } finally {
+    restoreFetch?.();
+    cleanup();
+    await daemon.stop();
+  }
+});
+
 test("expired sessions disappear without clearing already displayed telemetry", async () => {
   let now = 1000;
   const daemon = await startDaemon(() => now);
@@ -299,7 +357,7 @@ test("expired sessions disappear without clearing already displayed telemetry", 
     fireEvent.click(
       screen.getByRole("combobox", { name: "Session", exact: true }),
     );
-    await screen.findByRole("option", { name: /web.*Running/ });
+    await screen.findByRole("option", { name: /web.*Capturing/ });
     await selectSession("web");
     daemon.plane.sessionStore.close(web.id);
     now += SESSION_RETENTION_MS;
@@ -332,7 +390,7 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
     ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Add receiver",
+        name: "Switch receiver",
         exact: true,
       }),
     );
@@ -354,17 +412,17 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
       screen.getByRole("combobox", { name: "Session", exact: true })
         .textContent,
     ).toContain("worker");
-    expect(screen.queryByText("Retention limit")).toBeNull();
+    expect(screen.queryByText("Envelope limit")).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
     await screen.findByRole("dialog", { name: "Settings", exact: true });
     expect(
-      ((await screen.findByLabelText("Retention limit")) as HTMLInputElement)
+      ((await screen.findByLabelText("Envelope limit")) as HTMLInputElement)
         .value,
     ).toBe("500");
     expect(
-      screen.getByRole("button", { name: "Apply retention limit" }),
+      screen.getByRole("button", { name: "Apply envelope limit" }),
     ).not.toBeNull();
   } finally {
     cleanup();
@@ -420,16 +478,13 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
       { key: "Escape" },
     );
     await first.stop();
-    await screen.findByRole("status", {
-      name: "Receiver unavailable",
-      exact: true,
-    });
+    await screen.findByText("Receiver unavailable", { exact: true });
     second = await startDaemon(Date.now, first.port);
     const current = await second.create("current-run");
     await second.ingest(current, "/after-restart");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Add receiver",
+        name: "Switch receiver",
         exact: true,
       }),
     );
@@ -489,10 +544,12 @@ test("retrying a failed CLI-selected stream keeps that session instead of discov
     );
     await screen.findAllByText("/retry-worker");
     expect(screen.queryByText("/retry-web")).toBeNull();
-    expect(
-      screen.getByRole("combobox", { name: "Session", exact: true })
-        .textContent,
-    ).toContain("worker");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Session", exact: true })
+          .textContent,
+      ).toContain("worker"),
+    );
   } finally {
     cleanup();
     await daemon.stop();
@@ -523,17 +580,19 @@ test("a CLI viewer query link discovers both runs and does not override the sele
     renderViewer();
     await screen.findAllByText("/link-worker");
     expect(screen.queryByText("/link-web")).toBeNull();
-    expect(
-      screen.getByRole("combobox", { name: "Session", exact: true })
-        .textContent,
-    ).toContain("worker");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Session", exact: true })
+          .textContent,
+      ).toContain("worker"),
+    );
   } finally {
     cleanup();
     await daemon.stop();
   }
 }, 15_000);
 
-test("a session lifecycle refresh immediately replaces a stale Running badge with Retained", async () => {
+test("a session lifecycle refresh immediately replaces a stale Capturing badge with Saved", async () => {
   const daemon = await startDaemon();
   try {
     const session = await daemon.create("close-preview");
@@ -548,7 +607,7 @@ test("a session lifecycle refresh immediately replaces a stale Running badge wit
       expect(
         screen.getByRole("combobox", { name: "Session", exact: true })
           .textContent,
-      ).toContain("Running"),
+      ).toContain("Capturing"),
     );
     const response = await fetch(
       `http://127.0.0.1:${daemon.port}/_local/v1/sessions/${session.id}/close`,
@@ -567,7 +626,7 @@ test("a session lifecycle refresh immediately replaces a stale Running badge wit
       expect(
         screen.getByRole("combobox", { name: "Session", exact: true })
           .textContent,
-      ).toContain("Retained"),
+      ).toContain("Saved"),
     );
   } finally {
     cleanup();
@@ -585,18 +644,24 @@ test("close, archive replay, clear and disconnect keep the viewer lifecycle stab
     renderSession(web);
     await screen.findAllByText("/archived-web");
     daemon.plane.sessionStore.close(web.id);
-    await screen.findByRole("heading", { name: "Session closed", exact: true });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("status", { name: "Capture state" }).textContent,
+      ).toBe("Saved capture"),
+    );
     expect(screen.queryByRole("alert")).toBeNull();
     await selectSession("worker");
     await screen.findAllByText("/running-worker");
     await selectSession("web");
     await screen.findAllByText("/archived-web");
-    await screen.findByRole("heading", { name: "Session closed", exact: true });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Clear events", exact: true }),
+    await waitFor(() =>
+      expect(
+        screen.getByRole("status", { name: "Capture state" }).textContent,
+      ).toBe("Saved capture"),
     );
+    fireEvent.click(captureAction("Clear view"));
     await screen.findByRole("heading", {
-      name: "No saved events displayed",
+      name: "No events displayed",
       exact: true,
     });
     expect(screen.queryByLabelText("Receiver endpoint")).toBeNull();
@@ -604,14 +669,12 @@ test("close, archive replay, clear and disconnect keep the viewer lifecycle stab
       screen.getByRole("complementary", { name: "Workspace navigation" }),
     ).not.toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: "Reload saved events", exact: true }),
+      screen.getByRole("button", { name: "Reload capture", exact: true }),
     );
     await screen.findAllByText("/archived-web");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Disconnect receiver", exact: true }),
-    );
+    fireEvent.click(captureAction("Disconnect viewer"));
     await screen.findByRole("heading", {
-      name: "Connect a receiver",
+      name: "Capture a local session",
       exact: true,
     });
     expect(
@@ -624,7 +687,7 @@ test("close, archive replay, clear and disconnect keep the viewer lifecycle stab
     cleanup();
     renderViewer();
     await screen.findByRole("heading", {
-      name: "Connect a receiver",
+      name: "Capture a local session",
       exact: true,
     });
     expect(screen.queryByText("/archived-web")).toBeNull();
@@ -632,7 +695,11 @@ test("close, archive replay, clear and disconnect keep the viewer lifecycle stab
       screen.getByRole("button", { name: "Connect", exact: true }),
     );
     await screen.findAllByText("/archived-web");
-    await screen.findByRole("heading", { name: "Session closed", exact: true });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("status", { name: "Capture state" }).textContent,
+      ).toBe("Saved capture"),
+    );
     expect(screen.queryByRole("alert")).toBeNull();
   } finally {
     cleanup();
@@ -660,11 +727,11 @@ test("hosted standalone receiver edits retention without losing saved events", a
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
     const input = (await screen.findByLabelText(
-      "Retention limit",
+      "Envelope limit",
     )) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "1000" } });
     fireEvent.click(
-      screen.getByRole("button", { name: "Apply retention limit" }),
+      screen.getByRole("button", { name: "Apply envelope limit" }),
     );
     await waitFor(() =>
       expect(retention.getSettings().maxEnvelopes).toBe(1000),

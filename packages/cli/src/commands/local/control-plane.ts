@@ -309,12 +309,13 @@ export function createLocalControlPlane({
     return c.json({
       sessions: sessionStore
         .list()
-        .map(({ id, label, cwd, state, createdAt }) => ({
+        .map(({ id, label, cwd, state, createdAt, expiresAt }) => ({
           id,
           label,
           cwd,
           state,
           createdAt,
+          expiresAt,
           streamUrl: `${viewerBaseUrl}${CONTROL_PLANE_PREFIX}/sessions/${id}/stream?cap=${sessionStore.getCapabilities(id).stream}`,
         })),
     });
@@ -499,10 +500,10 @@ export function createLocalControlPlane({
       });
       stream.onAbort(finish);
       try {
-        const state = sessionStore.resolve(reference).state;
+        const { state, expiresAt } = sessionStore.resolve(reference);
         if (state === "retained") {
           buffer.stream(readerId);
-          await sendSession({ state });
+          await sendSession({ state, expiresAt });
         } else {
           await sendSession({ state });
           await finished;

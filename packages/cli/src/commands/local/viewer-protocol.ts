@@ -6,6 +6,8 @@ export const LOCAL_SESSION_EVENT = "sentry.local.session";
 export type LocalSessionEvent = {
   state: "open" | "retained";
   action?: "reset";
+  /** Existing retained-session deadline, in epoch milliseconds. */
+  expiresAt?: number;
 };
 
 const LOCAL_UI_ORIGIN = "https://local.sentry.dev";

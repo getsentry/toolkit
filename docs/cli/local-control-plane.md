@@ -82,7 +82,7 @@ preserves its current setting. Older receivers that cannot apply the flag report
 error. Retrying session creation with the same client ID preserves its original settings.
 
 The viewer follows the receiver's envelope limit and retains every decoded item
-inside each retained envelope. Its Retention limit control can update a loopback
+inside each retained envelope. Its History capacity control can update a loopback
 receiver or scoped session at runtime without replacing the connection, from a
 locally served viewer or trusted hosted Local origin. CLI changes also update
 connected viewers.
@@ -103,14 +103,17 @@ Light or Dark choice overrides it until System is selected again.
 Settings also remains accessible from the connection landing without an active receiver.
 
 On narrow screens, the event or trace list stacks above its inspector. Mobile
-receiver actions open the same Settings and Add receiver dialogs as the sidebar.
+capture actions open the same Settings and Switch receiver dialogs as the sidebar.
+Desktop list panes can be resized with a pointer or the separator’s arrow keys
+(Shift changes the step); Home and End choose the bounds. Widths persist in this
+browser. Narrow workspaces keep the stacked layout to preserve readable inspectors.
 
 ### Receiver connections
 
-**Add receiver** opens a modal over the current feed. Close it with its close
+**Switch receiver** opens a modal over the current feed. Close it with its close
 button, Escape, or an outside click; focus returns to its trigger. The background
-is blocked while Add receiver or Settings is open. Both dialogs scroll within
-the viewport. Adding a receiver checks its stream before replacing a healthy
+is blocked while Switch receiver or Settings is open. Both dialogs scroll within
+the viewport. Switching receivers checks its stream before replacing a healthy
 feed. A failed or cancelled attempt keeps the existing connection and events.
 
 **Past connections**, below the connection form, lists successful receivers for
@@ -123,22 +126,38 @@ five receivers, ordered by most recent use; adding another discards the oldest
 entry, and reconnecting moves an existing receiver to the top. No history entry is
 created for a failed connection.
 
-Closing a session stops capture immediately: later ingestion receives HTTP 410,
-including requests whose bodies finish after Close. Saved events remain readable
-for three hours from the first Close; retries and attempted ingestion do not extend
-that deadline. **Reload saved events** replays the archive without resuming capture.
-The viewer keeps the workspace visible even when the archive is empty. Close is
-guarded against duplicate requests and times out if the receiver does not respond.
+The capture header keeps the selected session and project, capture state, receiver
+connectivity, and last received time together. **Capturing** means the receiver
+accepts events; it does not indicate whether a wrapped app process is running.
+**Saved capture** means ingestion has stopped. When the receiver supplies its
+original expiry time, the header shows **Saved until** with that deadline. Older
+receivers do not imply a new three-hour countdown when the viewer opens.
 
-**Disconnect receiver** returns to the connection screen without closing capture
-or deleting receiver data. This tab stays disconnected after a reload; use Connect,
-past connections, or an accepted connection link to resume. Ignored or unsupported
-URL parameters do not reconnect a saved receiver. **Clear events** resets
-local receiver data when permitted and resumes only an open session's feed. If the
-reset fails, the feed stays paused and offers Reconnect even when the view is empty.
-Closed sessions stay closed and empty after a reset. Other connected viewers
-receive reset and close notifications. The hosted viewer clears only its displayed data; reloading
-saved events restores the daemon's archive.
+The **Capture actions** menu labels each action by its scope:
+
+- **Clear view** removes displayed events, filters, and selection from this tab.
+  It leaves receiver history and capture running. **Reload capture** restores
+  history still held by the receiver; trimmed or expired events cannot be restored.
+- **Delete captured events** asks for confirmation before deleting receiver
+  history and clearing this view. Other connected viewers receive the reset.
+  This action is available only to a loopback-served viewer with existing receiver
+  permissions. If deletion fails, the view stays paused and offers Reconnect.
+- **Stop capture** stops scoped-session ingestion immediately: later ingestion
+  receives HTTP 410, including requests whose bodies finish after Stop. Saved
+  events remain readable for three hours from the first stop; retries and
+  attempted ingestion do not extend that deadline. Reloading the archive does
+  not resume capture. Duplicate stop requests are guarded and requests time out
+  if the receiver does not respond.
+- **Disconnect viewer** returns to the connection screen without stopping capture
+  or deleting receiver data. This tab stays disconnected after a reload; use
+  Connect, past connections, or an accepted connection link to resume. Ignored
+  or unsupported URL parameters do not reconnect a saved receiver.
+
+The workspace stays readable after capture stops or the receiver disconnects,
+including empty saved captures. Empty states distinguish waiting for an app event,
+filtered results, cleared views, unavailable receivers, and saved captures.
+The hosted viewer can clear its displayed view, but cannot delete receiver data
+or stop captures.
 
 ### Switching sessions
 
@@ -162,7 +181,7 @@ selects the first running session and fills the Session picker. If no sessions
 exist yet, it waits and discovers them as they start. This works in the local
 development viewer and on <https://local.sentry.dev/>. Alternatively, run either
 command with `--session <name> --open` to start on that specific session.
-The picker lists running and retained sessions from that daemon, including sessions
+The picker groups sessions as **Capturing** and **Saved**, including sessions
 created after the viewer opens. It refreshes every five seconds; Refresh sessions
 updates it immediately. Labels include the working directory and a short session ID
 to distinguish runs with the same name. Picking a session replaces only the viewer's
@@ -185,18 +204,29 @@ with an updated CLI and daemon to enable discovery. An already-running older dae
 needs a restart after upgrading; restarting clears its in-memory telemetry. One picker
 covers one daemon, not receivers on other ports or computers.
 
-Open Settings with the sidebar gear (or Session settings in the mobile receiver
-menu) to change retention for a running session. Both a locally served viewer and
-local.sentry.dev (including trusted PR previews) use the runtime API. The form uses
-React Hook Form and Valibot to require a whole number from 1 to 50,000. Increases preserve
-captured data, and lowering below the retained count is rejected until enough data
-is cleared. The receiver validates the same bounds and rejects concurrent decreases
-that would discard envelopes. Closed sessions and disconnected streams are read-only.
+Open **Settings** to choose app-wide appearance or change **History capacity**
+for the named capture. Capacity is measured in envelopes: SDK batches that may
+contain several events. It is separate from how long a stopped capture is saved.
+Both a locally served viewer and local.sentry.dev (including trusted PR previews)
+use the existing runtime API. The form requires a whole number from 1 to 50,000.
+Increases preserve captured data, and lowering below the retained count is rejected
+until enough data is deleted. The receiver rejects concurrent decreases that would
+discard envelopes. Saved captures and disconnected streams are read-only.
 Older daemons/receivers need an upgrade and restart to allow hosted updates.
-The sidebar keeps Add receiver on its own row, with Settings at the left and
-Clear, Close, and Disconnect icons at the right beneath it. Icon tooltips also work with keyboard focus.
 
-A loopback-served viewer can reset and close its scoped session. The hosted viewer
+**Events**, **Traces**, **Errors**, **Logs**, and **AI** are primary views.
+The **Diagnostics** section contains Envelopes, SDK reports, Feedback, and Profiles;
+SDK reports describe SDK sessions and client reports, separate from named Local
+captures. Existing `/live` and `/sdks` links continue to work.
+
+**Search this session** (Cmd/Ctrl+K) finds events across the capture and offers view
+navigation. Typing there does not change the current view’s filter. Choose an event
+to navigate to it, or explicitly choose **Filter [view]**. Each view also has its own
+labelled filter field and **Clear filter** action. The `q` URL parameter represents
+this visible view filter. Event, trace, and span selection are stored in the URL,
+including `span` for waterfall drill-down, and work with browser history.
+
+A loopback-served viewer can delete captured events and stop its scoped capture. The hosted viewer
 can read the stream, update retention, and clear its own displayed feed; it cannot
 reset receiver data or close sessions. Scoped retention requests require the session
 stream capability. Standalone retention updates require UI actions to be enabled on
@@ -215,13 +245,19 @@ exception, its causes, and stack frames with function names, source locations, a
 captured source lines. Frames appear most recent first; the JSON tab preserves the
 complete original payload.
 
+Log inspectors show the message, level, and attributes. Requests summarize useful
+metadata and related telemetry. Waterfall spans are keyboard-selectable and open
+their own timing, attributes, original payload, and trace-related errors/logs in
+the inspector; **Back to trace** returns to the waterfall and its selected span.
+Raw envelopes and other diagnostic types open directly in JSON.
+
 Switching or reconnecting a receiver isolates pending actions and stream callbacks
 from earlier connections, including when returning to the same receiver URL.
 
 Search and view navigation remain available for retained telemetry after a
 receiver disconnects or a session closes, including raw-only envelopes. A trace
-search with no matches explains how to change or clear the filter. Closing an
-empty session keeps the workspace visible; Disconnect returns to the receiver picker. Waterfall failure styling uses
+search with no matches explains how to change or clear the filter. Stopping an
+empty capture keeps the workspace visible; Disconnect viewer returns to the connection screen. Waterfall failure styling uses
 each span's own level, HTTP status, and SDK span status; a failed transaction does not mark healthy child
 spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
 `llm`), including dotted origins, rather than substrings of ordinary operations.
