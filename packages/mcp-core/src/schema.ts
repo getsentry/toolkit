@@ -142,11 +142,11 @@ export const ParamPeriod = z
   .string()
   .trim()
   .regex(
-    /^\d+[hdw]$/,
-    "Period must be a relative time window like `24h`, `7d`, `14d`, `30d`, or `90d`.",
+    /^\d+[mhdw]$/,
+    "Period must be a relative time window like `30m` (minutes), `1h`, `24h`, `7d`, or `90d`.",
   )
   .describe(
-    "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window.",
+    "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window.",
   );
 
 /**

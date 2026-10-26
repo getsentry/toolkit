@@ -113,6 +113,10 @@ describe("search_issues", () => {
     },
   );
 
+  it("accepts a 1h period", () => {
+    expect(searchIssues.inputSchema.period.parse("1h")).toBe("1h");
+  });
+
   it("should search issues with natural language query", async () => {
     mockGenerateText.mockResolvedValue(mockAIResponse("is:unresolved", "date"));
 
