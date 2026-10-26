@@ -1569,6 +1569,17 @@ describe("local receiver to viewer integration", () => {
   });
 
   test("replays more than 500 retained envelopes and applies a real runtime update", async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      const target = args[0];
+      const url = new URL(target instanceof Request ? target.url : target);
+      if (url.pathname === "/retention" && args[1]?.method === "POST") {
+        // Valid request latency can exceed Testing Library's one-second default.
+        // Keep the real HTTP request and receiver mutation behind this delay.
+        await new Promise((resolve) => setTimeout(resolve, 1250));
+      }
+      return await realFetch(...args);
+    });
     const retention = createLocalRetentionBuffer(1000);
     const receiver = await tryListen(
       buildApp(retention.buffer, { uiActions: true, retention }),
@@ -1594,20 +1605,34 @@ describe("local receiver to viewer integration", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Apply retention limit" }),
       );
-      await waitFor(() =>
-        expect(
-          (screen.getByLabelText("Retention limit") as HTMLInputElement).value,
-        ).toBe("2000"),
+      expect(
+        (
+          (await screen.findByRole("button", {
+            name: "Applying…",
+          })) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      // The edited input is already 2000 while the HTTP mutation is pending.
+      expect(
+        (screen.getByLabelText("Retention limit") as HTMLInputElement).value,
+      ).toBe("2000");
+      expect(retention.getSettings().maxEnvelopes).toBe(1000);
+      // Await completion, allowing the receiver's five-second request timeout
+      // plus scheduling overhead, before checking its committed configuration.
+      const apply = await screen.findByRole(
+        "button",
+        { name: "Apply retention limit" },
+        { timeout: 6000 },
       );
+      expect((apply as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.queryByRole("alert")).toBeNull();
       expect(
         screen.getByText(/501 envelopes currently retained/),
       ).not.toBeNull();
-      await waitFor(() =>
-        expect(retention.getSettings()).toEqual({
-          maxEnvelopes: 2000,
-          retainedEnvelopes: 501,
-        }),
-      );
+      expect(retention.getSettings()).toEqual({
+        maxEnvelopes: 2000,
+        retainedEnvelopes: 501,
+      });
       await sendEnvelope(receiver.port, "after-growth");
       await screen.findByText(/502 envelopes currently retained/);
     } finally {
