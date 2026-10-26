@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { NuqsAdapter } from "nuqs/adapters/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
@@ -1619,58 +1620,71 @@ describe("local receiver to viewer integration", () => {
     );
     try {
       // Initial metadata must precede replay, otherwise the viewer's default clips history.
-      for (let index = 0; index < 501; index++)
-        await sendEnvelope(receiver.port, `retained-${index}`);
+      // Keep real HTTP ingestion without serializing 501 network round trips.
+      for (let offset = 0; offset < 501; offset += 16) {
+        await Promise.all(
+          Array.from({ length: Math.min(16, 501 - offset) }, (_, index) =>
+            sendEnvelope(receiver.port, `retained-${offset + index}`),
+          ),
+        );
+      }
       renderViewer(receiver.port, "/explorer/events");
       fireEvent.click(
         await screen.findByRole("button", { name: "Settings", exact: true }),
       );
-      await screen.findByText(
+      // Role queries over hundreds of aria-hidden background rows are costly in
+      // jsdom and can starve this real receiver's request timeout on CI workers.
+      const settings = within(screen.getByRole("dialog", { name: "Settings" }));
+      await settings.findByText(
         /501 envelopes currently retained/,
         {},
         { timeout: 10000 },
       );
-      fireEvent.change(screen.getByLabelText("Envelope limit"), {
+      fireEvent.change(settings.getByLabelText("Envelope limit"), {
         target: { value: "2000" },
       });
       fireEvent.click(
-        screen.getByRole("button", { name: "Apply envelope limit" }),
+        settings.getByRole("button", { name: "Apply envelope limit" }),
       );
       expect(
         (
-          (await screen.findByRole("button", {
+          (await settings.findByRole("button", {
             name: "Applying…",
           })) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
       // The edited input is already 2000 while the HTTP mutation is pending.
       expect(
-        (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
+        (settings.getByLabelText("Envelope limit") as HTMLInputElement).value,
       ).toBe("2000");
       expect(retention.getSettings().maxEnvelopes).toBe(1000);
       // Await completion, allowing the receiver's five-second request timeout
       // plus scheduling overhead, before checking its committed configuration.
-      const apply = await screen.findByRole(
+      const apply = await settings.findByRole(
         "button",
         { name: "Apply envelope limit" },
         { timeout: 6000 },
       );
       expect((apply as HTMLButtonElement).disabled).toBe(false);
-      expect(screen.queryByRole("alert")).toBeNull();
+      expect(settings.queryByRole("alert")).toBeNull();
       expect(
-        screen.getByText(/501 envelopes currently retained/),
+        settings.getByText(/501 envelopes currently retained/),
       ).not.toBeNull();
       expect(retention.getSettings()).toEqual({
         maxEnvelopes: 2000,
         retainedEnvelopes: 501,
       });
       await sendEnvelope(receiver.port, "after-growth");
-      await screen.findByText(/502 envelopes currently retained/);
+      await settings.findByText(
+        /502 envelopes currently retained/,
+        {},
+        { timeout: 10000 },
+      );
     } finally {
       cleanup();
       await stopReceiver(receiver.server);
     }
-  }, 20000);
+  }, 60000);
 
   test("updates live retention without clearing events or replacing the stream", async () => {
     ControllableEventSource.instances = [];
