@@ -45,7 +45,7 @@ const workflow: GetOrganizationWorkflowResponse = {
   triggers: {
     logicType: "any",
     conditions: [
-      { type: "level_change", comparison: true, conditionResult: true },
+      { type: "first_seen_event", comparison: true, conditionResult: true },
     ],
     actions: [],
   },
@@ -65,6 +65,13 @@ const workflow: GetOrganizationWorkflowResponse = {
             targetIdentifier: "C123",
           },
           data: { tags: "environment" },
+        },
+        {
+          id: "22",
+          type: "email",
+          status: "active",
+          config: { targetType: "issue_owners" },
+          data: { fallthroughType: "ActiveMembers" },
         },
       ],
     },
@@ -92,13 +99,15 @@ describe("formatMetricAlertView", () => {
     expect(output).toContain("Notify on-call");
     expect(output).toContain("disabled");
     expect(output).toContain('"frequency":30');
-    expect(output).toContain("level_change true → true");
+    expect(output).toContain("first_seen_event true → true");
     expect(output).toContain("= 75 → true");
     expect(output).toContain("slack");
     expect(output).toContain("#backend_alerts");
     expect(output).toContain("C123");
     expect(output).toContain("active");
     expect(output).toContain('"tags":"environment"');
+    expect(output).toMatch(/Target\s+│\s+Issue owners/);
+    expect(output).toContain('"fallthroughType":"ActiveMembers"');
   });
 
   test("preserves structured comparisons and trigger actions with an opaque target", () => {

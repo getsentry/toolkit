@@ -98,7 +98,10 @@ function actionSection(value: unknown, index: number): string {
     return table([["Action", valueText(value)]], `Action ${index + 1}`);
   }
   const config = asObject(action.config);
-  const target = config?.targetDisplay || config?.targetIdentifier;
+  const target =
+    config?.targetDisplay ||
+    config?.targetIdentifier ||
+    (config?.targetType === "issue_owners" ? "Issue owners" : undefined);
   const rows: Row[] = [
     ["Provider", valueText(action.type)],
     ["Target", target ? valueText(target) : "not returned"],
