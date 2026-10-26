@@ -12,8 +12,8 @@ function makeData(): ExploreTimeSeriesData {
     dataset: "spans",
     meta: {
       dataset: "spans",
-      start: Date.UTC(2026, 0, 1),
-      end: Date.UTC(2026, 0, 1, 0, 15),
+      start: Date.UTC(2026, 0, 1) + 123,
+      end: Date.UTC(2026, 0, 1, 0, 15) + 456,
       ingestion: {
         status: "healthy",
         delaySeconds: 288,

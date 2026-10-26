@@ -89,7 +89,7 @@ test("queries repeated aggregates and preserves metadata when projecting buckets
       "--environment",
       "production,canary",
       "--query",
-      "span.op:http.server",
+      "span.op:http.server OR span.status:internal_error",
       "--json",
     ];
     const result = await ctx.run(args);
@@ -102,7 +102,7 @@ test("queries repeated aggregates and preserves metadata when projecting buckets
       dataset: "spans",
       yAxis: "latest_event()",
       interval: "1m",
-      query: `project:${TEST_PROJECT} environment:[production,canary] span.op:http.server`,
+      query: `project:${TEST_PROJECT} environment:[production,canary] (span.op:http.server OR span.status:internal_error)`,
       start: new Date(start).toISOString(),
       end: new Date(end).toISOString(),
     });

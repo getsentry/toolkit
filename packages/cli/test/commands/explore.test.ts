@@ -749,7 +749,8 @@ describe("sentry explore", () => {
       },
     );
 
-    test("keeps legacy transaction filtering in temporal mode", async () => {
+    test("keeps transaction, project, and environment scope on every temporal OR branch", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "web" });
       const { context } = createContext();
 
       await func.call(
@@ -757,10 +758,11 @@ describe("sentry explore", () => {
         {
           ...TIME_SERIES_FLAGS,
           dataset: "transactions",
-          query: "span.op:http.server",
+          environment: ["production"],
+          query: "is_transaction:true OR span.op:http.server",
           field: ["p95(span.duration)"],
         },
-        "test-org/",
+        "test-org/web",
       );
 
       expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
@@ -768,9 +770,34 @@ describe("sentry explore", () => {
         expect.objectContaining({
           fields: ["p95(span.duration)"],
           dataset: "spans",
-          query: "span.op:http.server is_transaction:true",
+          query:
+            "project:web environment:production is_transaction:true (is_transaction:true OR span.op:http.server)",
         }),
       );
+    });
+
+    test("explains a rejected temporal field without retrying or hiding the backend detail", async () => {
+      const detail =
+        "span is invalid for parameter 1 in count. Its a string type field, but it must be one of these types: {'number', 'duration'}";
+      queryEventsTimeSeriesSpy.mockRejectedValue(
+        new ApiError("Bad request", 400, detail),
+      );
+
+      const result = await runExploreArgs([
+        "test-org/",
+        "--time-series",
+        "--dataset",
+        "spans",
+        "-F",
+        "count(span)",
+      ]);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.getStderr()).toContain(detail);
+      expect(result.getStderr()).toContain("Use count() to count spans");
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledTimes(1);
+      expect(advancePaginationStateSpy).not.toHaveBeenCalled();
+      expect(result.getStdout()).toBe("");
     });
 
     test("resolves --metric with the requested aggregation and time window", async () => {
@@ -804,7 +831,8 @@ describe("sentry explore", () => {
     });
 
     test("shows the public metrics name while querying raw aggregates without discovery", async () => {
-      const aggregate = "sum(value,llm.token_usage,distribution,none)";
+      const aggregate =
+        "count_if(`release:example`,value,request_duration,distribution,none)";
       const result = await runExploreArgs([
         "test-org/",
         "--time-series",

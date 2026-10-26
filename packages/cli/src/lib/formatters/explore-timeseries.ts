@@ -31,7 +31,7 @@ function formatUtcTimestamp(timestamp: number): string {
   return new Date(timestamp)
     .toISOString()
     .replace("T", " ")
-    .replace(".000Z", "");
+    .replace(/\.\d{3}Z$/, "");
 }
 
 /** Explain why a bucket is incomplete without describing retained data as pending. */

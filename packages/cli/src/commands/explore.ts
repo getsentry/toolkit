@@ -654,7 +654,8 @@ function resolveDatasetConfig(params: {
         ...timeRangeToApiParams(timeRange),
       }).catch((error: unknown): never => {
         throw toExploreFieldError(error, {
-          dataset: API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
+          dataset:
+            API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
           fields,
           userFields: (flags.field ?? []).filter(
             (field) => !flags.metric || !isAggregateFieldOrEquation(field),
@@ -993,7 +994,17 @@ export const exploreCommand = buildListCommand("explore", {
             interval,
             ...timeParams,
           }).catch((error: unknown): never => {
-            throw toSearchQueryError(error, flags.query);
+            const fieldError = toExploreFieldError(error, {
+              dataset:
+                API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
+              fields: fieldList,
+              userFields: (flags.field ?? []).filter(
+                (field) => !flags.metric || !isAggregateFieldOrEquation(field),
+              ),
+              sort: undefined,
+              userSort: undefined,
+            });
+            throw toSearchQueryError(fieldError, flags.query);
           }),
       );
       yield new CommandOutput({

@@ -7,9 +7,9 @@ import { timeRangeToSeconds } from "../../src/lib/time-range.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 describe("Explore time series intervals", () => {
-  test("automatic buckets fit the window and query budget for either date syntax", () => {
+  test("automatic buckets fit windows through the supported maximum for either date syntax", () => {
     fcAssert(
-      property(integer({ min: 15, max: 90 * 86_400 }), (seconds) => {
+      property(integer({ min: 15, max: 10_100 * 86_400 }), (seconds) => {
         const start = Date.parse("2026-01-01T00:00:00Z");
         const relative = resolveTimeSeriesInterval({
           statsPeriod: `${seconds}s`,
@@ -27,7 +27,10 @@ describe("Explore time series intervals", () => {
         expect(bucketSeconds).toBeLessThanOrEqual(seconds);
         expect(Math.ceil(seconds / bucketSeconds)).toBeLessThanOrEqual(10_100);
       }),
-      { numRuns: DEFAULT_NUM_RUNS },
+      {
+        numRuns: DEFAULT_NUM_RUNS,
+        examples: [[10_100 * 10_800], [10_100 * 10_800 + 1], [10_100 * 86_400]],
+      },
     );
   });
 
@@ -45,6 +48,12 @@ describe("Explore time series intervals", () => {
   test("rejects an explicit granularity beyond the server's bucket budget", () => {
     expect(() =>
       resolveTimeSeriesInterval({ statsPeriod: "90d" }, "15s"),
+    ).toThrow("too many time buckets");
+  });
+
+  test("rejects windows beyond the budget of the largest supported interval", () => {
+    expect(() =>
+      resolveTimeSeriesInterval({ statsPeriod: `${10_100 * 86_400 + 1}s` }),
     ).toThrow("too many time buckets");
   });
 });

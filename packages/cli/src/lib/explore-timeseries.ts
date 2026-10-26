@@ -6,7 +6,7 @@
 import { ValidationError } from "./errors.js";
 import { type TimeRangeApiParams, timeRangeToSeconds } from "./time-range.js";
 
-/** Supported interval strings and their durations in seconds. */
+/** Supported intervals in increasing duration order, with durations in seconds. */
 const INTERVAL_SECONDS = {
   "15s": 15,
   "30s": 30,
@@ -26,7 +26,7 @@ const INTERVAL_SECONDS = {
 } as const;
 
 /** Explore UI's minimum interval ladder, in descending range duration. */
-const DEFAULT_INTERVALS: readonly [number, string][] = [
+const DEFAULT_INTERVALS: readonly [number, keyof typeof INTERVAL_SECONDS][] = [
   [30 * 86_400, "3h"],
   [14 * 86_400, "1h"],
   [4 * 86_400, "30m"],
@@ -74,10 +74,16 @@ export function resolveTimeSeriesInterval(
     );
   }
 
+  const defaultInterval =
+    DEFAULT_INTERVALS.find(([minimum]) => seconds >= minimum)?.[1] ?? "15s";
   const selected =
     interval ??
-    DEFAULT_INTERVALS.find(([minimum]) => seconds >= minimum)?.[1] ??
-    "15s";
+    Object.entries(INTERVAL_SECONDS).find(
+      ([, duration]) =>
+        duration >= INTERVAL_SECONDS[defaultInterval] &&
+        Math.ceil(seconds / duration) <= MAX_BUCKETS,
+    )?.[0] ??
+    "1d";
   const intervalSeconds = INTERVAL_SECONDS[parseTimeSeriesInterval(selected)];
   if (intervalSeconds > seconds) {
     throw new ValidationError(
