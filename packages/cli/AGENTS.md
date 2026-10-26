@@ -16,7 +16,7 @@ Guidelines for AI agents working in this codebase.
 
 ### Key Features
 
-- **DSN Auto-Detection** - Scans `.env` files and source code (JS, Python, Go, Java, Ruby, PHP) to find Sentry DSNs
+- **DSN Auto-Detection** - Scans `.env` files and source code (any file type in `TEXT_EXTENSIONS`, `src/lib/scan/constants.ts`) to find Sentry DSNs
 - **Project Root Detection** - Walks up from CWD to find project boundaries using VCS, language, and build markers
 - **Directory Name Inference** - Fallback project matching using bidirectional word boundary matching
 - **Multi-Region Support** - Automatic region detection with fan-out to regional APIs (us.sentry.io, de.sentry.io)
@@ -123,9 +123,10 @@ Top-level layout:
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).
 - **`src/lib/`** — shared utilities. Key subtrees: `api/` (domain API modules),
-  `db/` (SQLite layer), `dsn/` (DSN detection, with per-language extractors under
-  `dsn/languages/`), and `formatters/` (output formatting). See the file-locations
-  table below and the JSDoc in each module for details.
+  `db/` (SQLite layer), `dsn/` (DSN detection with one language-agnostic regex),
+  `scan/` (file walker and scanned extensions), and `formatters/` (output
+  formatting). See the file-locations table below and the JSDoc in each module
+  for details.
 - **`src/types/`** — TypeScript types and Valibot schemas.
 - **`test/`** — tests mirroring `src/` (unit, `*.property.test.ts`,
   `*.model-based.test.ts`, `e2e/`, `fixtures/`, `mocks/`).
@@ -1097,7 +1098,7 @@ vi.mock("./some-module", () => ({
 | Add config types | `src/types/config.ts` |
 | Add Seer types | `src/types/seer.ts` |
 | Add utility | `src/lib/` |
-| Add DSN language support | `src/lib/dsn/languages/` |
+| Add DSN language support | `TEXT_EXTENSIONS` in `src/lib/scan/constants.ts` |
 | Add DB operations | `src/lib/db/` |
 | Build scripts | `script/` |
 | Add property tests | `test/lib/<name>.property.test.ts` |

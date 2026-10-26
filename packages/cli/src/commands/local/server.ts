@@ -1031,13 +1031,13 @@ export const serverCommand = buildCommand({
       port: {
         kind: "parsed",
         parse: parsePort,
-        brief: `Port to listen on (default ${DEFAULT_PORT})`,
+        brief: "Port to listen on",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
         parse: String,
-        brief: "Hostname to bind to (default localhost)",
+        brief: "Hostname to bind to",
         default: "localhost",
       },
       quiet: {

@@ -112,7 +112,7 @@ pass raw CLI flags, use `sdk.run()`:
 ```typescript
 // Run any CLI command — returns parsed JSON by default
 const version = await sdk.run("--version");
-const issues = await sdk.run("issue", "list", "-l", "5");
+const issues = await sdk.run("issue", "list", "-n", "5");
 const help = await sdk.run("help", "issue");
 ```
 

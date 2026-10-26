@@ -77,8 +77,8 @@ View a decoded Local event
 Start the local dev server and tail events
 
 **Flags:**
-- `-p, --port <value> - Port to listen on (default 8969) - (default: "8969")`
-- `-H, --host <value> - Hostname to bind to (default localhost) - (default: "localhost")`
+- `-p, --port <value> - Port to listen on - (default: "8969")`
+- `-H, --host <value> - Hostname to bind to - (default: "localhost")`
 - `-q, --quiet - Suppress per-envelope tail output`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
@@ -186,8 +186,8 @@ Run a command with the local dev server enabled
 | `<command...>` | Command to run |
 
 **Flags:**
-- `-p, --port <value> - Port for the local server (default 8969) - (default: "8969")`
-- `--host <value> - Hostname for the local server (default localhost) - (default: "localhost")`
+- `-p, --port <value> - Port for the local server - (default: "8969")`
+- `--host <value> - Hostname for the local server - (default: "localhost")`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
 - `-V, --verify - Verify SDK sends events, then exit`
 - `-t, --timeout <value> - Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode) - (default: "0")`

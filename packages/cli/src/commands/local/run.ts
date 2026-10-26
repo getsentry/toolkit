@@ -429,13 +429,13 @@ export const runCommand = buildCommand({
       port: {
         kind: "parsed",
         parse: parsePort,
-        brief: `Port for the local server (default ${DEFAULT_PORT})`,
+        brief: "Port for the local server",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
         parse: String,
-        brief: "Hostname for the local server (default localhost)",
+        brief: "Hostname for the local server",
         default: "localhost",
       },
       filter: {

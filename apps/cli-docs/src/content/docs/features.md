@@ -31,7 +31,7 @@ For monorepos or when DSN detection picks up the wrong project, use a [`.sentryc
 
 ### Supported Languages
 
-The CLI scans source files for DSN URLs (the `https://…@….ingest.sentry.io/…` pattern) using a universal regex — no language-specific parsing is needed. Any text file with a recognized extension is scanned, including:
+The CLI scans source files for DSN URLs (the `https://<key>@<host>/<project-id>` pattern, so self-hosted DSNs match too) using a universal regex — no language-specific parsing is needed. Any text file with a recognized extension is scanned, including:
 
 | Language Family | File Extensions |
 |----------------|-----------------|
@@ -46,7 +46,8 @@ The CLI scans source files for DSN URLs (the `https://…@….ingest.sentry.io/�
 | Rust | `.rs` |
 | Dart/Flutter | `.dart` |
 | Elixir/Erlang | `.ex`, `.exs`, `.erl` |
-| Config files | `.json`, `.yaml`, `.yml`, `.toml`, `.xml`, `.properties` |
+| Lua | `.lua` |
+| Config files | `.json`, `.yaml`, `.yml`, `.toml`, `.xml`, `.properties`, `.config` |
 
 ### Caching
 
@@ -69,14 +70,9 @@ sentry issue list my-org/my-project
 sentry issue list
 ```
 
-The CLI will show which project was detected:
-
-```
-Detected project: my-app (from .env)
-
-ID          SHORT ID    TITLE                           COUNT
-123456789   MYAPP-ABC   TypeError: Cannot read prop...  142
-```
+The list title names the project the CLI resolved (for example,
+`Issues in my-org/my-app:`). View commands such as `sentry org view` also print a
+`Detected from <source>` hint naming the file or variable the DSN came from.
 
 ## Monorepo Support & Alias System
 
@@ -94,7 +90,7 @@ Aliases are the shortest unique prefix of each project slug. For example:
 
 | Project Slug | Alias |
 |--------------|-------|
-| `frontend` | `f` |
+| `frontend` | `fr` |
 | `functions` | `fu` |
 | `backend` | `b` |
 
@@ -108,18 +104,12 @@ For projects with a common prefix (like `spotlight-electron`, `spotlight-website
 
 ### Using Alias-Suffix Format
 
-After running `issue list`, you can reference issues using the `alias-suffix` format:
+After running `issue list`, you can reference issues using the `alias-suffix` format.
+When several projects are listed, the `SHORT ID` column shows each issue's
+alias-suffix below its short ID (`SPOTLIGHT-ELEC-4Y` → `e-4y`):
 
 ```bash
-# List issues - note the ALIAS column
 sentry issue list
-```
-
-```
-ALIAS  SHORT ID             TITLE                           COUNT
-e      SPOTLIGHT-ELEC-4Y    TypeError: Cannot read prop...  142
-w      SPOTLIGHT-WEB-ABC    Failed to fetch user data       89
-b      SPOTLIGHT-BACK-XYZ   Connection timeout              34
 ```
 
 ```bash
@@ -135,13 +125,12 @@ sentry issue plan b-XYZ
 
 ### Cross-Organization Support
 
-If you work with multiple organizations that have projects with the same slug, the CLI uses org-prefixed aliases:
+If you work with multiple organizations that have projects with the same slug, the CLI prefixes those aliases with the shortest unique org prefix:
 
-```
-ALIAS    SHORT ID        TITLE
-o1:api   ORG1-API-123    Error in API handler
-o2:api   ORG2-API-456    Database connection failed
-```
+| Org/Project | Alias |
+|-------------|-------|
+| `acme/api` | `a/a` |
+| `globex/api` | `g/a` |
 
 ## Issue ID Formats
 
