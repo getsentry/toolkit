@@ -77,6 +77,23 @@ describe("rewriteSearchQuery: is: OR in issue search", () => {
     );
   });
 
+  it("merges explicit status and substatus filters with the same check", () => {
+    expect(rewriteIssues("substatus:new OR substatus:[ongoing]")).toBe(
+      "substatus:[new,ongoing]",
+    );
+    expect(rewriteIssues("status:resolved OR is:ignored")).toBe(
+      "status:[resolved,ignored]",
+    );
+  });
+
+  it.each([
+    "substatus:[new] OR substatus:[archived_forever]",
+    "substatus:archived_forever OR is:new",
+    "status:resolved OR substatus:regressed",
+  ])("throws for %s instead of a cross-parent list", (query) => {
+    expect(() => rewriteIssues(query)).toThrow(SearchQueryError);
+  });
+
   it("leaves is: OR alone outside issue search", () => {
     expect(() => rewriteSearchQuery("is:regressed OR is:escalating")).toThrow(
       SearchQueryError,

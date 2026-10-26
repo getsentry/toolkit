@@ -424,11 +424,10 @@ function tryMergeGroup(
   group: SearchNode[],
   issueSearch: boolean,
 ): SearchNode | null {
-  if (issueSearch) {
-    const merged = tryMergeIsGroup(group);
-    if (merged) {
-      return merged;
-    }
+  // Status operands must pass the parent-status check; never fall back to
+  // the generic same-key merge for them.
+  if (issueSearch && group.some(isStatusOperand)) {
+    return tryMergeIsGroup(group);
   }
 
   // All must be mergeable filters
@@ -468,6 +467,18 @@ function tryMergeGroup(
   };
 }
 
+/** Fields the issues endpoint fills from `is:` values. */
+const STATUS_FIELDS: ReadonlySet<string> = new Set(["status", "substatus"]);
+
+/** Whether a node filters on issue status: `is:`, `status:`, or `substatus:`. */
+function isStatusOperand(node: SearchNode): boolean {
+  return (
+    node.type === "is_filter" ||
+    ((node.type === "text_filter" || node.type === "text_in_filter") &&
+      STATUS_FIELDS.has(node.key))
+  );
+}
+
 /**
  * Merge an OR group of `is:` filters into a `status` or `substatus` in-list.
  *
@@ -475,8 +486,8 @@ function tryMergeGroup(
  * value to a `status` or `substatus` filter, and those accept lists. Returns
  * `null` unless every operand is a non-negated `is:` whose value maps to the
  * same field (and, for substatuses, the same parent status). Operands may
- * also be `status:[…]`/`substatus:[…]` in-lists, such as one already merged
- * from a parenthesized group, as long as the result keeps their field.
+ * also be `status:`/`substatus:` filters or in-lists, such as one already
+ * merged from a parenthesized group, as long as the result keeps their field.
  */
 function tryMergeIsGroup(group: SearchNode[]): SearchNode | null {
   const values: string[] = [];
@@ -485,12 +496,12 @@ function tryMergeIsGroup(group: SearchNode[]): SearchNode | null {
     if (node.type === "is_filter" && !node.negated) {
       values.push(node.value);
     } else if (
-      node.type === "text_in_filter" &&
+      (node.type === "text_filter" || node.type === "text_in_filter") &&
       !node.negated &&
-      (node.key === "status" || node.key === "substatus")
+      STATUS_FIELDS.has(node.key)
     ) {
       listFields.add(node.key);
-      values.push(...node.values);
+      values.push(...valuesFromNode(node));
     } else {
       return null;
     }
