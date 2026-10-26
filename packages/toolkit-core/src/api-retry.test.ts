@@ -46,7 +46,38 @@ describe("parseRetryDelayMs", () => {
     expect(parseRetryDelayMs(429, headers, NOW)).toBe(1000);
   });
 
-  it("ignores a Date header within its one-second resolution", () => {
+  it("bounds the reset by the response Date when the local clock lags slightly", () => {
+    // Local clock 1.5s behind: alone it would put a 1s window 2.2s away.
+    const headers = windowLimited(NOW_SECONDS + 1, {
+      Date: new Date(NOW).toUTCString(),
+    });
+    const lagging = NOW - 1500;
+
+    expect(parseRetryDelayMs(429, headers, lagging)).toBe(1000);
+    expect(
+      nextRetryDelayMs({
+        policy,
+        method: "GET",
+        status: 429,
+        serverDelayMs: parseRetryDelayMs(429, headers, lagging),
+        attempt: 0,
+        waitedMs: 0,
+        random: () => 0,
+      }),
+    ).toBe(1000);
+  });
+
+  it("bounds the reset by the response Date when the local clock runs ahead", () => {
+    const headers = windowLimited(NOW_SECONDS + 1, {
+      Date: new Date(NOW).toUTCString(),
+    });
+
+    // 2.5s ahead would put the reset 1.8s in the past; the Date puts it 0-1s
+    // away, so the estimate is clamped to the lower bound.
+    expect(parseRetryDelayMs(429, headers, NOW + 2500)).toBe(0);
+  });
+
+  it("keeps the local estimate when it agrees with the response Date", () => {
     const headers = windowLimited(NOW_SECONDS + 1, {
       Date: new Date(NOW).toUTCString(),
     });

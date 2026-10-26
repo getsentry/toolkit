@@ -23,11 +23,8 @@ type HeaderReader = Pick<Headers, "get">;
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/**
- * The response `Date` header has one-second resolution, so smaller
- * disagreements with the local clock are noise, not skew.
- */
-const CLOCK_SKEW_TOLERANCE_MS = 2000;
+/** The response `Date` header truncates server time to whole seconds. */
+const DATE_RESOLUTION_MS = 1000;
 
 /**
  * Whether a failed request may be sent again. Writes are only retried when
@@ -50,15 +47,13 @@ export function parseRetryDelayMs(
   headers: HeaderReader,
   now: number = Date.now(),
 ): number | undefined {
-  const reference = serverNow(headers, now);
-
   const retryAfter = headers.get("retry-after")?.trim();
   if (retryAfter) {
     if (/^\d+$/.test(retryAfter)) {
       return Number(retryAfter) * 1000;
     }
     const date = Date.parse(retryAfter);
-    return Number.isNaN(date) ? undefined : Math.max(0, date - reference);
+    return Number.isNaN(date) ? undefined : delayUntil(date, headers, now);
   }
 
   if (status !== 429 || !isWindowLimited(headers)) {
@@ -68,7 +63,7 @@ export function parseRetryDelayMs(
   if (!Number.isFinite(reset) || reset <= 0) {
     return undefined;
   }
-  return Math.max(0, reset * 1000 - reference);
+  return delayUntil(reset * 1000, headers, now);
 }
 
 /**
@@ -143,15 +138,23 @@ export function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
 }
 
 /**
- * The window reset is server time. Trust the local clock unless it disagrees
- * with the response `Date` by more than the header's resolution.
+ * Milliseconds until a server-clock `target`. The local clock gives the finest
+ * estimate, but it may be skewed. The response `Date` bounds the server's
+ * clock to `[date, date + 1s)`, so the true delay lies in
+ * `(target - date - 1s, target - date]`; the local estimate is clamped into it.
  */
-function serverNow(headers: HeaderReader, now: number): number {
+function delayUntil(
+  target: number,
+  headers: HeaderReader,
+  now: number,
+): number {
+  let delay = target - now;
   const date = Date.parse(headers.get("date") ?? "");
-  if (Number.isNaN(date) || Math.abs(now - date) <= CLOCK_SKEW_TOLERANCE_MS) {
-    return now;
+  if (!Number.isNaN(date)) {
+    const latest = target - date;
+    delay = Math.min(Math.max(delay, latest - DATE_RESOLUTION_MS), latest);
   }
-  return date;
+  return Math.max(0, delay);
 }
 
 /**
