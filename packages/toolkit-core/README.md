@@ -30,6 +30,13 @@ returns the frontend's token tree, minus validation: `TokenConverter` never
 marks tokens invalid or fills `parsed` values. A product that needs those
 subclasses `TokenConverter` and passes it as `converter`.
 
+`search-query` uses that parser to rewrite queries the API would reject:
+explicit `AND` is dropped, and `OR` on one key becomes an in-list. With
+`issueSearch: true` it also turns `is:` OR groups into `status:[…]` or
+`substatus:[…]` and unwraps parentheses, which the issues endpoint doesn't
+support. It returns the rewrite notes and throws `SearchQueryError` for
+anything it can't rewrite; each product decides how to report them.
+
 The parser is compiled ahead of time into `src/generated/` and committed,
 since this package has no build step. Its types live in
 `grammar/search-syntax.d.ts`. After editing either file, run
