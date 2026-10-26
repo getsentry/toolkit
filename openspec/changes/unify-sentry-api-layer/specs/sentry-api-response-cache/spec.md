@@ -48,20 +48,52 @@ When a response carries HTTP caching headers, the cache SHALL follow them
 
 Responses without caching headers SHALL use a TTL by URL class:
 
-- immutable: 24 hours (event, trace, and trace-item lookups by ID)
-- volatile: 60 seconds (issue endpoints, log and span queries)
+- detail: 5 minutes (organization event details and project trace-item
+  details, by exact path)
+- volatile: 60 seconds (issue endpoints, project event details, full
+  traces, log and span queries)
 - no-cache: never cached (autofix and root-cause polling)
 - stable: 5 minutes (everything else)
 
-#### Scenario: Event lookup
+#### Scenario: Organization event lookup
 
-- **WHEN** an event is fetched by ID without caching headers
-- **THEN** the response is reused for up to 24 hours
+- **WHEN** `/organizations/{org}/events/{project}:{event_id}/` is fetched without caching headers
+- **THEN** the response is reused for up to 5 minutes
+
+#### Scenario: Live aggregate on an event
+
+- **WHEN** an organization event detail is fetched with an `averageColumn` query
+- **THEN** it is classified as stable, not detail
+
+#### Scenario: Trace-item debug lookup
+
+- **WHEN** a project trace-item detail is fetched with a `debug` query
+- **THEN** it is classified as stable, not detail
+
+#### Scenario: Issue event lookup
+
+- **WHEN** an issue's latest, oldest, recommended, or specific event is fetched without caching headers
+- **THEN** the response is reused for at most 60 seconds
+
+#### Scenario: Full trace lookup
+
+- **WHEN** a full trace is fetched by trace ID without caching headers
+- **THEN** the response is reused for at most 60 seconds, since spans can still arrive
 
 #### Scenario: Polling endpoint
 
 - **WHEN** autofix state is fetched
 - **THEN** the response is never served from cache
+
+### Requirement: No immutable fallback
+
+No URL class SHALL treat a response as immutable. Without server caching
+headers, no response SHALL be reused for longer than 5 minutes.
+
+#### Scenario: Event re-read after an hour
+
+- **WHEN** any event or trace URL was cached without server headers more than 5 minutes ago
+- **THEN** the next read fetches from the API
 
 ### Requirement: Mutations invalidate related entries
 
@@ -109,8 +141,8 @@ exceeded, the least recently used entries SHALL be evicted first.
 
 ### Requirement: Compressed entries
 
-Stored entries SHALL be compressed with zstd when the runtime supports it,
-and otherwise stored with a supported fallback. Each entry SHALL record its
+Stored entries SHALL be compressed with zstd at level 3 when the runtime
+supports it, and otherwise stored with a supported fallback. Each entry SHALL record its
 encoding. Reading an entry SHALL return a body identical to the original
 response body.
 
@@ -121,14 +153,22 @@ response body.
 
 ### Requirement: Hosted tiers
 
-The hosted MCP SHALL cache every tier in memory, and SHALL also persist
-immutable-tier entries to durable object storage shared across isolates.
-Volatile and stable entries SHALL never be persisted outside the isolate.
+The hosted MCP SHALL cache every tier in memory. It SHALL persist an entry
+to durable object storage shared across isolates only when the entry is in
+the detail tier and the response carries a server `Cache-Control` with
+`private` and a positive `max-age`. A persisted entry SHALL expire at the
+lesser of the server `max-age` and 5 minutes. Volatile and stable entries
+SHALL never be persisted outside the isolate.
 
-#### Scenario: Immutable hit in another isolate
+#### Scenario: Detail hit in another isolate
 
-- **WHEN** an identity fetches an event in one isolate and later fetches it in another
+- **WHEN** an identity fetches an organization event detail that carries `Cache-Control: private, max-age=300` in one isolate, and fetches it again in another isolate within 5 minutes
 - **THEN** the second fetch is served from durable storage without calling the API
+
+#### Scenario: Detail response without server headers
+
+- **WHEN** a detail-tier response carries no server caching headers
+- **THEN** it is cached in that isolate's memory only
 
 #### Scenario: Volatile entry
 

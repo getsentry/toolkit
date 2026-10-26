@@ -14,7 +14,10 @@ See proposal.md for motivation. Current state that shapes the approach:
     redirect validation, and custom headers.
   - `response-cache.ts` caches responses as JSON files under
     `~/.sentry/cache/responses/`, using `http-cache-semantics`, an HMAC
-    identity key, TTL tiers, and a 500-entry cap.
+    identity key, TTL tiers, and a 500-entry cap. Its 24-hour "immutable"
+    tier matches any `/events/<id>/`, `/trace/<32 hex>/`, or
+    `/trace-items/<id>/` URL, and is checked before the `/issues/` volatile
+    pattern, so `/issues/<id>/events/latest/` is cached for 24 hours too.
   - `api/infrastructure.ts` has `paginate()` and `fetchAllPages()`, with
     mid-page skip counts encoded in the cursor's `is_prev` field.
 - **MCP request stack.** `mcp-core/src/api-client/client.ts` has about 105
@@ -49,7 +52,8 @@ See proposal.md for motivation. Current state that shapes the approach:
 - Shared modules run unchanged in Node and Workers, and avoid
   Node-only APIs where a web standard exists, so they can later move into
   `@sentry/api` and run in the browser.
-- No CLI behavior change while its internals move.
+- No CLI behavior change while its internals move, apart from the cache
+  tier correction, which lands first as its own PR.
 
 **Non-Goals:**
 
@@ -61,6 +65,61 @@ See proposal.md for motivation. Current state that shapes the approach:
   That happens per domain where `@sentry/api/zod` covers the endpoint.
 
 ## Decisions
+
+### Narrow the CLI's cache tiers before moving them
+
+The getsentry/sentry#128818 spike (findings in
+[this comment](https://github.com/getsentry/sentry/issues/128818#issuecomment-6426889162),
+checked against sentry `06a3bc41dda`) found that none of the "immutable"
+endpoints are safe to mark `immutable`:
+
+- **Project and issue event details** embed `nextEventID`,
+  `previousEventID`, user reports, and release data, all of which change
+  later. Reprocessing and issue merges can change the response for the same
+  event ID. `latest`, `oldest`, and `recommended` resolve to different events
+  over time.
+- **Full traces** gain spans as they arrive.
+- **Organization event details** (excluding `?averageColumn`, which reads
+  live aggregates) and **project trace-item details** (excluding
+  superuser/staff requests and `?debug`) are stable enough for
+  `Cache-Control: private, max-age=300`. The prototype in
+  getsentry/sentry#128828 sends exactly that, off by default, with
+  `Vary: Origin, Cookie, Authorization`.
+- Every endpoint can still change visibility: deletion and access
+  revocation are not reflected until the entry expires. That bounds the TTL,
+  not just the tier.
+
+So the shared policy replaces `immutable` with `detail`:
+
+| Tier     | TTL  | Matches                                                                                                                                    |
+| -------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| no-cache | 0    | autofix and root-cause polling                                                                                                             |
+| detail   | 5 m  | `/organizations/{org}/events/{project}:{event_id}/` without `averageColumn`; `/projects/{org}/{project}/trace-items/{id}/` without `debug` |
+| volatile | 60 s | `/issues/` (including issue events), `/projects/{org}/{project}/events/{id}/`, `/organizations/{org}/trace/{id}/`, log and span queries    |
+| stable   | 5 m  | everything else                                                                                                                            |
+
+- Patterns are exact path shapes, anchored on the API prefix, not
+  substring matches on `/events/`. Anything that does not match an
+  allowlisted shape falls through to volatile or stable.
+- `detail` has the same TTL as `stable` in the CLI. It exists as its own
+  tier because it is the only tier eligible for R2 on the hosted MCP.
+- Today the CLI reads events through project and issue endpoints
+  (`getEvent`, `getLatestEvent` in `cli/src/lib/api/events.ts`), and the MCP
+  through `/organizations/{org}/issues/{id}/events/{event_id}/`. So in
+  practice the detail tier covers trace items until a caller moves to the
+  organization event endpoint. That is worth doing per call site only where
+  the response has every field the caller uses.
+- When server headers are present they still win. The CLI keeps honoring
+  `max-age`, so if the server later extends it, the CLI follows without a
+  release.
+- This lands as its own CLI PR before the move into `toolkit-core`, so the
+  move itself stays a no-behavior-change refactor. The existing
+  `response-cache.property.test.ts` cases that assert 24-hour event and
+  trace caching are replaced with scenarios from the spec delta.
+
+The cost is more API calls for repeated event and trace reads. A 24-hour
+window was a correctness bug, not a tunable: an agent re-reading an issue's
+latest event an hour later got the wrong event.
 
 ### Shared code lives in `toolkit-core`, behind injected dependencies
 
@@ -110,13 +169,20 @@ Backends:
     size, configurable by env.
   - Module-scoped, so it lives as long as the isolate. `deleteMatching`
     scans the in-memory index.
-- **R2 (hosted MCP, immutable tier only).**
-  - Object key is `<identity>/<sha256(normalized URL)>`, with the expiry in
-    custom metadata and checked on read.
-  - A bucket lifecycle rule deletes objects after 1 day.
+- **R2 (hosted MCP, detail tier only).**
+  - Persists an entry only when it is in the detail tier _and_ the response
+    carries `Cache-Control: private` with a positive `max-age`. The server
+    header is the opt-in: until getsentry/sentry#128828 ships and is
+    enabled, R2 stores nothing.
+  - Object key is `<identity>/<sha256(normalized URL)>`, with the expiry,
+    the lesser of the server `max-age` and 5 minutes, in custom metadata and
+    checked on read.
+  - A bucket lifecycle rule deletes objects after 1 day, the shortest rule
+    R2 supports. It is garbage collection only; reads enforce the expiry.
   - Writes happen in `ctx.waitUntil()`, so they never delay a response.
-  - The immutable tier is never invalidated, so R2 never needs
-    `deleteMatching`.
+  - Detail entries are never targeted by mutation invalidation, so R2 never
+    needs `deleteMatching`. The short expiry bounds how long a revoked or
+    deleted item can still be served.
 
 _Alternatives:_
 
@@ -131,9 +197,10 @@ _Alternatives:_
 
 `TieredStore(memory, r2)`:
 
-- `get` checks memory first, then R2 for immutable keys, and copies R2 hits
-  into memory.
-- `set` writes to memory, and also to R2 when the tier is immutable.
+- `get` checks memory first, then R2 for detail keys, and copies R2 hits
+  into memory with the remaining expiry.
+- `set` writes to memory, and also to R2 when the entry is R2-eligible (see
+  above).
 - `deleteMatching` only touches memory, since only volatile and stable
   entries are ever invalidated.
 
@@ -205,10 +272,14 @@ Findings:
 
 Decisions:
 
-- **Memory tier: zstd level 3, no dictionary.** It runs on the response path
-  and is charged as Worker CPU time.
-- **R2 tier: zstd level 9.** Compression runs in `waitUntil()`, and the entry
-  is read many times.
+- **zstd level 3 everywhere, no dictionary.** One codec setting for the
+  CLI disk, the hosted memory tier, and R2.
+  - It runs on the response path and is charged as Worker CPU time.
+  - zstd-9 only helps large traces (37x → 45x) at 3.5x the compression
+    CPU. With R2 entries now living at most 5 minutes, an entry is read
+    only a few times, so the extra CPU does not pay back.
+  - A single level keeps entries portable between tiers: an R2 hit is
+    copied into memory without recompressing.
 - **Fallback: brotli quality 4 via `node:zlib`, then uncompressed.** The CLI
   supports Node.js 20+, which lacks zstd, so the codec is detected at
   runtime, the way `api/infrastructure.ts` already detects `zstdCompress`.
@@ -218,7 +289,7 @@ Decisions:
 - **Encoding recorded per entry.** `encoding` and `dictId` are recorded per
   entry, so mixed entries stay readable after upgrades and dictionary
   rotations.
-- **Dictionary support is a follow-up (task group 9), gated on three
+- **Dictionary support is a follow-up (task group 10), gated on three
   checks:**
   1. **Training data safety.** A dictionary embeds verbatim strings from its
      training data, so one trained on customer or internal data must never
@@ -283,9 +354,16 @@ bumps move both products together.
 - **Cross-user leakage on the shared Worker.** Every key includes an
   identity HMAC. There is a test that two identities never share entries
   for the same URL, and R2 keys are prefixed by identity.
-- **Stale data in agent answers.** Volatile entries last 60 s. There is
+- **Stale data in agent answers.** Volatile entries last 60 s, and no entry
+  lasts longer than 5 minutes without a server header. There is
   invalidation after mutations, and `fresh` for explicit bypass. The tool
   description tells agents when to use it.
+- **Revoked access or deleted data served from cache.** A user who loses
+  access to a project, or whose event is deleted, can still get a cached
+  copy until it expires: up to 5 minutes for detail entries, including
+  from R2 on the hosted MCP. Enabling R2 in production needs a privacy and
+  security sign-off on that window, alongside the server-side headers in
+  getsentry/sentry#128828.
 - **Worker OOM.** The memory store has a byte budget and a per-entry cap.
   Compressed size is what counts. A load test fills the store with many
   identities and checks its peak memory.
@@ -306,15 +384,18 @@ bumps move both products together.
 
 ## Migration Plan
 
-1. Land the catalog alignment and the pure `toolkit-core` modules (pagination,
-   cache policy, codecs), with the CLI switched over and no behavior change.
-2. Land `api-transport` and the CLI switch-over.
-3. Land the MCP transport injection and `sentry mcp` passing the CLI fetch,
+1. Land the catalog alignment (#1672) and the CLI cache tier correction,
+   each as its own PR.
+2. Land the pure `toolkit-core` modules (pagination, cache policy, codecs),
+   with the CLI switched over and no behavior change.
+3. Land `api-transport` and the CLI switch-over.
+4. Land the MCP transport injection and `sentry mcp` passing the CLI fetch,
    then the hosted memory store behind a flag (`MCP_RESPONSE_CACHE=memory`).
-4. Enable the hosted memory cache. Add the R2 binding and the immutable tier
-   behind `MCP_RESPONSE_CACHE=tiered`.
-5. Run the domain-by-domain `@sentry/api` migration PRs.
-6. Deprecate the standalone MCP login.
+5. Enable the hosted memory cache. Add the R2 binding and the detail tier
+   behind `MCP_RESPONSE_CACHE=tiered`, and enable it only after the server
+   headers ship and the security sign-off.
+6. Run the domain-by-domain `@sentry/api` migration PRs.
+7. Deprecate the standalone MCP login.
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
 `off` restores today's uncached behavior. Each CLI step is a refactor that
@@ -324,5 +405,9 @@ can be reverted on its own.
 
 - The exact byte budgets (CLI disk, Worker memory) and the per-entry cap.
   To be tuned with hit-rate and memory metrics after launch.
-- Whether R2 reads beat API latency for immutable lookups in practice.
-  Metrics will decide whether the R2 tier stays.
+- Whether R2 pays off with a 5-minute window. Cross-isolate hits only help
+  when the same identity re-reads the same event or span within minutes,
+  which agents often do, but metrics will decide whether the R2 tier stays.
+- Whether the server should send `private, max-age` on more endpoints
+  later, such as stable organization and project metadata. The CLI follows
+  server headers automatically; R2 eligibility stays an explicit allowlist.

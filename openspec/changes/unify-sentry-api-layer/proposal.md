@@ -23,6 +23,12 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
 - Move the CLI's pagination into `@sentry/toolkit-core` and use it from both
   products: limit-bounded walks, even page sizing, and cursors that resume
   mid-page.
+- **Behavior change:** narrow the CLI's 24-hour "immutable" cache tier. It
+  matches every `/events/<id>/` and `/trace/<id>/` URL, but issue events,
+  project events, and full traces change after they are first read
+  (getsentry/sentry#128818). Only organization event details and project
+  trace-item details stay in a separate tier, at 5 minutes. Issue events,
+  project events, and full traces drop to 60 seconds.
 - Move the CLI's response-cache policy into `@sentry/toolkit-core`. That
   covers TTL tiers, identity-scoped keys, invalidation after mutations, and
   bypass. Storage becomes a pluggable backend with a byte budget and
@@ -35,8 +41,9 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
   refresh, and on-disk cache.
 - The hosted MCP on Cloudflare uses a tiered cache:
   - an in-memory LRU, limited by bytes, for every tier
-  - R2 for immutable responses (events, traces)
-  - zstd compression on both
+  - R2 for organization event details and project trace-item details, only
+    when the server marks them `private, max-age`, for at most 5 minutes
+  - zstd level 3 compression on both
 - MCP read tools accept a `fresh` parameter that bypasses the cache, matching
   the CLI's `--fresh` flag.
 - MCP API methods move onto `@sentry/api` operations domain by domain. The
@@ -47,8 +54,8 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
 
 Out of scope, tracked separately:
 
-- Server-side `Cache-Control` and `ETag` for immutable API responses
-  (getsentry/sentry#128818).
+- Server-side `Cache-Control` for event and trace-item detail responses
+  (getsentry/sentry#128818, prototype in getsentry/sentry#128828).
 - Moving the shared infrastructure into `@sentry/api` once it has proven
   itself in `toolkit-core`.
 
@@ -75,7 +82,7 @@ None.
 - `packages/cli/src/lib/api/infrastructure.ts`,
   `packages/cli/src/lib/response-cache.ts`,
   `packages/cli/src/lib/sentry-client.ts`: switch to the shared modules.
-  CLI behavior does not change.
+  Apart from the narrower cache tiers, CLI behavior does not change.
 - `packages/mcp-core/src/api-client/client.ts`: the transport is replaced and
   methods move to `@sentry/api`.
 - `packages/mcp-core` read tools gain a `fresh` input, and generated tool
@@ -84,6 +91,6 @@ None.
   option, and the standalone auth flow is deprecated.
 - `packages/cli/src/lib/mcp.ts`: passes the CLI transport.
 - `packages/mcp-cloudflare`: in-memory cache, an R2 bucket binding for
-  immutable responses, and a wrangler config change.
+  detail responses, and a wrangler config change.
 - `pnpm-workspace.yaml`: a catalog entry for `@sentry/api`.
 - Snapshot and eval churn in `mcp-core` and `mcp-server-evals`.
