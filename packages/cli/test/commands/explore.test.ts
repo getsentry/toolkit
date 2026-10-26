@@ -244,7 +244,7 @@ describe("sentry explore", () => {
 
       expect(queryEventsSpy).toHaveBeenCalledWith(
         "my-org",
-        expect.objectContaining({ query: "project:cli level:error" }),
+        expect.objectContaining({ query: "project:cli (level:error)" }),
       );
     });
 
@@ -301,6 +301,115 @@ describe("sentry explore", () => {
   });
 
   describe("API call parameters", () => {
+    test.each(["errors", "spans", "logs"])(
+      "accepts boolean queries through the %s command parser",
+      async (dataset) => {
+        resolveTargetSpy.mockResolvedValue({
+          org: "test-org",
+          project: "backend",
+        });
+        const query =
+          "(span.op:http.client OR span.status:internal_error) AND !has:release";
+        const context = {
+          ...buildContext(process).forCommand({
+            prefix: ["sentry", "explore"],
+          }),
+          ...createContext().context,
+          process: { ...process, exitCode: undefined },
+        };
+        await run(
+          buildApplication(exploreCommand, { name: "explore" }),
+          [
+            "test-org/backend",
+            "--dataset",
+            dataset,
+            "-F",
+            "count()",
+            "-q",
+            query,
+            "--environment",
+            "production",
+            "--json",
+          ],
+          context,
+        );
+        expect(context.process.exitCode).toBe(0);
+        expect(queryEventsSpy).toHaveBeenCalledWith(
+          "test-org",
+          expect.objectContaining({
+            dataset,
+            query: `project:backend environment:production (${query})`,
+          }),
+        );
+      },
+    );
+
+    test("scopes both OR branches when transactions already appears in one branch", async () => {
+      resolveTargetSpy.mockResolvedValue({
+        org: "test-org",
+        project: "backend",
+      });
+      const { context } = createContext();
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "transactions",
+          environment: ["production"],
+          query: "is_transaction:true OR span.op:http.client",
+        },
+        "test-org/backend",
+      );
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          dataset: "spans",
+          query:
+            "project:backend environment:production is_transaction:true (is_transaction:true OR span.op:http.client)",
+        }),
+      );
+    });
+
+    test("keeps Events syntax repairs without rewriting boolean operators", async () => {
+      const { context } = createContext();
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "spans",
+          query: "project:123 OR span.op:[http.client,http.server,]",
+        },
+        "test-org/",
+      );
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          query: "project_id:123 OR span.op:[http.client,http.server]",
+        }),
+      );
+    });
+
+    test.each([
+      "count_if(`release:example`,value,request_duration,distribution,none)",
+      "equation|count_if(`release:example`,value,request_duration,distribution,none) + count_if(`!release:example`,value,request_duration,distribution,none)",
+    ])(
+      "passes valid advanced metrics expressions to the backend: %s",
+      async (field) => {
+        const { context } = createContext();
+        await func.call(
+          context,
+          { ...DEFAULT_FLAGS, dataset: "tracemetrics", field: [field] },
+          "test-org/",
+        );
+        expect(queryEventsSpy).toHaveBeenCalledWith(
+          "test-org",
+          expect.objectContaining({
+            dataset: "tracemetrics",
+            fields: [field],
+          }),
+        );
+      },
+    );
     test("passes default fields and dataset when none specified", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       const { context } = createContext();
@@ -372,7 +481,7 @@ describe("sentry explore", () => {
         expect.objectContaining({
           dataset: "spans",
           fields: ["transaction", "count()"],
-          query: "environment:production is_transaction:true",
+          query: "is_transaction:true (environment:production)",
         }),
       );
     });
@@ -986,9 +1095,22 @@ describe("sentry explore", () => {
   });
 
   describe("pagination", () => {
-    test.runIf(process.platform !== "win32")(
-      "a copied next-page hint reuses the cursor for a quoted query",
-      async () => {
+    test.runIf(process.platform !== "win32").each([
+      {
+        dataset: "errors",
+        query: 'transaction:"GET /checkout"',
+        field: ["title", "count()"],
+      },
+      {
+        dataset: "tracemetrics",
+        query: "release:example",
+        field: [
+          "count_if(`release:example`,value,request_duration,distribution,none)",
+        ],
+      },
+    ])(
+      "a copied next-page hint preserves the query and fields for $dataset",
+      async ({ dataset, query, field }) => {
         const actual = await vi.importActual<
           typeof import("../../src/lib/db/pagination.js")
         >("../../src/lib/db/pagination.js");
@@ -1001,10 +1123,13 @@ describe("sentry explore", () => {
           data: MOCK_EVENTS_RESPONSE,
           nextCursor: "page-2",
         });
-        const query = 'transaction:"GET /checkout"';
         const { context, getStdout } = createContext();
 
-        await func.call(context, { ...DEFAULT_FLAGS, query }, "test-org/");
+        await func.call(
+          context,
+          { ...DEFAULT_FLAGS, dataset, query, field },
+          "test-org/",
+        );
 
         const hint = getStdout().match(/Next: (sentry explore[^\n]+)/)?.[1];
         expect(hint).toBeDefined();
@@ -1031,7 +1156,7 @@ describe("sentry explore", () => {
 
         expect(queryEventsSpy).toHaveBeenLastCalledWith(
           "test-org",
-          expect.objectContaining({ query, cursor: "page-2" }),
+          expect.objectContaining({ query, fields: field, cursor: "page-2" }),
         );
       },
     );

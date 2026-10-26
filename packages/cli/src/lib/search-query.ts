@@ -1,9 +1,8 @@
 /**
  * Sentry search query sanitization.
  *
- * Handles boolean operator rewriting for `--query` flags across all
- * commands that accept Sentry search syntax. Centralised here so every
- * command benefits from the same auto-recovery logic.
+ * Repairs common `--query` mistakes across commands. Endpoints that support
+ * boolean syntax opt in to preserving it; other endpoints use these rewrites:
  *
  * - **AND**: Sentry search implicitly ANDs space-separated terms, so
  *   explicit `AND` is redundant. Stripped with a warning.
@@ -15,7 +14,7 @@
  *   with a warning. Slugs, `project_id:…`, and namespaced keys
  *   (`bolt.project_id`) are left alone.
  *
- * Parsing uses the Sentry frontend's search grammar through
+ * Boolean rewriting uses the Sentry frontend's search grammar through
  * `@sentry/toolkit-core/search-syntax`. Its token tree is flattened into
  * the {@link SearchNode} list below, which classifies every term
  * structurally — comparison operators, in-list values, paren groups,
@@ -547,10 +546,16 @@ function stripAndNodes(nodes: SearchNode[]): SearchNode[] {
 // Public API
 // ---------------------------------------------------------------------------
 
+type QuerySyntaxOptions = {
+  /** Events queries support boolean operators; issue search still needs rewrites. */
+  allowBoolean?: boolean;
+};
+
 /**
  * Sanitize a `--query` value before sending to the Sentry API.
  *
- * Parses the query using a PEG grammar, then handles boolean operators:
+ * Repairs common syntax mistakes, preserving boolean operators when the
+ * endpoint supports them. Otherwise parses a PEG grammar and rewrites operators:
  *
  * - **AND**: Stripped (implicit in Sentry search). Warns via stderr.
  * - **OR**: Attempted rewrite to in-list syntax (`key:[val1,val2]`).
@@ -564,13 +569,26 @@ function stripAndNodes(nodes: SearchNode[]): SearchNode[] {
  * directly without a conditional guard.
  *
  * @param query - Raw query string from `--query` flag, or `undefined`
+ * @param options - Preserve boolean syntax for endpoints that support it
  * @returns The sanitized query, or `undefined` if input was `undefined`
  * @throws {ValidationError} When OR cannot be rewritten to in-list syntax
  */
-export function sanitizeQuery(query: string): string;
-export function sanitizeQuery(query: undefined): undefined;
-export function sanitizeQuery(query: string | undefined): string | undefined;
-export function sanitizeQuery(query: string | undefined): string | undefined {
+export function sanitizeQuery(
+  query: string,
+  options?: QuerySyntaxOptions,
+): string;
+export function sanitizeQuery(
+  query: undefined,
+  options?: QuerySyntaxOptions,
+): undefined;
+export function sanitizeQuery(
+  query: string | undefined,
+  options?: QuerySyntaxOptions,
+): string | undefined;
+export function sanitizeQuery(
+  query: string | undefined,
+  options: QuerySyntaxOptions = {},
+): string | undefined {
   if (!query) {
     return query;
   }
@@ -582,6 +600,11 @@ export function sanitizeQuery(query: string | undefined): string | undefined {
   const normalized = normalizeQuery(query);
   const withNumericProject = rewriteNumericProjectFilters(normalized);
   const notes = preParseRewriteNotes(query, normalized, withNumericProject);
+
+  if (options.allowBoolean) {
+    warnRunningQuery(notes, withNumericProject);
+    return withNumericProject;
+  }
 
   const nodes = parseSearchNodes(withNumericProject);
   if (!nodes) {
