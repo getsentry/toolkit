@@ -14,7 +14,7 @@
 ## 3. Shared cache policy and codecs
 
 - [ ] 3.1 Move tier classification, key derivation (moved to WebCrypto HMAC), URL normalization, and invalidation prefixes into `toolkit-core/src/response-cache/`. Verify with unit tests for the tier, identity-scoping, and invalidation scenarios.
-- [ ] 3.2 Add a codec module (zstd level N, brotli fallback, raw below 1 KB) with runtime detection. Verify round-trip tests in Node 22, and a test with zstd stubbed out.
+- [ ] 3.2 Add a codec module (zstd level 3 or 9 by tier, brotli-4 fallback, raw below 256 bytes, `encoding` and `dictId` recorded per entry) with runtime detection. Verify round-trip tests in Node 22, and a test with zstd stubbed out.
 - [ ] 3.3 Define the `CacheStore` interface and add the byte-budgeted memory store. Verify tests for LRU eviction, the per-entry cap, and the budget staying within its bound under many identities.
 - [ ] 3.4 Re-implement the CLI filesystem store on `CacheStore`, with compressed entries and a byte budget, while reading existing uncompressed entries. Verify the CLI cache tests pass and an old-format entry is still served.
 - [ ] 3.5 Add conditional revalidation: send `If-None-Match` for stale entries that have an `ETag`, and treat a 304 as a hit. Verify with a test against a mocked `ETag` endpoint.
@@ -52,9 +52,15 @@
 - [ ] 8.1 Compare the OAuth scopes the CLI requests with the MCP `SCOPES`, and widen the CLI's requested scopes if needed. Verify a test that the CLI's scope list covers every MCP tool's required scopes.
 - [ ] 8.2 Add a deprecation notice to the standalone `@sentry/mcp-server` auth flow and docs pointing to `sentry mcp`. Verify with an output test and an update to `docs/operations/stdio-auth.md`.
 
-## 9. Integration
+## 9. Trained compression dictionary (follow-up)
 
-- [ ] 9.1 Run `pnpm run tsc && pnpm run lint && pnpm run test` and the MCP eval suite on the final state, and record the results in the PR.
+- [ ] 9.1 Build a training corpus that is safe to ship: a public demo organization, or a per-deployment corpus that never leaves the hosted MCP. Verify that no customer or internal strings appear in a shipped dictionary (`strings` audit in CI).
+- [ ] 9.2 Add dictionary compression with a versioned `dictId` and a startup self-test that detects a silently ignored `dictionary` option (as in workerd today). Verify a test where an ignored dictionary falls back to plain zstd.
+- [ ] 9.3 On Workers, evaluate WASM zstd for dictionary compression: bundle size, CPU in ms/MB, and ratio against native zstd-3. Record the results in design.md and adopt it only if the memory-tier gain outweighs the CPU cost.
+
+## 10. Integration
+
+- [ ] 10.1 Run `pnpm run tsc && pnpm run lint && pnpm run test` and the MCP eval suite on the final state, and record the results in the PR.
 
 ## Workflow follow-up
 

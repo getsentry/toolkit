@@ -87,14 +87,20 @@ from the API and replace the cached entry. The CLI exposes this as `--fresh`
 
 ### Requirement: Bounded storage
 
-Each storage backend SHALL enforce a byte budget and a per-entry size cap.
-Entries over the cap SHALL not be stored. When the budget is exceeded, the
-least recently used entries SHALL be evicted first.
+Each storage backend SHALL enforce a byte budget over stored bytes. It SHALL
+enforce a per-entry cap on stored (compressed) size and a ceiling on raw
+size. Entries over either limit SHALL not be stored. When the budget is
+exceeded, the least recently used entries SHALL be evicted first.
 
 #### Scenario: Oversized response
 
-- **WHEN** a response is larger than the per-entry cap
+- **WHEN** a response's compressed size is larger than the per-entry cap
 - **THEN** it is returned to the caller and not stored
+
+#### Scenario: Large but compressible response
+
+- **WHEN** a 5 MB trace compresses below the per-entry cap and its raw size is under the ceiling
+- **THEN** it is stored
 
 #### Scenario: Shared Worker isolate
 
@@ -104,8 +110,9 @@ least recently used entries SHALL be evicted first.
 ### Requirement: Compressed entries
 
 Stored entries SHALL be compressed with zstd when the runtime supports it,
-and otherwise stored with a supported fallback. Reading an entry SHALL
-return a body identical to the original response body.
+and otherwise stored with a supported fallback. Each entry SHALL record its
+encoding. Reading an entry SHALL return a body identical to the original
+response body.
 
 #### Scenario: Runtime without zstd
 
