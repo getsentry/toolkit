@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { MAX_MCP_TOOL_INPUT_ELEMENTS } from "../../../mcp-core/src/constants";
 
 interface ToolResult {
   content: Array<{ type: string; text?: string }>;
@@ -223,6 +224,7 @@ beforeAll(async () => {
       response.end(
         JSON.stringify({
           openapi: "3.0.0",
+          servers: [{ url: origin }],
           paths: { "/api/0/items/": { get: { summary: "List items" } } },
         }),
       );
@@ -299,6 +301,21 @@ afterAll(async () => {
 });
 
 describe("HTTP Code Mode through real Dynamic Workers", () => {
+  it("bounds nested tool arguments before starting a Dynamic Worker", async () => {
+    const result = await rpc<ToolResult>("tools/call", {
+      name: "execute_sentry_code",
+      arguments: {
+        code: 'async () => sentry.request({path: "/items/"})',
+        unused: { values: Array(MAX_MCP_TOOL_INPUT_ELEMENTS + 1).fill(null) },
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(
+      `maximum of ${MAX_MCP_TOOL_INPUT_ELEMENTS} elements`,
+    );
+    expect(requests).toEqual([]);
+  });
+
   it("requires an explicit direct API bearer token", async () => {
     const response = await worker.dispatchFetch("http://localhost/mcp", {
       method: "POST",
@@ -505,7 +522,7 @@ describe("HTTP Code Mode through real Dynamic Workers", () => {
   it("prevents search from accessing the network", async () => {
     const result = await callTool(
       "search_sentry_api",
-      `async () => (await fetch(${JSON.stringify(`${origin}/api/0/items/`)})).text()`,
+      'async () => (await fetch(new URL("/api/0/items/", spec.servers[0].url))).text()',
     );
     expect(result.isError).toBe(true);
     expect(requests).toEqual([]);

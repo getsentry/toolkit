@@ -1,8 +1,8 @@
 import { RpcTarget } from "cloudflare:workers";
+import { ApiServerError } from "@sentry/mcp-core/api-client";
+import { logIssue } from "@sentry/mcp-core/telem/logging";
 import { configuredUrl, readBoundedBody } from "./http";
 import type { ApiAuthorization } from "./production";
-
-export { configuredUrl, readBoundedBody } from "./http";
 
 export interface CodeModeEnv {
   LOADER: WorkerLoader;
@@ -102,6 +102,20 @@ export class ApiBroker extends RpcTarget {
     if (response.status === 401) {
       await this.#options.authorization?.onUnauthorized();
     }
+    // Report before returning to user code, which may handle the HTTP error.
+    const eventId =
+      response.status >= 500
+        ? logIssue(
+            new ApiServerError(
+              "Sentry API request failed during Code Mode execution.",
+              response.status,
+            ),
+            {
+              loggerScope: ["code-mode", "api"],
+              extra: { method: request.method, status: response.status },
+            },
+          )
+        : undefined;
     // Do not allow a redirect to carry our bearer token to another location.
     if (response.status >= 300 && response.status < 400) {
       await response.body?.cancel();
@@ -114,6 +128,7 @@ export class ApiBroker extends RpcTarget {
       );
     }
     const responseHeaders = new Headers();
+    if (eventId) responseHeaders.set("x-sentry-event-id", eventId);
     for (const name of [
       "content-type",
       "link",

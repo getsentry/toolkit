@@ -1,16 +1,16 @@
 import type { WorkerEntrypoint } from "cloudflare:workers";
 import { McpServer } from "@modelcontextprotocol/server";
-import { createMcpHandler } from "agents/mcp/server";
 import {
-  ApiBroker,
-  type CodeModeEnv,
-  configuredUrl,
-  readBoundedBody,
-} from "./broker";
+  MAX_MCP_REQUEST_BODY_SIZE,
+  MAX_MCP_TOOL_INPUT_ELEMENTS,
+} from "@sentry/mcp-core/constants";
+import { createMcpHandler } from "agents/mcp/server";
+import { ApiBroker, type CodeModeEnv } from "./broker";
 import {
   codeModeResultSchema,
   getCodeModeToolDefinitions,
 } from "./definitions";
+import { configuredUrl, limitMcpRequestBody, readBoundedBody } from "./http";
 import { getSpec } from "./openapi";
 import type { ApiAuthorization } from "./production";
 import { sandboxSource } from "./sandbox";
@@ -114,10 +114,13 @@ export function registerCodeModeTools(
 }
 
 function buildServer(env: CodeModeEnv, token: string): McpServer {
-  const server = new McpServer({
-    name: "sentry-code-mode-experiment",
-    version: "0.1.0",
-  });
+  const server = new McpServer(
+    {
+      name: "sentry-code-mode-experiment",
+      version: "0.1.0",
+    },
+    { maxToolInputElements: MAX_MCP_TOOL_INPUT_ELEMENTS },
+  );
   registerCodeModeTools(server, env, token);
   return server;
 }
@@ -138,8 +141,11 @@ export default {
       return new Response("A direct Sentry API bearer token is required.", {
         status: 401,
       });
+    const boundedRequest = await limitMcpRequestBody(request);
+    if (boundedRequest instanceof Response) return boundedRequest;
     return await createMcpHandler(() => buildServer(env, token), {
       route: "/mcp",
-    })(request, env, ctx);
+      maxRequestBodySize: MAX_MCP_REQUEST_BODY_SIZE,
+    })(boundedRequest, env, ctx);
   },
 } satisfies ExportedHandler<CodeModeEnv>;

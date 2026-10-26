@@ -1,7 +1,9 @@
 import { createMcpHandler } from "agents/mcp/server";
+import { MAX_MCP_REQUEST_BODY_SIZE } from "../../../mcp-core/src/constants";
 import { buildServer } from "../../../mcp-core/src/server";
 import { ALL_SKILLS } from "../../../mcp-core/src/skills";
-import { type CodeModeEnv, configuredUrl } from "./broker";
+import type { CodeModeEnv } from "./broker";
+import { configuredUrl, limitMcpRequestBody } from "./http";
 import { registerCodeModeTools } from "./worker";
 
 /** Eval-only composition of the real catalog and HTTP Code Mode on one MCP. */
@@ -31,6 +33,8 @@ export default {
       });
     }
 
+    const boundedRequest = await limitMcpRequestBody(request);
+    if (boundedRequest instanceof Response) return boundedRequest;
     return await createMcpHandler(
       () => {
         const server = buildServer({
@@ -47,7 +51,7 @@ export default {
         if (route === "/mcp") registerCodeModeTools(server, env, token);
         return server;
       },
-      { route },
-    )(request, env, ctx);
+      { route, maxRequestBodySize: MAX_MCP_REQUEST_BODY_SIZE },
+    )(boundedRequest, env, ctx);
   },
 } satisfies ExportedHandler<CodeModeEnv>;

@@ -1,3 +1,5 @@
+import { MAX_MCP_REQUEST_BODY_SIZE } from "@sentry/mcp-core/constants";
+
 export function configuredUrl(value: string): URL {
   const url = new URL(value);
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
@@ -15,7 +17,9 @@ export function configuredUrl(value: string): URL {
   return url;
 }
 
-/** Read before forwarding so streaming responses cannot exceed the byte budget. */
+export class BodySizeLimitError extends Error {}
+
+/** Read before forwarding so streaming bodies cannot exceed the byte budget. */
 export async function readBoundedBody(
   body: ReadableStream<Uint8Array> | null,
   maximumBytes: number,
@@ -31,7 +35,7 @@ export async function readBoundedBody(
       size += next.value.byteLength;
       if (size > maximumBytes) {
         await reader.cancel();
-        throw new Error(
+        throw new BodySizeLimitError(
           `Response exceeds ${maximumBytes} bytes. Narrow the query or use pagination.`,
         );
       }
@@ -47,4 +51,28 @@ export async function readBoundedBody(
     offset += chunk.byteLength;
   }
   return result;
+}
+
+/** Agents' legacy transport does not forward the SDK's maxRequestBodySize. */
+export async function limitMcpRequestBody(
+  request: Request,
+): Promise<Request | Response> {
+  if (request.method !== "POST") return request;
+  try {
+    const body = await readBoundedBody(request.body, MAX_MCP_REQUEST_BODY_SIZE);
+    return new Request(request, { method: "POST", body });
+  } catch (error) {
+    if (!(error instanceof BodySizeLimitError)) throw error;
+    return Response.json(
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32000,
+          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_SIZE} bytes`,
+        },
+      },
+      { status: 413 },
+    );
+  }
 }

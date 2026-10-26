@@ -115,8 +115,13 @@ separate module. This RPC dispatch mechanism replaces the prototype's
 `GlobalOutbound` loopback entrypoint while retaining the HTTP tool interface.
 
 Each execution has a 20-call fetch budget, a 30-second I/O deadline, a 50,000-byte
-result limit, and a 2,000,000-byte upstream response limit. Dynamic Worker CPU and
-subrequest limits are also configured using the
+result limit, and a 2,000,000-byte upstream response limit.
+Before tool validation, the HTTP MCP SDK rejects arguments with more than 10,000
+array elements or object keys. A bounded body reader rejects requests over 1 MiB
+before dispatch, including legacy clients whose Agents transport omits the SDK's
+body-limit option.
+
+Dynamic Worker CPU and subrequest limits are also configured using the
 [Cloudflare API](https://developers.cloudflare.com/dynamic-workers/usage/limits/).
 **Local workerd does not enforce those platform limits in our probes. CPU
 termination and deployment enforcement have not been validated.** This local
@@ -265,6 +270,12 @@ A generic 403 is not labelled as a missing scope or a need to reconnect: it may
 reflect role or resource access. No failed program is automatically replayed,
 since earlier writes may have succeeded.
 
+Upstream 5xx responses create a Sentry issue through the existing `logIssue`
+helper, even when generated code catches the HTTP error. The broker preserves
+the response and exposes the event ID in `x-sentry-event-id`; reporting includes
+only the HTTP method and status, not request or response payloads. Expected 4xx
+responses do not create issues.
+
 **Project-constrained sessions retain the existing tools without Code Mode.** A
 project-bearing URL does not prove that an operation affects only that project.
 For example, Sentry's project release-file endpoints modify a file belonging to
@@ -278,21 +289,27 @@ This limitation is based on the backend implementations in
 
 ### Hosted integration validation
 
+The hosted test suite uses `@cloudflare/vitest-plugin` 1.4.6, whose Wrangler and
+Miniflare versions match the standalone Code Mode tests. Updating only the direct
+Miniflare dependency left the old Vitest pool running an older workerd; the first
+Linux CI run exited during the Dynamic Worker integration tests. The plugin
+replacement removes that runtime mismatch without binary overrides.
+
 Local validation on 2026-10-26 exercised the authenticated MCP handler, Dynamic
 Workers and RPC broker with simulated external OpenAPI/Sentry HTTP responses:
 
-- After rebasing and applying the consent screen, 464 Cloudflare tests across
-  35 files were verified through the full run and a focused rerun, including
-  15 authenticated Code Mode integration tests and two public metadata tests.
+- The full Cloudflare suite passed 469 tests across 35 files, including
+  20 authenticated Code Mode integration tests and two public metadata tests.
   The dashboard regression reads the original,
   creates two project-specific copies and verifies them with `api-write`, while
   the simulated upstream token records only `org:read`.
-- The isolated suite passed all 29 tests: 18 runtime, seven API path/organization
+- The isolated suite passed all 30 tests: 19 runtime, seven API path/organization
   checks and four OpenAPI loading tests. It uses the installed Miniflare/workerd
   aligned with Wrangler, without a binary override.
 - MCP core (1,834 tests), stdio (89), test client (80) and Code Mode fixtures
-  (53) passed, for 2,549 MCP tests in total. Root build/typechecks, lint, Code
-  Mode typechecks and frozen install passed. Generated metadata includes the
+  (56) passed, for 2,558 MCP tests in total (six existing core skips). Root
+  build/typechecks, lint, Code Mode typechecks and frozen install passed.
+  Generated metadata includes the
   hosted API skills; core tool registrations remain unchanged.
 - The final `wrangler deploy --dry-run` packaged the production
   Worker with `LOADER`. This did not upload a version or deploy the change.
@@ -310,8 +327,11 @@ full workspace suite; CLI fixes are outside this change.
 The integration tests verify regional routing, client attribution, concurrent
 user token isolation, denied operations and organization escapes, project/skill
 visibility, and upstream 401 revocation even when generated code catches the
-error. They do not test a real Sentry account, production CPU enforcement, or an
-active hosted deployment. Historical agent evals below remain separate evidence.
+error. They also reject oversized request bodies for modern and legacy clients,
+bound nested tool arguments before execution, and verify that caught upstream
+5xx failures are reported while expected 4xx responses are not. They do not test
+a real Sentry account, production CPU enforcement, or an active hosted deployment.
+Historical agent evals below remain separate evidence.
 
 ### Isolated harness
 

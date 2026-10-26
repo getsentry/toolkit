@@ -4,6 +4,11 @@ import {
   waitOnExecutionContext,
 } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MAX_MCP_REQUEST_BODY_SIZE,
+  MAX_MCP_TOOL_INPUT_ELEMENTS,
+} from "@sentry/mcp-core/constants";
+import * as logging from "@sentry/mcp-core/telem/logging";
 import { SENTRY_OPENAPI_URL } from "../../code-mode/openapi";
 import type { Env, WorkerProps } from "../types";
 import mcpHandler from "./mcp-handler";
@@ -91,11 +96,16 @@ function workerEnv(): Env {
   } as Env;
 }
 
-async function rpc<T>(
+async function dispatchRpc(
   method: string,
   params: Record<string, unknown>,
-  options: { props?: Partial<WorkerProps>; path?: string } = {},
-): Promise<T> {
+  options: {
+    props?: Partial<WorkerProps>;
+    path?: string;
+    protocolVersion?: "2026-07-28" | "2025-03-26";
+  } = {},
+) {
+  const protocolVersion = options.protocolVersion ?? "2026-07-28";
   const props: WorkerProps = {
     id: "code-mode-user",
     clientId: "code-mode-client",
@@ -117,7 +127,7 @@ async function rpc<T>(
       "CF-Connecting-IP": "192.0.2.1",
       "User-Agent": "claude-code/2.0.0",
       "X-Sentry-Utm-Source": "plugin",
-      "mcp-protocol-version": "2026-07-28",
+      "mcp-protocol-version": protocolVersion,
       "mcp-method": method,
       ...(typeof params.name === "string" ? { "mcp-name": params.name } : {}),
     },
@@ -127,18 +137,31 @@ async function rpc<T>(
       method,
       params: {
         ...params,
-        _meta: {
-          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-          "io.modelcontextprotocol/clientInfo": {
-            name: "code-mode-integration-tests",
-            version: "1.0.0",
-          },
-          "io.modelcontextprotocol/clientCapabilities": {},
-        },
+        ...(protocolVersion === "2026-07-28"
+          ? {
+              _meta: {
+                "io.modelcontextprotocol/protocolVersion": protocolVersion,
+                "io.modelcontextprotocol/clientInfo": {
+                  name: "code-mode-integration-tests",
+                  version: "1.0.0",
+                },
+                "io.modelcontextprotocol/clientCapabilities": {},
+              },
+            }
+          : {}),
       },
     }),
   });
   const response = await mcpHandler.fetch!(request, workerEnv(), ctx);
+  return { response, ctx };
+}
+
+async function rpc<T>(
+  method: string,
+  params: Record<string, unknown>,
+  options: Parameters<typeof dispatchRpc>[2] = {},
+): Promise<T> {
+  const { response, ctx } = await dispatchRpc(method, params, options);
   const text = await response.text();
   await waitOnExecutionContext(ctx);
   expect(response.status, text).toBe(200);
@@ -209,6 +232,55 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("Code Mode on the authenticated MCP", () => {
+  it("rejects excessive nested argument members before executing code", async () => {
+    const result = await rpc<ToolResult>("tools/call", {
+      name: "execute_sentry_code",
+      arguments: {
+        code: 'async () => sentry.request({path: "/organizations/"})',
+        unused: Object.fromEntries(
+          Array.from(
+            { length: MAX_MCP_TOOL_INPUT_ELEMENTS + 1 },
+            (_, index) => [`key${index}`, null],
+          ),
+        ),
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(
+      `maximum of ${MAX_MCP_TOOL_INPUT_ELEMENTS} elements`,
+    );
+    expect(apiRequests).toEqual([]);
+  });
+
+  it.each(["2026-07-28", "2025-03-26"] as const)(
+    "rejects HTTP bodies above the limit with protocol %s",
+    async (protocolVersion) => {
+      const { response, ctx } = await dispatchRpc(
+        "tools/call",
+        {
+          name: "execute_sentry_code",
+          arguments: { code: "x".repeat(MAX_MCP_REQUEST_BODY_SIZE) },
+        },
+        { protocolVersion },
+      );
+      const body = await response.text();
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(413);
+      expect(response.headers.get("Content-Type")).toContain(
+        "application/json",
+      );
+      expect(JSON.parse(body)).toEqual({
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32000,
+          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_SIZE} bytes`,
+        },
+      });
+      expect(apiRequests).toEqual([]);
+    },
+  );
+
   it("advertises Code Mode alongside the normal catalog and executes discovery", async () => {
     const list = await rpc<ToolList>("tools/list", {});
     expect(list.tools.map(({ name }) => name)).toEqual(
@@ -496,4 +568,35 @@ describe("Code Mode on the authenticated MCP", () => {
       "code-mode-user",
     );
   });
+
+  it.each([403, 503])(
+    "reports only upstream server failures when user code catches HTTP %s",
+    async (status) => {
+      const logIssue = vi
+        .spyOn(logging, "logIssue")
+        .mockReturnValue("code-mode-event");
+      apiResponse = () =>
+        Response.json({ detail: "Upstream failure" }, { status });
+      const result = await execute(`async () => {
+        try { await sentry.request({path: "/organizations/"}); }
+        catch (error) { return {status: error.status, eventId: error.headers["x-sentry-event-id"] ?? null}; }
+      }`);
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent?.result).toEqual({
+        status,
+        eventId: status === 503 ? "code-mode-event" : null,
+      });
+      if (status === 503) {
+        expect(logIssue).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ name: "ApiServerError", status: 503 }),
+          {
+            loggerScope: ["code-mode", "api"],
+            extra: { method: "GET", status: 503 },
+          },
+        );
+      } else {
+        expect(logIssue).not.toHaveBeenCalled();
+      }
+    },
+  );
 });

@@ -14,6 +14,7 @@
 
 import type { ExportedHandler } from "@cloudflare/workers-types";
 import * as Sentry from "@sentry/cloudflare";
+import { MAX_MCP_REQUEST_BODY_SIZE } from "@sentry/mcp-core/constants";
 import { buildServer } from "@sentry/mcp-core/server";
 import {
   ACTIVE_SKILLS,
@@ -23,6 +24,7 @@ import {
 import { logWarn } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
 import { createMcpHandler } from "agents/mcp/server";
+import { limitMcpRequestBody } from "../../code-mode/http";
 import { registerProductionCodeModeTools } from "../../code-mode/production";
 import { annotateResponseMetric } from "../metrics";
 import {
@@ -457,6 +459,9 @@ async function handleAuthenticatedMcpRequest(
       auth.kind === "oauth" ? auth.onUpstreamUnauthorized : undefined,
   };
 
+  const boundedRequest = await limitMcpRequestBody(request);
+  if (boundedRequest instanceof Response) return boundedRequest;
+
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
   return await createMcpHandler(
@@ -471,11 +476,12 @@ async function handleAuthenticatedMcpRequest(
     },
     {
       route: url.pathname,
+      maxRequestBodySize: MAX_MCP_REQUEST_BODY_SIZE,
       // The Agents handler rejects browser Origins by default except localhost.
       // Permit only the hostname serving this authenticated endpoint.
       allowedOriginHostnames: [url.hostname],
     },
-  )(request, env, ctx);
+  )(boundedRequest, env, ctx);
 }
 
 /**
