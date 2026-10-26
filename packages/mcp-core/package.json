@@ -105,6 +105,14 @@
       "types": "./dist/tools/agent-tools.d.ts",
       "default": "./dist/tools/agent-tools.js"
     },
+    "./internal/tool-helpers/resolve-region-url": {
+      "types": "./dist/internal/tool-helpers/resolve-region-url.d.ts",
+      "default": "./dist/internal/tool-helpers/resolve-region-url.js"
+    },
+    "./internal/tool-helpers/validate-region-url": {
+      "types": "./dist/internal/tool-helpers/validate-region-url.d.ts",
+      "default": "./dist/internal/tool-helpers/validate-region-url.js"
+    },
     "./internal/agents/callEmbeddedAgent": {
       "types": "./dist/internal/agents/callEmbeddedAgent.d.ts",
       "default": "./dist/internal/agents/callEmbeddedAgent.js"

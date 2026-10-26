@@ -12,7 +12,16 @@
     "dev": "tsc -w",
     "start": "tsx src/bin/start-mock-stdio.ts",
     "eval": "vitest --config=vitest.config.ts",
+    "eval:code-mode": "tsx src/code-mode/run-dashboard.ts",
+    "eval:code-mode:discovery": "tsx src/code-mode/run-dashboard.ts --client claude --surface catalog-and-code",
+    "eval:code-mode:flows": "tsx src/code-mode/run-dashboard.ts --client claude --surface catalog-and-code --task release --task repositories --task alert",
+    "eval:code-mode:resilience": "tsx src/code-mode/run-dashboard.ts --client claude --surface catalog-and-code --task monitor --task release-recovery --task repositories-retry --task repositories-denied",
+    "test:code-mode": "vitest run --config=vitest.code-mode.config.ts",
+    "tsc:code-mode": "tsc --project tsconfig.code-mode.json --noEmit",
     "eval:ci": "vitest run --reporter=vitest-evals/reporter --reporter=junit --reporter=json --outputFile.json=eval-results.json --outputFile.junit=eval.junit.xml"
+  },
+  "devDependencies": {
+    "wrangler": "catalog:"
   },
   "dependencies": {
     "@ai-sdk/mcp": "catalog:",
@@ -29,5 +38,9 @@
     "vitest": "catalog:",
     "vitest-evals": "catalog:",
     "zod": "catalog:"
+  },
+  "sentryCi": {
+    "typecheck": "tsc:code-mode",
+    "test": "test:code-mode"
   }
 }

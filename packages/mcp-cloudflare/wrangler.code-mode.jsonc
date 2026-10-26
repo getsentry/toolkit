@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sentry-code-mode-experiment",
+  "main": "src/code-mode/worker.ts",
+  "compatibility_date": "2026-01-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "worker_loaders": [{ "binding": "LOADER" }],
+  "vars": {
+    "API_BASE_URL": "https://sentry.io/api/0",
+    // Sentry's existing schema pipeline resolves references before publishing.
+    // Pin the artifact so schema changes are reviewed independently of execution.
+    "OPENAPI_URL": "https://raw.githubusercontent.com/getsentry/sentry-api-schema/803d6de98c9156c15e9ddc1bf9accbac6e24cebc/openapi-derefed.json",
+    "CODE_MODE_ALLOW_WRITES": "false",
+  },
+}

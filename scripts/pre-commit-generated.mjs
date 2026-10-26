@@ -16,6 +16,7 @@ const GENERATED_TASKS = [
       /^packages\/mcp-core\/src\/skills\.ts$/,
       /^packages\/mcp-core\/src\/internal\/tool-helpers\/tool-call-formatting\.ts$/,
       /^packages\/mcp-core\/scripts\/generate-definitions\.ts$/,
+      /^packages\/mcp-cloudflare\/src\/code-mode\/definitions\.ts$/,
       /^plugins\/sentry-mcp\/agents\/sentry-mcp\.md$/,
       /^plugins\/sentry-mcp-experimental\/agents\/sentry-mcp\.md$/,
     ],

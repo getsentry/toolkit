@@ -9,6 +9,7 @@
     "nodejs_compat_populate_process_env",
     "global_fetch_strictly_public",
   ],
+  "worker_loaders": [{ "binding": "LOADER" }],
   "vars": {
     "COOKIE_SECRET": "test-cookie-secret-32-characters",
     "SENTRY_CLIENT_ID": "test-client-id",

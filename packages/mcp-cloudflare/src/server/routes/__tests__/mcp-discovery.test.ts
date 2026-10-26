@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import app from "../../app";
 
 describe("/.mcp discovery routes", () => {
@@ -72,5 +72,28 @@ describe("/.mcp discovery routes", () => {
         surface: "catalog",
       }),
     );
+    for (const name of ["search_sentry_api", "execute_sentry_code"]) {
+      expect(toolsByName.get(name)).toEqual(
+        expect.objectContaining({
+          surface: "direct",
+          requiredScopes: [],
+          skills: ["api-read", "api-write"],
+          inputSchema: expect.objectContaining({
+            type: "object",
+            required: ["code"],
+            properties: expect.objectContaining({
+              code: expect.objectContaining({ type: "string" }),
+            }),
+          }),
+          outputSchema: expect.objectContaining({
+            type: "object",
+            properties: expect.objectContaining({
+              result: expect.any(Object),
+              stats: expect.objectContaining({ type: "object" }),
+            }),
+          }),
+        }),
+      );
+    }
   });
 });

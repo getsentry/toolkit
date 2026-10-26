@@ -15,5 +15,5 @@ export const TokenResponseSchema = z.object({
     id: z.string(),
     name: z.string().nullable(),
   }),
-  scope: z.string(),
+  scope: z.string().optional(),
 });

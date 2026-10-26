@@ -17,12 +17,13 @@ import * as Sentry from "@sentry/cloudflare";
 import { buildServer } from "@sentry/mcp-core/server";
 import {
   ACTIVE_SKILLS,
-  type Skill,
   parseSkills,
+  type Skill,
 } from "@sentry/mcp-core/skills";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
 import { createMcpHandler } from "agents/mcp/server";
+import { registerProductionCodeModeTools } from "../../code-mode/production";
 import { annotateResponseMetric } from "../metrics";
 import {
   ACCESS_METHOD_ATTRIBUTE,
@@ -30,16 +31,15 @@ import {
   getOAuthGrantTelemetry,
   OAUTH_GRANT_REVOKED_REASON_ATTRIBUTE,
 } from "../oauth/telemetry";
-import type { WorkerProps } from "../types";
-import type { Env } from "../types";
+import type { Env, WorkerProps } from "../types";
 import {
-  MCP_RATE_LIMIT_EXCEEDED_MESSAGE,
   checkRateLimit,
+  MCP_RATE_LIMIT_EXCEEDED_MESSAGE,
 } from "../utils/rate-limiter";
 import { setSentryUserFromRequest } from "../utils/sentry-user";
 import {
-  UTM_SOURCE_ATTRIBUTE,
   resolveUtmSourceFromRequest,
+  UTM_SOURCE_ATTRIBUTE,
 } from "./attribution";
 import { resolveClientFamily } from "./client-family";
 import { verifyConstraintsAccess } from "./constraint-utils";
@@ -460,12 +460,15 @@ async function handleAuthenticatedMcpRequest(
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
   return await createMcpHandler(
-    () =>
-      buildServer({
+    () => {
+      const server = buildServer({
         context: serverContext,
         experimentalMode: isExperimentalMode,
         sdkVersion: "v2",
-      }),
+      });
+      registerProductionCodeModeTools(server, env.LOADER, serverContext);
+      return server;
+    },
     {
       route: url.pathname,
       // The Agents handler rejects browser Origins by default except localhost.
