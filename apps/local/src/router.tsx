@@ -22,6 +22,10 @@ const localRouter = createBrowserRouter([
   { path: "/sdks", Component: WorkspaceRoute },
   { path: "/feedback", Component: WorkspaceRoute },
   { path: "/profiles", Component: WorkspaceRoute },
+  { path: "/queries", Component: WorkspaceRoute },
+  { path: "/resources", Component: WorkspaceRoute },
+  { path: "/web-vitals", Component: WorkspaceRoute },
+  { path: "/attachments", Component: WorkspaceRoute },
   { path: "*", element: <Navigate to="/live" replace /> },
 ]);
 

@@ -41,7 +41,10 @@ export function getLocalUiBaseUrl(
 }
 
 /** Build the browser URL without exposing the local stream to the UI host. */
-export function buildLocalUiUrl(receiverUrl: string): string {
+export function buildLocalUiUrl(
+  receiverUrl: string,
+  directoryUrl?: string,
+): string {
   const receiver = new URL(receiverUrl);
   assertLoopbackHostForUi(receiver.hostname);
 
@@ -49,13 +52,58 @@ export function buildLocalUiUrl(receiverUrl: string): string {
     ? receiver.toString()
     : new URL("/stream", receiver).toString();
   const uiUrl = new URL(getLocalUiBaseUrl());
-  uiUrl.hash = new URLSearchParams({ stream: streamUrl }).toString();
+  const fragment = new URLSearchParams({ stream: streamUrl });
+  if (directoryUrl) {
+    const directory = new URL(directoryUrl);
+    if (
+      directory.origin !== receiver.origin ||
+      directory.pathname !== "/_local/v1/ui/sessions" ||
+      !directory.searchParams.get("cap") ||
+      directory.username ||
+      directory.password ||
+      directory.hash
+    ) {
+      throw new ValidationError(
+        "Session discovery must use the same loopback receiver.",
+        "directory",
+      );
+    }
+    fragment.set("directory", directory.toString());
+  }
+  uiUrl.hash = fragment.toString();
   return uiUrl.toString();
 }
 
+/** A shareable hosted-viewer link contains only the daemon's plain address. */
+export function getLocalUiConnectionUrl(
+  receiverUrl: string,
+): string | undefined {
+  try {
+    const receiver = new URL(receiverUrl);
+    if (
+      !isLoopbackHost(receiver.hostname) ||
+      receiver.username ||
+      receiver.password ||
+      !["http:", "https:"].includes(receiver.protocol)
+    )
+      return;
+    const ui = new URL(PRODUCTION_UI_URL);
+    ui.searchParams.set("url", new URL("/stream", receiver).toString());
+    return ui.toString();
+  } catch {
+    logger.debug(
+      "Skipping Local viewer hint because the receiver URL is invalid.",
+    );
+    return;
+  }
+}
+
 /** Open the independently served local UI without affecting capture on failure. */
-export async function openLocalUi(receiverUrl: string): Promise<void> {
-  const uiUrl = buildLocalUiUrl(receiverUrl);
+export async function openLocalUi(
+  receiverUrl: string,
+  directoryUrl?: string,
+): Promise<void> {
+  const uiUrl = buildLocalUiUrl(receiverUrl, directoryUrl);
   let opened = false;
   try {
     opened = await openBrowser(uiUrl);
@@ -67,7 +115,7 @@ export async function openLocalUi(receiverUrl: string): Promise<void> {
     return;
   }
   const streamUrl = new URL(receiverUrl);
-  if (streamUrl.searchParams.has("cap")) {
+  if (streamUrl.searchParams.has("cap") || directoryUrl) {
     logger.warn(
       "Could not open browser. Use sentry local session view <session> --json to retrieve its stream URL.",
     );
@@ -80,8 +128,9 @@ export async function openLocalUi(receiverUrl: string): Promise<void> {
 export async function openLocalUiIfRequested(
   requested: boolean,
   receiverUrl: string,
+  directoryUrl?: string,
 ): Promise<void> {
   if (requested) {
-    await openLocalUi(receiverUrl);
+    await openLocalUi(receiverUrl, directoryUrl);
   }
 }
