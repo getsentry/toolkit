@@ -152,22 +152,10 @@ subsequent ingestion. Session commands start the daemon when it isn't running;
 `sentry local daemon start` starts it ahead of time. Stopping or restarting the
 daemon (`sentry local daemon restart`) clears all sessions.
 
-<!-- allow-commands: session lifecycle walkthrough across local subcommands -->
-```bash
-sentry local run --session web -- npm run dev
-sentry local serve --session worker
-sentry local session list --json
-sentry local session view web --json
-sentry local session retention web --max-envelopes 2000
-sentry local event list web --json
-sentry local event view web <event-id> --json
-sentry local envelope list web --json
-sentry local envelope view web <envelope-id> --json
-sentry local session reset web
-sentry local session close web
-sentry local daemon status
-sentry local daemon stop
-```
+The `sentry local run` examples above walk through a full session lifecycle:
+capture, inspect sessions, events, and envelopes, then reset, close, and stop
+the daemon. `sentry local serve --session worker` captures into a session the
+same way without wrapping a command.
 
 `sentry local session create <name> --json` returns separate SDK ingest and
 viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes

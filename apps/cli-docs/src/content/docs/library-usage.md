@@ -109,12 +109,16 @@ for zero overhead beyond the command's own logic.
 For commands not easily expressed through the typed API, or when you want to
 pass raw CLI flags, use `sdk.run()`:
 
+<!-- GENERATED:START sdk-run-examples -->
 ```typescript
 // Run any CLI command — returns parsed JSON by default
 const version = await sdk.run("--version");
-const issues = await sdk.run("issue", "list", "-n", "5");
+// Show only unresolved issues
+const issues = await sdk.run("issue", "list", "my-org/frontend", "--query", "is:unresolved");
+// Help text for a command group
 const help = await sdk.run("help", "issue");
 ```
+<!-- GENERATED:END sdk-run-examples -->
 
 ## Authentication
 

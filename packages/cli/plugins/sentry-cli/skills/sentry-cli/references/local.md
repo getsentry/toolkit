@@ -96,6 +96,9 @@ sentry local
 # Use a custom port
 sentry local --port 9000
 
+# Receive into a daemon session that outlives this terminal
+sentry local serve --session worker
+
 # Only show errors and logs (filter out transactions)
 sentry local -f error -f log
 
@@ -205,6 +208,20 @@ sentry local run -- npm run dev
 
 # Run a Django dev server with the local server enabled
 sentry local run -- python manage.py runserver
+
+# Capture into a daemon session, inspect it after the app exits, then clean up
+sentry local run --session web -- npm run dev
+sentry local session list --json
+sentry local session view web --json
+sentry local session retention web --max-envelopes 2000
+sentry local event list web --json
+sentry local event view web <event-id> --json
+sentry local envelope list web --json
+sentry local envelope view web <envelope-id> --json
+sentry local session reset web
+sentry local session close web
+sentry local daemon status
+sentry local daemon stop
 
 # Run your app and open the Sentry Local UI
 sentry local run --open -- npm run dev

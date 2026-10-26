@@ -515,12 +515,12 @@ All command docs and skill files are generated via `pnpm run generate:docs` (whi
 - **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
 - **Target syntax belongs to the positional**: describe accepted target forms in the positional `brief` (use `ORG_ALL_TARGET_BRIEF` or `PROJECT_TARGET_BRIEF` from `src/lib/list-command.ts` for `[<org>/][<project>]` targets), not in a `Target patterns:` block. The brief renders in `--help`, the generated docs, and the skill references.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
-- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. For a real workflow, sample output, or cross-command guide, put `<!-- allow-commands: <reason> -->` on the line directly above the block.
+- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `command` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
 - Don't restate a value flag's `default` in its `brief`; help and docs already show it (`test/lib/flag-briefs.test.ts`).
-- `pnpm run check:doc-examples` also checks string-literal `sdk.run(…)` examples in the docs, `README.md`, and `src/index.ts`.
-- Lists that mirror code (scanned DSN extensions, alias examples, destructive commands, detected agents) are generated sections in `script/generate-docs-sections.ts`; add new mirrors there instead of hand-writing them.
+- `pnpm run check:doc-examples` also checks string-literal `sdk.run(…)` calls in TypeScript fences and `@example` JSDoc (`src/index.ts`). They are found by parsing with the TypeScript compiler (`script/sdk-run-calls.ts`); don't add regex-based source parsing.
+- Lists that mirror code (scanned DSN extensions, alias examples, destructive commands, detected agents, the `library-usage.md` `sdk.run()` sample built from `issue list` examples) are generated sections in `script/generate-docs-sections.ts`; add new mirrors there instead of hand-writing them.
 
 ### Valibot Schemas for Validation
 

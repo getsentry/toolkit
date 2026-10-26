@@ -10,7 +10,7 @@
  * for introspection and documentation generation.
  */
 
-import type { CommandExample } from "./command.js";
+import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   COMPLETION_TARGETS,
   type CompletionTarget,
@@ -321,7 +321,8 @@ export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
     positionals,
     aliases: cmd.parameters.aliases ?? {},
     examples: (cmd.__examples ?? []).map(
-      ({ description, command }) => `# ${description}\n${command}`,
+      (example) =>
+        `# ${example.description}\n${exampleSteps(example).join("\n")}`,
     ),
     jsonFields: jsonFields?.length ? jsonFields : undefined,
     ...(cmd.__destructive ? { destructive: true as const } : {}),

@@ -8,7 +8,9 @@
  *   3. Fragment files don't accidentally contain frontmatter or the generated marker
  *   4. Top-level fragments (e.g., configuration.md) exist
  *   5. Fragment content covers all subcommands in a route (errors with
- *      --strict, which `pnpm run check:fragments` passes)
+ *      --strict, which `pnpm run check:fragments` passes). A command is
+ *      covered by its own docs.examples, a workflow example step that runs
+ *      it, or a mention in the fragment
  *   6. Fragments don't contain Examples sections (examples belong in docs.examples)
  *   7. Fragment shell code blocks don't run `sentry` commands unless marked
  *      with `<!-- allow-commands: <reason> -->` (see fragment-commands.ts)
@@ -274,9 +276,19 @@ for (const [routeName, route] of multiCommandRoutes) {
 
   const defaultCmd = getDefaultCommandName(routeName);
 
+  // Workflow examples (multi-step `docs.examples`) document every command
+  // they run, not only the command that owns them.
+  const exampleSteps = route.commands.flatMap((cmd) =>
+    cmd.examples.flatMap((example) =>
+      example.split("\n").filter((line) => !line.startsWith("#")),
+    ),
+  );
+  const runByExample = (path: string) =>
+    exampleSteps.some((step) => step === path || step.startsWith(`${path} `));
+
   const missing: string[] = [];
   for (const cmd of route.commands) {
-    if (cmd.examples.length > 0) {
+    if (cmd.examples.length > 0 || runByExample(cmd.path)) {
       continue;
     }
     const sub = cmd.path.slice(`sentry ${routeName} `.length);

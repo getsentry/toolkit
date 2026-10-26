@@ -405,6 +405,24 @@ export const runCommand = buildCommand({
         command: "sentry local run -- python manage.py runserver",
       },
       {
+        description:
+          "Capture into a daemon session, inspect it after the app exits, then clean up",
+        command: [
+          "sentry local run --session web -- npm run dev",
+          "sentry local session list --json",
+          "sentry local session view web --json",
+          "sentry local session retention web --max-envelopes 2000",
+          "sentry local event list web --json",
+          "sentry local event view web <event-id> --json",
+          "sentry local envelope list web --json",
+          "sentry local envelope view web <envelope-id> --json",
+          "sentry local session reset web",
+          "sentry local session close web",
+          "sentry local daemon status",
+          "sentry local daemon stop",
+        ],
+      },
+      {
         description: "Run your app and open the Sentry Local UI",
         command: "sentry local run --open -- npm run dev",
       },

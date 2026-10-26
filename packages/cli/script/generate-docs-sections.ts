@@ -18,6 +18,8 @@
  *   - plugins/README.md: skill file layout (paths checked on disk)
  *   - features.md: DSN-scanned extensions (from TEXT_EXTENSIONS) and project
  *     alias examples (computed by buildOrgAwareAliases)
+ *   - library-usage.md: `sdk.run()` sample (translated from command
+ *     `docs.examples`)
  *
  * Unlike generate-command-docs.ts (which produces gitignored files from scratch),
  * this script edits committed files in-place between marker pairs.
@@ -31,6 +33,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import peggy from "peggy";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
+import { tokenize } from "./shell-words.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-command-docs.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -46,10 +49,12 @@ if (!skillContentExists) {
 }
 
 import type { EnvVarEntry } from "../src/lib/env-registry.js";
-import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
+import { exampleSteps } from "../src/lib/command-example.js";
+import type { Command, RouteInfo, RouteMap } from "../src/lib/introspect.js";
 
 const { routes } = await import("../src/app.js");
-const { extractAllRoutes } = await import("../src/lib/introspect.js");
+const { extractAllRoutes, isCommand, isRouteMap } =
+  await import("../src/lib/introspect.js");
 const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
 const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
@@ -821,6 +826,60 @@ const inOrg = (org: string, projects: string[]): AliasPair[] =>
   projects.map((project) => ({ org, project }));
 
 // ---------------------------------------------------------------------------
+// Section: sdk.run() Examples (library-usage.md)
+// ---------------------------------------------------------------------------
+
+/** The command at `path` in the route tree, e.g. `["issue", "list"]`. */
+function commandAt(path: string[]): Command {
+  let target: unknown = routeMap;
+  for (const name of path) {
+    target = isRouteMap(target)
+      ? target.getAllEntries().find((e) => e.name.original === name)?.target
+      : undefined;
+  }
+  if (!isCommand(target)) {
+    throw new Error(
+      `sdk-run-examples: no command \`sentry ${path.join(" ")}\``,
+    );
+  }
+  return target;
+}
+
+/**
+ * Translate the first single-step example of `path` that passes a flag into
+ * an `sdk.run(…)` statement, so the library docs show an invocation the CLI
+ * already documents and checks.
+ */
+function sdkRunStatement(path: string[], variable: string): string {
+  for (const example of commandAt(path).__examples ?? []) {
+    const steps = exampleSteps(example);
+    const words = steps.length === 1 ? tokenize(steps[0] ?? "") : [];
+    if (words[0] === "sentry" && words.some((w) => w.startsWith("-"))) {
+      const argv = words.slice(1).map((w) => JSON.stringify(w));
+      return [
+        `// ${example.description}`,
+        `const ${variable} = await sdk.run(${argv.join(", ")});`,
+      ].join("\n");
+    }
+  }
+  throw new Error(
+    `sdk-run-examples: \`sentry ${path.join(" ")}\` has no single-step example with a flag`,
+  );
+}
+
+function generateSdkRunExamples(): string {
+  return [
+    "```typescript",
+    "// Run any CLI command — returns parsed JSON by default",
+    'const version = await sdk.run("--version");',
+    sdkRunStatement(["issue", "list"], "issues"),
+    "// Help text for a command group",
+    'const help = await sdk.run("help", "issue");',
+    "```",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Section Definitions
 // ---------------------------------------------------------------------------
 
@@ -978,6 +1037,11 @@ const sections: SectionDef[] = [
         ],
         orgProject,
       ),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/library-usage.md`,
+    sectionName: "sdk-run-examples",
+    generate: generateSdkRunExamples,
   },
 ];
 

@@ -3,8 +3,8 @@
  * Check `sentry …` examples in hand-written docs against the live route tree.
  *
  * Every `sentry` invocation in a fenced shell block or inline code span, and
- * every structured command example (`docs.examples`, which feeds `--help` and
- * the generated command pages), must:
+ * every step of every structured command example (`docs.examples`, which
+ * feeds `--help` and the generated command pages), must:
  *   1. Name a command that exists (e.g. `sentry upgrade` → `sentry cli upgrade`)
  *   2. Use only flags (and single-letter aliases) that command defines
  *   3. Not pass a bare org-looking slug (`my-org`) as a target. A bare name
@@ -12,7 +12,9 @@
  *      trailing-slash form (`my-org/`)
  *
  * Library examples that pass only string literals to `sdk.run(…)` get the same
- * checks, since `run()` takes the same argv as the CLI.
+ * checks, since `run()` takes the same argv as the CLI. Those calls are found
+ * by parsing TypeScript fences and `@example` JSDoc with the TypeScript
+ * compiler (see sdk-run-calls.ts), not by pattern matching.
  *
  * Placeholders (`<org>/<project>`, `[args]`, `...`) are skipped. Generated
  * command pages are not scanned: their examples are checked at the source.
@@ -28,6 +30,7 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { exampleSteps } from "../src/lib/command-example.js";
 import type {
   Command,
   PositionalParam,
@@ -36,6 +39,12 @@ import type {
 } from "../src/lib/introspect.js";
 import { blankCodeBlocks, markdownCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
+import {
+  jsdocExamples,
+  markdownTsBlocks,
+  sdkRunCalls,
+} from "./sdk-run-calls.js";
+import { tokenize } from "./shell-words.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-docs-sections.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -91,11 +100,6 @@ const CONTINUATION_RE = /\\\n\s*/g;
 const PLACEHOLDER_RE = /[<>[\]{}]|\.\.\.|…|^\$/;
 const SHORT_ALIAS_RE = /^-([a-zA-Z])$/;
 const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
-/** `sdk.run(…)` calls; arguments are checked only when all are string literals. */
-const SDK_RUN_RE = /\bsdk\.run\(([^)]*)\)/g;
-const SDK_RUN_ARGS_RE =
-  /^\s*(?:"[^"\\]*"|'[^'\\]*')(?:\s*,\s*(?:"[^"\\]*"|'[^'\\]*'))*\s*,?\s*$/;
-const STRING_LITERAL_RE = /"([^"\\]*)"|'([^'\\]*)'/g;
 
 type Finding = { file: string; example: string; problem: string };
 
@@ -103,46 +107,6 @@ type Finding = { file: string; example: string; problem: string };
 type RoutingMap = RouteMap & {
   getRoutingTargetForInput(input: string): RouteTarget | undefined;
 };
-
-/** Split a shell command into words, honoring single and double quotes. */
-function tokenize(command: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: string | null = null;
-  let hasToken = false;
-  for (const ch of command) {
-    if (quote) {
-      if (ch === quote) {
-        quote = null;
-      } else {
-        current += ch;
-      }
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      hasToken = true;
-      continue;
-    }
-    if (ch === "#" && !hasToken) {
-      break; // comment
-    }
-    if (/\s/.test(ch)) {
-      if (hasToken) {
-        tokens.push(current);
-        current = "";
-        hasToken = false;
-      }
-      continue;
-    }
-    current += ch;
-    hasToken = true;
-  }
-  if (hasToken) {
-    tokens.push(current);
-  }
-  return tokens;
-}
 
 /** Collect `sentry …` invocations from one Markdown file. */
 function extractInvocations(markdown: string): string[] {
@@ -170,21 +134,11 @@ function extractInvocations(markdown: string): string[] {
   return invocations;
 }
 
-/**
- * Argv arrays from `sdk.run("issue", "list", …)` calls. Calls with any
- * non-literal argument (variables, spreads) are skipped.
- */
-function extractSdkRunArgs(text: string): string[][] {
-  const calls: string[][] = [];
-  for (const [, args = ""] of text.matchAll(SDK_RUN_RE)) {
-    if (!SDK_RUN_ARGS_RE.test(args)) {
-      continue;
-    }
-    calls.push(
-      [...args.matchAll(STRING_LITERAL_RE)].map((m) => m[1] ?? m[2] ?? ""),
-    );
-  }
-  return calls;
+/** TypeScript example snippets: fenced blocks in Markdown, `@example` JSDoc in source. */
+function typescriptExamples(file: string, content: string): string[] {
+  return file.endsWith(".ts")
+    ? jsdocExamples(file, content)
+    : markdownTsBlocks(content);
 }
 
 /** Whether `--name` (or the boolean negation `--no-name`) is accepted. */
@@ -341,10 +295,9 @@ function commandExamples(
     return [];
   }
   const source = `\`${["sentry", ...path].join(" ")}\` help`;
-  return (target.__examples ?? []).map((e) => ({
-    source,
-    invocation: e.command,
-  }));
+  return (target.__examples ?? []).flatMap((e) =>
+    exampleSteps(e).map((invocation) => ({ source, invocation })),
+  );
 }
 
 const findings: Finding[] = [];
@@ -367,7 +320,7 @@ for (const file of [...files, ...SDK_EXAMPLE_FILES]) {
       findings.push({ file, example: invocation, problem });
     }
   }
-  for (const argv of extractSdkRunArgs(content)) {
+  for (const argv of typescriptExamples(file, content).flatMap(sdkRunCalls)) {
     checked += 1;
     const example = `sdk.run(${argv.map((a) => JSON.stringify(a)).join(", ")})`;
     for (const problem of checkWords(["sentry", ...argv])) {
