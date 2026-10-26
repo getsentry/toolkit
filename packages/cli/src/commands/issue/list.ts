@@ -1715,7 +1715,8 @@ export const listCommand = buildListCommand("issue", {
       query: {
         kind: "parsed",
         parse: sanitizeIssueQuery,
-        brief: "Search query (Sentry syntax, implicit AND, no OR operator)",
+        brief:
+          "Search query (Sentry syntax, implicit AND; same-key OR becomes an in-list)",
         optional: true,
       },
       limit: buildListLimitFlag("issues"),
