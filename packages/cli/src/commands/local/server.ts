@@ -1021,6 +1021,11 @@ export const serverCommand = buildCommand({
       },
       { description: "Use a custom port", command: "sentry local --port 9000" },
       {
+        description:
+          "Receive into a daemon session that outlives this terminal",
+        command: "sentry local serve --session worker",
+      },
+      {
         description: "Only show errors and logs (filter out transactions)",
         command: "sentry local -f error -f log",
       },
@@ -1047,13 +1052,13 @@ export const serverCommand = buildCommand({
       port: {
         kind: "parsed",
         parse: parsePort,
-        brief: `Port to listen on (default ${DEFAULT_PORT})`,
+        brief: "Port to listen on",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
         parse: String,
-        brief: "Hostname to bind to (default localhost)",
+        brief: "Hostname to bind to",
         default: "localhost",
       },
       quiet: {

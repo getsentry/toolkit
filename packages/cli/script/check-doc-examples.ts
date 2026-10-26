@@ -3,13 +3,18 @@
  * Check `sentry …` examples in hand-written docs against the live route tree.
  *
  * Every `sentry` invocation in a fenced shell block or inline code span, and
- * every structured command example (`docs.examples`, which feeds `--help` and
- * the generated command pages), must:
+ * every step of every structured command example (`docs.examples`, which
+ * feeds `--help` and the generated command pages), must:
  *   1. Name a command that exists (e.g. `sentry upgrade` → `sentry cli upgrade`)
  *   2. Use only flags (and single-letter aliases) that command defines
  *   3. Not pass a bare org-looking slug (`my-org`) as a target. A bare name
  *      matches a project first, so examples that mean the org must use the
  *      trailing-slash form (`my-org/`)
+ *
+ * Library examples that pass only string literals to `sdk.run(…)` get the same
+ * checks, since `run()` takes the same argv as the CLI. Those calls are found
+ * by parsing TypeScript fences and `@example` JSDoc with the TypeScript
+ * compiler (see sdk-run-calls.ts), not by pattern matching.
  *
  * Placeholders (`<org>/<project>`, `[args]`, `...`) are skipped. Generated
  * command pages are not scanned: their examples are checked at the source.
@@ -25,6 +30,7 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { exampleSteps } from "../src/lib/command-example.js";
 import type {
   Command,
   PositionalParam,
@@ -33,6 +39,12 @@ import type {
 } from "../src/lib/introspect.js";
 import { blankCodeBlocks, markdownCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
+import {
+  jsdocExamples,
+  markdownTsBlocks,
+  sdkRunCalls,
+} from "./sdk-run-calls.js";
+import { shellCommands } from "./shell-words.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-docs-sections.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -64,6 +76,9 @@ const EXTRA_DOC_FILES = [
   "plugins/README.md",
 ];
 
+/** Source files whose JSDoc shows `sdk.run(…)` examples. */
+const SDK_EXAMPLE_FILES = ["src/index.ts"];
+
 /** Flags Stricli handles before command dispatch. */
 const BUILTIN_FLAGS = new Set(["help", "help-all", "version"]);
 const BUILTIN_ALIASES = new Set(["h", "H"]);
@@ -79,7 +94,6 @@ const TARGET_PLACEHOLDER_RE = /^(?:target|org\/.+)$/;
 
 const SHELL_LANGS = new Set(["", "bash", "sh", "shell", "zsh", "console"]);
 const INLINE_CODE_RE = /(?<!`)`(sentry [^`\n]+)`(?!`)/g;
-const COMMAND_SPLIT_RE = /\s*(?:\|\||&&|\||;)\s*/;
 const PROMPT_RE = /^\$\s+/;
 const CONTINUATION_RE = /\\\n\s*/g;
 const PLACEHOLDER_RE = /[<>[\]{}]|\.\.\.|…|^\$/;
@@ -93,46 +107,6 @@ type RoutingMap = RouteMap & {
   getRoutingTargetForInput(input: string): RouteTarget | undefined;
 };
 
-/** Split a shell command into words, honoring single and double quotes. */
-function tokenize(command: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: string | null = null;
-  let hasToken = false;
-  for (const ch of command) {
-    if (quote) {
-      if (ch === quote) {
-        quote = null;
-      } else {
-        current += ch;
-      }
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      hasToken = true;
-      continue;
-    }
-    if (ch === "#" && !hasToken) {
-      break; // comment
-    }
-    if (/\s/.test(ch)) {
-      if (hasToken) {
-        tokens.push(current);
-        current = "";
-        hasToken = false;
-      }
-      continue;
-    }
-    current += ch;
-    hasToken = true;
-  }
-  if (hasToken) {
-    tokens.push(current);
-  }
-  return tokens;
-}
-
 /** Collect `sentry …` invocations from one Markdown file. */
 function extractInvocations(markdown: string): string[] {
   const invocations: string[] = [];
@@ -145,10 +119,8 @@ function extractInvocations(markdown: string): string[] {
       if (line.startsWith("#")) {
         continue;
       }
-      for (const segment of line.split(COMMAND_SPLIT_RE)) {
-        if (segment.startsWith("sentry ")) {
-          invocations.push(segment);
-        }
+      if (shellCommands(line).some((words) => sentryArgs(words))) {
+        invocations.push(line);
       }
     }
   }
@@ -157,6 +129,13 @@ function extractInvocations(markdown: string): string[] {
     invocations.push(code);
   }
   return invocations;
+}
+
+/** TypeScript example snippets: fenced blocks in Markdown, `@example` JSDoc in source. */
+function typescriptExamples(file: string, content: string): string[] {
+  return file.endsWith(".ts")
+    ? jsdocExamples(file, content)
+    : markdownTsBlocks(content);
 }
 
 /** Whether `--name` (or the boolean negation `--no-name`) is accepted. */
@@ -221,17 +200,28 @@ function isTargetParam(param: PositionalParam | undefined): boolean {
   );
 }
 
-/** Problems with one `sentry …` invocation. */
-function checkInvocation(invocation: string): string[] {
-  const words = tokenize(invocation);
-  // Skip a `sudo` or `NAME=value` prefix, e.g. `SENTRY_DSN=… sentry monitor run`
+/**
+ * Arguments after `sentry` when `words` runs the CLI, skipping a `sudo` or
+ * `NAME=value` prefix (e.g. `SENTRY_DSN=… sentry monitor run`).
+ */
+function sentryArgs(words: string[]): string[] | undefined {
   const start = words.findIndex(
     (word) => word !== "sudo" && !ENV_ASSIGNMENT_RE.test(word),
   );
-  if (words[start] !== "sentry") {
+  return words[start] === "sentry" ? words.slice(start + 1) : undefined;
+}
+
+/** Problems with the `sentry …` commands of one shell line. */
+function checkInvocation(line: string): string[] {
+  return shellCommands(line).flatMap(checkWords);
+}
+
+/** Problems with one tokenized command; other programs are ignored. */
+function checkWords(words: string[]): string[] {
+  const tokens = sentryArgs(words);
+  if (!tokens) {
     return [];
   }
-  const tokens = words.slice(start + 1);
   const resolved = resolve(tokens);
   if (!resolved) {
     return [];
@@ -309,10 +299,9 @@ function commandExamples(
     return [];
   }
   const source = `\`${["sentry", ...path].join(" ")}\` help`;
-  return (target.__examples ?? []).map((e) => ({
-    source,
-    invocation: e.command,
-  }));
+  return (target.__examples ?? []).flatMap((e) =>
+    exampleSteps(e).map((invocation) => ({ source, invocation })),
+  );
 }
 
 const findings: Finding[] = [];
@@ -326,19 +315,27 @@ for (const { source, invocation } of commandExamples(
     findings.push({ file: source, example: invocation, problem });
   }
 }
-for (const file of files) {
+for (const file of [...files, ...SDK_EXAMPLE_FILES]) {
   const content = await readFile(file, "utf-8");
-  for (const invocation of extractInvocations(content)) {
+  const invocations = file.endsWith(".ts") ? [] : extractInvocations(content);
+  for (const invocation of invocations) {
     checked += 1;
     for (const problem of checkInvocation(invocation)) {
       findings.push({ file, example: invocation, problem });
+    }
+  }
+  for (const argv of typescriptExamples(file, content).flatMap(sdkRunCalls)) {
+    checked += 1;
+    const example = `sdk.run(${argv.map((a) => JSON.stringify(a)).join(", ")})`;
+    for (const problem of checkWords(["sentry", ...argv])) {
+      findings.push({ file, example, problem });
     }
   }
 }
 
 if (findings.length === 0) {
   console.log(
-    `✓ ${checked} sentry examples in ${files.length} files match the CLI`,
+    `✓ ${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length} files match the CLI`,
   );
   process.exit(0);
 }

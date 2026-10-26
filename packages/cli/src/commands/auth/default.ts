@@ -127,7 +127,7 @@ export const authDefaultCommand = buildCommand({
       timeout: {
         kind: "parsed",
         parse: numberParser,
-        brief: "Timeout for OAuth flow in seconds (default: 900)",
+        brief: "Timeout for OAuth flow in seconds",
         default: "900",
       },
       force: {

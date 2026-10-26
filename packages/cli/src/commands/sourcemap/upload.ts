@@ -276,7 +276,7 @@ export const uploadCommand = buildCommand({
       "url-prefix": {
         kind: "parsed",
         parse: String,
-        brief: "URL prefix for uploaded files (default: ~/)",
+        brief: "URL prefix for uploaded files",
         optional: true,
         default: "~/",
       },

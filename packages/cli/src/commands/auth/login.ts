@@ -595,7 +595,7 @@ export const loginCommand = buildCommand({
       timeout: {
         kind: "parsed",
         parse: numberParser,
-        brief: "Timeout for OAuth flow in seconds (default: 900)",
+        brief: "Timeout for OAuth flow in seconds",
         // Stricli passes string defaults through parse(); numberParser converts to number
         default: "900",
       },
