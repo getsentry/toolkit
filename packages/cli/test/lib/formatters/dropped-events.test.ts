@@ -46,48 +46,48 @@ const RESPONSE: DroppedEventsResponse = {
 };
 
 describe("summarizeDroppedEvents", () => {
-  test("groups by outcome then reason, sorted by volume", () => {
-    const { outcomes } = summarizeDroppedEvents(RESPONSE);
+  test("flat rows grouped by outcome then reason, sorted by volume", () => {
+    const rows = summarizeDroppedEvents(RESPONSE);
 
-    // client_discard (100) > rate_limited (17) > filtered (3)
-    expect(outcomes.map((o) => o.outcome)).toEqual([
-      "client_discard",
-      "rate_limited",
-      "filtered",
+    // Rows are contiguous by outcome: client_discard (100) > rate_limited (17)
+    // > filtered (3); reasons sorted by volume, same-reason buckets summed.
+    expect(rows.map((r) => [r.outcome, r.reason, r.events])).toEqual([
+      ["client_discard", "sample_rate", 100],
+      ["rate_limited", "spike_protection", 15],
+      ["rate_limited", "usage_exceeded", 2],
+      ["filtered", "web-crawlers", 3],
     ]);
+  });
 
-    const rateLimited = outcomes[1];
-    expect(rateLimited.events).toBe(17);
-    // reasons sorted by volume, and same-reason buckets summed
-    expect(rateLimited.reasons.map((r) => [r.reason, r.events])).toEqual([
-      ["spike_protection", 15],
-      ["usage_exceeded", 2],
-    ]);
+  test("every row carries the outcome's human label", () => {
+    const rows = summarizeDroppedEvents(RESPONSE);
+    const byOutcome = Object.fromEntries(rows.map((r) => [r.outcome, r.label]));
+    expect(byOutcome.client_discard).toBe("Client Discard");
+    expect(byOutcome.rate_limited).toBe("Rate Limited");
+    expect(byOutcome.filtered).toBe("Inbound Filter");
   });
 
   test("share is a 0-1 ratio over total volume (dropped + accepted)", () => {
-    const { outcomes } = summarizeDroppedEvents(RESPONSE);
+    const rows = summarizeDroppedEvents(RESPONSE);
     // total = 100 + 17 + 3 + 880 = 1000
-    const clientDiscard = outcomes[0];
-    expect(clientDiscard.share).toBeCloseTo(0.1, 10);
-    expect(clientDiscard.reasons[0].share).toBeCloseTo(0.1, 10);
+    expect(rows[0].share).toBeCloseTo(0.1, 10);
   });
 
-  test("carries the drop-classification tag onto each reason", () => {
-    const { outcomes } = summarizeDroppedEvents(RESPONSE);
-    const byOutcome = Object.fromEntries(outcomes.map((o) => [o.outcome, o]));
-    expect(byOutcome.client_discard.reasons[0].tags).toEqual(["intentional"]);
-    expect(byOutcome.rate_limited.reasons[0].tags).toEqual(["unintentional"]);
-    expect(byOutcome.filtered.reasons[0].tags).toEqual(["intentional"]);
+  test("carries the drop-classification tag onto each row", () => {
+    const rows = summarizeDroppedEvents(RESPONSE);
+    const byOutcome = Object.fromEntries(rows.map((r) => [r.outcome, r.tags]));
+    expect(byOutcome.client_discard).toEqual(["intentional"]);
+    expect(byOutcome.rate_limited).toEqual(["unintentional"]);
+    expect(byOutcome.filtered).toEqual(["intentional"]);
   });
 
-  test("empty response yields no outcomes", () => {
-    const { outcomes } = summarizeDroppedEvents({
+  test("empty response yields no rows", () => {
+    const rows = summarizeDroppedEvents({
       meta: { dataset: "errors", start: 0, end: 0, interval: 0 },
       droppedEvents: [],
       acceptedEvents: [],
     });
-    expect(outcomes).toEqual([]);
+    expect(rows).toEqual([]);
   });
 });
 
@@ -103,6 +103,6 @@ describe("formatDroppedEvents", () => {
   });
 
   test("empty result renders nothing", () => {
-    expect(formatDroppedEvents({ outcomes: [] })).toBe("");
+    expect(formatDroppedEvents([])).toBe("");
   });
 });

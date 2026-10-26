@@ -142,13 +142,35 @@ Analytics for events Sentry dropped
 
 **Flags:**
 - `--dataset <value> - Dropped-data type: errors, spans, logs, or metrics - (default: "errors")`
-- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01"`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "90d")`
 
 **JSON Fields** (use `--json --fields` to select specific fields):
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `outcomes` | array |  |
+| `outcome` | string | Drop outcome code (e.g. rate_limited, filtered) |
+| `label` | string | Human-readable outcome label |
+| `reason` | string | Drop reason within the outcome (e.g. spike_protection) |
+| `category` | string | Data category (e.g. error, span) |
+| `events` | number | Events dropped for this slice |
+| `share` | number | Fraction of total volume (0-1), not a percentage string |
+| `tags` | array | Drop classification: intentional or unintentional |
+
+**Examples:**
+
+```bash
+# Dropped-event analytics for a project
+sentry event analytics my-org/my-project
+
+# Analytics for a different dataset
+sentry event analytics my-org/my-project --dataset spans
+
+# Narrow the time range
+sentry event analytics my-org/my-project --period 24h
+
+# Select specific JSON fields
+sentry event analytics my-org/my-project --json --fields outcome,reason,events
+```
 
 ### `sentry event send <target-or-file...>`
 

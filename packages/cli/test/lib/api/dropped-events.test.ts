@@ -43,17 +43,14 @@ describe("getDroppedEvents", () => {
     expect(capturedUrl).toContain("dataset=errors");
   });
 
-  test("maps the metrics alias to the tracemetrics API dataset", async () => {
+  test("sends the dataset through unchanged and scopes by project id", async () => {
     mockOk();
-    await getDroppedEvents("my-org", { dataset: "metrics" });
+    // Plain transport: callers resolve aliases (metrics → tracemetrics) first.
+    await getDroppedEvents("my-org", {
+      dataset: "tracemetrics",
+      projectId: "12345",
+    });
     expect(capturedUrl).toContain("dataset=tracemetrics");
-    expect(capturedUrl).not.toContain("dataset=metrics");
-  });
-
-  test("passes other datasets through unchanged and scopes by project id", async () => {
-    mockOk();
-    await getDroppedEvents("my-org", { dataset: "spans", projectId: "12345" });
-    expect(capturedUrl).toContain("dataset=spans");
     expect(capturedUrl).toContain("project=12345");
   });
 

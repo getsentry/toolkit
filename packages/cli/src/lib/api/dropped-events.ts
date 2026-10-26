@@ -7,7 +7,7 @@ import { apiRequestToRegion } from "./infrastructure.js";
 
 /** Options for {@link getDroppedEvents}. */
 export type DroppedEventsOptions = {
-  /** Which dropped-data type to summarize. */
+  /** API-level dataset name. Callers resolve user-facing aliases first. */
   dataset?: string;
   /** Numeric project ID. Omit to span every project the token can read. */
   projectId?: string;
@@ -17,28 +17,24 @@ export type DroppedEventsOptions = {
   start?: string;
   /** Absolute end (ISO-8601). Paired with start. */
   end?: string;
-  /** Bucket size (e.g. "1h", "1d"). Omit to let Sentry pick. */
-  interval?: string;
 };
 
 /**
  * Fetch dropped and accepted events for an organization, bucketed by outcome
- * and reason over the requested time range.
+ * and reason over the requested time range. Plain transport: `dataset` is sent
+ * as given, so callers must pass the API-level name (e.g. `tracemetrics`).
  */
 export async function getDroppedEvents(
   orgSlug: string,
   options: DroppedEventsOptions = {},
 ): Promise<DroppedEventsResponse> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  // The events API dataset is `tracemetrics`; `metrics` is the user-facing
-  // alias and 400s if sent through unchanged.
-  const dataset = options.dataset ?? "errors";
   const { data } = await apiRequestToRegion<DroppedEventsResponse>(
     regionUrl,
     `/organizations/${orgSlug}/events-dropped/`,
     {
       params: {
-        dataset: dataset === "metrics" ? "tracemetrics" : dataset,
+        dataset: options.dataset ?? "errors",
         project: options.projectId,
         statsPeriod:
           options.start || options.end
@@ -46,7 +42,6 @@ export async function getDroppedEvents(
             : (options.statsPeriod ?? "90d"),
         start: options.start,
         end: options.end,
-        interval: options.interval,
       },
       schema: DroppedEventsResponseSchema,
     },

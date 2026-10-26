@@ -1,6 +1,30 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { analyticsCommand } from "../../../src/commands/event/analytics.js";
+import {
+  analyticsCommand,
+  parseDataset,
+} from "../../../src/commands/event/analytics.js";
+import { ValidationError } from "../../../src/lib/errors.js";
 import type { DroppedEventsResponse } from "../../../src/types/dropped-events.js";
+
+describe("event analytics parseDataset", () => {
+  test("maps the metrics alias to the tracemetrics API dataset", () => {
+    expect(parseDataset("metrics")).toBe("tracemetrics");
+  });
+
+  test("accepts singular aliases like explore does", () => {
+    expect(parseDataset("error")).toBe("errors");
+    expect(parseDataset("span")).toBe("spans");
+    expect(parseDataset("log")).toBe("logs");
+  });
+
+  test("is case-insensitive", () => {
+    expect(parseDataset("Metrics")).toBe("tracemetrics");
+  });
+
+  test("rejects unknown datasets", () => {
+    expect(() => parseDataset("replays")).toThrow(ValidationError);
+  });
+});
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -80,7 +104,7 @@ const RESPONSE: DroppedEventsResponse = {
 
 describe("event analytics command func()", () => {
   let getDroppedEventsSpy: ReturnType<typeof vi.spyOn>;
-  let getProjectSpy: ReturnType<typeof vi.spyOn>;
+  let resolveProjectIdSpy: ReturnType<typeof vi.spyOn>;
   let resolveSpy: ReturnType<typeof vi.spyOn>;
 
   function createMockContext() {
@@ -99,10 +123,9 @@ describe("event analytics command func()", () => {
     resolveSpy = vi
       .spyOn(resolveTarget, "resolveProjectBoundFromArg")
       .mockResolvedValue({ org: "my-org", project: "my-project" });
-    getProjectSpy = vi
-      .spyOn(apiClient, "getProject")
-      // Only the numeric id is read by the command.
-      .mockResolvedValue({ id: "12345", slug: "my-project" } as never);
+    resolveProjectIdSpy = vi
+      .spyOn(resolveTarget, "resolveLogProjectId")
+      .mockResolvedValue(12345);
     getDroppedEventsSpy = vi
       .spyOn(apiClient, "getDroppedEvents")
       .mockResolvedValue(RESPONSE);
@@ -110,7 +133,7 @@ describe("event analytics command func()", () => {
 
   afterEach(() => {
     resolveSpy.mockRestore();
-    getProjectSpy.mockRestore();
+    resolveProjectIdSpy.mockRestore();
     getDroppedEventsSpy.mockRestore();
   });
 
@@ -119,7 +142,11 @@ describe("event analytics command func()", () => {
     const func = await analyticsCommand.loader();
     await func.call(
       context,
-      { dataset: "errors", json: true },
+      {
+        dataset: "errors",
+        period: { type: "relative", period: "90d" },
+        json: true,
+      },
       "my-org/my-project",
     );
 
@@ -129,26 +156,76 @@ describe("event analytics command func()", () => {
     );
   });
 
-  test("JSON output carries outcomes, shares, and tags", async () => {
+  test("forwards the parsed dataset to the API unchanged", async () => {
+    const { context } = createMockContext();
+    const func = await analyticsCommand.loader();
+    // Mirror the flag pipeline: the dataset reaches func() already parsed, so
+    // feed parseDataset's output (metrics → tracemetrics) the same way stricli
+    // would. parseDataset's mapping is unit-tested separately above.
+    await func.call(
+      context,
+      {
+        dataset: parseDataset("metrics"),
+        period: { type: "relative", period: "90d" },
+        json: true,
+      },
+      "my-org/my-project",
+    );
+
+    expect(getDroppedEventsSpy).toHaveBeenCalledWith(
+      "my-org",
+      expect.objectContaining({ dataset: "tracemetrics" }),
+    );
+  });
+
+  test("JSON output is a flat array of outcome/reason rows", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await analyticsCommand.loader();
     await func.call(
       context,
-      { dataset: "errors", json: true },
+      {
+        dataset: "errors",
+        period: { type: "relative", period: "90d" },
+        json: true,
+      },
       "my-org/my-project",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
-    expect(parsed.outcomes.map((o: { outcome: string }) => o.outcome)).toEqual([
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.map((r: { outcome: string }) => r.outcome)).toEqual([
       "client_discard",
       "rate_limited",
+      "rate_limited",
     ]);
-    const clientDiscard = parsed.outcomes[0];
-    expect(clientDiscard.share).toBeCloseTo(0.1, 10);
-    expect(clientDiscard.reasons[0].tags).toEqual(["intentional"]);
+    expect(parsed[0].reason).toBe("sample_rate");
+    expect(parsed[0].share).toBeCloseTo(0.1, 10);
+    expect(parsed[0].tags).toEqual(["intentional"]);
     // share is a raw ratio, not a formatted percentage string
-    expect(typeof clientDiscard.reasons[0].share).toBe("number");
+    expect(typeof parsed[0].share).toBe("number");
+  });
+
+  test("--fields selects a subset of columns on each row", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await analyticsCommand.loader();
+    await func.call(
+      context,
+      {
+        dataset: "errors",
+        period: { type: "relative", period: "90d" },
+        json: true,
+        fields: ["outcome", "reason", "events"],
+      },
+      "my-org/my-project",
+    );
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    expect(parsed[0]).toEqual({
+      outcome: "client_discard",
+      reason: "sample_rate",
+      events: 100,
+    });
   });
 
   test("human output renders tables with a Tags column", async () => {
@@ -156,7 +233,11 @@ describe("event analytics command func()", () => {
     const func = await analyticsCommand.loader();
     await func.call(
       context,
-      { dataset: "errors", json: false },
+      {
+        dataset: "errors",
+        period: { type: "relative", period: "90d" },
+        json: false,
+      },
       "my-org/my-project",
     );
 
@@ -178,7 +259,11 @@ describe("event analytics command func()", () => {
     const func = await analyticsCommand.loader();
     await func.call(
       context,
-      { dataset: "errors", json: false },
+      {
+        dataset: "errors",
+        period: { type: "relative", period: "90d" },
+        json: false,
+      },
       "my-org/my-project",
     );
 
