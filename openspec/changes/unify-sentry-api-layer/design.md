@@ -106,8 +106,8 @@ Backends:
   current users see a similar footprint.
 - **Memory (hosted MCP, tests).**
   - LRU limited by bytes, counted over compressed bytes.
-  - Default budget 24 MB per isolate and a 1 MB per-entry cap, configurable
-    by env.
+  - Default budget 24 MB per isolate and a 1 MB per-entry cap on compressed
+    size, configurable by env.
   - Module-scoped, so it lives as long as the isolate. `deleteMatching`
     scans the in-memory index.
 - **R2 (hosted MCP, immutable tier only).**
@@ -154,38 +154,88 @@ Key derivation uses WebCrypto (`crypto.subtle`) HMAC-SHA256 instead of
 derivation async. The cache API is already async, so no call sites change
 shape.
 
-### Compression: zstd level 3, with fallbacks
+### Compression: plain zstd now, trained dictionary as a follow-up
 
-Measured on Node 22 against MCP mock fixtures:
+Benchmarked on Node 22 with real API responses from Sentry's own
+organization. The samples were kept in the sandbox and not committed:
 
-- **5.7 MB trace payload.** zstd level 3 compresses about 52x in about 5 ms
-  and decompresses in about 4 ms. Level 9 reaches 72x but takes about
-  24 ms to compress.
-- **Small payloads (median 1.2 KB).** zstd, brotli at quality 4, and gzip
-  all land between 2.9x and 3.2x.
+- 255 responses from one project (events, issue details, issue lists,
+  traces, logs, spans, projects, teams), split 70/30 into training and test
+  sets.
+- 90 responses from five other projects (Android, Node, Next.js, Rust,
+  Python) as a cross-project check.
+
+Ratios are total raw bytes divided by total compressed bytes, with each
+response compressed on its own, the way the cache stores entries:
+
+| Codec                              | Same project, ≤1 MB | Other projects | >256 KB (traces) | Compress, ms/MB | Decompress, ms/MB |
+| ---------------------------------- | ------------------- | -------------- | ---------------- | --------------- | ----------------- |
+| zstd-3                             | 8.7x                | 6.3x           | 37x              | 1.6             | 1.2               |
+| zstd-9                             | —                   | —              | 45x              | 5.6             | 0.9               |
+| zstd-3 + trained 110 KB dictionary | 17.0x               | 7.6x           | 37x              | 2.0             | 0.8               |
+| brotli-4                           | 9.3x                | 6.6x           | 42x              | 3.0             | 0.6               |
+| brotli-6                           | —                   | —              | 45x              | 5.7             | 0.8               |
+| brotli-11                          | —                   | —              | 49x              | 775             | 2.3               |
+| gzip-6                             | —                   | —              | 30x              | 3.9             | 0.8               |
+
+Findings:
+
+- **Brotli is not the better target.**
+  - At the same CPU, zstd-9 and brotli-6 tie.
+  - brotli-4 beats zstd-3 by 5–12% but costs about 2x the compression CPU.
+  - Brotli's best ratio, quality 11, costs about 500x the CPU of zstd-3.
+  - `node:zlib` brotli has no custom dictionary support.
+- **A trained dictionary is the big lever for small and medium responses,
+  which are most entries by count.** On the same project it doubled the
+  overall ratio (8.7x → 17.0x), and below 16 KB it went from 3.4x to 9.8x.
+  On other projects the gain shrank to about 20% (6.3x → 7.6x). The
+  dictionary had learned project-specific values (paths, function names,
+  slugs), not just JSON keys. It did nothing for large traces.
+- **Dictionaries built from public data did not help.** One trained on the
+  repo's mock fixtures, and one trained on response skeletons with all values
+  blanked, stayed at about 3.4–3.8x for small responses. The gain comes from
+  real values.
+- **Workers ignores `dictionary`.** Local workerd (`wrangler dev` 4.151.3)
+  accepts the `dictionary` option on `zstdCompressSync` but silently ignores
+  it: output is byte-for-byte the same size as without a dictionary. Node 22
+  honors it (5.3 KB issue: 1,819 → 632 bytes).
+- **The per-entry cap must apply to compressed size.** Traces in this
+  sample had a median of 1.5 MB raw (max 14 MB), but compress 37–45x. A cap on
+  raw size would make most traces impossible to cache.
 
 Decisions:
 
-- **Memory tier: zstd level 3.** It runs on the response path and is
-  charged as Worker CPU time.
-- **R2 tier: zstd level 9.** Compression runs in `waitUntil()` and the entry
+- **Memory tier: zstd level 3, no dictionary.** It runs on the response path
+  and is charged as Worker CPU time.
+- **R2 tier: zstd level 9.** Compression runs in `waitUntil()`, and the entry
   is read many times.
-- **Small bodies: stored uncompressed** below a 1 KB threshold, where the
-  savings do not pay for the CPU.
-- **Fallback: brotli (quality 4) via `node:zlib`, then uncompressed.** The
-  CLI supports Node.js 20+, which lacks zstd, so the codec is detected at
-  runtime the way `api/infrastructure.ts` already detects
-  `zstdCompress`.
-- The `encoding` is recorded per entry, so mixed entries stay readable
-  after upgrades.
+- **Fallback: brotli quality 4 via `node:zlib`, then uncompressed.** The CLI
+  supports Node.js 20+, which lacks zstd, so the codec is detected at
+  runtime, the way `api/infrastructure.ts` already detects `zstdCompress`.
+- **Small bodies:** stored uncompressed below 256 bytes.
+- **Per-entry cap on compressed size**, plus a raw-size ceiling (default
+  32 MB) that bounds memory spikes during decompression.
+- **Encoding recorded per entry.** `encoding` and `dictId` are recorded per
+  entry, so mixed entries stay readable after upgrades and dictionary
+  rotations.
+- **Dictionary support is a follow-up (task group 9), gated on three
+  checks:**
+  1. **Training data safety.** A dictionary embeds verbatim strings from its
+     training data, so one trained on customer or internal data must never
+     ship in a public package (`sentry`, `@sentry/mcp-server`). Options:
+     - train on a public demo organization
+     - train per deployment, for example the hosted MCP from its own cache
+       contents within an organization
+  2. **Workers support.** Use a WASM zstd build for dictionary compression,
+     or wait for workerd to honor the option. A startup self-test compresses
+     a known sample and checks that the dictionary took effect, so a silently
+     ignored option is caught.
+  3. **A broader benchmark** across many organizations and projects before
+     committing to dictionary size and rotation.
 
-Compression saves memory and storage. It does not save CPU: a cache hit
-costs decompression instead of JSON from the network, and on Workers the
-network wait is not billed CPU. Its job is to fit more entries into the
-budget.
-
-_Future:_ a zstd dictionary trained on Sentry API responses would mostly
-help small payloads. Deferred until there is real hit data.
+Compression saves memory and storage, not CPU. A cache hit costs
+decompression instead of JSON from the network, and on Workers the network
+wait is not billed CPU. Its job is to fit more entries into the budget.
 
 ### `runMcpServer()` takes a transport
 
