@@ -68,3 +68,5 @@
 - CI follow-up: Windows checkout converted byte-counted fixtures to CRLF. Added scoped Git attributes and a real core.autocrlf checkout regression (red: 2,746 vs 2,743 bytes; green: identical bytes). Linux/macOS feature-commit CI passed.
 - Completed origin-only span-v2 AI classification so route classification and inspection agree when content is absent. Regression observed red before fix.
 - Final viewer validation: 308 tests pass across 37 files; typecheck and root lint pass. Full UTC gate again has only the three previously approved unrelated macOS/cache failures (11,399 CLI tests pass). CLI source/cache remain unchanged.
+
+- Windows follow-up: byte-preservation regression passes on Windows. The all-views receiver scenario exceeded the five-second default; its dedicated timeout is now 15 seconds so teardown completes before the next case. All 308 viewer tests pass locally.

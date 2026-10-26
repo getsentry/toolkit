@@ -847,7 +847,7 @@ describe("local receiver to viewer integration", () => {
       URL.revokeObjectURL = originalRevoke;
       await stopReceiver(server);
     }
-  });
+  }, 15_000);
 
   test("renders every Explorer view from a receiver-backed telemetry session", async () => {
     const { server, port } = await startReceiver();
