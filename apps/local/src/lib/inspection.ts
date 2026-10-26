@@ -246,3 +246,23 @@ export function errorMarkdown(item: LocalFeedItem): string {
     .filter(Boolean)
     .join("\n\n");
 }
+
+export const EVENT_CONTEXT_SECTIONS = [
+  "request",
+  "contexts",
+  "tags",
+  "extra",
+  "modules",
+] as const;
+export function hasEventContext(payload: unknown): boolean {
+  const value = record(payload);
+  const breadcrumbs = Array.isArray(value.breadcrumbs)
+    ? value.breadcrumbs
+    : record(value.breadcrumbs).values;
+  return (
+    (Array.isArray(breadcrumbs) && breadcrumbs.length > 0) ||
+    EVENT_CONTEXT_SECTIONS.some(
+      (key) => Object.keys(record(value[key])).length > 0,
+    )
+  );
+}

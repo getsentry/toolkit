@@ -1,10 +1,11 @@
+import { envelopeAttachments } from "@/lib/attachments.ts";
 import { EventContext, FeedbackInspector } from "./event-context.tsx";
 import { AiInspector } from "./ai-inspector.tsx";
 import { AttachmentDetail, EnvelopeAttachments } from "./attachment-detail.tsx";
-import { errorMarkdown, inspectAi } from "@/lib/inspection.ts";
+import { errorMarkdown, inspectAi, hasEventContext } from "@/lib/inspection.ts";
 import { Button } from "./ui/button.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
-import { useId, useState } from "react";
+import { useId, useState, useMemo } from "react";
 import {
   attributeFields,
   detailRecord,
@@ -105,6 +106,13 @@ export function EventDetail({
   const [copiedForAi, setCopiedForAi] = useState(false);
   const [, copyForAi] = useCopyToClipboard();
   const ai = inspectAi(item.payload);
+  const attachments = useMemo(
+    () => (item.type === "envelope" ? envelopeAttachments(item) : []),
+    [item],
+  );
+  const hasContext =
+    (item.type === "event" || item.type === "transaction") &&
+    hasEventContext(item.payload);
   const metadata = item.metadata ?? getEventMetadata(item.payload, item.type);
   const payload = detailRecord(item.payload);
   const exceptions =
@@ -120,7 +128,7 @@ export function EventDetail({
       "attachment",
     ].includes(item.type) ||
     Boolean(ai) ||
-    (item.type === "envelope" && item.text.includes('"attachment"'));
+    attachments.length > 0;
   const message =
     metadata.message ??
     (item.type === "log"
@@ -218,7 +226,7 @@ export function EventDetail({
               <AttachmentDetail item={item} />
             ) : null}
             {item.type === "envelope" ? (
-              <EnvelopeAttachments item={item} />
+              <EnvelopeAttachments attachments={attachments} />
             ) : null}
             {item.type === "feedback" || item.type === "user_report" ? (
               <FeedbackInspector
@@ -269,6 +277,8 @@ export function EventDetail({
             !exceptions.length &&
             !attributes.length &&
             !ai &&
+            !hasContext &&
+            !trace &&
             !["attachment", "envelope", "feedback", "user_report"].includes(
               item.type,
             ) ? (
@@ -276,9 +286,7 @@ export function EventDetail({
                 No additional event details.
               </p>
             ) : null}
-            {item.type === "event" || item.type === "transaction" ? (
-              <EventContext payload={item.payload} />
-            ) : null}
+            {hasContext ? <EventContext payload={item.payload} /> : null}
             {trace ? (
               <>
                 <TraceWaterfall

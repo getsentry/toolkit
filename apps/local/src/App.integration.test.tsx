@@ -849,6 +849,49 @@ describe("local receiver to viewer integration", () => {
     }
   }, 15_000);
 
+  test("parameterized text attachments follow the real receiver's base64 wire encoding", async () => {
+    const { server, port } = await startReceiver();
+    const observer = new NodeEventSource(`http://127.0.0.1:${port}/stream`);
+    try {
+      const received = new Promise<string>((resolve) =>
+        observer.addEventListener(
+          SENTRY_CONTENT_TYPE,
+          (event) => resolve(event.data),
+          { once: true },
+        ),
+      );
+      await new Promise<void>((resolve, reject) => {
+        observer.onopen = () => resolve();
+        observer.onerror = reject;
+      });
+      renderViewer(port, "/attachments");
+      await screen.findByText("Connected to local receiver");
+      const content = "héllo";
+      const header = {
+        type: "attachment",
+        filename: "charset.txt",
+        content_type: "text/plain; charset=utf-8",
+        length: new TextEncoder().encode(content).byteLength,
+      };
+      const response = await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: `{}\n${JSON.stringify(header)}\n${content}\n`,
+      });
+      expect(response.status).toBe(204);
+      const wire = JSON.parse(await received) as [
+        unknown,
+        [[unknown, { data: string }]],
+      ];
+      expect(wire[1][0][1].data).toBe(Buffer.from(content).toString("base64"));
+      expect(await screen.findByText(content)).toBeDefined();
+    } finally {
+      observer.close();
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
   test("renders every Explorer view from a receiver-backed telemetry session", async () => {
     const { server, port } = await startReceiver();
 

@@ -1,4 +1,10 @@
-import { record, display, text, feedbackData } from "@/lib/inspection.ts";
+import {
+  record,
+  display,
+  text,
+  feedbackData,
+  EVENT_CONTEXT_SECTIONS,
+} from "@/lib/inspection.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
 import { DetailFields } from "./span-detail.tsx";
 import { attributeFields } from "./inspector-data.ts";
@@ -8,7 +14,7 @@ export function EventContext({ payload }: { payload: unknown }) {
   const breadcrumbs = Array.isArray(p.breadcrumbs)
     ? p.breadcrumbs
     : record(p.breadcrumbs).values;
-  const sections = ["request", "contexts", "tags", "extra", "modules"] as const;
+
   return (
     <div className="space-y-3">
       {Array.isArray(breadcrumbs) && breadcrumbs.length ? (
@@ -47,7 +53,7 @@ export function EventContext({ payload }: { payload: unknown }) {
           </ol>
         </section>
       ) : null}
-      {sections.map((key) =>
+      {EVENT_CONTEXT_SECTIONS.map((key) =>
         Object.keys(record(p[key])).length ? (
           <details key={key} open className="border-t border-border pt-2">
             <summary className="cursor-pointer text-sm font-semibold capitalize">

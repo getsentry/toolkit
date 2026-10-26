@@ -273,3 +273,69 @@ test("AI origin metadata remains visible when the SDK did not capture content", 
     screen.getByText(/Prompt and response content were not captured/),
   ).toBeDefined();
 });
+
+test.each([
+  ["image/svg+xml", false, "application/octet-stream"],
+  ["application/xhtml+xml", false, "application/octet-stream"],
+  ["text/html", true, "text/plain"],
+  ["image/png", false, "image/png"],
+] as const)(
+  "%s downloads use an inert or allowlisted Blob MIME type",
+  (contentType, wireText, expectedType) => {
+    const content =
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>window.svgExecuted = true</script></svg>';
+    const [item] = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            {
+              type: "attachment",
+              filename: "capture.svg",
+              content_type: contentType,
+            },
+            { data: wireText ? content : btoa(content) },
+          ],
+        ],
+      ]),
+      "mime",
+    );
+    const create = vi.fn((_blob: Blob) => "blob:attachment");
+    class TestURL extends URL {
+      static createObjectURL = create;
+      static revokeObjectURL = vi.fn();
+    }
+    vi.stubGlobal("URL", TestURL);
+    render(<AttachmentDetail item={item!} />);
+    expect(create.mock.calls[0]?.[0].type).toBe(expectedType);
+    expect(document.querySelector("script")).toBeNull();
+  },
+);
+
+test("raw SSE envelopes show attachment previews and keep the original JSON", () => {
+  const raw = JSON.stringify([
+    {},
+    [
+      [
+        {
+          type: "attachment",
+          filename: "notes.txt",
+          content_type: "text/plain",
+        },
+        { data: "captured notes" },
+      ],
+    ],
+  ]);
+  render(
+    <EventDetail
+      item={{ id: "envelope", type: "envelope", payload: raw, text: raw }}
+    />,
+  );
+  expect(
+    screen.getByRole("region", { name: "Envelope attachments" }).textContent,
+  ).toContain("captured notes");
+  fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
+  expect(screen.getByTestId("highlighted-json").textContent).toContain(
+    "notes.txt",
+  );
+});

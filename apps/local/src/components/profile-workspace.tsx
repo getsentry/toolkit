@@ -437,11 +437,11 @@ export function ProfileWorkspace({
       storageKey="sentry.local.profile-width"
       listLabel="Profiles"
       list={
-        <section>
-          <h1 className="border-b border-border p-3 text-sm font-semibold">
+        <section className="flex min-h-0 flex-1 flex-col">
+          <h1 className="shrink-0 border-b border-border p-3 text-sm font-semibold">
             Profiles · {profiles.length}
           </h1>
-          <ol>
+          <ol className="min-h-0 flex-1 overflow-y-auto">
             {profiles.map((item, index) => (
               <li key={item.id}>
                 <button

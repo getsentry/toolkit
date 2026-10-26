@@ -433,7 +433,10 @@ export default function App() {
   );
   const workspaceEmptyState = getWorkspaceEmptyState({
     view: workspaceView,
-    label: activeWorkspace.label,
+    label:
+      workspaceView === "sdks"
+        ? "session or client reports"
+        : activeWorkspace.label,
     singularLabel: activeWorkspace.singularLabel,
     filtered: Boolean(
       searchQuery.trim() ||
@@ -744,7 +747,7 @@ export default function App() {
       cancelReceiverAttempt();
       if (
         !isEditingReceiver &&
-        connection === "connecting" &&
+        !hasEstablishedConnection &&
         !hasRetainedItems
       ) {
         // Editing the landing owns the next attempt; a late automatic probe must not dismiss it.
@@ -975,6 +978,11 @@ export default function App() {
 
   const showConnectionLanding =
     isDisconnected || (!hasEstablishedConnection && !hasRetainedItems);
+  const canAutoSelectSession =
+    isConnectionEnabled &&
+    !isEditingReceiver &&
+    currentEndpoint?.kind === "loopback" &&
+    new URL(currentEndpoint.url).pathname === "/stream";
   const isReceiverUnavailable = showConnectionLanding && !isConnecting;
   const canSearch =
     hasRetainedItems &&
@@ -1301,11 +1309,7 @@ export default function App() {
                         showState={false}
                         directoryUrl={activeDirectoryUrl}
                         streamUrl={streamUrl}
-                        selectInitialSession={
-                          !isEditingReceiver &&
-                          currentEndpoint?.kind === "loopback" &&
-                          new URL(currentEndpoint.url).pathname === "/stream"
-                        }
+                        selectInitialSession={canAutoSelectSession}
                         onSelect={connectToEndpoint}
                       />
                     ) : undefined
@@ -1321,11 +1325,7 @@ export default function App() {
                     showState={false}
                     directoryUrl={activeDirectoryUrl}
                     streamUrl={streamUrl}
-                    selectInitialSession={
-                      !isEditingReceiver &&
-                      currentEndpoint?.kind === "loopback" &&
-                      new URL(currentEndpoint.url).pathname === "/stream"
-                    }
+                    selectInitialSession={canAutoSelectSession}
                     onSelect={connectToEndpoint}
                   />
                 </div>
@@ -1513,15 +1513,7 @@ export default function App() {
                     }
                   >
                     {searchedItems.length === 0 ? (
-                      <WorkspaceEmptyState
-                        {...(workspaceView === "sdks"
-                          ? {
-                              title: "No session or client reports",
-                              description:
-                                "SDK metadata observed in other telemetry appears above. Session and client reports will appear here when captured.",
-                            }
-                          : workspaceEmptyState)}
-                      />
+                      <WorkspaceEmptyState {...workspaceEmptyState} />
                     ) : selectedItem ? (
                       <EventDetail
                         key={selectedItem.id}

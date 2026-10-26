@@ -230,11 +230,11 @@ export function WebVitalsWorkspace({
       storageKey="sentry.local.vitals-width"
       listLabel="Web Vitals pages"
       list={
-        <section>
-          <h1 className="border-b border-border p-3 text-sm font-semibold">
+        <section className="flex min-h-0 flex-1 flex-col">
+          <h1 className="shrink-0 border-b border-border p-3 text-sm font-semibold">
             Web Vitals
           </h1>
-          <ol>
+          <ol className="min-h-0 flex-1 overflow-y-auto">
             {pages.map((page) => (
               <li key={page.name}>
                 <button

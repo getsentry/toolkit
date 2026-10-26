@@ -537,3 +537,91 @@ test("session command search leaves the active view filter unchanged until Filte
     ).toHaveLength(2),
   );
 });
+
+test.each(["connecting", "failed"] as const)(
+  "landing edits retain ownership when session discovery completes late (%s)",
+  async (phase) => {
+    let resolveDirectory!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveDirectory = resolve;
+          }),
+      ),
+    );
+    window.history.replaceState(
+      null,
+      "",
+      `/#${new URLSearchParams({ stream: "http://127.0.0.1:8969/stream", directory: DIRECTORY })}`,
+    );
+    renderViewer();
+    await waitFor(() => expect(resolveDirectory).toBeDefined());
+    if (phase === "failed")
+      await act(async () =>
+        ControllableEventSource.instances.at(-1)?.onerror?.(new Event("error")),
+      );
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "http://127.0.0.1:8970/stream" },
+    });
+    const attempts = ControllableEventSource.instances.length;
+    await act(async () =>
+      resolveDirectory(
+        new Response(
+          JSON.stringify({
+            sessions: [
+              {
+                id: "web",
+                label: "Web",
+                cwd: "/web",
+                state: "open",
+                streamUrl: STREAM,
+              },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    expect(
+      (screen.getByLabelText("Receiver endpoint") as HTMLInputElement).value,
+    ).toBe("http://127.0.0.1:8970/stream");
+    expect(ControllableEventSource.instances).toHaveLength(attempts);
+  },
+);
+
+test.each(["filtered", "saved", "offline"] as const)(
+  "SDK report empty state preserves %s recovery guidance",
+  async (state) => {
+    renderCapture({ path: state === "filtered" ? "/sdks?q=missing" : "/sdks" });
+    const source = await openSource();
+    await sendEvent(source, "unrelated event", "sdk-empty");
+    if (state === "saved")
+      await sessionMetadata(source, {
+        state: "retained",
+        expiresAt: EXPIRES_AT,
+      });
+    if (state === "offline")
+      await act(async () => source.onerror?.(new Event("error")));
+    if (state === "filtered")
+      expect(
+        screen.getByRole("heading", {
+          name: /No matching session or client reports/,
+        }),
+      ).toBeDefined();
+    else if (state === "saved")
+      expect(
+        screen.getByText(/capture has stopped.*session or client reports/),
+      ).toBeDefined();
+    else
+      expect(
+        screen.getByText(
+          /Reconnect to the receiver to load available capture history/,
+        ),
+      ).toBeDefined();
+    expect(
+      screen.queryByText(/Session and client reports will appear/),
+    ).toBeNull();
+  },
+);

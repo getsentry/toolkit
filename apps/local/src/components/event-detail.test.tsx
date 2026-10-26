@@ -203,3 +203,29 @@ test("repeated parent updates keep one request summary and its waterfall", () =>
     screen.getByRole("button", { name: "Inspect span GET /orders" }),
   ).toBeDefined();
 });
+
+test("captured context suppresses the empty-details message", () => {
+  render(
+    <EventDetail
+      item={item("event", {
+        tags: { environment: "local" },
+        contexts: { browser: { name: "Firefox" } },
+      })}
+    />,
+  );
+  expect(screen.getByText("Firefox")).toBeDefined();
+  expect(screen.queryByText("No additional event details.")).toBeNull();
+});
+
+test("a related trace suppresses the empty-details message", () => {
+  const transaction = item("transaction", {
+    transaction: "GET /trace",
+    contexts: { trace: { trace_id: "trace", span_id: "root" } },
+    start_timestamp: 1,
+    timestamp: 2,
+  });
+  const [trace] = buildTraceGroups([transaction]);
+  render(<EventDetail item={item("event", {})} trace={trace} />);
+  expect(screen.getByRole("region", { name: "Trace waterfall" })).toBeDefined();
+  expect(screen.queryByText("No additional event details.")).toBeNull();
+});

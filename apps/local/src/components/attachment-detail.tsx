@@ -1,17 +1,9 @@
 import { attachmentBytes } from "@/lib/attachments.ts";
 import { useEffect, useState } from "react";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
-import { display, record, text } from "@/lib/inspection.ts";
+import { text } from "@/lib/inspection.ts";
 import { JsonView } from "./json-view.tsx";
 
-const IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/avif",
-]);
-const VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
 export function AttachmentDetail({ item }: { item: LocalFeedItem }) {
   const [url, setUrl] = useState<string>();
   const name = text(item.itemHeader?.filename) ?? "Attachment";
@@ -22,7 +14,7 @@ export function AttachmentDetail({ item }: { item: LocalFeedItem }) {
     // Downloads stay inert even when the captured MIME type is HTML or SVG.
     const objectUrl = URL.createObjectURL(
       new Blob([decoded.bytes], {
-        type: decoded.isText ? "text/plain" : decoded.contentType,
+        type: decoded.downloadType,
       }),
     );
     // Object URLs are browser resources: create after commit and revoke on cleanup.
@@ -71,13 +63,13 @@ export function AttachmentDetail({ item }: { item: LocalFeedItem }) {
             {content}
           </pre>
         )
-      ) : url && IMAGE_TYPES.has(attachment.contentType) ? (
+      ) : url && attachment.preview === "image" ? (
         <img
           src={url}
           alt={name}
           className="max-h-96 max-w-full object-contain"
         />
-      ) : url && VIDEO_TYPES.has(attachment.contentType) ? (
+      ) : url && attachment.preview === "video" ? (
         <video
           src={url}
           controls
@@ -95,22 +87,11 @@ export function AttachmentDetail({ item }: { item: LocalFeedItem }) {
     </section>
   );
 }
-export function EnvelopeAttachments({ item }: { item: LocalFeedItem }) {
-  const envelope = item.payload;
-  if (!Array.isArray(envelope) || !Array.isArray(envelope[1])) return null;
-  const attachments = envelope[1].flatMap((entry, index): LocalFeedItem[] =>
-    Array.isArray(entry) && record(entry[0]).type === "attachment"
-      ? [
-          {
-            id: `${item.id}:${index}`,
-            type: "attachment",
-            itemHeader: record(entry[0]),
-            payload: entry[1],
-            text: display(entry[1]),
-          },
-        ]
-      : [],
-  );
+export function EnvelopeAttachments({
+  attachments,
+}: {
+  attachments: readonly LocalFeedItem[];
+}) {
   if (!attachments.length) return null;
   return (
     <section aria-label="Envelope attachments" className="space-y-4">
