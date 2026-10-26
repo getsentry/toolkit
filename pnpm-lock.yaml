@@ -584,6 +584,9 @@ importers:
       semver:
         specifier: ^7.8.5
         version: 7.8.5
+      shell-quote:
+        specifier: ^1.10.0
+        version: 1.10.0
       string-width:
         specifier: ^8.2.1
         version: 8.2.2

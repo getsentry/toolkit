@@ -33,7 +33,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import peggy from "peggy";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
-import { tokenize } from "./shell-words.js";
+import { shellCommands } from "./shell-words.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-command-docs.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -853,7 +853,8 @@ function commandAt(path: string[]): Command {
 function sdkRunStatement(path: string[], variable: string): string {
   for (const example of commandAt(path).__examples ?? []) {
     const steps = exampleSteps(example);
-    const words = steps.length === 1 ? tokenize(steps[0] ?? "") : [];
+    const commands = steps.length === 1 ? shellCommands(steps[0] ?? "") : [];
+    const words = commands.length === 1 ? (commands[0] ?? []) : [];
     if (words[0] === "sentry" && words.some((w) => w.startsWith("-"))) {
       const argv = words.slice(1).map((w) => JSON.stringify(w));
       return [

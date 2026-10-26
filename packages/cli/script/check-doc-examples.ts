@@ -44,7 +44,7 @@ import {
   markdownTsBlocks,
   sdkRunCalls,
 } from "./sdk-run-calls.js";
-import { tokenize } from "./shell-words.js";
+import { shellCommands } from "./shell-words.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-docs-sections.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -94,7 +94,6 @@ const TARGET_PLACEHOLDER_RE = /^(?:target|org\/.+)$/;
 
 const SHELL_LANGS = new Set(["", "bash", "sh", "shell", "zsh", "console"]);
 const INLINE_CODE_RE = /(?<!`)`(sentry [^`\n]+)`(?!`)/g;
-const COMMAND_SPLIT_RE = /\s*(?:\|\||&&|\||;)\s*/;
 const PROMPT_RE = /^\$\s+/;
 const CONTINUATION_RE = /\\\n\s*/g;
 const PLACEHOLDER_RE = /[<>[\]{}]|\.\.\.|…|^\$/;
@@ -120,10 +119,8 @@ function extractInvocations(markdown: string): string[] {
       if (line.startsWith("#")) {
         continue;
       }
-      for (const segment of line.split(COMMAND_SPLIT_RE)) {
-        if (segment.startsWith("sentry ")) {
-          invocations.push(segment);
-        }
+      if (shellCommands(line).some((words) => sentryArgs(words))) {
+        invocations.push(line);
       }
     }
   }
@@ -203,21 +200,28 @@ function isTargetParam(param: PositionalParam | undefined): boolean {
   );
 }
 
-/** Problems with one `sentry …` invocation. */
-function checkInvocation(invocation: string): string[] {
-  return checkWords(tokenize(invocation));
-}
-
-/** Problems with one tokenized `sentry …` invocation. */
-function checkWords(words: string[]): string[] {
-  // Skip a `sudo` or `NAME=value` prefix, e.g. `SENTRY_DSN=… sentry monitor run`
+/**
+ * Arguments after `sentry` when `words` runs the CLI, skipping a `sudo` or
+ * `NAME=value` prefix (e.g. `SENTRY_DSN=… sentry monitor run`).
+ */
+function sentryArgs(words: string[]): string[] | undefined {
   const start = words.findIndex(
     (word) => word !== "sudo" && !ENV_ASSIGNMENT_RE.test(word),
   );
-  if (words[start] !== "sentry") {
+  return words[start] === "sentry" ? words.slice(start + 1) : undefined;
+}
+
+/** Problems with the `sentry …` commands of one shell line. */
+function checkInvocation(line: string): string[] {
+  return shellCommands(line).flatMap(checkWords);
+}
+
+/** Problems with one tokenized command; other programs are ignored. */
+function checkWords(words: string[]): string[] {
+  const tokens = sentryArgs(words);
+  if (!tokens) {
     return [];
   }
-  const tokens = words.slice(start + 1);
   const resolved = resolve(tokens);
   if (!resolved) {
     return [];
