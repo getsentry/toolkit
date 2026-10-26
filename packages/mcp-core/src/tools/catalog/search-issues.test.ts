@@ -797,6 +797,76 @@ describe("search_issues", () => {
     expect(result).toContain("unresolved");
   });
 
+  it("rewrites unsupported OR and parentheses before calling the API (no agent)", async () => {
+    process.env.OPENAI_API_KEY = "";
+    process.env.ANTHROPIC_API_KEY = "";
+    process.env.OPENROUTER_API_KEY = "";
+
+    let sentQuery: string | null = null;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/",
+        ({ request }) => {
+          sentQuery = new URL(request.url).searchParams.get("query");
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    const result = await searchIssues.handler(
+      {
+        organizationSlug: "test-org",
+        query: "is:unresolved (is:regressed OR is:escalating)",
+        sort: "date",
+        projectSlugOrId: null,
+        regionUrl: null,
+        limit: 10,
+        period: "30d",
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(sentQuery).toBe("is:unresolved substatus:[regressed,escalating]");
+    expect(result).toContain(
+      "Ran `is:unresolved substatus:[regressed,escalating]`.",
+    );
+  });
+
+  it("rejects agent output that issue search can't express", async () => {
+    mockGenerateText.mockResolvedValue(
+      mockAIResponse("level:error OR assigned:me", "date"),
+    );
+
+    const listIssues = vi.fn(() => HttpResponse.json([]));
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/*/issues/", listIssues),
+    );
+
+    await expect(
+      searchIssues.handler(
+        {
+          organizationSlug: "test-org",
+          query: "errors or anything assigned to me",
+          sort: "date",
+          projectSlugOrId: null,
+          regionUrl: null,
+          limit: 10,
+          period: "30d",
+          includeExplanation: false,
+        },
+        mockContext,
+      ),
+    ).rejects.toMatchObject({
+      name: "UserInputError",
+      message: expect.stringContaining(
+        "Sentry query: level:error OR assigned:me",
+      ),
+    });
+    expect(listIssues).not.toHaveBeenCalled();
+  });
+
   it("should validate project slug format", async () => {
     await expect(
       searchIssues.handler(

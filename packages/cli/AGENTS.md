@@ -722,7 +722,7 @@ Before creating a new `src/lib/*.ts` utility file, check whether existing shared
 | Table/markdown output | `src/lib/formatters/` directory |
 | Pagination | `src/lib/db/pagination.ts`, `src/lib/list-command.ts` |
 | Error classes | `src/lib/errors.ts` (never create ad-hoc error types) |
-| Search query building | `src/lib/search-query.ts`, `src/lib/arg-parsing.ts` |
+| Search query building | `src/lib/search-query.ts` (wraps `@sentry/toolkit-core/search-query`), `src/lib/arg-parsing.ts` |
 
 If an existing module covers ≥80% of what you need, extend it with new exported functions rather than creating a new file. New files are appropriate when the domain is genuinely new (e.g., `replay-search.ts` for replay-specific field resolution).
 

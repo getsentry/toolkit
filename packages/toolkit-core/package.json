@@ -47,6 +47,10 @@
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"
     },
+    "./search-query": {
+      "types": "./src/search-query.ts",
+      "default": "./src/search-query.ts"
+    },
     "./search-syntax": {
       "types": "./src/search-syntax.ts",
       "default": "./src/search-syntax.ts"
