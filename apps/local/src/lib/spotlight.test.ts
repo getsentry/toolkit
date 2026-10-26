@@ -415,6 +415,8 @@ describe("decodeEnvelope", () => {
     ).toEqual([
       {
         id: "event-1:0",
+        envelopeHeader: { sdk: { name: "sentry.node" } },
+        itemHeader: { type: "transaction" },
         type: "transaction",
         timestamp: 1700000000.00668,
         metadata: {

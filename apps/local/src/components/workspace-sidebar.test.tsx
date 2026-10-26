@@ -35,13 +35,9 @@ test("keeps core views prominent and reveals diagnostics without changing compat
   fireEvent.click(screen.getByRole("button", { name: "Open events view" }));
   expect(props.onSelect).toHaveBeenCalledWith("live");
   expect(workspacePath("live")).toBe("/live");
-  expect(
-    screen.queryByRole("button", { name: "Open sdk reports view" }),
-  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Open sdks view" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Open sdk reports view" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Open sdks view" }));
   expect(props.onSelect).toHaveBeenCalledWith("sdks");
   expect(workspacePath("sdks")).toBe("/sdks");
 });

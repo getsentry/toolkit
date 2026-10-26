@@ -1,3 +1,8 @@
+import { EventContext, FeedbackInspector } from "./event-context.tsx";
+import { AiInspector } from "./ai-inspector.tsx";
+import { AttachmentDetail, EnvelopeAttachments } from "./attachment-detail.tsx";
+import { errorMarkdown, inspectAi } from "@/lib/inspection.ts";
+import { Button } from "./ui/button.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
 import { useId, useState } from "react";
 import {
@@ -20,6 +25,7 @@ import {
 
 type EventDetailProps = {
   item: LocalFeedItem;
+  relatedItems?: readonly LocalFeedItem[];
   trace?: TraceGroup;
   onSelectSpan?: (traceId: string, spanId: string) => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
@@ -91,21 +97,30 @@ function CompactSummary({
 /** Prefer the useful view for each telemetry type; keep its full original JSON one tab away. */
 export function EventDetail({
   item,
+  relatedItems,
   trace,
   onSelectSpan,
   onSelectRelatedItem,
 }: EventDetailProps) {
+  const [copiedForAi, setCopiedForAi] = useState(false);
+  const [, copyForAi] = useCopyToClipboard();
+  const ai = inspectAi(item.payload);
   const metadata = item.metadata ?? getEventMetadata(item.payload, item.type);
   const payload = detailRecord(item.payload);
   const exceptions =
     item.type === "event" ? getEventExceptions(item.payload) : [];
-  const hasOverview = [
-    "event",
-    "log",
-    "transaction",
-    "span",
-    "feedback",
-  ].includes(item.type);
+  const hasOverview =
+    [
+      "event",
+      "log",
+      "transaction",
+      "span",
+      "feedback",
+      "user_report",
+      "attachment",
+    ].includes(item.type) ||
+    Boolean(ai) ||
+    (item.type === "envelope" && item.text.includes('"attachment"'));
   const message =
     metadata.message ??
     (item.type === "log"
@@ -177,6 +192,18 @@ export function EventDetail({
             {item.type === "envelope" ? "Raw envelope" : metadata.title}
           </h2>
         </div>
+        {item.type === "event" ? (
+          <Button
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={() => {
+              void copyForAi(errorMarkdown(item));
+              setCopiedForAi(true);
+            }}
+          >
+            {copiedForAi ? "Copied for AI" : "Copy for AI"}
+          </Button>
+        ) : null}
         <time className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
           {formatTimestamp(item.timestamp)}
         </time>
@@ -187,6 +214,28 @@ export function EventDetail({
         json={item.text}
         overview={
           <>
+            {item.type === "attachment" ? (
+              <AttachmentDetail item={item} />
+            ) : null}
+            {item.type === "envelope" ? (
+              <EnvelopeAttachments item={item} />
+            ) : null}
+            {item.type === "feedback" || item.type === "user_report" ? (
+              <FeedbackInspector
+                item={item}
+                items={relatedItems}
+                onSelect={onSelectRelatedItem}
+              />
+            ) : null}
+            {ai ? (
+              <AiInspector
+                payload={item.payload}
+                steps={
+                  trace?.spans.find((span) => span.id === metadata.spanId)
+                    ?.children
+                }
+              />
+            ) : null}
             {exceptions.length ? (
               <ExceptionOverview exceptions={exceptions} />
             ) : null}
@@ -218,10 +267,17 @@ export function EventDetail({
             {!fields.length &&
             !(isRequestOrSpan && summaryFields.length) &&
             !exceptions.length &&
-            !attributes.length ? (
+            !attributes.length &&
+            !ai &&
+            !["attachment", "envelope", "feedback", "user_report"].includes(
+              item.type,
+            ) ? (
               <p className="text-sm text-muted-foreground">
                 No additional event details.
               </p>
+            ) : null}
+            {item.type === "event" || item.type === "transaction" ? (
+              <EventContext payload={item.payload} />
             ) : null}
             {trace ? (
               <>

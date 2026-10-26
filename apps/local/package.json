@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:integration": "vitest run src/App.integration.test.tsx",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "sample": "tsx scripts/replay.ts"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

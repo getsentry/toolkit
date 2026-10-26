@@ -1,3 +1,4 @@
+import { replayEnvelopes, defaultFixtures } from "../scripts/replay.ts";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { EventSource as NodeEventSource } from "eventsource";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -99,6 +100,30 @@ async function sendEnvelope(
     method: "POST",
     headers: { "Content-Type": SENTRY_CONTENT_TYPE },
     body: envelope(transaction, options),
+  });
+  expect(response.status).toBe(204);
+}
+
+async function sendLog(
+  port: number,
+  body: string,
+  logger: string,
+  level = "info",
+) {
+  const response = await fetch(`http://127.0.0.1:${port}/stream`, {
+    method: "POST",
+    headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+    body: [
+      JSON.stringify({}),
+      JSON.stringify({ type: "log" }),
+      JSON.stringify({
+        timestamp: 1_700_000_000,
+        body,
+        level,
+        attributes: { "sentry.logger.name": { type: "string", value: logger } },
+      }),
+      "",
+    ].join("\n"),
   });
   expect(response.status).toBe(204);
 }
@@ -745,6 +770,85 @@ describe("local receiver to viewer integration", () => {
     ).not.toBeNull();
   });
 
+  test("replays bundled envelopes through the receiver into every investigation view", async () => {
+    const { server, port } = await startReceiver();
+    const originalCreate = URL.createObjectURL?.bind(URL);
+    const originalRevoke = URL.revokeObjectURL?.bind(URL);
+    URL.createObjectURL = () => "blob:fixture";
+    URL.revokeObjectURL = () => {};
+    try {
+      renderViewer(port);
+      await screen.findByText("Connected to local receiver");
+      expect(
+        await replayEnvelopes({
+          endpoint: `http://127.0.0.1:${port}/stream`,
+          fixtures: defaultFixtures,
+          compression: "gzip",
+        }),
+      ).toBe(9);
+      await waitFor(() =>
+        expect(screen.getByTestId("event-list").textContent).toContain(
+          "/checkout",
+        ),
+      );
+      fireEvent.click(viewButton("Open queries view"));
+      const query = await screen.findByRole("button", {
+        name: "SELECT id, total FROM orders WHERE user_id = ?",
+      });
+      fireEvent.click(query);
+      expect(
+        screen.getByRole("region", { name: "Database queries executions" })
+          .textContent,
+      ).toContain("Captured executions · 2");
+      fireEvent.click(
+        screen.getAllByRole("button", { name: /GET \/checkout.*ms/ })[0]!,
+      );
+      expect(
+        await screen.findByRole("region", { name: "Span detail" }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open resources view"));
+      expect(
+        await screen.findByRole("button", {
+          name: "http://localhost:3000/checkout.js",
+        }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open web vitals view"));
+      expect(
+        await screen.findByRole("img", {
+          name: /LCP: 3200 ms, Needs improvement/,
+        }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open ai view"));
+      expect(await screen.findByText("Order 42 ships tomorrow.")).toBeDefined();
+      fireEvent.click(viewButton("Open profiles view"));
+      expect(
+        await screen.findByRole("table", { name: "Profile functions" }),
+      ).toBeDefined();
+      fireEvent.change(screen.getByLabelText("Visualization"), {
+        target: { value: "sunburst" },
+      });
+      expect(
+        screen.getByRole("group", { name: "sunburst profile visualization" }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open attachments view"));
+      expect(
+        await screen.findByRole("heading", { name: "notes.txt", level: 3 }),
+      ).toBeDefined();
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "View attachment event" })[3]!,
+      );
+      const image = await screen.findByRole("img", { name: "pixel.png" });
+      expect(image.getAttribute("src")).toMatch(/^blob:/);
+      fireEvent.click(viewButton("Open sdks view"));
+      expect(await screen.findByText("sentry.javascript.node")).toBeDefined();
+    } finally {
+      cleanup();
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      await stopReceiver(server);
+    }
+  });
+
   test("renders every Explorer view from a receiver-backed telemetry session", async () => {
     const { server, port } = await startReceiver();
 
@@ -766,7 +870,7 @@ describe("local receiver to viewer integration", () => {
         ["Open feedback view", "View user_report event"],
         ["Open envelopes view", "View envelope event"],
         ["Open profiles view", "View profile event"],
-        ["Open sdk reports view", "View client_report event"],
+        ["Open sdks view", "View client_report event"],
         ["Open ai view", "View transaction event"],
       ] as const;
 
@@ -2732,6 +2836,88 @@ describe("local receiver to viewer integration", () => {
             .getAttribute("aria-current"),
         ).toBe("page");
       });
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test.each(["logger", "severity"])(
+    "command navigation reveals an explicit log excluded by its %s facet",
+    async (facet) => {
+      const { server, port } = await startReceiver();
+      try {
+        await sendLog(port, "Selected log A", "logger-a");
+        await sendLog(port, "Destination log B", "logger-b", "warning");
+        renderViewer(port, "/logs");
+        await screen.findByText("Connected to local receiver");
+        await waitFor(() =>
+          expect(screen.getAllByLabelText("View log event")).toHaveLength(2),
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+        fireEvent.click(
+          screen.getByRole("checkbox", {
+            name: facet === "logger" ? "logger-a" : "info",
+          }),
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Filters (1)" }));
+        expect(screen.getAllByLabelText("View log event")).toHaveLength(1);
+        fireEvent.click(
+          screen.getAllByRole("button", { name: "Search this session" })[0]!,
+        );
+        fireEvent.change(
+          screen.getByPlaceholderText("Search events and views"),
+          { target: { value: "Destination log B" } },
+        );
+        fireEvent.click(
+          screen.getByRole("option", { name: /^Destination log B/ }),
+        );
+        await waitFor(() =>
+          expect(screen.getByTestId("event-detail").textContent).toContain(
+            "Destination log B",
+          ),
+        );
+        expect(
+          screen.queryByRole("button", { name: "Clear 1 filter" }),
+        ).toBeNull();
+        expect(
+          new URLSearchParams(window.location.search).get("event"),
+        ).not.toBeNull();
+      } finally {
+        cleanup();
+        await stopReceiver(server);
+      }
+    },
+  );
+
+  test("new log badges and actions honor active logger and severity facets", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendLog(port, "Selected log", "logger-a");
+      renderViewer(port, "/logs");
+      await screen.findByText("Connected to local receiver");
+      fireEvent.click(await screen.findByLabelText("View log event"));
+      fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "logger-a" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "info" }));
+      fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+      await sendLog(port, "Visible new log", "logger-a");
+      await sendLog(port, "Hidden logger log", "logger-b");
+      await sendLog(port, "Hidden severity log", "logger-a", "warning");
+      await screen.findByRole("button", { name: "View 1 new log" });
+      // Wait for the final arrival too: its severity becomes a filter option.
+      fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+      await screen.findByRole("checkbox", { name: "warning" });
+      fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+      fireEvent.click(screen.getByRole("button", { name: "View 1 new log" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("event-detail").textContent).toContain(
+          "Visible new log",
+        ),
+      );
+      expect(
+        screen.queryByRole("button", { name: /View \d+ new log/ }),
+      ).toBeNull();
     } finally {
       cleanup();
       await stopReceiver(server);

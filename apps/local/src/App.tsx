@@ -1,3 +1,17 @@
+import { EventFilterControls } from "./components/event-filter-controls.tsx";
+import {
+  filterEvents,
+  defaultEventFilters,
+  loggerForItem,
+  type EventFilters,
+  type EventColumn,
+} from "./lib/event-filters.ts";
+import {
+  SpanAnalysis,
+  WebVitalsWorkspace,
+} from "./components/performance-workspace.tsx";
+import { ProfileWorkspace } from "./components/profile-workspace.tsx";
+import { SdkInventory } from "./components/sdk-inventory.tsx";
 import { CliLogo } from "./components/cli-logo.tsx";
 import { useReceiverProbe } from "./lib/use-receiver-probe.ts";
 import { ReceiverDialog } from "./components/receiver-dialog.tsx";
@@ -95,6 +109,7 @@ type EventEntryProps = {
   item: LocalFeedItem;
   isSelected: boolean;
   showTypeBadge: boolean;
+  columns?: EventColumn[];
   onSelect: (id: string) => void;
 };
 
@@ -185,6 +200,7 @@ function EventEntry({
   item,
   isSelected,
   showTypeBadge,
+  columns = defaultEventFilters.columns,
   onSelect,
 }: EventEntryProps) {
   const metadata = getMetadata(item);
@@ -215,7 +231,7 @@ function EventEntry({
       >
         <div className="min-w-0 space-y-1">
           <div className="flex min-w-0 items-center gap-2">
-            {showTypeBadge ? (
+            {showTypeBadge && columns.includes("type") ? (
               <Badge variant={isError ? "destructive" : "default"}>
                 {typeLabel}
               </Badge>
@@ -232,18 +248,31 @@ function EventEntry({
                 {metadata.statusCode}
               </span>
             ) : null}
-            {duration ? <span>{duration}</span> : null}
+            {duration && columns.includes("duration") ? (
+              <span>{duration}</span>
+            ) : null}
             {isError && item.type === "transaction" ? (
               <span className="font-sans text-destructive">Failed request</span>
             ) : null}
-            {item.type === "log" && metadata.level ? (
+            {item.type === "log" &&
+            metadata.level &&
+            columns.includes("level") ? (
               <span className="font-sans">{metadata.level}</span>
             ) : null}
           </div>
         </div>
-        <time className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-          {formatTimestamp(item.timestamp)}
-        </time>
+        {item.type === "log" &&
+        columns.includes("logger") &&
+        loggerForItem(item) ? (
+          <span className="max-w-24 break-all text-xs text-muted-foreground">
+            {loggerForItem(item)}
+          </span>
+        ) : null}
+        {columns.includes("time") ? (
+          <time className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+            {formatTimestamp(item.timestamp)}
+          </time>
+        ) : null}
       </button>
     </li>
   );
@@ -376,14 +405,28 @@ export default function App() {
   );
   const traces = useMemo(() => buildTraceGroups(items), [items]);
   const searchQuery = workspaceQuery.query;
+  const filterKey = `${workspaceView}:${streamUrl}`;
+  const [eventFilterState, setEventFilterState] = useState<{
+    key: string;
+    filters: EventFilters;
+  }>({ key: "", filters: defaultEventFilters });
+  const eventFilters =
+    eventFilterState.key === filterKey
+      ? eventFilterState.filters
+      : defaultEventFilters;
+  const supportsFacets = ["live", "logs", "errors", "ai"].includes(
+    workspaceView,
+  );
+
   const activeWorkspace = workspaceNavigation.find(
     (entry) => entry.id === workspaceView,
   )!;
   const workspaceItems = activeWorkspace.getItems(telemetry);
   const hasRetainedItems = items.length > 0 || telemetry.envelopes.length > 0;
   const retainedItemCount = items.length + telemetry.envelopes.length;
-  const searchedItems = workspaceItems.filter((item) =>
-    matchesSearch(item, searchQuery),
+  const searchedItems = filterEvents(
+    workspaceItems.filter((item) => matchesSearch(item, searchQuery)),
+    supportsFacets ? eventFilters : defaultEventFilters,
   );
   const searchedTraces = traces.filter((trace) =>
     trace.items.some((item) => matchesSearch(item, searchQuery)),
@@ -392,7 +435,11 @@ export default function App() {
     view: workspaceView,
     label: activeWorkspace.label,
     singularLabel: activeWorkspace.singularLabel,
-    filtered: Boolean(searchQuery.trim()),
+    filtered: Boolean(
+      searchQuery.trim() ||
+      (supportsFacets &&
+        (eventFilters.levels.length || eventFilters.loggers.length)),
+    ),
     state:
       connection === "failed"
         ? "offline"
@@ -418,9 +465,8 @@ export default function App() {
       : lastViewedIndex === -1
         ? workspaceItems
         : workspaceItems.slice(lastViewedIndex + 1);
-  const newItems = unseenItems.filter((item) =>
-    matchesSearch(item, searchQuery),
-  );
+  const visibleItemIds = new Set(searchedItems.map((item) => item.id));
+  const newItems = unseenItems.filter((item) => visibleItemIds.has(item.id));
   const newItemCount = newItems.length;
 
   const markItemsSeen = (view = workspaceView) => {
@@ -447,6 +493,12 @@ export default function App() {
 
   const selectCommandItem = (item: LocalFeedItem) => {
     setCommandSearchQuery("");
+    // Explicit event links must reveal their destination, including within the
+    // current workspace. Keep presentation choices while removing facet gates.
+    setEventFilterState((state) => ({
+      ...state,
+      filters: { ...state.filters, levels: [], loggers: [] },
+    }));
     const nextWorkspace = workspaceForItem(item);
     const traceId = traceIdForItem(item);
     if (nextWorkspace === "traces" && traceId) {
@@ -1151,7 +1203,7 @@ export default function App() {
                 className="grid grid-cols-2 gap-1"
               >
                 {workspaceNavigation
-                  .filter((entry) => entry.section === "Explore")
+                  .filter((entry) => entry.section !== "Diagnostics")
                   .map((entry) => {
                     const Icon = entry.icon;
                     const active = workspaceView === entry.id;
@@ -1319,6 +1371,18 @@ export default function App() {
                   ) : null}
                 </div>
               ) : null}
+              {!showConnectionLanding && supportsFacets && hasRetainedItems ? (
+                <EventFilterControls
+                  items={workspaceItems}
+                  filters={eventFilters}
+                  showLogger={
+                    workspaceView === "logs" || workspaceView === "live"
+                  }
+                  onChange={(filters) =>
+                    setEventFilterState({ key: filterKey, filters })
+                  }
+                />
+              ) : null}
               {message ? (
                 <div
                   role="alert"
@@ -1341,10 +1405,38 @@ export default function App() {
                 />
               ) : !hasRetainedItems ? (
                 <WorkspaceEmptyState {...workspaceEmptyState} />
+              ) : workspaceView === "queries" ||
+                workspaceView === "resources" ? (
+                <SpanAnalysis
+                  key={workspaceView}
+                  kind={workspaceView}
+                  traces={traces}
+                  query={searchQuery}
+                  onSelectSpan={selectSpan}
+                />
+              ) : workspaceView === "web-vitals" ? (
+                <WebVitalsWorkspace
+                  items={items}
+                  query={searchQuery}
+                  onSelectItem={selectCommandItem}
+                />
+              ) : workspaceView === "profiles" ? (
+                <ProfileWorkspace
+                  items={telemetry.profiles}
+                  traces={traces}
+                  query={searchQuery}
+                  selectedId={workspaceQuery.eventId ?? undefined}
+                  onSelect={selectItem}
+                  onSelectTrace={(id) => navigateToCommandTrace("traces", id)}
+                />
               ) : workspaceView === "traces" ? (
                 <TraceWorkspace
                   emptyState={workspaceEmptyState}
                   traces={searchedTraces}
+                  profiles={telemetry.profiles}
+                  onSelectProfile={(id) =>
+                    navigateToCommandEvent("profiles", id)
+                  }
                   selectedTraceId={workspaceQuery.traceId ?? undefined}
                   selectedSpanId={workspaceQuery.spanId ?? undefined}
                   onSelectSpan={selectSpan}
@@ -1357,76 +1449,91 @@ export default function App() {
                   }}
                 />
               ) : (
-                <ResizableWorkspace
-                  storageKey="sentry.local.events-width"
-                  listLabel="Events list"
-                  list={
-                    <>
-                      <div className="shrink-0 border-b border-border px-3 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <h1
-                            id="event-list-heading"
-                            className="text-sm font-semibold"
-                          >
-                            {activeWorkspace.label}
-                          </h1>
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            {searchedItems.length}{" "}
-                            {activeWorkspace.singularLabel}
-                            {searchedItems.length === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                        {newItemCount > 0 ? (
-                          <button
-                            type="button"
-                            className="mt-2 w-full border-t border-border pt-2 text-left text-xs font-medium text-primary transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                            onClick={() => {
-                              const latestItem = newItems.at(-1);
-                              if (latestItem) {
-                                selectItem(latestItem.id);
-                              }
-                            }}
-                          >
-                            View {newItemCount} new{" "}
-                            {activeWorkspace.singularLabel}
-                            {newItemCount === 1 ? "" : "s"}
-                          </button>
-                        ) : null}
-                      </div>
-                      <ol
-                        data-testid="event-list"
-                        className="min-h-0 flex-1 space-y-px overflow-y-auto"
-                      >
-                        {searchedItems.map((item) => (
-                          <EventEntry
-                            key={item.id}
-                            item={item}
-                            isSelected={item.id === selectedItem?.id}
-                            showTypeBadge={workspaceView !== "envelopes"}
-                            onSelect={selectItem}
-                          />
-                        ))}
-                        {searchedItems.length === 0 ? (
-                          <li className="px-3 py-4 text-sm text-muted-foreground">
-                            {workspaceEmptyState.title}
-                          </li>
-                        ) : null}
-                      </ol>
-                    </>
-                  }
-                >
-                  {searchedItems.length === 0 ? (
-                    <WorkspaceEmptyState {...workspaceEmptyState} />
-                  ) : selectedItem ? (
-                    <EventDetail
-                      key={selectedItem.id}
-                      item={selectedItem}
-                      trace={selectedEventTrace}
-                      onSelectSpan={selectSpan}
-                      onSelectRelatedItem={selectCommandItem}
-                    />
+                <>
+                  {workspaceView === "sdks" ? (
+                    <SdkInventory items={items} query={searchQuery} />
                   ) : null}
-                </ResizableWorkspace>
+                  <ResizableWorkspace
+                    storageKey="sentry.local.events-width"
+                    listLabel="Events list"
+                    list={
+                      <>
+                        <div className="shrink-0 border-b border-border px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <h1
+                              id="event-list-heading"
+                              className="text-sm font-semibold"
+                            >
+                              {activeWorkspace.label}
+                            </h1>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {searchedItems.length}{" "}
+                              {activeWorkspace.singularLabel}
+                              {searchedItems.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          {newItemCount > 0 ? (
+                            <button
+                              type="button"
+                              className="mt-2 w-full border-t border-border pt-2 text-left text-xs font-medium text-primary transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                              onClick={() => {
+                                const latestItem = newItems.at(-1);
+                                if (latestItem) {
+                                  selectItem(latestItem.id);
+                                }
+                              }}
+                            >
+                              View {newItemCount} new{" "}
+                              {activeWorkspace.singularLabel}
+                              {newItemCount === 1 ? "" : "s"}
+                            </button>
+                          ) : null}
+                        </div>
+                        <ol
+                          data-testid="event-list"
+                          className="min-h-0 flex-1 space-y-px overflow-y-auto"
+                        >
+                          {searchedItems.map((item) => (
+                            <EventEntry
+                              key={item.id}
+                              item={item}
+                              isSelected={item.id === selectedItem?.id}
+                              showTypeBadge={workspaceView !== "envelopes"}
+                              columns={eventFilters.columns}
+                              onSelect={selectItem}
+                            />
+                          ))}
+                          {searchedItems.length === 0 ? (
+                            <li className="px-3 py-4 text-sm text-muted-foreground">
+                              {workspaceEmptyState.title}
+                            </li>
+                          ) : null}
+                        </ol>
+                      </>
+                    }
+                  >
+                    {searchedItems.length === 0 ? (
+                      <WorkspaceEmptyState
+                        {...(workspaceView === "sdks"
+                          ? {
+                              title: "No session or client reports",
+                              description:
+                                "SDK metadata observed in other telemetry appears above. Session and client reports will appear here when captured.",
+                            }
+                          : workspaceEmptyState)}
+                      />
+                    ) : selectedItem ? (
+                      <EventDetail
+                        key={selectedItem.id}
+                        item={selectedItem}
+                        relatedItems={items}
+                        trace={selectedEventTrace}
+                        onSelectSpan={selectSpan}
+                        onSelectRelatedItem={selectCommandItem}
+                      />
+                    ) : null}
+                  </ResizableWorkspace>
+                </>
               )}
             </section>
           </div>

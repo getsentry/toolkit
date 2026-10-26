@@ -1,3 +1,4 @@
+import { AiInspector } from "./ai-inspector.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
 import { Check, Copy, ChevronLeft } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
@@ -277,6 +278,7 @@ export function SpanDetail({
         json={JSON.stringify(span.payload, null, 2) ?? "null"}
         overview={
           <>
+            <AiInspector payload={span.payload} steps={span.children} />
             <DetailFields label="Span details" fields={fields} />
             {attributes.length ? (
               <section className="space-y-2">

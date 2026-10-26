@@ -72,6 +72,11 @@ export function getWorkspaceEmptyState({
     };
   }
   const triggers: Record<WorkspaceView, string> = {
+    queries: "Run an instrumented database query in your app.",
+    resources: "Load instrumented browser resources in your app.",
+    "web-vitals":
+      "Load a browser page with SDK performance measurements enabled.",
+    attachments: "Send an SDK event with a file attachment.",
     live: `Send an SDK ${singularLabel} from your app to this receiver.`,
     traces:
       "Trigger an instrumented request or operation in your app to send a trace to this receiver.",

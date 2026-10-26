@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
 
 type TraceWaterfallProps = {
@@ -50,9 +52,12 @@ function flattenSpans(spans: TraceSpan[]): PositionedSpan[] {
     }))
     .reverse();
   const positioned: PositionedSpan[] = [];
+  const visited = new Set<string>();
   while (pending.length > 0) {
     const current = pending.pop();
     if (!current) break;
+    if (visited.has(current.span.id)) continue;
+    visited.add(current.span.id);
     positioned.push(current);
     const children = current.span.children;
     for (let index = children.length - 1; index >= 0; index -= 1) {
@@ -84,7 +89,15 @@ function SpanRow({
   index,
   selectedSpanId,
   onSelectSpan,
+  collapsed,
+  onToggle,
+  treeWidth,
+  matched,
 }: {
+  collapsed: boolean;
+  onToggle: () => void;
+  treeWidth: number;
+  matched: boolean;
   positionedSpan: PositionedSpan;
   trace: TraceGroup;
   index: number;
@@ -99,6 +112,10 @@ function SpanRow({
   return (
     <div
       role="row"
+      style={{
+        gridTemplateColumns: `minmax(0,${treeWidth}%) minmax(0,1fr) 5.5rem`,
+      }}
+      data-search-match={matched || undefined}
       className={`group grid min-w-0 w-full grid-cols-[minmax(0,40%)_minmax(0,1fr)_5.5rem] border-b border-border transition-colors hover:bg-muted/45 ${index % 2 === 1 ? "bg-muted/15" : ""}`}
     >
       <div
@@ -119,6 +136,21 @@ function SpanRow({
             />
           </>
         ) : null}
+        {span.children.length ? (
+          <button
+            type="button"
+            aria-label={`${collapsed ? "Expand" : "Collapse"} ${span.description}`}
+            aria-expanded={!collapsed}
+            className="relative z-10 shrink-0 text-muted-foreground"
+            onClick={onToggle}
+          >
+            {collapsed ? (
+              <ChevronRight className="size-3" />
+            ) : (
+              <ChevronDown className="size-3" />
+            )}
+          </button>
+        ) : null}
         <span
           aria-hidden="true"
           className={`relative size-1.5 shrink-0 ${failed ? "bg-red-500" : depth === 0 ? "bg-primary" : "bg-muted-foreground"}`}
@@ -136,7 +168,8 @@ function SpanRow({
               data-span-id={span.id}
               aria-label={`Inspect span ${span.description}`}
               aria-pressed={selectedSpanId === span.id}
-              className="w-full whitespace-pre-wrap break-words text-left text-sm outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring aria-pressed:font-semibold aria-pressed:text-primary"
+              className="w-full whitespace-pre-wrap break-words text-left text-sm outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring aria-pressed:font-semibold aria-pressed:text-primary data-[matched=true]:bg-amber-500/15"
+              data-matched={matched || undefined}
               onClick={() => onSelectSpan(span.id)}
             >
               {span.description}
@@ -188,6 +221,24 @@ export function TraceWaterfall({
   selectedSpanId,
   onSelectSpan,
 }: TraceWaterfallProps) {
+  const [query, setQuery] = useState("");
+  const [onlyMatches, setOnlyMatches] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [treeWidth, setTreeWidth] = useState(40);
+  const allSpans = useMemo(() => flattenSpans(trace.roots), [trace]);
+  const matching = useMemo(
+    () =>
+      new Set(
+        allSpans
+          .filter(({ span }) =>
+            `${span.description} ${span.operation ?? ""} ${span.id}`
+              .toLowerCase()
+              .includes(query.trim().toLowerCase()),
+          )
+          .map(({ span }) => span.id),
+      ),
+    [allSpans, query],
+  );
   const capturedItemLabel = `${trace.itemCount} captured item${trace.itemCount === 1 ? "" : "s"} in this trace`;
 
   if (trace.spans.length === 0) {
@@ -232,7 +283,16 @@ export function TraceWaterfall({
     );
   }
 
-  const spans = flattenSpans(trace.roots);
+  const spans: PositionedSpan[] = [];
+  let hiddenBelow: number | undefined;
+  for (const entry of allSpans) {
+    if (!query.trim()) {
+      if (hiddenBelow !== undefined && entry.depth > hiddenBelow) continue;
+      hiddenBelow = collapsed.has(entry.span.id) ? entry.depth : undefined;
+    }
+    if (!query.trim() || !onlyMatches || matching.has(entry.span.id))
+      spans.push(entry);
+  }
 
   return (
     <section aria-label="Trace waterfall" className="min-h-0 overflow-auto">
@@ -279,9 +339,48 @@ export function TraceWaterfall({
           </div>
         </header>
       )}
+      {!compact ? (
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2 text-xs">
+          <input
+            type="search"
+            aria-label="Search in trace"
+            placeholder="Search in trace"
+            className="h-7 min-w-0 flex-1 rounded border bg-background px-2"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={onlyMatches}
+              onChange={(event) => setOnlyMatches(event.target.checked)}
+            />
+            Only show matches
+          </label>
+          <label className="flex items-center gap-2">
+            Tree width
+            <input
+              type="range"
+              min={25}
+              max={70}
+              value={treeWidth}
+              onChange={(event) => setTreeWidth(Number(event.target.value))}
+              className="w-20"
+            />
+          </label>
+          {query.trim() ? (
+            <span role="status">
+              {matching.size} matches · branches expanded while searching
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div role="table" aria-label="Trace spans" className="w-full">
         <div
           role="row"
+          style={{
+            gridTemplateColumns: `minmax(0,${treeWidth}%) minmax(0,1fr) 5.5rem`,
+          }}
           className="grid min-w-0 w-full grid-cols-[minmax(0,40%)_minmax(0,1fr)_5.5rem] border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground"
         >
           <div
@@ -315,6 +414,11 @@ export function TraceWaterfall({
             Duration
           </div>
         </div>
+        {spans.length === 0 ? (
+          <p className="p-4 text-sm text-muted-foreground">
+            No spans match this search.
+          </p>
+        ) : null}
         {spans.map((positionedSpan, index) => (
           <SpanRow
             key={positionedSpan.span.id}
@@ -323,6 +427,20 @@ export function TraceWaterfall({
             index={index}
             selectedSpanId={selectedSpanId}
             onSelectSpan={onSelectSpan}
+            treeWidth={treeWidth}
+            matched={
+              Boolean(query.trim()) && matching.has(positionedSpan.span.id)
+            }
+            collapsed={!query.trim() && collapsed.has(positionedSpan.span.id)}
+            onToggle={() =>
+              setCollapsed((previous) => {
+                const next = new Set(previous);
+                if (next.has(positionedSpan.span.id))
+                  next.delete(positionedSpan.span.id);
+                else next.add(positionedSpan.span.id);
+                return next;
+              })
+            }
           />
         ))}
       </div>

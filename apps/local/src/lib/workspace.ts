@@ -1,3 +1,4 @@
+import { isAiPayload } from "./inspection.ts";
 import type { EventMetadata, LocalFeedItem } from "./spotlight.ts";
 
 function getMetadata(item: LocalFeedItem): EventMetadata {
@@ -14,6 +15,10 @@ export const workspaceViews = [
   "sdks",
   "feedback",
   "profiles",
+  "queries",
+  "resources",
+  "web-vitals",
+  "attachments",
 ] as const;
 
 export type WorkspaceView = (typeof workspaceViews)[number];
@@ -44,10 +49,13 @@ export function isErrorEvent(item: LocalFeedItem) {
 
 export function isAiEvent(item: LocalFeedItem) {
   const metadata = getMetadata(item);
-  return [item.type, metadata.operation, metadata.origin].some(
-    (value) =>
-      value !== undefined &&
-      /(?:^|[.\s:_-])(?:ai|gen_ai|llm)(?:$|[.\s:_-])/i.test(value),
+  return (
+    isAiPayload(item.payload) ||
+    [item.type, metadata.operation, metadata.origin].some(
+      (value) =>
+        value !== undefined &&
+        /(?:^|[.\s:_-])(?:ai|gen_ai|llm)(?:$|[.\s:_-])/i.test(value),
+    )
   );
 }
 
@@ -70,6 +78,7 @@ export function workspaceForItem(item: LocalFeedItem): WorkspaceView {
   if (item.type === "user_report" || item.type === "feedback") {
     return "feedback";
   }
+  if (item.type === "attachment") return "attachments";
   if (item.type === "profile" || item.type === "profile_chunk") {
     return "profiles";
   }

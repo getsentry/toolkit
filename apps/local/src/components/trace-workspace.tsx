@@ -1,3 +1,4 @@
+import { profileMatchesTrace } from "@/lib/profiles.ts";
 import { useEffect, useRef } from "react";
 import type { LocalFeedItem } from "../lib/spotlight";
 import { ResizableWorkspace } from "./resizable-workspace";
@@ -14,6 +15,8 @@ type TraceWorkspaceProps = {
   onClearSpan?: () => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
   traces: TraceGroup[];
+  profiles?: readonly LocalFeedItem[];
+  onSelectProfile?: (id: string) => void;
 };
 
 function formatDuration(durationMs: number | undefined) {
@@ -41,6 +44,8 @@ export function TraceWorkspace({
   onClearSpan,
   onSelectRelatedItem,
   traces,
+  profiles = [],
+  onSelectProfile,
 }: TraceWorkspaceProps) {
   const selectedTrace =
     traces.find((trace) => trace.id === selectedTraceId) ?? traces[0];
@@ -159,6 +164,24 @@ export function TraceWorkspace({
       }
     >
       <div ref={inspector} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {onSelectProfile
+          ? profiles
+              .filter((profile) => profileMatchesTrace(profile, selectedTrace))
+              .map((profile) => (
+                <button
+                  key={profile.id}
+                  type="button"
+                  className="shrink-0 border-b border-border px-3 py-2 text-left text-xs text-primary hover:bg-muted"
+                  onClick={() => onSelectProfile(profile.id)}
+                >
+                  Inspect{" "}
+                  {profile.type === "profile_chunk"
+                    ? "continuous profile chunk"
+                    : "profile"}{" "}
+                  for this trace
+                </button>
+              ))
+          : null}
         {selectedSpan ? (
           <SpanDetail
             span={selectedSpan}
@@ -168,6 +191,7 @@ export function TraceWorkspace({
           />
         ) : (
           <TraceWaterfall
+            key={selectedTrace.id}
             trace={selectedTrace}
             selectedSpanId={
               selectedTrace.id === selectedTraceId ? selectedSpanId : undefined

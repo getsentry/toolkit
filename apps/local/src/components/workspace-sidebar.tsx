@@ -1,3 +1,4 @@
+import { sdkInventory } from "@/lib/inspection.ts";
 import {
   ChevronDown,
   ChevronLeft,
@@ -77,7 +78,13 @@ export function WorkspaceSidebar({
   const renderEntry = (entry: WorkspaceNavigationItem) => {
     const Icon = entry.icon;
     const count =
-      entry.id === "traces" ? traceCount : entry.getItems(snapshot).length;
+      entry.section === "Performance"
+        ? 0
+        : entry.id === "sdks"
+          ? sdkInventory(snapshot.items).length
+          : entry.id === "traces"
+            ? traceCount
+            : entry.getItems(snapshot).length;
     const active = activeView === entry.id;
     return (
       <button
@@ -170,6 +177,20 @@ export function WorkspaceSidebar({
           </p>
           {workspaceNavigation
             .filter((entry) => entry.section === "Explore")
+            .map(renderEntry)}
+        </div>
+        <div className="space-y-1">
+          <p
+            className={
+              collapsed
+                ? "sr-only"
+                : "px-2 pb-1 pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+            }
+          >
+            Performance
+          </p>
+          {workspaceNavigation
+            .filter((entry) => entry.section === "Performance")
             .map(renderEntry)}
         </div>
         <div className="space-y-1">

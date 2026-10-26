@@ -21,6 +21,8 @@ export type LocalFeedItem = {
   text: string;
   payload: unknown;
   metadata?: EventMetadata;
+  envelopeHeader?: Record<string, unknown>;
+  itemHeader?: Record<string, unknown>;
 };
 
 export type EventMetadata = {
@@ -79,6 +81,13 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
+function contextFeedback(
+  event: Record<string, unknown>,
+): Record<string, unknown> {
+  const contexts = isRecord(event.contexts) ? event.contexts : {};
+  return isRecord(contexts.feedback) ? contexts.feedback : {};
+}
+
 /** Derive display metadata from this payload without inheriting its parent event. */
 export function getEventMetadata(
   payload: unknown,
@@ -90,7 +99,14 @@ export function getEventMetadata(
   const transaction = getString(event.transaction);
   const description = getString(event.description);
   const message =
-    getString(event.message) ?? getString(event.body) ?? getString(event.name);
+    getString(event.message) ??
+    getString(event.body) ??
+    getString(event.name) ??
+    getString(
+      isRecord(contextFeedback(event))
+        ? contextFeedback(event).message
+        : undefined,
+    );
   const transactionMatch = transaction?.match(/^([A-Z]+)\s+(.+)$/);
   const contexts = isRecord(event.contexts) ? event.contexts : {};
   const trace = isRecord(contexts.trace) ? contexts.trace : event;
@@ -322,10 +338,17 @@ export function decodeEnvelope(data: string, eventId: string): LocalFeedItem[] {
           ? `${eventId}:${index}`
           : `${eventId}:${index}:${payloadIndex}`,
       type,
+      envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
+      itemHeader: header,
       timestamp: getItemTimestamp(payload),
       text: JSON.stringify(payload, null, 2) ?? String(payload),
       payload,
-      metadata: getEventMetadata(payload, type),
+      metadata: {
+        ...getEventMetadata(payload, type),
+        ...(type === "attachment" && typeof header.filename === "string"
+          ? { title: header.filename }
+          : {}),
+      },
     }));
   });
 }
