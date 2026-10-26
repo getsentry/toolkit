@@ -421,7 +421,7 @@ Work with Sentry projects
 
 - `sentry project create [<org>/]<name>:<platform>...` — Create one or more projects
 - `sentry project delete <org/project>` — Delete a project
-- `sentry project list [<org/project>] [<filter>]` — List projects
+- `sentry project list [<org/project>]` — List projects
 - `sentry project view [<org/project>]` — View details of a project
 
 → Full flags and examples: `references/project.md`
@@ -631,7 +631,7 @@ Work with Sentry releases
 
 Work with Sentry repositories
 
-- `sentry repo list [<org/project>] [<filter>]` — List repositories
+- `sentry repo list [<org/project>]` — List repositories
 
 → Full flags and examples: `references/repo.md`
 
@@ -639,7 +639,7 @@ Work with Sentry repositories
 
 Work with Sentry teams
 
-- `sentry team list [<org/project>] [<filter>]` — List teams
+- `sentry team list [<org/project>]` — List teams
 
 → Full flags and examples: `references/team.md`
 
@@ -647,7 +647,7 @@ Work with Sentry teams
 
 Work with Sentry integrations
 
-- `sentry integration list [<org/project>] [<filter>]` — List installed integrations
+- `sentry integration list [<org/project>]` — List installed integrations
 - `sentry integration delete <org/integration-id>` — Remove an installed integration
 
 → Full flags and examples: `references/integration.md`
@@ -694,7 +694,7 @@ Start a local Sentry MCP server
 Work with Sentry cron monitors
 
 - `sentry monitor run <monitor-slug command...>` — Wrap a command with cron monitor check-ins
-- `sentry monitor list [<org/project>] [<filter>]` — List cron monitors
+- `sentry monitor list [<org/project>]` — List cron monitors
 
 → Full flags and examples: `references/monitor.md`
 

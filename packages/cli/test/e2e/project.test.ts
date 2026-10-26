@@ -123,26 +123,6 @@ describe("sentry project list", () => {
     const data = Array.isArray(parsed) ? parsed : parsed.data;
     expect(Array.isArray(data)).toBe(true);
   });
-
-  test(
-    "plural alias keeps the target after the 'list' token",
-    { timeout: 30_000 },
-    async () => {
-      await ctx.setAuthToken(TEST_TOKEN);
-
-      // `sentry projects list <org>/` drops the "list" token; `<org>/` must
-      // stay the target. Were it a name filter, auto-detect would list
-      // nothing and exit 0 instead of failing on the unknown org.
-      const args = ["other-org/", "--json"];
-      const direct = await ctx.run(["project", "list", ...args]);
-      const alias = await ctx.run(["projects", "list", ...args]);
-
-      expect(direct.exitCode).not.toBe(0);
-      expect(alias.exitCode).toBe(direct.exitCode);
-      expect(alias.stdout).toBe(direct.stdout);
-      expect(alias.stderr).toContain("is a subcommand");
-    },
-  );
 });
 
 describe("sentry org view", () => {

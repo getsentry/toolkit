@@ -61,7 +61,7 @@ const docs: OrgListCommandDocs = {
   fullDescription:
     "List integrations installed on an organization (GitHub, GitLab, Slack, Jira, ...).\n\n" +
     "Includes integrations that are disabled or pending deletion.\n\n" +
-    "`<org>/<name>` lists integrations whose name or provider matches `<name>`, a glob (`<org>/git*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
+    "`<org>/<name>` lists integrations whose name or provider matches `<name>`, a glob (`<org>/git*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry integrations` → `sentry integration list`",
   examples: [
     {

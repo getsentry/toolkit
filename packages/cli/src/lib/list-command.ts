@@ -44,7 +44,7 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
-import { splitListTargetAndFilter } from "./list-filter.js";
+import { splitListTarget } from "./list-filter.js";
 import { applyBoundPositionals, rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
@@ -77,6 +77,14 @@ export const LIST_DEFAULT_LIMIT = 25;
  */
 export const ORG_ALL_TARGET_BRIEF =
   "<org>/ (all projects), <org>/<project>, or <project> (search)";
+
+/**
+ * {@link ORG_ALL_TARGET_BRIEF} for list commands that also match names
+ * (see {@link splitListTarget}): a glob filters names, and a name that is
+ * no project matches names instead.
+ */
+export const NAMED_LIST_TARGET_BRIEF =
+  "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)";
 
 /** Accepted forms of a target that names one project (no org-all mode). */
 export const PROJECT_TARGET_BRIEF = "<org>/<project> or <project> (search)";
@@ -116,38 +124,27 @@ export const LIST_ORG_TARGET_POSITIONAL = {
 };
 
 /**
- * Optional name filter after the target (`sentry team list <org>/ back*`),
- * matched with `filterByName` from `list-filter.ts`. A glob can also join
- * the target (`<org>/back*`); see `splitListTargetAndFilter`.
+ * {@link LIST_TARGET_POSITIONAL} for list commands whose target also
+ * matches names; split it with {@link splitListTarget}.
  */
-export const LIST_NAME_FILTER_PARAMETER = {
-  placeholder: "filter",
-  brief: "Only names matching a glob (web-*) or text (fuzzy)",
-  parse: String,
-  optional: true as const,
-};
-
-/**
- * {@link LIST_TARGET_POSITIONAL} followed by {@link LIST_NAME_FILTER_PARAMETER}.
- * Split the two with {@link splitListTargetAndFilter}.
- */
-export const LIST_TARGET_FILTER_POSITIONAL = {
+export const NAMED_LIST_TARGET_POSITIONAL = {
   kind: "tuple" as const,
   parameters: [
-    ...LIST_TARGET_POSITIONAL.parameters,
-    LIST_NAME_FILTER_PARAMETER,
+    { ...LIST_TARGET_POSITIONAL.parameters[0], brief: NAMED_LIST_TARGET_BRIEF },
   ],
 };
 
 /**
- * {@link LIST_ORG_TARGET_POSITIONAL} followed by
- * {@link LIST_NAME_FILTER_PARAMETER}, for org-scoped resources.
+ * {@link LIST_ORG_TARGET_POSITIONAL} for org-scoped resources whose target
+ * also matches names; split it with {@link splitListTarget}.
  */
-export const LIST_ORG_TARGET_FILTER_POSITIONAL = {
+export const NAMED_LIST_ORG_TARGET_POSITIONAL = {
   kind: "tuple" as const,
   parameters: [
-    ...LIST_ORG_TARGET_POSITIONAL.parameters,
-    LIST_NAME_FILTER_PARAMETER,
+    {
+      ...LIST_ORG_TARGET_POSITIONAL.parameters[0],
+      brief: NAMED_LIST_TARGET_BRIEF,
+    },
   ],
 };
 
@@ -675,9 +672,7 @@ export function buildListCommand<
       // All list commands use SentryContext which has stderr at top level
       const ctx = this as unknown as { stderr: { write(s: string): void } };
       if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
-        // Drop the subcommand token so later positionals move up a slot:
-        // `sentry projects list my-org/` targets `my-org/`, not a filter.
-        args.shift();
+        args[0] = undefined;
       }
     }
     // A dropped bound target becomes an omitted one (auto-detect)
@@ -768,7 +763,7 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
       positional: config.namesOf
-        ? LIST_ORG_TARGET_FILTER_POSITIONAL
+        ? NAMED_LIST_ORG_TARGET_POSITIONAL
         : LIST_ORG_TARGET_POSITIONAL,
       flags: {
         limit: buildListLimitFlag(config.entityPlural),
@@ -785,11 +780,10 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
         readonly fields?: string[];
       },
       rawTarget?: string,
-      rawFilter?: string,
     ) {
       const { cwd } = this;
       const { target, filter } = config.namesOf
-        ? splitListTargetAndFilter(rawTarget, rawFilter)
+        ? splitListTarget(rawTarget)
         : { target: rawTarget, filter: undefined };
       const parsed = parseOrgProjectArg(target);
       const result = await dispatchOrgScopedList({

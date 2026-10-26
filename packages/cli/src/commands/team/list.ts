@@ -61,7 +61,7 @@ const docs: OrgListCommandDocs = {
   brief: "List teams",
   fullDescription:
     "List teams in an organization.\n\n" +
-    "With a glob after the slash (`<org>/back*`), only teams whose slug or name matches are listed. When `<org>/<name>` names no project, `<name>` matches team names instead: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
+    "With a glob after the slash (`<org>/back*`), only teams whose slug or name matches are listed. When `<name>` or `<org>/<name>` names no project, `<name>` matches team names instead: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry teams` → `sentry team list`",
   examples: [
     {

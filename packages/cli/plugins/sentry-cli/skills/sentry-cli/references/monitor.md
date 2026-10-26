@@ -44,7 +44,7 @@ sentry monitor run nightly-job npm run task
 sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
 ```
 
-### `sentry monitor list [<org/project>] [<filter>]`
+### `sentry monitor list [<org/project>]`
 
 List cron monitors
 
@@ -52,8 +52,7 @@ List cron monitors
 
 | Argument | Description |
 |----------|-------------|
-| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
-| `[<filter>]` | Only names matching a glob (web-*) or text (fuzzy) |
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of monitors to list - (default: "25")`

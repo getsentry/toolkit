@@ -1756,20 +1756,20 @@ describe("project list: name filter", () => {
     return items.map(({ slug }) => slug);
   }
 
-  test("<org>/ <glob> keeps projects whose slug or name matches", async () => {
+  test("<org>/<glob> keeps projects whose slug or name matches", async () => {
     globalThis.fetch = mockProjectFetch(projects);
-    expect(slugs(await run({}, "test-org/", "*end"))).toEqual([
+    expect(slugs(await run({}, "test-org/*end"))).toEqual([
       "frontend",
       "backend",
     ]);
-    expect(slugs(await run({}, "test-org/", "web checkout"))).toEqual([
+    expect(slugs(await run({}, "test-org/web checkout"))).toEqual([
       "web-checkout",
     ]);
   });
 
   test("plain text is fuzzy", async () => {
     globalThis.fetch = mockProjectFetch(projects);
-    expect(slugs(await run({}, "test-org/", "frontnd"))).toEqual(["frontend"]);
+    expect(slugs(await run({}, "test-org/frontnd"))).toEqual(["frontend"]);
   });
 
   test("a lone <org>/<glob> splits into target and filter", async () => {
@@ -1798,20 +1798,20 @@ describe("project list: name filter", () => {
   test("combines with --platform", async () => {
     globalThis.fetch = mockProjectFetch(projects);
     expect(
-      slugs(await run({ platform: "javascript" }, "test-org/", "*end")),
+      slugs(await run({ platform: "javascript" }, "test-org/*end")),
     ).toEqual(["frontend"]);
   });
 
   test("--limit applies after filtering", async () => {
     globalThis.fetch = mockProjectFetch(projects);
-    expect(slugs(await run({ limit: 1 }, "test-org/", "*end"))).toEqual([
+    expect(slugs(await run({ limit: 1 }, "test-org/*end"))).toEqual([
       "frontend",
     ]);
   });
 
   test("names the filter when nothing matches", async () => {
     globalThis.fetch = mockProjectFetch(projects);
-    const output = await run({ json: false }, "test-org/", "nope-*");
+    const output = await run({ json: false }, "test-org/nope-*");
     expect(output).toContain(
       "No projects matching 'nope-*' in organization 'test-org'.",
     );
@@ -1819,7 +1819,7 @@ describe("project list: name filter", () => {
 
   test("rejects --cursor with a filter", async () => {
     globalThis.fetch = mockProjectFetch(projects);
-    await expect(run({ cursor: "next" }, "test-org/", "web-*")).rejects.toThrow(
+    await expect(run({ cursor: "next" }, "test-org/web-*")).rejects.toThrow(
       ValidationError,
     );
   });

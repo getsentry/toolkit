@@ -632,9 +632,8 @@ describe("listCommand.func — name filter", () => {
     return items.map((team) => team.slug);
   }
 
-  test("<org>/ <filter> reads every page and keeps matching teams", async () => {
-    expect(await runJson("test-org/", "front*")).toEqual(["frontend"]);
-    expect(await runJson("test-org/", "backend team")).toEqual(["backend"]);
+  test("<org>/<glob> reads every page and keeps matching teams", async () => {
+    expect(await runJson("test-org/front*")).toEqual(["frontend"]);
     // listTeams returns only the first page, so a filter walks the pages,
     // letting the server narrow them to names containing the glob's text.
     expect(listTeamsPaginatedSpy).toHaveBeenCalledWith("test-org", {
@@ -643,6 +642,23 @@ describe("listCommand.func — name filter", () => {
       query: "front",
     });
     expect(listTeamsSpy).not.toHaveBeenCalled();
+  });
+
+  test("a bare name that is no project matches team names", async () => {
+    resolveOrgsForListingSpy.mockResolvedValue({ orgs: ["test-org"] });
+    const classifySpy = vi
+      .mocked(resolveTarget.classifyProjectSearchTarget)
+      .mockResolvedValue({
+        kind: "not-found",
+        suggestions: [],
+        displaySlug: "backnd",
+        scopedOrg: undefined,
+      });
+    try {
+      expect(await runJson("backnd")).toEqual(["backend"]);
+    } finally {
+      classifySpy.mockReset();
+    }
   });
 
   test("a lone glob filters the auto-detected org", async () => {

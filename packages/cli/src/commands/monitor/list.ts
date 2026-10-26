@@ -77,7 +77,7 @@ const docs: OrgListCommandDocs = {
   brief: "List cron monitors",
   fullDescription:
     "List cron monitors in an organization.\n\n" +
-    "`<org>/<name>` lists monitors whose slug or name matches `<name>`, a glob (`<org>/nightly-*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
+    "`<org>/<name>` lists monitors whose slug or name matches `<name>`, a glob (`<org>/nightly-*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry monitors` → `sentry monitor list`",
   examples: [
     {

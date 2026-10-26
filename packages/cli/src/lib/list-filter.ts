@@ -62,20 +62,18 @@ export function filterByName<T>(
 }
 
 /**
- * Split a list command's `[<target>] [<filter>]` positionals into the
- * target and name filter. With no second positional, a glob in the lone
- * argument is a filter, since no slug contains glob characters:
- * `web-*` → filter `web-*` (auto-detected org), `acme/web-*` → target
- * `acme/` and filter `web-*`, and `/web-*` is `web-*`. Any other lone
- * argument stays the target.
+ * Split a list command's target into the target and a name filter. No slug
+ * contains glob characters, so a glob is a filter: `web-*` → filter `web-*`
+ * (auto-detected org), `acme/web-*` → target `acme/` and filter `web-*`,
+ * and `/web-*` is `web-*`. Anything else stays the target; when it names no
+ * project, the list handlers match names with it instead.
  */
-export function splitListTargetAndFilter(
-  target: string | undefined,
-  filter: string | undefined,
-): { target?: string; filter?: string } {
-  const trimmedFilter = filter?.trim() || undefined;
-  if (trimmedFilter || !target) {
-    return { target, filter: trimmedFilter };
+export function splitListTarget(target: string | undefined): {
+  target?: string;
+  filter?: string;
+} {
+  if (!target) {
+    return { target };
   }
   const slash = target.indexOf("/");
   if (slash < 0) {
@@ -152,22 +150,16 @@ export async function fetchByName<T>(options: {
 }
 
 /**
- * `<org>/` with a name filter, as list commands take it: a glob joins the
- * target (`acme/web-*`), while text stays a separate argument
- * (`acme/ frontend`), since `acme/frontend` names a project first.
+ * The list target for `<org>/` with a name filter: `acme/web-*`, or
+ * `acme/frontend` for text, which matches names when it names no project.
  *
- * @param quote - Applied to each argument, e.g. `shellQuote` for a command
- *   meant to be copied into a shell
+ * @param quote - Applied to a target with a filter, e.g. `shellQuote` for a
+ *   command meant to be copied into a shell
  */
 export function orgFilterTarget(
   org: string,
   filter: string | undefined,
   quote: (arg: string) => string = (arg) => arg,
 ): string {
-  if (!filter) {
-    return `${org}/`;
-  }
-  return isGlobFilter(filter)
-    ? quote(`${org}/${filter}`)
-    : `${org}/ ${quote(filter)}`;
+  return filter ? quote(`${org}/${filter}`) : `${org}/`;
 }

@@ -74,7 +74,7 @@ sentry project delete my-org/old-project --yes
 sentry project delete my-org/old-project --dry-run
 ```
 
-### `sentry project list [<org/project>] [<filter>]`
+### `sentry project list [<org/project>]`
 
 List projects
 
@@ -82,8 +82,7 @@ List projects
 
 | Argument | Description |
 |----------|-------------|
-| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
-| `[<filter>]` | Only names matching a glob (web-*) or text (fuzzy) |
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of projects to list - (default: "25")`

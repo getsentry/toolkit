@@ -450,8 +450,9 @@ export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
 
   /**
    * The names a name filter matches against (e.g. slug and display name).
-   * When set, `buildOrgListCommand` accepts `[<target>] [<filter>]` and the
-   * default handlers keep only matching entities (see {@link filterByName}).
+   * When set, the `buildOrgListCommand` target also filters: a glob keeps
+   * only matching entities (see {@link filterByName}), and a name that is
+   * no project matches entity names instead.
    */
   namesOf?: (entity: TEntity) => readonly string[];
 
@@ -966,10 +967,16 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
     org?: string;
     /** Classification supplied by the dispatcher after its target pre-check. */
     projectSearchResolution?: ProjectSearchTargetResolution;
+    /**
+     * Tried when no project matches: entities named like the slug, or
+     * `undefined` to report the missing project as before.
+     */
+    notFoundFallback?: () => Promise<ListResult<TWithOrg> | undefined>;
   },
 ): Promise<ListResult<TWithOrg>> {
   const {
     flags,
+    notFoundFallback,
     orgAllFallback,
     originalSlug,
     org: scopedOrg,
@@ -1011,6 +1018,10 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
   }
 
   if (resolution.kind === "not-found") {
+    const fallback = await notFoundFallback?.();
+    if (fallback) {
+      return fallback;
+    }
     if (flags.json) {
       return { items: [] };
     }
@@ -1186,6 +1197,33 @@ async function handleExplicitByName<TEntity, TWithOrg>(
 }
 
 /**
+ * Bare `<name>` that is no project (`sentry team list backend`): entities
+ * named like it, in its org when given (`<org>/My Team`), else in the
+ * detected orgs. `undefined` when none match or the lookup fails, so the
+ * caller reports the missing project instead.
+ */
+async function matchNamesForMissingProject<TEntity, TWithOrg>(
+  config: OrgListConfig<TEntity, TWithOrg>,
+  ctx: HandlerContext<"project-search">,
+): Promise<ListResult<TWithOrg> | undefined> {
+  const { parsed, flags, cwd } = ctx;
+  const name = parsed.originalSlug ?? parsed.projectSlug;
+  const named = withNameFilter(config, name);
+  const result = await withAuthGuard(() =>
+    parsed.org
+      ? handleOrgAllFiltered(named, parsed.org, flags)
+      : handleAutoDetect(named, cwd, flags, name),
+  );
+  if (!result.ok || result.value.items.length === 0) {
+    return;
+  }
+  const note = `No project '${name}'. Matching ${config.entityPlural} by name instead.`;
+  const { value } = result;
+  value.header = value.header ? `${note}\n${value.header}` : note;
+  return value;
+}
+
+/**
  * `config` narrowed to entities whose names match `filter`. Its fetchers
  * read every page and filter (and rank) the set, and `entityPlural` names the
  * filter (`teams matching 'back*'`) so progress, empty, and count messages
@@ -1302,6 +1340,10 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
     "project-search": (ctx) =>
       handleProjectSearch(config, ctx.parsed.projectSlug, {
         flags: ctx.flags,
+        notFoundFallback:
+          !filtered && isOrgListConfig(fullConfig) && fullConfig.namesOf
+            ? () => matchNamesForMissingProject(fullConfig, ctx)
+            : undefined,
         orgAllFallback: (orgSlug) =>
           filtered
             ? handleOrgAllFiltered(config, orgSlug, ctx.flags)

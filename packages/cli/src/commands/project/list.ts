@@ -45,7 +45,7 @@ import {
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
-  LIST_TARGET_FILTER_POSITIONAL,
+  NAMED_LIST_TARGET_POSITIONAL,
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
@@ -53,7 +53,7 @@ import {
   fetchByName,
   filterByName,
   orgFilterTarget,
-  splitListTargetAndFilter,
+  splitListTarget,
 } from "../../lib/list-filter.js";
 
 import {
@@ -91,8 +91,8 @@ type ListFlags = {
 };
 
 /**
- * {@link ListFlags} plus the optional name filter positional
- * (`sentry project list <org>/ <filter>`), which the handlers apply.
+ * {@link ListFlags} plus the name filter taken from the target
+ * (`sentry project list <org>/web-*`), which the handlers apply.
  */
 type ProjectListFlags = ListFlags & { readonly filter?: string };
 
@@ -853,7 +853,7 @@ export const listCommand = buildListCommand("project", {
       "List projects in an organization.\n\n" +
       `${targetPatternExplanation("Cursor pagination (--cursor) requires the <org>/ form.")}\n\n` +
       "A glob after the slash (`<org>/web-*`) lists projects whose slug or name matches. " +
-      "When `<org>/<proj>` names no project, it matches project names instead: " +
+      "When `<org>/<name>` names no project, it matches project names instead: " +
       "exact or partial matches first, then close (fuzzy) matches. " +
       "Name filters can't be combined with --cursor.\n\n" +
       "Alias: `sentry projects` → `sentry project list`",
@@ -920,7 +920,7 @@ export const listCommand = buildListCommand("project", {
     jsonTransform: jsonTransformListResult,
   } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
   parameters: {
-    positional: LIST_TARGET_FILTER_POSITIONAL,
+    positional: NAMED_LIST_TARGET_POSITIONAL,
     flags: {
       limit: buildListLimitFlag("projects"),
       platform: {
@@ -932,15 +932,10 @@ export const listCommand = buildListCommand("project", {
     },
     aliases: { ...LIST_BASE_ALIASES, p: "platform" },
   },
-  async *func(
-    this: SentryContext,
-    cliFlags: ListFlags,
-    rawTarget?: string,
-    rawFilter?: string,
-  ) {
+  async *func(this: SentryContext, cliFlags: ListFlags, rawTarget?: string) {
     const { cwd } = this;
 
-    const { target, filter } = splitListTargetAndFilter(rawTarget, rawFilter);
+    const { target, filter } = splitListTarget(rawTarget);
     const parsed = parseOrgProjectArg(target, { multi: true });
     const flags: ProjectListFlags = { ...cliFlags, filter };
 

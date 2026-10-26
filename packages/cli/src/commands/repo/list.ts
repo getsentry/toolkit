@@ -65,7 +65,7 @@ const docs: OrgListCommandDocs = {
   brief: "List repositories",
   fullDescription:
     "List repositories connected to an organization.\n\n" +
-    "`<org>/<name>` lists repositories whose name (with or without its owner) matches `<name>`, a glob (`<org>/getsentry/*`) or text: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
+    "`<org>/<name>` lists repositories whose name (with or without its owner) matches `<name>`, a glob (`<org>/getsentry/*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry repos` → `sentry repo list`",
   examples: [
     {

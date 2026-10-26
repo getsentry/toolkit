@@ -5,7 +5,7 @@ import {
   isGlobFilter,
   orgFilterTarget,
   serverSearchText,
-  splitListTargetAndFilter,
+  splitListTarget,
 } from "../../src/lib/list-filter.js";
 
 type Item = { slug: string; name: string };
@@ -63,24 +63,22 @@ describe("isGlobFilter", () => {
   });
 });
 
-describe("splitListTargetAndFilter", () => {
+describe("splitListTarget", () => {
   test.each([
-    [[undefined, undefined], {}],
-    [["my-org/", undefined], { target: "my-org/" }],
-    [["my-org/", " web-* "], { target: "my-org/", filter: "web-*" }],
-    [["my-org/", "  "], { target: "my-org/" }],
+    [undefined, {}],
+    ["my-org/", { target: "my-org/" }],
     // A lone bare name is still a project search.
-    [["web", undefined], { target: "web" }],
-    // No slug has glob characters, so a lone glob is a filter.
-    [["web-*", undefined], { filter: "web-*" }],
-    [["my-org/web-*", undefined], { target: "my-org/", filter: "web-*" }],
-    [["my-org/web,api", undefined], { target: "my-org/web,api" }],
-    [["my-org/proj/x*", undefined], { target: "my-org/proj/x*" }],
+    ["web", { target: "web" }],
+    // No slug has glob characters, so a glob is a filter.
+    ["web-*", { filter: "web-*" }],
+    ["my-org/web-*", { target: "my-org/", filter: "web-*" }],
+    ["my-org/web,api", { target: "my-org/web,api" }],
+    ["my-org/proj/x*", { target: "my-org/proj/x*" }],
     // `/<name>` means `<name>`, so `/web-*` is a filter, not target `/`.
-    [["/web-*", undefined], { filter: "web-*" }],
-    [["/web", undefined], { target: "/web" }],
-  ] as const)("%j → %j", ([target, filter], expected) => {
-    const result = splitListTargetAndFilter(target, filter);
+    ["/web-*", { filter: "web-*" }],
+    ["/web", { target: "/web" }],
+  ] as const)("%j → %j", (target, expected) => {
+    const result = splitListTarget(target);
     expect({
       ...(result.target !== undefined && { target: result.target }),
       ...(result.filter !== undefined && { filter: result.filter }),
@@ -180,16 +178,18 @@ describe("orgFilterTarget", () => {
   test.each([
     [undefined, "acme/"],
     ["web-*", "acme/web-*"],
-    ["frontend", "acme/ frontend"],
+    // Text joins the target too: it matches names when no project has it.
+    ["frontend", "acme/frontend"],
   ] as const)("%j → %j", (filter, expected) => {
     expect(orgFilterTarget("acme", filter)).toBe(expected);
   });
 
-  test("quotes each argument", () => {
+  test("quotes a target with a filter", () => {
     const quote = (arg: string) => `'${arg}'`;
+    expect(orgFilterTarget("acme", undefined, quote)).toBe("acme/");
     expect(orgFilterTarget("acme", "web-*", quote)).toBe("'acme/web-*'");
     expect(orgFilterTarget("acme", "front end", quote)).toBe(
-      "acme/ 'front end'",
+      "'acme/front end'",
     );
   });
 });

@@ -11,7 +11,7 @@ requires:
 
 Work with Sentry repositories
 
-### `sentry repo list [<org/project>] [<filter>]`
+### `sentry repo list [<org/project>]`
 
 List repositories
 
@@ -19,8 +19,7 @@ List repositories
 
 | Argument | Description |
 |----------|-------------|
-| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
-| `[<filter>]` | Only names matching a glob (web-*) or text (fuzzy) |
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of repositories to list - (default: "25")`
