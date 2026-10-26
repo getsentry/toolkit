@@ -5401,12 +5401,10 @@ export class SentryApiService {
     {
       organizationSlug,
       issueId,
-      eventId,
-      instruction = "",
+      instruction,
     }: {
       organizationSlug: string;
       issueId: string;
-      eventId?: string;
       instruction?: string;
     },
     opts?: RequestOptions,
@@ -5415,9 +5413,10 @@ export class SentryApiService {
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/`,
       {
         method: "POST",
+        // Sentry ignores unknown keys, so the instruction must go in
+        // `user_context`. Omit it when empty.
         body: JSON.stringify({
-          event_id: eventId,
-          instruction,
+          user_context: instruction || undefined,
         }),
       },
       opts,

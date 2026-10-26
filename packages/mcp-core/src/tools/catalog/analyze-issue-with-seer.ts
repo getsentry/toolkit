@@ -82,7 +82,9 @@ export default defineTool({
     issueUrl: ParamIssueUrl.optional(),
     instruction: z
       .string()
-      .describe("Optional custom instruction for the AI analysis")
+      .describe(
+        "Optional custom instruction for the AI analysis. Only applied when starting a new analysis.",
+      )
       .optional(),
   },
   annotations: {
