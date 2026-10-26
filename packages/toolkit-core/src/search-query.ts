@@ -470,12 +470,15 @@ function tryMergeGroup(
 /** Fields the issues endpoint fills from `is:` values. */
 const STATUS_FIELDS: ReadonlySet<string> = new Set(["status", "substatus"]);
 
-/** Whether a node filters on issue status: `is:`, `status:`, or `substatus:`. */
+/**
+ * Whether a node filters on issue status: `is:`, `status:`, or `substatus:`.
+ * Keys compare case-insensitively, like the generic OR merge.
+ */
 function isStatusOperand(node: SearchNode): boolean {
   return (
     node.type === "is_filter" ||
     ((node.type === "text_filter" || node.type === "text_in_filter") &&
-      STATUS_FIELDS.has(node.key))
+      STATUS_FIELDS.has(node.key.toLowerCase()))
   );
 }
 
@@ -498,9 +501,9 @@ function tryMergeIsGroup(group: SearchNode[]): SearchNode | null {
     } else if (
       (node.type === "text_filter" || node.type === "text_in_filter") &&
       !node.negated &&
-      STATUS_FIELDS.has(node.key)
+      STATUS_FIELDS.has(node.key.toLowerCase())
     ) {
-      listFields.add(node.key);
+      listFields.add(node.key.toLowerCase());
       values.push(...valuesFromNode(node));
     } else {
       return null;

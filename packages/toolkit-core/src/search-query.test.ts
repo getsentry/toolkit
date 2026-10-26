@@ -90,6 +90,7 @@ describe("rewriteSearchQuery: is: OR in issue search", () => {
     "substatus:[new] OR substatus:[archived_forever]",
     "substatus:archived_forever OR is:new",
     "status:resolved OR substatus:regressed",
+    "Substatus:[new] OR substatus:[archived_forever]",
   ])("throws for %s instead of a cross-parent list", (query) => {
     expect(() => rewriteIssues(query)).toThrow(SearchQueryError);
   });
