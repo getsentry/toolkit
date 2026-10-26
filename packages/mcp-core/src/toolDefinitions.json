@@ -142,7 +142,7 @@
         },
         "instruction": {
           "type": "string",
-          "description": "Optional custom instruction for the AI analysis. Only applied when starting a new analysis."
+          "description": "Optional custom instruction for the AI analysis"
         }
       }
     },
