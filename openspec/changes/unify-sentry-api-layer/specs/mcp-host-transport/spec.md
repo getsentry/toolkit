@@ -35,7 +35,7 @@ refresh, and response cache. It SHALL not start a separate login flow.
 
 #### Scenario: Cache shared with CLI commands
 
-- **WHEN** a CLI command and an MCP tool, for the same identity, request the same immutable resource
+- **WHEN** a CLI command and an MCP tool, for the same identity, request the same cacheable resource within its TTL
 - **THEN** the second request is served from the shared on-disk cache
 
 #### Scenario: Token rejected mid-session
