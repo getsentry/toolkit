@@ -15,6 +15,7 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { isLoopbackHost } from "./loopback.js";
 import {
   buildSSEHandler,
   MAX_BODY_BYTES,
@@ -144,6 +145,19 @@ export function createLocalControlPlane({
       return false;
     }
   };
+
+  app.use("*", async (c, next) => {
+    // Same-origin browser GETs may omit Origin after DNS rebinding. The Node
+    // adapter derives ordinary URLs from Host but accepts absolute targets too.
+    const authority = c.req.header("host");
+    if (
+      !isLoopbackHost(new URL(c.req.url).hostname) ||
+      (authority !== undefined &&
+        !LOOPBACK_ORIGIN_RE.test(`http://${authority.toLowerCase()}`))
+    )
+      return c.body(null, 403);
+    await next();
+  });
 
   app.get("/health", (c) => {
     c.header("X-Sentry-Local-Mode", "daemon");

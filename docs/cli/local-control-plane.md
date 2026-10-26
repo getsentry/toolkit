@@ -3,7 +3,7 @@
 `local run --session <name>` and `local serve --session <name>` capture into an
 isolated session owned by a background, loopback-only daemon. The foreground
 command retains its session when it exits. Closed sessions remain queryable for
-three hours after the last activity; each retains 500 envelopes by default. All
+three hours from the first close; each retains 500 envelopes by default. All
 telemetry disappears when the daemon stops.
 
 ```sh
@@ -38,6 +38,8 @@ without an event ID retain their generated envelope ID as the lookup key.
 
 The daemon stores its discovery token under `SENTRY_CONFIG_DIR` in an owner-only
 state file. It binds only to localhost, 127.0.0.1, or ::1 and uses a nonzero port.
+Requests must also use a loopback authority, so rebinding a remote hostname
+to the listener cannot expose session discovery.
 A second daemon cannot replace the running daemon for that config directory.
 Restart preserves its configured host and port and clears all in-memory data.
 Both stop and restart wait for the previous daemon to release its state and ownership
@@ -80,9 +82,9 @@ preserves its current setting. Older receivers that cannot apply the flag report
 error. Retrying session creation with the same client ID preserves its original settings.
 
 The viewer follows the receiver's envelope limit and retains every decoded item
-inside each retained envelope. Its Retention limit control can update a locally
-served receiver or scoped session at runtime without replacing the connection.
-Hosted viewers display the setting but cannot change it. CLI changes also update
+inside each retained envelope. Its Retention limit control can update a loopback
+receiver or scoped session at runtime without replacing the connection, from a
+locally served viewer or trusted hosted Local origin. CLI changes also update
 connected viewers.
 
 ## Browser viewer
@@ -199,6 +201,13 @@ can read the stream, update retention, and clear its own displayed feed; it cann
 reset receiver data or close sessions. Scoped retention requests require the session
 stream capability. Standalone retention updates require UI actions to be enabled on
 the loopback receiver. Other browser origins cannot change retention. Remote HTTPS streams stay read-only.
+
+Standalone spans and version 2 span containers populate trace waterfalls as they
+arrive. Child spans remain visible before their parent or segment arrives; the
+segment supplies the trace name once available. Typed span attributes supply
+operation and HTTP metadata. Unsupported containers and malformed spans are
+skipped by the trace view while their raw envelopes remain inspectable. Legacy
+standalone spans and transaction envelopes remain supported.
 
 Exception event titles use the current SDK exception type and message, including
 when the event carries a request transaction name. Overview shows the current

@@ -6,6 +6,7 @@
  */
 
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
 import { Hono } from "hono";
@@ -108,6 +109,105 @@ test("reports the scoped SSE endpoint without leaking its capability on initial 
   }
   expect(writes.join("")).toContain("/_local/v1/sessions/session-id/stream");
   expect(writes.join("")).not.toContain("fixture-secret");
+});
+
+test.each([
+  { quiet: false, closedBeforeAttach: true },
+  { quiet: true, closedBeforeAttach: true },
+  { quiet: false, closedBeforeAttach: false },
+  { quiet: true, closedBeforeAttach: false },
+])(
+  "stops a scoped tail on Close ($quiet quiet, $closedBeforeAttach already closed)",
+  async ({ quiet, closedBeforeAttach }) => {
+    const plane = createLocalControlPlane({ controlToken: "tail-test" });
+    const session = plane.sessionStore.create({
+      label: "saved",
+      cwd: "/saved",
+    });
+    const { ingest, stream } = plane.sessionStore.getCapabilities(session.id);
+    const base = `http://localhost:8969/_local/v1/sessions/${session.id}`;
+    await plane.app.request(`${base}/ingest/${ingest}`, {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: '{"event_id":"saved"}\n{"type":"event"}\n{"message":"saved event"}',
+    });
+    if (closedBeforeAttach) plane.sessionStore.close(session.id);
+    const savedFetch = globalThis.fetch;
+    let requests = 0;
+    globalThis.fetch = async (input, init) => {
+      requests += 1;
+      const url = input instanceof Request ? input.url : input.toString();
+      const response = await plane.app.request(url, init);
+      if (!closedBeforeAttach)
+        queueMicrotask(() => plane.sessionStore.close(session.id));
+      return response;
+    };
+    const output: string[] = [];
+    const stdout = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk) => {
+        output.push(chunk.toString());
+        return true;
+      });
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      await consumeSSE({
+        url: "http://localhost:8969",
+        streamUrl: `${base}/stream?cap=${stream}`,
+        activeFilters: new Set(),
+        signal: AbortSignal.timeout(1200),
+        useJson: true,
+        quiet,
+      });
+      expect(requests).toBe(1);
+      expect(info.mock.calls.flat().join(" ")).not.toContain("reconnecting");
+      if (quiet) expect(output).toHaveLength(0);
+      else {
+        expect(output).toHaveLength(1);
+        expect(output.join("")).toContain("saved event");
+      }
+    } finally {
+      globalThis.fetch = savedFetch;
+      stdout.mockRestore();
+      info.mockRestore();
+    }
+  },
+);
+
+test("keeps reading after a retained reset notification until Close", async () => {
+  const savedFetch = globalThis.fetch;
+  const envelope = [{}, [[{ type: "event" }, { message: "after reset" }]]];
+  globalThis.fetch = async () =>
+    new Response(
+      [
+        'event: sentry.local.session\ndata: {"state":"retained","action":"reset"}\n\n',
+        `event: application/x-sentry-envelope\ndata: ${JSON.stringify(envelope)}\n\n`,
+        'event: sentry.local.session\ndata: {"state":"retained"}\n\n',
+      ].join(""),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  const output: string[] = [];
+  const stdout = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation((chunk) => {
+      output.push(chunk.toString());
+      return true;
+    });
+  const signal = AbortSignal.timeout(1000);
+  try {
+    await consumeSSE({
+      url: "http://localhost:8969",
+      activeFilters: new Set(),
+      signal,
+      useJson: true,
+    });
+    expect(signal.aborted).toBe(false);
+    expect(output).toHaveLength(1);
+    expect(output.join("")).toContain("after reset");
+  } finally {
+    globalThis.fetch = savedFetch;
+    stdout.mockRestore();
+  }
 });
 
 describe("parsePort", () => {

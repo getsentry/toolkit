@@ -52,14 +52,19 @@ function getNumber(value: unknown): number | undefined {
     : undefined;
 }
 
+function getAttributeValue(
+  attributes: Record<string, unknown>,
+  key: string,
+): unknown {
+  const attribute = attributes[key];
+  return isRecord(attribute) ? attribute.value : attribute;
+}
+
 function getAttributeString(
   attributes: Record<string, unknown>,
   key: string,
 ): string | undefined {
-  const attribute = attributes[key];
-  return isRecord(attribute)
-    ? getString(attribute.value)
-    : getString(attribute);
+  return getString(getAttributeValue(attributes, key));
 }
 
 function getRoute(url: string | undefined): string | undefined {
@@ -95,12 +100,17 @@ export function getEventMetadata(
       ? event.data
       : {};
   const attributes = isRecord(event.attributes) ? event.attributes : {};
+  const spanAttributes = type === "span" ? attributes : {};
   const request = isRecord(event.request) ? event.request : {};
   const method =
     getString(request.method) ??
     getString(data["http.method"]) ??
+    getAttributeString(spanAttributes, "http.request.method") ??
     transactionMatch?.[1];
-  const url = getString(request.url) ?? getString(data["http.url"]);
+  const url =
+    getString(request.url) ??
+    getString(data["http.url"]) ??
+    getAttributeString(spanAttributes, "url.full");
   const route = getRoute(url) ?? transactionMatch?.[2];
   const startTimestamp = getNumber(event.start_timestamp);
   const timestamp =
@@ -128,7 +138,8 @@ export function getEventMetadata(
     route,
     statusCode:
       getNumber(request.status_code) ??
-      getNumber(data["http.response.status_code"]),
+      getNumber(data["http.response.status_code"]) ??
+      getNumber(getAttributeValue(spanAttributes, "http.response.status_code")),
     spanStatus: getString(trace.status) ?? getString(event.status),
     durationMs,
     traceId: getString(trace.trace_id) ?? getString(event.trace_id),
@@ -146,11 +157,28 @@ export function getEventMetadata(
 }
 
 function getBatchedPayloadItems(payload: unknown, type: string): unknown[] {
-  if (
-    (type !== "span" && type !== "log") ||
-    !isRecord(payload) ||
-    !Array.isArray(payload.items)
-  ) {
+  if (type === "span") {
+    if (!isRecord(payload)) return [];
+    const isContainer = "items" in payload;
+    if (isContainer && (payload.version !== 2 || !Array.isArray(payload.items)))
+      return [];
+    const spans: unknown[] = isContainer
+      ? (payload.items as unknown[])
+      : [payload];
+    return spans.filter(
+      (span) =>
+        isRecord(span) &&
+        getString(span.trace_id) !== undefined &&
+        getString(span.span_id) !== undefined &&
+        getNumber(span.start_timestamp) !== undefined &&
+        getNumber(
+          isContainer
+            ? span.end_timestamp
+            : (span.timestamp ?? span.end_timestamp),
+        ) !== undefined,
+    );
+  }
+  if (type !== "log" || !isRecord(payload) || !Array.isArray(payload.items)) {
     return [payload];
   }
   return payload.items.filter(isRecord);

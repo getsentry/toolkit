@@ -1099,13 +1099,11 @@ export default function App() {
         if (!response.ok) {
           throw new Error(`Session close failed with HTTP ${response.status}`);
         }
-        connectionGeneration.current += 1;
-        setIsConnectionEnabled(false);
-        setIsConnecting(false);
-        setConnection("closed");
+        // The HTTP response can overtake the final SSE envelopes. Replay the
+        // closed archive so every accepted event is visible before stopping.
+        // Existing envelope IDs keep already displayed telemetry deduplicated.
+        connectToEndpoint(streamUrl);
         setClosedSessionUrl(streamUrl);
-        setConnectionError(undefined);
-        setMessage(undefined);
       })
       .catch(() => {
         if (connectionGeneration.current !== generation) return;
@@ -1402,6 +1400,9 @@ export default function App() {
       window.clearTimeout(timeoutId);
       setIsConnecting(false);
       setHasEstablishedConnection(true);
+      // A successfully opened explicit CLI link also replaces the tab's prior
+      // Disconnect choice after its URL fragment has been removed.
+      saveDisconnected(false);
       const endpoint = parseStreamEndpoint(streamUrl);
       if (endpoint?.kind === "loopback") {
         saveStreamUrl(endpoint.url);

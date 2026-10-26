@@ -14,6 +14,63 @@ function controlHeaders() {
 }
 
 describe("Local control plane", () => {
+  test("rejects foreign request authorities before exposing daemon discovery", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    plane.sessionStore.create({ label: "private", cwd: "/private" });
+    for (const url of [
+      "http://attacker.example:8969/stream",
+      "http://attacker.example:8969/health",
+    ]) {
+      const response = await plane.app.request(url);
+      await response.body?.cancel();
+      expect(response.status).toBe(403);
+    }
+    for (const hostname of ["localhost", "127.0.0.1", "[::1]"]) {
+      const response = await plane.app.request(
+        `http://${hostname}:8969/stream`,
+        {
+          headers: { Origin: "https://local.sentry.dev" },
+        },
+      );
+      await response.body?.cancel();
+      expect(response.status).toBe(200);
+    }
+  });
+
+  test("rejects a foreign Host even when an absolute request target is loopback", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const listening = await tryListen(plane.app, 0, "127.0.0.1");
+    try {
+      for (const path of [
+        "/stream",
+        `http://127.0.0.1:${listening.port}/stream`,
+      ]) {
+        const status = await new Promise<number>((resolve, reject) => {
+          const req = request(
+            {
+              hostname: "127.0.0.1",
+              port: listening.port,
+              path,
+              headers: { Host: `attacker.example:${listening.port}` },
+            },
+            (response) => {
+              resolve(response.statusCode ?? 0);
+              response.destroy();
+            },
+          );
+          req.on("error", reject);
+          req.end();
+        });
+        expect(status).toBe(403);
+      }
+    } finally {
+      listening.server.closeAllConnections();
+      await new Promise<void>((resolve) =>
+        listening.server.close(() => resolve()),
+      );
+    }
+  });
+
   test("a plain stream bootstraps discovery for trusted viewers without a control token", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const session = plane.sessionStore.create({ label: "web", cwd: "/web" });

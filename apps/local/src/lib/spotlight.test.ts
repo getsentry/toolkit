@@ -38,6 +38,34 @@ describe("getStreamUrlFromHash", () => {
     expect(parseStreamEndpoint(url)).toBeUndefined();
   });
 
+  test("keeps span HTTP attribute interpretation out of log metadata", () => {
+    const [log] = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "log" },
+            {
+              body: "Request finished",
+              attributes: {
+                "http.request.method": { type: "string", value: "GET" },
+                "url.full": {
+                  type: "string",
+                  value: "https://example.test/orders",
+                },
+                "http.response.status_code": { type: "integer", value: 200 },
+              },
+            },
+          ],
+        ],
+      ]),
+      "log-http",
+    );
+    expect(log?.metadata?.method).toBeUndefined();
+    expect(log?.metadata?.route).toBeUndefined();
+    expect(log?.metadata?.statusCode).toBeUndefined();
+  });
+
   test("accepts a loopback stream URL", () => {
     expect(
       getStreamUrlFromHash("#stream=http%3A%2F%2Flocalhost%3A8969%2Fstream"),
@@ -111,6 +139,97 @@ describe("getStreamUrlFromHash", () => {
 });
 
 describe("decodeEnvelope", () => {
+  test("reads typed HTTP attributes from streamed spans without changing their payload", () => {
+    const span = {
+      trace_id: "trace-123",
+      span_id: "root-span",
+      name: "GET /orders/42",
+      start_timestamp: 1700000000,
+      end_timestamp: 1700000001,
+      is_segment: true,
+      attributes: {
+        "sentry.op": { type: "string", value: "http.server" },
+        "http.request.method": { type: "string", value: "GET" },
+        "url.full": { type: "string", value: "https://example.test/orders/42" },
+        "http.response.status_code": { type: "integer", value: 503 },
+      },
+    };
+    const [item] = decodeEnvelope(
+      JSON.stringify([{}, [[{ type: "span" }, { version: 2, items: [span] }]]]),
+      "streamed-http",
+    );
+    expect(item?.metadata).toMatchObject({
+      title: "GET /orders/42",
+      method: "GET",
+      route: "/orders/42",
+      statusCode: 503,
+      operation: "http.server",
+      durationMs: 1000,
+    });
+    expect(item?.timestamp).toBe(1700000001);
+    expect(item?.payload).toEqual(span);
+  });
+
+  test("filters unsupported span containers and incomplete spans while preserving valid siblings and logs", () => {
+    const span = {
+      trace_id: "trace-123",
+      span_id: "query-span",
+      name: "SELECT 1",
+      start_timestamp: 1700000000,
+      end_timestamp: 1700000000.125,
+    };
+    const decoded = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [{ type: "span" }, { version: 99, items: [span] }],
+          [{ type: "span" }, { version: 2, items: "invalid" }],
+          [
+            { type: "span" },
+            {
+              version: 2,
+              items: [
+                null,
+                {},
+                { ...span, trace_id: "" },
+                { ...span, span_id: "" },
+                { ...span, start_timestamp: null },
+                { ...span, end_timestamp: undefined },
+                { ...span, end_timestamp: "1700000000.125" },
+                span,
+              ],
+            },
+          ],
+          [
+            { type: "log" },
+            { version: 99, items: [{ body: "still visible" }] },
+          ],
+        ],
+      ]),
+      "mixed-envelope",
+    );
+    expect(decoded).toMatchObject([
+      { type: "span", payload: span },
+      { type: "log", payload: { body: "still visible" } },
+    ]);
+    expect(decoded).toHaveLength(2);
+  });
+
+  test.each([
+    ["1e400", "1700000001"],
+    ["1700000000", "1e400"],
+  ])(
+    "rejects span timestamps that overflow finite numbers (%s, %s)",
+    (start, end) => {
+      expect(
+        decodeEnvelope(
+          `[{},[[{"type":"span"},{"version":2,"items":[{"trace_id":"trace-123","span_id":"span-123","start_timestamp":${start},"end_timestamp":${end}}]}]]]`,
+          "overflow",
+        ),
+      ).toEqual([]);
+    },
+  );
+
   test("uses the current SDK exception as the title ahead of its request transaction", () => {
     const [item] = decodeEnvelope(
       JSON.stringify([{}, [[{ type: "event" }, sdkException]]]),

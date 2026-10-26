@@ -885,6 +885,39 @@ describe("local receiver to viewer integration", () => {
     ).not.toBeNull();
   });
 
+  test.each([true, false])(
+    "an explicit scoped link persists reconnection only after it opens (success: %s)",
+    async (success) => {
+      ControllableEventSource.instances = [];
+      vi.stubGlobal("EventSource", ControllableEventSource);
+      saveDisconnected(true);
+      const streamUrl =
+        "http://127.0.0.1:8969/_local/v1/sessions/new-run/stream?cap=read";
+      renderBareViewer("/#stream=" + encodeURIComponent(streamUrl));
+      const source = ControllableEventSource.instances[0]!;
+      await act(async () => {
+        if (success) source.onopen?.(new Event("open"));
+        else source.onerror?.(new Event("error"));
+      });
+      expect(window.location.hash).toBe("");
+      cleanup();
+      renderBareViewer();
+      expect(ControllableEventSource.instances).toHaveLength(success ? 2 : 1);
+      if (success) {
+        await act(async () =>
+          ControllableEventSource.instances[1]!.onopen?.(new Event("open")),
+        );
+        expect(
+          screen.getByRole("heading", { name: "Waiting for events" }),
+        ).not.toBeNull();
+      } else {
+        expect(
+          screen.getByRole("heading", { name: "Connect a receiver" }),
+        ).not.toBeNull();
+      }
+    },
+  );
+
   test("clear ignores pre-reset deliveries and reconnects without replacing the workspace shell", async () => {
     ControllableEventSource.instances = [];
     vi.stubGlobal("EventSource", ControllableEventSource);
@@ -1921,6 +1954,52 @@ describe("local receiver to viewer integration", () => {
       ).toBeNull();
     },
   );
+
+  test("closing a session preserves final envelopes when HTTP completes before the stream", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+    );
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/closing-run/stream?cap=read",
+    );
+    renderBareViewer();
+    await act(async () =>
+      ControllableEventSource.instances[0]!.onopen?.(new Event("open")),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close telemetry session" }),
+    );
+    await screen.findByRole("heading", { name: "Session closed" });
+    // The close response can overtake SSE delivery. The current feed must still
+    // consume the final archive before its terminal lifecycle notification.
+    const finalSource = ControllableEventSource.instances.at(-1)!;
+    await act(async () => {
+      finalSource.onopen?.(new Event("open"));
+      finalSource.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "final accepted event" }]],
+          ]),
+          lastEventId: "final-envelope",
+        }),
+      );
+      finalSource.dispatchEvent(
+        new MessageEvent("sentry.local.session", {
+          data: '{"state":"retained"}',
+        }),
+      );
+    });
+    expect(await screen.findAllByText("final accepted event")).not.toHaveLength(
+      0,
+    );
+    expect(finalSource.closed).toBe(true);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 
   test.each([204, 403])(
     "handles scoped reset HTTP %s and closes a telemetry session",

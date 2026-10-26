@@ -1,4 +1,4 @@
-import { isHostedUiOrigin } from "./viewer-protocol.js";
+import { isHostedUiOrigin, LOCAL_SESSION_EVENT } from "./viewer-protocol.js";
 export { isHostedUiOrigin } from "./viewer-protocol.js";
 import { isLoopbackHost } from "./loopback.js";
 /**
@@ -787,7 +787,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       },
     });
 
-    if (signal.aborted) {
+    if (signal.aborted || result === "retained") {
       return;
     }
     // On the first attempt, both "no-connection" (HTTP error/no body) and
@@ -830,10 +830,11 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
  * - `"no-connection"` if the server couldn't be reached or aborted
  * - `"connected-then-lost"` if a connection was established (got HTTP 200)
  *   but the stream ended or errored — eligible for reconnection
+ * - `"retained"` after a session's final lifecycle message — never reconnect
  */
 async function attemptSSEConnection(
   opts: ConsumeSSEOnceOptions,
-): Promise<"no-connection" | "connected-then-lost"> {
+): Promise<"no-connection" | "connected-then-lost" | "retained"> {
   let wasConnected = false;
   const augmented = {
     ...opts,
@@ -843,6 +844,7 @@ async function attemptSSEConnection(
   };
   try {
     const completed = await consumeSSEOnce(augmented);
+    if (completed === "retained") return "retained";
     return completed ? "connected-then-lost" : "no-connection";
   } catch (err: unknown) {
     if (isAbortError(err) || opts.signal.aborted) {
@@ -874,10 +876,13 @@ type ConsumeSSEOnceOptions = {
 
 /**
  * Single SSE connection attempt. Returns `true` if a connection was
- * established (received a 200 response), `false` if it never connected.
- * The caller uses this to decide whether to retry on failure.
+ * established (received a 200 response), `false` if it never connected, and
+ * `"retained"` when the session closes after replay. Quiet tails still parse
+ * lifecycle metadata so closing capture terminates them without reconnecting.
  */
-async function consumeSSEOnce(opts: ConsumeSSEOnceOptions): Promise<boolean> {
+async function consumeSSEOnce(
+  opts: ConsumeSSEOnceOptions,
+): Promise<boolean | "retained"> {
   const {
     url,
     activeFilters,
@@ -909,22 +914,28 @@ async function consumeSSEOnce(opts: ConsumeSSEOnceOptions): Promise<boolean> {
   // decide whether mid-stream errors are worth retrying.
   onConnected?.();
 
-  // In quiet mode we still consume the stream to detect disconnection,
-  // but skip parsing/formatting entirely.
-  if (quiet) {
-    for await (const _chunk of res.body) {
-      // drain
-    }
-    return true;
-  }
-
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
+  let retained = false;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);
     }
-    if (type === SENTRY_CONTENT_TYPE) {
+    if (type === LOCAL_SESSION_EVENT) {
+      try {
+        const event: unknown = JSON.parse(data);
+        if (
+          typeof event === "object" &&
+          event !== null &&
+          "state" in event &&
+          event.state === "retained" &&
+          !("action" in event && event.action === "reset")
+        )
+          retained = true;
+      } catch {
+        logger.debug("Ignoring invalid Local session lifecycle event.");
+      }
+    } else if (!quiet && type === SENTRY_CONTENT_TYPE) {
       processSSEEvent(data, activeFilters, useJson, showAttributes);
     }
   };
@@ -937,12 +948,13 @@ async function consumeSSEOnce(opts: ConsumeSSEOnceOptions): Promise<boolean> {
     partial = lines.pop() ?? "";
     for (const rawLine of lines) {
       feedSSELine(rawLine.replace(CR_RE, ""), state, onEvent);
+      if (retained) return "retained";
     }
   }
   if (partial) {
     feedSSELine(partial.replace(CR_RE, ""), state, onEvent);
   }
-  return true;
+  return retained ? "retained" : true;
 }
 
 /** Parse and format a single SSE data payload from upstream. */
