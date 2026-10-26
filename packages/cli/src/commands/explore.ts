@@ -27,6 +27,7 @@ import {
   resolveCursor,
 } from "../lib/db/pagination.js";
 import { toSearchQueryError, ValidationError } from "../lib/errors.js";
+import { toExploreFieldError } from "../lib/explore-errors.js";
 import { filterFields } from "../lib/formatters/json.js";
 import { buildMetaColumns } from "../lib/formatters/meta-table.js";
 import { CommandOutput } from "../lib/formatters/output.js";
@@ -577,6 +578,18 @@ function resolveDatasetConfig(params: {
         limit,
         cursor,
         ...timeRangeToApiParams(timeRange),
+      }).catch((error: unknown): never => {
+        throw toExploreFieldError(error, {
+          dataset: legacyTransactions
+            ? "spans"
+            : (API_TO_USER_DATASET.get(dataset) ?? dataset),
+          fields,
+          userFields: (flags.field ?? []).filter(
+            (field) => !flags.metric || !isAggregateFieldOrEquation(field),
+          ),
+          sort,
+          userSort: flags.sort,
+        });
       }),
   };
 }
