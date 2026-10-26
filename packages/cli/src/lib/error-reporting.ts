@@ -57,6 +57,7 @@ import {
   ValidationError,
   WizardError,
 } from "./errors.js";
+import { logger } from "./logger.js";
 import { isSaaS } from "./sentry-web-urls.js";
 
 // ---------------------------------------------------------------------------
@@ -231,7 +232,9 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
       });
     } catch (logError) {
       // Logger may not be initialized; never block error handling.
-      void logError;
+      logger
+        .withTag("error-reporting")
+        .debug("Failed to emit cli.query_syntax_silenced log", logError);
     }
   }
 }
