@@ -5413,8 +5413,6 @@ export class SentryApiService {
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/`,
       {
         method: "POST",
-        // Sentry ignores unknown keys, so the instruction must go in
-        // `user_context`. Omit it when empty.
         body: JSON.stringify({
           user_context: instruction || undefined,
         }),
