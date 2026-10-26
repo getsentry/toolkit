@@ -14,6 +14,7 @@ import { describe, expect, test } from "vitest";
 import { ValidationError } from "../../src/lib/errors.js";
 import {
   __testing,
+  sanitizeIssueQuery,
   sanitizeQuery,
   unscopedCountFilterKeys,
 } from "../../src/lib/search-query.js";
@@ -254,6 +255,33 @@ describe("sanitizeQuery: OR → in-list (success)", () => {
   test("handles trailing OR (stray)", () => {
     expect(sanitizeQuery("level:error OR level:warning OR")).toBe(
       "level:[error,warning]",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue search
+// ---------------------------------------------------------------------------
+
+describe("sanitizeIssueQuery", () => {
+  test("rewrites is: OR into status/substatus in-lists", () => {
+    expect(sanitizeIssueQuery("is:resolved OR is:ignored")).toBe(
+      "status:[resolved,ignored]",
+    );
+    expect(sanitizeIssueQuery("is:new OR is:ongoing level:error")).toBe(
+      "substatus:[new,ongoing] level:error",
+    );
+  });
+
+  test("keeps the generic rewrites", () => {
+    expect(sanitizeIssueQuery("level:error OR level:warning")).toBe(
+      "level:[error,warning]",
+    );
+  });
+
+  test("throws ValidationError for is: OR it cannot rewrite", () => {
+    expect(() => sanitizeIssueQuery("is:unresolved OR is:assigned")).toThrow(
+      ValidationError,
     );
   });
 });
