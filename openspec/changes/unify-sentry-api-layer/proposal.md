@@ -33,9 +33,9 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
   covers TTL tiers, identity-scoped keys, invalidation after mutations, and
   bypass. Storage becomes a pluggable backend with a byte budget and
   compression.
-- Add a shared retry policy to `@sentry/toolkit-core`: only idempotent
-  requests are retried, and 429s wait for Sentry's rate-limit reset header
-  within a cap. The MCP adopts it first, so rate-limited GETs retry instead of
+- Add a shared retry policy to `@sentry/toolkit-core`: 429s are retried for
+  any method and wait for Sentry's rate-limit reset header within a cap, while
+  5xx responses and timeouts are retried only for idempotent requests. The MCP adopts it first, so rate-limited GETs retry instead of
   failing.
 - Move the CLI's request transport into `@sentry/toolkit-core`, with
   credentials, storage, and telemetry injected by the host. It covers retries
