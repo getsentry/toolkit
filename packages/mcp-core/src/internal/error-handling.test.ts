@@ -7,6 +7,7 @@ import {
   LLMProviderError,
 } from "../errors";
 import { APICallError, RetryError } from "ai";
+import { ApiRateLimitError } from "../api-client";
 
 vi.mock("../telem/logging", () => ({
   logIssue: vi.fn(() => "mock-event-id"),
@@ -218,6 +219,29 @@ describe("formatErrorForUser", () => {
       );
       expect(logIssue).not.toHaveBeenCalled();
       expect(logWarn).toHaveBeenCalled();
+    });
+  });
+
+  describe("ApiRateLimitError", () => {
+    it("tells the agent when to retry and to stop calling tools in parallel", async () => {
+      const error = new ApiRateLimitError(
+        "Limit is 40 requests in 1 seconds",
+        undefined,
+        undefined,
+        30_000,
+      );
+
+      const result = await formatErrorForUser(error, { transport: "http" });
+
+      expect(result).toBe(
+        [
+          "**Rate Limited**",
+          "The Sentry API is rate limiting these requests. Short waits are already retried automatically.",
+          "API error (429): Limit is 40 requests in 1 seconds. Retry in 30 seconds.",
+          "Call Sentry tools one at a time instead of in parallel, and don't repeat this call before then.",
+        ].join("\n\n"),
+      );
+      expect(logIssue).not.toHaveBeenCalled();
     });
   });
 
