@@ -21,6 +21,13 @@ rg -n "class OrganizationAIConversations|ai-conversations" ~/src/sentry/src ~/sr
 Use the verified source contract to define Zod schemas, query parameters,
 pagination behavior, feature-gate handling, and test fixtures.
 
+### Issue Activity Attribution
+
+`source` identifies the channel or client, such as `mcp:claude`; `user` and
+`sentry_app` identify the actor. `commentId` is the reference accepted by the
+notes endpoints and can differ from the activity `id`. For comment creation
+responses, use `commentId ?? id`. Both `source` and `commentId` may be absent or null.
+
 ### Client Creation
 
 ```typescript

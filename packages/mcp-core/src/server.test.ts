@@ -1513,6 +1513,50 @@ describe("buildServer", () => {
       );
     });
 
+    it.each([
+      ["get_issue_activity", {}],
+      ["add_issue_note", { text: "Investigating after the latest deploy." }],
+    ] as const)(
+      "execute_sentry_tool preserves attribution for %s",
+      async (name, args) => {
+        mswServer.use(
+          http.post(
+            "*/api/0/organizations/:org/issues/:issueId/notes/",
+            ({ params }) => {
+              expect(params.org).toBe("sentry-mcp-evals");
+              return HttpResponse.json({
+                id: "activity-1",
+                commentId: "comment-1",
+                type: "note",
+                source: "mcp:claude",
+                user: { name: "Jane Developer" },
+                data: { text: "Investigating after the latest deploy." },
+              });
+            },
+          ),
+        );
+        const server = buildServer({
+          context: {
+            ...baseContext,
+            constraints: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlug: null,
+            },
+          },
+        });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name,
+          arguments: { issueId: "CLOUDFLARE-MCP-41", ...args },
+        });
+
+        expect(result.isError).not.toBe(true);
+        expect(getTextContent(result)).toContain(
+          "Jane Developer (Claude via MCP)",
+        );
+      },
+    );
+
     it("execute_sentry_tool dispatches to catalog-only event stacktrace", async () => {
       const server = buildServer({
         context: baseContext,
