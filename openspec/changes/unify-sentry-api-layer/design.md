@@ -147,7 +147,7 @@ _Alternative: a new package._ Rejected for now. `toolkit-core` is already
 the bundled-private shared package, and a split can come later when moving
 code into `@sentry/api`.
 
-### Retries are for idempotent requests and honor rate-limit headers
+### Retries replay only requests that cannot repeat a write, and honor rate-limit headers
 
 Neither product handles 429s well today. The CLI retries every method on
 408, 429, and 5xx, POSTs included, and ignores rate-limit headers. The MCP
@@ -163,11 +163,16 @@ alongside (`src/sentry/middleware/ratelimit.py`). Sentry sends no
 
 `api-retry` decides whether and how long to wait:
 
-- Only GET, HEAD, and OPTIONS are retried, unless a request opts in with
+- The retried statuses are 429, 500, 502, 503, and 504. The other 5xx codes,
+  such as 501 and 505, are deterministic, so they are not retried.
+- A 429 is retried for any method. `RatelimitMiddleware.process_request`
+  rejects it before the view runs, so replaying it cannot repeat a write.
+- A 5xx, a timeout, or a network error may come after the endpoint ran. Those
+  are retried only for GET, HEAD, and OPTIONS, unless a request opts in with
   `idempotent: true`. A replayed write can duplicate a comment or an alert.
 - `Retry-After` wins when present. Otherwise a 429 waits until
-  `X-Sentry-Rate-Limit-Reset`, measured against the response `Date` when the
-  local clock disagrees with it by more than a couple of seconds.
+  `X-Sentry-Rate-Limit-Reset`. The delay is kept within the range the response
+  `Date` allows, so a skewed local clock moves it by at most a second.
 - A concurrency-limit 429 (`ConcurrentRemaining: 0`) and a response with no
   usable header fall back to jittered exponential backoff.
 - Each product sets a per-wait and a total-wait cap. When the header asks for

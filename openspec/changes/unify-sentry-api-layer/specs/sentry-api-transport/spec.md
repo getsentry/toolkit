@@ -7,16 +7,39 @@ it waits first, and what the caller sees when it gives up.
 
 ## ADDED Requirements
 
-### Requirement: Only idempotent requests are retried
+### Requirement: Retried statuses
 
-The transport SHALL automatically retry a failed request only when its
-method is GET, HEAD, or OPTIONS, or when the caller marks that request
-`idempotent`. A 401 that leads to a successful credential refresh SHALL be
-replayed once for any method.
+The transport SHALL retry only 429, 500, 502, 503, and 504 responses, plus
+timeouts and network errors where the product enables them. Other 5xx codes,
+such as 501 and 505, are deterministic, so retrying them only adds latency.
+
+#### Scenario: Deterministic 5xx
+
+- **WHEN** a GET gets a 501
+- **THEN** the transport returns the failure without retrying
+
+### Requirement: Rate-limited requests are retried for any method
+
+The transport SHALL retry a 429 for any method. Sentry's
+`RatelimitMiddleware` rejects the request in `process_request`, before the
+view runs (`src/sentry/middleware/ratelimit.py`), so replaying it cannot
+repeat a write.
+
+#### Scenario: Rate-limited POST
+
+- **WHEN** a POST without the `idempotent` opt-in gets a 429 whose reset is within the cap
+- **THEN** the transport waits for the reset and sends the POST again
+
+### Requirement: Other failures are retried only for idempotent requests
+
+A 5xx, a timeout, or a network error may come after the endpoint ran. The
+transport SHALL NOT retry one unless the method is GET, HEAD, or OPTIONS, or
+the caller marks the request `idempotent`. A 401 that leads to a successful
+credential refresh SHALL be replayed once for any method.
 
 #### Scenario: POST without the opt-in
 
-- **WHEN** a POST without the `idempotent` opt-in gets a 429, a 5xx, or a timeout
+- **WHEN** a POST without the `idempotent` opt-in gets a 5xx, a timeout, or a network error
 - **THEN** the transport returns that failure without sending the request again
 
 #### Scenario: POST with the opt-in
@@ -31,13 +54,10 @@ replayed once for any method.
 
 ### Requirement: Rate-limited requests wait for the reset
 
-On a retryable 429, the transport SHALL wait for the delay the response
-gives before retrying: `Retry-After` (seconds or an HTTP-date) when
-present, otherwise `X-Sentry-Rate-Limit-Reset`. It SHALL measure the reset
-against the response `Date` when the local clock disagrees with it by more
-than a few seconds. When the response gives no usable delay, or the 429 is
-for concurrency (`X-Sentry-Rate-Limit-ConcurrentRemaining: 0`), it SHALL use
-jittered exponential backoff.
+On a 429, the transport SHALL wait for `Retry-After` (seconds or an
+HTTP-date) when present, otherwise for `X-Sentry-Rate-Limit-Reset`. It SHALL
+keep that delay within the range the response `Date` allows, so a skewed
+local clock moves it by at most one second.
 
 #### Scenario: Reset header within the cap
 
@@ -48,6 +68,12 @@ jittered exponential backoff.
 
 - **WHEN** the local clock is 10 minutes behind the response `Date` and the reset is 1 second after that `Date`
 - **THEN** the transport waits about 1 second, not 10 minutes
+
+### Requirement: Backoff without a usable delay
+
+When a retryable response gives no usable delay, or a 429 is for
+concurrency (`X-Sentry-Rate-Limit-ConcurrentRemaining: 0`), the transport
+SHALL wait a jittered exponential backoff delay.
 
 #### Scenario: Concurrency limit
 
