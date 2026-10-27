@@ -40,9 +40,12 @@ const CLI_CURSOR_PREFIX = "cli1~";
  * page, the page size it must be fetched with, and how many of that page's
  * rows were already returned.
  */
-type PagePosition = {
+export type PagePosition = {
+  /** Server cursor to request; undefined starts at the first page. */
   cursor: string | undefined;
-  perPage: number;
+  /** Required page size in rows, when encoded in the cursor; otherwise unspecified. */
+  perPage?: number;
+  /** Number of rows already returned from this position; zero starts at its first row. */
   skip: number;
 };
 
@@ -92,12 +95,12 @@ function encodePageCursor(cursor: string | undefined, skip: number): string {
  * A damaged `cli1~` cursor is ignored with a warning and the walk starts from
  * the first page, so it never fails a call or reaches the API.
  */
-function decodePageCursor(
+export function decodePageCursor(
   raw: string | undefined,
-  warn: Warn,
-): Partial<PagePosition> & { cursor: string | undefined } {
+  warn: Warn = () => {},
+): PagePosition {
   if (!raw) {
-    return { cursor: undefined };
+    return { cursor: undefined, skip: 0 };
   }
   if (raw.startsWith(CLI_CURSOR_PREFIX)) {
     return decodeCliCursor(raw, warn);
@@ -112,10 +115,7 @@ function decodePageCursor(
   return perPage === undefined ? position : { ...position, perPage };
 }
 
-function decodeCliCursor(
-  raw: string,
-  warn: Warn,
-): Partial<PagePosition> & { cursor: string | undefined } {
+function decodeCliCursor(raw: string, warn: Warn): PagePosition {
   const [perPage, skip, ...server] = raw
     .slice(CLI_CURSOR_PREFIX.length)
     .split("~");
@@ -136,7 +136,44 @@ function decodeCliCursor(
   warn(
     "Ignoring an unreadable pagination cursor; starting from the first page.",
   );
-  return { cursor: undefined };
+  return { cursor: undefined, skip: 0 };
+}
+
+/**
+ * Consume one fetched page from a decoded cursor position without making requests.
+ *
+ * Removes rows already delivered by a previous call. Sentry next-page cursors
+ * record any unconsumed rows or remaining skip; other cursor shapes are returned
+ * unchanged and may replay rows on resume.
+ *
+ * @param page - Server page fetched using the position's cursor and page size
+ * @param position - Decoded continuation for this page
+ * @param limit - Maximum rows to return, a non-negative integer; omitted means all remaining rows
+ * @returns Remaining rows and continuation metadata
+ */
+export function consumePage<T>(
+  page: Page<T[]>,
+  position: PagePosition,
+  limit = Number.POSITIVE_INFINITY,
+): Page<T[]> {
+  const unseen = page.data.slice(position.skip);
+  if (unseen.length > limit) {
+    return {
+      ...page,
+      data: unseen.slice(0, limit),
+      nextCursor: encodePageCursor(position.cursor, position.skip + limit),
+    };
+  }
+  return {
+    ...page,
+    data: unseen,
+    nextCursor: page.nextCursor
+      ? encodePageCursor(
+          page.nextCursor,
+          Math.max(0, position.skip - page.data.length),
+        )
+      : undefined,
+  };
 }
 
 /**
@@ -221,41 +258,36 @@ export async function paginate<T>(
   ) => Promise<Page<T[]>>,
 ): Promise<PaginateResult<T>> {
   const { limit, maxPages, warn = () => {} } = options;
-  const start = decodePageCursor(options.cursor, warn);
-  let cursor = start.cursor;
-  let skip = start.skip ?? 0;
+  let position = decodePageCursor(options.cursor, warn);
   // Cursors without a page size accept any, so fetch the skipped rows too.
-  const perPage = start.perPage ?? pageSizeForLimit(limit + skip);
+  const perPage = position.perPage ?? pageSizeForLimit(limit + position.skip);
   const rows: T[] = [];
 
   for (let page = 0; page < maxPages; page += 1) {
-    const { data, nextCursor } = await fetchPage(perPage, cursor);
-    const unseen = data.slice(skip);
-    const remaining = limit - rows.length;
-
-    if (unseen.length > remaining) {
-      rows.push(...unseen.slice(0, remaining));
+    const serverPage = await fetchPage(perPage, position.cursor);
+    const result = consumePage(serverPage, position, limit - rows.length);
+    rows.push(...result.data);
+    if (!result.nextCursor) {
+      return { data: rows, stoppedAtPageCap: false };
+    }
+    if (rows.length === limit) {
       return {
         data: rows,
-        nextCursor: encodePageCursor(cursor, skip + remaining),
+        nextCursor: result.nextCursor,
         stoppedAtPageCap: false,
       };
     }
-    rows.push(...unseen);
-    if (!nextCursor) {
-      return { data: rows, stoppedAtPageCap: false };
-    }
-    cursor = nextCursor;
-    // A resumed walk can fetch pages smaller than the rows it must skip.
-    skip = Math.max(0, skip - data.length);
-    if (rows.length === limit) {
-      break;
-    }
+    // Opaque server cursors cannot encode a skip; keep it in memory while walking.
+    position = {
+      ...position,
+      cursor: serverPage.nextCursor,
+      skip: Math.max(0, position.skip - serverPage.data.length),
+    };
   }
 
   return {
     data: rows,
-    nextCursor: encodePageCursor(cursor, skip),
+    nextCursor: encodePageCursor(position.cursor, position.skip),
     stoppedAtPageCap: rows.length < limit,
   };
 }

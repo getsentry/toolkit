@@ -20,6 +20,8 @@ import {
 import { describe, expect, test } from "vitest";
 import {
   API_MAX_PER_PAGE,
+  consumePage,
+  decodePageCursor,
   type PaginatedResponse,
   paginate,
 } from "../../src/lib/api/infrastructure.js";
@@ -118,6 +120,66 @@ const totalArb = nat(API_MAX_PER_PAGE * 5);
 const limitsArb = array(integer({ min: 1, max: API_MAX_PER_PAGE * 4 }), {
   minLength: 1,
   maxLength: 4,
+});
+
+test("property: a one-page reader carries a bookmark across smaller server pages", async () => {
+  await fcAssert(
+    asyncProperty(
+      integer({ min: 1, max: API_MAX_PER_PAGE - 1 }),
+      nat(API_MAX_PER_PAGE * 2),
+      async (skip, remaining) => {
+        const total = skip + remaining;
+        const fetchPage = fixedPageServer(total);
+        const seen: number[] = [];
+        let cursor: string | undefined = `cli1~100~${skip}~`;
+        for (let call = 0; call <= total; call += 1) {
+          const position = decodePageCursor(cursor);
+          const result = consumePage(
+            await fetchPage(position.perPage ?? 100, position.cursor),
+            position,
+          );
+          seen.push(...result.data);
+          cursor = result.nextCursor;
+          if (!cursor) {
+            break;
+          }
+        }
+        expect(cursor).toBeUndefined();
+        expect(seen).toEqual(
+          Array.from({ length: remaining }, (_, index) => skip + index),
+        );
+      },
+    ),
+    { numRuns: DEFAULT_NUM_RUNS },
+  );
+});
+
+test("property: a legacy bookmark keeps its skip across opaque server cursors", async () => {
+  await fcAssert(
+    asyncProperty(
+      integer({ min: 1, max: 20 }),
+      integer({ min: 1, max: 5 }),
+      integer({ min: 1, max: 20 }),
+      async (pageSize, skippedPages, limit) => {
+        const skip = pageSize * skippedPages + 1;
+        const result = await paginate(
+          { cursor: `cli1~${pageSize}~${skip}~page-0`, limit },
+          (perPage, cursor) => {
+            expect(perPage).toBe(pageSize);
+            const offset = Number(cursor?.slice("page-".length));
+            return Promise.resolve({
+              data: Array.from({ length: pageSize }, (_, i) => offset + i),
+              nextCursor: `page-${offset + pageSize}`,
+            });
+          },
+        );
+        expect(result.data).toEqual(
+          Array.from({ length: limit }, (_, i) => skip + i),
+        );
+      },
+    ),
+    { numRuns: DEFAULT_NUM_RUNS },
+  );
 });
 
 describe.each(paginators)("property: paginate over $name", ({ make }) => {

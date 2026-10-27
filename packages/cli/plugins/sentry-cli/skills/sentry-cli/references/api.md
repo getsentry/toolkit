@@ -23,7 +23,7 @@ Make an authenticated API request
 
 **Flags:**
 - `-X, --method <value> - The HTTP method for the request - (default: "GET")`
-- `--cursor <value> - Pagination cursor for GET (replaces any existing cursor)`
+- `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 - `-d, --data <value> - Inline JSON body for the request (like curl -d)`
 - `-F, --field <value>... - Add a typed parameter (key=value, key[sub]=value, key[]=value)`
 - `-f, --raw-field <value>... - Add a string parameter without JSON parsing`
@@ -42,8 +42,11 @@ sentry api organizations/
 # Read a page and its pagination metadata
 sentry api organizations/ -f per_page=2 --json
 
-# Continue using a cursor from the previous response
-sentry api organizations/ -f per_page=2 --cursor '2:1:0' --json
+# Continue the same query using shared pagination
+sentry api organizations/ -f per_page=2 --cursor next --json
+
+# Return to the previously visited page
+sentry api organizations/ -f per_page=2 --cursor prev --json
 
 # Get a specific issue
 sentry api issues/123456789/

@@ -14,9 +14,11 @@ import {
   expect,
   test,
 } from "vitest";
+import { paginate } from "../../src/lib/api/infrastructure.js";
 import { EXIT } from "../../src/lib/errors.js";
-import { createE2EContext, type E2EContext } from "../fixture.js";
+import { createE2EContext, type E2EContext, runCli } from "../fixture.js";
 import organizationsFixture from "../fixtures/organizations.json";
+import transactionsFixture from "../fixtures/transactions.json";
 import { cleanupTestDir, createTestConfigDir } from "../helpers.js";
 import { apiRoutes, TEST_TOKEN } from "../mocks/routes.js";
 import { createMockServer, type MockServer } from "../mocks/server.js";
@@ -25,8 +27,20 @@ let testConfigDir: string;
 let mockServer: MockServer;
 let ctx: E2EContext;
 const paginationRequests: URL[] = [];
-const nextCursor = "100:1:0";
-const prevCursor = "100:0:1";
+const nextCursor = "1:1:0";
+const prevCursor = "1:0:1";
+const alternateToken = "test-api-other-identity";
+const cursorOrganizations = Array.from({ length: 6 }, (_, index) => ({
+  ...organizationsFixture[index % organizationsFixture.length],
+  id: String(100_001 + index),
+  slug: `test-org-${index + 1}`,
+  name: `Test Organization ${index + 1}`,
+}));
+const cursorTransactions = Array.from({ length: 6 }, (_, index) => ({
+  ...transactionsFixture.data[index % transactionsFixture.data.length],
+  id: String(index + 1).padStart(16, "0"),
+}));
+let failNextPage = false;
 
 beforeAll(async () => {
   mockServer = createMockServer(
@@ -39,12 +53,47 @@ beforeAll(async () => {
           const url = new URL(req.url);
           paginationRequests.push(url);
           const isSecondPage = url.searchParams.get("cursor") === nextCursor;
+          if (isSecondPage && failNextPage) {
+            failNextPage = false;
+            return { status: 403, body: { detail: "Access denied" } };
+          }
           return {
             body: [organizationsFixture[isSecondPage ? 1 : 0]],
             headers: {
+              "Cache-Control": "no-store",
               Link:
                 `<${serverUrl}/api/0/api-pagination/?cursor=${nextCursor}>; rel="next"; results="${!isSecondPage}"; cursor="${nextCursor}", ` +
                 `<${serverUrl}/api/0/api-pagination/?cursor=${prevCursor}>; rel="previous"; results="${isSecondPage}"; cursor="${prevCursor}"`,
+            },
+          };
+        },
+      },
+      {
+        method: "GET",
+        path: "/api/0/api-custom-cursor/",
+        response: (req, _params, serverUrl) => {
+          const url = new URL(req.url);
+          paginationRequests.push(url);
+          const perPage = Number(url.searchParams.get("per_page") ?? "2");
+          const page = Number(
+            url.searchParams.get("cursor")?.split(":")[1] ?? "0",
+          );
+          const start = page * perPage;
+          const next = `${perPage}:${page + 1}:0`;
+          const previous = `${perPage}:${page - 1}:1`;
+          const isEventsEnvelope =
+            url.searchParams.get("envelope") === "events";
+          const rows = isEventsEnvelope
+            ? cursorTransactions
+            : cursorOrganizations;
+          const data = rows.slice(start, start + perPage);
+          return {
+            body: isEventsEnvelope ? { ...transactionsFixture, data } : data,
+            headers: {
+              "Cache-Control": "no-store",
+              Link:
+                `<${serverUrl}/api/0/api-custom-cursor/?cursor=${next}>; rel="next"; results="${start + perPage < rows.length}"; cursor="${next}", ` +
+                `<${serverUrl}/api/0/api-custom-cursor/?cursor=${previous}>; rel="previous"; results="${page > 0}"; cursor="${previous}"`,
             },
           };
         },
@@ -58,7 +107,7 @@ beforeAll(async () => {
         },
       },
     ],
-    { validTokens: [TEST_TOKEN] },
+    { validTokens: [TEST_TOKEN, alternateToken] },
   );
   await mockServer.start();
 });
@@ -69,6 +118,7 @@ afterAll(() => {
 
 beforeEach(async () => {
   paginationRequests.length = 0;
+  failNextPage = false;
   testConfigDir = await createTestConfigDir("e2e-api-");
   ctx = createE2EContext(testConfigDir, mockServer.url);
 });
@@ -159,37 +209,279 @@ describe("sentry api", () => {
     expect(JSON.parse(result.stdout)).toEqual({ method: "GET" });
   });
 
-  test("continues one page at a time and preserves pagination with --fields", async () => {
+  test("navigates next, prev and first while preserving filters and --fields", async () => {
     await ctx.setAuthToken(TEST_TOKEN);
-    const args = ["api", "api-pagination/", "--json", "--fields", "name"];
+    const args = [
+      "api",
+      "api-pagination/?project=1&project=2",
+      "-f",
+      "query=level:error",
+      "-f",
+      "per_page=1",
+      "--json",
+      "--fields",
+      "name",
+    ];
 
     const first = await ctx.run(args);
     expect(first.exitCode, first.stderr + first.stdout).toBe(0);
     const firstPage = JSON.parse(first.stdout);
-    expect(firstPage).toEqual({
+    expect(firstPage).toMatchObject({
       status: 200,
       statusText: "OK",
-      body: [{ name: organizationsFixture[0].name }],
-      pagination: { nextCursor },
+      pagination: { nextCursor, hasPrev: false },
     });
+    expect(firstPage.body).toEqual([{ name: organizationsFixture[0].name }]);
     expect(paginationRequests).toHaveLength(1);
 
-    const second = await ctx.run([
-      ...args,
-      "--cursor",
-      firstPage.pagination.nextCursor,
-    ]);
+    const second = await ctx.run([...args, "--cursor", "next"]);
     expect(second.exitCode, second.stderr + second.stdout).toBe(0);
-    expect(JSON.parse(second.stdout)).toEqual({
+    const secondPage = JSON.parse(second.stdout);
+    expect(secondPage).toMatchObject({
       status: 200,
       statusText: "OK",
-      body: [{ name: organizationsFixture[1].name }],
-      pagination: { prevCursor },
+      pagination: { prevCursor, hasPrev: true },
     });
+    expect(secondPage.body).toEqual([{ name: organizationsFixture[1].name }]);
+    expect(secondPage.pagination.nextCursor).toBeUndefined();
     expect(paginationRequests).toHaveLength(2);
     expect(paginationRequests[1].searchParams.getAll("cursor")).toEqual([
       nextCursor,
     ]);
+
+    for (const [cursor, organization] of [
+      ["prev", organizationsFixture[0]],
+      ["next", organizationsFixture[1]],
+      ["first", organizationsFixture[0]],
+    ] as const) {
+      const page = await ctx.run([
+        ...args,
+        ...(cursor === "first" ? ["-f", "cursor=stale"] : []),
+        "-c",
+        cursor,
+      ]);
+      expect(page.exitCode, page.stderr + page.stdout).toBe(0);
+      expect(JSON.parse(page.stdout).body).toEqual([
+        { name: organization.name },
+      ]);
+    }
+    expect(paginationRequests).toHaveLength(5);
+    expect(
+      paginationRequests.map((url) => url.searchParams.get("cursor")),
+    ).toEqual([null, nextCursor, null, nextCursor, null]);
+    for (const url of paginationRequests) {
+      expect(url.searchParams.get("query")).toBe("level:error");
+      expect(url.searchParams.get("per_page")).toBe("1");
+      expect(url.searchParams.getAll("project")).toEqual(["1", "2"]);
+    }
+  });
+
+  test("dry-runs and failed requests do not advance pagination history", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const args = ["api", "api-pagination/", "-f", "per_page=1", "--json"];
+    const preview = await ctx.run([...args, "--dry-run"]);
+    expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+    const missing = await ctx.run([...args, "--cursor", "next"]);
+    expect(missing.exitCode).toBe(EXIT.VALIDATION);
+    expect(paginationRequests).toHaveLength(0);
+
+    const first = await ctx.run(args);
+    expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+    const nextPreview = await ctx.run([
+      ...args,
+      "--cursor",
+      "next",
+      "--dry-run",
+    ]);
+    expect(nextPreview.exitCode, nextPreview.stderr + nextPreview.stdout).toBe(
+      0,
+    );
+    expect(
+      new URL(JSON.parse(nextPreview.stdout).url).searchParams.get("cursor"),
+    ).toBe(nextCursor);
+    expect(paginationRequests).toHaveLength(1);
+
+    failNextPage = true;
+    const failed = await ctx.run([...args, "--cursor", "next"]);
+    expect(failed.exitCode).toBe(EXIT.OUTPUT_ERROR);
+    expect(JSON.parse(failed.stdout).status).toBe(403);
+    const retried = await ctx.run([...args, "--cursor", "next"]);
+    expect(retried.exitCode, retried.stderr + retried.stdout).toBe(0);
+    expect(JSON.parse(retried.stdout).body).toEqual([organizationsFixture[1]]);
+    expect(
+      paginationRequests.map((url) => url.searchParams.get("cursor")),
+    ).toEqual([null, nextCursor, nextCursor]);
+    const exhausted = await ctx.run([...args, "--cursor", "next"]);
+    expect(exhausted.exitCode).toBe(EXIT.VALIDATION);
+    expect(paginationRequests).toHaveLength(3);
+  });
+
+  test.each(["human output", "silent output"])(
+    "saves pagination history with %s",
+    async (output) => {
+      await ctx.setAuthToken(TEST_TOKEN);
+      const args = ["api", "api-pagination/", "-f", "per_page=1"];
+      const first = await ctx.run(
+        output === "silent output" ? [...args, "--silent"] : args,
+      );
+      expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+      if (output === "silent output") {
+        expect(first.stdout).toBe("");
+      } else {
+        expect(JSON.parse(first.stdout)).toEqual([organizationsFixture[0]]);
+      }
+      const second = await ctx.run([...args, "--cursor", "next", "--json"]);
+      expect(second.exitCode, second.stderr + second.stdout).toBe(0);
+      expect(JSON.parse(second.stdout).body).toEqual([organizationsFixture[1]]);
+      expect(paginationRequests).toHaveLength(2);
+    },
+  );
+
+  test.each(["query", "host", "identity"])(
+    "does not reuse pagination history after changing the %s",
+    async (change) => {
+      const args = ["api", "api-pagination/", "-f", "per_page=1", "--json"];
+      const env = {
+        SENTRY_AUTH_TOKEN: TEST_TOKEN,
+        SENTRY_TOKEN: "",
+        SENTRY_CONFIG_DIR: testConfigDir,
+        SENTRY_URL: mockServer.url,
+        SENTRY_CLI_NO_TELEMETRY: "1",
+      };
+      const first = await runCli(args, { env });
+      expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+      const changed = await runCli(
+        [
+          ...args,
+          "--cursor",
+          "next",
+          ...(change === "query" ? ["-f", "query=other"] : []),
+        ],
+        {
+          env: {
+            ...env,
+            SENTRY_URL:
+              change === "host"
+                ? mockServer.url.replace("localhost", "127.0.0.1")
+                : mockServer.url,
+            SENTRY_AUTH_TOKEN:
+              change === "identity" ? alternateToken : TEST_TOKEN,
+          },
+        },
+      );
+      expect(changed.exitCode).toBe(EXIT.VALIDATION);
+      expect(paginationRequests).toHaveLength(1);
+      const resumed = await runCli([...args, "--cursor", "next"], { env });
+      expect(resumed.exitCode, resumed.stderr + resumed.stdout).toBe(0);
+      expect(JSON.parse(resumed.stdout).body).toEqual([
+        organizationsFixture[1],
+      ]);
+      expect(paginationRequests).toHaveLength(2);
+    },
+  );
+
+  test.each(["shared", "legacy"])(
+    "resumes a %s mid-page cursor without repeating or skipping rows",
+    async (format) => {
+      await ctx.setAuthToken(TEST_TOKEN);
+      const nativePage = await paginate({ limit: 1, cursor: "2:1:0" }, () =>
+        Promise.resolve({
+          data: cursorOrganizations.slice(2, 4),
+          nextCursor: "2:2:0",
+        }),
+      );
+      expect(nativePage.nextCursor).toBeDefined();
+      const cursor =
+        format === "legacy" ? "cli1~2~1~2:1:0" : String(nativePage.nextCursor);
+      const args = ["api", "api-custom-cursor/", "-f", "per_page=9", "--json"];
+      const preview = await ctx.run([...args, "--cursor", cursor, "--dry-run"]);
+      expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+      const url = new URL(JSON.parse(preview.stdout).url);
+      expect(url.searchParams.get("per_page")).toBe("2");
+      expect(url.searchParams.get("cursor")).toBe("2:1:0");
+      expect(paginationRequests).toHaveLength(0);
+
+      const resumed = await ctx.run([...args, "--cursor", cursor]);
+      expect(resumed.exitCode, resumed.stderr + resumed.stdout).toBe(0);
+      const resumedPage = JSON.parse(resumed.stdout);
+      expect(resumedPage.body).toEqual(cursorOrganizations.slice(3, 4));
+      expect(resumedPage.pagination.nextCursor).toBe("2:2:0");
+      expect(resumedPage.pagination.hasPrev).toBe(false);
+      const next = await ctx.run([...args, "--cursor", "next"]);
+      expect(next.exitCode, next.stderr + next.stdout).toBe(0);
+      const nextPage = JSON.parse(next.stdout);
+      expect(nextPage.body).toEqual(cursorOrganizations.slice(4));
+      expect(nextPage.pagination.hasPrev).toBe(true);
+      expect([
+        ...nativePage.data,
+        ...resumedPage.body,
+        ...nextPage.body,
+      ]).toEqual(cursorOrganizations.slice(2));
+
+      const previous = await ctx.run([...args, "--cursor", "prev"]);
+      expect(previous.exitCode, previous.stderr + previous.stdout).toBe(0);
+      const previousPage = JSON.parse(previous.stdout);
+      expect(previousPage.body).toEqual(cursorOrganizations.slice(3, 4));
+      expect(previousPage.pagination.hasPrev).toBe(false);
+      expect(
+        paginationRequests.map((request) => request.searchParams.get("cursor")),
+      ).toEqual(["2:1:0", "2:2:0", "2:1:0"]);
+      expect(
+        paginationRequests.every(
+          (request) => request.searchParams.get("per_page") === "2",
+        ),
+      ).toBe(true);
+    },
+  );
+
+  test("resumes a shared cursor in an Events data envelope while preserving metadata", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const nativePage = await paginate({ limit: 1, cursor: "2:1:0" }, () =>
+      Promise.resolve({
+        data: cursorTransactions.slice(2, 4),
+        nextCursor: "2:2:0",
+      }),
+    );
+    expect(nativePage.nextCursor).toBeDefined();
+    const args = [
+      "api",
+      "api-custom-cursor/?envelope=events",
+      "-f",
+      "per_page=9",
+      "--json",
+    ];
+
+    for (const [cursor, data, hasPrev] of [
+      [String(nativePage.nextCursor), cursorTransactions.slice(3, 4), false],
+      ["next", cursorTransactions.slice(4), true],
+      ["prev", cursorTransactions.slice(3, 4), false],
+    ] as const) {
+      const result = await ctx.run([...args, "--cursor", cursor]);
+      expect(result.exitCode, result.stderr + result.stdout).toBe(0);
+      const page = JSON.parse(result.stdout);
+      expect(page.body).toEqual({ ...transactionsFixture, data });
+      expect(page.pagination.hasPrev).toBe(hasPrev);
+    }
+
+    expect(
+      paginationRequests.map((request) => request.searchParams.get("cursor")),
+    ).toEqual(["2:1:0", "2:2:0", "2:1:0"]);
+    expect(
+      paginationRequests.every(
+        (request) => request.searchParams.get("per_page") === "2",
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects mid-page bookmarks on object responses without saving history", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const args = ["api", "organizations/test-org/", "--json"];
+    const result = await ctx.run([...args, "--cursor", "cli1~2~1~"]);
+    expect(result.exitCode).toBe(EXIT.VALIDATION);
+    expect(result.stderr + result.stdout).toContain("not an array");
+    const next = await ctx.run([...args, "--cursor", "next"]);
+    expect(next.exitCode).toBe(EXIT.VALIDATION);
+    expect(next.stderr + next.stdout).toContain("No next page saved");
   });
 
   test.each([

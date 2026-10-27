@@ -11,10 +11,22 @@ import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../context.js";
 import {
   appendSearchParams,
+  consumePage,
+  decodePageCursor,
+  type PagePosition,
   parseLinkHeader,
   rawApiRequest,
 } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
+import { applyCustomHeaders } from "../lib/custom-headers.js";
+import { getIdentityFingerprint } from "../lib/db/auth.js";
+import {
+  advancePaginationState,
+  buildPaginationContextKey,
+  type CursorDirection,
+  hasPreviousPage,
+  resolveCursor,
+} from "../lib/db/pagination.js";
 import {
   OutputError,
   stringifyUnknown,
@@ -24,7 +36,9 @@ import { filterFields } from "../lib/formatters/json.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { validateEndpoint } from "../lib/input-validation.js";
 import { imageBytesToKitty } from "../lib/kitty-image.js";
+import { LIST_CURSOR_FLAG } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
+import { buildCacheKey } from "../lib/response-cache.js";
 import { getDefaultSdkConfig, getSdkConfig } from "../lib/sentry-client.js";
 import {
   canRenderKitty,
@@ -41,11 +55,13 @@ const log = logger.withTag("api");
 const LINE_BREAK_PATTERN = /[ \t]*[\r\n]+[ \t]*/g;
 const API_PREFIX = "/api/0";
 const API_PREFIX_WITH_SLASH = `${API_PREFIX}/`;
+const PAGINATION_KEY = "api";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 type ApiFlags = {
   readonly method: HttpMethod;
+  /** Shared navigation keyword or opaque pagination cursor for GET requests. */
   readonly cursor?: string;
   readonly data?: string;
   readonly field?: string[];
@@ -1174,21 +1190,29 @@ function throwApiResponseError(
   throw new OutputError(response.body);
 }
 
-/** Add HTTP metadata to textual responses in JSON output mode. */
+/** Server continuations plus navigation available in the local cursor history. */
+type ApiPaginationMetadata = ReturnType<typeof parseLinkHeader> & {
+  /** Whether this query has a previously visited page in the local history. */
+  hasPrev?: boolean;
+};
+
+/** Add HTTP and pagination metadata to textual responses in JSON output mode. */
 function formatApiResponseOutput(
   response: ApiResponseOutput,
   output: unknown,
   json: boolean,
+  pagination: ApiPaginationMetadata,
 ): unknown {
   if (!json || output instanceof Uint8Array) {
     return output;
   }
-  const pagination = parseLinkHeader(response.headers.get("link"));
   return {
     status: response.status,
     statusText: response.statusText,
     body: output,
-    ...(pagination.nextCursor || pagination.prevCursor ? { pagination } : {}),
+    ...(pagination.nextCursor || pagination.prevCursor || pagination.hasPrev
+      ? { pagination }
+      : {}),
   };
 }
 
@@ -1215,26 +1239,92 @@ function formatApiResponseJson(data: unknown, fields?: string[]): unknown {
 }
 
 /**
- * Compose query parameters without URL fragments, replacing all existing cursors
- * when an explicit cursor is provided.
+ * Compose query parameters without URL fragments.
  */
 function resolveRequestEndpoint(
   endpoint: string,
   params: Record<string, string | string[]> | undefined,
-  cursor: string | undefined,
 ): string {
   const withoutFragment = endpoint.split("#", 1)[0] ?? endpoint;
-  const composed = appendSearchParams(withoutFragment, params);
-  if (cursor === undefined) {
-    return composed;
-  }
-  const queryIndex = composed.indexOf("?");
-  const path = queryIndex === -1 ? composed : composed.slice(0, queryIndex);
+  return appendSearchParams(withoutFragment, params);
+}
+
+/** Pagination resolved for one GET, without mutating its saved history. */
+type ApiPagination = {
+  /** Relative endpoint with the resolved server cursor and page size. */
+  endpoint: string;
+  /** Identity-scoped fingerprint of the caller's request, excluding cursor. */
+  contextKey: string;
+  /** Navigation operation to commit after a successful response. */
+  direction: CursorDirection;
+  /** Original cursor, including any bookmark, saved for backward navigation. */
+  currentCursor: string | undefined;
+  /** Shared decoded position; skip counts rows already returned to the caller. */
+  position: PagePosition;
+};
+
+/**
+ * Resolve shared navigation and custom cursors while retaining a single request.
+ * Context uses the caller's query before cursor-derived page-size overrides, so
+ * repeating the same arguments with `next` finds the same walk. Header/body
+ * values participate in an opaque fingerprint and are never stored as plaintext.
+ */
+async function resolveApiPagination(
+  endpoint: string,
+  cursorFlag: string | undefined,
+  request: NonNullable<Parameters<typeof rawApiRequest>[1]>,
+): Promise<ApiPagination> {
+  const queryIndex = endpoint.indexOf("?");
+  const path = queryIndex === -1 ? endpoint : endpoint.slice(0, queryIndex);
   const query = new URLSearchParams(
-    queryIndex === -1 ? "" : composed.slice(queryIndex + 1),
+    queryIndex === -1 ? "" : endpoint.slice(queryIndex + 1),
   );
-  query.set("cursor", cursor);
-  return `${path}?${query}`;
+  const inputCursor = query.getAll("cursor").at(-1);
+  query.delete("cursor");
+  const contextUrl = resolveRequestUrl(
+    `${path}?${query}`,
+    undefined,
+    request.baseUrl,
+  );
+  const effectiveHeaders = new Headers(
+    resolveEffectiveHeaders(request.headers, request.body),
+  );
+  applyCustomHeaders(effectiveHeaders, contextUrl);
+  effectiveHeaders.delete("authorization");
+  effectiveHeaders.delete("sentry-trace");
+  effectiveHeaders.delete("baggage");
+  const identity = JSON.stringify([
+    getIdentityFingerprint(),
+    [...effectiveHeaders],
+    request.body,
+  ]);
+  const contextKey = buildPaginationContextKey(
+    "api",
+    await buildCacheKey("GET", contextUrl, identity),
+  );
+  const { cursor, direction } = resolveCursor(
+    cursorFlag,
+    PAGINATION_KEY,
+    contextKey,
+  );
+  const currentCursor = cursorFlag === undefined ? inputCursor : cursor;
+  const position = decodePageCursor(currentCursor);
+  if (position.cursor !== undefined) {
+    query.set("cursor", position.cursor);
+  }
+  if (position.perPage !== undefined) {
+    query.set("per_page", String(position.perPage));
+  }
+  return {
+    endpoint:
+      cursorFlag === undefined && inputCursor === undefined
+        ? endpoint
+        : `${path}${query.size > 0 ? `?${query}` : ""}`,
+    contextKey,
+    direction,
+    currentCursor,
+    position,
+  };
 }
 
 /**
@@ -1565,9 +1655,11 @@ export const apiCommand = buildCommand({
       "Absolute HTTP(S) Sentry URLs are also accepted; their origin is " +
       "validated against your authenticated host. " +
       "Authentication is handled automatically using your stored credentials.\n\n" +
-      "Pagination: --json includes usable nextCursor/prevCursor values in " +
-      "pagination when the server advertises them. Repeat the same GET with " +
-      "--cursor <token> to continue. Each invocation fetches one page.\n\n" +
+      "Pagination: --json includes nextCursor/prevCursor and hasPrev in " +
+      "pagination when navigation is available. Repeat the same GET and " +
+      "filters with --cursor next, prev, or first, or pass a raw cursor. " +
+      "Shared custom cursors restore page size and skip rows already read. " +
+      "Each invocation fetches one page.\n\n" +
       "Body options:\n" +
       '  --data/-d \'{"key":"value"}\'   Inline JSON body (like curl -d)\n' +
       '  --input/-i file.json          Read body from file (or "-" for stdin)\n\n' +
@@ -1587,9 +1679,12 @@ export const apiCommand = buildCommand({
         command: "sentry api organizations/ -f per_page=2 --json",
       },
       {
-        description: "Continue using a cursor from the previous response",
-        command:
-          "sentry api organizations/ -f per_page=2 --cursor '2:1:0' --json",
+        description: "Continue the same query using shared pagination",
+        command: "sentry api organizations/ -f per_page=2 --cursor next --json",
+      },
+      {
+        description: "Return to the previously visited page",
+        command: "sentry api organizations/ -f per_page=2 --cursor prev --json",
       },
       {
         description: "Get a specific issue",
@@ -1667,13 +1762,7 @@ export const apiCommand = buildCommand({
         default: "GET" as const,
         placeholder: "method",
       },
-      cursor: {
-        kind: "parsed",
-        parse: String,
-        brief: "Pagination cursor for GET (replaces any existing cursor)",
-        optional: true,
-        placeholder: "token",
-      },
+      cursor: LIST_CURSOR_FLAG,
       data: {
         kind: "parsed",
         parse: String,
@@ -1728,6 +1817,7 @@ export const apiCommand = buildCommand({
     },
     aliases: {
       X: "method",
+      c: "cursor",
       d: "data",
       F: "field",
       f: "raw-field",
@@ -1757,16 +1847,23 @@ export const apiCommand = buildCommand({
       );
     }
     const { body, params } = await resolveBody(flags, stdin);
-    const requestEndpoint = resolveRequestEndpoint(
-      normalizedEndpoint,
-      params,
-      flags.cursor,
-    );
+    const composedEndpoint = resolveRequestEndpoint(normalizedEndpoint, params);
 
     const headers =
       flags.header && flags.header.length > 0
         ? parseHeaders(flags.header)
         : undefined;
+    const request = {
+      method: flags.method,
+      body,
+      headers,
+      baseUrl: requestBaseUrl,
+    };
+    const navigation =
+      flags.method === "GET"
+        ? await resolveApiPagination(composedEndpoint, flags.cursor, request)
+        : undefined;
+    const requestEndpoint = navigation?.endpoint ?? composedEndpoint;
 
     // Dry-run mode: preview the request that would be sent
     if (flags["dry-run"]) {
@@ -1787,12 +1884,7 @@ export const apiCommand = buildCommand({
 
     // The shared authenticated fetch validates requestBaseUrl against the
     // token host and registered regional origins before adding credentials.
-    const response = await rawApiRequest(requestEndpoint, {
-      method: flags.method,
-      body,
-      headers,
-      baseUrl: requestBaseUrl,
-    });
+    const response = await rawApiRequest(requestEndpoint, request);
 
     const isError = isApiErrorStatus(response.status);
 
@@ -1808,6 +1900,49 @@ export const apiCommand = buildCommand({
         response.status,
         normalizedEndpoint,
         flags.method,
+      );
+    }
+
+    let pagination: ApiPaginationMetadata = parseLinkHeader(
+      response.headers.get("link"),
+    );
+    if (navigation && !isError) {
+      const envelope =
+        response.body !== null &&
+        typeof response.body === "object" &&
+        "data" in response.body &&
+        Array.isArray(response.body.data)
+          ? response.body
+          : undefined;
+      const rows = Array.isArray(response.body)
+        ? response.body
+        : envelope?.data;
+      if (Array.isArray(rows)) {
+        const page = consumePage<unknown>(
+          { data: rows, ...pagination },
+          navigation.position,
+        );
+        response.body = envelope ? { ...envelope, data: page.data } : page.data;
+        pagination = {
+          nextCursor: page.nextCursor,
+          prevCursor: pagination.prevCursor,
+        };
+      } else if (navigation.position.skip > 0) {
+        throw new ValidationError(
+          "Cannot resume a mid-page cursor: response body is not an array or a data envelope",
+          "cursor",
+        );
+      }
+      advancePaginationState(
+        PAGINATION_KEY,
+        navigation.contextKey,
+        navigation.direction,
+        pagination.nextCursor,
+        navigation.currentCursor ?? "",
+      );
+      pagination.hasPrev = hasPreviousPage(
+        PAGINATION_KEY,
+        navigation.contextKey,
       );
     }
 
@@ -1842,7 +1977,7 @@ export const apiCommand = buildCommand({
     // formatter, no trailing newline). Textual JSON responses expose the HTTP
     // metadata so callers can distinguish an empty success from an error.
     return yield new CommandOutput(
-      formatApiResponseOutput(response, output, flags.json),
+      formatApiResponseOutput(response, output, flags.json, pagination),
     );
   },
 });

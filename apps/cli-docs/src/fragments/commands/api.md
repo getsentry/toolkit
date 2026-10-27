@@ -15,20 +15,30 @@ When querying the Events API (`/events/` endpoint), valid dataset values are: `s
 
 ## Pagination
 
-Each invocation fetches one page. With `--json`, successful textual responses
-include `pagination.nextCursor` and/or `pagination.prevCursor` when the server's
-`Link` header advertises a usable continuation. `--fields` filters only the
-response body and preserves this metadata.
+Each invocation fetches one server page. Repeat the same GET endpoint and filters
+with `--cursor next` (`-c next`) to continue, `--cursor prev` to revisit a page,
+or `--cursor first` to start again. The shared history expires after five minutes
+and is scoped to the request and authenticated identity. Keep the same query
+parameters and headers when navigating. The endpoint remains required.
 
-Repeat the same GET request with `--cursor <token>` to continue, keeping its
-filters, ordering, page size, and time range. The token is opaque: `next` and
-`prev` do not refer to saved pages. `--cursor` replaces existing cursor parameters
-from both the endpoint URL and request fields; all other parameters are retained.
-It is only supported for GET requests, including `--dry-run` previews.
+Raw server cursors and custom cursors from the CLI's shared paginator are also
+accepted. Custom cursors preserve the page size and skip rows already returned,
+including when navigating back to a bookmarked page. A cursor's encoded page
+size takes precedence over `per_page`. Mid-page bookmarks support array bodies
+and responses with a `data` array, such as the Events API; envelope metadata is
+preserved. Other response bodies remain unchanged for ordinary cursors.
 
-When no usable cursor is advertised, `pagination` is omitted. This does not prove
-that the underlying dataset was fully scanned or unsampled. The command does not
-automatically follow pages.
+With `--json`, `pagination.nextCursor` is the CLI continuation and can retain a
+custom bookmark; pass it back through `--cursor` to resume exactly.
+`pagination.prevCursor` comes from the server, while `pagination.hasPrev`
+indicates a previously visited page in local history. `--fields` filters only
+the body and preserves this metadata.
+The pagination object is omitted when no continuation or local previous page is
+available. Its absence does not prove a complete or unsampled dataset.
+
+`--cursor` replaces cursor parameters from the endpoint and request fields. It is
+only supported for GET requests. `--dry-run` previews the resolved request;
+dry-runs and failed requests do not advance the saved history.
 
 ## Binary responses
 

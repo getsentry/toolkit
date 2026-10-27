@@ -206,7 +206,7 @@ describe("library mode (bundled)", () => {
 
   // --- Typed SDK ---
 
-  test("sdk.api passes an opaque cursor and returns page metadata", async () => {
+  test("sdk.api accepts an opaque cursor and continues with shared navigation", async () => {
     const { stdout } = await runNodeScriptOk(`
       const { createSentrySDK } = require('./dist/index.cjs');
       const requests = [];
@@ -224,12 +224,13 @@ describe("library mode (bundled)", () => {
         url: 'http://localhost:9000',
         cwd: ${JSON.stringify(getConfigDir())},
       });
-      sdk.api({
+      const options = {
         endpoint: 'organizations/?cursor=old',
-        cursor: 'page-token+/=:1',
         rawField: ['field=id', 'field=name'],
-      }).then(response => {
-        console.log(JSON.stringify({ requests, response }));
+      };
+      sdk.api({ ...options, cursor: 'page-token+/=:1' }).then(async response => {
+        const next = await sdk.api({ ...options, cursor: 'next' });
+        console.log(JSON.stringify({ requests, response, next }));
       }).catch(error => {
         console.error(error);
         process.exitCode = 1;
@@ -237,7 +238,7 @@ describe("library mode (bundled)", () => {
     `);
 
     const result = JSON.parse(stdout.trim());
-    expect(result.requests).toHaveLength(1);
+    expect(result.requests).toHaveLength(2);
     const request = new URL(result.requests[0]);
     expect(request.searchParams.getAll("cursor")).toEqual(["page-token+/=:1"]);
     expect(request.searchParams.getAll("field")).toEqual(["id", "name"]);
@@ -245,8 +246,17 @@ describe("library mode (bundled)", () => {
       status: 200,
       statusText: "OK",
       body: [organizationsFixture[1]],
-      pagination: { nextCursor: "100:2:0", prevCursor: "100:0:1" },
+      pagination: {
+        nextCursor: "100:2:0",
+        prevCursor: "100:0:1",
+        hasPrev: false,
+      },
     });
+    const nextRequest = new URL(result.requests[1]);
+    expect(nextRequest.searchParams.getAll("cursor")).toEqual(["100:2:0"]);
+    expect(nextRequest.searchParams.get("per_page")).toBe("100");
+    expect(nextRequest.searchParams.getAll("field")).toEqual(["id", "name"]);
+    expect(result.next.pagination.hasPrev).toBe(true);
   });
 
   test("sourcemap upload rejects a split token without leaking it or fetching", async () => {

@@ -101,6 +101,10 @@ the page cap, receives warnings, and turns failures into its own errors. The
 CLI's `paginate` and `fetchAllPages` in
 `packages/cli/src/lib/api/infrastructure.ts` are thin wrappers over it.
 
+`decodePageCursor` and `consumePage` expose the same resume logic for callers
+that read one server page at a time, such as `sentry api`. They restore the
+cursor's page size and remove rows already returned without fetching more pages.
+
 ## Response cache
 
 `api-client/response-cache` holds the cache policy for Sentry API GET responses.

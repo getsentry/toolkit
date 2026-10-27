@@ -17,8 +17,10 @@ import { readErrorResponse } from "@sentry/toolkit-core/api-client/response";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import {
   API_MAX_PER_PAGE,
+  decodePageCursor as decodeCursorPosition,
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
+  type PagePosition,
   paginate as paginateFrom,
 } from "@sentry/toolkit-core/api-client/pagination";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
@@ -410,6 +412,16 @@ export const MAX_PAGINATION_PAGES = Math.max(
  * auto-paginate for larger `--limit`s via {@link paginate}.
  */
 export { API_MAX_PER_PAGE };
+
+export {
+  consumePage,
+  type PagePosition,
+} from "@sentry/toolkit-core/pagination";
+
+/** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
+export function decodePageCursor(raw: string | undefined): PagePosition {
+  return decodeCursorPosition(raw, (message) => logger.warn(message));
+}
 
 /**
  * Maximum concurrent API requests when fanning out across organizations or regions.
