@@ -2,14 +2,15 @@
 
 ## Time series
 
-Use `--time-series auto` (`-b auto`) to see how an aggregate changes over time. The target,
+Use `--time-series` (`-b`) to see how an aggregate changes over time. The target,
 `--query`, `--environment`, and `--period` filters work as they do for tabular
 queries. Without `--field`, temporal queries count matching events in each time
 bucket. For performance analysis, select aggregates such as `p95(span.duration)`;
 repeat `--field` to request more than one series.
 
-With `auto`, the CLI chooses a bucket interval from the requested time range.
+With no value or `auto`, the CLI chooses a bucket interval from the requested time range.
 Pass a duration, such as `--time-series 15m` or `-b 15m`, to set the bucket width.
+When omitting the value, place an explicit target before the flag.
 Use `--period` (`-t`) to set the overall time range. Each invocation returns a
 snapshot and exits; it does not follow live data.
 

@@ -685,7 +685,7 @@ export const exploreCommand = buildListCommand("explore", {
       "Supports arbitrary fields including columns (title, project),\n" +
       "aggregates (count(), count_unique(user), p50(span.duration)),\n" +
       "and equations. Results are returned as a table.\n\n" +
-      "Use --time-series auto to calculate aggregates in time buckets with an automatic interval, " +
+      "Use --time-series to calculate aggregates in time buckets with an automatic interval, " +
       "or pass a bucket duration such as --time-series 15m (-b 15m). " +
       "This is a single historical query, not a live stream. " +
       "Grouping, --sort, --limit, and --cursor are table-only.\n\n" +
@@ -754,12 +754,12 @@ export const exploreCommand = buildListCommand("explore", {
         description:
           "Latency over time with automatic bucket duration, as JSON",
         command:
-          'sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series auto --period 24h --json',
+          'sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json',
       },
       {
         description: "A metric over time using its discovered type and unit",
         command:
-          "sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b auto -t 1h",
+          "sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h",
       },
       {
         description:
@@ -872,11 +872,14 @@ export const exploreCommand = buildListCommand("explore", {
       "time-series": {
         kind: "parsed",
         parse: (value: string) =>
-          value === "auto" ? value : parseTimeSeriesInterval(value),
+          value === "" || value === "auto"
+            ? "auto"
+            : parseTimeSeriesInterval(value),
         placeholder: "auto|interval",
         brief:
-          "Query time series with automatic or explicit buckets (auto, 1m, 15m, 1h)",
+          "Query time series (default: auto; optional bucket duration, e.g., 15m)",
         optional: true,
+        inferEmpty: true,
       },
       period: {
         kind: "parsed" as const,

@@ -71,6 +71,7 @@ afterEach(() => {
 
 describe("formatExploreTimeSeriesHuman", () => {
   test("renders UTC buckets, the effective interval, and ingestion completeness", () => {
+    vi.stubEnv("TZ", "America/Los_Angeles");
     const output = formatExploreTimeSeriesHuman(makeData());
 
     expect(output).toContain("Querying spans in test-org/test-project");

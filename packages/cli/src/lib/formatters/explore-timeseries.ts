@@ -11,6 +11,7 @@ import { formatTable } from "./table.js";
 import {
   formatDurationCompact,
   formatDurationCompactMs,
+  formatUtcTimestamp,
 } from "./time-utils.js";
 
 /** An API response with the query scope used by human output. */
@@ -25,14 +26,6 @@ export type ExploreTimeSeriesData = EventsTimeSeriesResponse & {
 
 type TimeSeries = EventsTimeSeriesResponse["timeSeries"][number];
 type Bucket = TimeSeries["values"][number];
-
-/** Format an epoch-millisecond timestamp without depending on local timezone. */
-function formatUtcTimestamp(timestamp: number): string {
-  return new Date(timestamp)
-    .toISOString()
-    .replace("T", " ")
-    .replace(/\.\d{3}Z$/, "");
-}
 
 /** Explain why a bucket is incomplete without describing retained data as pending. */
 function formatBucketStatus(bucket: Bucket): string {

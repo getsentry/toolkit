@@ -690,15 +690,14 @@ describe("sentry explore", () => {
   });
 
   describe("time series", () => {
-    test("parses --time-series auto and chooses a usable interval for a five-minute window", async () => {
-      const result = await runExploreArgs([
-        "test-org/",
-        "--time-series",
-        "auto",
-        "--period",
-        "5m",
-        "--json",
-      ]);
+    test.each([
+      {
+        name: "--time-series before another flag",
+        args: ["--time-series", "--period", "5m"],
+      },
+      { name: "-b at the end", args: ["--period", "5m", "-b"] },
+    ])("uses automatic intervals with bare $name", async ({ args }) => {
+      const result = await runExploreArgs(["test-org/", "--json", ...args]);
 
       expect(result.exitCode).toBe(0);
       expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
@@ -870,11 +869,6 @@ describe("sentry explore", () => {
         name: "removed interval flag",
         args: ["--interval", "15m"],
         error: "No flag registered for --interval",
-      },
-      {
-        name: "missing time-series value",
-        args: ["--time-series"],
-        error: "Expected input for flag --time-series",
       },
       {
         name: "non-aggregate fields",
