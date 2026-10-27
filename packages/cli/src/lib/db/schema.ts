@@ -48,10 +48,11 @@ export type TableSchema = {
    */
   compositePrimaryKey?: string[];
   /**
-   * The table only holds data the CLI can fetch or detect again, so repair
-   * may drop and recreate it when its shape is wrong or a newer CLI wrote it.
+   * The table holds data the CLI can't fetch or detect again, such as
+   * logins or settings. Every other table is a cache, which repair may drop
+   * and recreate when its shape is wrong or a newer CLI wrote it.
    */
-  rebuildable?: boolean;
+  persistent?: boolean;
 };
 
 /**
@@ -60,6 +61,7 @@ export type TableSchema = {
  */
 export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   schema_version: {
+    persistent: true,
     columns: {
       version: { type: "INTEGER", primaryKey: true },
     },
@@ -75,6 +77,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
    * same account updates it instead of adding a duplicate.
    */
   accounts: {
+    persistent: true,
     columns: {
       account_id: { type: "TEXT", primaryKey: true },
       // Origin URL (scheme://host[:port]) this token was issued against.
@@ -112,7 +115,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   },
 
   project_cache: {
-    rebuildable: true,
     columns: {
       cache_key: { type: "TEXT", primaryKey: true },
       org_slug: { type: "TEXT", notNull: true },
@@ -133,7 +135,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   dsn_cache: {
-    rebuildable: true,
     columns: {
       directory: { type: "TEXT", primaryKey: true },
       dsn: { type: "TEXT", notNull: true },
@@ -164,7 +165,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   project_aliases: {
-    rebuildable: true,
     columns: {
       alias: { type: "TEXT", primaryKey: true },
       org_slug: { type: "TEXT", notNull: true },
@@ -183,7 +183,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   pagination_cursors: {
-    rebuildable: true,
     columns: {
       command_key: { type: "TEXT", notNull: true },
       context: { type: "TEXT", notNull: true },
@@ -194,13 +193,13 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     compositePrimaryKey: ["command_key", "context"],
   },
   metadata: {
+    persistent: true,
     columns: {
       key: { type: "TEXT", primaryKey: true },
       value: { type: "TEXT", notNull: true },
     },
   },
   org_regions: {
-    rebuildable: true,
     columns: {
       org_slug: { type: "TEXT", notNull: true },
       org_id: { type: "TEXT", addedInVersion: 8 },
@@ -220,6 +219,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     compositePrimaryKey: ["credential_identity", "source_origin", "org_slug"],
   },
   instance_info: {
+    persistent: true,
     columns: {
       id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
       instance_id: { type: "TEXT", notNull: true },
@@ -231,7 +231,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   repo_cache: {
-    rebuildable: true,
     columns: {
       // Composite PK (org_slug) — one row per org caches the full repo list
       org_slug: { type: "TEXT", primaryKey: true },
@@ -262,7 +261,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
    * permissions).
    */
   issue_org_cache: {
-    rebuildable: true,
     columns: {
       // Numeric issue group ID (e.g., "7413562541"). TEXT to sidestep the
       // 2^53 JavaScript number limit if Sentry's group IDs ever exceed it.
@@ -276,7 +274,6 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
   },
   project_root_cache: {
-    rebuildable: true,
     columns: {
       cwd: { type: "TEXT", primaryKey: true },
       project_root: { type: "TEXT", notNull: true },
@@ -297,6 +294,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
    * The next normal CLI run flushes entries as Sentry metrics and deletes them.
    */
   completion_telemetry_queue: {
+    persistent: true,
     columns: {
       id: { type: "INTEGER", primaryKey: true },
       created_at: {
@@ -572,7 +570,7 @@ function repairMissingColumns(db: Database, result: RepairResult): void {
 }
 
 /**
- * Drop and recreate rebuildable tables that have the wrong primary key.
+ * Drop and recreate cache tables that have the wrong primary key.
  *
  * SQLite cannot ALTER a primary key, so the table must be recreated. This
  * covers CLI-72 (pagination_cursors created with a single-column PK) and a
@@ -588,7 +586,7 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
     if (hasPrimaryKey(db, tableName, declaredPrimaryKey(schema))) {
       continue;
     }
-    if (!schema.rebuildable) {
+    if (schema.persistent) {
       result.failed.push(
         `Table ${tableName} has an unexpected primary key and holds data that cannot be rebuilt`,
       );
@@ -607,9 +605,9 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
   }
 }
 
-/** Names of tables that only hold data the CLI can fetch or detect again. */
-const REBUILDABLE_TABLES = Object.entries(TABLE_SCHEMAS)
-  .filter(([, schema]) => schema.rebuildable)
+/** Tables not marked persistent: caches the CLI can fetch or detect again. */
+const CACHE_TABLES = Object.entries(TABLE_SCHEMAS)
+  .filter(([, schema]) => !schema.persistent)
   .map(([name]) => name);
 
 /**
@@ -628,7 +626,7 @@ function rebuildCachesFromNewerSchema(
   }
   try {
     db.transaction(() => {
-      for (const tableName of REBUILDABLE_TABLES) {
+      for (const tableName of CACHE_TABLES) {
         db.exec(`DROP TABLE IF EXISTS ${tableName}`);
         db.exec(EXPECTED_TABLES[tableName] as string);
       }
@@ -946,7 +944,7 @@ export function prepareDatabaseForDowngrade(db: Database): void {
     return;
   }
   db.transaction(() => {
-    for (const tableName of REBUILDABLE_TABLES) {
+    for (const tableName of CACHE_TABLES) {
       db.exec(`DROP TABLE IF EXISTS ${tableName}`);
     }
     // DELETE, not DROP: later reads in this process must not hit a missing
