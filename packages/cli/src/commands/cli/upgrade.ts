@@ -171,15 +171,14 @@ async function prepareDatabaseForNewBinary(plan: DatabasePlan): Promise<void> {
  * own database and `sentry cli upgrade undo` still finds the upgrade that led
  * here instead of the one that failed.
  *
- * Skipped for a #1611 hand-off: it is redone after a failed setup, which
- * would wipe a reinstated database, and the backup is then the only intact
- * copy of this version's database, so it is kept.
+ * A #1611 hand-off without a restore is redone after a failed setup, so its
+ * backup, then the only intact copy of this version's database, is kept.
  */
 async function revertDatabaseForFailedInstall(
   plan: DatabasePlan,
 ): Promise<void> {
   const { backup } = plan;
-  if (!backup || plan.handOff) {
+  if (!backup || (plan.handOff && !plan.restored)) {
     return;
   }
   plan.backup = undefined;
@@ -187,6 +186,8 @@ async function revertDatabaseForFailedInstall(
     if (plan.restored) {
       await reinstateDatabaseBackup(backup);
       plan.restored = false;
+      // This version keeps its database, so there is nothing to hand off.
+      plan.handOff = false;
     } else {
       await discardDatabaseBackup(backup);
     }

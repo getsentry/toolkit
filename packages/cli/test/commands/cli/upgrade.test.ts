@@ -1106,13 +1106,16 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     ]);
   });
 
-  test("a failed undo to a CLI that needs the hand-off keeps the logins", async () => {
+  test("a failed undo to a CLI that needs the hand-off keeps this version's database", async () => {
+    const marker = "test.marker";
     getRawDatabase()
       .query(
         "INSERT INTO accounts (account_id, host, user_id, token, is_active) VALUES (?, ?, ?, ?, ?)",
       )
       .run("a", "https://sentry.io", "user-a", "token", 1);
+    setMetadata(getRawDatabase(), { [marker]: "saved by 0.47.0" });
     await backupDatabase(getRawDatabase(), "0.47.0", CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "current" });
     mockTaggedBinaryDownload("0.47.0");
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
@@ -1132,17 +1135,14 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
       true,
     );
-    const db = new Database(getDbPath());
-    try {
-      expect(db.query("SELECT account_id FROM accounts").all()).toEqual([
-        { account_id: "a" },
-      ]);
-    } finally {
-      db.close();
-    }
-    expect(readdirSync(getBackupDir())).toContain(
-      `cli-${CLI_VERSION}_to_0.47.0.db`,
-    );
+    // Reinstated and not handed off: the logins and schema are intact.
+    const db = getRawDatabase();
+    expect(getMetadata(db, [marker]).get(marker)).toBe("current");
+    expect(db.query("SELECT account_id FROM accounts").all()).toEqual([
+      { account_id: "a" },
+    ]);
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe("0.47.0");
   });
 
   test("leaves the database alone for an older CLI that adapts it", async () => {
