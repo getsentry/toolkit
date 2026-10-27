@@ -24,7 +24,7 @@ import {
   explicitProjectSlugs,
   formatProjectTarget,
   type ParsedOrgProject,
-  parseOrgProjectArg,
+  parseListTarget,
 } from "../../lib/arg-parsing.js";
 import { getDefaultOrganization } from "../../lib/db/defaults.js";
 import {
@@ -53,7 +53,6 @@ import {
   fetchByName,
   filterByName,
   orgFilterTarget,
-  splitListTarget,
 } from "../../lib/list-filter.js";
 
 import {
@@ -938,8 +937,7 @@ export const listCommand = buildListCommand("project", {
   async *func(this: SentryContext, cliFlags: ListFlags, rawTarget?: string) {
     const { cwd } = this;
 
-    const { target, filter } = splitListTarget(rawTarget);
-    const parsed = parseOrgProjectArg(target, { multi: true });
+    const { parsed, filter } = parseListTarget(rawTarget, { multi: true });
     const flags: ProjectListFlags = { ...cliFlags, filter };
 
     const result = await dispatchOrgScopedList({

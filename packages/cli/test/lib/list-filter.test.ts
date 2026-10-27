@@ -5,7 +5,6 @@ import {
   isGlobFilter,
   orgFilterTarget,
   serverSearchText,
-  splitListTarget,
 } from "../../src/lib/list-filter.js";
 
 type Item = { slug: string; name: string };
@@ -60,29 +59,6 @@ describe("isGlobFilter", () => {
     ["acme", false],
   ])("%s → %s", (filter, expected) => {
     expect(isGlobFilter(filter)).toBe(expected);
-  });
-});
-
-describe("splitListTarget", () => {
-  test.each([
-    [undefined, {}],
-    ["my-org/", { target: "my-org/" }],
-    // A lone bare name is still a project search.
-    ["web", { target: "web" }],
-    // No slug has glob characters, so a glob is a filter.
-    ["web-*", { filter: "web-*" }],
-    ["my-org/web-*", { target: "my-org/", filter: "web-*" }],
-    ["my-org/web,api", { target: "my-org/web,api" }],
-    ["my-org/proj/x*", { target: "my-org/proj/x*" }],
-    // `/<name>` means `<name>`, so `/web-*` is a filter, not target `/`.
-    ["/web-*", { filter: "web-*" }],
-    ["/web", { target: "/web" }],
-  ] as const)("%j → %j", (target, expected) => {
-    const result = splitListTarget(target);
-    expect({
-      ...(result.target !== undefined && { target: result.target }),
-      ...(result.filter !== undefined && { filter: result.filter }),
-    }).toEqual(expected);
   });
 });
 

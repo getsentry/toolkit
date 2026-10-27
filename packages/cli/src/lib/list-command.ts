@@ -19,7 +19,7 @@ import type { SentryContext } from "../context.js";
 
 const _require = createRequire(import.meta.url);
 
-import { parseOrgProjectArg } from "./arg-parsing.js";
+import { parseListTarget, parseOrgProjectArg } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
@@ -44,7 +44,6 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
-import { splitListTarget } from "./list-filter.js";
 import { applyBoundPositionals, rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
@@ -80,7 +79,7 @@ export const ORG_ALL_TARGET_BRIEF =
 
 /**
  * {@link ORG_ALL_TARGET_BRIEF} for list commands that also match names
- * (see {@link splitListTarget}): a glob filters names, and a name that is
+ * (see {@link parseListTarget}): a glob filters names, and a name that is
  * no project matches names instead.
  */
 export const NAMED_LIST_TARGET_BRIEF =
@@ -125,7 +124,7 @@ export const LIST_ORG_TARGET_POSITIONAL = {
 
 /**
  * {@link LIST_TARGET_POSITIONAL} for list commands whose target also
- * matches names; split it with {@link splitListTarget}.
+ * matches names; parse it with {@link parseListTarget}.
  */
 export const NAMED_LIST_TARGET_POSITIONAL = {
   kind: "tuple" as const,
@@ -136,7 +135,7 @@ export const NAMED_LIST_TARGET_POSITIONAL = {
 
 /**
  * {@link LIST_ORG_TARGET_POSITIONAL} for org-scoped resources whose target
- * also matches names; split it with {@link splitListTarget}.
+ * also matches names; parse it with {@link parseListTarget}.
  */
 export const NAMED_LIST_ORG_TARGET_POSITIONAL = {
   kind: "tuple" as const,
@@ -782,10 +781,9 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       rawTarget?: string,
     ) {
       const { cwd } = this;
-      const { target, filter } = config.namesOf
-        ? splitListTarget(rawTarget)
-        : { target: rawTarget, filter: undefined };
-      const parsed = parseOrgProjectArg(target);
+      const { parsed, filter } = config.namesOf
+        ? parseListTarget(rawTarget)
+        : { parsed: parseOrgProjectArg(rawTarget), filter: undefined };
       const result = await dispatchOrgScopedList({
         config,
         cwd,

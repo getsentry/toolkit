@@ -10,7 +10,10 @@ import { fuzzyMatch } from "./fuzzy.js";
 /** Glob metacharacters: a filter with any of them is matched as a glob. */
 const GLOB_CHARS_RE = /[*?[\]{}]/;
 
-/** Whether `filter` is a glob (`acme-*`) rather than plain text. */
+/**
+ * Whether `filter` is a glob (`acme-*`) rather than plain text. The target
+ * grammar uses it to tell a name filter from a project (`parseListTarget`).
+ */
 export function isGlobFilter(filter: string): boolean {
   return GLOB_CHARS_RE.test(filter);
 }
@@ -59,35 +62,6 @@ export function filterByName<T>(
     .filter(({ rank }) => rank !== Number.POSITIVE_INFINITY)
     .sort((a, b) => a.rank - b.rank)
     .map(({ item }) => item);
-}
-
-/**
- * Split a list command's target into the target and a name filter. No slug
- * contains glob characters, so a glob is a filter: `web-*` → filter `web-*`
- * (auto-detected org), `acme/web-*` → target `acme/` and filter `web-*`,
- * and `/web-*` is `web-*`. Anything else stays the target; when it names no
- * project, the list handlers match names with it instead.
- */
-export function splitListTarget(target: string | undefined): {
-  target?: string;
-  filter?: string;
-} {
-  if (!target) {
-    return { target };
-  }
-  const slash = target.indexOf("/");
-  if (slash < 0) {
-    return isGlobFilter(target) ? { filter: target.trim() } : { target };
-  }
-  const rest = target.slice(slash + 1);
-  if (rest.includes("/") || !isGlobFilter(rest)) {
-    return { target };
-  }
-  // `/web-*` has no org, so it is `web-*`: a filter on the detected org.
-  if (slash === 0) {
-    return { filter: rest.trim() };
-  }
-  return { target: target.slice(0, slash + 1), filter: rest };
 }
 
 /**
