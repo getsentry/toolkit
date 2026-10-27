@@ -7,7 +7,7 @@
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import {
   buildCacheKey,
@@ -449,6 +449,67 @@ describe("no-cache tier", () => {
 
     const cached = await getCachedResponse(TEST_METHOD, rootCauseUrl, {});
     expect(cached).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fallback TTL tiers
+// ---------------------------------------------------------------------------
+
+describe("fallback TTL tiers", () => {
+  const MINUTE = 60 * 1000;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function isCachedAfter(url: string, elapsedMs: number) {
+    await storeCachedResponse(TEST_METHOD, url, {}, mockResponse(TEST_BODY));
+    vi.setSystemTime(Date.now() + elapsedMs);
+    return (await getCachedResponse(TEST_METHOD, url, {})) !== undefined;
+  }
+
+  test("organization event details are reused for up to 5 minutes", async () => {
+    const url =
+      "https://us.sentry.io/api/0/organizations/myorg/events/proj:abc123/";
+    expect(await isCachedAfter(url, 4 * MINUTE)).toBe(true);
+    vi.setSystemTime(Date.now() + 2 * MINUTE);
+    expect(await getCachedResponse(TEST_METHOD, url, {})).toBeUndefined();
+  });
+
+  test("an issue's latest event expires after 60 seconds", async () => {
+    const url =
+      "https://us.sentry.io/api/0/organizations/myorg/issues/123/events/latest/";
+    expect(await isCachedAfter(url, 2 * MINUTE)).toBe(false);
+  });
+
+  test("project event details expire after 60 seconds", async () => {
+    const url =
+      "https://us.sentry.io/api/0/projects/myorg/myproject/events/abc123/";
+    expect(await isCachedAfter(url, 2 * MINUTE)).toBe(false);
+  });
+
+  test("full traces expire after 60 seconds", async () => {
+    const url = `https://us.sentry.io/api/0/organizations/myorg/trace/${"a".repeat(32)}/`;
+    expect(await isCachedAfter(url, 2 * MINUTE)).toBe(false);
+  });
+
+  test("server max-age still wins over the fallback tier", async () => {
+    const url =
+      "https://us.sentry.io/api/0/organizations/myorg/issues/123/events/latest/";
+    await storeCachedResponse(
+      TEST_METHOD,
+      url,
+      {},
+      mockResponse(TEST_BODY, 200, { "cache-control": "private, max-age=300" }),
+    );
+    vi.setSystemTime(Date.now() + 4 * MINUTE);
+    expect(await getCachedResponse(TEST_METHOD, url, {})).toBeDefined();
   });
 });
 

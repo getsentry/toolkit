@@ -164,32 +164,70 @@ describe("property: classifyUrl", () => {
     fcAssert(
       property(sentryUrlArb, (url) => {
         const tier = classifyUrl(url);
-        expect(["immutable", "stable", "volatile", "no-cache"]).toContain(tier);
+        expect(["detail", "stable", "volatile", "no-cache"]).toContain(tier);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test("event detail URLs are immutable", () => {
+  test("organization event details are detail", () => {
+    const urls = [
+      "https://us.sentry.io/api/0/organizations/myorg/events/myproject:abc123/",
+      "https://sentry.io/api/0/organizations/org/events/42:deadbeef/?field=title",
+    ];
+    for (const url of urls) {
+      expect(classifyUrl(url)).toBe("detail");
+    }
+  });
+
+  test("organization event details with averageColumn are stable", () => {
+    const url =
+      "https://us.sentry.io/api/0/organizations/org/events/proj:abc123/?averageColumn=span.duration";
+    expect(classifyUrl(url)).toBe("stable");
+  });
+
+  test("project trace-item details are detail", () => {
+    const url =
+      "https://us.sentry.io/api/0/projects/org/proj/trace-items/a1b2c3d4e5f67890/?trace_id=abc&item_type=spans";
+    expect(classifyUrl(url)).toBe("detail");
+  });
+
+  test("project trace-item details with debug are stable", () => {
+    const url =
+      "https://us.sentry.io/api/0/projects/org/proj/trace-items/a1b2c3d4e5f67890/?item_type=spans&debug=1";
+    expect(classifyUrl(url)).toBe("stable");
+  });
+
+  test("project event details are volatile", () => {
     const urls = [
       "https://us.sentry.io/api/0/projects/myorg/myproject/events/abc123/",
       "https://sentry.io/api/0/projects/org/proj/events/deadbeef/?full=true",
     ];
     for (const url of urls) {
-      expect(classifyUrl(url)).toBe("immutable");
+      expect(classifyUrl(url)).toBe("volatile");
     }
   });
 
-  test("trace URLs with 32-char hex IDs are immutable", () => {
-    const traceId = "a".repeat(32);
-    const url = `https://us.sentry.io/api/0/organizations/myorg/trace/${traceId}/`;
-    expect(classifyUrl(url)).toBe("immutable");
+  test("issue events are volatile, including latest/oldest/recommended", () => {
+    for (const eventId of ["latest", "oldest", "recommended", "deadbeef"]) {
+      const url = `https://us.sentry.io/api/0/organizations/org/issues/123/events/${eventId}/`;
+      expect(classifyUrl(url)).toBe("volatile");
+    }
   });
 
-  test("trace-items (span detail) URLs are immutable", () => {
-    const url =
-      "https://us.sentry.io/api/0/projects/org/proj/trace-items/a1b2c3d4e5f67890/?trace_id=abc&item_type=spans";
-    expect(classifyUrl(url)).toBe("immutable");
+  test("full trace URLs with 32-char hex IDs are volatile", () => {
+    const traceId = "a".repeat(32);
+    const url = `https://us.sentry.io/api/0/organizations/myorg/trace/${traceId}/?limit=100`;
+    expect(classifyUrl(url)).toBe("volatile");
+  });
+
+  test("relative URLs are classified by path", () => {
+    expect(classifyUrl("/api/0/organizations/org/events/proj:abc/")).toBe(
+      "detail",
+    );
+    expect(
+      classifyUrl("/api/0/organizations/org/issues/1/events/latest/"),
+    ).toBe("volatile");
   });
 
   test("issue URLs are volatile (lists and detail views)", () => {
