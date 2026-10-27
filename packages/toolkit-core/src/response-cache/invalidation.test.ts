@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { computeInvalidationPrefixes as computeInvalidationPrefixesRaw } from "../../src/lib/cache-keys.js";
+import { computeInvalidationPrefixes as computeInvalidationPrefixesRaw } from "./invalidation.js";
 
 const BASE = "https://us.sentry.io/api/0/";
 const API_BASE_URL = "https://sentry.io";

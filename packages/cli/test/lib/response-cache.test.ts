@@ -7,6 +7,7 @@
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { normalizeUrl } from "@sentry/toolkit-core/response-cache";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import {
@@ -15,7 +16,6 @@ import {
   disableResponseCache,
   getCachedResponse,
   invalidateCachedResponsesMatching,
-  normalizeUrl,
   resetCacheState,
   storeCachedResponse,
 } from "../../src/lib/response-cache.js";
@@ -372,27 +372,29 @@ describe("normalizeUrl", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildCacheKey", () => {
-  test("produces a 64-char hex string", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toMatch(/^[0-9a-f]{64}$/);
+  test("produces a 64-char hex string", async () => {
+    expect(await buildCacheKey("GET", TEST_URL)).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  test("is deterministic", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toBe(buildCacheKey("GET", TEST_URL));
-  });
-
-  test("different methods produce different keys", () => {
-    expect(buildCacheKey("GET", TEST_URL)).not.toBe(
-      buildCacheKey("POST", TEST_URL),
+  test("is deterministic", async () => {
+    expect(await buildCacheKey("GET", TEST_URL)).toBe(
+      await buildCacheKey("GET", TEST_URL),
     );
   });
 
-  test("different identities produce different keys for the same URL", () => {
+  test("different methods produce different keys", async () => {
+    expect(await buildCacheKey("GET", TEST_URL)).not.toBe(
+      await buildCacheKey("POST", TEST_URL),
+    );
+  });
+
+  test("different identities produce different keys for the same URL", async () => {
     // Switching accounts must route reads/writes through a different
     // namespace so users never see each other's cached data.
     setAuthToken("alice_access", 3600, "alice_refresh");
-    const aliceKey = buildCacheKey("GET", TEST_URL);
+    const aliceKey = await buildCacheKey("GET", TEST_URL);
     setAuthToken("bob_access", 3600, "bob_refresh");
-    const bobKey = buildCacheKey("GET", TEST_URL);
+    const bobKey = await buildCacheKey("GET", TEST_URL);
     expect(aliceKey).not.toBe(bobKey);
   });
 });
