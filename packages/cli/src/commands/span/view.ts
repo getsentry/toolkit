@@ -153,7 +153,37 @@ function tryAutoSplitSpanArg(arg: string): SpanViewArgs | null {
   return { kind: "resolved", traceTarget, rawSpanIds: [possibleSpanId] };
 }
 
-export function parsePositionalArgs(args: string[]): SpanViewArgs {
+/** Splits a string on any run of whitespace (spaces, tabs, newlines). */
+const WHITESPACE_SPLIT_RE = /\s+/;
+
+/**
+ * Split positional args on whitespace and drop empty tokens.
+ *
+ * AI agents and scripts frequently pass the whole positional list as a
+ * single quoted argument — e.g. `"org/project/<trace-id> <span-id>"` or
+ * `"<trace-id>/<span-id>\n<span-id>"`. The shell never splits those, so
+ * without this normalization the span IDs are invisible to the parser and
+ * the command fails with "Span ID is required" (CLI-1BD). Trace IDs, span
+ * IDs, and org/project slugs never contain whitespace, so splitting is safe.
+ */
+function splitWhitespaceArgs(args: string[]): string[] {
+  return args
+    .flatMap((arg) => arg.split(WHITESPACE_SPLIT_RE))
+    .filter((token) => token.length > 0);
+}
+
+export function parsePositionalArgs(rawArgs: string[]): SpanViewArgs {
+  const args = splitWhitespaceArgs(rawArgs);
+  const wasSplit =
+    args.length !== rawArgs.length ||
+    args.some((token, i) => token !== rawArgs[i]);
+  if (wasSplit && args.length > 0) {
+    log.warn(
+      `Split whitespace-separated arguments into: ${args.join(" ")}. ` +
+        `Pass each ID as a separate argument: ${USAGE_HINT}`,
+    );
+  }
+
   if (args.length === 0) {
     throw new ContextError("Trace ID and span ID", USAGE_HINT, []);
   }
@@ -173,6 +203,26 @@ export function parsePositionalArgs(args: string[]): SpanViewArgs {
     const resolved = tryAutoSplitSpanArg(first);
     if (resolved) {
       return resolved;
+    }
+  }
+
+  // `<trace-target>/<span-id> <span-id>...` — the first token carries the
+  // first span ID and the remaining tokens are additional span IDs (e.g. a
+  // newline-separated list pasted after the slash form).
+  if (args.length > 1) {
+    let resolved: SpanViewArgs | null = null;
+    try {
+      resolved = tryAutoSplitSpanArg(first);
+    } catch {
+      // Not a valid `<trace-target>/<span-id>` token; keep the standard
+      // `<trace-target> <span-id>...` interpretation below.
+      resolved = null;
+    }
+    if (resolved) {
+      return {
+        ...resolved,
+        rawSpanIds: [...resolved.rawSpanIds, ...args.slice(1)],
+      };
     }
   }
 
