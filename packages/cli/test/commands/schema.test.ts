@@ -119,6 +119,21 @@ describe("resolveResourceQuery", () => {
     }
   });
 
+  test.each([
+    { query: "[i]ssues", resources: ["issues"] },
+    { query: "{issues,projects}", resources: ["issues", "projects"] },
+  ])("keeps $query scoped to matching resources", ({ query, resources }) => {
+    const result = resolveResourceQuery(query);
+    expect(result.kind).toBe("endpoints");
+    if (result.kind === "endpoints") {
+      expect(
+        [
+          ...new Set(result.endpoints.map((endpoint) => endpoint.resource)),
+        ].sort(),
+      ).toEqual(resources);
+    }
+  });
+
   test("glob pattern matching nothing throws ResolutionError", () => {
     expect(() => resolveResourceQuery("zzzz*")).toThrow(ResolutionError);
   });

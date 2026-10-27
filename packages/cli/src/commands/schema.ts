@@ -31,7 +31,7 @@ import {
 import { CommandOutput } from "../lib/formatters/output.js";
 import { fuzzyMatch } from "../lib/fuzzy.js";
 import { getCommandApiReferences, type RouteMap } from "../lib/introspect.js";
-import { filterByName } from "../lib/list-filter.js";
+import { filterByName, isGlobFilter } from "../lib/list-filter.js";
 
 // ---------------------------------------------------------------------------
 // Output data types
@@ -393,10 +393,7 @@ export function resolveResourceQuery(
   }
 
   // Globs remain an explicit resource filter, separate from concept discovery.
-  if (
-    !(operation || query.includes(" ")) &&
-    (resource.includes("*") || resource.includes("?"))
-  ) {
+  if (!(operation || query.includes(" ")) && isGlobFilter(resource)) {
     return resolveGlobQuery(resource);
   }
 
