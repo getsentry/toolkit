@@ -193,7 +193,7 @@ overrides:
   picomatch@2.3.1: 2.3.2
   seroval: ^1.5.4
   sharp: ^0.35.5
-  undici: ^7.24.4
+  undici: ^7.30.1
 
 packageExtensionsChecksum: sha256-PIoL2jn0sFpFHgcMKW97dNeqBXVNxH6qFIzsWIBFOMY=
 
@@ -763,8 +763,8 @@ importers:
         specifier: 'catalog:'
         version: 4.3.3
       undici:
-        specifier: ^7.24.4
-        version: 7.24.4
+        specifier: ^7.30.1
+        version: 7.30.1
       urlpattern-polyfill:
         specifier: ^10.1.0
         version: 10.1.0
@@ -9009,8 +9009,8 @@ packages:
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
-  undici@7.24.4:
-    resolution: {integrity: sha512-BM/JzwwaRXxrLdElV2Uo6cTLEjhSb3WXboncJamZ15NgUURmvlXvxa6xkwIOILIjPNo9i8ku136ZvWV0Uly8+w==}
+  undici@7.30.1:
+    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
     engines: {node: '>=20.18.1'}
 
   unenv@2.0.0-rc.21:
@@ -15589,7 +15589,7 @@ snapshots:
       saxes: 6.0.0
       symbol-tree: 3.2.4
       tough-cookie: 6.0.2
-      undici: 7.24.4
+      undici: 7.30.1
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -16389,7 +16389,7 @@ snapshots:
       glob-to-regexp: 0.4.1
       sharp: 0.35.5(@types/node@24.13.5)
       stoppable: 1.1.0
-      undici: 7.24.4
+      undici: 7.30.1
       workerd: 1.20251011.0
       ws: 8.18.0
       youch: 4.1.0-beta.10
@@ -16403,7 +16403,7 @@ snapshots:
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.35.5(@types/node@22.20.1)
-      undici: 7.24.4
+      undici: 7.30.1
       workerd: 1.20261019.1
       ws: 8.21.0
       youch: 4.1.0-beta.10
@@ -16416,7 +16416,7 @@ snapshots:
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.35.5(@types/node@24.13.5)
-      undici: 7.24.4
+      undici: 7.30.1
       workerd: 1.20261019.1
       ws: 8.21.0
       youch: 4.1.0-beta.10
@@ -18218,7 +18218,7 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici@7.24.4: {}
+  undici@7.30.1: {}
 
   unenv@2.0.0-rc.21:
     dependencies:
@@ -18253,7 +18253,7 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
       ohash: 2.0.11
-      undici: 7.24.4
+      undici: 7.30.1
 
   unist-util-find-after@5.0.0:
     dependencies:
