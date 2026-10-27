@@ -46,7 +46,7 @@ catalog:
   "@ai-sdk/openai": ^3.0.23
   "@ai-sdk/react": ^3.0.232
   "@cloudflare/vite-plugin": ^1.31.0
-  "@cloudflare/vitest-pool-workers": 0.14.1
+  "@cloudflare/vitest-plugin": 1.4.6
   "@cloudflare/workers-oauth-provider": ^0.10.3
   "@cloudflare/workers-types": ^4.20260405.1
   "@modelcontextprotocol/sdk": 1.32.0
@@ -78,7 +78,8 @@ catalog:
   hono: ^4.13.11
   lint-staged: ^15.5.2
   lucide-react: ^0.503.0
-  miniflare: 4.20260401.0
+  # Keep Dynamic Worker tests on the same Miniflare/workerd runtime as Wrangler.
+  miniflare: 5.20261019.1-beta
   msw: ^2.10.2
   open: ^10.1.2
   oxfmt: 0.72.0
