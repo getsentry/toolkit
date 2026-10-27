@@ -128,7 +128,7 @@ export default defineTool({
       .enum(SEARCH_ISSUES_PERIOD_VALUES)
       .default("30d")
       .describe(
-        "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 24h for very recent issues or 90d for broader historical searches.",
+        "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 1h or 24h for very recent issues or 90d for broader historical searches.",
       ),
     includeExplanation: z
       .boolean()

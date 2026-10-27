@@ -252,6 +252,26 @@ describe("buildServer", () => {
     });
   });
 
+  it.each(["v1", "v2"] as const)(
+    "explains how to recover a missing organizationSlug on SDK %s",
+    async (sdkVersion) => {
+      const server =
+        sdkVersion === "v2"
+          ? buildServer({ context: baseContext, sdkVersion })
+          : buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_issues", {
+        query: "is:unresolved",
+        period: "1h",
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      const text = getTextContent(result);
+      expect(text).toContain("Required. Call `find_organizations()`");
+      expect(text).not.toContain("period");
+    },
+  );
+
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {
       const server = buildServer({

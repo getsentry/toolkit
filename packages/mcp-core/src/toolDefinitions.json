@@ -5213,7 +5213,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^\\d+[hdw]$",
+              "pattern": "^\\d+[mhdw]$",
               "description": "Relative time range. Defaults to `24h` when `start` and `end` are omitted."
             },
             {
@@ -5321,12 +5321,12 @@
           "default": "7d",
           "description": "Profiling time window (default: '7d'). Use '1h' for very recent profiling data.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "compareAgainstPeriod": {
           "description": "Compare against this baseline profiling time window. Enables regression detection.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "focusOnUserCode": {
           "default": true,
@@ -5761,7 +5761,7 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
+          "pattern": "^\\d+[mhdw]$",
           "description": "Relative time range for recent checks. Defaults to `24h` when `start` and `end` are omitted."
         },
         "start": {
@@ -6198,7 +6198,7 @@
           "default": "30d",
           "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "start": {
           "description": "Explicit start time for the search window.",
@@ -6421,7 +6421,7 @@
           "default": "30d",
           "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "start": {
           "description": "Explicit start time for the search window.",
@@ -6796,8 +6796,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -6898,8 +6898,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -6970,8 +6970,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "projectSlug": {
           "default": null,
@@ -7064,9 +7064,9 @@
         },
         "period": {
           "default": "30d",
-          "description": "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 24h for very recent issues or 90d for broader historical searches.",
+          "description": "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 1h or 24h for very recent issues or 90d for broader historical searches.",
           "type": "string",
-          "enum": ["24h", "7d", "14d", "30d", "90d"]
+          "enum": ["1h", "24h", "7d", "14d", "30d", "90d"]
         },
         "includeExplanation": {
           "default": false,
@@ -7126,8 +7126,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7206,8 +7206,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7286,8 +7286,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7369,8 +7369,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7533,8 +7533,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,

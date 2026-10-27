@@ -12,7 +12,14 @@ import { validateResourceId, validateSlug } from "./utils/slug-validation";
 // Sentry slug lookups can be exact and case-sensitive on legacy instances.
 // Preserve caller casing for resource slugs; only trim and validate shape.
 export const ParamOrganizationSlug = z
-  .string()
+  .string({
+    // The MCP SDK rejects a missing slug before the handler runs, so this
+    // message is the only recovery hint the caller gets.
+    error: (issue) =>
+      issue.input == null
+        ? "Required. Call `find_organizations()` to list your organizations, then retry with `organizationSlug` set to one of their slugs."
+        : undefined,
+  })
   .trim()
   .superRefine(validateSlug)
   .describe(
@@ -142,11 +149,11 @@ export const ParamPeriod = z
   .string()
   .trim()
   .regex(
-    /^\d+[hdw]$/,
-    "Period must be a relative time window like `24h`, `7d`, `14d`, `30d`, or `90d`.",
+    /^\d+[mhdw]$/,
+    "Period must be a relative time window like `30m` (minutes), `1h`, `24h`, `7d`, or `90d`.",
   )
   .describe(
-    "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window.",
+    "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window.",
   );
 
 /**
