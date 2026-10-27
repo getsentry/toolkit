@@ -32,6 +32,25 @@ the page cap, receives warnings, and turns failures into its own errors. The
 CLI's `paginate` and `fetchAllPages` in
 `packages/cli/src/lib/api/infrastructure.ts` are thin wrappers over it.
 
+## Response cache
+
+`response-cache` holds the cache policy for Sentry API GET responses.
+`classifyUrl` puts a URL in a fallback TTL tier for responses without HTTP
+caching headers: `volatile` (60 seconds) for issues, project event details,
+full traces, and log and span queries; `no-cache` for autofix and root-cause
+polling; and `stable` (5 minutes) for everything else. No tier keeps a
+response longer than 5 minutes. `buildCacheKey` derives a key from the
+requesting identity, the method, and the full URL with sorted query params,
+as a WebCrypto HMAC-SHA256 that matches the CLI's earlier `node:crypto` keys.
+`computeInvalidationPrefixes` lists the URL prefixes a successful mutation
+makes stale.
+
+The module has no storage. The host supplies an identity that is a stable
+hash of the login (never a raw token), applies server caching headers ahead
+of the tiers, stores entries, and deletes only the requesting identity's
+entries under each invalidation prefix. The CLI's disk cache in
+`packages/cli/src/lib/response-cache.ts` uses it.
+
 ## Resource identity
 
 The `resource-identity` types describe the identifiers shared by organization,

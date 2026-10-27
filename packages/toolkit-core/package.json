@@ -55,6 +55,10 @@
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"
     },
+    "./response-cache": {
+      "types": "./src/response-cache/index.ts",
+      "default": "./src/response-cache/index.ts"
+    },
     "./search-query": {
       "types": "./src/search-query.ts",
       "default": "./src/search-query.ts"
@@ -77,6 +81,7 @@
     "@sentry/search-syntax": "catalog:"
   },
   "devDependencies": {
+    "fast-check": "^4.8.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

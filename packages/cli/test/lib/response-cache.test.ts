@@ -15,7 +15,6 @@ import {
   disableResponseCache,
   getCachedResponse,
   invalidateCachedResponsesMatching,
-  normalizeUrl,
   resetCacheState,
   storeCachedResponse,
 } from "../../src/lib/response-cache.js";
@@ -337,62 +336,18 @@ describe("cache bypass", () => {
 });
 
 // ---------------------------------------------------------------------------
-// normalizeUrl
-// ---------------------------------------------------------------------------
-
-describe("normalizeUrl", () => {
-  test("sorts query params alphabetically", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.io/api/0/issues/?b=2&a=1",
-    );
-    expect(result).toBe("GET|https://sentry.io/api/0/issues/?a=1&b=2");
-  });
-
-  test("uppercases the method", () => {
-    const result = normalizeUrl("get", "https://sentry.io/api/0/issues/");
-    expect(result).toMatch(/^GET\|/);
-  });
-
-  test("throws on invalid URLs", () => {
-    expect(() => normalizeUrl("GET", "not-a-valid-url")).toThrow();
-  });
-
-  test("handles self-hosted URLs with unusual schemes", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.mycompany.internal/api/0/issues/",
-    );
-    expect(result).toBe("GET|https://sentry.mycompany.internal/api/0/issues/");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildCacheKey
+// buildCacheKey — key derivation is tested in toolkit-core; this covers the
+// CLI wrapper's default identity, taken from the active login
 // ---------------------------------------------------------------------------
 
 describe("buildCacheKey", () => {
-  test("produces a 64-char hex string", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test("is deterministic", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toBe(buildCacheKey("GET", TEST_URL));
-  });
-
-  test("different methods produce different keys", () => {
-    expect(buildCacheKey("GET", TEST_URL)).not.toBe(
-      buildCacheKey("POST", TEST_URL),
-    );
-  });
-
-  test("different identities produce different keys for the same URL", () => {
+  test("different identities produce different keys for the same URL", async () => {
     // Switching accounts must route reads/writes through a different
     // namespace so users never see each other's cached data.
     setAuthToken("alice_access", 3600, "alice_refresh");
-    const aliceKey = buildCacheKey("GET", TEST_URL);
+    const aliceKey = await buildCacheKey("GET", TEST_URL);
     setAuthToken("bob_access", 3600, "bob_refresh");
-    const bobKey = buildCacheKey("GET", TEST_URL);
+    const bobKey = await buildCacheKey("GET", TEST_URL);
     expect(aliceKey).not.toBe(bobKey);
   });
 });

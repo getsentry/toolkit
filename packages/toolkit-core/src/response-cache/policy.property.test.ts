@@ -7,6 +7,7 @@
 
 import {
   array,
+  asyncProperty,
   constantFrom,
   assert as fcAssert,
   property,
@@ -14,12 +15,13 @@ import {
   tuple,
 } from "fast-check";
 import { describe, expect, test } from "vitest";
-import {
-  buildCacheKey,
-  classifyUrl,
-  normalizeUrl,
-} from "../../src/lib/response-cache.js";
-import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { buildCacheKey, normalizeUrl } from "./keys.js";
+import { classifyUrl } from "./tiers.js";
+
+const DEFAULT_NUM_RUNS = 50;
+
+/** Any non-empty identity; scoping across identities is in keys.test.ts. */
+const IDENTITY = "test-identity";
 
 // ---------------------------------------------------------------------------
 // Arbitraries
@@ -66,52 +68,62 @@ const sentryUrlArb = tuple(
 // ---------------------------------------------------------------------------
 
 describe("property: buildCacheKey", () => {
-  test("produces a 64-char hex string (SHA-256)", () => {
-    fcAssert(
-      property(methodArb, sentryUrlArb, (method, url) => {
-        expect(buildCacheKey(method, url)).toMatch(/^[0-9a-f]{64}$/);
+  test("produces a 64-char hex string (SHA-256)", async () => {
+    await fcAssert(
+      asyncProperty(methodArb, sentryUrlArb, async (method, url) => {
+        expect(await buildCacheKey(method, url, IDENTITY)).toMatch(
+          /^[0-9a-f]{64}$/,
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test("is deterministic — same inputs produce same key", () => {
-    fcAssert(
-      property(methodArb, sentryUrlArb, (method, url) => {
-        expect(buildCacheKey(method, url)).toBe(buildCacheKey(method, url));
+  test("is deterministic — same inputs produce same key", async () => {
+    await fcAssert(
+      asyncProperty(methodArb, sentryUrlArb, async (method, url) => {
+        expect(await buildCacheKey(method, url, IDENTITY)).toBe(
+          await buildCacheKey(method, url, IDENTITY),
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test("different methods produce different keys for same URL", () => {
-    fcAssert(
-      property(sentryUrlArb, (url) => {
-        expect(buildCacheKey("GET", url)).not.toBe(buildCacheKey("POST", url));
+  test("different methods produce different keys for same URL", async () => {
+    await fcAssert(
+      asyncProperty(sentryUrlArb, async (url) => {
+        expect(await buildCacheKey("GET", url, IDENTITY)).not.toBe(
+          await buildCacheKey("POST", url, IDENTITY),
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test("query param order does not affect the key", () => {
-    fcAssert(
-      property(
+  test("query param order does not affect the key", async () => {
+    await fcAssert(
+      asyncProperty(
         constantFrom("https://us.sentry.io", "https://de.sentry.io"),
         pathSegmentArb,
-        (base, path) => {
+        async (base, path) => {
           const url1 = `${base}/api/0/${path}?a=1&b=2&c=3`;
           const url2 = `${base}/api/0/${path}?c=3&a=1&b=2`;
-          expect(buildCacheKey("GET", url1)).toBe(buildCacheKey("GET", url2));
+          expect(await buildCacheKey("GET", url1, IDENTITY)).toBe(
+            await buildCacheKey("GET", url2, IDENTITY),
+          );
         },
       ),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test("method comparison is case-insensitive", () => {
-    fcAssert(
-      property(sentryUrlArb, (url) => {
-        expect(buildCacheKey("get", url)).toBe(buildCacheKey("GET", url));
+  test("method comparison is case-insensitive", async () => {
+    await fcAssert(
+      asyncProperty(sentryUrlArb, async (url) => {
+        expect(await buildCacheKey("get", url, IDENTITY)).toBe(
+          await buildCacheKey("GET", url, IDENTITY),
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );

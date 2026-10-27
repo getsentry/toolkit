@@ -1,9 +1,10 @@
 /**
  * Compute cache-invalidation prefixes for a mutation URL.
  *
- * The HTTP layer calls {@link computeInvalidationPrefixes} after every
- * successful non-GET request and feeds the result into
- * `invalidateCachedResponsesMatching`. Two rules apply:
+ * The host's HTTP layer calls {@link computeInvalidationPrefixes} after
+ * every successful non-GET request and deletes the requesting identity's
+ * cached entries whose URL starts with any returned prefix. Two rules
+ * apply:
  *
  * 1. **Hierarchy walk.** Sweep the URL's own path and every ancestor
  *    up to `/api/0/`. A mutation on
@@ -19,9 +20,8 @@
  *    (2 rules) and only grows when a new cross-tree relationship
  *    appears in the API surface.
  *
- * Prefixes are identity-scoped at the sweep layer
- * (`invalidateCachedResponsesMatching` checks `entry.identity`), so a
- * slightly broader sweep is safe — it can only touch the current
+ * Prefixes are identity-scoped at the sweep layer (the store checks each
+ * entry's identity before deleting it), so a slightly broader sweep is safe — it can only touch the current
  * identity's entries. Query strings on the mutation URL are dropped
  * from the prefix (a prefix sweep on the path naturally catches every
  * query-param variant cached under that path).
@@ -91,11 +91,10 @@ const CROSS_ENDPOINT_RULES: CrossEndpointRule[] = [
  *
  * @param fullUrl - Fully-qualified URL of the mutation (absolute,
  *   including base). Query string is ignored.
- * @param apiBaseUrl - The CLI's non-region API base URL (used by rules
+ * @param apiBaseUrl - The host's non-region API base URL (used by rules
  *   that need to clear caches under a different origin — e.g. the
- *   legacy `/issues/{id}/` endpoint that `getIssue()` hits).
- * @returns Array of full-URL prefixes ready to pass to
- *   `invalidateCachedResponsesMatching`. Returns `[]` if the URL is
+ *   legacy `/issues/{id}/` endpoint the CLI's `getIssue()` reads).
+ * @returns Full-URL prefixes to sweep. Returns `[]` if the URL is
  *   not under `/api/0/` (e.g. sourcemap chunk upload to an arbitrary
  *   endpoint) or can't be parsed.
  */
@@ -104,10 +103,10 @@ export function computeInvalidationPrefixes(
   apiBaseUrl: string,
 ): string[] {
   let parsed: URL;
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     parsed = new URL(fullUrl);
   } catch {
+    // Not a URL, so nothing cached under it.
     return [];
   }
 

@@ -11,13 +11,13 @@
 import { setTimeout as sleepMs } from "node:timers/promises";
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node-core/light";
+import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
 import {
   formatAuthHeader,
   normalizeAuthToken,
   trimAuthToken,
 } from "./auth-header.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
-import { computeInvalidationPrefixes } from "./cache-keys.js";
 import {
   DEFAULT_SENTRY_URL,
   getConfiguredSentryUrl,

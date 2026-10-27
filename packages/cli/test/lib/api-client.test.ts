@@ -1884,16 +1884,15 @@ describe("getLogs", () => {
 
     const result = await getLogs("my-org", "my-project", ids);
 
-    // Should have made 2 separate requests
-    expect(capturedUrls).toHaveLength(2);
-
-    // First batch: 100 IDs
-    const url1 = new URL(capturedUrls[0]);
-    expect(url1.searchParams.get("per_page")).toBe(String(API_MAX_PER_PAGE));
-
-    // Second batch: 50 IDs
-    const url2 = new URL(capturedUrls[1]);
-    expect(url2.searchParams.get("per_page")).toBe("50");
+    // One request of 100 IDs and one of 50. The batches run in parallel, so
+    // they can reach fetch in either order.
+    const perPage = capturedUrls.map((url) =>
+      new URL(url).searchParams.get("per_page"),
+    );
+    expect(perPage).toHaveLength(2);
+    expect(perPage).toEqual(
+      expect.arrayContaining([String(API_MAX_PER_PAGE), "50"]),
+    );
 
     // Results from both batches should be flattened
     expect(result).toHaveLength(2);

@@ -14,7 +14,7 @@
  * @module
  */
 
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   mkdir,
   readdir,
@@ -26,6 +26,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  buildCacheKey as buildIdentityCacheKey,
+  classifyUrl,
+  FALLBACK_TTL_MS,
+} from "@sentry/toolkit-core/response-cache";
 import CachePolicy from "http-cache-semantics";
 import pLimit from "p-limit";
 
@@ -39,127 +44,20 @@ import { recordCacheHit, withCacheSpan } from "./telemetry.js";
 const log = logger.withTag("response-cache");
 
 // ---------------------------------------------------------------------------
-// TTL tiers — used as fallback when the server sends no cache headers
+// Cache keys — tiers, keys, and invalidation prefixes live in toolkit-core
 // ---------------------------------------------------------------------------
 
 /**
- * TTL tier classification for URLs.
- *
- * - `stable`: data that changes infrequently (orgs, projects, teams,
- *   organization event details, trace-item details)
- * - `volatile`: data that changes often (issues and their events, project
- *   event details, full traces, log and span queries)
- * - `no-cache`: never cache (polling endpoints like autofix state)
- *
- * No tier treats a response as immutable. Event payloads embed mutable
- * fields (`nextEventID`, user reports, release data), `latest`/`oldest`/
- * `recommended` resolve to different events over time, and traces gain
- * spans as they arrive (getsentry/sentry#128818).
- */
-type TtlTier = "stable" | "volatile" | "no-cache";
-
-/** Fallback TTL durations by tier (milliseconds). `no-cache` uses 0 as a sentinel. */
-const FALLBACK_TTL_MS: Record<TtlTier, number> = {
-  stable: 5 * 60 * 1000, // 5 minutes
-  volatile: 60 * 1000, // 60 seconds
-  "no-cache": 0,
-};
-
-/**
- * URL patterns grouped by TTL tier.
- *
- * Checked in tier priority order (no-cache → volatile).
- * "stable" has no patterns — it is the default fallback when nothing else matches.
- *
- * TODO: Classify by generated operation metadata from `@sentry/api` instead
- * of URL regexes, once it ships per-operation metadata
- * (getsentry/sentry-api-schema#81) and a route-keyed operation map
- * (getsentry/sentry-api-schema#102).
- */
-const URL_TIER_REGEXPS: Readonly<Record<TtlTier, readonly RegExp[]>> = {
-  // Polling endpoints where state changes rapidly
-  "no-cache": [/\/(?:autofix|root-cause)\//],
-  volatile: [
-    // Issue endpoints: lists, detail views, and issue events such as
-    // `/issues/{id}/events/latest/`
-    /\/issues\//,
-    /[?&]dataset=(?:logs|spans)/,
-    /\/trace-logs\//,
-    // Full traces gain spans as they arrive
-    /\/trace\/[0-9a-f]{32}\//,
-    // Project event details embed `nextEventID`/`previousEventID` and user
-    // reports, and reprocessing can change them for the same ID
-    /\/projects\/[^/]+\/[^/]+\/events\/[^/?]+\/?(?:\?|$)/,
-  ],
-  // Default fallback — no patterns needed
-  stable: [],
-};
-
-/** Tier check order — stable is the default and has no patterns to check. */
-const TIER_CHECK_ORDER: readonly TtlTier[] = ["no-cache", "volatile"];
-
-/**
- * Classify a URL into a TTL tier for fallback caching.
- *
- * @param url - Full URL string (with query params)
- * @returns The TTL tier
- * @internal Exported for testing
- */
-export function classifyUrl(url: string): TtlTier {
-  for (const tier of TIER_CHECK_ORDER) {
-    for (const pattern of URL_TIER_REGEXPS[tier]) {
-      if (pattern.test(url)) {
-        return tier;
-      }
-    }
-  }
-  return "stable";
-}
-
-// ---------------------------------------------------------------------------
-// Cache key generation
-// ---------------------------------------------------------------------------
-
-/**
- * Build a deterministic cache key from the active identity + method + URL.
- *
- * Query params are sorted alphabetically so `?a=1&b=2` and `?b=2&a=1`
- * produce the same key. The identity fingerprint scopes entries per
- * bearer token so switching accounts never serves another user's data.
+ * Build the cache key for the active identity + method + URL.
  *
  * @internal Exported for testing
  */
-export function buildCacheKey(
+export async function buildCacheKey(
   method: string,
   url: string,
   identity = getIdentityFingerprint(),
-): string {
-  const normalized = normalizeUrl(method, url);
-  return createHmac("sha256", identity).update(normalized).digest("hex");
-}
-
-/**
- * Normalize method + URL into a stable string for cache key derivation.
- * Sorts query params alphabetically for deterministic key generation.
- *
- * @throws {TypeError} If the URL cannot be parsed
- * @internal Exported for testing
- */
-export function normalizeUrl(method: string, url: string): string {
-  const parsed = new URL(url);
-  const sortedParams = new URLSearchParams(
-    [...parsed.searchParams.entries()].sort(([a], [b]) => {
-      if (a < b) {
-        return -1;
-      }
-      if (a > b) {
-        return 1;
-      }
-      return 0;
-    }),
-  );
-  parsed.search = sortedParams.toString() ? `?${sortedParams.toString()}` : "";
-  return `${method.toUpperCase()}|${parsed.toString()}`;
+): Promise<string> {
+  return await buildIdentityCacheKey(method, url, identity);
 }
 
 // ---------------------------------------------------------------------------
@@ -451,10 +349,10 @@ export async function getCachedResponse(
   let key: string;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url, identity);
+    key = await buildCacheKey(method, url, identity);
   } catch {
-    // Malformed URL — skip cache lookup. The request itself will surface
-    // any real URL error.
+    // Malformed URL or empty identity — skip cache lookup. The request
+    // itself will surface any real URL error.
     return;
   }
 
@@ -570,9 +468,9 @@ export async function storeCachedResponse(
   let key: string;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url, identity);
+    key = await buildCacheKey(method, url, identity);
   } catch {
-    // Malformed URL — skip caching this response
+    // Malformed URL or empty identity — skip caching this response
     return;
   }
 
