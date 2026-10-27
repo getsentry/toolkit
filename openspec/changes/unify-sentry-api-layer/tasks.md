@@ -2,8 +2,8 @@
 
 ## 1. Version alignment
 
-- [ ] 1.1 Add `@sentry/api: 0.400.0` to the pnpm catalog and point `packages/cli` and `packages/mcp-core` at `catalog:`. Verify `pnpm install --frozen-lockfile` succeeds and the lockfile has one `@sentry/api` version.
-- [ ] 1.2 Fix any `mcp-core` breakage from the `0.337.0` → `0.400.0` bump. Verify `pnpm --filter @sentry/mcp-core run tsc` and `pnpm --filter @sentry/mcp-core run test` pass.
+- [x] 1.1 Add `@sentry/api: 0.400.0` to the pnpm catalog and point `packages/cli` and `packages/mcp-core` at `catalog:`. Verify `pnpm install --frozen-lockfile` succeeds and the lockfile has one `@sentry/api` version.
+- [x] 1.2 Fix any `mcp-core` breakage from the `0.337.0` → `0.400.0` bump. Verify `pnpm --filter @sentry/mcp-core run tsc` and `pnpm --filter @sentry/mcp-core run test` pass.
 
 ## 2. CLI cache tier correction
 
