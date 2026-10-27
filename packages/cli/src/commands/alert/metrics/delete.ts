@@ -5,7 +5,6 @@
  */
 
 import type { SentryContext } from "../../../context.js";
-import { METRIC_ALERT_API } from "../../../lib/api/alerts.js";
 import { deleteMetricAlertRule } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -45,7 +44,6 @@ function formatDeleted(r: DeleteResult): string {
 
 export const deleteCommand = buildDeleteCommand({
   docs: {
-    relatedApi: [METRIC_ALERT_API.delete],
     brief: "Delete a metric alert rule",
     fullDescription:
       "Permanently remove a metric alert rule from an organization. " +

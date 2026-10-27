@@ -58,6 +58,9 @@ sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"
 # Search for monitoring-related endpoints
 sentry schema --search monitor
 
+# Browse resources matching a glob
+sentry schema 'monitor*'
+
 # Flat list of every endpoint
 sentry schema --all
 ```

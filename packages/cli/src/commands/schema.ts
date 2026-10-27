@@ -3,17 +3,6 @@
  *
  * Browse and search the Sentry API schema. Shows available resources,
  * operations, and endpoint details from the generated API index.
- *
- * Usage:
- *   sentry schema                      → list all resources
- *   sentry schema --all                → flat list of all endpoints
- *   sentry schema --search <query>     → search endpoints by keyword
- *   sentry schema <concept>            → discover related API endpoints
- *   sentry schema <resource> <op>      → list matching operation candidates
- *   sentry schema alert metrics view  → find APIs used by this CLI command
- *   sentry schema <operation-id>       → show details by exact operation ID
- *   sentry schema "GET /api/0/..."     → show details for one endpoint
- *   sentry schema monitor*             → glob search for resources
  */
 
 import type { SentryContext } from "../context.js";
@@ -42,6 +31,7 @@ import {
 import { CommandOutput } from "../lib/formatters/output.js";
 import { fuzzyMatch } from "../lib/fuzzy.js";
 import { getCommandApiReferences, type RouteMap } from "../lib/introspect.js";
+import { filterByName } from "../lib/list-filter.js";
 
 // ---------------------------------------------------------------------------
 // Output data types
@@ -342,8 +332,13 @@ function resolvePathLookup(
 }
 
 /** Resolve one exact SDK function name or OpenAPI operation ID. */
-function resolveIdentifierLookup(identifier: string): SchemaResult | undefined {
-  const matches = findEndpointsByIdentifier(identifier);
+function resolveIdentifierLookup(
+  identifier: string,
+  method?: string,
+): SchemaResult | undefined {
+  const matches = findEndpointsByIdentifier(identifier).filter(
+    (endpoint) => !method || endpoint.method === method,
+  );
   const [single] = matches;
   if (matches.length === 1 && single) {
     return { kind: "endpoint", endpoint: single };
@@ -358,17 +353,9 @@ const QUERY_WORD_SEPARATOR = /\s+/;
 
 /** Explicit resource globs retain their resource-only behavior. */
 function resolveGlobQuery(resource: string): SchemaResult {
-  // Convert glob pattern to regex: * → .*, ? → ., escape other special chars
-  const escaped = resource
-    .toLowerCase()
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*")
-    .replace(/\?/g, ".");
-  const pattern = new RegExp(`^${escaped}$`);
-  const allResources = getResourceSummaries();
-  const matched = allResources.filter((r) =>
-    pattern.test(r.name.toLowerCase()),
-  );
+  const matched = filterByName(getResourceSummaries(), resource, (entry) => [
+    entry.name,
+  ]);
   if (matched.length === 0) {
     throw new ResolutionError(
       `Pattern "${resource}"`,
@@ -399,7 +386,8 @@ export function resolveResourceQuery(
     return resolvePathLookup(pathQuery, resource, operation);
   }
 
-  const identifierResult = resolveIdentifierLookup(query);
+  const parsed = parseEndpointQuery(query);
+  const identifierResult = resolveIdentifierLookup(parsed.text, parsed.method);
   if (identifierResult) {
     return identifierResult;
   }
@@ -495,6 +483,10 @@ export const schemaCommand = buildCommand({
       {
         description: "Search for monitoring-related endpoints",
         command: "sentry schema --search monitor",
+      },
+      {
+        description: "Browse resources matching a glob",
+        command: "sentry schema 'monitor*'",
       },
       {
         description: "Flat list of every endpoint",

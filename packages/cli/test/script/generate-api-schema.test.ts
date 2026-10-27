@@ -1,10 +1,94 @@
 import { describe, expect, test } from "vitest";
 import {
   extractApiEndpoints,
+  loadSdkApiEndpoints,
   type OpenApiSpec,
 } from "../../script/lib/api-schema.js";
 
 const EVENTS_PATH = "/api/0/organizations/{organization_id_or_slug}/events/";
+
+describe("SDK catalog integration", () => {
+  test("projects SDK identities and metadata to the compatible CLI output", async () => {
+    const operations = [
+      {
+        functionName: "listOrganizationEvents",
+        operationId: "List an Organization's Events",
+        method: "GET",
+        path: EVENTS_PATH,
+        summary: "Query events",
+        description: "Select the dataset to query.",
+        tags: ["Explore"],
+        pathParameters: ["organization_id_or_slug"],
+        queryParameters: [
+          {
+            name: "dataset",
+            required: true,
+            type: "string",
+            enum: ["logs", "spans"],
+          },
+          {
+            name: "field",
+            required: false,
+            type: "array",
+            enum: ["id", "timestamp"],
+          },
+        ],
+        deprecated: false,
+      },
+    ];
+    const endpoints = await loadSdkApiEndpoints(
+      () =>
+        `data:text/javascript,export const operations = ${encodeURIComponent(JSON.stringify(operations))};`,
+    );
+
+    expect(endpoints).toEqual([
+      {
+        fn: "listOrganizationEvents",
+        operationId: "List an Organization's Events",
+        method: "GET",
+        path: EVENTS_PATH,
+        summary: "Query events",
+        description: "Select the dataset to query.",
+        tags: ["Explore"],
+        pathParams: ["organization_id_or_slug"],
+        queryParams: ["dataset", "field"],
+        queryParameters: operations[0]?.queryParameters,
+        resource: "events",
+        deprecated: false,
+      },
+    ]);
+  });
+
+  test("falls back only when the installed SDK does not export a catalog", async () => {
+    const notExported = Object.assign(new Error("No catalog export"), {
+      code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
+    });
+    await expect(
+      loadSdkApiEndpoints(() => {
+        throw notExported;
+      }),
+    ).resolves.toBeUndefined();
+
+    const missingPackage = Object.assign(new Error("SDK package missing"), {
+      code: "ERR_MODULE_NOT_FOUND",
+    });
+    await expect(
+      loadSdkApiEndpoints(() => {
+        throw missingPackage;
+      }),
+    ).rejects.toBe(missingPackage);
+
+    // An exported entry can itself fail to resolve an import. It must not be
+    // mistaken for an old SDK and silently replaced with fetched metadata.
+    const broken =
+      'throw Object.assign(new Error("Broken catalog"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });';
+    await expect(
+      loadSdkApiEndpoints(
+        () => `data:text/javascript,${encodeURIComponent(broken)}`,
+      ),
+    ).rejects.toThrow("Broken catalog");
+  });
+});
 
 /** Reduced public OpenAPI Explore operation; no account or event data. */
 function exploreSpec(datasets = ["errors", "logs", "spans"]): OpenApiSpec {

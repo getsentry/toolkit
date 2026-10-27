@@ -42,6 +42,30 @@ const flagLogs: ApiEndpoint = {
 };
 
 describe("schema discovery", () => {
+  test.each(["expl", "xplor", "exlpore"])(
+    "discovers partial names and typos without changing exact identity: %s",
+    (query) => {
+      const result = searchEndpoints(query, [events, flagLogs]);
+      expect(result.map((endpoint) => endpoint.fn)).toEqual([events.fn]);
+      expect(result[0]?.match?.reasons).toContain("Operation summary");
+      expect(findEndpointsByIdentifier(query, [events, flagLogs])).toEqual([]);
+    },
+  );
+
+  test("literal matches do not acquire unrelated fuzzy candidates", () => {
+    const jobs: ApiEndpoint = {
+      ...flagLogs,
+      fn: "listOrganizationJobs",
+      operationId: "listOrganizationJobs",
+      resource: "jobs",
+      path: "/api/0/organizations/{org}/jobs/",
+      description: "List organization jobs.",
+    };
+    expect(searchEndpoints("logs", [jobs, events, flagLogs])).toEqual(
+      searchEndpoints("logs", [events, flagLogs]),
+    );
+  });
+
   test("finds log capabilities alongside the exact flags resource and explains the selector", () => {
     const result = searchEndpoints("logs", [flagLogs, events]);
     expect(result.map((endpoint) => endpoint.fn)).toEqual([
@@ -150,5 +174,17 @@ describe("schema discovery", () => {
     expect(searchEndpoints(`GET ${events.path}`, [events, flagLogs])).toEqual([
       events,
     ]);
+  });
+
+  test("an exact identifier with a different method cannot become a fuzzy discovery", () => {
+    const alternate: ApiEndpoint = {
+      ...events,
+      fn: "listOrganizationEventsAsync",
+      operationId: "listOrganizationEventsAsync",
+      method: "POST",
+    };
+    expect(searchEndpoints(`POST ${events.fn}`, [events, alternate])).toEqual(
+      [],
+    );
   });
 });

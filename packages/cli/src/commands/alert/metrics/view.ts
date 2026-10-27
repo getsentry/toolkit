@@ -3,7 +3,6 @@ import {
   getIssueAlertWorkflowDocument,
   getMetricAlertRule,
 } from "../../../lib/api-client.js";
-import { METRIC_ALERT_API } from "../../../lib/api/alerts.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
@@ -29,7 +28,6 @@ type ViewFlags = {
 
 export const viewCommand = buildCommand({
   docs: {
-    relatedApi: [METRIC_ALERT_API.get],
     brief: "View a metric alert rule",
     fullDescription:
       "View a metric alert rule by ID or name, including detection settings, " +

@@ -1,8 +1,8 @@
 Search the bundled API schema using product concepts or CLI command paths.
 Discovery includes summaries, paths, tags, and query parameter values: `logs`
 can find Explore's `dataset=logs` as well as feature-flag audit logs. Results
-explain their matches and show related CLI commands when a relationship is
-declared. A related API does not necessarily reproduce the command's filters,
+explain their matches and show related CLI commands discovered from command
+implementations. A related API does not necessarily reproduce the command's filters,
 pagination, or transformations.
 
 Use an exact operation ID, SDK function name, or HTTP method and path for a

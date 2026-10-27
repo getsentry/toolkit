@@ -10,6 +10,7 @@
  * for introspection and documentation generation.
  */
 
+import generatedCommandApi from "../generated/command-api.json";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   COMPLETION_TARGETS,
@@ -18,11 +19,7 @@ import {
   ORG_PROJECT_TARGET,
   ORG_TARGET,
 } from "./completion-target.js";
-import type {
-  ApiEndpoint,
-  ApiReference,
-  CommandApiReference,
-} from "./api-schema.js";
+import type { ApiReference, CommandApiReference } from "./api-schema.js";
 import {
   extractSchemaFields,
   type SchemaFieldInfo,
@@ -76,8 +73,6 @@ export type Command = {
   __examples?: readonly CommandExample[];
   /** Set by `buildCommand({ destructive: true })` and `buildDeleteCommand`. */
   __destructive?: boolean;
-  /** Related API metadata retained by the command builder. */
-  __relatedApi?: readonly ApiReference[];
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -136,7 +131,6 @@ export type CommandInfo = {
   jsonFields?: SchemaFieldInfo[];
   /** Present (and `true`) when the command is destructive or irreversible */
   destructive?: true;
-  relatedApi?: readonly ApiReference[];
 };
 
 /** Extracted metadata for a single flag */
@@ -335,7 +329,6 @@ export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
     ),
     jsonFields: jsonFields?.length ? jsonFields : undefined,
     ...(cmd.__destructive ? { destructive: true as const } : {}),
-    ...(cmd.__relatedApi?.length ? { relatedApi: cmd.__relatedApi } : {}),
   };
 }
 
@@ -498,7 +491,7 @@ const MAX_SUGGESTIONS = 3;
 const COMMAND_PATH_SEPARATOR = /\s+/;
 
 /** Find canonical public paths so hidden aliases cannot expose internal commands. */
-function publicTargetPaths(
+export function publicTargetPaths(
   routeMap: RouteMap,
   prefix: readonly string[] = [],
   paths = new Map<RouteTarget, string[]>(),
@@ -588,6 +581,9 @@ export function resolveCommandPath(
 export function getCommandApiReferences(
   routeMap: RouteMap,
   query: string,
+  apiByCommand: Readonly<
+    Record<string, readonly ApiReference[]>
+  > = generatedCommandApi,
 ): CommandApiReference[] {
   const path = query.trim().split(COMMAND_PATH_SEPARATOR).filter(Boolean);
   const resolved = resolveCommandPath(routeMap, path);
@@ -597,32 +593,9 @@ export function getCommandApiReferences(
   const commands =
     resolved.kind === "command" ? [resolved.info] : resolved.info.commands;
   return commands.flatMap((command) =>
-    (command.relatedApi ?? []).map((reference) => ({
+    (apiByCommand[command.path] ?? []).map((reference) => ({
       ...reference,
       command: command.path,
     })),
   );
-}
-
-/** Reject stale or ambiguous references before generating command documentation. */
-export function validateCommandApiReferences(
-  routeMap: RouteMap,
-  endpoints: readonly Pick<ApiEndpoint, "fn">[],
-): void {
-  const counts = new Map<string, number>();
-  for (const endpoint of endpoints) {
-    counts.set(endpoint.fn, (counts.get(endpoint.fn) ?? 0) + 1);
-  }
-  for (const route of extractAllRoutes(routeMap)) {
-    for (const command of route.commands) {
-      for (const reference of command.relatedApi ?? []) {
-        const count = counts.get(reference.fn) ?? 0;
-        if (!reference.fn || count !== 1) {
-          throw new Error(
-            `${command.path}: related API "${reference.fn}" matches ${count} schema operations; expected exactly one`,
-          );
-        }
-      }
-    }
-  }
 }

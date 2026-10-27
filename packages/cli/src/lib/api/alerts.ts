@@ -29,7 +29,6 @@ import {
   metricAlertDatasetName,
   metricAlertSource,
 } from "../../types/metric-alert.js";
-import type { ApiReference } from "../api-schema.js";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -394,34 +393,8 @@ export async function getIssueAlertRule(
 // (create/update/delete) also target the detectors write API — the flat CLI
 // input is translated into the nested detector body by `buildDetectorBody`.
 
-/** Detector kind managed by the metric alert commands. */
-const METRIC_DETECTOR_TYPE = "metric_issue";
 /** Search query that limits the detectors endpoint to metric alert rules. */
-const METRIC_DETECTOR_QUERY = `type:${METRIC_DETECTOR_TYPE}`;
-
-/** API references shared by metric alert commands; detectors also serve other products. */
-export const METRIC_ALERT_API = {
-  list: {
-    fn: "listOrganizationDetectors",
-    note: `Filters detectors with query=${METRIC_DETECTOR_QUERY}.`,
-  },
-  get: {
-    fn: "getOrganizationDetector",
-    note: `The CLI accepts ${METRIC_DETECTOR_TYPE} detectors and presents them as metric alert rules.`,
-  },
-  create: {
-    fn: "createOrganizationProjectDetector",
-    note: `Creates a ${METRIC_DETECTOR_TYPE} detector from the CLI metric alert configuration.`,
-  },
-  update: {
-    fn: "updateOrganizationDetector",
-    note: "The CLI merges changes into the existing metric alert configuration before updating the detector.",
-  },
-  delete: {
-    fn: "deleteOrganizationDetector",
-    note: `The CLI resolves a ${METRIC_DETECTOR_TYPE} detector before deleting it.`,
-  },
-} satisfies Record<string, ApiReference>;
+const METRIC_DETECTOR_QUERY = "type:metric_issue";
 
 /**
  * List metric alert rules for an organization with cursor-based pagination.
@@ -512,7 +485,7 @@ async function getMetricDetector(
     result,
     `Failed to get metric alert rule '${ruleId}'`,
   );
-  if (data.type !== undefined && data.type !== METRIC_DETECTOR_TYPE) {
+  if (data.type !== undefined && data.type !== "metric_issue") {
     throw new ApiError(
       `Metric alert rule '${ruleId}' not found`,
       404,
@@ -732,7 +705,7 @@ function buildDetectorBody(
     !(triggers && !isDetectorConditionList(triggers));
   const detectorBody: Record<string, unknown> = {
     name: typeof body.name === "string" ? body.name : "",
-    type: METRIC_DETECTOR_TYPE,
+    type: "metric_issue",
     dataSources: [buildDetectorDataSource(body)],
     config: keepStoredConfig
       ? body.detectorConfig

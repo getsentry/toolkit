@@ -60,9 +60,7 @@ import type {
 } from "../src/lib/introspect.js";
 
 const { routes } = await import("../src/app.js");
-const { extractAllRoutes, validateCommandApiReferences } =
-  await import("../src/lib/introspect.js");
-const { getAllEndpoints } = await import("../src/lib/api-schema.js");
+const { extractAllRoutes } = await import("../src/lib/introspect.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
 
 const DOCS_DIR = `${DOCS_CONTENT}/commands`;
@@ -388,7 +386,6 @@ async function readTopLevelFragment(fragmentName: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 const routeMap = routes as unknown as RouteMap;
-validateCommandApiReferences(routeMap, getAllEndpoints());
 const routeInfos = extractAllRoutes(routeMap).filter(
   (r) => !SKIP_ROUTES.has(r.name),
 );

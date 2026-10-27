@@ -37,7 +37,6 @@ import {
   numberParser as stricliNumberParser,
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
-import type { ApiReference } from "./api-schema.js";
 import { appendCacheHint } from "./cache-hint.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
@@ -108,8 +107,6 @@ type StricliBuilderArgs<CONTEXT extends CommandContext> =
 export type CommandDocumentation =
   StricliBuilderArgs<CommandContext>["docs"] & {
     readonly examples?: readonly CommandExample[];
-    /** Related API operations, with context rather than equivalence claims. */
-    readonly relatedApi?: readonly ApiReference[];
   };
 
 /**
@@ -928,10 +925,6 @@ export function buildCommand<
   }
   if (builderArgs.destructive) {
     (cmd as unknown as Record<string, unknown>).__destructive = true;
-  }
-  if (builderArgs.docs.relatedApi?.length) {
-    (cmd as unknown as Record<string, unknown>).__relatedApi =
-      builderArgs.docs.relatedApi;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

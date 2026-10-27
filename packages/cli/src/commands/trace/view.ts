@@ -5,7 +5,6 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { TRACE_DETAILS_API } from "../../lib/api/traces.js";
 import {
   attributesToDict,
   fetchMultiSpanDetails,
@@ -433,7 +432,6 @@ function fetchTraceSpanDetails(
 
 export const viewCommand = buildCommand({
   docs: {
-    relatedApi: [TRACE_DETAILS_API],
     brief: "View details of a specific trace",
     fullDescription:
       "View detailed information about a distributed trace by its ID.\n\n" +

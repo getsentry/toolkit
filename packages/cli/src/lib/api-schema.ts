@@ -7,6 +7,7 @@
  */
 
 import endpoints from "../generated/api-schema.json";
+import { fuzzyMatch } from "./fuzzy.js";
 
 /** Searchable query parameter metadata from the pinned OpenAPI specification. */
 export type ApiQueryParameter = {
@@ -206,31 +207,13 @@ const CAMEL_CASE_BOUNDARY = /([a-z0-9])([A-Z])/g;
 const WORD_SEPARATOR = /[^a-z0-9]+/;
 const PARAM_PLACEHOLDER = /\{[^}]+\}/g;
 
-/** Conservative English plurals for discovery only, never endpoint identity. */
-function normalizeWord(word: string): string {
-  if (word.length > 4 && word.endsWith("ies")) {
-    return `${word.slice(0, -3)}y`;
-  }
-  if (
-    word.length > 3 &&
-    word.endsWith("s") &&
-    !word.endsWith("ss") &&
-    !word.endsWith("us") &&
-    !word.endsWith("is")
-  ) {
-    return word.slice(0, -1);
-  }
-  return word;
-}
-
 function words(text: string): Set<string> {
   return new Set(
     text
       .replace(CAMEL_CASE_BOUNDARY, "$1 $2")
       .toLowerCase()
       .split(WORD_SEPARATOR)
-      .filter(Boolean)
-      .map(normalizeWord),
+      .filter(Boolean),
   );
 }
 
@@ -285,6 +268,7 @@ function matchEndpoint(
   endpoint: ApiEndpoint,
   tokens: Set<string>,
   references: readonly CommandApiReference[],
+  allowTypos: boolean,
 ): { endpoint: SchemaEndpoint; score: number } | undefined {
   const relatedCommands = references
     .filter((ref) => ref.fn === endpoint.fn)
@@ -292,8 +276,13 @@ function matchEndpoint(
   const scores = new Map<string, number>();
   const reasons: string[] = [];
   for (const field of searchFields(endpoint)) {
-    const fieldWords = words(field.text);
-    const matches = [...tokens].filter((token) => fieldWords.has(token));
+    const text = field.text.toLowerCase();
+    const fieldWords = allowTypos ? [...words(field.text)] : [];
+    const matches = [...tokens].filter((token) =>
+      allowTypos
+        ? fuzzyMatch(token, fieldWords, { mode: "search" }).length > 0
+        : text.includes(token),
+    );
     if (matches.length === 0) {
       continue;
     }
@@ -316,7 +305,9 @@ function matchEndpoint(
 
 /**
  * Discover API capabilities, retaining why each candidate matched. All query
- * words must match, unless the CLI explicitly declares a related operation.
+ * words must match, unless a command uses a related operation.
+ * Literal partial matches take precedence; typos are considered only when
+ * no literal or command-related candidates exist.
  * References must be scoped to this query by getCommandApiReferences; they
  * establish a semantic match even when the API uses different vocabulary.
  * Exact identifiers and paths keep their existing, unannotated JSON shape.
@@ -330,24 +321,29 @@ export function searchEndpoints(
   if (parsed.path) {
     return findEndpointsByPath(parsed.path, parsed.method, catalog);
   }
-  const exact = findEndpointsByIdentifier(parsed.text, catalog).filter(
-    (endpoint) => !parsed.method || endpoint.method === parsed.method,
-  );
+  const exact = findEndpointsByIdentifier(parsed.text, catalog);
   if (exact.length > 0) {
-    return exact;
+    return exact.filter(
+      (endpoint) => !parsed.method || endpoint.method === parsed.method,
+    );
   }
   const tokens = words(parsed.text);
   if (tokens.size === 0) {
     return [];
   }
   const matches: { endpoint: SchemaEndpoint; score: number }[] = [];
-  for (const endpoint of catalog) {
-    if (parsed.method && endpoint.method !== parsed.method) {
-      continue;
+  for (const allowTypos of [false, true]) {
+    for (const endpoint of catalog) {
+      if (parsed.method && endpoint.method !== parsed.method) {
+        continue;
+      }
+      const match = matchEndpoint(endpoint, tokens, references, allowTypos);
+      if (match) {
+        matches.push(match);
+      }
     }
-    const match = matchEndpoint(endpoint, tokens, references);
-    if (match) {
-      matches.push(match);
+    if (matches.length > 0) {
+      break;
     }
   }
   // A stable tie-breaker prevents catalog insertion order from choosing an API.

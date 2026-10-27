@@ -39,6 +39,8 @@ describe("sentry schema path lookup", () => {
   test.each([
     ["listOrganizationIssues"],
     ["issues", "listOrganizationIssues"],
+    ["GET", "listOrganizationIssues"],
+    ["GET listOrganizationIssues"],
     [SKILL_QUERY],
     ["GET", ORG_ISSUES],
   ])("exact lookup preserves the endpoint object for %j", async (...args) => {
@@ -50,6 +52,32 @@ describe("sentry schema path lookup", () => {
         (endpoint) => endpoint.fn === "listOrganizationIssues",
       ),
     );
+  });
+
+  test("--search keeps exact HTTP-qualified identifiers in an array and rejects a different method", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await schemaCommand.loader();
+    await func.call(
+      context,
+      { json: true, all: false, search: "GET" },
+      "listOrganizationEvents",
+    );
+    expect(JSON.parse(stdoutOf(stdoutWrite))).toEqual([
+      getAllEndpoints().find(
+        (endpoint) => endpoint.fn === "listOrganizationEvents",
+      ),
+    ]);
+
+    const incompatible = createMockContext();
+    await expect(
+      func.call(
+        incompatible.context,
+        { json: true, all: false },
+        "POST",
+        "listOrganizationEvents",
+      ),
+    ).rejects.toBeInstanceOf(ResolutionError);
+    expect(stdoutOf(incompatible.stdoutWrite)).toBe("");
   });
 
   test("--all remains an unannotated flat array", async () => {

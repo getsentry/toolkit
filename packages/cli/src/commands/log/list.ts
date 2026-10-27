@@ -9,7 +9,6 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node-core/light";
 import type { SentryContext } from "../../context.js";
-import { LOGS_API } from "../../lib/api/logs.js";
 import {
   type LogSortDirection,
   listLogs,
@@ -702,7 +701,6 @@ export const listCommand = buildListCommand(
   "log",
   {
     docs: {
-      relatedApi: [LOGS_API],
       brief: "List logs from a project",
       fullDescription:
         "List and stream logs from Sentry projects.\n\n" +

@@ -1,4 +1,4 @@
-/** Extract the bundled discovery index from a dereferenced OpenAPI document. */
+/** Project SDK operation metadata into the CLI's bundled discovery index. */
 
 import type {
   ApiEndpoint,
@@ -8,7 +8,87 @@ import type {
 const HTTP_METHODS = ["get", "post", "put", "delete", "patch"] as const;
 const PATH_PARAM_PATTERN = /\{(\w+)\}/g;
 
-/** Only the OpenAPI fields used by the discovery index. */
+/**
+ * Structural subset of the forthcoming @sentry/api/operations contract. Import
+ * its public type directly once the pinned SDK includes that entry point.
+ */
+type SdkOperation = Pick<
+  ApiEndpoint,
+  "method" | "path" | "operationId" | "summary" | "description" | "deprecated"
+> & {
+  /** Actual exported SDK function name after normalization. */
+  functionName: string;
+  /** Categories assigned by the OpenAPI specification. */
+  tags?: readonly string[];
+  /** Parameter names present in the canonical path template. */
+  pathParameters: readonly string[];
+  /** Resolved query metadata; inherited parameters are already merged. */
+  queryParameters: readonly (Omit<ApiQueryParameter, "enum"> & {
+    /** Allowed scalar values, or allowed item values for an array parameter. */
+    enum?: readonly (string | number | boolean | null)[];
+  })[];
+};
+
+/** Keep CLI grouping, output names and legacy deprecation detection local. */
+export function projectApiOperations(
+  operations: readonly SdkOperation[],
+): ApiEndpoint[] {
+  return operations
+    .map((operation) => ({
+      fn: operation.functionName,
+      method: operation.method,
+      path: operation.path,
+      summary: operation.summary,
+      description: operation.description,
+      tags: operation.tags ? [...operation.tags] : undefined,
+      pathParams: [...operation.pathParameters],
+      queryParams: operation.queryParameters.map((parameter) => parameter.name),
+      queryParameters: operation.queryParameters.map((parameter) => ({
+        ...parameter,
+        enum: parameter.enum ? [...parameter.enum] : undefined,
+      })),
+      deprecated:
+        operation.deprecated ||
+        operation.functionName.startsWith("deprecated") ||
+        operation.operationId.toLowerCase().includes("deprecated"),
+      resource: deriveResource(operation.path),
+      operationId: operation.operationId,
+    }))
+    .sort((a, b) => {
+      const resourceCmp = a.resource.localeCompare(b.resource);
+      return resourceCmp || a.operationId.localeCompare(b.operationId);
+    });
+}
+
+/** An older SDK may lack the entry point; a broken exported catalog must fail. */
+export async function loadSdkApiEndpoints(
+  resolveModule: (specifier: string) => string = (specifier) =>
+    import.meta.resolve(specifier),
+): Promise<ApiEndpoint[] | undefined> {
+  let entry: string;
+  try {
+    entry = resolveModule("@sentry/api/operations");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
+    ) {
+      return;
+    }
+    throw error;
+  }
+
+  const { operations } = (await import(entry)) as {
+    operations: readonly SdkOperation[];
+  };
+  return projectApiOperations(operations);
+}
+
+/**
+ * OpenAPI fields used by SDK versions without /operations. Remove this
+ * compatibility extraction when the pinned dependency includes the catalog.
+ */
 export type OpenApiSpec = {
   paths: Record<string, OpenApiPathItem>;
 };
@@ -96,7 +176,7 @@ export function extractApiEndpoints(
   spec: OpenApiSpec,
   sdkMap: ReadonlyMap<string, string>,
 ): ApiEndpoint[] {
-  const endpoints: ApiEndpoint[] = [];
+  const operations: SdkOperation[] = [];
 
   for (const [urlPath, pathItem] of Object.entries(spec.paths)) {
     for (const method of HTTP_METHODS) {
@@ -109,31 +189,22 @@ export function extractApiEndpoints(
       const fn = sdkMap.get(`${methodUpper}:${urlPath}`) ?? "";
       const queryParameters = extractQueryParameters(pathItem, operation);
 
-      endpoints.push({
-        fn,
+      operations.push({
+        functionName: fn,
         method: methodUpper,
         path: urlPath,
         summary: operation.summary?.trim(),
         description: (operation.description ?? "").trim(),
         tags: operation.tags,
-        pathParams: [...urlPath.matchAll(PATH_PARAM_PATTERN)].map((match) =>
+        pathParameters: [...urlPath.matchAll(PATH_PARAM_PATTERN)].map((match) =>
           match[0].slice(1, -1),
         ),
-        queryParams: queryParameters.map((parameter) => parameter.name),
         queryParameters,
-        deprecated:
-          operation.deprecated === true ||
-          fn.startsWith("deprecated") ||
-          (operation.operationId ?? "").toLowerCase().includes("deprecated"),
-        resource: deriveResource(urlPath),
+        deprecated: operation.deprecated === true,
         operationId: operation.operationId ?? "",
       });
     }
   }
 
-  // Keep stable ordering and the existing resource/operation ID contract.
-  return endpoints.sort((a, b) => {
-    const resourceCmp = a.resource.localeCompare(b.resource);
-    return resourceCmp || a.operationId.localeCompare(b.operationId);
-  });
+  return projectApiOperations(operations);
 }

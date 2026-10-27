@@ -60,7 +60,7 @@ describe("resolveResourceQuery", () => {
   test("no-match resource throws ResolutionError instead of listing everything", () => {
     let thrown: unknown;
     try {
-      resolveResourceQuery("committers");
+      resolveResourceQuery("zzzznomatch");
     } catch (error) {
       thrown = error;
     }
@@ -68,26 +68,20 @@ describe("resolveResourceQuery", () => {
     // Must not be the full-list OutputError dump this replaced.
     expect(thrown).not.toBeInstanceOf(OutputError);
     const err = thrown as ResolutionError;
-    expect(err.message).toContain('Resource "committers"');
+    expect(err.message).toContain('Resource "zzzznomatch"');
     expect(err.message).toContain("does not exist");
     // Non-zero exit so scripts can branch on it.
     expect(err.exitCode).toBeGreaterThan(0);
   });
 
-  test("suggests a close resource name for a typo", () => {
-    let thrown: unknown;
-    try {
-      resolveResourceQuery("committers");
-    } catch (error) {
-      thrown = error;
+  test("a resource typo returns candidates rather than selecting an endpoint", () => {
+    const result = resolveResourceQuery("committers");
+    expect(result.kind).toBe("endpoints");
+    if (result.kind === "endpoints") {
+      expect(
+        result.endpoints.some((endpoint) => endpoint.resource === "commits"),
+      ).toBe(true);
     }
-    const err = thrown as ResolutionError;
-    // "committers" is one edit from the real "commits" resource.
-    expect(err.message).toContain("commits");
-  });
-
-  test("garbage term also throws ResolutionError", () => {
-    expect(() => resolveResourceQuery("zzzznomatch")).toThrow(ResolutionError);
   });
 
   test("known resource with unknown operation shows that resource's endpoints", () => {

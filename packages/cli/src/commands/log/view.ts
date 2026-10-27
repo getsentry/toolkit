@@ -5,9 +5,10 @@
  */
 
 import { isatty } from "node:tty";
+
 import pLimit from "p-limit";
+
 import type { SentryContext } from "../../context.js";
-import { LOGS_API } from "../../lib/api/logs.js";
 import { getLogItemDetail, getLogs } from "../../lib/api-client.js";
 import {
   detectSwappedViewArgs,
@@ -559,7 +560,6 @@ function formatLogViewHuman(data: LogViewData): string {
 
 export const viewCommand = buildCommand({
   docs: {
-    relatedApi: [LOGS_API],
     brief: "View details of one or more log entries",
     fullDescription:
       "View detailed information about Sentry log entries by their IDs.\n\n" +

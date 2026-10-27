@@ -1,16 +1,11 @@
 #!/usr/bin/env tsx
 /**
- * Generate API Schema Index from Sentry's OpenAPI Specification
+ * Generate API Schema Index from the installed Sentry SDK's operation catalog.
  *
- * Fetches the dereferenced OpenAPI spec from the sentry-api-schema repository
- * and extracts a lightweight JSON index of all API endpoints. This index is
- * bundled into the CLI for runtime introspection via `sentry schema`.
- *
- * Data source: https://github.com/getsentry/sentry-api-schema
- *   - openapi-derefed.json — full dereferenced OpenAPI 3.0 spec
- *
- * Also reads SDK function names from the installed @sentry/api package to
- * map operationIds to their TypeScript SDK function names.
+ * Bundled into the CLI for runtime introspection via `sentry schema`.
+ * Older SDKs without @sentry/api/operations temporarily use their versioned
+ * OpenAPI spec and bundled function names. Remove that compatibility path
+ * after the pinned SDK dependency includes the operation catalog.
  *
  * Usage:
  *   tsx script/generate-api-schema.ts
@@ -22,7 +17,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractApiEndpoints, type OpenApiSpec } from "./lib/api-schema.js";
+import {
+  extractApiEndpoints,
+  loadSdkApiEndpoints,
+  type OpenApiSpec,
+} from "./lib/api-schema.js";
 
 /** Resolve the root directory of @sentry/api by finding its main entry point. */
 function sentryApiDir(): string {
@@ -70,8 +69,8 @@ async function buildSdkFunctionMap(): Promise<Map<string, string>> {
   let match = funcPattern.exec(js);
   while (match !== null) {
     funcs.push({
-      name: match[1],
-      method: match[2].toUpperCase(),
+      name: match[1]!,
+      method: match[2]!.toUpperCase(),
       index: match.index,
     });
     match = funcPattern.exec(js);
@@ -81,7 +80,7 @@ async function buildSdkFunctionMap(): Promise<Map<string, string>> {
   const urls: { url: string; index: number }[] = [];
   match = urlPattern.exec(js);
   while (match !== null) {
-    urls.push({ url: match[1], index: match.index });
+    urls.push({ url: match[1]!, index: match.index });
     match = urlPattern.exec(js);
   }
 
@@ -101,20 +100,22 @@ async function buildSdkFunctionMap(): Promise<Map<string, string>> {
 // Main
 // ---------------------------------------------------------------------------
 
-const openApiUrl = await getOpenApiUrl();
-console.log(`Fetching OpenAPI spec from ${openApiUrl}...`);
-const response = await fetch(openApiUrl);
-if (!response.ok) {
-  throw new Error(
-    `Failed to fetch OpenAPI spec: ${response.status} ${response.statusText}`,
-  );
+let endpoints = await loadSdkApiEndpoints();
+if (endpoints) {
+  console.log("Using operation catalog from @sentry/api/operations...");
+} else {
+  const openApiUrl = await getOpenApiUrl();
+  console.log(`SDK catalog not yet available; fetching ${openApiUrl}...`);
+  const response = await fetch(openApiUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch OpenAPI spec: ${response.status} ${response.statusText}`,
+    );
+  }
+  const spec = (await response.json()) as OpenApiSpec;
+  const sdkMap = await buildSdkFunctionMap();
+  endpoints = extractApiEndpoints(spec, sdkMap);
 }
-const spec = (await response.json()) as OpenApiSpec;
-
-console.log("Building SDK function name map from @sentry/api...");
-const sdkMap = await buildSdkFunctionMap();
-
-const endpoints = extractApiEndpoints(spec, sdkMap);
 
 await mkdir(dirname(OUTPUT_PATH), { recursive: true });
 await writeFile(OUTPUT_PATH, JSON.stringify(endpoints, null, 2));
