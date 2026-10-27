@@ -164,38 +164,21 @@ describe("property: classifyUrl", () => {
     fcAssert(
       property(sentryUrlArb, (url) => {
         const tier = classifyUrl(url);
-        expect(["detail", "stable", "volatile", "no-cache"]).toContain(tier);
+        expect(["stable", "volatile", "no-cache"]).toContain(tier);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
-  test("organization event details are detail", () => {
+  test("organization event and trace-item details are stable", () => {
     const urls = [
       "https://us.sentry.io/api/0/organizations/myorg/events/myproject:abc123/",
       "https://sentry.io/api/0/organizations/org/events/42:deadbeef/?field=title",
+      "https://us.sentry.io/api/0/projects/org/proj/trace-items/a1b2c3d4e5f67890/?trace_id=abc&item_type=spans",
     ];
     for (const url of urls) {
-      expect(classifyUrl(url)).toBe("detail");
+      expect(classifyUrl(url)).toBe("stable");
     }
-  });
-
-  test("organization event details with averageColumn are stable", () => {
-    const url =
-      "https://us.sentry.io/api/0/organizations/org/events/proj:abc123/?averageColumn=span.duration";
-    expect(classifyUrl(url)).toBe("stable");
-  });
-
-  test("project trace-item details are detail", () => {
-    const url =
-      "https://us.sentry.io/api/0/projects/org/proj/trace-items/a1b2c3d4e5f67890/?trace_id=abc&item_type=spans";
-    expect(classifyUrl(url)).toBe("detail");
-  });
-
-  test("project trace-item details with debug are stable", () => {
-    const url =
-      "https://us.sentry.io/api/0/projects/org/proj/trace-items/a1b2c3d4e5f67890/?item_type=spans&debug=1";
-    expect(classifyUrl(url)).toBe("stable");
   });
 
   test("project event details are volatile", () => {
@@ -219,15 +202,6 @@ describe("property: classifyUrl", () => {
     const traceId = "a".repeat(32);
     const url = `https://us.sentry.io/api/0/organizations/myorg/trace/${traceId}/?limit=100`;
     expect(classifyUrl(url)).toBe("volatile");
-  });
-
-  test("relative URLs are classified by path", () => {
-    expect(classifyUrl("/api/0/organizations/org/events/proj:abc/")).toBe(
-      "detail",
-    );
-    expect(
-      classifyUrl("/api/0/organizations/org/issues/1/events/latest/"),
-    ).toBe("volatile");
   });
 
   test("issue URLs are volatile (lists and detail views)", () => {

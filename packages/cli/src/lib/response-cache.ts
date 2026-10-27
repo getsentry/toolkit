@@ -45,11 +45,8 @@ const log = logger.withTag("response-cache");
 /**
  * TTL tier classification for URLs.
  *
- * - `detail`: single event or trace-item lookups whose response does not
- *   change once written (organization event details, project trace-item
- *   details). Still bounded: deletion and access revocation only take
- *   effect when the entry expires.
- * - `stable`: data that changes infrequently (orgs, projects, teams)
+ * - `stable`: data that changes infrequently (orgs, projects, teams,
+ *   organization event details, trace-item details)
  * - `volatile`: data that changes often (issues and their events, project
  *   event details, full traces, log and span queries)
  * - `no-cache`: never cache (polling endpoints like autofix state)
@@ -59,64 +56,47 @@ const log = logger.withTag("response-cache");
  * `recommended` resolve to different events over time, and traces gain
  * spans as they arrive (getsentry/sentry#128818).
  */
-type TtlTier = "detail" | "stable" | "volatile" | "no-cache";
+type TtlTier = "stable" | "volatile" | "no-cache";
 
 /** Fallback TTL durations by tier (milliseconds). `no-cache` uses 0 as a sentinel. */
 const FALLBACK_TTL_MS: Record<TtlTier, number> = {
-  detail: 5 * 60 * 1000, // 5 minutes
   stable: 5 * 60 * 1000, // 5 minutes
   volatile: 60 * 1000, // 60 seconds
   "no-cache": 0,
 };
 
 /**
- * Path patterns for the volatile tier.
+ * URL patterns grouped by TTL tier.
  *
- * Checked before `detail`, so a URL that matches both is cached for the
- * shorter time.
+ * Checked in tier priority order (no-cache → volatile).
+ * "stable" has no patterns — it is the default fallback when nothing else matches.
+ *
+ * TODO: Classify by generated operation metadata from `@sentry/api` instead
+ * of URL regexes, once it ships per-operation metadata
+ * (getsentry/sentry-api-schema#81) and a route-keyed operation map
+ * (getsentry/sentry-api-schema#102).
  */
-const VOLATILE_PATH_REGEXPS: readonly RegExp[] = [
-  // Issue endpoints (lists, detail views, and issue events such as
-  // `/issues/{id}/events/latest/`)
-  /\/issues\//,
-  // Trace-scoped logs
-  /\/trace-logs\//,
-  // Full traces and their sub-resources; spans keep arriving
-  /\/trace\/[0-9a-f]{32}\//,
-  // Project event details embed `nextEventID`/`previousEventID` and user
-  // reports, and reprocessing can change them for the same ID
-  /\/projects\/[^/]+\/[^/]+\/events\/[^/]+\/$/,
-];
+const URL_TIER_REGEXPS: Readonly<Record<TtlTier, readonly RegExp[]>> = {
+  // Polling endpoints where state changes rapidly
+  "no-cache": [/\/(?:autofix|root-cause)\//],
+  volatile: [
+    // Issue endpoints: lists, detail views, and issue events such as
+    // `/issues/{id}/events/latest/`
+    /\/issues\//,
+    /[?&]dataset=(?:logs|spans)/,
+    /\/trace-logs\//,
+    // Full traces gain spans as they arrive
+    /\/trace\/[0-9a-f]{32}\//,
+    // Project event details embed `nextEventID`/`previousEventID` and user
+    // reports, and reprocessing can change them for the same ID
+    /\/projects\/[^/]+\/[^/]+\/events\/[^/?]+\/?(?:\?|$)/,
+  ],
+  // Default fallback — no patterns needed
+  stable: [],
+};
 
-/** Query parameters that make a request volatile regardless of path. */
-const VOLATILE_QUERY_REGEXP = /[?&]dataset=(?:logs|spans)/;
-
-/**
- * Exact path shapes for the detail tier, with the query parameters that
- * disqualify them.
- */
-const DETAIL_ROUTES: readonly {
-  path: RegExp;
-  excludedParams: readonly string[];
-}[] = [
-  {
-    // OrganizationEventDetailsEndpoint: `{project}:{event_id}`.
-    // `averageColumn` adds live aggregates to the response.
-    path: /\/organizations\/[^/]+\/events\/[^/:]+:[^/]+\/$/,
-    excludedParams: ["averageColumn"],
-  },
-  {
-    // ProjectTraceItemDetailsEndpoint. `debug` adds request-time internals.
-    path: /\/projects\/[^/]+\/[^/]+\/trace-items\/[^/]+\/$/,
-    excludedParams: ["debug"],
-  },
-];
-
-/** Polling endpoints where state changes rapidly. */
-const NO_CACHE_REGEXP = /\/(?:autofix|root-cause)\//;
-
-/** Base for parsing relative URLs; only the path and query are used. */
-const RELATIVE_URL_BASE = "http://localhost";
+/** Tier check order — stable is the default and has no patterns to check. */
+const TIER_CHECK_ORDER: readonly TtlTier[] = ["no-cache", "volatile"];
 
 /**
  * Classify a URL into a TTL tier for fallback caching.
@@ -126,25 +106,11 @@ const RELATIVE_URL_BASE = "http://localhost";
  * @internal Exported for testing
  */
 export function classifyUrl(url: string): TtlTier {
-  if (NO_CACHE_REGEXP.test(url)) {
-    return "no-cache";
-  }
-  if (VOLATILE_QUERY_REGEXP.test(url)) {
-    return "volatile";
-  }
-  if (!URL.canParse(url, RELATIVE_URL_BASE)) {
-    return "volatile";
-  }
-  const { pathname, searchParams } = new URL(url, RELATIVE_URL_BASE);
-  if (VOLATILE_PATH_REGEXPS.some((pattern) => pattern.test(pathname))) {
-    return "volatile";
-  }
-  for (const route of DETAIL_ROUTES) {
-    if (
-      route.path.test(pathname) &&
-      !route.excludedParams.some((name) => searchParams.has(name))
-    ) {
-      return "detail";
+  for (const tier of TIER_CHECK_ORDER) {
+    for (const pattern of URL_TIER_REGEXPS[tier]) {
+      if (pattern.test(url)) {
+        return tier;
+      }
     }
   }
   return "stable";
