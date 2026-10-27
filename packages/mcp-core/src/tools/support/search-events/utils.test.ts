@@ -365,7 +365,7 @@ describe("search query helpers", () => {
   });
 
   // Which key shapes can carry a regex is tested with the grammar in
-  // packages/toolkit-core/src/search-syntax.test.ts.
+  // @sentry/search-syntax (getsentry/sentry).
   it("should detect regex filters and other filters inside parentheses", () => {
     expect(looksLikeSentrySearchSyntax("(message://a b//)", "logs")).toBe(true);
     // The parser reads filters inside parentheses like any other filter.

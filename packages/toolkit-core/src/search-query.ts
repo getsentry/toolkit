@@ -28,7 +28,7 @@
  * and the caller decides whether to log them or show them to a model.
  *
  * Boolean rewriting uses the Sentry frontend's search grammar through
- * `./search-syntax.ts`. Its token tree is flattened into
+ * `@sentry/search-syntax`. Its token tree is flattened into
  * the {@link SearchNode} list below, which classifies every term
  * structurally — comparison operators, in-list values, paren groups,
  * etc. — so the rewriting logic doesn't need regex-based reject-lists.
@@ -38,12 +38,10 @@
 
 import {
   type FilterToken,
-  FilterType,
   type ParseResultToken,
   parseSearch,
-  TermOperator,
-  Token,
-} from "./search-syntax.js";
+} from "@sentry/search-syntax/parser";
+import { FilterType, TermOperator, Token } from "@sentry/search-syntax/tokens";
 
 /** A query that can't be rewritten into syntax the endpoint accepts. */
 export class SearchQueryError extends Error {
