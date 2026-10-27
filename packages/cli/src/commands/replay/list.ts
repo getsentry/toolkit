@@ -132,8 +132,8 @@ function replayUserLabel(replay: ReplayListItem): string {
 const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   {
     header: "ID",
-    value: (replay) => `\`${replay.id.slice(0, 8)}\``,
-    minWidth: 8,
+    value: (replay) => `\`${replay.id}\``,
+    minWidth: 32,
     shrinkable: false,
   },
   {
