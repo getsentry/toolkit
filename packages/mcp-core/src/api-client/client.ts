@@ -5432,12 +5432,10 @@ export class SentryApiService {
     {
       organizationSlug,
       issueId,
-      eventId,
-      instruction = "",
+      instruction,
     }: {
       organizationSlug: string;
       issueId: string;
-      eventId?: string;
       instruction?: string;
     },
     opts?: RequestOptions,
@@ -5447,8 +5445,7 @@ export class SentryApiService {
       {
         method: "POST",
         body: JSON.stringify({
-          event_id: eventId,
-          instruction,
+          user_context: instruction || undefined,
         }),
       },
       opts,

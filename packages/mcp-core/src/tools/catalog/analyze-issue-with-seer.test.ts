@@ -368,8 +368,9 @@ describe("analyze_issue_with_seer", () => {
     );
   });
 
-  it("handles start autofix with instruction", async () => {
+  async function startNewAnalysis(instruction: string | undefined) {
     let getCallCount = 0;
+    let requestBody: unknown;
 
     mswServer.use(
       http.get(
@@ -387,11 +388,7 @@ describe("analyze_issue_with_seer", () => {
       http.post(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-NEW/autofix/",
         async ({ request }) => {
-          const body = await request.json();
-          expect(body).toEqual({
-            event_id: undefined,
-            instruction: "Focus on memory leaks",
-          });
+          requestBody = await request.json();
           return HttpResponse.json({
             run_id: 123,
           });
@@ -404,7 +401,7 @@ describe("analyze_issue_with_seer", () => {
         organizationSlug: "sentry-mcp-evals",
         regionUrl: null,
         issueId: "CLOUDFLARE-MCP-NEW",
-        instruction: "Focus on memory leaks",
+        instruction,
       },
       {
         constraints: {
@@ -419,11 +416,28 @@ describe("analyze_issue_with_seer", () => {
     await vi.runAllTimersAsync();
 
     const result = await promise;
+    return { result, requestBody };
+  }
 
+  it("sends the instruction to Seer as user_context", async () => {
+    const { result, requestBody } = await startNewAnalysis(
+      "Focus on memory leaks",
+    );
+
+    expect(requestBody).toEqual({ user_context: "Focus on memory leaks" });
     expect(result).toContain("Starting new analysis...");
     expect(result).toContain("Analysis started with Run ID: 123");
     expect(result).toContain("## Analysis Complete");
   });
+
+  it.each([undefined, ""])(
+    "omits user_context when the instruction is %j",
+    async (instruction) => {
+      const { requestBody } = await startNewAnalysis(instruction);
+
+      expect(requestBody).toEqual({});
+    },
+  );
 
   it("returns unsupported message for metric issues without calling Seer", async () => {
     let autofixRequests = 0;
