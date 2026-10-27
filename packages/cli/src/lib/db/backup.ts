@@ -195,6 +195,31 @@ export async function getUndoBackup(
   return last;
 }
 
+/** Delete `backup`, made for an upgrade that didn't happen. */
+export async function discardDatabaseBackup(
+  backup: DatabaseBackup,
+): Promise<void> {
+  await rm(join(getBackupDir(), backup.file), { force: true });
+}
+
+/**
+ * Move `backup` back into place as `cli.db` and let this process use it
+ * again, reverting a {@link restoreDatabaseBackup} whose version was never
+ * installed. The backup file is gone afterwards, as if the upgrade it was
+ * made for never happened.
+ */
+export async function reinstateDatabaseBackup(
+  backup: DatabaseBackup,
+): Promise<void> {
+  const dbPath = getDbPath();
+  // The write-ahead log belongs to the file being replaced.
+  await rm(`${dbPath}-wal`, { force: true });
+  await rm(`${dbPath}-shm`, { force: true });
+  await rename(join(getBackupDir(), backup.file), dbPath);
+  // Ends the detachment from `restoreDatabaseBackup`.
+  closeDatabase();
+}
+
 /** Columns of `table` in `db`, in declaration order. */
 function columnNames(db: Database, table: string): string[] {
   const rows = db

@@ -976,6 +976,20 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     });
   }
 
+  /** Mock fetch to serve a pinned release's tag and its binary. */
+  function mockTaggedBinaryDownload(version: string): void {
+    const gzipped = gzipSync(new Uint8Array([0x7f, 0x45, 0x4c, 0x46]));
+    mockFetch(async (url) => {
+      if (extractInputUrl(url).includes(`releases/tags/cli%40${version}`)) {
+        return new Response(JSON.stringify({ tag_name: `cli@${version}` }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(gzipped, { status: 200 });
+    });
+  }
+
   test("runs setup on downloaded binary after curl upgrade", async () => {
     mockBinaryDownloadWithVersion("99.99.99");
 
@@ -1130,21 +1144,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
     setMetadata(getRawDatabase(), { [marker]: "changed since" });
 
-    const fakeContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
-    mockFetch(async (url) => {
-      if (
-        extractInputUrl(url).includes(`releases/tags/cli%40${NEXT_RELEASE}`)
-      ) {
-        return new Response(
-          JSON.stringify({ tag_name: `cli@${NEXT_RELEASE}` }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        );
-      }
-      return new Response(gzipSync(fakeContent), { status: 200 });
-    });
+    mockTaggedBinaryDownload(NEXT_RELEASE);
     let markerAtSetup: string | undefined;
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
       spawnedArgs.push({ cmd, args: [...(args ?? [])] });
@@ -1170,6 +1170,52 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(markerAtSetup).toBe(`saved by ${NEXT_RELEASE}`);
     // This version's database is kept, so the undo can be undone in turn.
     expect((await getUndoBackup(NEXT_RELEASE)).version).toBe(CLI_VERSION);
+  });
+
+  test("a failed undo keeps this version's database and its undo", async () => {
+    const marker = "test.marker";
+    setMetadata(getRawDatabase(), { [marker]: `saved by ${NEXT_RELEASE}` });
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "current" });
+    mockTaggedBinaryDownload(NEXT_RELEASE);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    // This process uses `cli.db` again, and it is this version's.
+    expect(getMetadata(getRawDatabase(), [marker]).get(marker)).toBe("current");
+    expect(readdirSync(getBackupDir())).toEqual([
+      `cli-${NEXT_RELEASE}_to_${CLI_VERSION}.db`,
+    ]);
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe(NEXT_RELEASE);
+  });
+
+  test("a failed upgrade keeps the undo of the one before", async () => {
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+    mockBinaryDownloadWithVersion(LATER_RELEASE);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "--method", "curl"], context);
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe(NEXT_RELEASE);
   });
 
   test("undo explains that Homebrew can't install the earlier version", async () => {

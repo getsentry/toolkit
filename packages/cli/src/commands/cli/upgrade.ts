@@ -34,7 +34,9 @@ import { CLI_VERSION } from "../../lib/constants.js";
 import {
   backupDatabase,
   type DatabaseBackup,
+  discardDatabaseBackup,
   getUndoBackup,
+  reinstateDatabaseBackup,
   restoreDatabaseBackup,
 } from "../../lib/db/backup.js";
 import { getDbPath, getRawDatabase } from "../../lib/db/index.js";
@@ -114,19 +116,24 @@ type DatabasePlan = {
   restore?: DatabaseBackup;
   /** Set once `restore` succeeded; the hand-off is then unnecessary. */
   restored?: boolean;
+  /** This version's database, saved before the new binary's setup. */
+  backup?: DatabaseBackup;
   /** Notes about the database for the command result. */
   warnings: string[];
 };
 
 /** Back up the database as this version's before another version owns it. */
-async function backupLocalDatabase(target: string): Promise<void> {
+async function backupLocalDatabase(
+  target: string,
+): Promise<DatabaseBackup | undefined> {
   try {
-    await backupDatabase(getRawDatabase(), CLI_VERSION, target);
+    return await backupDatabase(getRawDatabase(), CLI_VERSION, target);
   } catch (error) {
     log.warn(
       `Could not back up the local database: ${stringifyUnknown(error)}. ` +
         "`sentry cli upgrade undo` won't be able to return to this version.",
     );
+    return;
   }
 }
 
@@ -138,7 +145,7 @@ async function prepareDatabaseForNewBinary(plan: DatabasePlan): Promise<void> {
   // Reinstalling this same version must not replace the record of the
   // upgrade that led here.
   if (plan.target !== CLI_VERSION) {
-    await backupLocalDatabase(plan.target);
+    plan.backup = await backupLocalDatabase(plan.target);
   }
   if (plan.restore) {
     try {
@@ -155,6 +162,34 @@ async function prepareDatabaseForNewBinary(plan: DatabasePlan): Promise<void> {
   }
   if (plan.handOff) {
     prepareLocalDatabaseForDowngrade();
+  }
+}
+
+/**
+ * Revert this run's backup and restore after a setup that installs the new
+ * binary itself failed, so this version, still the installed one, keeps its
+ * own database and `sentry cli upgrade undo` still finds the upgrade that led
+ * here instead of the one that failed.
+ */
+async function revertDatabaseForFailedInstall(
+  plan: DatabasePlan,
+): Promise<void> {
+  const { backup } = plan;
+  plan.backup = undefined;
+  if (!backup) {
+    return;
+  }
+  try {
+    if (plan.restored) {
+      await reinstateDatabaseBackup(backup);
+      plan.restored = false;
+    } else {
+      await discardDatabaseBackup(backup);
+    }
+  } catch (error) {
+    log.warn(
+      `Could not revert the local database after the failed setup: ${stringifyUnknown(error)}.`,
+    );
   }
 }
 
@@ -725,10 +760,16 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     : undefined;
 
   await prepareDatabaseForNewBinary(database);
-  let exitCode: number;
+  let exitCode: number | undefined;
   try {
     exitCode = await spawnWithRetry(binaryPath, args, env);
   } finally {
+    // With --install the new binary installs itself during setup, so a
+    // failed setup leaves this version installed. Package managers install
+    // before setup, so their new version is in place either way.
+    if (install && exitCode !== 0) {
+      await revertDatabaseForFailedInstall(database);
+    }
     finishDatabaseForNewBinary(database);
   }
   if (exitCode !== 0) {
