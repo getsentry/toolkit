@@ -1,14 +1,14 @@
 import path from "node:path";
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
-import { createConfiguredFetchMock } from "./src/test-utils/configure-fetch-mock";
+import { createMockOutboundService } from "./src/test-utils/configure-fetch-mock";
 
 /**
- * Unified vitest config using vitest-pool-workers.
+ * Unified vitest config using the Cloudflare Vitest plugin.
  *
  * All tests run in the Cloudflare Workers runtime (workerd) which enables:
  * - Testing with cloudflare:test bindings (KV, AI, etc.)
- * - Using fetchMock from cloudflare:test for HTTP mocking
+ * - Using centrally registered outbound HTTP fixtures
  *
  * Bindings (KV, vars, compatibility flags) are defined in wrangler.test.jsonc
  * to keep test config aligned with production wrangler.jsonc.
@@ -18,7 +18,7 @@ export default defineConfig({
     cloudflareTest({
       main: "./src/server/index.ts",
       miniflare: {
-        fetchMock: createConfiguredFetchMock(),
+        outboundService: createMockOutboundService(),
       },
       wrangler: { configPath: "./wrangler.test.jsonc" },
     }),
