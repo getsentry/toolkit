@@ -11,7 +11,6 @@ const NOW_SECONDS = Math.floor(NOW / 1000);
 
 const policy: RetryPolicy = {
   maxRetries: 2,
-  retryableStatuses: [429, 502, 503, 504],
   baseDelayMs: 250,
   maxDelayMs: 2000,
   maxTotalDelayMs: 3000,
@@ -213,7 +212,7 @@ describe("nextRetryDelayMs", () => {
 
   it("never retries a write on a 5xx without the idempotent opt-in", () => {
     for (const method of ["POST", "PUT", "DELETE"]) {
-      for (const status of [502, 503, 504]) {
+      for (const status of [500, 502, 503, 504]) {
         expect(nextRetryDelayMs({ ...base, method, status })).toBeUndefined();
       }
     }
@@ -227,9 +226,16 @@ describe("nextRetryDelayMs", () => {
     ).toBe(125);
   });
 
-  it("does not retry statuses outside the policy", () => {
-    expect(nextRetryDelayMs({ ...base, status: 500 })).toBeUndefined();
-    expect(nextRetryDelayMs({ ...base, status: 404 })).toBeUndefined();
+  it("retries a GET on a transient 5xx", () => {
+    for (const status of [500, 502, 503, 504]) {
+      expect(nextRetryDelayMs({ ...base, status })).toBe(125);
+    }
+  });
+
+  it("does not retry deterministic 5xx codes or other 4xx", () => {
+    for (const status of [400, 404, 501, 505]) {
+      expect(nextRetryDelayMs({ ...base, status })).toBeUndefined();
+    }
   });
 });
 

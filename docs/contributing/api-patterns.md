@@ -252,13 +252,19 @@ See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
 ### Automatic Retries
 
-`SentryApiService.request()` transparently retries rate limits (`429`) and
-transient server failures (`500`/`502`/`503`/`504`), using the shared policy in
-`@sentry/toolkit-core/api-retry`. Retries are:
+`SentryApiService.request()` transparently retries failed requests using the
+shared policy in `@sentry/toolkit-core/api-retry`. Which statuses retry, and
+for which methods, is defined once in `RETRYABLE_STATUSES` in
+[`api-retry.ts`](../../packages/toolkit-core/src/api-retry.ts):
 
-- **Safe for writes only on 429** — Sentry's rate-limit middleware rejects a
-  request before the endpoint runs, so a `429` is retried for any method. A
-  `5xx` may have run the endpoint, so only GET and HEAD retry on one.
+| Status                    | Retried for                                         |
+| ------------------------- | --------------------------------------------------- |
+| `429`                     | Any method. Sentry rejects it before the view runs. |
+| `500`/`502`/`503`/`504`   | GET, HEAD, and OPTIONS, or an `idempotent` request. |
+| Anything else, e.g. `501` | Never. These are deterministic.                     |
+
+Retries are:
+
 - **Rate-limit aware** — a `429` waits for its `Retry-After` header, or for
   Sentry's `X-Sentry-Rate-Limit-Reset`. Concurrency-limit `429`s and `5xx`
   errors use jittered exponential backoff.
@@ -266,9 +272,9 @@ transient server failures (`500`/`502`/`503`/`504`), using the shared policy in
   A longer reset fails at once with an `ApiRateLimitError` whose
   `retryAfterMs` and user message say when to retry.
 - **Abortable** — aborting the request's `signal` ends the wait.
-- **Status-limited** — deterministic `5xx` codes such as `501`, other `4xx`
-  errors, and network/configuration errors fail fast. A rate-limited tool call
-  returns a **Rate Limited** message with the retry time, not an input error.
+- **Fail-fast otherwise** — network and configuration errors are not retried.
+  A rate-limited tool call returns a **Rate Limited** message with the retry
+  time, not an input error.
 - **Bypassed by `allowStatuses`** — a status the caller opts into is returned
   as-is from `requestOnce`, never retried.
 

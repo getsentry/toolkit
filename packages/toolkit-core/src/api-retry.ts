@@ -10,7 +10,6 @@
 export type RetryPolicy = {
   /** Retries after the first attempt. */
   maxRetries: number;
-  retryableStatuses: readonly number[];
   /** First fallback backoff step; it doubles on each retry. */
   baseDelayMs: number;
   /** Longest single wait. A server delay above this is not waited for. */
@@ -21,25 +20,50 @@ export type RetryPolicy = {
 
 type HeaderReader = Pick<Headers, "get">;
 
-const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const IDEMPOTENT_METHODS: ReadonlySet<string> = new Set([
+  "GET",
+  "HEAD",
+  "OPTIONS",
+]);
+
+/**
+ * The statuses that are retried, and which requests each may replay. This is
+ * the one rule for the CLI and MCP; `docs/contributing/api-patterns.md`
+ * describes it and links here.
+ *
+ * - `any`: Sentry's `RatelimitMiddleware` rejects a 429 in `process_request`,
+ *   before the view runs (`sentry/middleware/ratelimit.py`), so replaying any
+ *   method is safe.
+ * - `idempotent`: the endpoint may have run, so only GET, HEAD, and OPTIONS
+ *   retry, unless the caller marks the request `idempotent`.
+ *
+ * Other 5xx codes (501, 505, ...) are deterministic and are not retried.
+ */
+const RETRYABLE_STATUSES: ReadonlyMap<number, "any" | "idempotent"> = new Map([
+  [429, "any"],
+  [500, "idempotent"],
+  [502, "idempotent"],
+  [503, "idempotent"],
+  [504, "idempotent"],
+]);
 
 /** The response `Date` header truncates server time to whole seconds. */
 const DATE_RESOLUTION_MS = 1000;
 
-/**
- * Whether a failed request may be sent again. A 429 is safe for any method:
- * Sentry's rate-limit middleware rejects the request in `process_request`,
- * before the endpoint runs (`sentry/middleware/ratelimit.py`). Other failures
- * may have run the endpoint, so writes are only retried when the caller says
- * replaying them is safe, such as a content-addressed upload.
- */
-function isRetryableMethod(
+/** Whether `RETRYABLE_STATUSES` lets this failed request be sent again. */
+function isRetryable(
   method: string,
   status: number,
   idempotent = false,
 ): boolean {
+  const replays = RETRYABLE_STATUSES.get(status);
+  if (replays === undefined) {
+    return false;
+  }
   return (
-    status === 429 || idempotent || IDEMPOTENT_METHODS.has(method.toUpperCase())
+    replays === "any" ||
+    idempotent ||
+    IDEMPOTENT_METHODS.has(method.toUpperCase())
   );
 }
 
@@ -105,8 +129,7 @@ export function nextRetryDelayMs({
 }): number | undefined {
   if (
     attempt >= policy.maxRetries ||
-    !isRetryableMethod(method, status, idempotent) ||
-    !policy.retryableStatuses.includes(status)
+    !isRetryable(method, status, idempotent)
   ) {
     return undefined;
   }

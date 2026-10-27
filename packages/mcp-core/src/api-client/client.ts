@@ -305,12 +305,8 @@ type RequestOptions = {
 };
 
 /**
- * Automatic retries for rate limits (429) on any method, and for transient
- * server failures (500/502/503/504) on GET and HEAD requests only.
- *
- * Sentry rejects a rate-limited request before the endpoint runs, so a 429 is
- * safe to replay even for a write. A 5xx may have run the endpoint, so writes
- * are not retried on one. Other 5xx codes (501, 505, ...) are deterministic.
+ * Caps for automatic retries. Which statuses and methods are retried is the
+ * shared rule in `@sentry/toolkit-core/api-retry`.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two
@@ -320,7 +316,6 @@ type RequestOptions = {
  */
 const REQUEST_RETRY_POLICY: RetryPolicy = {
   maxRetries: 2,
-  retryableStatuses: [429, 500, 502, 503, 504],
   baseDelayMs: 250,
   maxDelayMs: 2000,
   maxTotalDelayMs: 3000,
