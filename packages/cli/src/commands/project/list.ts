@@ -214,13 +214,17 @@ function matchingFilter(flags: ProjectListFlags): string {
   return flags.filter ? ` matching '${flags.filter}'` : "";
 }
 
+/** ` on platform '<platform>'` for messages, or `""` without `--platform`. */
+function onPlatform(flags: ProjectListFlags): string {
+  return flags.platform ? ` on platform '${flags.platform}'` : "";
+}
+
 /** Why a named project was left out by `--platform` and/or the name filter. */
 function noMatchHint(projectSlug: string, flags: ProjectListFlags): string {
   if (!flags.filter) {
     return `No project '${projectSlug}' found matching platform '${flags.platform}'.`;
   }
-  const platformCtx = flags.platform ? ` on platform '${flags.platform}'` : "";
-  return `Project '${projectSlug}' doesn't match '${flags.filter}'${platformCtx}.`;
+  return `Project '${projectSlug}' doesn't match '${flags.filter}'${onPlatform(flags)}.`;
 }
 
 /**
@@ -446,7 +450,9 @@ export async function handleAutoDetect(
   const hintParts: string[] = [];
 
   if (limited.length === 0) {
-    hintParts.push(`No projects${matchingFilter(flags)} found.`);
+    hintParts.push(
+      `No projects${matchingFilter(flags)}${onPlatform(flags)} found.`,
+    );
   } else {
     // header is rendered inline by the human formatter — don't duplicate here
     if (footer) {
@@ -719,12 +725,9 @@ async function handleOrgAllFiltered(
   const matches = filterProjects(projects, flags);
   const items = matches.slice(0, flags.limit);
   if (items.length === 0) {
-    const platformCtx = flags.platform
-      ? ` on platform '${flags.platform}'`
-      : "";
     return {
       items: [],
-      hint: `No projects${matchingFilter(flags)}${platformCtx} in organization '${org}'.`,
+      hint: `No projects${matchingFilter(flags)}${onPlatform(flags)} in organization '${org}'.`,
     };
   }
   return {

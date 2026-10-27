@@ -1636,6 +1636,26 @@ describe("handleAutoDetect", () => {
     expect(jsonHint).toBe("sentry project list 'test-org/web-*' --json");
   });
 
+  test("name filter: empty hint names the platform that excluded matches", async () => {
+    setDefaultOrganization("test-org");
+    globalThis.fetch = mockProjectFetch([
+      makeProject({ id: "1", slug: "web-app", platform: "javascript" }),
+    ]);
+
+    const result = await handleAutoDetect("/tmp/test-project", {
+      limit: 30,
+      json: false,
+      fresh: false,
+      filter: "web-*",
+      platform: "rust",
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain(
+      "No projects matching 'web-*' on platform 'rust' found.",
+    );
+  });
+
   test("fast path: non-auth API errors return empty results instead of throwing", async () => {
     setDefaultOrganization("test-org");
     // Mock returns 403 for projects endpoint (stale org, no access)
