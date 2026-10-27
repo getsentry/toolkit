@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -26,6 +26,9 @@ interface ToolResult {
 
 const requests: Array<{ method: string; path: string; auth?: string }> = [];
 const specRequests: string[] = [];
+const acceptedWrites: string[] = [];
+let slowWriteResponse: ServerResponse | undefined;
+let slowWriteClosed = false;
 const workflowPath =
   "/api/0/organizations/{organization_id_or_slug}/workflows/{workflow_id}/";
 const releasePath = "/api/0/organizations/{organization_id_or_slug}/releases/";
@@ -235,6 +238,16 @@ beforeAll(async () => {
       path: request.url ?? "",
       auth: request.headers.authorization,
     });
+    if (request.url === "/api/0/slow-write/") {
+      acceptedWrites.push("accepted-write");
+      slowWriteResponse = response;
+      response.once("close", () => {
+        slowWriteClosed = true;
+      });
+      response.writeHead(201, { "Content-Type": "application/json" });
+      response.write('{"id":"accepted-write",');
+      return;
+    }
     if (request.url === "/api/0/redirect/") {
       response.writeHead(302, { Location: `${origin}/outside-api` });
       response.end();
@@ -288,6 +301,9 @@ beforeAll(async () => {
 beforeEach(() => {
   requests.length = 0;
   specRequests.length = 0;
+  acceptedWrites.length = 0;
+  slowWriteResponse = undefined;
+  slowWriteClosed = false;
 });
 
 afterAll(async () => {
@@ -301,6 +317,33 @@ afterAll(async () => {
 });
 
 describe("HTTP Code Mode through real Dynamic Workers", () => {
+  it("aborts a stalled response body at the real deadline without rolling back an accepted write", async () => {
+    const started = performance.now();
+    try {
+      const result = await callTool(
+        "execute_sentry_code",
+        'async () => sentry.request({method: "POST", path: "/slow-write/", body: {name: "Fixture item"}})',
+      );
+      expect(performance.now() - started).toBeGreaterThanOrEqual(29_000);
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain("Execution deadline exceeded");
+      expect(result.content[0]?.text).toContain(
+        "writes may already have completed",
+      );
+      await expect.poll(() => slowWriteClosed, { timeout: 2_000 }).toBe(true);
+      expect(acceptedWrites).toEqual(["accepted-write"]);
+      expect(requests).toEqual([
+        {
+          method: "POST",
+          path: "/api/0/slow-write/",
+          auth: "Bearer fixture-only-token",
+        },
+      ]);
+    } finally {
+      slowWriteResponse?.destroy();
+    }
+  }, 45_000);
+
   it("bounds nested tool arguments before starting a Dynamic Worker", async () => {
     const result = await rpc<ToolResult>("tools/call", {
       name: "execute_sentry_code",

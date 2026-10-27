@@ -68,6 +68,7 @@ interface ApiRequest {
   method: string;
   headers: Headers;
   body: string;
+  signal: AbortSignal;
 }
 
 interface ToolResult {
@@ -85,7 +86,8 @@ interface ToolList {
 
 const originalFetch = globalThis.fetch;
 let apiRequests: ApiRequest[];
-let apiResponse: (request: ApiRequest) => Response;
+let apiResponse: (request: ApiRequest) => Response | Promise<Response>;
+let beforeRegionResponse: (() => Promise<void>) | undefined;
 const revokeGrant = vi.fn(async () => {});
 
 function workerEnv(): Env {
@@ -102,6 +104,7 @@ async function dispatchRpc(
   options: {
     props?: Partial<WorkerProps>;
     path?: string;
+    keepAlive?: Promise<void>;
     protocolVersion?: "2026-07-28" | "2025-03-26";
   } = {},
 ) {
@@ -117,6 +120,7 @@ async function dispatchRpc(
     ...options.props,
   };
   const ctx = Object.assign(createExecutionContext(), { props });
+  if (options.keepAlive) ctx.waitUntil(options.keepAlive);
   const request = new Request(`http://localhost${options.path ?? "/mcp"}`, {
     method: "POST",
     headers: {
@@ -162,8 +166,13 @@ async function rpc<T>(
   options: Parameters<typeof dispatchRpc>[2] = {},
 ): Promise<T> {
   const { response, ctx } = await dispatchRpc(method, params, options);
-  const text = await response.text();
+  const result = await readRpcResult<T>(response);
   await waitOnExecutionContext(ctx);
+  return result;
+}
+
+async function readRpcResult<T>(response: Response): Promise<T> {
+  const text = await response.text();
   expect(response.status, text).toBe(200);
   const data = text.startsWith("{")
     ? text
@@ -192,6 +201,7 @@ beforeEach(() => {
   apiRequests = [];
   revokeGrant.mockClear();
   apiResponse = () => Response.json({ ok: true });
+  beforeRegionResponse = undefined;
   // The pool runs the real main Worker in this isolate. Only external HTTP is
   // simulated; MCP handlers, Dynamic Workers and the RPC broker are real.
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -206,12 +216,14 @@ beforeEach(() => {
       method: request.method,
       headers: request.headers,
       body: await request.text(),
+      signal: request.signal,
     };
     apiRequests.push(recorded);
     const organization = /^\/api\/0\/organizations\/([^/]+)\/$/.exec(
       url.pathname,
     );
     if (organization) {
+      await beforeRegionResponse?.();
       return Response.json({
         id: "100",
         slug: organization[1],
@@ -225,13 +237,168 @@ beforeEach(() => {
     if (url.pathname === "/api/0/projects/code-mode-org/web/") {
       return Response.json({ id: "200", slug: "web", name: "Web" });
     }
-    return apiResponse(recorded);
+    return await apiResponse(recorded);
   });
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((finish) => {
+    resolve = finish;
+  });
+  return { promise, resolve };
+}
 
 describe("Code Mode on the authenticated MCP", () => {
+  it.each(["return", "throw"])(
+    "closes unawaited API work when the program exits with %s",
+    async (exit) => {
+      const started = deferred();
+      const finish = deferred();
+      let write: ApiRequest | undefined;
+      apiResponse = async (request) => {
+        if (request.method === "POST") {
+          write = request;
+          started.resolve();
+          await finish.promise;
+        } else {
+          await started.promise;
+        }
+        return Response.json({ ok: true });
+      };
+      const { response, ctx } = await dispatchRpc(
+        "tools/call",
+        {
+          name: "execute_sentry_code",
+          arguments: {
+            code: `async () => {
+              sentry.request({method: "POST", path: "/organizations/code-mode-org/dashboards/", body: {title: "Copy"}}).catch(() => {});
+              await sentry.request({path: "/organizations/"});
+              ${exit === "return" ? 'return "done";' : 'throw new Error("Program failed");'}
+            }`,
+          },
+        },
+        { props: { grantedSkills: ["api-write"] }, keepAlive: finish.promise },
+      );
+      try {
+        const result = await readRpcResult<ToolResult>(response);
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain(
+          exit === "return" ? "Await every sentry.request()" : "Program failed",
+        );
+        expect(result.content[0].text).toContain(
+          "writes may already have completed",
+        );
+        expect(write?.signal.aborted).toBe(true);
+      } finally {
+        finish.resolve();
+        await waitOnExecutionContext(ctx);
+      }
+    },
+  );
+
+  it("does not send a write when authorization finishes after the program", async () => {
+    const authorizing = deferred();
+    const finish = deferred();
+    beforeRegionResponse = async () => {
+      authorizing.resolve();
+      await finish.promise;
+    };
+    apiResponse = async () => {
+      await authorizing.promise;
+      return Response.json({ ok: true });
+    };
+    const { response, ctx } = await dispatchRpc(
+      "tools/call",
+      {
+        name: "execute_sentry_code",
+        arguments: {
+          code: `async () => {
+            sentry.request({method: "POST", path: "/organizations/code-mode-org/dashboards/", body: {title: "Copy"}}).catch(() => {});
+            await sentry.request({path: "/organizations/"});
+            return "done";
+          }`,
+        },
+      },
+      { props: { grantedSkills: ["api-write"] }, keepAlive: finish.promise },
+    );
+    try {
+      const result = await readRpcResult<ToolResult>(response);
+      finish.resolve();
+      await waitOnExecutionContext(ctx);
+      // Drain the released lookup and any continuation into the API broker.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(apiRequests.filter(({ method }) => method === "POST")).toEqual([]);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Await every sentry.request()");
+    } finally {
+      finish.resolve();
+      await waitOnExecutionContext(ctx);
+    }
+  });
+
+  it.each(["headers", "body"])(
+    "aborts an awaited API request stalled before its %s at the execution deadline",
+    async (phase) => {
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+      const started = deferred();
+      const finish = deferred();
+      let pending: ApiRequest | undefined;
+      apiResponse = async (request) => {
+        pending = request;
+        started.resolve();
+        if (phase === "headers") {
+          await finish.promise;
+          return Response.json({ ok: true });
+        }
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              request.signal.addEventListener(
+                "abort",
+                () => controller.error(request.signal.reason),
+                { once: true },
+              );
+              void finish.promise.then(() => {
+                if (!request.signal.aborted) controller.close();
+              });
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      };
+      const dispatched = dispatchRpc(
+        "tools/call",
+        {
+          name: "execute_sentry_code",
+          arguments: {
+            code: 'async () => sentry.request({path: "/organizations/"})',
+          },
+        },
+        { keepAlive: finish.promise },
+      );
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(30_000);
+      const { response, ctx } = await dispatched;
+      try {
+        const result = await readRpcResult<ToolResult>(response);
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain("Execution deadline exceeded");
+        expect(pending?.signal.aborted).toBe(true);
+        expect(apiRequests).toHaveLength(1);
+      } finally {
+        finish.resolve();
+        vi.useRealTimers();
+        await waitOnExecutionContext(ctx);
+      }
+    },
+  );
+
   it("rejects excessive nested argument members before executing code", async () => {
     const result = await rpc<ToolResult>("tools/call", {
       name: "execute_sentry_code",

@@ -8,10 +8,11 @@ const apiBase = ${JSON.stringify(apiBase ?? null)};
 let deadline = 0;
 let apiCalls = 0;
 let writesAttempted = 0;
+let pendingApiCalls = 0;
 let apiBroker;
-const sentry = {
-  async request({ method = "GET", path, query, body }) {
-    if (!apiBase || !apiBroker) throw new Error("API access is unavailable during search.");
+async function request({ method = "GET", path, query, body }) {
+    if (!apiBase) throw new Error("API access is unavailable during search.");
+    if (!apiBroker) throw new Error("Code execution has finished.");
     if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) {
       throw new Error("path must start with / and contain an API path, not a URL.");
     }
@@ -49,17 +50,28 @@ const sentry = {
       throw error;
     }
     return { status: response.status, headers: Object.fromEntries(response.headers), body: data };
+}
+const sentry = {
+  request(options) {
+    pendingApiCalls++;
+    const pending = request(options).finally(() => pendingApiCalls--);
+    // A forgotten await must become the execution error below, not an unhandled rejection.
+    pending.catch(() => {});
+    return pending;
   },
 };
 Object.defineProperty(globalThis, "sentry", { value: sentry });
 export default class extends WorkerEntrypoint {
-  async run(broker) {
+  async run(broker, executionDeadline) {
     apiBroker = broker;
-    deadline = Date.now() + 30_000;
+    deadline = executionDeadline;
     try {
       const { default: run } = await import("./user.js");
       const result = await run();
       const serialized = JSON.stringify({ result: result ?? null, stats: { apiCalls, writesAttempted } });
+      if (pendingApiCalls > 0) {
+        throw new Error("Await every sentry.request() before returning. API calls are still pending.");
+      }
       if (new TextEncoder().encode(serialized).byteLength > 50_000) {
         throw new Error("Result exceeds 50,000 bytes. Return selected fields or a smaller page.");
       }
@@ -74,6 +86,8 @@ export default class extends WorkerEntrypoint {
           status: error.status, method: error.method, path: error.path, headers: error.headers,
         } } : {}),
         stats: { apiCalls, writesAttempted } }, { status: 400 });
+    } finally {
+      apiBroker = undefined;
     }
   }
 }

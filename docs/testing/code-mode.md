@@ -139,7 +139,7 @@ coverage. Result projection is available but not automatic semantic truncation.
 
 ## Limits and failures
 
-Each execution has a 20-call fetch budget, 30-second I/O deadline, 50,000-byte
+Each execution has a 20-call fetch budget, 30-second deadline, 50,000-byte
 result limit and 2,000,000-byte upstream response limit. The HTTP MCP SDK rejects
 tool arguments with more than 10,000 array elements or object keys before
 validation. A bounded reader rejects request bodies over 1 MiB before dispatch,
@@ -162,40 +162,40 @@ code catches them. The broker exposes the event ID as `x-sentry-event-id` and
 reports only method/status, not request or response payloads. Expected 4xx
 responses do not create issues.
 
-Fresh Worker IDs preserve per-execution isolation but affect
+`LOADER.load()` creates a fresh Worker for each execution without ID caching,
+following the [Worker Loader API](https://developers.cloudflare.com/dynamic-workers/api-reference/#load).
+This preserves per-execution isolation but affects
 [Dynamic Workers costs](https://developers.cloudflare.com/dynamic-workers/pricing/).
 Any later reuse must preserve request credentials and authorization; changing
 the ID alone is insufficient.
 
 ### Lifecycle investigation
 
-Local probes on 2026-10-27 used the unchanged sandbox from `f4f0766b`, a small
-parent reproducing the execution/deadline logic, and a local HTTP fixture on
-Miniflare `5.20261019.1-beta` / workerd `1.20261019.1`. They used no real token
-or Sentry API. `waitUntil` deliberately kept the parent context alive; these
-results do not establish the lifetime of a hosted MCP request.
+The parent owns one `ExecutionGate` per tool call, closed in `finally` on success,
+error or timeout. Its 30-second deadline covers schema loading, Worker startup,
+execution and reading the result. The sandbox receives the same deadline.
 
-- With the real 30-second deadline, the parent returned timeout at 30.004s,
-  but the sandbox settled at 30.503s. `Promise.race` stops waiting, not execution.
-- An unawaited POST reached the fixture after the parent returned success,
-  while still inside the deadline. Without the extended context, that probe
-  ended before HTTP arrived. Execution closure currently depends on context
-  cleanup, not an explicit broker close.
-- The broker deadline rejected a request starting after expiry. Aborting an
-  already-sent HTTP request did not undo the fixture's accepted write.
+Like Cloudflare's [ExecutionGate](https://github.com/cloudflare/agents/blob/a2d371ec333198855f4ac2aa4dadbe2696e73c75/packages/codemode/src/executor.ts),
+closing releases pending sandbox-to-host RPC. The Sentry gate also aborts
+upstream HTTP and rejects new work before authorization, then checks again after
+authorization before sending an API request. A slow authorization lookup cannot
+start a write after execution has closed. The shared OpenAPI cache retains its
+independent 15-second timeout; closing one execution does not cancel a schema
+load used by another caller.
 
-Cloudflare's [ExecutionGate](https://github.com/cloudflare/agents/blob/858674439f2966b16ea55bd37b46fad4248f2781/packages/codemode/src/executor.ts)
-releases pending RPC when execution settles; it explicitly does not cancel host
-work. A local reproduction confirmed that distinction. `LOADER.load()` worked,
-but neither its handles nor `get()` handles exposed `Symbol.dispose` in this
-installed runtime, so optional disposal alone would not fix these observations.
+Programs must await every `sentry.request()`, including parallel calls. Returning
+with calls still pending is an execution error, not success. Throwing preserves
+the original error while cleanup aborts pending requests. The sandbox disables
+its API access when the program ends; the parent broker enforces the boundary
+independently of generated code. Closed RPC calls settle with an error response
+instead of an unhandled rejection.
 
-Before production, define and test execution closure: reject new broker work
-after completion, check state/deadline before and after async authorization,
-release pending RPC and abort in-flight HTTP where possible. Define how
-unawaited requests affect the result. Verify hosted cleanup, cancellation and
-CPU/concurrency enforcement separately. No cleanup can roll back accepted writes.
-These findings are pending work, not a production-readiness sign-off.
+Cancellation is best effort for HTTP already sent: a write accepted upstream
+cannot be rolled back. The tool retains the warning to inspect state before
+retrying writes. Gate closure revokes API access; it does not forcibly terminate
+JavaScript still running inside an isolate. CPU and platform concurrency
+enforcement still require hosted verification. Local handles do not expose
+`Symbol.dispose`, so cleanup does not depend on optional disposal.
 
 ## Runtime and integration validation
 
@@ -228,13 +228,22 @@ the Vitest pool using older workerd. Miniflare 5 uses
 fixtures use the existing Undici `MockAgent` with `disableNetConnect()`. No
 binary override is required.
 
-Validation after separating agent evals on 2026-10-27 passed 469 hosted tests,
-26 isolated runtime/access tests, root typechecks, frozen install and a
-production Wrangler dry-run with `LOADER`. This is fixture-backed evidence,
-not a real Sentry account or deployment.
+Lifecycle validation on 2026-10-27 passed 474 hosted tests, 27 isolated
+runtime/access tests, 1,836 core tests (six skipped), 89 stdio tests, root build
+and typechecks, lint and documentation links. Three hosted regressions reproduce
+the original closure bugs: return/throw with pending HTTP and delayed
+authorization. The contexts stay alive after the result to prove cleanup does
+not depend on request teardown. Two fake-timer tests check timeout behavior
+before headers and during the response body; these do not establish a baseline
+cancellation bug because fake timers do not advance native `AbortSignal.timeout`.
+A real 30-second test observes the upstream socket close while an accepted write
+remains. No unhandled RPC exceptions appear in these runs.
+
+These checks use external HTTP fixtures, not a real Sentry account or deployment.
+No new model evals were run; the agent harness remains in its separate PR.
 Unrelated CLI fixture/platform failures prevented a green full workspace suite.
-Before production, address the lifecycle findings above and validate hosted
-OAuth-to-API authorization and Cloudflare CPU/termination limits. No deployment
+Before production, validate hosted OAuth-to-API authorization and Cloudflare
+CPU/termination limits. No deployment
 is established by these checks.
 
 ## References

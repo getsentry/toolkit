@@ -10,6 +10,7 @@ import {
   codeModeResultSchema,
   getCodeModeToolDefinitions,
 } from "./definitions";
+import { ExecutionGate } from "./execution";
 import { configuredUrl, limitMcpRequestBody, readBoundedBody } from "./http";
 import { getSpec } from "./openapi";
 import type { ApiAuthorization } from "./production";
@@ -18,7 +19,7 @@ import { sandboxSource } from "./sandbox";
 export type { CodeModeEnv } from "./broker";
 
 declare class Sandbox extends WorkerEntrypoint {
-  run(broker?: ApiBroker): Promise<Response>;
+  run(broker: ApiBroker | undefined, deadline: number): Promise<Response>;
 }
 
 /** Callbacks capture this request's bearer token; never share this server across users. */
@@ -29,19 +30,19 @@ export function registerCodeModeTools(
   authorization?: ApiAuthorization,
 ): void {
   async function evaluate(code: string, execute: boolean) {
+    const execution = new ExecutionGate();
     const hint =
       execute && env.CODE_MODE_ALLOW_WRITES === "true"
         ? " Execution is not atomic: writes may already have completed. Inspect API state before retrying writes."
         : "";
     try {
-      const apiBase = configuredUrl(env.API_BASE_URL)
-        .toString()
-        .replace(/\/$/, "");
-      const deadline = Date.now() + 30_000;
-      const spec = execute ? undefined : await getSpec(env.OPENAPI_URL);
-      const worker = env.LOADER.get(
-        `sentry-code-mode-${crypto.randomUUID()}`,
-        async () => ({
+      const value = await execution.run(async () => {
+        const apiBase = configuredUrl(env.API_BASE_URL)
+          .toString()
+          .replace(/\/$/, "");
+        const spec = execute ? undefined : await getSpec(env.OPENAPI_URL);
+        execution.assertOpen();
+        const workerCode = {
           compatibilityDate: "2026-01-12",
           mainModule: "worker.js",
           modules: {
@@ -53,31 +54,25 @@ export function registerCodeModeTools(
           // the trusted harness separately bounds HTTP calls and output size.
           limits: { cpuMs: 1_000, subRequests: execute ? 20 : 0 },
           globalOutbound: null,
-        }),
-      );
-      const broker = execute
-        ? new ApiBroker({
-            accessToken: token,
-            deadline,
-            apiBaseUrl: env.API_BASE_URL,
-            allowWrites: env.CODE_MODE_ALLOW_WRITES === "true",
-            authorization,
-          })
-        : undefined;
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      const response = await Promise.race([
-        worker.getEntrypoint<Sandbox>().run(broker),
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(
-            () => reject(new Error("Execution deadline exceeded.")),
-            Math.max(1, deadline - Date.now()),
-          );
-        }),
-      ]).finally(() => clearTimeout(timeout));
-      const body = await readBoundedBody(response.body, 55_000);
-      const value = codeModeResultSchema.parse(
-        JSON.parse(new TextDecoder().decode(body)),
-      );
+        };
+        const worker = env.LOADER.load(workerCode);
+        const broker = execute
+          ? new ApiBroker({
+              accessToken: token,
+              execution,
+              apiBaseUrl: env.API_BASE_URL,
+              allowWrites: env.CODE_MODE_ALLOW_WRITES === "true",
+              authorization,
+            })
+          : undefined;
+        const response = await worker
+          .getEntrypoint<Sandbox>()
+          .run(broker, execution.deadline);
+        const body = await readBoundedBody(response.body, 55_000);
+        return codeModeResultSchema.parse(
+          JSON.parse(new TextDecoder().decode(body)),
+        );
+      });
       if (value.error !== undefined) {
         const failure = { ...value, error: value.error + hint };
         return {
@@ -99,6 +94,8 @@ export function registerCodeModeTools(
           { type: "text" as const, text: message.slice(0, 4_000) + hint },
         ],
       };
+    } finally {
+      execution.close();
     }
   }
   for (const [name, definition] of Object.entries(

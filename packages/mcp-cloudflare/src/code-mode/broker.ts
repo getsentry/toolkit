@@ -1,6 +1,7 @@
 import { RpcTarget } from "cloudflare:workers";
 import { ApiServerError } from "@sentry/mcp-core/api-client";
 import { logIssue } from "@sentry/mcp-core/telem/logging";
+import type { ExecutionGate } from "./execution";
 import { configuredUrl, readBoundedBody } from "./http";
 import type { ApiAuthorization } from "./production";
 
@@ -15,7 +16,7 @@ export interface CodeModeEnv {
 
 export interface BrokerOptions {
   accessToken: string;
-  deadline: number;
+  execution: ExecutionGate;
   apiBaseUrl: string;
   allowWrites: boolean;
   authorization?: ApiAuthorization;
@@ -30,6 +31,24 @@ export class ApiBroker extends RpcTarget {
     this.#options = options;
   }
   async fetch(request: Request): Promise<Response> {
+    try {
+      return await this.#options.execution.run(() => this.#fetch(request));
+    } catch (error) {
+      if (!this.#options.execution.signal.aborted) throw error;
+      // Settle RPC with a value, even when the sandbox no longer awaits it.
+      return Response.json(
+        {
+          detail:
+            error instanceof Error
+              ? error.message
+              : "Code execution has finished.",
+        },
+        { status: 408 },
+      );
+    }
+  }
+
+  async #fetch(request: Request): Promise<Response> {
     const base = configuredUrl(this.#options.apiBaseUrl);
     const requested = new URL(request.url);
     const prefix = base.pathname.replace(/\/$/, "");
@@ -65,19 +84,14 @@ export class ApiBroker extends RpcTarget {
         request.url,
         request.method,
       );
+      this.#options.execution.assertOpen();
       if ("error" in authorized) {
         return Response.json({ detail: authorized.error }, { status: 403 });
       }
       destination = authorized.url;
       attribution = authorized.headers;
     }
-    const remaining = this.#options.deadline - Date.now();
-    if (remaining <= 0) {
-      return Response.json(
-        { detail: "Execution deadline exceeded." },
-        { status: 408 },
-      );
-    }
+    this.#options.execution.assertOpen();
     // Only API-relevant input headers cross the boundary. Auth is always replaced.
     const headers = new Headers();
     for (const name of [
@@ -96,7 +110,7 @@ export class ApiBroker extends RpcTarget {
       new Request(new Request(destination, request), {
         headers,
         redirect: "manual",
-        signal: AbortSignal.timeout(remaining),
+        signal: this.#options.execution.signal,
       }),
     );
     if (response.status === 401) {
