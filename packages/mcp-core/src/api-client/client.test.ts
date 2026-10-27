@@ -1443,8 +1443,32 @@ describe("transient 5xx retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("does not retry a non-gateway 500", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(internalError());
+  it("retries a 500 on a GET", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(internalError())
+      .mockResolvedValueOnce(authOk());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.getAuthenticatedUser();
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a deterministic 5xx such as 501", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Not Implemented" }), {
+        status: 501,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     globalThis.fetch = fetchMock;
 
     const apiService = new SentryApiService({
@@ -1652,8 +1676,10 @@ describe("rate limit retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry a rate-limited POST", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(rateLimited(nowSeconds + 1));
+  it("retries a rate-limited POST, which Sentry rejected before running it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => rateLimited(Math.floor(Date.now() / 1000) + 1));
     globalThis.fetch = fetchMock;
 
     const promise = apiService().createTeam({
@@ -1664,7 +1690,10 @@ describe("rate limit retry", () => {
     await vi.runAllTimersAsync();
 
     await expect(promise).rejects.toBeInstanceOf(ApiRateLimitError);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.method).toBe("POST");
+    }
   });
 
   it("stops waiting when the request is aborted", async () => {

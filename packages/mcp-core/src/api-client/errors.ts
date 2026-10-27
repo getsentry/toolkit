@@ -212,7 +212,7 @@ export class ApiRateLimitError extends ApiClientError {
 
   override toUserMessage(): string {
     if (this.retryAfterMs === undefined) {
-      return `${super.toUserMessage()}. Wait a few seconds before retrying, and make fewer requests in parallel.`;
+      return `${super.toUserMessage()}. Retry in a few seconds.`;
     }
     const seconds = Math.max(1, Math.ceil(this.retryAfterMs / 1000));
     return `${super.toUserMessage()}. Retry in ${seconds} second${seconds === 1 ? "" : "s"}.`;

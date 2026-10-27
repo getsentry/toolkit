@@ -27,11 +27,20 @@ const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const DATE_RESOLUTION_MS = 1000;
 
 /**
- * Whether a failed request may be sent again. Writes are only retried when
- * the caller says replaying them is safe, such as a content-addressed upload.
+ * Whether a failed request may be sent again. A 429 is safe for any method:
+ * Sentry's rate-limit middleware rejects the request in `process_request`,
+ * before the endpoint runs (`sentry/middleware/ratelimit.py`). Other failures
+ * may have run the endpoint, so writes are only retried when the caller says
+ * replaying them is safe, such as a content-addressed upload.
  */
-function isRetryableMethod(method: string, idempotent = false): boolean {
-  return idempotent || IDEMPOTENT_METHODS.has(method.toUpperCase());
+function isRetryableMethod(
+  method: string,
+  status: number,
+  idempotent = false,
+): boolean {
+  return (
+    status === 429 || idempotent || IDEMPOTENT_METHODS.has(method.toUpperCase())
+  );
 }
 
 /**
@@ -96,7 +105,7 @@ export function nextRetryDelayMs({
 }): number | undefined {
   if (
     attempt >= policy.maxRetries ||
-    !isRetryableMethod(method, idempotent) ||
+    !isRetryableMethod(method, status, idempotent) ||
     !policy.retryableStatuses.includes(status)
   ) {
     return undefined;

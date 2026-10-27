@@ -305,23 +305,27 @@ type RequestOptions = {
 };
 
 /**
- * Automatic retries for rate limits (429) and transient gateway failures
- * (502/503/504) on GET and HEAD requests. Writes are never retried.
+ * Automatic retries for rate limits (429) on any method, and for transient
+ * server failures (500/502/503/504) on GET and HEAD requests only.
+ *
+ * Sentry rejects a rate-limited request before the endpoint runs, so a 429 is
+ * safe to replay even for a write. A 5xx may have run the endpoint, so writes
+ * are not retried on one. Other 5xx codes (501, 505, ...) are deterministic.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two
  * retries fit in about 2 seconds. A reset further out than `maxDelayMs` means
  * a longer window; the tool call fails at once with the delay in its message
- * instead of holding the Workers request open. Edge gateway errors ("upstream
- * connect error ... reset before headers") clear on a quick retry.
+ * instead of holding the Workers request open.
  */
 const REQUEST_RETRY_POLICY: RetryPolicy = {
   maxRetries: 2,
-  retryableStatuses: [429, 502, 503, 504],
+  retryableStatuses: [429, 500, 502, 503, 504],
   baseDelayMs: 250,
   maxDelayMs: 2000,
   maxTotalDelayMs: 3000,
 };
+
 const API_MAX_PER_PAGE = 100;
 const MAX_LIST_PAGES = 50;
 
@@ -772,12 +776,12 @@ export class SentryApiService {
 
   /**
    * Makes an authenticated request to the Sentry API, transparently retrying
-   * rate-limited (429) and gateway-failed (502/503/504) GET and HEAD requests
+   * rate-limited (429) requests and 500/502/503/504 GET and HEAD requests
    * under `REQUEST_RETRY_POLICY`.
    *
    * A 429 waits for its `Retry-After` or `X-Sentry-Rate-Limit-Reset` delay;
-   * everything else uses jittered backoff. Writes, persistent 500s, other
-   * 4xx errors, and network/configuration errors fail fast. Callers that opt
+   * everything else uses jittered backoff. Writes that hit a 5xx, other 4xx
+   * errors, and network/configuration errors fail fast. Callers that opt
    * a status into `allowStatuses` receive the raw response from `requestOnce`
    * and are never retried. Aborting `options.signal` ends any wait.
    *

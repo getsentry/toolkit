@@ -205,17 +205,25 @@ describe("nextRetryDelayMs", () => {
     }
   });
 
-  it("never retries a write without the idempotent opt-in", () => {
-    for (const method of ["PUT", "DELETE"]) {
-      expect(nextRetryDelayMs({ ...base, method })).toBeUndefined();
+  it("retries a rate-limited write, since Sentry rejects it before the endpoint runs", () => {
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      expect(nextRetryDelayMs({ ...base, method, status: 429 })).toBe(125);
     }
-    for (const status of [429, 502, 503, 504]) {
-      expect(
-        nextRetryDelayMs({ ...base, method: "POST", status }),
-      ).toBeUndefined();
+  });
+
+  it("never retries a write on a 5xx without the idempotent opt-in", () => {
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      for (const status of [502, 503, 504]) {
+        expect(nextRetryDelayMs({ ...base, method, status })).toBeUndefined();
+      }
     }
     expect(
-      nextRetryDelayMs({ ...base, method: "POST", idempotent: true }),
+      nextRetryDelayMs({
+        ...base,
+        method: "POST",
+        status: 503,
+        idempotent: true,
+      }),
     ).toBe(125);
   });
 
