@@ -2,13 +2,8 @@
  * Per-version database backups for `sentry cli upgrade undo` (#1623).
  */
 
-import {
-  existsSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { statSync } from "node:fs";
+import { readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
@@ -60,51 +55,59 @@ function permissions(path: string): number {
   return statSync(path).mode & 0o777;
 }
 
-function manifest(): {
-  backups: { version: string }[];
-  lastUpgrade?: { fromVersion: string; toVersion: string };
-} {
-  return JSON.parse(
-    readFileSync(join(getBackupDir(), "manifest.json"), "utf-8"),
-  );
+/** Backup file names in the backup directory, sorted. */
+async function backupFiles(): Promise<string[]> {
+  return (await readdir(getBackupDir())).sort();
 }
 
 describe("backupDatabase", () => {
-  test("saves the database and records the upgrade", () => {
+  test("saves the database under a name recording the upgrade", async () => {
     setMarker("before");
-    const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
     setMarker("after");
 
+    expect(backup.file).toBe("cli-1.0.0_to_2.0.0.db");
     const copy = new Database(join(getBackupDir(), backup.file));
     try {
       expect(getMetadata(copy, [MARKER]).get(MARKER)).toBe("before");
     } finally {
       copy.close();
     }
-    expect(manifest().lastUpgrade).toEqual({
-      fromVersion: "1.0.0",
-      toVersion: "2.0.0",
-    });
-    expect(getUndoBackup("2.0.0")).toEqual(backup);
+    expect(await getUndoBackup("2.0.0")).toEqual(backup);
+  });
+
+  test("keeps prerelease and build versions in the name", async () => {
+    const backup = await backupDatabase(
+      getRawDatabase(),
+      "1.0.0-dev.1700000000",
+      "1.0.0+build.5",
+    );
+
+    expect(await getUndoBackup("1.0.0+build.5")).toEqual(backup);
+  });
+
+  test("rejects a version that can't be part of a file name", async () => {
+    await expect(
+      backupDatabase(getRawDatabase(), "../1.0.0", "2.0.0"),
+    ).rejects.toThrow("Cannot name a database backup");
   });
 
   test.skipIf(process.platform === "win32")(
     "keeps backups readable only by the user",
-    () => {
-      const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    async () => {
+      const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
       expect(permissions(getBackupDir())).toBe(0o700);
       expect(permissions(join(getBackupDir(), backup.file))).toBe(0o600);
-      expect(permissions(join(getBackupDir(), "manifest.json"))).toBe(0o600);
     },
   );
 
-  test("keeps one backup per version", () => {
+  test("keeps one backup per version", async () => {
     setMarker("first");
-    backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
     setMarker("second");
-    const backup = backupDatabase(getRawDatabase(), "1.0.0", "3.0.0");
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "3.0.0");
 
-    expect(manifest().backups.map((b) => b.version)).toEqual(["1.0.0"]);
+    expect(await backupFiles()).toEqual(["cli-1.0.0_to_3.0.0.db"]);
     const copy = new Database(join(getBackupDir(), backup.file));
     try {
       expect(getMetadata(copy, [MARKER]).get(MARKER)).toBe("second");
@@ -113,28 +116,25 @@ describe("backupDatabase", () => {
     }
   });
 
-  test("prunes the oldest backups", () => {
+  test("prunes the oldest backups", async () => {
     const files: string[] = [];
     for (let i = 0; i <= MAX_DATABASE_BACKUPS; i++) {
-      files.push(
-        backupDatabase(getRawDatabase(), `1.0.${i}`, `1.0.${i + 1}`).file,
+      const { file } = await backupDatabase(
+        getRawDatabase(),
+        `1.0.${i}`,
+        `1.0.${i + 1}`,
       );
+      files.push(file);
     }
 
-    const kept = manifest().backups.map((b) => b.version);
-    expect(kept).toHaveLength(MAX_DATABASE_BACKUPS);
-    expect(kept).not.toContain("1.0.0");
-    expect(existsSync(join(getBackupDir(), files[0] as string))).toBe(false);
-    expect(
-      existsSync(join(getBackupDir(), files[MAX_DATABASE_BACKUPS] as string)),
-    ).toBe(true);
+    expect(await backupFiles()).toEqual(files.slice(1).sort());
   });
 });
 
 describe("getUndoBackup", () => {
-  function undoError(version: string): string {
+  async function undoError(version: string): Promise<string> {
     try {
-      getUndoBackup(version);
+      await getUndoBackup(version);
     } catch (error) {
       expect(error).toBeInstanceOf(UpgradeError);
       return (error as Error).message;
@@ -142,33 +142,40 @@ describe("getUndoBackup", () => {
     throw new Error("expected getUndoBackup to throw");
   }
 
-  test("fails when no upgrade was recorded", () => {
-    expect(undoError("2.0.0")).toContain("Nothing to undo");
+  test("fails when no upgrade was recorded", async () => {
+    expect(await undoError("2.0.0")).toContain("Nothing to undo");
   });
 
-  test("fails when this version was installed another way", () => {
-    backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
-    expect(undoError("3.0.0")).toContain("went from 1.0.0 to 2.0.0");
+  test("fails when this version was installed another way", async () => {
+    await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    expect(await undoError("3.0.0")).toContain("went from 1.0.0 to 2.0.0");
   });
 
-  test("fails when the backup file is gone", () => {
-    const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
-    rmSync(join(getBackupDir(), backup.file));
-    expect(undoError("2.0.0")).toContain("backup for 1.0.0 is missing");
+  test("only undoes the newest upgrade", async () => {
+    await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    await backupDatabase(getRawDatabase(), "2.0.0", "3.0.0");
+    expect(await undoError("2.0.0")).toContain("went from 2.0.0 to 3.0.0");
   });
 
-  test("treats an unreadable manifest as nothing to undo", () => {
-    backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
-    writeFileSync(join(getBackupDir(), "manifest.json"), "not json");
-    expect(undoError("2.0.0")).toContain("Nothing to undo");
+  test("fails when the backup file is gone", async () => {
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    await rm(join(getBackupDir(), backup.file));
+    expect(await undoError("2.0.0")).toContain("Nothing to undo");
+  });
+
+  test("ignores other files in the backup directory", async () => {
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    await writeFile(join(getBackupDir(), "notes.txt"), "not a backup");
+    await writeFile(join(getBackupDir(), "cli-9.0.0.db"), "");
+    expect(await getUndoBackup("2.0.0")).toEqual(backup);
   });
 });
 
 describe("restoreDatabaseBackup", () => {
-  test("puts the backup back and keeps the current logins", () => {
+  test("puts the backup back and keeps the current logins", async () => {
     addAccount("a", "old-token", true);
     setMarker("saved");
-    const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
 
     getRawDatabase()
       .query("UPDATE accounts SET token = ? WHERE account_id = 'a'")
@@ -176,7 +183,7 @@ describe("restoreDatabaseBackup", () => {
     addAccount("b", "new-login", false);
     setMarker("changed");
 
-    const warnings = restoreDatabaseBackup(getRawDatabase(), backup);
+    const warnings = await restoreDatabaseBackup(getRawDatabase(), backup);
 
     expect(warnings.join("\n")).toContain("Restored the database 1.0.0");
     const restored = readFile((db) => ({
@@ -194,12 +201,12 @@ describe("restoreDatabaseBackup", () => {
     ]);
   });
 
-  test("keeps the user logged out when they logged out since the backup", () => {
+  test("keeps the user logged out when they logged out since the backup", async () => {
     addAccount("a", "token", true);
-    const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
     getRawDatabase().query("DELETE FROM accounts").run();
 
-    const warnings = restoreDatabaseBackup(getRawDatabase(), backup);
+    const warnings = await restoreDatabaseBackup(getRawDatabase(), backup);
 
     expect(warnings.join("\n")).not.toContain("logins");
     expect(
@@ -207,10 +214,10 @@ describe("restoreDatabaseBackup", () => {
     ).toEqual([]);
   });
 
-  test("leaves the restored file alone for the rest of the process", () => {
+  test("leaves the restored file alone for the rest of the process", async () => {
     setMarker("saved");
-    const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
-    restoreDatabaseBackup(getRawDatabase(), backup);
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    await restoreDatabaseBackup(getRawDatabase(), backup);
 
     setMetadata(getDatabase(), { [MARKER]: "written after restore" });
 
@@ -220,9 +227,9 @@ describe("restoreDatabaseBackup", () => {
     closeDatabase();
   });
 
-  test("warns when the backup predates multi-account storage", () => {
+  test("warns when the backup predates multi-account storage", async () => {
     addAccount("a", "token", true);
-    const backup = backupDatabase(getRawDatabase(), "0.47.0", "2.0.0");
+    const backup = await backupDatabase(getRawDatabase(), "0.47.0", "2.0.0");
     const copy = new Database(join(getBackupDir(), backup.file));
     try {
       copy.exec("DROP TABLE accounts");
@@ -230,7 +237,7 @@ describe("restoreDatabaseBackup", () => {
       copy.close();
     }
 
-    const warnings = restoreDatabaseBackup(getRawDatabase(), backup);
+    const warnings = await restoreDatabaseBackup(getRawDatabase(), backup);
 
     expect(warnings.join("\n")).toContain(
       "0.47.0 stores logins in an older format",
@@ -247,14 +254,14 @@ describe.each(["node", "wasm"] as const)("round trip [%s driver]", (kind) => {
     __setDriverForTests(null);
   });
 
-  test("backs up and restores the database", () => {
+  test("backs up and restores the database", async () => {
     expect(getRawDatabase().driverKind).toBe(kind);
     addAccount("a", "token", true);
     setMarker("saved");
-    const backup = backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
+    const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
     setMarker("changed");
 
-    restoreDatabaseBackup(getRawDatabase(), backup);
+    await restoreDatabaseBackup(getRawDatabase(), backup);
 
     expect(readFile((db) => getMetadata(db, [MARKER]).get(MARKER))).toBe(
       "saved",

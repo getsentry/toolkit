@@ -2,25 +2,25 @@
  * Per-version backups of `cli.db` for `sentry cli upgrade undo` (#1623).
  *
  * Before `sentry cli upgrade` hands the database to another version, it
- * copies `cli.db` to `backups/cli-<version>.db` under the config directory
- * and records which version it moved from. `sentry cli upgrade undo`
- * reinstalls that version and puts its own database back, so newer CLIs
- * don't have to know how to rewrite their schema for older ones.
+ * copies `cli.db` to `backups/cli-<from>_to_<to>.db` under the config
+ * directory. The file name is the whole record: the newest backup is the
+ * last upgrade, and `sentry cli upgrade undo` run from `<to>` reinstalls
+ * `<from>` and puts that file back, so newer CLIs don't have to know how to
+ * rewrite their schema for older ones.
  *
  * Backups hold credentials, so the directory is `0700` and files `0600`,
  * like `cli.db` itself.
  */
 
 import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+  chmod,
+  copyFile,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { stringifyUnknown, UpgradeError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -36,7 +36,13 @@ import { Database, type SQLQueryBindings } from "./sqlite.js";
 const log = logger.withTag("db.backup");
 
 const BACKUP_SUBDIR = "backups";
-const MANIFEST_FILENAME = "manifest.json";
+
+/** Characters semver allows; `_` is not one, so it can separate versions. */
+const VERSION_PATTERN = "[0-9A-Za-z.+-]+";
+const VERSION_REGEX = new RegExp(`^${VERSION_PATTERN}$`);
+const BACKUP_FILE_REGEX = new RegExp(
+  `^cli-(${VERSION_PATTERN})_to_(${VERSION_PATTERN})\\.db$`,
+);
 
 /**
  * Backups kept at most. There is one per version, so nightly users would
@@ -48,94 +54,65 @@ export const MAX_DATABASE_BACKUPS = 5;
 export type DatabaseBackup = {
   /** CLI version that last used this database. */
   version: string;
+  /** Version `sentry cli upgrade` moved to after saving it. */
+  toVersion: string;
   /** File name inside the backup directory. */
   file: string;
-  /** When the copy was made (ms since epoch). */
+  /** When the copy was made (ms since epoch), from the file's mtime. */
   createdAt: number;
 };
 
-/** The most recent version change made through `sentry cli upgrade`. */
-type UpgradeRecord = {
-  fromVersion: string;
-  toVersion: string;
-};
-
-type BackupManifest = {
-  backups: DatabaseBackup[];
-  lastUpgrade?: UpgradeRecord;
-};
-
-/** Directory holding database backups and their manifest. */
+/** Directory holding database backups. */
 export function getBackupDir(): string {
   return join(getConfigDir(), BACKUP_SUBDIR);
 }
 
-function manifestPath(): string {
-  return join(getBackupDir(), MANIFEST_FILENAME);
-}
-
-function isBackup(value: unknown): value is DatabaseBackup {
-  if (typeof value !== "object" || value === null) {
-    return false;
+function backupFileName(fromVersion: string, toVersion: string): string {
+  for (const version of [fromVersion, toVersion]) {
+    if (!VERSION_REGEX.test(version)) {
+      throw new Error(`Cannot name a database backup for version ${version}`);
+    }
   }
-  const entry = value as Record<string, unknown>;
-  return (
-    typeof entry.version === "string" &&
-    typeof entry.file === "string" &&
-    typeof entry.createdAt === "number"
-  );
+  return `cli-${fromVersion}_to_${toVersion}.db`;
 }
 
-function isUpgradeRecord(value: unknown): value is UpgradeRecord {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.fromVersion === "string" &&
-    typeof record.toVersion === "string"
-  );
-}
-
-/** Read the manifest, treating a missing or unreadable one as empty. */
-function readManifest(): BackupManifest {
-  const path = manifestPath();
-  if (!existsSync(path)) {
-    return { backups: [] };
-  }
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8")) as Record<
-      string,
-      unknown
-    >;
-    const backups = Array.isArray(parsed.backups)
-      ? parsed.backups.filter(isBackup)
-      : [];
-    const lastUpgrade = isUpgradeRecord(parsed.lastUpgrade)
-      ? parsed.lastUpgrade
-      : undefined;
-    return { backups, lastUpgrade };
-  } catch (error) {
-    log.debug(`Ignoring unreadable backup manifest ${path}`, error);
-    return { backups: [] };
-  }
-}
-
-/** Write the manifest atomically, readable only by the user. */
-function writeManifest(manifest: BackupManifest): void {
-  const path = manifestPath();
-  const tmp = `${path}.${process.pid}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(manifest, null, 2)}\n`, {
-    mode: 0o600,
-  });
-  renameSync(tmp, path);
-}
-
-function ensureBackupDir(): string {
+/** Every backup in the backup directory, newest first. */
+async function listBackups(): Promise<DatabaseBackup[]> {
   const dir = getBackupDir();
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  let files: string[];
   try {
-    chmodSync(dir, 0o700);
+    files = await readdir(dir);
+  } catch (error) {
+    log.debug(`No readable backup directory ${dir}`, error);
+    return [];
+  }
+  const backups: DatabaseBackup[] = [];
+  for (const file of files) {
+    const match = BACKUP_FILE_REGEX.exec(file);
+    if (!match) {
+      continue;
+    }
+    try {
+      const { mtimeMs } = await stat(join(dir, file));
+      backups.push({
+        version: match[1] as string,
+        toVersion: match[2] as string,
+        file,
+        createdAt: mtimeMs,
+      });
+    } catch (error) {
+      // Removed by a concurrent prune.
+      log.debug(`Skipping backup ${file}`, error);
+    }
+  }
+  return backups.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+async function ensureBackupDir(): Promise<string> {
+  const dir = getBackupDir();
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  try {
+    await chmod(dir, 0o700);
   } catch (error) {
     // Windows has no POSIX modes; the directory inherits the profile's ACLs.
     log.debug(`Could not restrict ${dir}`, error);
@@ -143,120 +120,79 @@ function ensureBackupDir(): string {
   return dir;
 }
 
-function restrictFile(path: string): void {
+async function restrictFile(path: string): Promise<void> {
   try {
-    chmodSync(path, 0o600);
+    await chmod(path, 0o600);
   } catch (error) {
     log.debug(`Could not restrict ${path}`, error);
   }
 }
 
-/** File name for a version's backup; versions are plain semver strings. */
-function backupFileName(version: string): string {
-  return `cli-${version.replace(/[^A-Za-z0-9._-]/g, "_")}.db`;
-}
-
 /**
- * Keep the newest {@link MAX_DATABASE_BACKUPS} backups, plus the one an undo
- * would restore, and delete the files of the rest.
- */
-function pruneBackups(manifest: BackupManifest, dir: string): void {
-  const undoVersion = manifest.lastUpgrade?.fromVersion;
-  // Entries are appended as they are made, so reversing first keeps the
-  // newest first among backups made within the same millisecond.
-  const newestFirst = [...manifest.backups]
-    .reverse()
-    .sort((a, b) => b.createdAt - a.createdAt);
-  const kept: DatabaseBackup[] = [];
-  for (const entry of newestFirst) {
-    if (kept.length < MAX_DATABASE_BACKUPS || entry.version === undoVersion) {
-      kept.push(entry);
-      continue;
-    }
-    rmSync(join(dir, entry.file), { force: true });
-  }
-  manifest.backups = kept;
-}
-
-/**
- * Save `db` as `fromVersion`'s backup and record the move to `toVersion`,
+ * Save `db` as `fromVersion`'s backup, named for the move to `toVersion`,
  * so `sentry cli upgrade undo` run from `toVersion` can return to it.
  *
- * Replaces any earlier backup of `fromVersion`. Uses `VACUUM INTO`, which
- * takes a consistent snapshot even while other CLI processes use `db`.
+ * Replaces any earlier backup of `fromVersion` and keeps the newest
+ * {@link MAX_DATABASE_BACKUPS}. Uses `VACUUM INTO`, which takes a
+ * consistent snapshot even while other CLI processes use `db`.
  */
-export function backupDatabase(
+export async function backupDatabase(
   db: Database,
   fromVersion: string,
   toVersion: string,
-): DatabaseBackup {
-  const dir = ensureBackupDir();
-  const manifest = readManifest();
-  // Drop the record first: if the copy fails, an undo must not restore a
-  // backup that predates this upgrade.
-  if (manifest.lastUpgrade) {
-    manifest.lastUpgrade = undefined;
-    writeManifest(manifest);
-  }
-
-  const file = backupFileName(fromVersion);
+): Promise<DatabaseBackup> {
+  const file = backupFileName(fromVersion, toVersion);
+  const dir = await ensureBackupDir();
   const path = join(dir, file);
   const tmp = `${path}.${process.pid}.tmp`;
-  rmSync(tmp, { force: true });
+  await rm(tmp, { force: true });
   try {
     db.query("VACUUM INTO ?").run(tmp);
-    restrictFile(tmp);
-    renameSync(tmp, path);
+    await restrictFile(tmp);
+    await rename(tmp, path);
   } finally {
-    rmSync(tmp, { force: true });
+    await rm(tmp, { force: true });
   }
 
-  const entry: DatabaseBackup = {
-    version: fromVersion,
-    file,
-    createdAt: Date.now(),
-  };
-  manifest.backups = [
-    ...manifest.backups.filter((b) => b.version !== fromVersion),
-    entry,
+  // Newest first, so the first ones left after this version's older copies
+  // are the ones to keep alongside the new backup.
+  const others = (await listBackups()).filter((b) => b.file !== file);
+  const stale = [
+    ...others.filter((b) => b.version === fromVersion),
+    ...others
+      .filter((b) => b.version !== fromVersion)
+      .slice(MAX_DATABASE_BACKUPS - 1),
   ];
-  manifest.lastUpgrade = { fromVersion, toVersion };
-  pruneBackups(manifest, dir);
-  writeManifest(manifest);
-  return entry;
+  await Promise.all(stale.map((b) => rm(join(dir, b.file), { force: true })));
+  const { mtimeMs } = await stat(path);
+  return { version: fromVersion, toVersion, file, createdAt: mtimeMs };
 }
 
 /**
  * Find the backup `sentry cli upgrade undo` should restore when run from
- * `currentVersion`.
+ * `currentVersion`: the newest one, if it was made upgrading to it.
  *
- * @throws {UpgradeError} When no upgrade to `currentVersion` was recorded,
- *   or its backup is gone.
+ * @throws {UpgradeError} When there is no backup, or the newest one was
+ *   made upgrading to another version.
  */
-export function getUndoBackup(currentVersion: string): DatabaseBackup {
-  const { backups, lastUpgrade } = readManifest();
-  if (!lastUpgrade) {
+export async function getUndoBackup(
+  currentVersion: string,
+): Promise<DatabaseBackup> {
+  const [last] = await listBackups();
+  if (!last) {
     throw new UpgradeError(
       "unsupported_operation",
       "Nothing to undo: no upgrade made with `sentry cli upgrade` was recorded.",
     );
   }
-  if (lastUpgrade.toVersion !== currentVersion) {
+  if (last.toVersion !== currentVersion) {
     throw new UpgradeError(
       "unsupported_operation",
-      `Nothing to undo: the last recorded upgrade went from ${lastUpgrade.fromVersion} to ${lastUpgrade.toVersion}, ` +
+      `Nothing to undo: the last recorded upgrade went from ${last.version} to ${last.toVersion}, ` +
         `but this is ${currentVersion}. It was probably installed another way.`,
     );
   }
-  const backup = backups.find((b) => b.version === lastUpgrade.fromVersion);
-  if (!(backup && existsSync(join(getBackupDir(), backup.file)))) {
-    throw new UpgradeError(
-      "unsupported_operation",
-      `Cannot undo: the database backup for ${lastUpgrade.fromVersion} is missing. ` +
-        `Run \`sentry cli upgrade ${lastUpgrade.fromVersion}\` instead.`,
-    );
-  }
-  return backup;
+  return last;
 }
 
 /** Columns of `table` in `db`, in declaration order. */
@@ -338,23 +274,22 @@ function carryOverAccounts(
  * @param db - This process's open connection to `cli.db`
  * @returns What the user should know about the restored state
  */
-export function restoreDatabaseBackup(
+export async function restoreDatabaseBackup(
   db: Database,
   backup: DatabaseBackup,
-): string[] {
+): Promise<string[]> {
   const source = join(getBackupDir(), backup.file);
   const dbPath = getDbPath();
   const tmp = `${dbPath}.restore-${process.pid}`;
-  const currentAccounts = readAccounts(db);
   const warnings: string[] = [];
 
-  rmSync(tmp, { force: true });
+  await rm(tmp, { force: true });
   try {
-    copyFileSync(source, tmp);
-    restrictFile(tmp);
+    await copyFile(source, tmp);
+    await restrictFile(tmp);
     const restored = new Database(tmp);
     try {
-      const warning = carryOverAccounts(restored, currentAccounts, backup);
+      const warning = carryOverAccounts(restored, readAccounts(db), backup);
       if (warning) {
         warnings.push(warning);
       }
@@ -368,16 +303,16 @@ export function restoreDatabaseBackup(
     try {
       // A leftover write-ahead log belongs to the replaced file and would
       // corrupt the restored one.
-      rmSync(`${dbPath}-wal`, { force: true });
-      rmSync(`${dbPath}-shm`, { force: true });
-      renameSync(tmp, dbPath);
+      await rm(`${dbPath}-wal`, { force: true });
+      await rm(`${dbPath}-shm`, { force: true });
+      await rename(tmp, dbPath);
     } catch (error) {
       // `cli.db` is still this version's; let callers use it again.
       closeDatabase();
       throw error;
     }
   } finally {
-    rmSync(tmp, { force: true });
+    await rm(tmp, { force: true });
   }
 
   const savedOn = new Date(backup.createdAt).toISOString().slice(0, 10);

@@ -119,9 +119,9 @@ type DatabasePlan = {
 };
 
 /** Back up the database as this version's before another version owns it. */
-function backupLocalDatabase(target: string): void {
+async function backupLocalDatabase(target: string): Promise<void> {
   try {
-    backupDatabase(getRawDatabase(), CLI_VERSION, target);
+    await backupDatabase(getRawDatabase(), CLI_VERSION, target);
   } catch (error) {
     log.warn(
       `Could not back up the local database: ${stringifyUnknown(error)}. ` +
@@ -134,16 +134,16 @@ function backupLocalDatabase(target: string): void {
  * Run once the new binary is downloaded, right before its setup, so a
  * failed download leaves the database untouched.
  */
-function prepareDatabaseForNewBinary(plan: DatabasePlan): void {
+async function prepareDatabaseForNewBinary(plan: DatabasePlan): Promise<void> {
   // Reinstalling this same version must not replace the record of the
   // upgrade that led here.
   if (plan.target !== CLI_VERSION) {
-    backupLocalDatabase(plan.target);
+    await backupLocalDatabase(plan.target);
   }
   if (plan.restore) {
     try {
       plan.warnings.push(
-        ...restoreDatabaseBackup(getRawDatabase(), plan.restore),
+        ...(await restoreDatabaseBackup(getRawDatabase(), plan.restore)),
       );
       plan.restored = true;
       return;
@@ -172,7 +172,7 @@ function finishDatabaseForNewBinary(plan: DatabasePlan): void {
 const CHANNEL_VERSIONS = new Set(["nightly", "stable"]);
 
 /** Version argument that returns to the version before the last upgrade. */
-const UNDO_VERSION = "undo";
+const MAGIC_VERSION_FOR_UNDO = "undo";
 
 /**
  * Structured result of the upgrade command.
@@ -724,7 +724,7 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     ? { ...process.env, SENTRY_INSTALL_DIR: installDir }
     : undefined;
 
-  prepareDatabaseForNewBinary(database);
+  await prepareDatabaseForNewBinary(database);
   let exitCode: number;
   try {
     exitCode = await spawnWithRetry(binaryPath, args, env);
@@ -1182,8 +1182,8 @@ export const upgradeCommand = buildCommand({
   },
   async *func(this: SentryContext, flags: UpgradeFlags, version?: string) {
     const undo =
-      version?.toLowerCase() === UNDO_VERSION
-        ? getUndoBackup(CLI_VERSION)
+      version?.toLowerCase() === MAGIC_VERSION_FOR_UNDO
+        ? await getUndoBackup(CLI_VERSION)
         : undefined;
     const resolvedContext = await resolveContext(
       undo ? undo.version : version,

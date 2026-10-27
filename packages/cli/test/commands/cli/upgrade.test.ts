@@ -11,12 +11,19 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as child_process from "node:child_process";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { run } from "@stricli/core";
+import { coerce as semverCoerce, inc as semverInc } from "semver";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // Make child_process namespace mutable so vi.spyOn works on ESM exports
@@ -39,7 +46,11 @@ import type { SentryContext } from "../../../src/context.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as binary from "../../../src/lib/binary.js";
 import { CLI_VERSION } from "../../../src/lib/constants.js";
-import { backupDatabase, getUndoBackup } from "../../../src/lib/db/backup.js";
+import {
+  backupDatabase,
+  getBackupDir,
+  getUndoBackup,
+} from "../../../src/lib/db/backup.js";
 import { getDbPath, getRawDatabase } from "../../../src/lib/db/index.js";
 import {
   clearInstallInfo,
@@ -871,6 +882,22 @@ function fakeChildProcess(exitCode: number): child_process.ChildProcess {
   return emitter as unknown as child_process.ChildProcess;
 }
 
+/**
+ * The release `steps` minor versions after this build, so tests that move
+ * between versions follow CLI_VERSION instead of hard-coding releases.
+ * CLI_VERSION is `0.0.0-dev` in tests, so there is no release before it.
+ */
+function releaseAfter(steps: number): string {
+  let version = semverCoerce(CLI_VERSION)?.version ?? "0.0.0";
+  for (let i = 0; i < steps; i++) {
+    version = semverInc(version, "minor") ?? version;
+  }
+  return version;
+}
+
+const NEXT_RELEASE = releaseAfter(1);
+const LATER_RELEASE = releaseAfter(2);
+
 describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy)", () => {
   useTestConfigDir("test-upgrade-spawn-");
 
@@ -1078,11 +1105,11 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
   });
 
   test("backs up the database before the new version runs setup", async () => {
-    mockBinaryDownloadWithVersion("99.99.99");
-    let backupAtSetup: string | undefined;
+    mockBinaryDownloadWithVersion(NEXT_RELEASE);
+    let backupsAtSetup: string[] = [];
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
       spawnedArgs.push({ cmd, args: [...(args ?? [])] });
-      backupAtSetup = getUndoBackup("99.99.99").version;
+      backupsAtSetup = readdirSync(getBackupDir());
       return fakeChildProcess(0);
     });
 
@@ -1091,22 +1118,30 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
 
     await run(app, ["cli", "upgrade", "--method", "curl"], context);
 
-    expect(backupAtSetup).toBe(CLI_VERSION);
+    expect(backupsAtSetup).toEqual([
+      `cli-${CLI_VERSION}_to_${NEXT_RELEASE}.db`,
+    ]);
+    expect((await getUndoBackup(NEXT_RELEASE)).version).toBe(CLI_VERSION);
   });
 
   test("undo reinstalls the previous version with its own database", async () => {
     const marker = "test.marker";
-    setMetadata(getRawDatabase(), { [marker]: "saved by 0.50.0" });
-    backupDatabase(getRawDatabase(), "0.50.0", CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: `saved by ${NEXT_RELEASE}` });
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
     setMetadata(getRawDatabase(), { [marker]: "changed since" });
 
     const fakeContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
     mockFetch(async (url) => {
-      if (extractInputUrl(url).includes("releases/tags/cli%400.50.0")) {
-        return new Response(JSON.stringify({ tag_name: "cli@0.50.0" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+      if (
+        extractInputUrl(url).includes(`releases/tags/cli%40${NEXT_RELEASE}`)
+      ) {
+        return new Response(
+          JSON.stringify({ tag_name: `cli@${NEXT_RELEASE}` }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
       }
       return new Response(gzipSync(fakeContent), { status: 200 });
     });
@@ -1129,16 +1164,16 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
 
     await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
 
-    expect(getOutput()).toContain("Restored the database 0.50.0");
+    expect(getOutput()).toContain(`Restored the database ${NEXT_RELEASE}`);
     const setupCall = spawnedArgs.find((entry) => entry.args.includes("setup"));
     expect(setupCall?.args).toContain("stable");
-    expect(markerAtSetup).toBe("saved by 0.50.0");
+    expect(markerAtSetup).toBe(`saved by ${NEXT_RELEASE}`);
     // This version's database is kept, so the undo can be undone in turn.
-    expect(getUndoBackup("0.50.0").version).toBe(CLI_VERSION);
+    expect((await getUndoBackup(NEXT_RELEASE)).version).toBe(CLI_VERSION);
   });
 
   test("undo explains that Homebrew can't install the earlier version", async () => {
-    backupDatabase(getRawDatabase(), "0.50.0", CLI_VERSION);
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
 
     const { context, getOutput, errors, restore } = createMockContext({
       homeDir: testDir,
@@ -1153,8 +1188,24 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(spawnedArgs).toEqual([]);
   });
 
+  test("undo refuses when the last upgrade went to another version", async () => {
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, LATER_RELEASE);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(getOutput() + errors.join("")).toContain(
+      `went from ${NEXT_RELEASE} to ${LATER_RELEASE}`,
+    );
+    expect(spawnedArgs).toEqual([]);
+  });
+
   test("undo explains when there is nothing to undo", async () => {
-    mockBinaryDownloadWithVersion("99.99.99");
+    mockBinaryDownloadWithVersion(NEXT_RELEASE);
 
     const { context, getOutput, errors, restore } = createMockContext({
       homeDir: testDir,
