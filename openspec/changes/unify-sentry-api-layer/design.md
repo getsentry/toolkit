@@ -89,33 +89,26 @@ endpoints are safe to mark `immutable`:
   revocation are not reflected until the entry expires. That bounds the TTL,
   not just the tier.
 
-So the shared policy replaces `immutable` with `detail`:
+So the CLI drops `immutable` (getsentry/toolkit#1681):
 
-| Tier     | TTL  | Matches                                                                                                                                    |
-| -------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| no-cache | 0    | autofix and root-cause polling                                                                                                             |
-| detail   | 5 m  | `/organizations/{org}/events/{project}:{event_id}/` without `averageColumn`; `/projects/{org}/{project}/trace-items/{id}/` without `debug` |
-| volatile | 60 s | `/issues/` (including issue events), `/projects/{org}/{project}/events/{id}/`, `/organizations/{org}/trace/{id}/`, log and span queries    |
-| stable   | 5 m  | everything else                                                                                                                            |
+| Tier     | TTL  | Matches                                                                                                                                 |
+| -------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| no-cache | 0    | autofix and root-cause polling                                                                                                          |
+| volatile | 60 s | `/issues/` (including issue events), `/projects/{org}/{project}/events/{id}/`, `/organizations/{org}/trace/{id}/`, log and span queries |
+| stable   | 5 m  | everything else, including organization event details and trace-item details                                                            |
 
-- Patterns are exact path shapes, anchored on the API prefix, not
-  substring matches on `/events/`. Anything that does not match an
-  allowlisted shape falls through to volatile or stable.
-- `detail` has the same TTL as `stable` in the CLI. It exists as its own
-  tier because it is the only tier eligible for R2 on the hosted MCP.
-- Today the CLI reads events through project and issue endpoints
-  (`getEvent`, `getLatestEvent` in `cli/src/lib/api/events.ts`), and the MCP
-  through `/organizations/{org}/issues/{id}/events/{event_id}/`. So in
-  practice the detail tier covers trace items until a caller moves to the
-  organization event endpoint. That is worth doing per call site only where
-  the response has every field the caller uses.
+- No separate tier for the safe detail endpoints. In the CLI it would have
+  the same TTL as `stable`, so it was folded in during review. Which
+  responses the hosted MCP may persist to R2 is a decision for that store,
+  made with its own allowlist (see the R2 backend below), not a TTL tier.
 - When server headers are present they still win. The CLI keeps honoring
   `max-age`, so if the server later extends it, the CLI follows without a
   release.
-- This lands as its own CLI PR before the move into `toolkit-core`, so the
-  move itself stays a no-behavior-change refactor. The existing
-  `response-cache.property.test.ts` cases that assert 24-hour event and
-  trace caching are replaced with scenarios from the spec delta.
+- Classification stays URL-regex based for now. A TODO in
+  `response-cache.ts` tracks moving it to generated `@sentry/api` operation
+  metadata (getsentry/sentry-api-schema#81, #102).
+- This landed as its own CLI PR before the move into `toolkit-core`, so the
+  move itself stays a no-behavior-change refactor.
 
 The cost is more API calls for repeated event and trace reads. A 24-hour
 window was a correctness bug, not a tunable: an agent re-reading an issue's
@@ -208,19 +201,27 @@ Backends:
     size, configurable by env.
   - Module-scoped, so it lives as long as the isolate. `deleteMatching`
     scans the in-memory index.
-- **R2 (hosted MCP, detail tier only).**
-  - Persists an entry only when it is in the detail tier _and_ the response
-    carries `Cache-Control: private` with a positive `max-age`. The server
-    header is the opt-in: until getsentry/sentry#128828 ships and is
-    enabled, R2 stores nothing.
+- **R2 (hosted MCP, allowlisted detail endpoints only).**
+  - Persists an entry only when its URL matches the store's explicit
+    allowlist _and_ the response carries `Cache-Control: private` with a
+    positive `max-age`. The allowlist holds exact path shapes:
+    `/organizations/{org}/events/{project}:{event_id}/` without
+    `averageColumn`, and `/projects/{org}/{project}/trace-items/{id}/`
+    without `debug`. The server header is the opt-in: until
+    getsentry/sentry#128828 ships and is enabled, R2 stores nothing.
+  - Today the CLI and MCP read events through project and issue endpoints,
+    which are not on the allowlist. So in practice R2 covers trace items
+    until a caller moves to the organization event endpoint, which is worth
+    doing per call site only where the response has every field the caller
+    uses.
   - Object key is `<identity>/<sha256(normalized URL)>`, with the expiry,
     the lesser of the server `max-age` and 5 minutes, in custom metadata and
     checked on read.
   - A bucket lifecycle rule deletes objects after 1 day, the shortest rule
     R2 supports. It is garbage collection only; reads enforce the expiry.
   - Writes happen in `ctx.waitUntil()`, so they never delay a response.
-  - Detail entries are never targeted by mutation invalidation, so R2 never
-    needs `deleteMatching`. The short expiry bounds how long a revoked or
+  - Allowlisted entries are never targeted by mutation invalidation, so R2
+    never needs `deleteMatching`. The short expiry bounds how long a revoked or
     deleted item can still be served.
 
 _Alternatives:_
@@ -236,8 +237,8 @@ _Alternatives:_
 
 `TieredStore(memory, r2)`:
 
-- `get` checks memory first, then R2 for detail keys, and copies R2 hits
-  into memory with the remaining expiry.
+- `get` checks memory first, then R2 for allowlisted URLs, and copies R2
+  hits into memory with the remaining expiry.
 - `set` writes to memory, and also to R2 when the entry is R2-eligible (see
   above).
 - `deleteMatching` only touches memory, since only volatile and stable
@@ -399,7 +400,7 @@ bumps move both products together.
   description tells agents when to use it.
 - **Revoked access or deleted data served from cache.** A user who loses
   access to a project, or whose event is deleted, can still get a cached
-  copy until it expires: up to 5 minutes for detail entries, including
+  copy until it expires: up to 5 minutes for stable entries, including
   from R2 on the hosted MCP. Enabling R2 in production needs a privacy and
   security sign-off on that window, alongside the server-side headers in
   getsentry/sentry#128828.
@@ -430,7 +431,7 @@ bumps move both products together.
 3. Land `api-transport` and the CLI switch-over.
 4. Land the MCP transport injection and `sentry mcp` passing the CLI fetch,
    then the hosted memory store behind a flag (`MCP_RESPONSE_CACHE=memory`).
-5. Enable the hosted memory cache. Add the R2 binding and the detail tier
+5. Enable the hosted memory cache. Add the R2 binding and its allowlist
    behind `MCP_RESPONSE_CACHE=tiered`, and enable it only after the server
    headers ship and the security sign-off.
 6. Run the domain-by-domain `@sentry/api` migration PRs.

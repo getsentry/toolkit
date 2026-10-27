@@ -48,27 +48,16 @@ When a response carries HTTP caching headers, the cache SHALL follow them
 
 Responses without caching headers SHALL use a TTL by URL class:
 
-- detail: 5 minutes (organization event details and project trace-item
-  details, by exact path)
 - volatile: 60 seconds (issue endpoints, project event details, full
   traces, log and span queries)
 - no-cache: never cached (autofix and root-cause polling)
-- stable: 5 minutes (everything else)
+- stable: 5 minutes (everything else, including organization event details
+  and trace-item details)
 
 #### Scenario: Organization event lookup
 
 - **WHEN** `/organizations/{org}/events/{project}:{event_id}/` is fetched without caching headers
 - **THEN** the response is reused for up to 5 minutes
-
-#### Scenario: Live aggregate on an event
-
-- **WHEN** an organization event detail is fetched with an `averageColumn` query
-- **THEN** it is classified as stable, not detail
-
-#### Scenario: Trace-item debug lookup
-
-- **WHEN** a project trace-item detail is fetched with a `debug` query
-- **THEN** it is classified as stable, not detail
 
 #### Scenario: Issue event lookup
 
@@ -154,20 +143,20 @@ response body.
 ### Requirement: Hosted tiers
 
 The hosted MCP SHALL cache every tier in memory. It SHALL persist an entry
-to durable object storage shared across isolates only when the entry is in
-the detail tier and the response carries a server `Cache-Control` with
-`private` and a positive `max-age`. A persisted entry SHALL expire at the
-lesser of the server `max-age` and 5 minutes. Volatile and stable entries
-SHALL never be persisted outside the isolate.
+to durable object storage shared across isolates only when its URL matches
+an explicit allowlist of detail endpoints and the response carries a server
+`Cache-Control` with `private` and a positive `max-age`. A persisted entry SHALL expire at the
+lesser of the server `max-age` and 5 minutes. Entries outside the
+allowlist SHALL never be persisted outside the isolate.
 
-#### Scenario: Detail hit in another isolate
+#### Scenario: Allowlisted hit in another isolate
 
 - **WHEN** an identity fetches an organization event detail that carries `Cache-Control: private, max-age=300` in one isolate, and fetches it again in another isolate within 5 minutes
 - **THEN** the second fetch is served from durable storage without calling the API
 
-#### Scenario: Detail response without server headers
+#### Scenario: Allowlisted response without server headers
 
-- **WHEN** a detail-tier response carries no server caching headers
+- **WHEN** an allowlisted response carries no server caching headers
 - **THEN** it is cached in that isolate's memory only
 
 #### Scenario: Volatile entry

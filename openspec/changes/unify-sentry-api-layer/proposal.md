@@ -23,12 +23,12 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
 - Move the CLI's pagination into `@sentry/toolkit-core` and use it from both
   products: limit-bounded walks, even page sizing, and cursors that resume
   mid-page.
-- **Behavior change:** narrow the CLI's 24-hour "immutable" cache tier. It
-  matches every `/events/<id>/` and `/trace/<id>/` URL, but issue events,
-  project events, and full traces change after they are first read
-  (getsentry/sentry#128818). Only organization event details and project
-  trace-item details stay in a separate tier, at 5 minutes. Issue events,
-  project events, and full traces drop to 60 seconds.
+- **Behavior change (landed in #1681):** drop the CLI's 24-hour
+  "immutable" cache tier. It matched every `/events/<id>/` and
+  `/trace/<id>/` URL, but issue events, project events, and full traces
+  change after they are first read (getsentry/sentry#128818). Issue events,
+  project events, and full traces drop to 60 seconds; organization event
+  details and trace-item details fall to the default 5 minutes.
 - Move the CLI's response-cache policy into `@sentry/toolkit-core`. That
   covers TTL tiers, identity-scoped keys, invalidation after mutations, and
   bypass. Storage becomes a pluggable backend with a byte budget and
@@ -46,8 +46,9 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
   refresh, and on-disk cache.
 - The hosted MCP on Cloudflare uses a tiered cache:
   - an in-memory LRU, limited by bytes, for every tier
-  - R2 for organization event details and project trace-item details, only
-    when the server marks them `private, max-age`, for at most 5 minutes
+  - R2 for an allowlist of organization event details and project
+    trace-item details, only when the server marks them `private, max-age`,
+    for at most 5 minutes
   - zstd level 3 compression on both
 - MCP read tools accept a `fresh` parameter that bypasses the cache, matching
   the CLI's `--fresh` flag.
@@ -98,6 +99,6 @@ None.
   option, and the standalone auth flow is deprecated.
 - `packages/cli/src/lib/mcp.ts`: passes the CLI transport.
 - `packages/mcp-cloudflare`: in-memory cache, an R2 bucket binding for
-  detail responses, and a wrangler config change.
+  allowlisted detail responses, and a wrangler config change.
 - `pnpm-workspace.yaml`: a catalog entry for `@sentry/api`.
 - Snapshot and eval churn in `mcp-core` and `mcp-server-evals`.
