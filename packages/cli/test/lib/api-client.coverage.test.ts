@@ -1417,9 +1417,9 @@ describe("infrastructure.ts", () => {
     test("parses JSON error detail from non-ok response", async () => {
       globalThis.fetch = mockFetch(
         async () =>
-          new Response(JSON.stringify({ detail: "Rate limited" }), {
-            status: 429,
-            statusText: "Too Many Requests",
+          new Response(JSON.stringify({ detail: "Invalid query" }), {
+            status: 400,
+            statusText: "Bad Request",
             headers: { "Content-Type": "application/json" },
           }),
       );
@@ -1430,8 +1430,8 @@ describe("infrastructure.ts", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError);
         const apiErr = error as ApiError;
-        expect(apiErr.status).toBe(429);
-        expect(apiErr.detail).toBe("Rate limited");
+        expect(apiErr.status).toBe(400);
+        expect(apiErr.detail).toBe("Invalid query");
       }
     });
 

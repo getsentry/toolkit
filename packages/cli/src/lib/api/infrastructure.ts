@@ -205,6 +205,11 @@ export type ApiRequestOptions<T = unknown> = {
   credential?: CredentialContext;
   /** Manually validate each redirect before forwarding credentials. */
   validatedRedirects?: boolean;
+  /**
+   * Retry transient failures even for writes. Only for requests the server
+   * dedupes (see `idempotent` in sentry-client.ts).
+   */
+  idempotent?: boolean;
 };
 
 /**
@@ -774,11 +779,13 @@ export async function apiRequestToRegion<T>(
     schema,
     credential,
     validatedRedirects,
+    idempotent,
   } = options;
   const config = getSdkConfig(regionUrl, {
     credential,
     validatedRedirects,
     bufferResponseBody: true,
+    idempotent,
   });
 
   const endpointWithParams = appendSearchParams(endpoint, params);

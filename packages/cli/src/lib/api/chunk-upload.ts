@@ -395,7 +395,8 @@ export async function uploadMissingChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const { fetch: authFetch } = getSdkConfig(regionUrl);
+  // Chunks are stored by SHA-1, so a replayed upload is a no-op.
+  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
 
   await Promise.all(
     missingChunks.map((chunk) =>
@@ -487,7 +488,8 @@ export async function uploadMissingBufferChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const { fetch: authFetch } = getSdkConfig(regionUrl);
+  // Chunks are stored by SHA-1, so a replayed upload is a no-op.
+  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
 
   await Promise.all(
     missingChunks.map((chunk) =>
@@ -550,6 +552,8 @@ export async function pollAssembly(params: {
         method: "POST",
         body,
         schema,
+        // Assembly state is keyed by checksum; re-sending only polls it.
+        idempotent: true,
       },
     );
 

@@ -272,10 +272,16 @@ async function postAssemble(
   endpoint: string,
   body: unknown,
 ): Promise<DifAssembleResponse> {
+  // Assembly state is keyed by checksum; re-sending only polls it.
   const { data } = await apiRequestToRegion<DifAssembleResponse>(
     regionUrl,
     endpoint,
-    { method: "POST", body, schema: DifAssembleResponseSchema },
+    {
+      method: "POST",
+      body,
+      schema: DifAssembleResponseSchema,
+      idempotent: true,
+    },
   );
   return data;
 }
