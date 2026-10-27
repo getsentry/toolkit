@@ -12,9 +12,16 @@
  * side effects (issue merges, activity, notifications), and a replayed
  * DELETE turns a successful delete into a 404. Callers that know a write is
  * safe to replay (content-addressed uploads) opt in per request.
+ *
+ * A 429 is the exception and retries for any method: Sentry's rate-limit
+ * middleware rejects the request before the view runs, so nothing was
+ * applied.
  */
 
-/** HTTP statuses that indicate a transient failure worth retrying. */
+/**
+ * HTTP statuses that indicate a transient failure worth retrying. Not a
+ * blanket 5xx: 501, 505 and similar are deterministic.
+ */
 const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([
   408, 429, 500, 502, 503, 504,
 ]);
@@ -118,9 +125,10 @@ export type RetryDecision =
 /**
  * Decide whether to retry a response with the given status.
  *
- * Retries only retryable statuses on retryable methods, while attempts
- * remain, and only when the server-requested wait fits within `maxDelayMs`.
- * Without a server hint, waits a jittered exponential backoff.
+ * Retries retryable statuses while attempts remain and the server-requested
+ * wait fits within `maxDelayMs`. A 429 retries for any method; other
+ * statuses only when `methodRetryable`. Without a server hint, waits a
+ * jittered exponential backoff.
  */
 export function decideStatusRetry(params: {
   status: number;
@@ -139,7 +147,7 @@ export function decideStatusRetry(params: {
   }
   const serverDelay = serverRetryDelayMs(status, headers, params.nowMs);
   if (
-    !methodRetryable ||
+    (!methodRetryable && status !== 429) ||
     attempt >= maxRetries ||
     (serverDelay !== undefined && serverDelay > maxDelayMs)
   ) {

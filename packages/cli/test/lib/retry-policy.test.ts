@@ -115,9 +115,11 @@ describe("decideStatusRetry", () => {
   };
 
   test("does not retry non-transient statuses", () => {
-    expect(decideStatusRetry({ ...base, status: 404 })).toEqual({
-      retry: false,
-    });
+    for (const status of [404, 501, 505]) {
+      expect(decideStatusRetry({ ...base, status })).toEqual({
+        retry: false,
+      });
+    }
   });
 
   test("backs off without a server hint", () => {
@@ -143,7 +145,19 @@ describe("decideStatusRetry", () => {
     });
   });
 
-  test("does not retry non-idempotent methods", () => {
+  test("does not retry non-idempotent methods on 5xx", () => {
+    const headers = new Headers({ "Retry-After": "1" });
+    expect(
+      decideStatusRetry({
+        ...base,
+        status: 503,
+        headers,
+        methodRetryable: false,
+      }),
+    ).toEqual({ retry: false, retryAfterMs: 1000 });
+  });
+
+  test("retries 429 for non-idempotent methods", () => {
     const headers = new Headers({ "Retry-After": "1" });
     expect(
       decideStatusRetry({
@@ -152,7 +166,7 @@ describe("decideStatusRetry", () => {
         headers,
         methodRetryable: false,
       }),
-    ).toEqual({ retry: false, retryAfterMs: 1000 });
+    ).toEqual({ retry: true, delayMs: 1000 });
   });
 
   test("stops when retries are exhausted", () => {

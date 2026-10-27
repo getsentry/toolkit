@@ -270,6 +270,21 @@ describe("non-idempotent requests", () => {
     expect(calls).toBe(1);
   });
 
+  test("does not retry deterministic 5xx statuses", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("nope", { status: 501 });
+    });
+
+    const res = await getAuthenticatedFetch()(
+      `${REGION_URL}/api/0/organizations/`,
+    );
+
+    expect(res.status).toBe(501);
+    expect(calls).toBe(1);
+  });
+
   test("still retries a GET on a transient status", async () => {
     let calls = 0;
     globalThis.fetch = mockFetch(async () => {
@@ -383,7 +398,9 @@ describe("429 rate limiting", () => {
     expect(rateLimit.retryAfterMs).toBe(45_000);
     expect(rateLimit.endpoint).toBe("/api/0/organizations/");
     expect(rateLimit.format()).toContain("Limit is 100 requests in 60 seconds");
-    expect(rateLimit.format()).toContain("Try again in 45s.");
+    expect(rateLimit.format()).toContain(
+      "Retry in 45 seconds; do not repeat the request before then. Make fewer requests in parallel.",
+    );
   });
 
   test("throws RateLimitError once retries are exhausted", async () => {
@@ -396,9 +413,12 @@ describe("429 rate limiting", () => {
       );
     });
 
-    await expect(
-      getAuthenticatedFetch()(`${REGION_URL}/api/0/organizations/`),
-    ).rejects.toBeInstanceOf(RateLimitError);
+    const error = await getAuthenticatedFetch()(
+      `${REGION_URL}/api/0/organizations/`,
+    ).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(RateLimitError);
+    expect((error as RateLimitError).format()).toContain("Retry in 1 second;");
     // MAX_RETRIES = 2 → attempts 0, 1, 2.
     expect(calls).toBe(3);
   });
@@ -433,24 +453,41 @@ describe("429 rate limiting", () => {
     expect(calls).toBe(2);
   });
 
-  test("does not retry a POST on 429", async () => {
-    let calls = 0;
-    globalThis.fetch = mockFetch(async () => {
-      calls += 1;
-      return jsonResponse(
-        { detail: "slow down" },
-        { status: 429, headers: { "Retry-After": "1" } },
-      );
+  test("retries a POST on 429, since the request was rejected before processing", async () => {
+    const bodies: string[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      bodies.push(await new Request(input as string, init).text());
+      return bodies.length === 1
+        ? jsonResponse(
+            { detail: "slow down" },
+            { status: 429, headers: { "Retry-After": "0" } },
+          )
+        : jsonResponse({ ok: true });
     });
 
-    const error = await getAuthenticatedFetch()(
+    const res = await getAuthenticatedFetch()(
       `${REGION_URL}/api/0/organizations/acme/issues/1/autofix/`,
-      { method: "POST", body: "{}" },
+      { method: "POST", body: '{"step":"root_cause"}' },
+    );
+
+    expect(res.status).toBe(200);
+    expect(bodies).toEqual(['{"step":"root_cause"}', '{"step":"root_cause"}']);
+  });
+
+  test("says to retry in a few seconds when the 429 has no wait hint", async () => {
+    globalThis.fetch = mockFetch(async () =>
+      jsonResponse({ detail: "slow down" }, { status: 429 }),
+    );
+
+    const error = await getAuthenticatedFetch()(
+      `${REGION_URL}/api/0/organizations/`,
     ).catch((err: unknown) => err);
 
-    expect(calls).toBe(1);
     expect(error).toBeInstanceOf(RateLimitError);
-    expect((error as RateLimitError).retryAfterMs).toBe(1000);
+    expect((error as RateLimitError).retryAfterMs).toBeUndefined();
+    expect((error as RateLimitError).format()).toContain(
+      "Retry in a few seconds; do not repeat the request before then.",
+    );
   });
 });
 

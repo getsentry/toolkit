@@ -213,8 +213,8 @@ export class ApiError extends CliError {
 }
 
 /**
- * The Sentry API rejected a request with 429 and the CLI did not (or could
- * no longer) wait it out.
+ * The Sentry API rejected a request with 429 and the CLI could not wait it
+ * out (the wait exceeds the cap, or retries ran out).
  *
  * @param endpoint - API path that was rate limited
  * @param retryAfterMs - Server-requested wait, when known
@@ -224,14 +224,16 @@ export class RateLimitError extends ApiError {
   readonly retryAfterMs?: number;
 
   constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
-    const when =
+    const seconds = Math.max(1, Math.ceil((retryAfterMs ?? 0) / 1000));
+    const wait =
       retryAfterMs === undefined
-        ? "Wait a few seconds and try again."
-        : `Try again in ${Math.max(1, Math.ceil(retryAfterMs / 1000))}s.`;
+        ? "a few seconds"
+        : `${seconds} second${seconds === 1 ? "" : "s"}`;
+    const advice = `Retry in ${wait}; do not repeat the request before then. Make fewer requests in parallel.`;
     super(
       "Rate limited by the Sentry API",
       429,
-      serverDetail ? `${serverDetail}\n  ${when}` : when,
+      serverDetail ? `${serverDetail}\n  ${advice}` : advice,
       endpoint,
     );
     this.name = "RateLimitError";

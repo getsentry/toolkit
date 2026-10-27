@@ -759,8 +759,9 @@ async function fetchWithRetry({
  * - Request timeout via AbortController
  * - Automatic retry on transient HTTP errors (408, 429, 5xx), network errors,
  *   and timeouts — for GET/HEAD/OPTIONS, or any method with `idempotent`
- * - 429 handling: waits for the server's rate-limit reset when it fits the
- *   cap, otherwise throws {@link RateLimitError}
+ * - 429 handling (any method; rejected before processing): waits for the
+ *   server's rate-limit reset when it fits the cap, otherwise throws
+ *   {@link RateLimitError}
  * - 401 handling: force-refreshes the token and retries once (any method)
  * - Jittered exponential backoff between retries
  * - User-Agent header for API analytics
