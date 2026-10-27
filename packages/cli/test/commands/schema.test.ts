@@ -84,22 +84,42 @@ describe("resolveResourceQuery", () => {
     }
   });
 
-  test("known resource with unknown operation shows that resource's endpoints", () => {
-    let thrown: unknown;
-    try {
-      resolveResourceQuery("issues", "xyznonexistent123");
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(OutputError);
-    const data = (thrown as OutputError).data as {
-      kind: string;
-      endpoints: { resource: string }[];
-    };
-    expect(data.kind).toBe("endpoints");
-    expect(data.endpoints.length).toBeGreaterThan(0);
-    for (const ep of data.endpoints) {
-      expect(ep.resource).toBe("issues");
+  test.each([undefined, "GET", "DELETE"])(
+    "unknown operation keeps resource and method scope (%s)",
+    (method) => {
+      let thrown: unknown;
+      try {
+        resolveResourceQuery(
+          method ? `${method} issues` : "issues",
+          "xyznonexistent123",
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(OutputError);
+      const data = (thrown as OutputError).data as {
+        kind: string;
+        endpoints: { resource: string; method: string }[];
+      };
+      expect(data.kind).toBe("endpoints");
+      expect(data.endpoints.length).toBeGreaterThan(0);
+      for (const ep of data.endpoints) {
+        expect(ep.resource).toBe("issues");
+        if (method) {
+          expect(ep.method).toBe(method);
+        }
+      }
+    },
+  );
+
+  test("scoped exact identifiers cannot override the requested HTTP method", () => {
+    const result = resolveResourceQuery("DELETE issues listOrganizationIssues");
+    expect(result.kind).toBe("endpoints");
+    if (result.kind === "endpoints") {
+      expect(result.endpoints.length).toBeGreaterThan(0);
+      expect(
+        result.endpoints.every((endpoint) => endpoint.method === "DELETE"),
+      ).toBe(true);
     }
   });
 

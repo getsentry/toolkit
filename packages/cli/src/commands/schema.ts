@@ -397,10 +397,12 @@ export function resolveResourceQuery(
     return resolveGlobQuery(resource);
   }
 
-  const [resourceName, ...operationWords] = query
+  const [resourceName, ...operationWords] = parsed.text
     .trim()
     .split(QUERY_WORD_SEPARATOR);
-  const resourceEndpoints = getEndpointsByResource(resourceName ?? "");
+  const resourceEndpoints = getEndpointsByResource(resourceName ?? "").filter(
+    (endpoint) => !parsed.method || endpoint.method === parsed.method,
+  );
   const operationQuery = operationWords.join(" ");
   if (operationQuery) {
     const exact = findEndpointsByIdentifier(operationQuery).filter((endpoint) =>

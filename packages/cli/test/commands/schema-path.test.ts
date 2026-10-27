@@ -40,6 +40,7 @@ describe("sentry schema path lookup", () => {
     ["listOrganizationIssues"],
     ["issues", "listOrganizationIssues"],
     ["GET", "listOrganizationIssues"],
+    ["GET", "issues", "listOrganizationIssues"],
     ["GET listOrganizationIssues"],
     [SKILL_QUERY],
     ["GET", ORG_ISSUES],
