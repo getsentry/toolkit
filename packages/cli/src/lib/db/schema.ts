@@ -47,6 +47,12 @@ export type TableSchema = {
    * should NOT also set `primaryKey: true`.
    */
   compositePrimaryKey?: string[];
+  /**
+   * The table holds data the CLI can't fetch or detect again, such as
+   * logins or settings. Every other table is a cache, which repair may drop
+   * and recreate when its shape is wrong or a newer CLI wrote it.
+   */
+  persistent?: boolean;
 };
 
 /**
@@ -55,6 +61,7 @@ export type TableSchema = {
  */
 export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   schema_version: {
+    persistent: true,
     columns: {
       version: { type: "INTEGER", primaryKey: true },
     },
@@ -70,6 +77,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
    * same account updates it instead of adding a duplicate.
    */
   accounts: {
+    persistent: true,
     columns: {
       account_id: { type: "TEXT", primaryKey: true },
       // Origin URL (scheme://host[:port]) this token was issued against.
@@ -185,6 +193,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     compositePrimaryKey: ["command_key", "context"],
   },
   metadata: {
+    persistent: true,
     columns: {
       key: { type: "TEXT", primaryKey: true },
       value: { type: "TEXT", notNull: true },
@@ -210,6 +219,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     compositePrimaryKey: ["credential_identity", "source_origin", "org_slug"],
   },
   instance_info: {
+    persistent: true,
     columns: {
       id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
       instance_id: { type: "TEXT", notNull: true },
@@ -284,6 +294,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
    * The next normal CLI run flushes entries as Sentry metrics and deletes them.
    */
   completion_telemetry_queue: {
+    persistent: true,
     columns: {
       id: { type: "INTEGER", primaryKey: true },
       created_at: {
@@ -416,29 +427,37 @@ export function hasColumn(
   return result.count > 0;
 }
 
+/** Primary key columns a table schema declares, in key order. */
+function declaredPrimaryKey(schema: TableSchema): string[] {
+  return (
+    schema.compositePrimaryKey ??
+    Object.entries(schema.columns)
+      .filter(([, col]) => col.primaryKey)
+      .map(([name]) => name)
+  );
+}
+
 /**
- * Check if a table has the expected composite primary key.
+ * Check if a table's primary key is exactly `expectedColumns`, in order.
  *
- * Inspects the CREATE TABLE DDL stored in sqlite_master to verify
- * the table has a table-level PRIMARY KEY constraint matching the
- * expected columns. Returns false if the table uses per-column
- * PRIMARY KEY instead (e.g., `command_key TEXT PRIMARY KEY`).
+ * Reads `pragma_table_info`, so single-column and composite keys compare the
+ * same way. A table written by another CLI version can have a different key
+ * with the same columns, which makes `ON CONFLICT` upserts fail.
  */
-function hasCompositePrimaryKey(
+function hasPrimaryKey(
   db: Database,
   table: string,
   expectedColumns: string[],
 ): boolean {
-  const row = db
-    .query("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
-    .get(table) as { sql: string } | undefined;
-
-  if (!row) {
-    return false;
-  }
-
-  const expectedPK = `PRIMARY KEY (${expectedColumns.join(", ")})`;
-  return row.sql.includes(expectedPK);
+  const rows = db
+    .query(
+      `SELECT name FROM pragma_table_info('${table}') WHERE pk > 0 ORDER BY pk`,
+    )
+    .all() as { name: string }[];
+  return (
+    rows.length === expectedColumns.length &&
+    rows.every((row, i) => row.name === expectedColumns[i])
+  );
 }
 
 /** Add a column to a table if it doesn't exist */
@@ -457,7 +476,8 @@ function addColumnIfMissing(
 export type SchemaIssue =
   | { type: "missing_table"; table: string }
   | { type: "missing_column"; table: string; column: string }
-  | { type: "wrong_primary_key"; table: string };
+  | { type: "wrong_primary_key"; table: string }
+  | { type: "newer_schema"; version: number };
 
 function findMissingColumns(db: Database, tableName: string): SchemaIssue[] {
   const columns = EXPECTED_COLUMNS[tableName];
@@ -475,10 +495,7 @@ function findMissingColumns(db: Database, tableName: string): SchemaIssue[] {
 
 function findPrimaryKeyIssues(db: Database, tableName: string): SchemaIssue[] {
   const schema = TABLE_SCHEMAS[tableName];
-  if (
-    schema?.compositePrimaryKey &&
-    !hasCompositePrimaryKey(db, tableName, schema.compositePrimaryKey)
-  ) {
+  if (schema && !hasPrimaryKey(db, tableName, declaredPrimaryKey(schema))) {
     return [{ type: "wrong_primary_key", table: tableName }];
   }
   return [];
@@ -490,6 +507,11 @@ function findPrimaryKeyIssues(db: Database, tableName: string): SchemaIssue[] {
  */
 export function getSchemaIssues(db: Database): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
+
+  const storedVersion = getSchemaVersion(db);
+  if (storedVersion > CURRENT_SCHEMA_VERSION) {
+    issues.push({ type: "newer_schema", version: storedVersion });
+  }
 
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
     if (!tableExists(db, tableName)) {
@@ -548,24 +570,26 @@ function repairMissingColumns(db: Database, result: RepairResult): void {
 }
 
 /**
- * Drop and recreate tables that have incorrect primary key constraints.
+ * Drop and recreate cache tables that have the wrong primary key.
  *
- * This fixes the CLI-72 bug where pagination_cursors was created with a
- * single-column PK (`command_key TEXT PRIMARY KEY`) instead of the expected
- * composite PK (`PRIMARY KEY (command_key, context)`). SQLite does not
- * support ALTER TABLE to change primary keys, so the table must be dropped
- * and recreated. The data loss is acceptable since pagination cursors are
- * ephemeral (5-minute TTL).
+ * SQLite cannot ALTER a primary key, so the table must be recreated. This
+ * covers CLI-72 (pagination_cursors created with a single-column PK) and a
+ * table whose key changed in another CLI version (#1611: `org_regions` from
+ * a newer CLI). Tables holding data the CLI cannot rebuild are reported
+ * instead of dropped.
  */
 function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
   for (const [tableName, schema] of Object.entries(TABLE_SCHEMAS)) {
-    if (!schema.compositePrimaryKey) {
-      continue;
-    }
     if (!tableExists(db, tableName)) {
       continue;
     }
-    if (hasCompositePrimaryKey(db, tableName, schema.compositePrimaryKey)) {
+    if (hasPrimaryKey(db, tableName, declaredPrimaryKey(schema))) {
+      continue;
+    }
+    if (schema.persistent) {
+      result.failed.push(
+        `Table ${tableName} has an unexpected primary key and holds data that cannot be rebuilt`,
+      );
       continue;
     }
     try {
@@ -581,9 +605,48 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
   }
 }
 
+/** Tables not marked persistent: caches the CLI can fetch or detect again. */
+const CACHE_TABLES = Object.entries(TABLE_SCHEMAS)
+  .filter(([, schema]) => !schema.persistent)
+  .map(([name]) => name);
+
+/**
+ * Rebuild every cache table when a newer CLI last wrote the database.
+ *
+ * A newer CLI can change what cached rows mean without changing their
+ * shape, so this version cannot trust them. Caches refill on demand.
+ */
+function rebuildCachesFromNewerSchema(
+  db: Database,
+  result: RepairResult,
+): void {
+  const storedVersion = getSchemaVersion(db);
+  if (storedVersion <= CURRENT_SCHEMA_VERSION) {
+    return;
+  }
+  try {
+    db.transaction(() => {
+      for (const tableName of CACHE_TABLES) {
+        db.exec(`DROP TABLE IF EXISTS ${tableName}`);
+        db.exec(EXPECTED_TABLES[tableName] as string);
+      }
+    })();
+    result.fixed.push(
+      `Rebuilt cached data written by a newer CLI (schema ${storedVersion})`,
+    );
+  } catch (e) {
+    const msg = stringifyUnknown(e);
+    result.failed.push(`Failed to rebuild cache tables: ${msg}`);
+  }
+}
+
 /**
  * Repair schema issues by creating missing tables, adding missing columns,
- * and recreating tables with incorrect primary key constraints.
+ * and recreating tables with incorrect primary key constraints. When a newer
+ * CLI last wrote the database, every cache table is rebuilt first.
+ *
+ * Any fix sets the stored version to {@link CURRENT_SCHEMA_VERSION}, so a
+ * newer CLI re-runs its later migrations against what this version wrote.
  *
  * @param db - The raw database connection (not the traced wrapper)
  * @returns Lists of fixed and failed repairs
@@ -591,6 +654,7 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
 export function repairSchema(db: Database): RepairResult {
   const result: RepairResult = { fixed: [], failed: [] };
 
+  rebuildCachesFromNewerSchema(db, result);
   repairMissingTables(db, result);
   repairMissingColumns(db, result);
   repairWrongPrimaryKeys(db, result);
@@ -744,6 +808,9 @@ export function initSchema(db: Database): void {
 }
 
 function getSchemaVersion(db: Database): number {
+  if (!tableExists(db, "schema_version")) {
+    return 0;
+  }
   const row = db.query("SELECT version FROM schema_version LIMIT 1").get() as {
     version: number;
   } | null;
@@ -848,6 +915,74 @@ function migrateSingleAuthToAccounts(db: Database): void {
   db.exec("DROP TABLE IF EXISTS user_info");
 }
 
+/** Schema of CLI 0.47.0 and earlier, before `accounts` (v18) existed. */
+const PRE_ACCOUNTS_SCHEMA_VERSION = 16;
+
+/**
+ * Leave the database readable by a CLI from before schema v18, ahead of
+ * `sentry cli upgrade` installing one (#1611).
+ *
+ * Those CLIs only migrate forward and create missing tables with
+ * `CREATE TABLE IF NOT EXISTS`, so this:
+ * - drops every cache table, letting the older CLI recreate them in its own
+ *   shape (v17 changed the `org_regions` key, which breaks older upserts);
+ * - deletes every stored account: the older CLI cannot read `accounts`, so
+ *   the user logs in again there;
+ * - sets the stored version to {@link PRE_ACCOUNTS_SCHEMA_VERSION}, so this
+ *   CLI re-runs its later migrations when it comes back and folds a login
+ *   made in the older CLI into `accounts`.
+ *
+ * Does nothing unless the stored version is this CLI's own, so callers can
+ * run it again after installing: only this CLI migrates to that version, so
+ * it means another invocation re-migrated the database during the download.
+ * An older CLI migrating forward from 16 stops below it and is left alone.
+ *
+ * Every migration after that version must therefore be safe to re-run.
+ */
+export function prepareDatabaseForDowngrade(db: Database): void {
+  if (getSchemaVersion(db) < CURRENT_SCHEMA_VERSION) {
+    return;
+  }
+  db.transaction(() => {
+    for (const tableName of CACHE_TABLES) {
+      db.exec(`DROP TABLE IF EXISTS ${tableName}`);
+    }
+    // DELETE, not DROP: later reads in this process must not hit a missing
+    // table, whose auto-repair would restore this CLI's schema version.
+    db.query("DELETE FROM accounts").run();
+    db.query("UPDATE schema_version SET version = ?").run(
+      PRE_ACCOUNTS_SCHEMA_VERSION,
+    );
+  })();
+}
+
+/**
+ * Make a database last written by a newer CLI usable by this version.
+ *
+ * Older CLIs never ran this check, so a downgrade left upserts failing
+ * against tables whose key had changed (#1611). Repair rebuilds the caches
+ * and records this version, so the newer CLI re-migrates when it returns.
+ */
+function adaptNewerSchema(db: Database, storedVersion: number): void {
+  const versions = `schema ${storedVersion}; this CLI uses ${CURRENT_SCHEMA_VERSION}`;
+  if (getEnv()[NO_AUTO_REPAIR_ENV] === "1") {
+    logger.warn(
+      `The local database was written by a newer Sentry CLI (${versions}). Run \`sentry cli fix\` to adapt it.`,
+    );
+    return;
+  }
+  const { failed } = repairSchema(db);
+  if (failed.length > 0) {
+    logger.warn(
+      `Could not adapt the local database written by a newer Sentry CLI (${versions}): ${failed.join("; ")}. Run \`sentry cli fix\`.`,
+    );
+    return;
+  }
+  logger.info(
+    `The local database was written by a newer Sentry CLI (${versions}). Cleared cached data so this version can use it.`,
+  );
+}
+
 /**
  * Run migrations for schema changes between versions.
  *
@@ -860,6 +995,11 @@ function migrateSingleAuthToAccounts(db: Database): void {
 // sequential migration steps are inherently linear
 export function runMigrations(db: Database): void {
   const currentVersion = getSchemaVersion(db);
+
+  if (currentVersion > CURRENT_SCHEMA_VERSION) {
+    adaptNewerSchema(db, currentVersion);
+    return;
+  }
 
   // Migration 1 -> 2: Add org_regions and instance_info tables. The
   // `user_info` table this step also created was folded into `accounts` in v18.
@@ -899,10 +1039,7 @@ export function runMigrations(db: Database): void {
   if (
     currentVersion < 6 &&
     tableExists(db, "pagination_cursors") &&
-    !hasCompositePrimaryKey(db, "pagination_cursors", [
-      "command_key",
-      "context",
-    ])
+    !hasPrimaryKey(db, "pagination_cursors", ["command_key", "context"])
   ) {
     db.exec("DROP TABLE pagination_cursors");
     db.exec(EXPECTED_TABLES.pagination_cursors as string);

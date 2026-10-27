@@ -15,6 +15,7 @@ import {
   isReadonlyError,
   repairSchema,
   runMigrations,
+  TABLE_SCHEMAS,
   tableExists,
 } from "../../../src/lib/db/schema.js";
 import { Database } from "../../../src/lib/db/sqlite.js";
@@ -237,6 +238,28 @@ describe("EXPECTED_TABLES", () => {
     for (const table of expectedTableNames) {
       expect(EXPECTED_TABLES).toHaveProperty(table);
     }
+  });
+});
+
+describe("TABLE_SCHEMAS persistence", () => {
+  // Tables without `persistent: true` are caches that repair and downgrade
+  // may drop. Listing them here makes adding a table a deliberate choice.
+  test("only known cache tables are droppable", () => {
+    const cacheTables = Object.entries(TABLE_SCHEMAS)
+      .filter(([, schema]) => !schema.persistent)
+      .map(([name]) => name)
+      .sort();
+
+    expect(cacheTables).toEqual([
+      "dsn_cache",
+      "issue_org_cache",
+      "org_regions",
+      "pagination_cursors",
+      "project_aliases",
+      "project_cache",
+      "project_root_cache",
+      "repo_cache",
+    ]);
   });
 });
 
