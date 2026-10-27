@@ -89,12 +89,17 @@ async function listBackups(): Promise<DatabaseBackup[]> {
   }
   const backups: DatabaseBackup[] = [];
   for await (const entry of entries) {
-    const match = entry.isFile() ? BACKUP_FILE_REGEX.exec(entry.name) : null;
+    const match = BACKUP_FILE_REGEX.exec(entry.name);
     if (!match) {
       continue;
     }
     try {
-      const { mtimeMs } = await stat(join(dir, entry.name));
+      // `stat`, not the entry: some filesystems don't report entry types.
+      const stats = await stat(join(dir, entry.name));
+      if (!stats.isFile()) {
+        continue;
+      }
+      const { mtimeMs } = stats;
       backups.push({
         version: match[1] as string,
         toVersion: match[2] as string,
