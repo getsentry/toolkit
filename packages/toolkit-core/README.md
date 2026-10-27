@@ -15,6 +15,25 @@ retains its own credential storage, regional cache identity and persistence,
 host allowlists, routing, polling
 deadline, HTTP transport, response validation, and user-facing errors.
 
+## Pagination
+
+`pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
+the limit evenly over the fewest requests (at most 100 rows each), reuses the
+page size a page-number cursor encodes, and returns a cursor that resumes at
+the first row the caller has not received, even when the walk stopped inside
+a page. Those cursors are still valid Sentry cursors: the rows already
+returned are written into the `is_prev` field in a form Sentry reads as 0, so
+the API and older CLIs accept them. `fetchAllPages` reads every page or
+reports why it could not (an invalid page, a repeated cursor, or the page
+cap), for callers whose result a mutation depends on.
+
+The module does no I/O. The caller fetches each page, validates rows, sets
+the page cap, receives warnings, and turns failures into its own errors. The
+CLI's `paginate` and `fetchAllPages` in
+`packages/cli/src/lib/api/infrastructure.ts` are thin wrappers over it.
+
+## Resource identity
+
 The `resource-identity` types describe the identifiers shared by organization,
 project, team, and issue responses. CLI overlays retain SDK-derived string IDs;
 MCP schemas accept numeric IDs too and check their parsed outputs against these

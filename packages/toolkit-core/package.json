@@ -43,6 +43,10 @@
       "types": "./src/oauth-poll.ts",
       "default": "./src/oauth-poll.ts"
     },
+    "./pagination": {
+      "types": "./src/pagination.ts",
+      "default": "./src/pagination.ts"
+    },
     "./region-cache": {
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
