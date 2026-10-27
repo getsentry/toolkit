@@ -45,16 +45,21 @@ const log = logger.withTag("response-cache");
 /**
  * TTL tier classification for URLs.
  *
- * - `immutable`: data that never changes once created (events, traces)
- * - `stable`: data that changes infrequently (orgs, projects, teams)
- * - `volatile`: data that changes often (issue lists, log lists)
+ * - `stable`: data that changes infrequently (orgs, projects, teams,
+ *   organization event details, trace-item details)
+ * - `volatile`: data that changes often (issues and their events, project
+ *   event details, full traces, log and span queries)
  * - `no-cache`: never cache (polling endpoints like autofix state)
+ *
+ * No tier treats a response as immutable. Event payloads embed mutable
+ * fields (`nextEventID`, user reports, release data), `latest`/`oldest`/
+ * `recommended` resolve to different events over time, and traces gain
+ * spans as they arrive (getsentry/sentry#128818).
  */
-type TtlTier = "immutable" | "stable" | "volatile" | "no-cache";
+type TtlTier = "stable" | "volatile" | "no-cache";
 
 /** Fallback TTL durations by tier (milliseconds). `no-cache` uses 0 as a sentinel. */
 const FALLBACK_TTL_MS: Record<TtlTier, number> = {
-  immutable: 24 * 60 * 60 * 1000, // 24 hours — events and traces never change
   stable: 5 * 60 * 1000, // 5 minutes
   volatile: 60 * 1000, // 60 seconds
   "no-cache": 0,
@@ -63,30 +68,35 @@ const FALLBACK_TTL_MS: Record<TtlTier, number> = {
 /**
  * URL patterns grouped by TTL tier.
  *
- * Checked in tier priority order (no-cache → immutable → volatile).
+ * Checked in tier priority order (no-cache → volatile).
  * "stable" has no patterns — it is the default fallback when nothing else matches.
+ *
+ * TODO: Classify by generated operation metadata from `@sentry/api` instead
+ * of URL regexes, once it ships per-operation metadata
+ * (getsentry/sentry-api-schema#81) and a route-keyed operation map
+ * (getsentry/sentry-api-schema#102).
  */
 const URL_TIER_REGEXPS: Readonly<Record<TtlTier, readonly RegExp[]>> = {
   // Polling endpoints where state changes rapidly
   "no-cache": [/\/(?:autofix|root-cause)\//],
-  // Specific resources by ID (events, traces, span details) — never change once created
-  immutable: [
-    /\/events\/[^/?]+\/?(?:\?|$)/,
+  volatile: [
+    // Issue endpoints: lists, detail views, and issue events such as
+    // `/issues/{id}/events/latest/`
+    /\/issues\//,
+    /[?&]dataset=(?:logs|spans)/,
+    /\/trace-logs\//,
+    // Full traces gain spans as they arrive
     /\/trace\/[0-9a-f]{32}\//,
-    /\/trace-items\/[0-9a-f]+\//,
+    // Project event details embed `nextEventID`/`previousEventID` and user
+    // reports, and reprocessing can change them for the same ID
+    /\/projects\/[^/]+\/[^/]+\/events\/[^/?]+\/?(?:\?|$)/,
   ],
-  // Issue endpoints (lists AND detail views), dataset queries, trace-logs
-  volatile: [/\/issues\//, /[?&]dataset=(?:logs|spans)/, /\/trace-logs\//],
   // Default fallback — no patterns needed
   stable: [],
 };
 
 /** Tier check order — stable is the default and has no patterns to check. */
-const TIER_CHECK_ORDER: readonly TtlTier[] = [
-  "no-cache",
-  "immutable",
-  "volatile",
-];
+const TIER_CHECK_ORDER: readonly TtlTier[] = ["no-cache", "volatile"];
 
 /**
  * Classify a URL into a TTL tier for fallback caching.
@@ -189,7 +199,6 @@ type CacheEntry = {
 const POLICY_OPTIONS: CachePolicy.Options = {
   shared: false,
   cacheHeuristic: 0.1,
-  immutableMinTimeToLive: FALLBACK_TTL_MS.immutable,
 };
 
 /** Maximum number of cache files to retain */
