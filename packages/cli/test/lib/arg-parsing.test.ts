@@ -13,6 +13,7 @@ import {
   looksLikeIssueShortId,
   normalizeSlug,
   parseIssueArg,
+  parseListTarget,
   parseOrgProjectArg,
   parseSlashSeparatedArg,
   rejectIssueCommandTokenListTarget,
@@ -1346,6 +1347,67 @@ describe("detectSwappedTrialArgs", () => {
   test("returns null when both are known names", () => {
     // If both are trial names, first is treated as the name (correct order)
     expect(detectSwappedTrialArgs("seer", "replays", isKnown)).toBeNull();
+  });
+});
+
+describe("parseListTarget", () => {
+  test.each([
+    [undefined, { parsed: { type: "auto-detect" } }],
+    ["my-org/", { parsed: { type: "org-all", org: "my-org" } }],
+    // Text without glob characters still names a project.
+    ["web", { parsed: { type: "project-search", projectSlug: "web" } }],
+    [
+      "my-org/web",
+      { parsed: { type: "explicit", org: "my-org", project: "web" } },
+    ],
+    // No slug has glob characters, so the grammar parses a glob as a filter.
+    ["web-*", { parsed: { type: "auto-detect" }, filter: "web-*" }],
+    [
+      "my-org/web-*",
+      { parsed: { type: "org-all", org: "my-org" }, filter: "web-*" },
+    ],
+    // `/<name>` means `<name>`, so `/web-*` filters the detected org.
+    ["/web-*", { parsed: { type: "auto-detect" }, filter: "web-*" }],
+    // Braces hold commas, but a glob wins over a project list.
+    [
+      "my-org/{web,api}-*",
+      { parsed: { type: "org-all", org: "my-org" }, filter: "{web,api}-*" },
+    ],
+    [
+      "my-org/ web-* ",
+      { parsed: { type: "org-all", org: "my-org" }, filter: "web-*" },
+    ],
+  ] as const)("%j → %j", (target, expected) => {
+    expect(parseListTarget(target, { multi: true })).toEqual(expected);
+  });
+
+  test("a project list is still a list", () => {
+    expect(parseListTarget("my-org/web,api", { multi: true }).parsed).toEqual({
+      type: "explicit",
+      org: "my-org",
+      project: "web",
+      projects: ["web", "api"],
+    });
+  });
+
+  test("a glob after a second slash is not a filter", () => {
+    expect(parseListTarget("my-org/proj/x*").filter).toBeUndefined();
+  });
+
+  test("the org of a filter is validated like any org slug", () => {
+    expect(() => parseListTarget("@latest/web-*")).toThrow(ValidationError);
+  });
+
+  test("targets of other commands never parse as filters", () => {
+    expect(parseOrgProjectArg("my-org/web-*")).toEqual({
+      type: "explicit",
+      org: "my-org",
+      project: "web-*",
+    });
+    expect(parseOrgProjectArg("web-*")).toEqual({
+      type: "project-search",
+      projectSlug: "web-*",
+    });
   });
 });
 

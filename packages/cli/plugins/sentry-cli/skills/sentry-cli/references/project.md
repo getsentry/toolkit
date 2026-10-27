@@ -82,7 +82,7 @@ List projects
 
 | Argument | Description |
 |----------|-------------|
-| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of projects to list - (default: "25")`
@@ -104,6 +104,12 @@ sentry project list my-org/frontend,backend
 
 # Filter by platform
 sentry project list my-org/ --platform javascript
+
+# Only projects whose slug or name matches a glob
+sentry project list 'my-org/web-*'
+
+# Projects named like 'frontend' (fuzzy when nothing matches exactly)
+sentry project list my-org/frontnd
 
 # Find a project across organizations
 sentry project list frontend
