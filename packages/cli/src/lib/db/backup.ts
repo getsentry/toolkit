@@ -208,6 +208,14 @@ export async function discardDatabaseBackup(
   await rm(join(getBackupDir(), backup.file), { force: true });
 }
 
+/** Remove the write-ahead log files that belong to the database at `dbPath`. */
+async function removeWriteAheadLog(dbPath: string): Promise<void> {
+  await Promise.all([
+    rm(`${dbPath}-wal`, { force: true }),
+    rm(`${dbPath}-shm`, { force: true }),
+  ]);
+}
+
 /**
  * Move `backup` back into place as `cli.db` and let this process use it
  * again, reverting a restore or hand-off made for a version that was never
@@ -222,8 +230,7 @@ export async function reinstateDatabaseBackup(
   detachDatabase();
   try {
     // The write-ahead log belongs to the file being replaced.
-    await rm(`${dbPath}-wal`, { force: true });
-    await rm(`${dbPath}-shm`, { force: true });
+    await removeWriteAheadLog(dbPath);
     await rename(join(getBackupDir(), backup.file), dbPath);
   } finally {
     closeDatabase();
@@ -338,8 +345,7 @@ export async function restoreDatabaseBackup(
     try {
       // A leftover write-ahead log belongs to the replaced file and would
       // corrupt the restored one.
-      await rm(`${dbPath}-wal`, { force: true });
-      await rm(`${dbPath}-shm`, { force: true });
+      await removeWriteAheadLog(dbPath);
       await rename(tmp, dbPath);
     } catch (error) {
       // `cli.db` is still this version's; let callers use it again.
