@@ -5,7 +5,7 @@
  * long to wait first. Kept pure (no CLI imports, no I/O) so it can be swapped
  * for the shared toolkit-core policy without touching callers.
  *
- * Only idempotent methods are replayed by default. A transient status, a
+ * Only safe methods (RFC 9110 §9.2.1) are replayed by default. A transient status, a
  * network error, or a timeout after a POST does not tell us whether the
  * server already applied it, so replaying could duplicate the write.
  * PUT and DELETE are excluded too: Sentry uses PUT for partial updates with
@@ -19,19 +19,22 @@
  */
 
 /**
- * HTTP statuses that indicate a transient failure worth retrying. Not a
- * blanket 5xx: 501, 505 and similar are deterministic.
+ * HTTP statuses that indicate a transient failure worth retrying. HTTP has no
+ * normative "retryable" list; this matches common client defaults (undici's
+ * RetryAgent, ky) plus 408. Not a blanket 5xx: 501, 505 and similar are
+ * deterministic.
  */
 const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([
   408, 429, 500, 502, 503, 504,
 ]);
 
-/** Methods that are safe to replay without an explicit opt-in. */
-const IDEMPOTENT_METHODS: ReadonlySet<string> = new Set([
-  "GET",
-  "HEAD",
-  "OPTIONS",
-]);
+/**
+ * RFC 9110 §9.2.1 safe methods (TRACE omitted, the CLI never sends it).
+ * Deliberately narrower than the §9.2.2 idempotent set, which also includes
+ * PUT and DELETE; see the module comment for why Sentry's aren't safe to
+ * replay.
+ */
+const SAFE_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /** First fallback backoff step; doubles per attempt up to the cap. */
 const BASE_BACKOFF_MS = 1000;
@@ -44,7 +47,7 @@ const BASE_BACKOFF_MS = 1000;
  * @param idempotent - Caller asserts the request is safe to replay
  */
 export function isRetryableMethod(method: string, idempotent = false): boolean {
-  return idempotent || IDEMPOTENT_METHODS.has(method.toUpperCase());
+  return idempotent || SAFE_METHODS.has(method.toUpperCase());
 }
 
 /**

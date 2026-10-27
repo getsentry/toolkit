@@ -71,6 +71,8 @@ export const EXIT = {
   API: 30,
   /** Operation timed out */
   TIMEOUT: 31,
+  /** Rate limited by the Sentry API — wait before retrying */
+  RATE_LIMITED: 32,
 
   // 40–49: Feature / billing (HTTP 402/451 family)
   /** Seer not enabled for the organization */
@@ -221,6 +223,8 @@ export class ApiError extends CliError {
  * @param serverDetail - The API's `detail` message, when present
  */
 export class RateLimitError extends ApiError {
+  /** Distinct exit code so scripts and agents can back off without parsing stderr. */
+  override readonly exitCode: number = EXIT.RATE_LIMITED;
   readonly retryAfterMs?: number;
 
   constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
