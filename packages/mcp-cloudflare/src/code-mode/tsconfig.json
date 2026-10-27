@@ -5,5 +5,5 @@
     "rootDir": "../../../..",
     "tsBuildInfoFile": "../../node_modules/.tmp/tsconfig.code-mode.tsbuildinfo"
   },
-  "include": ["./worker.ts", "./broker.ts", "./sandbox.ts", "./discovery-worker.ts"]
+  "include": ["./worker.ts", "./broker.ts", "./sandbox.ts"]
 }

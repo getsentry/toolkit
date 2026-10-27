@@ -117,7 +117,7 @@ This integration has no beta or opt-in flag. Code Mode is unavailable for
 project-constrained sessions because arbitrary API operations can affect shared
 resources even through project-bearing routes. Existing grants do not acquire
 API permissions automatically. The shared upstream OAuth token remains separate
-from connection permissions; Sentry enforces its scopes and resource access. See [HTTP Code Mode integration and evaluations](../testing/code-mode.md#authentication-and-scope)
+from connection permissions; Sentry enforces its scopes and resource access. See [HTTP Code Mode integration](../testing/code-mode.md#authentication-and-scope)
 for the permission policy, fixture limitations and validation status. Source and
 configuration changes alone do not establish that a deployment is active.
 
