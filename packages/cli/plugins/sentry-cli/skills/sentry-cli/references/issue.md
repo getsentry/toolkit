@@ -22,7 +22,7 @@ List issues in a project
 | `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
 
 **Flags:**
-- `-q, --query <value> - Search query (Sentry syntax, implicit AND, no OR operator)`
+- `-q, --query <value> - Search query (Sentry syntax, implicit AND; same-key OR becomes an in-list)`
 - `-n, --limit <value> - Maximum number of issues to list - (default: "25")`
 - `-s, --sort <value> - Sort by: recommended, date, new, freq, user (default: recommended on sentry.io, else date)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "90d")`

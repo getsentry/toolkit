@@ -86,7 +86,7 @@ import {
 } from "../../lib/resolve-target.js";
 import {
   SEARCH_SYNTAX_REFERENCE,
-  sanitizeQuery,
+  sanitizeIssueQuery,
   unscopedCountFilterKeys,
 } from "../../lib/search-query.js";
 import { isSaaS } from "../../lib/sentry-web-urls.js";
@@ -1648,7 +1648,10 @@ export const listCommand = buildListCommand("issue", {
       "  Terms are space-separated and implicitly ANDed together.\n" +
       "  AND/OR operators are NOT supported. Use alternatives:\n" +
       "    key:[val1,val2]   # in-list: matches val1 OR val2 for one key\n" +
+      "    status:[resolved,ignored]   # is: has no in-list; use status/substatus\n" +
       "    *term*            # wildcard matching\n" +
+      "  Same-key ORs are rewritten to in-lists automatically, including\n" +
+      "  is:resolved OR is:ignored → status:[resolved,ignored].\n" +
       "  Filters:  key:value, !key:value (negation), key:>N, key:<N\n" +
       '  Quoted:   message:"exact phrase with spaces"\n' +
       "  Built-in: is:unresolved, is:resolved, assigned:me, has:user\n" +
@@ -1711,8 +1714,9 @@ export const listCommand = buildListCommand("issue", {
     flags: {
       query: {
         kind: "parsed",
-        parse: sanitizeQuery,
-        brief: "Search query (Sentry syntax, implicit AND, no OR operator)",
+        parse: sanitizeIssueQuery,
+        brief:
+          "Search query (Sentry syntax, implicit AND; same-key OR becomes an in-list)",
         optional: true,
       },
       limit: buildListLimitFlag("issues"),

@@ -992,7 +992,7 @@ export const SEARCH_SYNTAX_REFERENCE = {
   behavior: "Terms are space-separated and implicitly ANDed.",
   operators: {
     and: "NOT supported — implicit (space-separated terms are all required)",
-    or: "NOT supported — use key:[val1,val2] in-list syntax instead",
+    or: "NOT supported — use key:[val1,val2] in-list syntax instead; for is: values use status:[val1,val2] or substatus:[val1,val2]",
     not: "!key:value (prefix with !)",
     comparison: [">=", "<=", ">", "<", "=", "!="],
     wildcard: "* in values (e.g., message:*timeout*)",
@@ -1009,7 +1009,7 @@ export const SEARCH_SYNTAX_REFERENCE = {
     "relative_date (key:-24h, key:+7d)",
     "duration (key:>1s, key:<500ms)",
     "has (has:key — not null check)",
-    "is (is:unresolved, is:resolved, is:ignored)",
+    "is (is:unresolved, is:resolved, is:ignored — no in-list form)",
   ],
   commonFilters: [
     "is:unresolved",

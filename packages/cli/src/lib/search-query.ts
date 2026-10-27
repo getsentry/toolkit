@@ -4,7 +4,8 @@
  * The rewrite rules live in `@sentry/toolkit-core/search-query`, shared with
  * the MCP server. This wrapper adds the CLI's reporting: one stderr warning
  * per rewritten query, and {@link ValidationError} when a query can't be
- * rewritten.
+ * rewritten. Commands that query the issues endpoint use
+ * {@link sanitizeIssueQuery}.
  */
 
 import {
@@ -71,4 +72,20 @@ export function sanitizeQuery(
     log.warn(`${result.notes.join(" ")}\nRunning query: "${result.query}"`);
   }
   return result.query;
+}
+
+/**
+ * Sanitize a `--query` value sent to the issues endpoint
+ * (`/organizations/{org}/issues/`).
+ *
+ * Like {@link sanitizeQuery}, plus the issue-search rewrites: `is:A OR is:B`
+ * becomes a `status:[…]` or `substatus:[…]` in-list, and parentheses that
+ * reduce to plain terms are unwrapped.
+ *
+ * @param query - Raw query string from `--query` flag
+ * @returns The sanitized query
+ * @throws {ValidationError} When OR cannot be rewritten to in-list syntax
+ */
+export function sanitizeIssueQuery(query: string): string {
+  return sanitizeQuery(query, { issueSearch: true });
 }
