@@ -253,23 +253,24 @@ See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 ### Automatic Retries
 
 `SentryApiService.request()` transparently retries failed requests using the
-shared policy in `@sentry/toolkit-core/api-retry`. Which statuses retry, and
-for which methods, is defined once in `RETRYABLE_STATUSES` in
-[`api-retry.ts`](../../packages/toolkit-core/src/api-retry.ts):
+shared policy in `@sentry/toolkit-core/api-retry`. This page describes the
+behavior; the values live only in code, so read them there instead of copying
+them here:
 
-| Status                    | Retried for                                         |
-| ------------------------- | --------------------------------------------------- |
-| `429`                     | Any method. Sentry rejects it before the view runs. |
-| `500`/`502`/`503`/`504`   | GET, HEAD, and OPTIONS, or an `idempotent` request. |
-| Anything else, e.g. `501` | Never. These are deterministic.                     |
+- Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
+  [`api-retry.ts`](../../packages/toolkit-core/src/api-retry.ts). In short, a
+  rate-limited request retries for any method, a transient server error only
+  for an idempotent one, and other errors never.
+- How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
+  [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
 
 Retries are:
 
 - **Rate-limit aware** — a `429` waits for its `Retry-After` header, or for
   Sentry's `X-Sentry-Rate-Limit-Reset`. Concurrency-limit `429`s and `5xx`
   errors use jittered exponential backoff.
-- **Capped** — at most 2 retries, 2 seconds per wait, and 3 seconds in total.
-  A longer reset fails at once with an `ApiRateLimitError` whose
+- **Capped** — by retry count, single wait, and total wait. A reset further
+  out than the single-wait cap fails at once with an `ApiRateLimitError` whose
   `retryAfterMs` and user message say when to retry.
 - **Abortable** — aborting the request's `signal` ends the wait.
 - **Fail-fast otherwise** — network and configuration errors are not retried.
