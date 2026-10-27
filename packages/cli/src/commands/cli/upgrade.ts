@@ -140,12 +140,28 @@ async function backupLocalDatabase(
 /**
  * Run once the new binary is downloaded, right before its setup, so a
  * failed download leaves the database untouched.
+ *
+ * @param install - Whether setup installs the new binary itself, so this
+ *   version stays installed if setup fails.
+ * @throws {UpgradeError} When an undo that installs the binary itself could
+ *   not back up this version's database: a failed setup could then not put
+ *   it back, leaving this version with the restored one.
  */
-async function prepareDatabaseForNewBinary(plan: DatabasePlan): Promise<void> {
+async function prepareDatabaseForNewBinary(
+  plan: DatabasePlan,
+  install: boolean,
+): Promise<void> {
   // Reinstalling this same version must not replace the record of the
   // upgrade that led here.
   if (plan.target !== CLI_VERSION) {
     plan.backup = await backupLocalDatabase(plan.target);
+  }
+  if (plan.restore && install && !plan.backup) {
+    throw new UpgradeError(
+      "execution_failed",
+      `Undo stopped before installing ${plan.target}: this version's database could not be backed up, ` +
+        "so it couldn't be put back if the install failed. Nothing was changed.",
+    );
   }
   if (plan.restore) {
     try {
@@ -738,16 +754,13 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     noAgentSkills,
     database,
   } = opts;
-  const args = [
-    "cli",
-    "setup",
-    "--quiet",
-    "--method",
-    method,
-    "--channel",
-    channel,
-    "--no-modify-path",
-  ];
+  const args = ["cli", "setup", "--quiet", "--method", method];
+  // An undo leaves the channel to the database it restores, which records
+  // the one that version followed. `channel` only picks its artifact.
+  if (!database.restore) {
+    args.push("--channel", channel);
+  }
+  args.push("--no-modify-path");
   if (install) {
     args.push("--install");
   }
@@ -762,7 +775,7 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     ? { ...process.env, SENTRY_INSTALL_DIR: installDir }
     : undefined;
 
-  await prepareDatabaseForNewBinary(database);
+  await prepareDatabaseForNewBinary(database, install);
   let exitCode: number | undefined;
   try {
     exitCode = await spawnWithRetry(binaryPath, args, env);
@@ -1235,8 +1248,9 @@ export const upgradeCommand = buildCommand({
       undo !== undefined,
     );
     const { versionArg, method } = resolvedContext;
-    // Undo reinstalls the earlier version on its own channel. Its restored
-    // database already stores that channel, so this one's is left alone.
+    // Undo downloads the earlier version's own artifact. Setup doesn't
+    // record this channel: the restored database already stores the one
+    // that version followed, and this one's is left alone.
     const channel = undo
       ? getArtifactChannel(undo.version)
       : resolvedContext.channel;

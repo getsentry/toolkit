@@ -1240,7 +1240,8 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
 
     expect(getOutput()).toContain(`Restored the database ${NEXT_RELEASE}`);
     const setupCall = spawnedArgs.find((entry) => entry.args.includes("setup"));
-    expect(setupCall?.args).toContain("stable");
+    // The restored database keeps the channel that version followed.
+    expect(setupCall?.args).not.toContain("--channel");
     expect(markerAtSetup).toBe(`saved by ${NEXT_RELEASE}`);
     // This version's database is kept, so the undo can be undone in turn.
     expect((await getUndoBackup(NEXT_RELEASE)).version).toBe(CLI_VERSION);
@@ -1270,6 +1271,39 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(readdirSync(getBackupDir())).toEqual([
       `cli-${NEXT_RELEASE}_to_${CLI_VERSION}.db`,
     ]);
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe(NEXT_RELEASE);
+  });
+
+  test("undo stops before installing when this version's database can't be backed up", async () => {
+    const marker = "test.marker";
+    setMetadata(getRawDatabase(), { [marker]: `saved by ${NEXT_RELEASE}` });
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "current" });
+    // A directory where this version's backup goes makes the backup fail.
+    const blocker = join(
+      getBackupDir(),
+      `cli-${CLI_VERSION}_to_${NEXT_RELEASE}.db`,
+    );
+    mkdirSync(blocker);
+    writeFileSync(join(blocker, "file"), "");
+    mockTaggedBinaryDownload(NEXT_RELEASE);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+    } finally {
+      rmSync(blocker, { recursive: true, force: true });
+    }
+
+    expect(getOutput() + errors.join("")).toContain("Undo stopped");
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      false,
+    );
+    expect(getMetadata(getRawDatabase(), [marker]).get(marker)).toBe("current");
     expect((await getUndoBackup(CLI_VERSION)).version).toBe(NEXT_RELEASE);
   });
 
