@@ -7,8 +7,8 @@
 
 ## 2. CLI cache tier correction
 
-- [ ] 2.1 Replace the CLI's `immutable` tier in `packages/cli/src/lib/response-cache.ts` with `detail` (5 minutes): exact path shapes for organization event details without `averageColumn` and project trace-item details without `debug`. Move issue events (including `latest`, `oldest`, `recommended`), project event details, and full traces to `volatile`, and check `/issues/` before any event pattern. Verify with `response-cache.property.test.ts` cases for each `Fallback TTL tiers` scenario, replacing the 24-hour assertions.
-- [ ] 2.2 Ship it as its own PR with a changelog note, since repeated event and trace reads will now call the API more often. Verify the CLI unit tests pass.
+- [x] 2.1 Remove the CLI's `immutable` tier in `packages/cli/src/lib/response-cache.ts`. Move issue events (including `latest`, `oldest`, `recommended`), project event details, and full traces to `volatile`; organization event and trace-item details fall to `stable`. Verify with classifier and fake-clock expiry tests for each `Fallback TTL tiers` scenario.
+- [x] 2.2 Ship it as its own PR (#1681). Verify the CLI unit tests pass.
 
 ## 3. Shared pagination
 
@@ -41,7 +41,7 @@
 
 - [ ] 7.1 Wire the memory store into `mcp-cloudflare` behind `MCP_RESPONSE_CACHE` (`off`/`memory`/`tiered`), with identity taken from the wrapper token's user and grant IDs. Verify the Workers tests pass, and a two-identity isolation test.
 - [ ] 7.2 Confirm `node:zlib` zstd on a deployed preview Worker. If it is unavailable, keep brotli as the hosted codec and record that in `docs/cloudflare/architecture.md`.
-- [ ] 7.3 Add the R2 binding, the detail-tier store, and `TieredStore`. Persist only detail-tier entries whose response carries `Cache-Control: private` with a positive `max-age`, expiring at the lesser of that `max-age` and 5 minutes. Write in `waitUntil` and add a 1-day lifecycle rule for garbage collection. Verify tests for a cross-isolate detail hit, no R2 write without server headers, expiry enforced on read, and memory-only volatile entries.
+- [ ] 7.3 Add the R2 binding, its URL allowlist (organization event details without `averageColumn`, project trace-item details without `debug`), and `TieredStore`. Persist only allowlisted entries whose response carries `Cache-Control: private` with a positive `max-age`, expiring at the lesser of that `max-age` and 5 minutes. Write in `waitUntil` and add a 1-day lifecycle rule for garbage collection. Verify tests for a cross-isolate allowlisted hit, no R2 write without server headers, expiry enforced on read, and memory-only volatile entries.
 - [ ] 7.4 Get privacy and security sign-off on the 5-minute stale window after access revocation or deletion before setting `MCP_RESPONSE_CACHE=tiered` in production. Record the decision in `docs/cloudflare/architecture.md`.
 - [ ] 7.5 Add cache hit, miss, and eviction metrics and memory-budget logging. Document them in `docs/operations/monitoring.md`, and verify they appear in a preview deploy.
 
