@@ -12,9 +12,9 @@
 
 ## 3. Shared pagination
 
-- [ ] 3.1 Move `paginate`, `fetchAllPages`, page sizing, and cursor encode/decode from `cli/src/lib/api/infrastructure.ts` into `toolkit-core/src/pagination.ts`. Failures are returned as typed results, and the host supplies the logger. Verify with toolkit-core unit tests that cover each `sentry-api-pagination` scenario.
-- [ ] 3.2 Switch the CLI to the shared module, mapping errors to `ApiError` and keeping the `sentry-cli/no-manual-pagination` lint rule. Verify the CLI unit tests pass with no snapshot changes.
-- [ ] 3.3 Document the module in `packages/toolkit-core/README.md`, and verify `pnpm run docs:check` passes.
+- [x] 3.1 Move `paginate`, `fetchAllPages`, page sizing, and cursor encode/decode from `cli/src/lib/api/infrastructure.ts` into `toolkit-core/src/pagination.ts`. Failures are returned as typed results, and the host supplies the logger. Verify with toolkit-core unit tests that cover each `sentry-api-pagination` scenario.
+- [x] 3.2 Switch the CLI to the shared module, mapping errors to `ApiError` and keeping the `sentry-cli/no-manual-pagination` lint rule. Verify the CLI unit tests pass with no snapshot changes.
+- [x] 3.3 Document the module in `packages/toolkit-core/README.md`, and verify `pnpm run docs:check` passes. Shipped in #1683.
 
 ## 4. Shared cache policy and codecs
 
