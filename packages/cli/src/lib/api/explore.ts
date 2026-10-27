@@ -1,10 +1,11 @@
 /**
- * Sentry Explore/Discover API — aggregate event queries.
+ * Sentry Explore/Discover API — tabular and time-series event queries.
  *
- * Wraps `GET /organizations/{org}/events/` with user-specified fields, dataset,
- * query, sort, and time range. This is the same endpoint used by the Sentry
- * Explore UI for arbitrary event queries with aggregation support.
+ * Wraps the `events/` and `events-timeseries/` endpoints used by the Sentry
+ * Explore UI, with user-specified aggregates, datasets, filters, and time ranges.
  */
+
+import type { OrganizationEventsTimeseriesResponse } from "@sentry/api";
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
@@ -46,6 +47,69 @@ export type ExploreQueryOptions = {
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
   end?: string;
 };
+
+/** Options for an ungrouped time series, with project and environment filters in `query`. */
+export type ExploreTimeSeriesQueryOptions = Pick<
+  ExploreQueryOptions,
+  "fields" | "dataset" | "query" | "statsPeriod" | "start" | "end"
+> & {
+  /** Bucket width as a duration, such as `5m`. Must be valid for the requested range. */
+  interval: string;
+};
+
+type SdkTimeSeries = OrganizationEventsTimeseriesResponse["timeSeries"][number];
+
+/**
+ * The SDK response with the backend's string-valued aggregates preserved.
+ * `max(timestamp)` returns an ISO date and `latest_event()` an event ID;
+ * neither is represented by the SDK's numeric bucket type.
+ */
+export type EventsTimeSeriesResponse = Omit<
+  OrganizationEventsTimeseriesResponse,
+  "timeSeries"
+> & {
+  /** One series per aggregate, including bucket accuracy and completeness metadata. */
+  timeSeries: (Omit<SdkTimeSeries, "values"> & {
+    /** Buckets retain API timestamps in milliseconds and null values for missing data. */
+    values: (Omit<SdkTimeSeries["values"][number], "value"> & {
+      /** Aggregate result, without coercion of strings or missing values. */
+      value: number | string | null;
+    })[];
+  })[];
+};
+
+/**
+ * Query aggregate values over time without grouping or pagination.
+ *
+ * Uses the same regional transport as `queryEvents` because the generated
+ * SDK input types do not support repeated `yAxis` or duration-string intervals.
+ * Returns the complete API response, including sampling and ingestion metadata.
+ */
+export async function queryEventsTimeSeries(
+  orgSlug: string,
+  options: ExploreTimeSeriesQueryOptions,
+): Promise<EventsTimeSeriesResponse> {
+  const regionUrl = await resolveOrgRegion(orgSlug);
+  const { data } = await apiRequestToRegion<EventsTimeSeriesResponse>(
+    regionUrl,
+    `/organizations/${orgSlug}/events-timeseries/`,
+    {
+      params: {
+        dataset: options.dataset ?? "errors",
+        yAxis: options.fields,
+        query: options.query || undefined,
+        interval: options.interval,
+        statsPeriod:
+          options.start || options.end
+            ? undefined
+            : (options.statsPeriod ?? "24h"),
+        start: options.start,
+        end: options.end,
+      },
+    },
+  );
+  return data;
+}
 
 /**
  * Fetch a single page of events from the Explore/Events endpoint.

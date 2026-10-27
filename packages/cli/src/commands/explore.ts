@@ -17,6 +17,7 @@ import {
   isReplaySortValue,
   listReplays,
   queryEvents,
+  queryEventsTimeSeries,
   queryMetricsMeta,
 } from "../lib/api-client.js";
 import { validateLimit } from "../lib/arg-parsing.js";
@@ -28,6 +29,15 @@ import {
 } from "../lib/db/pagination.js";
 import { toSearchQueryError, ValidationError } from "../lib/errors.js";
 import { toExploreFieldError } from "../lib/explore-errors.js";
+import {
+  parseTimeSeriesInterval,
+  resolveTimeSeriesInterval,
+} from "../lib/explore-timeseries.js";
+import {
+  type ExploreTimeSeriesData,
+  formatExploreTimeSeriesHuman,
+  jsonTransformExploreTimeSeries,
+} from "../lib/formatters/explore-timeseries.js";
 import { filterFields } from "../lib/formatters/json.js";
 import { buildMetaColumns } from "../lib/formatters/meta-table.js";
 import { CommandOutput } from "../lib/formatters/output.js";
@@ -142,7 +152,9 @@ type ExploreFlags = {
   readonly query?: string;
   readonly sort?: string;
   readonly period: TimeRange;
-  readonly limit: number;
+  readonly limit?: number;
+  /** Bucket duration or "auto"; omitted for tabular output. */
+  readonly "time-series"?: string;
   readonly cursor?: string;
   readonly json: boolean;
   readonly fresh: boolean;
@@ -264,7 +276,11 @@ function orderFieldNames(
 }
 
 /** Format explore results for human-readable terminal output */
-function formatExploreHuman(data: ExploreData): string {
+function formatExploreHuman(data: ExploreData | ExploreTimeSeriesData): string {
+  const displayDataset = API_TO_USER_DATASET.get(data.dataset) ?? data.dataset;
+  if ("timeSeries" in data) {
+    return formatExploreTimeSeriesHuman({ ...data, dataset: displayDataset });
+  }
   if (data.data.length === 0) {
     // Empty page mid-pagination (more or prev pages exist) vs. truly no results.
     return data.hasMore || data.hasPrev
@@ -280,13 +296,18 @@ function formatExploreHuman(data: ExploreData): string {
   );
 
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
-  const displayDataset = API_TO_USER_DATASET.get(data.dataset) ?? data.dataset;
   const header = `Querying ${displayDataset} in ${scope}:\n\n`;
   return header + formatTable(data.data, columns);
 }
 
 /** Transform explore results for JSON output */
-function jsonTransformExplore(data: ExploreData, fields?: string[]): unknown {
+function jsonTransformExplore(
+  data: ExploreData | ExploreTimeSeriesData,
+  fields?: string[],
+): unknown {
+  if ("timeSeries" in data) {
+    return jsonTransformExploreTimeSeries(data, fields);
+  }
   const items =
     fields && fields.length > 0
       ? data.data.map((row) => filterFields(row, fields))
@@ -313,7 +334,7 @@ function jsonTransformExplore(data: ExploreData, fields?: string[]): unknown {
 // Pagination hints
 // ---------------------------------------------------------------------------
 
-/** Default limit value matching the flag default for hint comparison */
+/** Default table row limit, also omitted from pagination hints. */
 const DEFAULT_LIMIT = 25;
 
 function defaultFieldsForDataset(dataset: string): readonly string[] {
@@ -388,7 +409,7 @@ function appendFlagHints(
   appendSortHint(parts, flags.sort, defaultSort);
   appendQueryHint(parts, flags.query);
   appendFieldHints(parts, flags.field, flags.dataset, !!flags.metric);
-  if (flags.limit !== DEFAULT_LIMIT) {
+  if (flags.limit !== undefined && flags.limit !== DEFAULT_LIMIT) {
     parts.push(`--limit ${flags.limit}`);
   }
   if (flags.environment && flags.environment.length > 0) {
@@ -476,6 +497,64 @@ function buildEnvironmentQuery(
   return `environment:[${environment.join(",")}]`;
 }
 
+/** Resolve the shared dataset and filters for tabular and temporal queries. */
+function resolveEventsQuery(
+  dataset: string,
+  query: string | undefined,
+  project: string | undefined,
+  environment: string[] | undefined,
+) {
+  const userQuery = sanitizeQuery(query, { allowBoolean: true });
+  const legacyTransactions = LEGACY_TRANSACTION_DATASETS.has(dataset);
+  const scope = [
+    project ? `project:${project}` : undefined,
+    buildEnvironmentQuery(environment),
+    legacyTransactions ? IS_TRANSACTION_FILTER : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  // AND binds more tightly than OR, so CLI scope must enclose every user branch.
+  const scopedQuery =
+    legacyTransactions && userQuery === IS_TRANSACTION_FILTER
+      ? undefined
+      : userQuery;
+  return {
+    dataset: legacyTransactions ? "spans" : dataset,
+    query:
+      scope && scopedQuery ? `${scope} (${scopedQuery})` : scope || scopedQuery,
+  };
+}
+
+/** Reject table-only flags and dimensions before a temporal query is sent. */
+function validateTimeSeriesFlags(flags: ExploreFlags): void {
+  if (flags["time-series"] === undefined) {
+    return;
+  }
+  for (const flag of ["cursor", "limit", "sort"] as const) {
+    if (flags[flag] !== undefined) {
+      throw new ValidationError(
+        `--${flag} is only available for tables. Time series return all buckets in chronological order; use --period and --time-series to control the range and granularity.`,
+        flag,
+      );
+    }
+  }
+  if (flags.dataset === "replays" && !flags.metric) {
+    throw new ValidationError(
+      "Time series support errors, spans, logs, and metrics. The replays dataset is only available as a table.",
+      "dataset",
+    );
+  }
+  const dimensions = flags.field?.filter(
+    (field) => !isAggregateFieldOrEquation(field),
+  );
+  if (dimensions?.length) {
+    throw new ValidationError(
+      `Time series require aggregate fields, such as count() or p95(span.duration). Grouping is not supported: ${dimensions.join(", ")}. Use --query to filter these fields or omit --time-series for a grouped table.`,
+      "field",
+    );
+  }
+}
+
 /**
  * Resolve dataset-specific configuration: sort, query, validation, and fetch.
  *
@@ -495,11 +574,8 @@ function resolveDatasetConfig(params: {
   environment: string[] | undefined;
 }): DatasetConfig {
   const { dataset, fieldList, flags, org, project, environment } = params;
-  const userQuery = sanitizeQuery(flags.query, {
-    allowBoolean: dataset !== "replays",
-  });
-
   if (dataset === "replays") {
+    const userQuery = sanitizeQuery(flags.query);
     const unsupportedField = fieldList.find(
       (field) => !isSupportedReplayField(field),
     );
@@ -542,21 +618,12 @@ function resolveDatasetConfig(params: {
 
   // Non-replay datasets: translate --environment into query filter terms
   // since the Discover/Events API expects environment:... in the query string.
-  const legacyTransactions = LEGACY_TRANSACTION_DATASETS.has(dataset);
-  const scope = [
-    project ? `project:${project}` : undefined,
-    buildEnvironmentQuery(environment),
-    legacyTransactions ? IS_TRANSACTION_FILTER : undefined,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  // AND binds more tightly than OR, so CLI scope must enclose every user branch.
-  const scopedQuery =
-    legacyTransactions && userQuery === IS_TRANSACTION_FILTER
-      ? undefined
-      : userQuery;
-  const query =
-    scope && scopedQuery ? `${scope} (${scopedQuery})` : scope || scopedQuery;
+  const resolved = resolveEventsQuery(
+    dataset,
+    flags.query,
+    project,
+    environment,
+  );
 
   // Every Events dataset honors sort as long as the sort column is selected.
   // A stable sort is what keeps offset-based cursor pagination from
@@ -566,13 +633,14 @@ function resolveDatasetConfig(params: {
     sort: flags.sort,
   });
 
+  const query = resolved.query;
   return {
     sort,
     query,
     fetch: async ({ cursor, limit, timeRange }) =>
       await queryEvents(org, {
         fields,
-        dataset: legacyTransactions ? "spans" : dataset,
+        dataset: resolved.dataset,
         query,
         sort,
         limit,
@@ -580,9 +648,8 @@ function resolveDatasetConfig(params: {
         ...timeRangeToApiParams(timeRange),
       }).catch((error: unknown): never => {
         throw toExploreFieldError(error, {
-          dataset: legacyTransactions
-            ? "spans"
-            : (API_TO_USER_DATASET.get(dataset) ?? dataset),
+          dataset:
+            API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
           fields,
           userFields: (flags.field ?? []).filter(
             (field) => !flags.metric || !isAggregateFieldOrEquation(field),
@@ -618,6 +685,10 @@ export const exploreCommand = buildListCommand("explore", {
       "Supports arbitrary fields including columns (title, project),\n" +
       "aggregates (count(), count_unique(user), p50(span.duration)),\n" +
       "and equations. Results are returned as a table.\n\n" +
+      "Use --time-series to calculate aggregates in time buckets with an automatic interval, " +
+      "or pass a bucket duration such as --time-series 15m (-b 15m). " +
+      "This is a single historical query, not a live stream. " +
+      "Grouping, --sort, --limit, and --cursor are table-only.\n\n" +
       "Datasets:\n" +
       "  errors   Error events (default)\n" +
       "  spans    Span data\n" +
@@ -674,6 +745,21 @@ export const exploreCommand = buildListCommand("explore", {
         description: "Top spans by count",
         command:
           'sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"',
+      },
+      {
+        description: "Error counts in 15-minute buckets over the last hour",
+        command: "sentry explore my-org/cli --time-series 15m --period 1h",
+      },
+      {
+        description:
+          "Latency over time with automatic bucket duration, as JSON",
+        command:
+          'sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json',
+      },
+      {
+        description: "A metric over time using its discovered type and unit",
+        command:
+          "sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h",
       },
       {
         description:
@@ -779,8 +865,21 @@ export const exploreCommand = buildListCommand("explore", {
       limit: {
         kind: "parsed",
         parse: parseLimit,
-        brief: `Number of rows (1-${LIST_MAX_LIMIT})`,
-        default: "25",
+        placeholder: "number",
+        brief: `Number of table rows (1-${LIST_MAX_LIMIT}, default: ${DEFAULT_LIMIT})`,
+        optional: true,
+      },
+      "time-series": {
+        kind: "parsed",
+        parse: (value: string) =>
+          value === "" || value === "auto"
+            ? "auto"
+            : parseTimeSeriesInterval(value),
+        placeholder: "auto|interval",
+        brief:
+          "Query time series (default: auto; optional bucket duration, e.g., 15m)",
+        optional: true,
+        inferEmpty: true,
       },
       period: {
         kind: "parsed" as const,
@@ -798,6 +897,7 @@ export const exploreCommand = buildListCommand("explore", {
       q: "query",
       s: "sort",
       n: "limit",
+      b: "time-series",
     },
   },
   async *func(
@@ -805,15 +905,23 @@ export const exploreCommand = buildListCommand("explore", {
     flags: ExploreFlags,
     target: OrgOptionalTarget,
   ) {
+    validateTimeSeriesFlags(flags);
     const { org, project } = await target.resolved;
 
     let dataset = flags.dataset;
     const userSuppliedFields = flags.field && flags.field.length > 0;
-    let fieldList = [...defaultFieldsForDataset(dataset)];
+    let fieldList =
+      flags["time-series"] !== undefined
+        ? ["count()"]
+        : [...defaultFieldsForDataset(dataset)];
     if (userSuppliedFields) {
       fieldList = flags.field;
     }
-    const timeRange = flags.period;
+    // SDK callers supply the public string form without Stricli parsing.
+    const timeRange =
+      typeof flags.period === "string"
+        ? parsePeriod(flags.period)
+        : flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
 
     // --metric auto mode: resolve metric name → tracemetrics aggregate
@@ -858,6 +966,53 @@ export const exploreCommand = buildListCommand("explore", {
       validateMetricsFields(fieldList);
     }
 
+    if (flags["time-series"] !== undefined) {
+      const resolved = resolveEventsQuery(
+        dataset,
+        flags.query,
+        project,
+        environment,
+      );
+      const timeParams = timeRangeToApiParams(timeRange);
+      const interval = resolveTimeSeriesInterval(
+        timeParams,
+        flags["time-series"] === "auto" ? undefined : flags["time-series"],
+      );
+      const response = await withProgress(
+        {
+          message: `Querying ${resolved.dataset} time series in ${project ? `${org}/${project}` : org}...`,
+          json: flags.json,
+        },
+        () =>
+          queryEventsTimeSeries(org, {
+            fields: fieldList,
+            dataset: resolved.dataset,
+            query: resolved.query,
+            interval,
+            ...timeParams,
+          }).catch((error: unknown): never => {
+            const fieldError = toExploreFieldError(error, {
+              dataset:
+                API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
+              fields: fieldList,
+              userFields: (flags.field ?? []).filter(
+                (field) => !flags.metric || !isAggregateFieldOrEquation(field),
+              ),
+              sort: undefined,
+              userSort: undefined,
+            });
+            throw toSearchQueryError(fieldError, flags.query);
+          }),
+      );
+      yield new CommandOutput({
+        ...response,
+        dataset: resolved.dataset,
+        org,
+        project,
+      });
+      return;
+    }
+
     const config = resolveDatasetConfig({
       dataset,
       fieldList,
@@ -892,7 +1047,7 @@ export const exploreCommand = buildListCommand("explore", {
       },
       () =>
         config
-          .fetch({ cursor, limit: flags.limit, timeRange })
+          .fetch({ cursor, limit: flags.limit ?? DEFAULT_LIMIT, timeRange })
           .catch((error: unknown): never => {
             // An unparseable user --query is a user input mistake, not a CLI bug.
             throw toSearchQueryError(error, flags.query);
@@ -904,7 +1059,7 @@ export const exploreCommand = buildListCommand("explore", {
     const hasMore = !!nextCursor;
 
     const baseTarget = project ? `${org}/${project}` : `${org}/`;
-    const hintFlags = { ...flags, dataset };
+    const hintFlags = { ...flags, dataset, period: timeRange };
     const nav = paginationHint({
       hasPrev,
       hasMore,
