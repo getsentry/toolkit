@@ -12,11 +12,12 @@
  * like `cli.db` itself.
  */
 
+import type { Dirent } from "node:fs";
 import {
   chmod,
   copyFile,
   mkdir,
-  readdir,
+  opendir,
   rename,
   rm,
   stat,
@@ -79,30 +80,30 @@ function backupFileName(fromVersion: string, toVersion: string): string {
 /** Every backup in the backup directory, newest first. */
 async function listBackups(): Promise<DatabaseBackup[]> {
   const dir = getBackupDir();
-  let files: string[];
+  let entries: AsyncIterable<Dirent>;
   try {
-    files = await readdir(dir);
+    entries = await opendir(dir);
   } catch (error) {
-    log.debug(`No readable backup directory ${dir}`, error);
+    log.debug(`Cannot read backup directory ${dir}`, error);
     return [];
   }
   const backups: DatabaseBackup[] = [];
-  for (const file of files) {
-    const match = BACKUP_FILE_REGEX.exec(file);
+  for await (const entry of entries) {
+    const match = entry.isFile() ? BACKUP_FILE_REGEX.exec(entry.name) : null;
     if (!match) {
       continue;
     }
     try {
-      const { mtimeMs } = await stat(join(dir, file));
+      const { mtimeMs } = await stat(join(dir, entry.name));
       backups.push({
         version: match[1] as string,
         toVersion: match[2] as string,
-        file,
+        file: entry.name,
         createdAt: mtimeMs,
       });
     } catch (error) {
       // Removed by a concurrent prune.
-      log.debug(`Skipping backup ${file}`, error);
+      log.debug(`Skipping backup ${entry.name}`, error);
     }
   }
   return backups.sort((a, b) => b.createdAt - a.createdAt);
@@ -204,7 +205,7 @@ export async function discardDatabaseBackup(
 
 /**
  * Move `backup` back into place as `cli.db` and let this process use it
- * again, reverting a {@link restoreDatabaseBackup} whose version was never
+ * again, reverting a restore or hand-off made for a version that was never
  * installed. The backup file is gone afterwards, as if the upgrade it was
  * made for never happened.
  */
@@ -212,12 +213,16 @@ export async function reinstateDatabaseBackup(
   backup: DatabaseBackup,
 ): Promise<void> {
   const dbPath = getDbPath();
-  // The write-ahead log belongs to the file being replaced.
-  await rm(`${dbPath}-wal`, { force: true });
-  await rm(`${dbPath}-shm`, { force: true });
-  await rename(join(getBackupDir(), backup.file), dbPath);
-  // Ends the detachment from `restoreDatabaseBackup`.
-  closeDatabase();
+  // Nothing in this process may use the file being replaced meanwhile.
+  detachDatabase();
+  try {
+    // The write-ahead log belongs to the file being replaced.
+    await rm(`${dbPath}-wal`, { force: true });
+    await rm(`${dbPath}-shm`, { force: true });
+    await rename(join(getBackupDir(), backup.file), dbPath);
+  } finally {
+    closeDatabase();
+  }
 }
 
 /** Columns of `table` in `db`, in declaration order. */

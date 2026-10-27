@@ -166,31 +166,28 @@ async function prepareDatabaseForNewBinary(plan: DatabasePlan): Promise<void> {
 }
 
 /**
- * Revert this run's backup and restore after a setup that installs the new
- * binary itself failed, so this version, still the installed one, keeps its
- * own database and `sentry cli upgrade undo` still finds the upgrade that led
- * here instead of the one that failed.
- *
- * A #1611 hand-off without a restore is redone after a failed setup, so its
- * backup, then the only intact copy of this version's database, is kept.
+ * Revert this run's backup, restore and hand-off after a setup that installs
+ * the new binary itself failed, so this version, still the installed one,
+ * keeps its own database and `sentry cli upgrade undo` still finds the
+ * upgrade that led here instead of the one that failed.
  */
 async function revertDatabaseForFailedInstall(
   plan: DatabasePlan,
 ): Promise<void> {
   const { backup } = plan;
-  if (!backup || (plan.handOff && !plan.restored)) {
+  if (!backup) {
     return;
   }
   plan.backup = undefined;
   try {
-    if (plan.restored) {
+    if (plan.restored || plan.handOff) {
       await reinstateDatabaseBackup(backup);
-      plan.restored = false;
-      // This version keeps its database, so there is nothing to hand off.
-      plan.handOff = false;
     } else {
       await discardDatabaseBackup(backup);
     }
+    // This version keeps its database, so there is nothing to hand off.
+    plan.restored = false;
+    plan.handOff = false;
   } catch (error) {
     log.warn(
       `Could not revert the local database after the failed setup: ${stringifyUnknown(error)}.`,
@@ -200,7 +197,8 @@ async function revertDatabaseForFailedInstall(
 
 /**
  * Run after setup, even when it fails: another invocation of this CLI may
- * have re-migrated the database meanwhile.
+ * have re-migrated the database meanwhile. A failure reverted by
+ * {@link revertDatabaseForFailedInstall} has nothing left to hand off.
  */
 function finishDatabaseForNewBinary(plan: DatabasePlan): void {
   if (plan.handOff && !plan.restored) {

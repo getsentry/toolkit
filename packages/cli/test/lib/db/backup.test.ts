@@ -3,7 +3,7 @@
  */
 
 import { statSync } from "node:fs";
-import { readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
@@ -167,6 +167,7 @@ describe("getUndoBackup", () => {
     const backup = await backupDatabase(getRawDatabase(), "1.0.0", "2.0.0");
     await writeFile(join(getBackupDir(), "notes.txt"), "not a backup");
     await writeFile(join(getBackupDir(), "cli-9.0.0.db"), "");
+    await mkdir(join(getBackupDir(), "cli-9.0.0_to_2.0.0.db"));
     expect(await getUndoBackup("2.0.0")).toEqual(backup);
   });
 });

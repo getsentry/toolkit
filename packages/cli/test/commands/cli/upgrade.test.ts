@@ -1075,7 +1075,9 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
   });
 
-  test("redoes the hand-off after setup fails", async () => {
+  test("redoes the hand-off after setup fails without a backup", async () => {
+    // A file where the backup directory goes makes the backup fail.
+    writeFileSync(getBackupDir(), "");
     mockBinaryDownloadWithVersion("0.47.0");
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
@@ -1094,16 +1096,45 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
       await run(app, ["cli", "upgrade", "--method", "curl"], context);
     } finally {
       downgradeSpy.mockRestore();
+      rmSync(getBackupDir(), { force: true });
     }
 
     expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
       true,
     );
     expect(readSchemaVersion()).toBe(16);
-    // The hand-off emptied `cli.db`, so its backup is the only intact copy.
-    expect(readdirSync(getBackupDir())).toEqual([
-      `cli-${CLI_VERSION}_to_0.47.0.db`,
-    ]);
+  });
+
+  test("puts this version's database back after a hand-off setup fails", async () => {
+    getRawDatabase()
+      .query(
+        "INSERT INTO accounts (account_id, host, user_id, token, is_active) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("a", "https://sentry.io", "user-a", "token", 1);
+    mockBinaryDownloadWithVersion("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    let versionAtSetup: number | undefined;
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      versionAtSetup = readSchemaVersion();
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(versionAtSetup).toBe(16);
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+    expect(
+      getRawDatabase().query("SELECT account_id FROM accounts").all(),
+    ).toEqual([{ account_id: "a" }]);
+    expect(readdirSync(getBackupDir())).toEqual([]);
   });
 
   test("a failed undo to a CLI that needs the hand-off keeps this version's database", async () => {
