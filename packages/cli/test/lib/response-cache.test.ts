@@ -7,7 +7,6 @@
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { normalizeUrl } from "@sentry/toolkit-core/response-cache";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import {
@@ -337,57 +336,11 @@ describe("cache bypass", () => {
 });
 
 // ---------------------------------------------------------------------------
-// normalizeUrl
-// ---------------------------------------------------------------------------
-
-describe("normalizeUrl", () => {
-  test("sorts query params alphabetically", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.io/api/0/issues/?b=2&a=1",
-    );
-    expect(result).toBe("GET|https://sentry.io/api/0/issues/?a=1&b=2");
-  });
-
-  test("uppercases the method", () => {
-    const result = normalizeUrl("get", "https://sentry.io/api/0/issues/");
-    expect(result).toMatch(/^GET\|/);
-  });
-
-  test("throws on invalid URLs", () => {
-    expect(() => normalizeUrl("GET", "not-a-valid-url")).toThrow();
-  });
-
-  test("handles self-hosted URLs with unusual schemes", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.mycompany.internal/api/0/issues/",
-    );
-    expect(result).toBe("GET|https://sentry.mycompany.internal/api/0/issues/");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildCacheKey
+// buildCacheKey — key derivation is tested in toolkit-core; this covers the
+// CLI wrapper's default identity, taken from the active login
 // ---------------------------------------------------------------------------
 
 describe("buildCacheKey", () => {
-  test("produces a 64-char hex string", async () => {
-    expect(await buildCacheKey("GET", TEST_URL)).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test("is deterministic", async () => {
-    expect(await buildCacheKey("GET", TEST_URL)).toBe(
-      await buildCacheKey("GET", TEST_URL),
-    );
-  });
-
-  test("different methods produce different keys", async () => {
-    expect(await buildCacheKey("GET", TEST_URL)).not.toBe(
-      await buildCacheKey("POST", TEST_URL),
-    );
-  });
-
   test("different identities produce different keys for the same URL", async () => {
     // Switching accounts must route reads/writes through a different
     // namespace so users never see each other's cached data.

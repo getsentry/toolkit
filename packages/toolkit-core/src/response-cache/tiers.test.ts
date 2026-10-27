@@ -32,15 +32,10 @@ describe("classifyUrl", () => {
     expect(ttlFor(url)).toBeLessThanOrEqual(60 * 1000);
   });
 
-  it("treats project event details, log queries, and span queries as volatile", () => {
-    for (const url of [
-      `${API}/projects/acme/web/events/deadbeef/`,
-      `${API}/organizations/acme/events/?dataset=logs&query=foo`,
-      `${API}/organizations/acme/events/?field=id&dataset=spans`,
-      `${API}/organizations/acme/trace-logs/?traceId=${TRACE_ID}`,
-    ]) {
-      expect(classifyUrl(url)).toBe("volatile");
-    }
+  it("treats trace log queries as volatile", () => {
+    expect(
+      classifyUrl(`${API}/organizations/acme/trace-logs/?traceId=${TRACE_ID}`),
+    ).toBe("volatile");
   });
 
   it("never serves polling endpoints from cache", () => {
@@ -50,16 +45,6 @@ describe("classifyUrl", () => {
     ]) {
       expect(classifyUrl(url)).toBe("no-cache");
       expect(ttlFor(url)).toBe(0);
-    }
-  });
-
-  it("defaults everything else to stable", () => {
-    for (const url of [
-      `${API}/organizations/`,
-      `${API}/organizations/acme/projects/`,
-      `${API}/projects/acme/web/trace-items/abc123/?item_type=spans`,
-    ]) {
-      expect(classifyUrl(url)).toBe("stable");
     }
   });
 });

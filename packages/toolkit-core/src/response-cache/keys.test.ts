@@ -11,6 +11,12 @@ describe("normalizeUrl", () => {
     );
   });
 
+  it("keeps self-hosted hosts", () => {
+    expect(
+      normalizeUrl("GET", "https://sentry.mycompany.internal/api/0/issues/"),
+    ).toBe("GET|https://sentry.mycompany.internal/api/0/issues/");
+  });
+
   it("throws on a URL it cannot parse", () => {
     expect(() => normalizeUrl("GET", "not a url")).toThrow(TypeError);
   });
@@ -29,22 +35,6 @@ describe("buildCacheKey", () => {
       await buildCacheKey("GET", `https://us.sentry.io${path}`, "alice"),
     ).not.toBe(
       await buildCacheKey("GET", `https://sentry.example.com${path}`, "alice"),
-    );
-  });
-
-  it("ignores query param order and method case", async () => {
-    expect(
-      await buildCacheKey(
-        "get",
-        "https://us.sentry.io/api/0/issues/?a=1&b=2",
-        "alice",
-      ),
-    ).toBe(
-      await buildCacheKey(
-        "GET",
-        "https://us.sentry.io/api/0/issues/?b=2&a=1",
-        "alice",
-      ),
     );
   });
 
