@@ -59,10 +59,6 @@
       "types": "./src/search-query.ts",
       "default": "./src/search-query.ts"
     },
-    "./search-syntax": {
-      "types": "./src/search-syntax.ts",
-      "default": "./src/search-syntax.ts"
-    },
     "./sentry-host": {
       "types": "./src/sentry-host.ts",
       "default": "./src/sentry-host.ts"
@@ -76,6 +72,9 @@
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "tsc": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sentry/search-syntax": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:",

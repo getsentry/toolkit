@@ -41,14 +41,12 @@ types. Each product keeps its own response validation.
 
 ## Search syntax
 
-`search-syntax` parses Sentry search queries with the Sentry frontend's own
-grammar. `grammar/search-syntax.pegjs` is an unchanged copy of
-[`static/app/components/searchSyntax/grammar.pegjs`](https://github.com/getsentry/sentry/blob/master/static/app/components/searchSyntax/grammar.pegjs),
-and `test/fixtures/search-syntax/` is a copy of the `fixtures/search-syntax`
-cases the frontend and `event_search.py` both test against. `parseSearch`
-returns the frontend's token tree, minus validation: `TokenConverter` never
-marks tokens invalid or fills `parsed` values. A product that needs those
-subclasses `TokenConverter` and passes it as `converter`.
+Search queries are parsed with
+[`@sentry/search-syntax`](https://www.npmjs.com/package/@sentry/search-syntax),
+the Sentry frontend's own grammar and structural parser, published from
+[`static/packages/search-syntax`](https://github.com/getsentry/sentry/tree/master/static/packages/search-syntax)
+in getsentry/sentry. Grammar changes and their tests (including the
+`fixtures/search-syntax` cases shared with `event_search.py`) live there.
 
 `search-query` uses that parser to rewrite queries the API would reject:
 explicit `AND` is dropped, and `OR` on one key becomes an in-list. With
@@ -56,11 +54,3 @@ explicit `AND` is dropped, and `OR` on one key becomes an in-list. With
 `substatus:[…]` and unwraps parentheses, which the issues endpoint doesn't
 support. It returns the rewrite notes and throws `SearchQueryError` for
 anything it can't rewrite; each product decides how to report them.
-
-The parser is compiled ahead of time into `src/generated/` and committed,
-since this package has no build step. Its types live in
-`grammar/search-syntax.d.ts`. After editing either file, run
-`pnpm run generate:parsers`; the pre-commit hook does this for staged
-grammar changes, and `pnpm run check:generated` fails in CI when
-the committed parser is out of date. When updating the grammar from upstream,
-copy the fixtures too.

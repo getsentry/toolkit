@@ -54,6 +54,9 @@ catalogs:
     '@sentry/react':
       specifier: 11.6.0
       version: 11.6.0
+    '@sentry/search-syntax':
+      specifier: ^1.0.0
+      version: 1.0.0
     '@sentry/vite-plugin':
       specifier: ^4.6.1
       version: 4.6.1
@@ -807,6 +810,9 @@ importers:
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
+      '@sentry/search-syntax':
+        specifier: 'catalog:'
+        version: 1.0.0
       '@sentry/toolkit-core':
         specifier: workspace:*
         version: link:../toolkit-core
@@ -1016,6 +1022,10 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.16.0)(@vitest/coverage-v8@4.1.11)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.16.0)(typescript@5.9.3))(vite@8.3.3(@types/node@22.16.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/toolkit-core:
+    dependencies:
+      '@sentry/search-syntax':
+        specifier: 'catalog:'
+        version: 1.0.0
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -4708,6 +4718,9 @@ packages:
   '@sentry/replay@11.6.0':
     resolution: {integrity: sha512-cJyPYnF6QJA8ADRfAW06YoU7EVIebtWezBOCU9Vag5+W1VLBkXEvH7C4LbeMUiDmrqw92sumq06NgqipIxA7BA==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/search-syntax@1.0.0':
+    resolution: {integrity: sha512-R+raAe4PixC+e7Zn6uPH7NSK7nzfHy2MA1kRWDn7dFH8zaU10edFBVPj8qO3TlSb58yts0tejPdy+s1acq80wQ==}
 
   '@sentry/server-runtime-injection@11.6.0':
     resolution: {integrity: sha512-3plQzwQfvz4HJkXLDfr5VuQQL5vyjar7RKn7UwFne3jc+9OSXRkxkZ6S0Z3RdBgbaFO1GkFwf/mFNX4H8nNcuw==}
@@ -12941,6 +12954,8 @@ snapshots:
     dependencies:
       '@sentry/browser-utils': 11.6.0
       '@sentry/core': 11.6.0
+
+  '@sentry/search-syntax@1.0.0': {}
 
   '@sentry/server-runtime-injection@11.6.0':
     dependencies:
