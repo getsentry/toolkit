@@ -35,6 +35,8 @@ The broker validates the origin and API prefix, supplies authentication and
 rejects redirects. The request-scoped capability also retains the existing
 unauthorized callback, which cannot be serialized into loopback binding props.
 
+![The sandbox calls the parent Worker's broker over RPC; only the broker holds the Sentry token and contacts the API.](../cloudflare/code-mode-architecture.png)
+
 Code Mode is an architecture, not a separate MCP protocol capability. Tools use
 normal `tools/list` and `tools/call`, typed schemas, JSON text and
 `structuredContent`; failures use `isError`. The MCP SDK's package version is
@@ -165,6 +167,36 @@ Fresh Worker IDs preserve per-execution isolation but affect
 Any later reuse must preserve request credentials and authorization; changing
 the ID alone is insufficient.
 
+### Lifecycle investigation
+
+Local probes on 2026-10-27 used the unchanged sandbox from `f4f0766b`, a small
+parent reproducing the execution/deadline logic, and a local HTTP fixture on
+Miniflare `5.20261019.1-beta` / workerd `1.20261019.1`. They used no real token
+or Sentry API. `waitUntil` deliberately kept the parent context alive; these
+results do not establish the lifetime of a hosted MCP request.
+
+- With the real 30-second deadline, the parent returned timeout at 30.004s,
+  but the sandbox settled at 30.503s. `Promise.race` stops waiting, not execution.
+- An unawaited POST reached the fixture after the parent returned success,
+  while still inside the deadline. Without the extended context, that probe
+  ended before HTTP arrived. Execution closure currently depends on context
+  cleanup, not an explicit broker close.
+- The broker deadline rejected a request starting after expiry. Aborting an
+  already-sent HTTP request did not undo the fixture's accepted write.
+
+Cloudflare's [ExecutionGate](https://github.com/cloudflare/agents/blob/858674439f2966b16ea55bd37b46fad4248f2781/packages/codemode/src/executor.ts)
+releases pending RPC when execution settles; it explicitly does not cancel host
+work. A local reproduction confirmed that distinction. `LOADER.load()` worked,
+but neither its handles nor `get()` handles exposed `Symbol.dispose` in this
+installed runtime, so optional disposal alone would not fix these observations.
+
+Before production, define and test execution closure: reject new broker work
+after completion, check state/deadline before and after async authorization,
+release pending RPC and abort in-flight HTTP where possible. Define how
+unawaited requests affect the result. Verify hosted cleanup, cancellation and
+CPU/concurrency enforcement separately. No cleanup can roll back accepted writes.
+These findings are pending work, not a production-readiness sign-off.
+
 ## Runtime and integration validation
 
 Use Node 24 for this checkout; its `better-sqlite3` dependency does not compile
@@ -201,8 +233,9 @@ Validation after separating agent evals on 2026-10-27 passed 469 hosted tests,
 production Wrangler dry-run with `LOADER`. This is fixture-backed evidence,
 not a real Sentry account or deployment.
 Unrelated CLI fixture/platform failures prevented a green full workspace suite.
-Before production, validate hosted OAuth-to-API authorization and Cloudflare
-CPU/termination limits. No deployment is established by these checks.
+Before production, address the lifecycle findings above and validate hosted
+OAuth-to-API authorization and Cloudflare CPU/termination limits. No deployment
+is established by these checks.
 
 ## References
 
