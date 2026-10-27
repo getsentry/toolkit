@@ -18,7 +18,7 @@
 
 ## 4. Shared cache policy and codecs
 
-- [ ] 4.1 Move tier classification, key derivation (moved to WebCrypto HMAC), URL normalization, and invalidation prefixes into `toolkit-core/src/response-cache/`. Verify with unit tests for the tier, identity-scoping, and invalidation scenarios.
+- [x] 4.1 Move tier classification, key derivation (moved to WebCrypto HMAC), URL normalization, and invalidation prefixes into `toolkit-core/src/response-cache/`. Verify with unit tests for the tier, identity-scoping, and invalidation scenarios. Shipped in #1688.
 - [ ] 4.2 Add a codec module (zstd level 3 for every tier, brotli-4 fallback, raw below 256 bytes, `encoding` and `dictId` recorded per entry) with runtime detection. Verify round-trip tests in Node 22, and a test with zstd stubbed out.
 - [ ] 4.3 Define the `CacheStore` interface and add the byte-budgeted memory store. Verify tests for LRU eviction, the per-entry cap, and the budget staying within its bound under many identities.
 - [ ] 4.4 Re-implement the CLI filesystem store on `CacheStore`, with compressed entries and a byte budget, while reading existing uncompressed entries. Verify the CLI cache tests pass and an old-format entry is still served.
