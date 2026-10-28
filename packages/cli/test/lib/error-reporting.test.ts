@@ -834,7 +834,7 @@ describe("reportArgumentError", () => {
   let messageSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    messageSpy = vi.spyOn(Sentry, "captureMessage");
+    messageSpy = vi.spyOn(Sentry, "captureEvent");
   });
 
   afterEach(() => {
@@ -848,7 +848,8 @@ describe("reportArgumentError", () => {
       new ValidationError("Invalid period 'bogus'", "period"),
     );
     reportArgumentError(error, 'Failed to parse "bogus" for period');
-    expect(messageSpy).toHaveBeenCalledWith("invalid_argument", {
+    expect(messageSpy).toHaveBeenCalledWith({
+      message: "invalid_argument",
       level: "info",
       tags: { "argument_error.class": "ArgumentParseError" },
       contexts: {
@@ -867,8 +868,8 @@ describe("reportArgumentError", () => {
       "No flag registered for --nope",
     );
     expect(messageSpy).toHaveBeenCalledWith(
-      "invalid_argument",
       expect.objectContaining({
+        message: "invalid_argument",
         contexts: {
           invalid_argument: expect.objectContaining({
             error_class: "FlagNotFoundError",

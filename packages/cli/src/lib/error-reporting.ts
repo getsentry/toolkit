@@ -491,7 +491,10 @@ function argumentErrorClassName(error: unknown): string {
  */
 export function reportArgumentError(error: unknown, message: string): void {
   const errorClass = argumentErrorClassName(error);
-  Sentry.captureMessage("invalid_argument", {
+  // captureEvent, not captureMessage: with `attachStacktrace` on,
+  // captureMessage adds a synthetic exception that marks the session errored.
+  Sentry.captureEvent({
+    message: "invalid_argument",
     level: "info",
     tags: { "argument_error.class": errorClass },
     contexts: {

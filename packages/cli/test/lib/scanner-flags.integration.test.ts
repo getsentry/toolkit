@@ -336,12 +336,12 @@ describe("arguments that fail to parse", () => {
   });
 
   test("is reported to Sentry for UX research", async () => {
-    const messageSpy = vi.spyOn(Sentry, "captureMessage");
+    const messageSpy = vi.spyOn(Sentry, "captureEvent");
     try {
       await runApp(["issue", "list", "--period", "bogus"]);
       expect(messageSpy).toHaveBeenCalledWith(
-        "invalid_argument",
         expect.objectContaining({
+          message: "invalid_argument",
           contexts: {
             invalid_argument: expect.objectContaining({
               cause_class: "ValidationError",

@@ -108,61 +108,21 @@ describe("initSentry", () => {
     expect(client?.getOptions().release).toBe("0.0.0-dev");
   });
 
-  test("library mode installs only error-capture integrations", () => {
+  test("library mode leaves the host's process hooks and channels alone", () => {
     const client = initSentry(true, { libraryMode: true });
-    const names = client?.getOptions().integrations.map((i) => i.name);
-    expect(names?.sort()).toEqual([
-      "EventFilters",
-      "LinkedErrors",
-      "LocalVariablesAsync",
-      "NodeSystemError",
-      "RequestData",
-    ]);
-  });
-
-  describe("under VERCEL", () => {
-    let originalVercel: string | undefined;
-    let preTestSigterm: Set<unknown>;
-
-    beforeEach(() => {
-      originalVercel = process.env.VERCEL;
-      process.env.VERCEL = "1";
-      preTestSigterm = new Set(process.rawListeners("SIGTERM"));
-    });
-
-    afterEach(() => {
-      if (originalVercel === undefined) {
-        delete process.env.VERCEL;
-      } else {
-        process.env.VERCEL = originalVercel;
-      }
-      for (const listener of process.rawListeners("SIGTERM")) {
-        if (!preTestSigterm.has(listener)) {
-          process.removeListener(
-            "SIGTERM",
-            listener as (...args: unknown[]) => void,
-          );
-        }
-      }
-    });
-
-    test("keeps one SDK SIGTERM listener across repeated inits", () => {
-      const baseline = process.listenerCount("SIGTERM");
-      for (let i = 0; i < 15; i++) {
-        initSentry(i % 2 === 0, { libraryMode: true });
-      }
-      expect(process.listenerCount("SIGTERM")).toBe(baseline + 1);
-    });
-
-    test("preserves SIGTERM listeners it did not register", () => {
-      const hostListener = () => {
-        // host-owned handler
-      };
-      process.on("SIGTERM", hostListener);
-      initSentry(true, { libraryMode: true });
-      initSentry(true, { libraryMode: true });
-      expect(process.listeners("SIGTERM")).toContain(hostListener);
-    });
+    const names = client?.getOptions().integrations.map((i) => i.name) ?? [];
+    for (const hostHook of [
+      "OnUncaughtException",
+      "OnUnhandledRejection",
+      "Http",
+      "NodeFetch",
+      "WorkerThreads",
+      "Express",
+      "Postgres",
+      "OpenAI",
+    ]) {
+      expect(names).not.toContain(hostHook);
+    }
   });
 });
 

@@ -2,7 +2,7 @@
  * CLI runner with fast-path dispatch.
  *
  * Shell completion (`__complete`) is dispatched before any heavy imports
- * to avoid loading `@sentry/node` (~280ms). All other commands go through
+ * to avoid loading `@sentry/node`. All other commands go through
  * the full CLI with telemetry, middleware, and error recovery.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
@@ -75,7 +75,7 @@ async function preloadProjectContext(cwd: string): Promise<void> {
  * completion engine and SQLite cache modules.
  */
 export async function runCompletion(completionArgs: string[]): Promise<void> {
-  // Disable telemetry so db/index.ts skips the @sentry/node lazy-require (~280ms)
+  // Disable telemetry so db/index.ts skips the @sentry/node lazy-require
   getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
   const { handleComplete } = await import("./lib/complete.js");
   handleComplete(completionArgs);
@@ -665,7 +665,9 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     // Fixed message string so all unknown commands group into one Sentry
     // issue. The per-event detail (which token, suggestions) lives in the
     // structured context above and is queryable via Discover.
-    Sentry.captureMessage("unknown_command", "info");
+    // captureEvent, not captureMessage: with `attachStacktrace` on,
+    // captureMessage adds a synthetic exception that marks the session errored.
+    Sentry.captureEvent({ message: "unknown_command", level: "info" });
   }
 
   /** Build the command executor by composing error-recovery middlewares. */

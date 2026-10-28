@@ -11,7 +11,6 @@
 
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { Integration } from "@sentry/core";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 
@@ -403,6 +402,8 @@ export function recordApiErrorOnSpan(span: Span, error: ApiError): void {
 const EXCLUDED_INTEGRATIONS = new Set([
   "Console", // Captures console output - too noisy for CLI
   "Context", // Replaced below with cpu: false to avoid os.cpus() crash (CLI-1ED)
+  "Http", // Replaced below with spans: false
+  "NodeFetch", // Replaced below with spans: false
   "ContextLines", // Reads source files - we rely on uploaded sourcemaps instead
   "LocalVariables", // Captures local variables - adds significant overhead
   "Modules", // Lists all loaded modules - unnecessary for CLI telemetry
@@ -424,57 +425,15 @@ const LIBRARY_EXCLUDED_INTEGRATIONS = new Set([
   "NodeFetch", // diagnostics_channel + trace headers
   "FunctionToString", // wraps Function.prototype.toString
   "ChildProcess", // monitors child processes
+  "WorkerThreads", // diagnostics_channel on the host's worker threads
   "NodeRuntimeMetrics", // runtime metrics timer would keep host event loop alive
+  // Framework error handlers subscribe to the host's framework channels
+  "Express",
+  "Fastify",
+  "Hapi",
+  "Hono",
+  "Koa",
 ]);
-
-/**
- * The v10 `@sentry/node-core/light` default integration set, rebuilt for v11.
- *
- * v11's `Sentry.init()` adds dozens of framework, database, and AI
- * auto-instrumentations that would bloat the bundle and, in library mode,
- * instrument the host application. Outgoing HTTP spans stay off because
- * the CLI creates its own `http.client` spans around API requests.
- */
-function getCliDefaultIntegrations(): Integration[] {
-  return [
-    Sentry.eventFiltersIntegration(),
-    Sentry.functionToStringIntegration(),
-    Sentry.linkedErrorsIntegration(),
-    Sentry.requestDataIntegration(),
-    Sentry.systemErrorIntegration(),
-    Sentry.consoleIntegration(),
-    Sentry.httpIntegration({ spans: false }),
-    Sentry.nativeNodeFetchIntegration({ spans: false }),
-    Sentry.onUncaughtExceptionIntegration(),
-    Sentry.onUnhandledRejectionIntegration(),
-    Sentry.contextLinesIntegration(),
-    Sentry.localVariablesIntegration(),
-    Sentry.nodeContextIntegration(),
-    Sentry.childProcessIntegration(),
-    Sentry.processSessionIntegration(),
-    Sentry.modulesIntegration(),
-  ];
-}
-
-/**
- * v11 defaults that collect more than v10 did with `sendDefaultPii` unset.
- * This is the v10 baseline from the v11 migration guide.
- */
-const HEADER_DENYLIST = ["forwarded", "-ip", "remote-", "via", "-user"];
-const V10_DATA_COLLECTION: Sentry.NodeOptions["dataCollection"] = {
-  userInfo: false,
-  cookies: false,
-  httpHeaders: {
-    request: { deny: HEADER_DENYLIST },
-    response: { deny: HEADER_DENYLIST },
-  },
-  httpBodies: [],
-  urlQueryParams: { deny: HEADER_DENYLIST },
-  genAI: { inputs: false, outputs: false },
-  databaseQueryData: false,
-  queues: false,
-  graphQL: { document: false, variables: false },
-};
 
 /**
  * Check whether `util.getSystemErrorMap` exists at setup time.
@@ -636,17 +595,18 @@ export function initSentry(
   // close(0) removes listeners synchronously; we don't need to await the flush.
   Sentry.getClient()?.close(0);
 
-  const client = Sentry.initWithoutDefaultIntegrations({
+  const client = Sentry.init({
     dsn: SENTRY_CLI_DSN,
     enabled,
-    defaultIntegrations: getCliDefaultIntegrations(),
+    // The tracing integrations instrument database, framework, and AI
+    // libraries through diagnostics channels, which in library mode belong
+    // to the host application.
+    ...(libraryMode && {
+      defaultIntegrations: Sentry.getDefaultIntegrationsWithoutPerformance(),
+    }),
     // Keep v10's transaction model: dashboards and alerts rely on scope tags
     // on transactions, and beforeSendTransaction scrubs server_name.
     traceLifecycle: "static",
-    dataCollection: V10_DATA_COLLECTION,
-    // v11 defaults this to true, which would mark sessions errored on
-    // informational captureMessage calls such as `unknown_command`.
-    attachStacktrace: false,
     // The CLI ships as a bundle, so runtime module hooks can't instrument it;
     // in library mode they would instrument the host application instead.
     enableRuntimeChannelInjection: false,
@@ -685,6 +645,16 @@ export function initSentry(
       if (!libraryMode) {
         filtered.push(
           Sentry.nodeContextIntegration({ device: { cpu: false } }),
+        );
+      }
+
+      // API requests already get an `http.client` span from the CLI, which
+      // also covers cache hits and retries. SDK spans would double-count
+      // them in span.op:http.client queries.
+      if (!libraryMode) {
+        filtered.push(
+          Sentry.httpIntegration({ spans: false }),
+          Sentry.nativeNodeFetchIntegration({ spans: false }),
         );
       }
 
@@ -770,14 +740,14 @@ export function initSentry(
     const runtime = isBun ? "bun" : "node";
 
     // NodeClient defaults runtime to { name: 'node' }. Override it so
-    // events carry the correct runtime when running as a compiled Bun binary.
+    // events carry the correct runtime when the npm package runs under Bun.
     const opts = client.getOptions();
     opts.runtime = {
       name: runtime,
       version: isBun ? process.versions.bun : process.version,
     };
 
-    // Tag whether running as bun binary or node (npm package).
+    // Tag whether running under Bun or Node.
     // Kept alongside the SDK's promoted 'runtime' tag for explicit signaling
     // and backward compatibility with existing dashboards/alerts.
     Sentry.setTag("cli.runtime", runtime);
