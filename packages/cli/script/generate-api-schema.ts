@@ -252,7 +252,7 @@ const idempotentOperations: IdempotentOperation[] = operations
 
 await writeFile(
   IDEMPOTENT_OUTPUT_PATH,
-  JSON.stringify(idempotentOperations, null, 2),
+  `${JSON.stringify(idempotentOperations, null, 2)}\n`,
 );
 
 console.log(

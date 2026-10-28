@@ -5,6 +5,8 @@
  * `@sentry/api` catalog marks `idempotent` (from Sentry's
  * `x-sentry-idempotent` OpenAPI extension). Endpoints opt in on the server,
  * so the CLI no longer hard-codes which assemble and upload calls may retry.
+ * The generated file is committed and refreshed by `generate:schema`; commit
+ * it again after bumping `@sentry/api`.
  */
 
 import generated from "../generated/idempotent-operations.json";
@@ -58,7 +60,7 @@ export function isIdempotentOperation(method: string, url: string): boolean {
   const normalized = apiPath.endsWith("/") ? apiPath : `${apiPath}/`;
   const upper = method.toUpperCase();
 
-  matchers ??= (generated as IdempotentOperation[]).map(toMatcher);
+  matchers ??= (generated satisfies IdempotentOperation[]).map(toMatcher);
   return matchers.some(
     (matcher) => matcher.method === upper && matcher.pattern.test(normalized),
   );

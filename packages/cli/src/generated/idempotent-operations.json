@@ -1,0 +1,14 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/0/organizations/{organization_id_or_slug}/artifactbundle/assemble/"
+  },
+  {
+    "method": "POST",
+    "path": "/api/0/organizations/{organization_id_or_slug}/chunk-upload/"
+  },
+  {
+    "method": "POST",
+    "path": "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/files/difs/assemble/"
+  }
+]
