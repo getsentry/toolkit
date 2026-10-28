@@ -194,5 +194,49 @@ describe("createFileStore", () => {
       await s.cleanup();
       expect(await keys()).toEqual([]);
     });
+
+    test("win over an older entry under the same key", async () => {
+      // A downgraded CLI wrote `<key>.json` after this version wrote `<key>.v2.json`.
+      const s = store();
+      await s.set(
+        "k",
+        { ...entry("/k/"), createdAt: Date.now() - MINUTE },
+        5 * MINUTE,
+      );
+      await writeLegacy("k", { expiresAt: Date.now() + MINUTE });
+
+      const cached = await s.get("k");
+
+      expect(cached?.body.encoding).toBe("identity");
+      expect(JSON.parse(Buffer.from(cached!.body.bytes).toString())).toEqual({
+        id: "k",
+      });
+      expect(await readdir(dir)).toEqual(["k.json"]);
+    });
+
+    test("lose to a newer entry under the same key", async () => {
+      const s = store();
+      await s.set("k", entry("/k/"), 5 * MINUTE);
+      await writeLegacy("k", {
+        createdAt: Date.now() - MINUTE,
+        expiresAt: Date.now() + MINUTE,
+      });
+
+      const cached = await s.get("k");
+
+      expect(cached?.url).toBe(`${API}/k/`);
+      expect(await readdir(dir)).toEqual(["k.v2.json"]);
+    });
+
+    test("hide an older entry under the same key once expired", async () => {
+      const s = store();
+      await s.set("k", entry("/k/"), 5 * MINUTE);
+      await writeLegacy("k", {
+        createdAt: Date.now() + MINUTE,
+        expiresAt: Date.now() - 1,
+      });
+
+      expect(await s.get("k")).toBeUndefined();
+    });
   });
 });

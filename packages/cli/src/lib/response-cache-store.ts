@@ -11,7 +11,8 @@
  * Files from CLI versions before compression (`<key>.json`, with the parsed
  * JSON body inline) are still read, swept, and invalidated. They use a
  * different name so that a downgraded CLI misses new entries instead of
- * serving the encoded body as the response.
+ * serving the encoded body as the response. When both files exist for a key,
+ * the one created last is served and the other is deleted.
  *
  * @module
  */
@@ -230,6 +231,23 @@ function parseExpiresAt(raw: string): number | undefined {
   }
 }
 
+/** An entry file and its contents; `undefined` if missing or unreadable. */
+async function readCandidate(
+  path: string,
+): Promise<{ path: string; parsed: ParsedEntry } | undefined> {
+  const raw = await readEntryFile(path);
+  if (raw === undefined) {
+    return;
+  }
+  try {
+    return { path, parsed: parseEntry(raw) };
+  } catch (error) {
+    log.debug("Deleting corrupt cache file", error);
+    await removeFile(path);
+    return;
+  }
+}
+
 /** A cache file as the cleanup sweep sees it. */
 type FileInfo = {
   file: string;
@@ -329,37 +347,35 @@ export function createFileStore(options: FileStoreOptions): FileStore {
 
   return {
     async get(key) {
-      let path = join(dir, `${key}${ENTRY_SUFFIX}`);
-      let raw = await readEntryFile(path);
-      if (raw === undefined) {
-        path = join(dir, `${key}${LEGACY_SUFFIX}`);
-        raw = await readEntryFile(path);
+      // Both formats can exist: a downgraded CLI writes `<key>.json` next to
+      // this version's file. Serve whichever was written last.
+      const candidates = await Promise.all(
+        [ENTRY_SUFFIX, LEGACY_SUFFIX].map((suffix) =>
+          readCandidate(join(dir, `${key}${suffix}`)),
+        ),
+      );
+      const [newest, older] = candidates
+        .filter((candidate) => candidate !== undefined)
+        .sort((a, b) => b.parsed.entry.createdAt - a.parsed.entry.createdAt);
+      if (older) {
+        await removeFile(older.path);
       }
-      if (raw === undefined) {
-        return;
-      }
-
-      let parsed: ParsedEntry;
-      try {
-        parsed = parseEntry(raw);
-      } catch (error) {
-        log.debug("Deleting corrupt cache file", error);
-        await removeFile(path);
+      if (!newest) {
         return;
       }
       const now = Date.now();
-      if (now >= parsed.expiresAt) {
+      if (now >= newest.parsed.expiresAt) {
         return;
       }
 
       // Mark as recently used for eviction; a failure only skews LRU order.
       try {
         const used = new Date(now);
-        await utimes(path, used, used);
+        await utimes(newest.path, used, used);
       } catch (error) {
         log.debug("Failed to touch cache file", error);
       }
-      return parsed.entry;
+      return newest.parsed.entry;
     },
 
     async set(key, entry, ttlMs) {
