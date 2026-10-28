@@ -1,0 +1,55 @@
+{
+  "name": "@sentry/telemetry",
+  "version": "0.1.0",
+  "description": "Shared Sentry envelope processing, trace assembly, and telemetry queries for browsers and servers",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getsentry/toolkit.git",
+    "directory": "packages/telemetry"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.js.map",
+    "LICENSE",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/sdk/core.d.ts",
+      "import": "./dist/sdk/core.js"
+    },
+    "./node": {
+      "types": "./dist/sdk/node.d.ts",
+      "import": "./dist/sdk/node.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "tsc": "tsc --noEmit",
+    "test": "pnpm run build && vitest run && node scripts/check-package.mjs",
+    "test:ci": "pnpm run build && vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml && node scripts/check-package.mjs",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "@sentry/core": "^10.63.0",
+    "uuidv7": "^1.0.2",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "react": "catalog:",
+    "@types/react": "catalog:"
+  }
+}

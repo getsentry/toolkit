@@ -16,6 +16,8 @@ and package it from that workspace. The contributor index here links to its
 source and to <https://cli.sentry.dev/>. MCP documentation lives in the topic
 directories below; the MCP index explains which guides apply to that product.
 
+Shared telemetry processing for the receiver and browser UI lives in [`@sentry/telemetry`](../packages/telemetry/README.md).
+
 ## Shared Contributor Guides
 
 - [Coding guidelines](contributing/coding-guidelines.md) — repository-wide style

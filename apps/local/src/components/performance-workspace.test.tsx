@@ -1,14 +1,14 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
-import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { buildTraceGroups } from "@/test-fixtures/trace-groups.ts";
 import { SpanAnalysis, WebVitalsWorkspace } from "./performance-workspace.tsx";
 import { ProfileWorkspace } from "./profile-workspace.tsx";
 afterEach(cleanup);
 const item = (type: string, payload: unknown) =>
   decodeEnvelope(JSON.stringify([{}, [[{ type }, payload]]]), "sample")[0]!;
-test("resource groups sort and open the selected execution in its trace", () => {
-  const traces = buildTraceGroups([
+test("resource groups sort and open the selected execution in its trace", async () => {
+  const traces = await buildTraceGroups([
     item("transaction", {
       transaction: "Page",
       contexts: { trace: { trace_id: "t", span_id: "root" } },
@@ -47,7 +47,7 @@ test("resource groups sort and open the selected execution in its trace", () => 
   fireEvent.click(screen.getByRole("button", { name: /Page.*two.*100.0 ms/ }));
   expect(onSelect).toHaveBeenCalledWith("t", "two");
 });
-test("Web Vitals metric switching displays captured INP without fabricating missing visits", () => {
+test("Web Vitals metric switching displays captured INP without fabricating missing visits", async () => {
   render(
     <WebVitalsWorkspace
       items={[
@@ -67,7 +67,7 @@ test("Web Vitals metric switching displays captured INP without fabricating miss
     screen.getByRole("img", { name: "INP: 350 ms, Needs improvement" }),
   ).toBeDefined();
 });
-test("profile chart supports zoom, visualization switching and independent thread samples", () => {
+test("profile chart supports zoom, visualization switching and independent thread samples", async () => {
   const profile = item("profile", {
     profile: {
       frames: [{ function: "mainWork" }, { function: "workerWork" }],

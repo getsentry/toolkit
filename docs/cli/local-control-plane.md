@@ -77,6 +77,13 @@ Increasing the limit preserves existing envelopes, their IDs, and active streams
 previously evicted envelopes cannot be recovered. Lowering below the retained count
 is rejected without changing any data. Clear envelopes first to reduce that limit.
 Changing capacity does not reset the session's three-hour lifecycle retention.
+The receiver decodes and processes envelopes with `@sentry/telemetry/node`, shared
+with the browser viewer's telemetry engine. Envelope retention also has a 64 MiB
+parsed-data budget. Raw downloads have a separate 64 MiB decoded-body budget;
+a raw download returns 404 once its decoded bytes have been evicted. Both budgets
+are in memory and clear with the session. Malformed envelopes and invalid compressed
+bodies return HTTP 400 without entering retained history. The existing ingest URLs,
+SSE event names, resume IDs, and opaque attachment representation are preserved.
 An explicit limit also configures an existing plain receiver; ordinary attachment
 preserves its current setting. Older receivers that cannot apply the flag report an
 error. Retrying session creation with the same client ID preserves its original settings.
@@ -240,8 +247,8 @@ the loopback receiver. Other browser origins cannot change retention. Remote HTT
 Standalone spans and version 2 span containers populate trace waterfalls as they
 arrive. Child spans remain visible before their parent or segment arrives; the
 segment supplies the trace name once available. Typed span attributes supply
-operation and HTTP metadata. Unsupported containers and malformed spans are
-skipped by the trace view while their raw envelopes remain inspectable. Legacy
+operation and HTTP metadata. Unsupported containers are retained without trace processing. Envelopes containing
+only malformed spans are rejected; valid items in mixed envelopes are retained. Legacy
 standalone spans and transaction envelopes remain supported.
 
 Exception event titles use the current SDK exception type and message, including

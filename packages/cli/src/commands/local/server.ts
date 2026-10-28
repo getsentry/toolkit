@@ -19,10 +19,11 @@ import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
-  createSpotlightBuffer,
-  pushToSpotlightBuffer,
-} from "@spotlightjs/spotlight/sdk";
-import { Hono } from "hono";
+  localEnvelopeContentType,
+  localIngestStatus,
+  type LocalTelemetryBuffer,
+} from "./telemetry-buffer.js";
+import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import type { SentryContext } from "../../context.js";
@@ -243,7 +244,7 @@ export function buildSSEHandler(
 }
 
 export function buildApp(
-  spotlightBuffer: ReturnType<typeof createSpotlightBuffer>,
+  spotlightBuffer: LocalTelemetryBuffer,
   { uiActions = false, retention }: LocalReceiverOptions = {},
 ): Hono {
   const app = new Hono();
@@ -361,7 +362,7 @@ export function buildApp(
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      retention.resize(value);
+      await retention.resize(value);
       return c.json(retention.getSettings());
     } catch (error) {
       if (error instanceof RetentionLimitError)
@@ -400,14 +401,7 @@ export function buildApp(
     }
   });
 
-  const ingest = async (c: {
-    req: {
-      arrayBuffer: () => Promise<ArrayBuffer>;
-      header: (name: string) => string | undefined;
-      query: (name: string) => string | undefined;
-    };
-    body: (data: null, status: number) => Response;
-  }) => {
+  const ingest = async (c: Context) => {
     const contentLength = Number(c.req.header("content-length") ?? 0);
     if (contentLength > MAX_BODY_BYTES) {
       return c.body(null, 413);
@@ -427,25 +421,19 @@ export function buildApp(
     ) {
       contentType = SENTRY_CONTENT_TYPE;
     }
-    const rawEncoding = c.req.header("content-encoding");
-    const contentEncoding = (
-      rawEncoding === "gzip" ||
-      rawEncoding === "deflate" ||
-      rawEncoding === "br"
-        ? rawEncoding
-        : undefined
-    ) as "gzip" | "deflate" | "br" | undefined;
+    const contentEncoding = c.req.header("content-encoding");
     const userAgent = c.req.header("user-agent");
 
-    pushToSpotlightBuffer({
-      spotlightBuffer,
+    const receipt = await spotlightBuffer.ingestPayload({
       body,
       encoding: contentEncoding,
-      contentType,
+      contentType: localEnvelopeContentType(contentType),
       userAgent,
     });
 
-    return c.body(null, 204);
+    const status = localIngestStatus(receipt);
+    if (status === 503) c.header("Retry-After", "1");
+    return c.body(null, status);
   };
 
   app.post("/stream", ingest);

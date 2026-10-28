@@ -110,3 +110,21 @@ workspaces:
       - name: npm
         id: "@sentry/mcp-server"
         includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
+
+  packages/telemetry:
+    changelogPolicy: none
+    preReleaseCommand: bash -c 'cd packages/telemetry && npm version "$CRAFT_NEW_VERSION" --no-git-tag-version'
+    releaseBranchPrefix: release/telemetry
+    artifactProvider:
+      name: github
+      config:
+        artifacts:
+          Post-merge tasks:
+            - "/^sentry-telemetry-.*$/"
+    targets:
+      - name: github
+        tagPrefix: "telemetry@"
+        includeNames: '/^sentry-telemetry-\d.*\.tgz$/'
+      - name: npm
+        id: "@sentry/telemetry"
+        includeNames: '/^sentry-telemetry-\d.*\.tgz$/'

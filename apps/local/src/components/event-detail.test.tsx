@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
-import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { buildTraceGroups } from "@/test-fixtures/trace-groups.ts";
 import { EventDetail } from "./event-detail.tsx";
 
 afterEach(() => {
@@ -17,7 +17,7 @@ function item(type: string, payload: unknown) {
   return entry;
 }
 
-test("logs display their message, severity, and structured attributes", () => {
+test("logs display their message, severity, and structured attributes", async () => {
   render(
     <EventDetail
       item={item("log", {
@@ -35,7 +35,7 @@ test("logs display their message, severity, and structured attributes", () => {
   expect(screen.getByRole("button", { name: "Copy Message" })).toBeDefined();
 });
 
-test("raw-only SDK payloads default to JSON and reset on a different item", () => {
+test("raw-only SDK payloads default to JSON and reset on a different item", async () => {
   const { rerender } = render(
     <EventDetail item={item("log", { body: "first" })} />,
   );
@@ -61,7 +61,7 @@ test("raw-only SDK payloads default to JSON and reset on a different item", () =
   ).toBe("true");
 });
 
-test("arrow navigation wraps between detail tabs and moves keyboard focus", () => {
+test("arrow navigation wraps between detail tabs and moves keyboard focus", async () => {
   render(<EventDetail item={item("log", { body: "navigation" })} />);
   const overview = screen.getByRole("tab", { name: "Overview" });
   fireEvent.keyDown(overview, { key: "ArrowLeft" });
@@ -73,7 +73,7 @@ test("arrow navigation wraps between detail tabs and moves keyboard focus", () =
   expect(document.activeElement).toBe(overview);
 });
 
-test("raw envelopes retain their recognizable heading and open directly in JSON", () => {
+test("raw envelopes retain their recognizable heading and open directly in JSON", async () => {
   const envelope = {
     id: "envelope:1",
     type: "envelope",
@@ -91,7 +91,7 @@ test("raw envelopes retain their recognizable heading and open directly in JSON"
   );
 });
 
-test("malformed and nested log attributes remain readable inert text", () => {
+test("malformed and nested log attributes remain readable inert text", async () => {
   render(
     <EventDetail
       item={item("log", {
@@ -116,7 +116,7 @@ test("malformed and nested log attributes remain readable inert text", () => {
   expect(attributes.querySelector("script")).toBeNull();
 });
 
-test("requests show a compact copyable summary with captured method and URL", () => {
+test("requests show a compact copyable summary with captured method and URL", async () => {
   const copied: string[] = [];
   vi.stubGlobal("navigator", {
     clipboard: {
@@ -155,7 +155,7 @@ test("requests show a compact copyable summary with captured method and URL", ()
   expect(copied).toEqual(["201"]);
 });
 
-test("span summaries use captured typed URL attributes without inventing request fields", () => {
+test("span summaries use captured typed URL attributes without inventing request fields", async () => {
   render(
     <EventDetail
       item={item("span", {
@@ -176,7 +176,7 @@ test("span summaries use captured typed URL attributes without inventing request
   expect(summary.textContent).not.toContain("Status");
 });
 
-test("repeated parent updates keep one request summary and its waterfall", () => {
+test("repeated parent updates keep one request summary and its waterfall", async () => {
   const transaction = item("transaction", {
     transaction: "GET /orders",
     start_timestamp: 1,
@@ -184,7 +184,7 @@ test("repeated parent updates keep one request summary and its waterfall", () =>
     request: { status_code: 200 },
     contexts: { trace: { trace_id: "trace", span_id: "root" } },
   });
-  const [trace] = buildTraceGroups([transaction]);
+  const [trace] = await buildTraceGroups([transaction]);
   const { rerender } = render(<EventDetail item={transaction} trace={trace} />);
   for (let index = 0; index < 10; index += 1) {
     rerender(
@@ -204,7 +204,7 @@ test("repeated parent updates keep one request summary and its waterfall", () =>
   ).toBeDefined();
 });
 
-test("captured context suppresses the empty-details message", () => {
+test("captured context suppresses the empty-details message", async () => {
   render(
     <EventDetail
       item={item("event", {
@@ -217,14 +217,14 @@ test("captured context suppresses the empty-details message", () => {
   expect(screen.queryByText("No additional event details.")).toBeNull();
 });
 
-test("a related trace suppresses the empty-details message", () => {
+test("a related trace suppresses the empty-details message", async () => {
   const transaction = item("transaction", {
     transaction: "GET /trace",
     contexts: { trace: { trace_id: "trace", span_id: "root" } },
     start_timestamp: 1,
     timestamp: 2,
   });
-  const [trace] = buildTraceGroups([transaction]);
+  const [trace] = await buildTraceGroups([transaction]);
   render(<EventDetail item={item("event", {})} trace={trace} />);
   expect(screen.getByRole("region", { name: "Trace waterfall" })).toBeDefined();
   expect(screen.queryByText("No additional event details.")).toBeNull();

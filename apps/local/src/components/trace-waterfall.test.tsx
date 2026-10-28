@@ -2,14 +2,14 @@ import { afterEach, expect, test } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cleanup, render, screen } from "@testing-library/react";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
-import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { buildTraceGroups } from "@/test-fixtures/trace-groups.ts";
 import { TraceWaterfall } from "./trace-waterfall.tsx";
 
 afterEach(cleanup);
 
 test.each(["internal_error", "error"])(
   "styles status-only %s failures without affecting healthy children",
-  (status) => {
+  async (status) => {
     const items = decodeEnvelope(
       JSON.stringify([
         {},
@@ -47,7 +47,7 @@ test.each(["internal_error", "error"])(
       ]),
       "envelope",
     );
-    const trace = buildTraceGroups(items)[0];
+    const trace = (await buildTraceGroups(items))[0];
     expect(trace).toBeDefined();
     if (!trace) throw new Error("Expected trace");
     render(<TraceWaterfall trace={trace} />);
@@ -63,7 +63,7 @@ test.each(["internal_error", "error"])(
   },
 );
 
-test("renders a deeply nested valid span chain without overflowing the stack", () => {
+test("renders a deeply nested valid span chain without overflowing the stack", async () => {
   const count = 4000;
   const items = decodeEnvelope(
     JSON.stringify([
@@ -89,7 +89,7 @@ test("renders a deeply nested valid span chain without overflowing the stack", (
     ]),
     "deep-envelope",
   );
-  const trace = buildTraceGroups(items)[0];
+  const trace = (await buildTraceGroups(items))[0];
   if (!trace) throw new Error("Expected deep trace");
   const markup = renderToStaticMarkup(<TraceWaterfall trace={trace} />);
   expect(markup).toContain(`waterfall-bar-span-${count - 1}`);
@@ -98,8 +98,8 @@ test("renders a deeply nested valid span chain without overflowing the stack", (
   );
 });
 
-test("span descriptions are keyboard-selectable and expose selected state", () => {
-  const [trace] = buildTraceGroups(
+test("span descriptions are keyboard-selectable and expose selected state", async () => {
+  const [trace] = await buildTraceGroups(
     decodeEnvelope(
       JSON.stringify([
         {},

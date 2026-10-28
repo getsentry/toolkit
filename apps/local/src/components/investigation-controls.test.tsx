@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
-import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { buildTraceGroups } from "@/test-fixtures/trace-groups.ts";
 import { TraceWaterfall } from "./trace-waterfall.tsx";
 import { filterEvents, defaultEventFilters } from "@/lib/event-filters.ts";
 afterEach(cleanup);
@@ -32,7 +32,7 @@ const events = decodeEnvelope(
   ]),
   "logs",
 );
-test("log filters combine severity and logger and sort timestamps without changing captured data", () => {
+test("log filters combine severity and logger and sort timestamps without changing captured data", async () => {
   expect(
     filterEvents(events, {
       ...defaultEventFilters,
@@ -47,8 +47,8 @@ test("log filters combine severity and logger and sort timestamps without changi
   ).toBe(20);
   expect(events[0]?.timestamp).toBe(10);
 });
-test("trace search reveals matching descendants and branch collapse is reversible", () => {
-  const [trace] = buildTraceGroups(
+test("trace search reveals matching descendants and branch collapse is reversible", async () => {
+  const [trace] = await buildTraceGroups(
     decodeEnvelope(
       JSON.stringify([
         {},

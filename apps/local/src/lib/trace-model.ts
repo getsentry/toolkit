@@ -1,9 +1,11 @@
+import { type ProcessedTrace, type ProcessedSpan } from "@sentry/telemetry";
 import {
   getEventMetadata,
   type EventMetadata,
   type LocalFeedItem,
-} from "./spotlight.js";
-import { isErrorEvent } from "./workspace.js";
+} from "./spotlight.ts";
+import { record, text } from "./inspection.ts";
+import { isErrorEvent } from "./workspace.ts";
 
 export type TraceSpan = {
   id: string;
@@ -21,6 +23,7 @@ export type TraceSpan = {
 
 export type TraceGroup = {
   id: string;
+  processed?: ProcessedTrace;
   title: string;
   items: LocalFeedItem[];
   roots: TraceSpan[];
@@ -33,126 +36,6 @@ export type TraceGroup = {
   durationMs?: number;
 };
 
-type MutableTraceGroup = Omit<TraceGroup, "roots" | "spans" | "itemCount"> & {
-  spanMap: Map<string, TraceSpan>;
-  titlePriority: number;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getString(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
-}
-
-function getTimestamp(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-}
-
-function getTraceContext(payload: unknown): Record<string, unknown> {
-  if (!isRecord(payload)) {
-    return {};
-  }
-  const contexts = isRecord(payload.contexts) ? payload.contexts : {};
-  return isRecord(contexts.trace) ? contexts.trace : {};
-}
-
-function getPayloadSpan(
-  payload: unknown,
-  item: LocalFeedItem,
-): TraceSpan | undefined {
-  const event = isRecord(payload) ? payload : {};
-  const trace = getTraceContext(payload);
-  const id = getString(trace.span_id) ?? item.metadata?.spanId;
-  if (!id) {
-    return undefined;
-  }
-  const startTimestamp = getTimestamp(event.start_timestamp);
-  const endTimestamp =
-    getTimestamp(event.timestamp) ??
-    getTimestamp(event.end_timestamp) ??
-    getTimestamp(item.timestamp);
-  const operation = getString(trace.op) ?? item.metadata?.operation;
-  const description =
-    getString(event.transaction) ??
-    item.metadata?.route ??
-    item.metadata?.title ??
-    operation ??
-    item.type;
-
-  return {
-    id,
-    parentId:
-      getString(trace.parent_span_id) ?? getString(event.parent_span_id),
-    operation,
-    description,
-    startTimestamp,
-    endTimestamp,
-    durationMs: getDurationMs(startTimestamp, endTimestamp),
-    item,
-    payload,
-    metadata: item.metadata ?? getEventMetadata(payload, item.type),
-    children: [],
-  };
-}
-
-function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
-  const event = isRecord(payload) ? payload : {};
-  if (!Array.isArray(event.spans)) {
-    return [];
-  }
-
-  return event.spans.flatMap((value) => {
-    if (!isRecord(value)) {
-      return [];
-    }
-    const id = getString(value.span_id);
-    if (!id) {
-      return [];
-    }
-    const startTimestamp = getTimestamp(value.start_timestamp);
-    const endTimestamp = getTimestamp(value.timestamp);
-    const operation = getString(value.op);
-    return [
-      {
-        id,
-        parentId: getString(value.parent_span_id),
-        operation,
-        description: getString(value.description) ?? operation ?? id,
-        startTimestamp,
-        endTimestamp,
-        durationMs: getDurationMs(startTimestamp, endTimestamp),
-        item,
-        payload: value,
-        metadata: getEventMetadata(value, "span"),
-        children: [],
-      },
-    ];
-  });
-}
-
-function getDurationMs(
-  startTimestamp: number | undefined,
-  endTimestamp: number | undefined,
-): number | undefined {
-  if (
-    startTimestamp === undefined ||
-    endTimestamp === undefined ||
-    endTimestamp < startTimestamp
-  ) {
-    return undefined;
-  }
-  return Math.round((endTimestamp - startTimestamp) * 100_000) / 100;
-}
-
 export function traceIdForItem(item: LocalFeedItem): string | undefined {
   return (
     item.metadata?.traceId ??
@@ -160,126 +43,152 @@ export function traceIdForItem(item: LocalFeedItem): string | undefined {
   );
 }
 
-function sortByTimestamp<T extends { startTimestamp?: number }>(
-  items: T[],
-): T[] {
-  return items.sort(
-    (left, right) =>
-      (left.startTimestamp ?? Infinity) - (right.startTimestamp ?? Infinity),
-  );
-}
-
-function updateTraceTiming(trace: MutableTraceGroup): void {
-  let start = Infinity;
-  let end = -Infinity;
-  function includeTimestamp(timestamp: number | undefined): void {
-    if (timestamp === undefined) return;
-    start = Math.min(start, timestamp);
-    end = Math.max(end, timestamp);
-  }
-  for (const item of trace.items)
-    includeTimestamp(getTimestamp(item.timestamp));
-  for (const span of trace.spanMap.values()) {
-    includeTimestamp(span.startTimestamp);
-    includeTimestamp(span.endTimestamp);
-  }
-  if (start === Infinity) return;
-  trace.startTimestamp = start;
-  trace.endTimestamp = end;
-  trace.durationMs = getDurationMs(start, end);
-}
-
-/** Build a small, read-only trace model once for every view in Local. */
-export function buildTraceGroups(
+/** Adapt shared trace assembly to Local's raw-item inspection and display model.
+ * Local's presentation timestamps are wire seconds; the SDK uses milliseconds.
+ */
+export function adaptTraceGroups(
   items: readonly LocalFeedItem[],
+  processed: readonly ProcessedTrace[],
 ): TraceGroup[] {
-  const traces = new Map<string, MutableTraceGroup>();
-
+  const itemsByTrace = new Map<string, LocalFeedItem[]>();
+  const rawSpans = new Map<string, { item: LocalFeedItem; payload: unknown }>();
   for (const item of items) {
-    const traceId = traceIdForItem(item);
-    if (!traceId) {
-      continue;
-    }
-
-    const trace: MutableTraceGroup = traces.get(traceId) ?? {
-      id: traceId,
-      title: item.metadata?.title ?? item.type,
-      titlePriority: 0,
-      items: [],
-      logCount: 0,
-      errorCount: 0,
-      spanMap: new Map(),
-    };
-    if (!traces.has(traceId)) {
-      traces.set(traceId, trace);
-    }
-
-    trace.items.push(item);
-    if (item.type === "log") {
-      trace.logCount += 1;
-    }
-    if (isErrorEvent(item)) {
-      trace.errorCount += 1;
-    }
-
-    if (item.type === "transaction" || item.type === "span") {
-      const rootSpan = getPayloadSpan(item.payload, item);
-      if (rootSpan) {
-        trace.spanMap.set(rootSpan.id, rootSpan);
-        const isSegment =
-          isRecord(item.payload) && item.payload.is_segment === true;
-        if (item.type === "transaction" || isSegment) {
-          // A local segment can have a remote parent absent from this receiver.
-          const priority = rootSpan.parentId ? 1 : 2;
-          if (priority > trace.titlePriority) {
-            trace.title = item.metadata?.title ?? rootSpan.description;
-            trace.titlePriority = priority;
-          }
-        }
-      }
-    }
-    for (const childSpan of getChildSpans(item.payload, item)) {
-      trace.spanMap.set(childSpan.id, childSpan);
+    const id = traceIdForItem(item);
+    if (!id) continue;
+    const entries = itemsByTrace.get(id) ?? [];
+    entries.push(item);
+    itemsByTrace.set(id, entries);
+    if (
+      (item.type === "transaction" || item.type === "span") &&
+      item.metadata?.spanId
+    )
+      rawSpans.set(`${id}:${item.metadata.spanId}`, {
+        item,
+        payload: item.payload,
+      });
+    const payload = record(item.payload);
+    for (const span of Array.isArray(payload.spans) ? payload.spans : []) {
+      const spanId = text(record(span).span_id);
+      if (spanId) rawSpans.set(`${id}:${spanId}`, { item, payload: span });
     }
   }
-
-  return [...traces.values()]
-    .map((trace) => {
-      updateTraceTiming(trace);
-      const spans = sortByTimestamp([...trace.spanMap.values()]);
-      const roots: TraceSpan[] = [];
-      for (const span of spans) {
-        span.children = [];
+  const assembled = processed
+    .flatMap((trace) => {
+      const entries = itemsByTrace.get(trace.trace_id);
+      if (!entries?.length) return [];
+      const mapped = new Map<string, TraceSpan>();
+      function adapt(span: ProcessedSpan): TraceSpan {
+        const previous = mapped.get(span.span_id);
+        if (previous) return previous;
+        const raw = rawSpans.get(`${trace.trace_id}:${span.span_id}`);
+        const item = raw?.item ?? entries![0]!;
+        const payload = raw?.payload ?? span;
+        const duration = span.timestamp - span.start_timestamp;
+        const result: TraceSpan = {
+          id: span.span_id,
+          parentId: span.parent_span_id ?? undefined,
+          operation: span.op ?? undefined,
+          description: span.description ?? span.op ?? span.span_id,
+          startTimestamp: span.start_timestamp / 1000,
+          endTimestamp: span.timestamp / 1000,
+          durationMs:
+            duration >= 0 && Number.isFinite(duration)
+              ? Math.round(duration * 100) / 100
+              : undefined,
+          item,
+          payload,
+          metadata: getEventMetadata(payload, "span"),
+          children: [],
+        };
+        mapped.set(span.span_id, result);
+        return result;
       }
-      for (const span of spans) {
-        const parent = span.parentId
-          ? trace.spanMap.get(span.parentId)
-          : undefined;
-        if (parent && parent !== span) {
-          parent.children.push(span);
+      // Convert the SDK's existing tree iteratively; very deep captures must not
+      // use the JavaScript call stack merely to create presentation objects.
+      const sharedSpans = [...trace.spans.values()];
+      for (const span of sharedSpans) if (span.op !== "orphan") adapt(span);
+      for (const span of sharedSpans) {
+        const local = mapped.get(span.span_id);
+        if (local)
+          local.children = (span.children ?? []).flatMap((child) => {
+            const converted = mapped.get(child.span_id);
+            return converted ? [converted] : [];
+          });
+      }
+      const roots: TraceSpan[] = [];
+      const pending = [...trace.spanTree].reverse();
+      while (pending.length) {
+        const span = pending.pop()!;
+        if (span.op === "orphan") {
+          for (
+            let index = (span.children?.length ?? 0) - 1;
+            index >= 0;
+            index--
+          )
+            pending.push(span.children![index]!);
         } else {
-          roots.push(span);
+          roots.push(adapt(span));
         }
       }
-      for (const span of spans) {
-        sortByTimestamp(span.children);
-      }
-
-      return {
-        id: trace.id,
-        title: trace.title,
-        items: trace.items,
-        roots: sortByTimestamp(roots),
-        spans,
-        logCount: trace.logCount,
-        errorCount: trace.errorCount,
-        itemCount: trace.items.length,
-        startTimestamp: trace.startTimestamp,
-        endTimestamp: trace.endTimestamp,
-        durationMs: trace.durationMs,
-      };
+      return [
+        {
+          id: trace.trace_id,
+          processed: trace,
+          title:
+            trace.rootTransaction?.transaction ??
+            trace.transactions[0]?.transaction ??
+            entries[0]!.metadata?.title ??
+            trace.rootTransactionName,
+          items: entries,
+          roots,
+          spans: [...mapped.values()].sort(
+            (a, b) =>
+              (a.startTimestamp ?? Infinity) - (b.startTimestamp ?? Infinity),
+          ),
+          logCount: entries.filter((item) => item.type === "log").length,
+          errorCount: entries.filter(isErrorEvent).length,
+          itemCount: entries.length,
+          startTimestamp: trace.start_timestamp / 1000,
+          endTimestamp: trace.timestamp / 1000,
+          durationMs:
+            Math.round((trace.timestamp - trace.start_timestamp) * 100) / 100,
+        },
+      ];
     })
-    .sort(
-      (left, right) => (right.endTimestamp ?? 0) - (left.endTimestamp ?? 0),
-    );
+    .sort((a, b) => (b.endTimestamp ?? 0) - (a.endTimestamp ?? 0));
+  // Local also presents standalone transactions that carry no trace context.
+  // These are navigation groups for captured records, without invented SDK spans.
+  const assembledIds = new Set(assembled.map((trace) => trace.id));
+  const uncorrelated: TraceGroup[] = items
+    .filter(
+      (item) =>
+        item.type === "transaction" &&
+        !item.metadata?.traceId &&
+        !assembledIds.has(item.id),
+    )
+    .map((item) => {
+      const payload = record(item.payload);
+      const start =
+        typeof payload.start_timestamp === "number"
+          ? payload.start_timestamp
+          : undefined;
+      const end =
+        typeof payload.timestamp === "number" ? payload.timestamp : undefined;
+      return {
+        id: item.id,
+        title: item.metadata?.title ?? "transaction",
+        items: [item],
+        roots: [],
+        spans: [],
+        logCount: 0,
+        errorCount: 0,
+        itemCount: 1,
+        startTimestamp: start,
+        endTimestamp: end,
+        durationMs: item.metadata?.durationMs,
+      };
+    });
+  return [...assembled, ...uncorrelated].sort(
+    (a, b) => (b.endTimestamp ?? 0) - (a.endTimestamp ?? 0),
+  );
 }
