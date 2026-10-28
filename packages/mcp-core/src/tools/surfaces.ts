@@ -14,6 +14,11 @@ export const CATALOG_INFRASTRUCTURE_TOOL_NAMES = [
 
 export const WRAPPER_TOOL_NAMES = [] as const;
 
+// Locked by ast-grep-rules/no-expand-top-level-tools.yml. Every name here ships
+// in the default tools/list payload, and many harnesses still load every listed
+// tool into the context window up front. New tools stay deferred behind
+// search_sentry_tools/execute_sentry_tool. Restricted until tool search is
+// standard in every mainstream harness, which likely happens by 2027.
 export const TOP_LEVEL_TOOL_NAMES = [
   "find_organizations",
   "find_projects",
