@@ -191,7 +191,7 @@ function buildResponseHeaders(
 /**
  * Age of the most recent cache hit, in milliseconds.
  *
- * Set inside {@link getCachedResponse} on a hit, cleared at the start of each
+ * Set inside {@link lookupCachedResponse} on a hit, cleared at the start of each
  * `authenticatedFetch` call in `sentry-client.ts`. Commands read it via
  * {@link getLastCacheHitAge} to show "cached · 3m ago · use -f to refresh".
  *
@@ -217,7 +217,7 @@ export function clearLastCacheHitAge(): void {
 
 /**
  * Set the last cache-hit age directly. Test-only — production code paths
- * set this implicitly via {@link getCachedResponse} on a real cache hit.
+ * set this implicitly via {@link lookupCachedResponse} on a real cache hit.
  *
  * @internal Exported for testing
  */
@@ -280,22 +280,41 @@ function isCacheWriteDisabled(): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Attempt to serve a cached response for a GET request.
+ * Result of a cache lookup that found a usable entry.
  *
- * Reconstructs the `CachePolicy` from the stored entry and verifies the
- * cached response still satisfies the new request.
+ * - `hit`: the entry is fresh; serve `response`.
+ * - `stale`: the entry is stale but has an `ETag`. Send the request with
+ *   `conditionalHeaders`, then pass the network response to `revalidate`.
+ *   On a matching 304 it renews the entry and returns the cached body;
+ *   otherwise it returns `undefined` and the network response stands (or,
+ *   for an unusable 304, the caller fetches again without the headers).
+ */
+export type CacheLookup =
+  | { kind: "hit"; response: Response }
+  | {
+      kind: "stale";
+      conditionalHeaders: Record<string, string>;
+      revalidate(response: Response): Promise<Response | undefined>;
+    };
+
+/**
+ * Look up a GET request in the cache.
+ *
+ * Reconstructs the `CachePolicy` from the stored entry and checks whether
+ * the cached response still satisfies the new request. A stale entry with an
+ * `ETag` is returned for conditional revalidation.
  *
  * @param method - HTTP method (only "GET" is cached)
  * @param url - Full request URL
  * @param requestHeaders - Headers from the new request
- * @returns A synthetic Response if cache hit, or undefined on miss/expired
+ * @returns The lookup result, or `undefined` on a miss
  */
-export async function getCachedResponse(
+export async function lookupCachedResponse(
   method: string,
   url: string,
   requestHeaders: Record<string, string>,
   identity = getIdentityFingerprint(),
-): Promise<Response | undefined> {
+): Promise<CacheLookup | undefined> {
   if (
     method !== "GET" ||
     isCacheDisabled() ||
@@ -318,31 +337,34 @@ export async function getCachedResponse(
   return await withCacheSpan(
     url,
     "cache.get",
-    async (span) => {
-      const miss = (): undefined => {
+    async (span): Promise<CacheLookup | undefined> => {
+      const miss = (): void => {
         span.setAttribute("cache.hit", false);
         recordCacheHit("http", false);
-        return;
       };
 
       const entry = await store.get(key);
       if (!entry) {
-        return miss();
+        miss();
+        return;
       }
 
       try {
         const policy = CachePolicy.fromObject(
           entry.policy as CachePolicy.CachePolicyObject,
         );
+        const request = { url, method: "GET", headers: requestHeaders };
         if (!isEntryFresh(policy, entry, requestHeaders, url)) {
-          return miss();
+          miss();
+          return staleLookup({ store, key, entry, policy, request });
         }
 
         // `undefined` when this runtime cannot read the encoding, such as a
         // zstd entry after a downgrade to Node < 22.15.
         const body = await codec.decode(entry.body);
         if (!body) {
-          return miss();
+          miss();
+          return;
         }
 
         span.setAttribute("cache.hit", true);
@@ -352,16 +374,20 @@ export async function getCachedResponse(
         // Surface cache age for command-level hints (getsentry/cli#785 #1)
         lastCacheHitAgeMs = Date.now() - entry.createdAt;
 
-        return new Response(body, {
-          status: entry.status,
-          headers: buildResponseHeaders(policy, entry),
-        });
+        return {
+          kind: "hit",
+          response: new Response(body, {
+            status: entry.status,
+            headers: buildResponseHeaders(policy, entry),
+          }),
+        };
       } catch (error) {
         // Corrupted or version-incompatible policy or body — treat as a miss
         // and drop the broken entry.
         log.debug("Dropping unreadable cache entry", error);
         await store.delete(key);
-        return miss();
+        miss();
+        return;
       }
     },
     {
@@ -369,6 +395,105 @@ export async function getCachedResponse(
       "network.peer.address": getCacheDir(),
     },
   );
+}
+
+/**
+ * Attempt to serve a fresh cached response for a GET request.
+ *
+ * @returns A synthetic Response if cache hit, or undefined on miss/stale
+ * @internal Exported for testing
+ */
+export async function getCachedResponse(
+  method: string,
+  url: string,
+  requestHeaders: Record<string, string>,
+  identity = getIdentityFingerprint(),
+): Promise<Response | undefined> {
+  const lookup = await lookupCachedResponse(
+    method,
+    url,
+    requestHeaders,
+    identity,
+  );
+  return lookup?.kind === "hit" ? lookup.response : undefined;
+}
+
+type StaleEntry = {
+  store: FileStore;
+  key: string;
+  entry: CacheEntry;
+  policy: CachePolicy;
+  request: CachePolicy.HttpRequest;
+};
+
+/** `revalidatedPolicy`'s result; `matches` is missing from its types. */
+type Revalidation = CachePolicy.RevalidationPolicy & { matches?: boolean };
+
+/** A `stale` lookup for an entry with an `ETag`, or `undefined` without one. */
+function staleLookup(stale: StaleEntry): CacheLookup | undefined {
+  const { store, key, entry, policy, request } = stale;
+  const etag = policy.revalidationHeaders(request)["if-none-match"];
+  if (typeof etag !== "string") {
+    return;
+  }
+
+  return {
+    kind: "stale",
+    conditionalHeaders: { "if-none-match": etag },
+    async revalidate(response) {
+      if (response.status !== 304) {
+        return;
+      }
+      const result: Revalidation = policy.revalidatedPolicy(request, {
+        status: response.status,
+        headers: headersToObject(response.headers),
+      });
+      // A 304 for a different or missing validator says nothing about
+      // this entry, so its body cannot be trusted.
+      if (result.modified || result.matches === false) {
+        return;
+      }
+      const body = await codec.decode(entry.body);
+      if (!body) {
+        return;
+      }
+
+      const renewed = {
+        ...entry,
+        policy: result.policy.toObject(),
+        createdAt: Date.now(),
+      };
+      store
+        .set(key, renewed, retentionMs(result.policy, entry.tier))
+        .catch((error) => {
+          log.debug("Failed to renew revalidated cache entry", error);
+        });
+      return new Response(body, {
+        status: entry.status,
+        headers: buildResponseHeaders(result.policy, entry),
+      });
+    },
+  };
+}
+
+/**
+ * How long a stale entry with an `ETag` is kept for revalidation. Bounded
+ * by the store's byte budget like any other entry.
+ */
+const REVALIDATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long to keep an entry: its freshness lifetime (the server's when it
+ * sent cache directives, otherwise the URL tier's), plus
+ * {@link REVALIDATION_WINDOW_MS} when it has an `ETag`.
+ */
+function retentionMs(policy: CachePolicy, tier: CacheEntry["tier"]): number {
+  const freshMs = hasServerCacheDirectives(policy)
+    ? policy.timeToLive()
+    : FALLBACK_TTL_MS[tier];
+  return policy.responseHeaders().etag === undefined
+    ? freshMs
+    : freshMs + REVALIDATION_WINDOW_MS;
 }
 
 /**
@@ -475,12 +600,7 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
   JSON.parse(text);
   const now = Date.now();
 
-  // When the server sent explicit cache directives, use its TTL (even if 0).
-  // Only fall back to URL-based tier when no server cache headers were present.
   const tier = classifyUrl(url);
-  const ttl = hasServerCacheDirectives(policy)
-    ? policy.timeToLive()
-    : FALLBACK_TTL_MS[tier];
 
   const body = await codec.encode(encoder.encode(text));
   await store.set(
@@ -495,7 +615,7 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
       policy: policy.toObject(),
       createdAt: now,
     },
-    ttl,
+    retentionMs(policy, tier),
   );
   return body.bytes.byteLength;
 }

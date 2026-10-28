@@ -47,9 +47,10 @@ import {
 import { extractInputUrl } from "./fetch-input.js";
 import { logger } from "./logger.js";
 import {
+  type CacheLookup,
   clearLastCacheHitAge,
-  getCachedResponse,
   invalidateCachedResponsesMatching,
+  lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
 import {
@@ -530,22 +531,22 @@ function extractUrlPath(input: Request | string | URL): string {
 }
 
 /**
- * Attempt to serve a GET request from the response cache.
- * Returns the cached Response if valid, or undefined on miss.
+ * Look up a GET request in the response cache: a fresh hit, a stale entry
+ * to revalidate, or undefined on miss.
  *
  * @param requestHeaders - Headers that were (or will be) sent with the request,
  *   needed for correct `Vary` handling in CachePolicy freshness checks.
  */
-async function tryCacheHit(
+async function tryCacheLookup(
   method: string,
   fullUrl: string,
   requestHeaders: Record<string, string>,
   identity: string,
-): Promise<Response | undefined> {
+): Promise<CacheLookup | undefined> {
   if (method !== "GET") {
     return;
   }
-  return await getCachedResponse(method, fullUrl, requestHeaders, identity);
+  return await lookupCachedResponse(method, fullUrl, requestHeaders, identity);
 }
 
 /**
@@ -671,6 +672,8 @@ type RetryContext = {
   validatedRedirects: boolean;
   responseBodyMode: ResponseBodyMode;
   idempotent: boolean;
+  /** Validators for a stale cache entry, such as `If-None-Match`. */
+  conditionalHeaders?: Record<string, string>;
 };
 
 async function fetchWithRetry({
@@ -682,6 +685,7 @@ async function fetchWithRetry({
   validatedRedirects,
   responseBodyMode,
   idempotent,
+  conditionalHeaders = {},
 }: RetryContext): Promise<Response> {
   const shouldRefresh = Boolean(
     credential.refreshable &&
@@ -700,6 +704,9 @@ async function fetchWithRetry({
     token: refreshed.token,
   });
   const headers = prepareHeaders(input, init, effectiveCredential);
+  for (const [name, value] of Object.entries(conditionalHeaders)) {
+    headers.set(name, value);
+  }
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
   const methodRetryable = isRetryableMethod(method, idempotent);
@@ -826,23 +833,26 @@ function createAuthenticatedFetch(
         }
         // A synthetic HTTP cache response has no validated final-origin or
         // credential provenance. Discovery must obtain both from the network.
-        const cached = options.validatedRedirects
+        const lookup = options.validatedRedirects
           ? undefined
-          : await tryCacheHit(
+          : await tryCacheLookup(
               method,
               fullUrl,
               authHeaders(credential.token),
               credential.identity,
             );
-        if (cached) {
-          span.setAttribute("http.response.status_code", cached.status);
-          log.debug(
-            `${method} ${urlPath} → ${cached.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
+        if (lookup?.kind === "hit") {
+          span.setAttribute(
+            "http.response.status_code",
+            lookup.response.status,
           );
-          return cached;
+          log.debug(
+            `${method} ${urlPath} → ${lookup.response.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
+          );
+          return lookup.response;
         }
 
-        const response = await fetchWithRetry({
+        const retryContext: RetryContext = {
           input,
           init,
           method,
@@ -857,7 +867,23 @@ function createAuthenticatedFetch(
                   ? sdkResponseBodyModes.get(input)
                   : undefined) ??
                 (options.bufferResponseBody ? "buffer" : "stream")),
+        };
+        let response = await fetchWithRetry({
+          ...retryContext,
+          conditionalHeaders: lookup?.conditionalHeaders,
         });
+        if (lookup?.kind === "stale" && response.status === 304) {
+          const revalidated = await lookup.revalidate(response);
+          if (revalidated) {
+            span.setAttribute("http.response.status_code", revalidated.status);
+            log.debug(
+              `${method} ${urlPath} → 304 (revalidated cache entry, ${(performance.now() - startTime).toFixed(0)}ms)`,
+            );
+            return revalidated;
+          }
+          // A 304 the entry cannot use has no body; fetch it unconditionally.
+          response = await fetchWithRetry(retryContext);
+        }
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
           span.setStatus({ code: 2, message: `${response.status}` });
