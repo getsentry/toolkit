@@ -22,7 +22,8 @@
 - [x] 4.2 Add a codec module (zstd level 3 for every tier, brotli-4 fallback, raw below 256 bytes, `encoding` and `dictId` recorded per entry) with runtime detection. Verify round-trip tests in Node 22, and a test with zstd stubbed out. Shipped in #1695.
 - [x] 4.3 Define the `CacheStore` interface and add the byte-budgeted memory store. Verify tests for LRU eviction, the per-entry cap, and the budget staying within its bound under many identities. Shipped in #1696.
 - [x] 4.4 Re-implement the CLI filesystem store on `CacheStore`, with compressed entries and a byte budget, while reading existing uncompressed entries. Verify the CLI cache tests pass and an old-format entry is still served. Shipped in #1697.
-- [ ] 4.5 Add conditional revalidation: send `If-None-Match` for stale entries that have an `ETag`, and treat a 304 as a hit. Verify with a test against a mocked `ETag` endpoint. In review in #1698.
+- [x] 4.5 Add conditional revalidation: send `If-None-Match` for stale entries that have an `ETag`, and treat a 304 as a hit. Verify with a test against a mocked `ETag` endpoint. Shipped in #1698.
+- [ ] 4.6 Move the cache policy from `packages/cli/src/lib/response-cache.ts` into `toolkit-core/src/response-cache/`: freshness checks (server cache directives win, the URL tier is the fallback), stale lookup and 304 revalidation, retention (the freshness lifetime plus a 24-hour revalidation window for entries with an `ETag`), response header rebuild, and cache-entry construction. `http-cache-semantics` becomes a `toolkit-core` dependency. The CLI keeps the filesystem store, cache directory, identity fingerprint, env kill switches, telemetry, and the cache-age hint. Verify with toolkit-core unit tests for the moved logic, and the CLI cache tests passing unchanged.
 
 ## 5. Shared transport
 
