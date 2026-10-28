@@ -12,22 +12,16 @@
  * Also reads SDK function names from the installed @sentry/api package to
  * map operationIds to their TypeScript SDK function names.
  *
- * Also reads the `@sentry/api/operations` catalog to list the non-safe
- * operations Sentry marks idempotent (`x-sentry-idempotent`), which the
- * authenticated fetch retries on transient failures.
- *
  * Usage:
  *   tsx script/generate-api-schema.ts
  *
  * Output:
  *   src/generated/api-schema.json
- *   src/generated/idempotent-operations.json
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { operations } from "@sentry/api/operations";
 
 /** Resolve the root directory of @sentry/api by finding its main entry point. */
 function sentryApiDir(): string {
@@ -38,7 +32,6 @@ function sentryApiDir(): string {
 }
 
 const OUTPUT_PATH = "src/generated/api-schema.json";
-const IDEMPOTENT_OUTPUT_PATH = "src/generated/idempotent-operations.json";
 
 /**
  * Build the OpenAPI spec URL from the installed @sentry/api version.
@@ -60,8 +53,6 @@ const PATH_PARAM_PATTERN = /\{(\w+)\}/g;
 export type { ApiEndpoint } from "../src/lib/api-schema.js";
 
 import type { ApiEndpoint } from "../src/lib/api-schema.js";
-import type { IdempotentOperation } from "../src/lib/idempotent-operations.js";
-import { isRetryableMethod } from "../src/lib/retry-policy.js";
 
 // ---------------------------------------------------------------------------
 // OpenAPI Types (minimal subset we need)
@@ -239,22 +230,4 @@ await writeFile(OUTPUT_PATH, JSON.stringify(endpoints, null, 2));
 
 console.log(
   `Generated ${OUTPUT_PATH} (${endpoints.length} endpoints, ${Math.round(JSON.stringify(endpoints).length / 1024)}KB)`,
-);
-
-// Safe methods already retry, so only writes need listing; that keeps the
-// file the CLI loads on every request tiny.
-const idempotentOperations: IdempotentOperation[] = operations
-  .filter((op) => op.idempotent && !isRetryableMethod(op.method))
-  .map((op) => ({ method: op.method, path: op.path }))
-  .sort(
-    (a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
-  );
-
-await writeFile(
-  IDEMPOTENT_OUTPUT_PATH,
-  `${JSON.stringify(idempotentOperations, null, 2)}\n`,
-);
-
-console.log(
-  `Generated ${IDEMPOTENT_OUTPUT_PATH} (${idempotentOperations.length} operations)`,
 );

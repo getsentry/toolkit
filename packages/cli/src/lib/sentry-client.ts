@@ -708,10 +708,9 @@ async function fetchWithRetry({
   }
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
-  const methodRetryable = isRetryableMethod(
-    method,
-    idempotent || isIdempotentOperation(method, fullUrl),
-  );
+  const methodRetryable =
+    isRetryableMethod(method, idempotent) ||
+    (await isIdempotentOperation(method, fullUrl));
   const urlPath = extractUrlPath(fullUrl);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -790,8 +789,8 @@ type AuthenticatedFetchOptions = {
   /**
    * Caller asserts that replaying the request is harmless, so transient
    * failures retry for any method. Operations Sentry marks idempotent retry
-   * without this; set it only for writes the server dedupes but does not
-   * mark, such as preprod assemble polling.
+   * without this; set it for writes the server dedupes that the catalog
+   * cannot match, such as chunk uploads to the server-provided URL.
    */
   idempotent?: boolean;
 };
