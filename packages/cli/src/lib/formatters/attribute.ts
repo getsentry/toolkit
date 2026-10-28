@@ -31,8 +31,8 @@ export type AttributeListItem = {
   /** Other names that resolve to this attribute, when the API reports any */
   aliases?: string[];
   /**
-   * Description, examples, and deprecation info. Present only when requested
-   * with `--context` (may be `{}` when the API has no metadata for the key).
+   * Description, examples, and deprecation info. Requested on every listing
+   * (may be `{}` when the API has no metadata for the key).
    */
   context?: TraceItemAttributeContext;
 };
@@ -98,7 +98,7 @@ const ALIASES_COLUMN: Column<AttributeListItem> = {
 
 const COLUMNS: Column<AttributeListItem>[] = [...KEY_COLUMNS, ALIASES_COLUMN];
 
-/** Columns used with `--context`: aliases move after the metadata. */
+/** Columns used when attributes carry context: aliases move after the metadata. */
 const CONTEXT_COLUMNS: Column<AttributeListItem>[] = [
   ...KEY_COLUMNS,
   {

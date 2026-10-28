@@ -5,11 +5,6 @@
  * or metrics)
  */
 
-import {
-  FilterType,
-  parseSearch,
-  Token,
-} from "@sentry/toolkit-core/search-syntax";
 import type { SentryContext } from "../../context.js";
 import {
   attributeCursorAfter,
@@ -19,8 +14,12 @@ import {
 import type {
   TraceItemAttributeDataset,
   TraceItemAttributeDefinition,
-  TraceItemAttributeValueType,
 } from "../../lib/api/traces.js";
+import {
+  ATTRIBUTE_TYPES,
+  parseAttributeFilter,
+  parseAttributeTypes,
+} from "../../lib/attribute-search.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { buildDatasetParser, datasetDisplayName } from "../../lib/datasets.js";
 import {
@@ -41,7 +40,6 @@ import {
   formatAttributeList,
   toAttributeListItem,
 } from "../../lib/formatters/attribute.js";
-import { parseFieldsList } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   buildListCommand,
@@ -80,124 +78,16 @@ const DEFAULT_DATASET = "spans";
 /** `--dataset` values: the trace item datasets that have attributes. */
 const DATASETS = buildDatasetParser(["spans", "logs", "tracemetrics"]);
 
-/** Attribute value types accepted by `--type`. */
-const VALID_TYPES: readonly TraceItemAttributeValueType[] = [
-  "string",
-  "number",
-  "boolean",
-  "array",
-];
-
 type AttributeListFlags = {
   readonly dataset: TraceItemAttributeDataset;
   readonly type?: readonly string[];
   readonly period: TimeRange;
-  readonly context: boolean;
   readonly limit: number;
   readonly json: boolean;
   readonly fresh: boolean;
   readonly cursor?: string;
   readonly fields?: string[];
 };
-
-/** A parsed filter argument. */
-type AttributeFilter = {
-  /** The `has:` terms, as Sentry's `query`: keys must co-occur with all of them */
-  query?: string;
-  /** The free text: Sentry matches it as a substring of attribute names */
-  name?: string;
-};
-
-/**
- * Parse the filter with the shared search parser. `has:` terms go to Sentry
- * as the `query` and free text as the `substringMatch`. The attributes
- * endpoint only uses key names, so values and negation are not supported.
- * OR is not supported.
- *
- * TODO: support globbing/fuzzy search
- *
- * @internal Exported for testing
- */
-export function parseAttributeFilter(
-  filter: string | undefined,
-): AttributeFilter {
-  if (!filter?.trim()) {
-    return {};
-  }
-  const tokens = parseSearch(filter);
-  if (!tokens) {
-    throw new ValidationError(`Couldn't parse the filter "${filter}".`);
-  }
-  const hasTerms = new Set<string>();
-  const names: string[] = [];
-  for (const token of tokens) {
-    if (token.type === Token.SPACES) {
-      continue;
-    }
-    if (
-      token.type === Token.FILTER &&
-      token.filter === FilterType.HAS &&
-      !token.negated &&
-      token.value.text
-    ) {
-      hasTerms.add(token.text);
-    } else if (token.type === Token.FREE_TEXT) {
-      names.push(token.value.trim());
-    } else {
-      throw new ValidationError(
-        `Unsupported filter "${token.text.trim()}". The filter accepts a search term and/or has:<key> terms (no values, negation, or OR).`,
-      );
-    }
-  }
-  const name = names.join(" ") || undefined;
-  if (name && /\s/.test(name)) {
-    throw new ValidationError(
-      `The filter accepts a single search term, got "${name}".`,
-    );
-  }
-  if (name && /[*?]/.test(name)) {
-    throw new ValidationError(
-      `Globs aren't supported in the filter ("${name}"). Use plain text.`,
-    );
-  }
-  return {
-    query: hasTerms.size > 0 ? [...hasTerms].join(" ") : undefined,
-    name,
-  };
-}
-
-/** Whether `value` is one of the attribute types `--type` accepts. */
-function isTraceItemAttributeValueType(
-  value: string,
-): value is TraceItemAttributeValueType {
-  return VALID_TYPES.includes(value as TraceItemAttributeValueType);
-}
-
-/**
- * Normalize repeated and/or comma-separated `--type` values into a
- * deduplicated list of attribute types.
- *
- * @internal Exported for testing
- */
-export function parseAttributeTypes(
-  values: readonly string[] | undefined,
-): TraceItemAttributeValueType[] | undefined {
-  if (!values?.length) {
-    return;
-  }
-  const types = new Set<TraceItemAttributeValueType>();
-  for (const raw of values.flatMap(parseFieldsList)) {
-    const value = raw.toLowerCase();
-    if (!isTraceItemAttributeValueType(value)) {
-      throw new ValidationError(
-        `Invalid attribute type "${raw}". Must be one of: ${VALID_TYPES.join(", ")}`,
-        "type",
-      );
-    }
-    types.add(value);
-  }
-  return types.size > 0 ? [...types] : undefined;
-}
 
 /**
  * Order a page by display name, then type. The API concatenates one result
@@ -289,9 +179,6 @@ function pageHint(
   if (flags.limit !== LIST_DEFAULT_LIMIT) {
     parts.push(`-n ${flags.limit}`);
   }
-  if (flags.context) {
-    parts.push("--context");
-  }
   return parts.join(" ");
 }
 
@@ -341,10 +228,6 @@ export const listCommand = buildListCommand("attribute", {
         description:
           "Discover candidates using the last 24 hours (includes built-in and virtual keys)",
         command: "sentry attribute list my-org/ --period 24h",
-      },
-      {
-        description: "Show descriptions, example values, and deprecation info",
-        command: "sentry attribute list my-org/ --context",
       },
       {
         description: "Show more than the default 25",
@@ -415,7 +298,7 @@ export const listCommand = buildListCommand("attribute", {
       type: {
         kind: "parsed",
         parse: String,
-        brief: `Find attributes of these types (${VALID_TYPES.join(", ")}; repeatable, comma-separated)`,
+        brief: `Only show attributes of these types: ${ATTRIBUTE_TYPES.join(", ")}. Repeat the flag for each type or pass a comma-separated list (e.g. --type string,number)`,
         variadic: true,
         optional: true,
       },
@@ -424,12 +307,6 @@ export const listCommand = buildListCommand("attribute", {
         ...buildListLimitFlag("attributes"),
         parse: (value: string) =>
           validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT),
-      },
-      context: {
-        kind: "boolean",
-        brief:
-          "Include each attribute's description, examples, and deprecation info (experimental API)",
-        default: false,
       },
     },
     aliases: {
@@ -452,7 +329,7 @@ export const listCommand = buildListCommand("attribute", {
     const filterText = [name, query].filter(Boolean).join(" ") || undefined;
 
     // Sorted so each type keeps its position in the compound cursor
-    const requestTypes = [...(types ?? VALID_TYPES)].sort();
+    const requestTypes = [...(types ?? ATTRIBUTE_TYPES)].sort();
     const contextKey = buildPaginationContextKey("attribute", scope, {
       dataset: flags.dataset,
       type: requestTypes.join(","),
@@ -474,7 +351,7 @@ export const listCommand = buildListCommand("attribute", {
       project: project ? [project] : undefined,
       substringMatch: name,
       query,
-      context: flags.context,
+      context: true,
       ...timeRangeToApiParams(flags.period),
     };
 

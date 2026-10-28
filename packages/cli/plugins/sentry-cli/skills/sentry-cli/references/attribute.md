@@ -24,10 +24,9 @@ List attribute keys for spans, logs, or metrics
 
 **Flags:**
 - `-d, --dataset <value> - Dataset to list attributes for (spans, logs, metrics) - (default: "spans")`
-- `--type <value>... - Find attributes of these types (string, number, boolean, array; repeatable, comma-separated)`
+- `--type <value>... - Only show attributes of these types: string, number, boolean, array. Repeat the flag for each type or pass a comma-separated list (e.g. --type string,number)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 - `-n, --limit <value> - Maximum number of attributes to list - (default: "25")`
-- `--context - Include each attribute's description, examples, and deprecation info (experimental API)`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
@@ -54,9 +53,6 @@ sentry attribute list my-org/ 'gen_ai has:http.method'
 
 # Discover candidates using the last 24 hours (includes built-in and virtual keys)
 sentry attribute list my-org/ --period 24h
-
-# Show descriptions, example values, and deprecation info
-sentry attribute list my-org/ --context
 
 # Show more than the default 25
 sentry attribute list my-org/my-project -n 100

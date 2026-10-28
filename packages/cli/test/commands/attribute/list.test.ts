@@ -2,8 +2,8 @@
  * Attribute List Command Tests
  *
  * Tests for `sentry attribute list` in src/commands/attribute/list.ts:
- * flag parsing, the per-type API calls it makes, JSON/human output, display
- * names, --limit trimming, -c next/prev, --context, and footer hints.
+ * the per-type API calls it makes, JSON/human output, display
+ * names, --limit trimming, -c next/prev, attribute context, and footer hints.
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -11,10 +11,12 @@ import {
   buildUsageTip,
   compareAttributes,
   listCommand,
-  parseAttributeTypes,
-  parseAttributeFilter,
   selectAcrossTypes,
 } from "../../../src/commands/attribute/list.js";
+import {
+  attributeCursorAfter,
+  fetchAttributeTypePage,
+} from "../../../src/lib/api/attribute-pagination.js";
 import {
   describeAttribute,
   toAttributeListItem,
@@ -111,7 +113,6 @@ function flags(overrides: Record<string, unknown> = {}) {
   return {
     dataset: "spans",
     period: parsePeriod("7d"),
-    context: false,
     limit: 25,
     json: false,
     fresh: false,
@@ -161,78 +162,6 @@ function mockAttributes(data: Attr[]) {
 afterEach(() => {
   listSpy.mockReset();
   resolveSpy.mockReset();
-});
-
-describe("parseAttributeTypes", () => {
-  test("accepts repeated and comma-separated values, deduplicated", () => {
-    expect(
-      parseAttributeTypes(["string,number", "NUMBER", " boolean "]),
-    ).toEqual(["string", "number", "boolean"]);
-  });
-
-  test("returns undefined when no types are given", () => {
-    expect(parseAttributeTypes(undefined)).toBeUndefined();
-    expect(parseAttributeTypes([])).toBeUndefined();
-    expect(parseAttributeTypes([","])).toBeUndefined();
-  });
-
-  test("rejects unknown types", () => {
-    expect(() => parseAttributeTypes(["string,float"])).toThrow(
-      ValidationError,
-    );
-  });
-});
-
-describe("parseAttributeFilter", () => {
-  test("keeps has: terms (deduplicated, typed keys intact) as the query and free text as the name", () => {
-    expect(
-      parseAttributeFilter(
-        " has:gen_ai.request.model gen_ai has:tags[cart.total,number] has:gen_ai.request.model ",
-      ),
-    ).toEqual({
-      query: "has:gen_ai.request.model has:tags[cart.total,number]",
-      name: "gen_ai",
-    });
-    expect(parseAttributeFilter("http")).toEqual({ name: "http" });
-  });
-
-  test("returns nothing without a filter", () => {
-    expect(parseAttributeFilter(undefined)).toEqual({});
-    expect(parseAttributeFilter("  ")).toEqual({});
-  });
-
-  test("accepts literal brackets in attribute name searches", () => {
-    expect(parseAttributeFilter("tags[")).toEqual({ name: "tags[" });
-    expect(parseAttributeFilter("tags[cart.total,number]")).toEqual({
-      name: "tags[cart.total,number]",
-    });
-  });
-
-  test("rejects values, negation, OR, and an empty has:", () => {
-    for (const bad of [
-      "span.op:db",
-      "!has:http.method",
-      "has:a OR has:b",
-      "has:",
-    ]) {
-      expect(() => parseAttributeFilter(bad)).toThrow(ValidationError);
-    }
-  });
-
-  test("rejects globs, since Sentry matches the text literally", () => {
-    expect(() => parseAttributeFilter("gen_ai.*")).toThrow(
-      /Globs aren't supported/,
-    );
-  });
-
-  test("rejects more than one search term", () => {
-    expect(() => parseAttributeFilter("gen_ai http")).toThrow(
-      /single search term/,
-    );
-    expect(() => parseAttributeFilter("gen_ai has:x http")).toThrow(
-      /single search term/,
-    );
-  });
 });
 
 describe("buildUsageTip", () => {
@@ -328,6 +257,43 @@ describe("describeAttribute", () => {
   });
 });
 
+describe("fetchAttributeTypePage", () => {
+  test("records each raw page's own keys when paging across a page boundary", async () => {
+    const pages: Record<string, { data: Attr[]; nextCursor?: string }> = {
+      first: { data: [attr("a"), attr("b")], nextCursor: "0:2:0" },
+      "0:2:0": { data: [attr("c"), attr("d")] },
+    };
+    listSpy.mockImplementation(async (_org, options) => {
+      const page = pages[options.cursor ?? "first"];
+      expect(page).toBeDefined();
+      return page!;
+    });
+
+    const page = await fetchAttributeTypePage(
+      "my-org",
+      "string",
+      { dataset: "spans" },
+      3,
+      undefined,
+    );
+
+    expect(page.data.map((row) => row.key)).toEqual(["a", "b", "c"]);
+    // Keys delivered from the second page must not leak into the first's.
+    expect(page.pageKeys.get("")).toEqual(new Set(["a", "b"]));
+    expect(page.pageKeys.get("0:2:0")).toEqual(new Set(["c", "d"]));
+
+    // Resuming after the first page's rows picks up the second page only.
+    const resumed = await fetchAttributeTypePage(
+      "my-org",
+      "string",
+      { dataset: "spans" },
+      3,
+      attributeCursorAfter(page, 2) ?? undefined,
+    );
+    expect(resumed.data.map((row) => row.key)).toEqual(["c", "d"]);
+  });
+});
+
 describe("listCommand.func", () => {
   test("lists span attributes for a project, 25 per page over 7d, sorted by name", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org", project: "backend" });
@@ -347,7 +313,7 @@ describe("listCommand.func", () => {
       project: ["backend"],
       attributeTypes: ["string"],
       query: undefined,
-      context: false,
+      context: true,
       perPage: 25,
       cursor: undefined,
       statsPeriod: "7d",
@@ -396,7 +362,7 @@ describe("listCommand.func", () => {
         project: undefined,
         attributeTypes: [type],
         query: "has:gen_ai.request.model has:http.method",
-        context: false,
+        context: true,
         perPage: 50,
         cursor: undefined,
         statsPeriod: "24h",
@@ -675,11 +641,11 @@ describe("listCommand.func", () => {
     expect(output).toContain("No attributes found.");
   });
 
-  test("--context requests metadata and includes it in JSON", async () => {
+  test("always requests metadata and includes it in JSON", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
     mockAttributes([{ ...CART_TOTAL, context: {} }, CONTEXT_ATTRIBUTE]);
 
-    const output = await run({ json: true, context: true }, "my-org/");
+    const output = await run({ json: true }, "my-org/");
 
     expect(listSpy).toHaveBeenCalledWith(
       "my-org",
@@ -690,26 +656,15 @@ describe("listCommand.func", () => {
     expect(data[1].context).toEqual(CONTEXT_ATTRIBUTE.context);
   });
 
-  test("omits context from JSON without --context", async () => {
-    resolveSpy.mockResolvedValue({ org: "my-org" });
-    mockAttributes(ATTRIBUTES);
-
-    const output = await run({ json: true }, "my-org/");
-
-    for (const item of JSON.parse(output).data) {
-      expect(item).not.toHaveProperty("context");
-    }
-  });
-
-  test("--context adds description and example columns to the table", async () => {
+  test("adds description and example columns to the table", async () => {
     resolveSpy.mockResolvedValue({ org: "my-org" });
     mockAttributes([CONTEXT_ATTRIBUTE]);
     const context = CONTEXT_ATTRIBUTE.context!;
     const examples = context.examples!.map(String);
 
-    const withContext = await run({ context: true }, "my-org/");
+    const withContext = await run({}, "my-org/");
 
-    // The extra columns appear only with --context.
+    // The extra columns appear when attributes carry context.
     for (const header of ["DESCRIPTION", "EXAMPLES"]) {
       expect(withContext).toContain(header);
     }

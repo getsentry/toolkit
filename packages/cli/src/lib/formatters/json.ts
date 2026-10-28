@@ -162,7 +162,7 @@ export function parseFieldsList(input: string): string[] {
   const { parse } = _require(
     "../../generated/field-list-grammar.js",
   ) as typeof import("../../generated/field-list-grammar.js");
-  return [...new Set(parse(input))];
+  return Array.from(new Set(parse(input)));
 }
 
 /**

@@ -39,7 +39,7 @@ function encodeBookmark(
   return (
     CURSOR_PREFIX +
     Buffer.from(
-      JSON.stringify({ cursor: cursor ?? null, seen: [...seen] }),
+      JSON.stringify({ cursor: cursor ?? null, seen: Array.from(seen) }),
     ).toString("base64url")
   );
 }
@@ -126,7 +126,7 @@ export async function fetchAttributeTypePage(
             pending || next
               ? encodeBookmark(
                   next,
-                  [...seen].filter((key) => keysOnPage.has(key)),
+                  Array.from(seen).filter((key) => keysOnPage.has(key)),
                 )
               : undefined,
         };
@@ -137,7 +137,7 @@ export async function fetchAttributeTypePage(
     }
     // Moving on to the next raw page: only this page's keys can reappear.
     cursor = page.nextCursor;
-    seen = keysOnPage;
+    seen = new Set(keysOnPage);
   }
   logger.warn(
     `Attribute pagination reached ${MAX_PAGINATION_PAGES} pages. Use the returned cursor to continue.`,
@@ -170,6 +170,6 @@ export function attributeCursorAfter(
   const keysOnPage = page.pageKeys.get(pageId(replay)) ?? new Set<string>();
   return encodeBookmark(
     replay,
-    [...seen].filter((key) => keysOnPage.has(key)),
+    Array.from(seen).filter((key) => keysOnPage.has(key)),
   );
 }
