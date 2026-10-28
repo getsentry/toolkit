@@ -7,6 +7,23 @@ export const PUBLIC_EVENTS_DATASETS = [
 ] as const;
 
 export type PublicEventsDataset = (typeof PUBLIC_EVENTS_DATASETS)[number];
+
+/** Datasets the events-dropped endpoint (`find_dropped_events`) reports on. */
+export const DROPPED_EVENTS_DATASETS = [
+  "spans",
+  "logs",
+  "metrics",
+  "errors",
+] as const;
+
+export type DroppedEventsDataset = (typeof DROPPED_EVENTS_DATASETS)[number];
+
+export function isDroppedEventsDataset(
+  dataset: string,
+): dataset is DroppedEventsDataset {
+  return (DROPPED_EVENTS_DATASETS as readonly string[]).includes(dataset);
+}
+
 export type EventsApiDataset =
   | "spans"
   | "errors"

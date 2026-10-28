@@ -263,6 +263,98 @@ describe("search_events", () => {
     expect(result).toContain("**Total**: 16");
     expect(result).toContain("**Peak**: 8");
     expect(result).toContain("| Time (UTC) | Value |");
+    expect(result).not.toContain("find_dropped_events");
+  });
+
+  describe("dropped events hint on empty buckets", () => {
+    const runLogsSeries = async (
+      values: { timestamp: number; value: number | null }[],
+      availableToolNames?: ReadonlySet<string>,
+    ) => {
+      const output = {
+        dataset: "logs" as const,
+        query: "",
+        fields: [] as string[],
+        sort: "-timestamp",
+        environment: null,
+        timeSeries: { yAxis: "count()", interval: "1h" },
+        timeRange: { statsPeriod: "24h" },
+        explanation: "",
+      };
+      mockGenerateText.mockResolvedValueOnce({
+        text: JSON.stringify(output),
+        experimental_output: output,
+        finishReason: "stop" as const,
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+        warnings: [] as const,
+      } as any);
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+          () =>
+            HttpResponse.json({
+              timeSeries: [
+                {
+                  yAxis: "count()",
+                  values: values.map((v) => ({ ...v, incomplete: false })),
+                  meta: {
+                    interval: 3600000,
+                    valueType: "integer",
+                    valueUnit: null,
+                  },
+                },
+              ],
+            }),
+        ),
+      );
+      return await searchEvents.handler(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "logs",
+          query: "logs per hour",
+          fields: null,
+          sort: null,
+          period: "24h",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          accessToken: "test-token",
+          userId: "user-123",
+          clientId: "client-123",
+          grantedSkills: new Set(),
+          constraints: {},
+          sentryHost: "sentry.io",
+          availableToolNames,
+        },
+      );
+    };
+
+    const gappedSeries = [
+      { timestamp: 1757548800000, value: 5 },
+      { timestamp: 1757552400000, value: 0 },
+      { timestamp: 1757556000000, value: null },
+    ];
+
+    it("points at find_dropped_events for the same scope", async () => {
+      const result = await runLogsSeries(gappedSeries);
+
+      expect(result).toContain("## Next Steps");
+      expect(result).toContain(
+        "Use the Sentry tool `find_dropped_events` to check whether Sentry dropped events in this window: `find_dropped_events(organizationSlug='test-org', dataset='logs', statsPeriod='24h')`",
+      );
+    });
+
+    it("omits the hint when find_dropped_events is unavailable", async () => {
+      const result = await runLogsSeries(
+        gappedSeries,
+        new Set(["search_logs", "search_sentry_tools", "execute_sentry_tool"]),
+      );
+
+      expect(result).not.toContain("find_dropped_events");
+    });
   });
 
   it("omits Total for non-additive timeseries aggregates", async () => {

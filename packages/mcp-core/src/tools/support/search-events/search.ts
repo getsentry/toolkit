@@ -9,6 +9,10 @@ import { hasAgentProvider } from "../../../internal/agents/provider-factory";
 import { withProviderFallback } from "../../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
 import {
+  formatAvailableToolCallInstruction,
+  formatToolCall,
+} from "../../../internal/tool-helpers/tool-call-formatting";
+import {
   ParamOrganizationSlug,
   ParamPeriod,
   ParamProjectSlug,
@@ -20,6 +24,7 @@ import type { Scope } from "../../../permissions";
 import type { Skill } from "../../../skills";
 import type { ServerContext } from "../../../types";
 import {
+  isDroppedEventsDataset,
   isMetricsDataset,
   normalizeEventsDataset,
   PUBLIC_EVENTS_DATASETS,
@@ -133,6 +138,45 @@ function buildRequestFields(
     !isAggregateQuery(fields)
     ? Array.from(new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS]))
     : fields;
+}
+
+/**
+ * Points time series callers at `find_dropped_events` for the same scope, so a
+ * gap in the chart can be checked against drops (quota, rate limits, sampling,
+ * filters). Returns null when the dataset or tool is unavailable.
+ */
+function formatDroppedEventsInstruction({
+  organizationSlug,
+  dataset,
+  projectSlug,
+  timeParams,
+  context,
+}: {
+  organizationSlug: string;
+  dataset: PublicEventsDataset;
+  projectSlug: string | null;
+  timeParams: { statsPeriod?: string; start?: string; end?: string };
+  context: ServerContext;
+}): string | null {
+  if (!isDroppedEventsDataset(dataset)) {
+    return null;
+  }
+  const args: Record<string, string> = { organizationSlug, dataset };
+  if (projectSlug) {
+    args.projectSlug = projectSlug;
+  }
+  for (const [key, value] of Object.entries(timeParams)) {
+    if (value) {
+      args[key] = value;
+    }
+  }
+  return formatAvailableToolCallInstruction({
+    toolName: "find_dropped_events",
+    experimentalMode: context.experimentalMode ?? false,
+    availableToolNames: context.availableToolNames,
+    directToolNames: context.directToolNames,
+    purpose: `to check whether Sentry dropped events in this window: \`${formatToolCall({ toolName: "find_dropped_events", arguments: args })}\``,
+  });
 }
 
 function isTraceItemDataset(dataset: PublicEventsDataset | "replays"): boolean {
@@ -1036,6 +1080,13 @@ async function executeSearchEvents(
       timeParams.start,
       timeParams.end,
     );
+    const droppedEventsInstruction = formatDroppedEventsInstruction({
+      organizationSlug,
+      dataset,
+      projectSlug: params.projectSlug,
+      timeParams,
+      context,
+    });
     return withLeadingNote(
       formatTimeSeriesResults({
         series,
@@ -1046,6 +1097,7 @@ async function executeSearchEvents(
         explanation,
         timeRange: timeParams,
         url: statsUrl,
+        droppedEventsInstruction,
       }),
     );
   }

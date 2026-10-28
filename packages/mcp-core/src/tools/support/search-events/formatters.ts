@@ -975,6 +975,8 @@ function formatIngestionStatus(ingestion: IngestionMeta): string {
  * Buckets flagged `incomplete` by Sentry are marked in the table. Those still
  * receiving data are also excluded from the peak; those that start before the
  * retention window are permanently partial and will not change.
+ * `droppedEventsInstruction` is shown only when complete buckets are empty,
+ * since a gap can mean Sentry dropped the events rather than none occurred.
  */
 export function formatTimeSeriesResults(params: {
   series: EventsTimeSeriesResponse;
@@ -985,6 +987,7 @@ export function formatTimeSeriesResults(params: {
   explanation?: string;
   timeRange?: SearchTimeRange;
   url?: string;
+  droppedEventsInstruction?: string | null;
 }): string {
   const {
     series,
@@ -995,6 +998,7 @@ export function formatTimeSeriesResults(params: {
     explanation,
     timeRange,
     url,
+    droppedEventsInstruction,
   } = params;
 
   // String aggregates can return identifiers, even when their values look numeric.
@@ -1098,6 +1102,19 @@ export function formatTimeSeriesResults(params: {
     }
   } else {
     lines.push("", "No data points in this range.");
+  }
+
+  const hasEmptyBuckets =
+    points.length === 0 ||
+    (!isStringSeries &&
+      points.some((p) => !p.filling && !p.outsideRetention && p.value === 0));
+  if (droppedEventsInstruction && hasEmptyBuckets) {
+    lines.push(
+      "",
+      "## Next Steps",
+      "",
+      `- Empty buckets may mean events were dropped before storage (quota, rate limits, sampling, or filters), not that none occurred. ${droppedEventsInstruction}.`,
+    );
   }
 
   if (url) {
