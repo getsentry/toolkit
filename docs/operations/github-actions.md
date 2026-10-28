@@ -35,6 +35,21 @@ version to 100% and repeat the smoke tests. On failure,
 it restores the exact captured prior version only if the live deployments still
 belong to this run.
 
+Cloudflare can list the previous deployment first for a few seconds after a
+deploy succeeds, so every check that follows a deploy re-reads the deployment
+list for up to 30 seconds. Recovery fails rather than passing when Wrangler
+staged a candidate that Cloudflare never lists. A leftover stage (one version
+at 100%, the candidate at 0%) counts as its 100% version, so the next
+deployment can replace it. Failure messages name the check that failed.
+
+### mcp-deploy-watchdog.yml
+
+Runs after every `Deploy to Cloudflare` run. Runs that only refused a revision
+superseded on `main` are ignored. When the newest remaining run failed, it
+opens one `MCP production deployments are failing` issue, and it closes the
+issue after the next successful deployment. Both transitions are posted to
+Slack when `MCP_DEPLOY_ALERT_SLACK_WEBHOOK_URL` is configured.
+
 ### recover-cloudflare-deployment.yml
 
 Manual `workflow_dispatch` recovery accepts a deployment run ID and attempt.
