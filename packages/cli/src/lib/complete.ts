@@ -25,6 +25,7 @@ import {
   ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
+  PERIOD_TARGET,
 } from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getCredentialContext } from "./db/auth.js";
@@ -41,6 +42,7 @@ import { getCachedOrganizations } from "./db/regions.js";
 import { ValidationError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
 import { COMMON_PLATFORMS, VALID_PLATFORMS } from "./platforms.js";
+import { PERIOD_PRESETS, UNIT_SECONDS } from "./time-range.js";
 
 const WHITESPACE_RE = /\s/;
 
@@ -196,7 +198,26 @@ const COMPLETERS: Record<CompletionTarget, Completer> = {
   }),
   [ISSUE_QUERY_TARGET]: (partial) =>
     completeIssueSearchQuery(partial).map((value) => ({ value })),
+  [PERIOD_TARGET]: (partial) => completePeriods(partial),
 };
+
+const DIGITS_RE = /^\d+$/;
+
+/**
+ * Complete a relative `--period` value: the presets starting with the
+ * partial, or, for a bare number, that number with every unit
+ * `parsePeriod` accepts (`3` → `3m`, `3h`, `3d`, …).
+ */
+export function completePeriods(partial: string): Completion[] {
+  if (DIGITS_RE.test(partial)) {
+    return Object.keys(UNIT_SECONDS).map((unit) => ({
+      value: `${partial}${unit}`,
+    }));
+  }
+  return Object.entries(PERIOD_PRESETS)
+    .filter(([period]) => period.startsWith(partial))
+    .map(([value, description]) => ({ value, description }));
+}
 
 /**
  * Determine what completions to provide based on the command context.

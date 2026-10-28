@@ -12,8 +12,8 @@
  * {@link parseOrgTarget}, {@link parseOrgProjectTarget},
  * {@link parseIssueTarget}, and {@link parseDashboardTarget} return their
  * input unchanged and only mark the kind. Parsers that also parse the value,
- * such as those in `target-positional.ts` and `sanitizeIssueQuery`, use the
- * same tag.
+ * such as those in `target-positional.ts`, `sanitizeIssueQuery`, and
+ * `parsePeriod`, use the same tag.
  */
 
 /** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */
@@ -34,6 +34,9 @@ export const DASHBOARD_TARGET = "dashboard";
 /** Completes the term at the end of an issue search query (`is:` values). */
 export const ISSUE_QUERY_TARGET = "issue-query";
 
+/** Completes relative `--period` values (`24h`, `7d`, a number plus a unit). */
+export const PERIOD_TARGET = "period";
+
 /** Every completion target kind, in a stable order. */
 export const COMPLETION_TARGETS = [
   ORG_TARGET,
@@ -41,6 +44,7 @@ export const COMPLETION_TARGETS = [
   ISSUE_TARGET,
   DASHBOARD_TARGET,
   ISSUE_QUERY_TARGET,
+  PERIOD_TARGET,
 ] as const;
 
 /** What shell completion suggests for an argument. */

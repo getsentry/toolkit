@@ -95,8 +95,8 @@ describe("getCompletions: context detection", () => {
 
   test("returns nothing for the value of a flag without a completer", async () => {
     await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
-    expect(getCompletions(["issue", "list", "--period"], "")).toEqual([]);
-    expect(getCompletions(["issue", "list", "-t"], "")).toEqual([]);
+    expect(getCompletions(["issue", "list", "--cursor"], "")).toEqual([]);
+    expect(getCompletions(["issue", "list", "-c"], "")).toEqual([]);
     // Once the value is given, the next word is a target again.
     expect(
       getCompletions(["issue", "list", "--period", "7d"], "").length,
@@ -104,6 +104,21 @@ describe("getCompletions: context detection", () => {
     expect(
       getCompletions(["issue", "list", "--period=7d"], "").length,
     ).toBeGreaterThan(0);
+  });
+
+  test("completes --period values", () => {
+    expect(getCompletions(["issue", "list", "--period"], "")).toEqual([
+      { value: "1h", description: "Last hour" },
+      { value: "24h", description: "Last 24 hours" },
+      { value: "7d", description: "Last 7 days" },
+      { value: "14d", description: "Last 14 days" },
+      { value: "30d", description: "Last 30 days" },
+      { value: "90d", description: "Last 90 days" },
+    ]);
+    expect(
+      getCompletions(["dashboard", "view", "-t"], "1").map((c) => c.value),
+    ).toEqual(["1s", "1m", "1h", "1d", "1w"]);
+    expect(getCompletions(["log", "list", "--period"], "2024-")).toEqual([]);
   });
 
   test("completes issue search terms in --query", () => {
@@ -652,8 +667,10 @@ describe("getCompletions: dashboards", () => {
       { value: "12", label: "Errors" },
     ]);
 
-    // The value of --period is not a dashboard.
-    expect(getCompletions(["dashboard", "view", "--period"], "")).toEqual([]);
+    // The value of --period is a period, not a dashboard.
+    expect(
+      getCompletions(["dashboard", "view", "--period"], "").map((c) => c.value),
+    ).not.toContain("acme/12");
     expect(
       getCompletions(["dashboard", "restore", "acme", "--revision"], ""),
     ).toEqual([]);

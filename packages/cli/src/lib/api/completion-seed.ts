@@ -5,18 +5,27 @@
  * earlier commands fetched (see `src/lib/db/completion-cache.ts`). Every
  * response that passes through the authenticated fetch in
  * `src/lib/sentry-client.ts` is offered to {@link seedCompletionsFromResponse},
- * which matches its path against {@link COMPLETION_SOURCES}. Any command that
+ * which matches its path against {@link COMPLETION_SOURCES}: the
+ * `@sentry/api` operations that return issues or dashboards, by their URL
+ * templates. Any command that
  * lists or fetches issues or dashboards therefore seeds the cache, without
  * the API functions having to remember to.
  *
  * To complete a new entity type, add its kind to `db/completion-cache.ts` and
- * the endpoints that return it here.
+ * the operations that return it here.
  *
  * Failures are swallowed: a cache problem must never fail the command that
  * fetched the data. Cache write errors are reported; a body that cannot be
  * read as JSON is only logged.
  */
 
+import type {
+  GetOrganizationDashboardData,
+  GetOrganizationIssueData,
+  ListOrganizationDashboardsData,
+  ListOrganizationIssuesData,
+  ResolveOrganizationShortIdData,
+} from "@sentry/api";
 import {
   type CompletionEntity,
   type CompletionEntityKind,
@@ -31,14 +40,14 @@ import { isAllDigits } from "../utils.js";
 
 const log = logger.withTag("completion-seed");
 
-/** An endpoint whose response body holds entities to remember. */
+/** An API operation whose response body holds entities to remember. */
 type CompletionSource = {
   kind: CompletionEntityKind;
   /**
-   * Matches the URL path. The first group, when the path has one, is the
-   * organization slug.
+   * The operation's URL template, as in `@sentry/api` (`{name}` marks a path
+   * parameter; `{organization_id_or_slug}` names the organization).
    */
-  path: RegExp;
+  url: string;
   /** Entities in the parsed JSON body, in display order. */
   extract: (body: unknown) => CompletionEntity[];
   /** Organization of a body whose path names none (unscoped endpoints). */
@@ -81,16 +90,28 @@ function dashboardEntities(body: unknown): CompletionEntity[] {
   });
 }
 
-/** Endpoints that return issues or dashboards. */
+/**
+ * Operations that return issues or dashboards. Each `satisfies` ties a
+ * template to the generated `url` of an `@sentry/api` operation, so an
+ * endpoint the SDK renames or drops fails type checking. A template serves
+ * every method on it (e.g. `getOrganizationIssue` and
+ * `updateOrganizationIssue`, `listOrganizationDashboards` and
+ * `createOrganizationDashboard`).
+ */
 const COMPLETION_SOURCES: readonly CompletionSource[] = [
   {
     kind: ISSUE_ENTITY,
-    path: /\/api\/0\/organizations\/([^/]+)\/issues\/(?:[^/]+\/)?$/,
+    url: "/api/0/organizations/{organization_id_or_slug}/issues/" satisfies ListOrganizationIssuesData["url"],
     extract: issueEntities,
   },
   {
     kind: ISSUE_ENTITY,
-    path: /\/api\/0\/organizations\/([^/]+)\/shortids\/[^/]+\/$/,
+    url: "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/" satisfies GetOrganizationIssueData["url"],
+    extract: issueEntities,
+  },
+  {
+    kind: ISSUE_ENTITY,
+    url: "/api/0/organizations/{organization_id_or_slug}/shortids/{issue_id}/" satisfies ResolveOrganizationShortIdData["url"],
     extract: (body) =>
       issueEntities(
         typeof body === "object" && body !== null
@@ -99,10 +120,11 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
       ),
   },
   {
-    // Unscoped numeric-ID lookup (`getIssue`, `updateIssueStatus` without an
-    // org); the org comes from the issue's permalink.
+    // The deprecated unscoped lookup (`getIssue`, `updateIssueStatus`
+    // without an org) is not in `@sentry/api`. Its path names no org, so
+    // the org comes from the issue's permalink.
     kind: ISSUE_ENTITY,
-    path: /\/api\/0\/issues\/\d+\/$/,
+    url: "/api/0/issues/{issue_id}/",
     extract: issueEntities,
     org: (body) => {
       const permalink = stringField(body, "permalink");
@@ -111,10 +133,35 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
   },
   {
     kind: DASHBOARD_ENTITY,
-    path: /\/api\/0\/organizations\/([^/]+)\/dashboards\/(?:\d+\/)?$/,
+    url: "/api/0/organizations/{organization_id_or_slug}/dashboards/" satisfies ListOrganizationDashboardsData["url"],
+    extract: dashboardEntities,
+  },
+  {
+    kind: DASHBOARD_ENTITY,
+    url: "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/" satisfies GetOrganizationDashboardData["url"],
     extract: dashboardEntities,
   },
 ];
+
+/** Path parameter in an `@sentry/api` URL template. */
+const TEMPLATE_PARAM_RE = /\{(\w+)\}/g;
+
+/**
+ * A regex matching paths that end in `template`. The organization
+ * parameter is the first capture group; other parameters match any
+ * segment.
+ */
+function templatePattern(template: string): RegExp {
+  const pattern = template.replace(TEMPLATE_PARAM_RE, (_, name) =>
+    name === "organization_id_or_slug" ? "([^/]+)" : "[^/]+",
+  );
+  return new RegExp(`${pattern}$`);
+}
+
+const SOURCE_PATTERNS = COMPLETION_SOURCES.map((source) => ({
+  source,
+  pattern: templatePattern(source.url),
+}));
 
 /** The source for a URL and the organization it names, if any. */
 function matchSource(
@@ -127,8 +174,8 @@ function matchSource(
     log.debug(`Not seeding completions from unparsable URL '${url}'`, error);
     return;
   }
-  for (const source of COMPLETION_SOURCES) {
-    const match = source.path.exec(pathname);
+  for (const { source, pattern } of SOURCE_PATTERNS) {
+    const match = pattern.exec(pathname);
     if (match) {
       const org = match[1];
       return { source, orgSlug: org ? decodeURIComponent(org) : undefined };

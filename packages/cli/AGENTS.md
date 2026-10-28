@@ -280,14 +280,15 @@ completes cached dashboards. `LIST_TARGET_POSITIONAL`,
 `LIST_ORG_TARGET_POSITIONAL`, and `issueIdPositional` already use them. A
 parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
 parsers, completes the same way. Flags take the same tag: `sanitizeIssueQuery`
-makes every issue `--query` complete search terms (`is:unr` → `is:unresolved`).
+makes every issue `--query` complete search terms (`is:unr` → `is:unresolved`),
+and `parsePeriod` makes `--period` complete Sentry's relative presets.
 Issue and dashboard suggestions come from the `completion_cache` table. The
 authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
-`src/lib/api/completion-seed.ts`, which stores entities from the endpoints it
-lists, so API functions never seed by hand. To complete a new entity type, add
-a kind in `src/lib/db/completion-cache.ts`, its endpoints in
-`completion-seed.ts`, a tagged parser, and an `entityCompleter` entry in
-`src/lib/complete.ts`.
+`src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
+operations it lists (by URL template, type-checked against the SDK), so API
+functions never seed by hand. To complete a new entity type, add a kind in
+`src/lib/db/completion-cache.ts`, its operations in `completion-seed.ts`, a
+tagged parser, and an `entityCompleter` entry in `src/lib/complete.ts`.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path reads.
 `project create` keeps its dedicated `name:platform` completer in
