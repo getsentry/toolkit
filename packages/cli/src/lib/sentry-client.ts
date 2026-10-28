@@ -708,9 +708,10 @@ async function fetchWithRetry({
   }
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
-  const methodRetryable =
-    isRetryableMethod(method, idempotent) ||
-    (await isIdempotentOperation(method, fullUrl));
+  const methodRetryable = isRetryableMethod(
+    method,
+    idempotent || isIdempotentOperation(method, fullUrl),
+  );
   const urlPath = extractUrlPath(fullUrl);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
