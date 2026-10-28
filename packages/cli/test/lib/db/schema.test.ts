@@ -251,6 +251,7 @@ describe("TABLE_SCHEMAS persistence", () => {
       .sort();
 
     expect(cacheTables).toEqual([
+      "completion_cache",
       "dsn_cache",
       "issue_org_cache",
       "org_regions",
@@ -492,19 +493,6 @@ describe("runMigrations", () => {
       }
     ).version;
     expect(version).toBe(CURRENT_SCHEMA_VERSION);
-    db.close();
-  });
-
-  test("migration 19→20 creates completion_cache", () => {
-    const db = new Database(join(getTestDir(), "test.db"));
-    initSchema(db);
-    db.exec("DROP TABLE completion_cache");
-    db.query("UPDATE schema_version SET version = 19").run();
-
-    runMigrations(db);
-
-    expect(tableExists(db, "completion_cache")).toBe(true);
-    expect(getSchemaIssues(db)).toEqual([]);
     db.close();
   });
 });

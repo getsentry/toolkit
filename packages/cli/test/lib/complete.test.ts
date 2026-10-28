@@ -10,8 +10,6 @@ import { describe, expect, test } from "vitest";
 import {
   completeAliases,
   completeCachedEntities,
-  completeDashboards,
-  completeIssues,
   completeOrgSlashProject,
   completeOrgSlugs,
   completeProjectCreateSpec,
@@ -95,17 +93,34 @@ describe("getCompletions: context detection", () => {
     expect(result.length).toBeGreaterThan(0);
   });
 
-  test("returns nothing for the value of a value-taking flag", async () => {
+  test("returns nothing for the value of a flag without a completer", async () => {
     await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
-    expect(getCompletions(["issue", "list", "--query"], "")).toEqual([]);
-    expect(getCompletions(["issue", "list", "-q"], "")).toEqual([]);
+    expect(getCompletions(["issue", "list", "--period"], "")).toEqual([]);
+    expect(getCompletions(["issue", "list", "-t"], "")).toEqual([]);
     // Once the value is given, the next word is a target again.
     expect(
-      getCompletions(["issue", "list", "--query", "is:unresolved"], "").length,
+      getCompletions(["issue", "list", "--period", "7d"], "").length,
     ).toBeGreaterThan(0);
     expect(
-      getCompletions(["issue", "list", "--query=is:unresolved"], "").length,
+      getCompletions(["issue", "list", "--period=7d"], "").length,
     ).toBeGreaterThan(0);
+  });
+
+  test("completes issue search terms in --query", () => {
+    const values = (words: string[], partial: string) =>
+      getCompletions(words, partial).map((c) => c.value);
+
+    expect(values(["issue", "list", "--query"], "is:unr")).toEqual([
+      "is:unresolved",
+    ]);
+    expect(values(["issue", "list", "-q"], "level:error is:reg")).toEqual([
+      "level:error is:regressed",
+    ]);
+    expect(values(["feedback", "list", "-q"], "")).toEqual([
+      "is:",
+      "level:",
+      "assigned:",
+    ]);
   });
 
   test("returns org/project completions for project list", async () => {
@@ -500,14 +515,14 @@ describe("completeCachedEntities", () => {
   });
 });
 
-describe("completeIssues", () => {
+describe("getCompletions: issues", () => {
   test("suggests org prefixes and cached short IDs", async () => {
     await seedOrgs([{ slug: "acme", name: "Acme" }]);
     cacheCompletionEntities(ISSUE_ENTITY, "acme", [
       { value: "CLI-1A", label: "Crash on start" },
     ]);
 
-    expect(completeIssues("")).toEqual([
+    expect(getCompletions(["issue", "view"], "")).toEqual([
       { value: "acme/", description: "Acme" },
       { value: "CLI-1A", description: "Crash on start" },
     ]);
@@ -528,11 +543,26 @@ describe("completeIssues", () => {
       { value: "CLI-1A", label: "Crash on start" },
     ]);
 
-    expect(completeIssues("acme/cl")).toEqual([
+    expect(getCompletions(["issue", "view"], "acme/cl")).toEqual([
       { value: "acme/cli", description: "CLI" },
       { value: "acme/CLI-1A", description: "Crash on start" },
     ]);
-    expect(completeIssues("nope/")).toEqual([]);
+    expect(getCompletions(["issue", "view"], "nope/")).toEqual([]);
+  });
+
+  test("reads the org with the target parser the commands use", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities(ISSUE_ENTITY, "acme", [{ value: "CLI-1A" }]);
+
+    // A display-name org is normalized like `issue view` would.
+    expect(
+      getCompletions(["issue", "view"], "Acme/CLI").map((c) => c.value),
+    ).toEqual(["acme/CLI-1A"]);
+    // Input the parser rejects, and pasted URLs, are not targets to extend.
+    expect(getCompletions(["issue", "view"], "acme/cli/x/y")).toEqual([]);
+    expect(
+      getCompletions(["issue", "view"], "https://acme.sentry.io/issues/"),
+    ).toEqual([]);
   });
 
   test("is used by issue commands", async () => {
@@ -573,22 +603,22 @@ describe("completeIssues", () => {
   });
 });
 
-describe("completeDashboards", () => {
+describe("getCompletions: dashboards", () => {
   test("suggests org prefixes and org-qualified dashboard IDs first", async () => {
     await seedOrgs([{ slug: "acme", name: "Acme" }]);
     cacheCompletionEntities(DASHBOARD_ENTITY, "acme", [
       { value: "12", label: "Errors" },
     ]);
 
-    expect(completeDashboards("", [])).toEqual([
+    expect(getCompletions(["dashboard", "view"], "")).toEqual([
       { value: "acme/", description: "Acme" },
       { value: "acme/12", description: "Errors" },
     ]);
     // A title finds its ID.
-    expect(completeDashboards("err", [])).toEqual([
+    expect(getCompletions(["dashboard", "view"], "err")).toEqual([
       { value: "acme/12", description: "Errors" },
     ]);
-    expect(completeDashboards("acme/", [])).toEqual([
+    expect(getCompletions(["dashboard", "view"], "acme/")).toEqual([
       { value: "acme/12", description: "Errors" },
     ]);
   });
@@ -605,13 +635,15 @@ describe("completeDashboards", () => {
       { value: "34", label: "Latency" },
     ]);
 
-    expect(completeDashboards("", ["acme/"])).toEqual([
+    expect(getCompletions(["dashboard", "view", "acme/"], "")).toEqual([
       { value: "12", description: "Errors" },
     ]);
-    expect(completeDashboards("", ["beta"])).toEqual([
+    expect(getCompletions(["dashboard", "view", "beta"], "")).toEqual([
       { value: "34", description: "Latency" },
     ]);
-    expect(completeDashboards("", ["acme/", "12"])).toEqual([]);
+    expect(getCompletions(["dashboard", "view", "acme/", "12"], "")).toEqual(
+      [],
+    );
   });
 
   test("skips flag values when counting positionals", async () => {

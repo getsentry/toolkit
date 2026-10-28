@@ -3,10 +3,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import {
-  seedDashboardCompletions,
-  seedIssueCompletions,
-} from "../../../src/lib/api/completion-seed.js";
+import { seedCompletionsFromResponse } from "../../../src/lib/api/completion-seed.js";
 import {
   cacheCompletionEntities,
   clearCompletionCache,
@@ -69,26 +66,77 @@ describe("completion cache", () => {
   });
 });
 
-describe("completion seeding from API data", () => {
-  test("issues are stored by short ID with their title", () => {
-    seedIssueCompletions("acme", [
-      { shortId: "CLI-1A", title: "TypeError: x is undefined" },
-      { shortId: undefined, title: "No short ID" },
-    ]);
+describe("completion seeding from API responses", () => {
+  const API = "https://us.sentry.io/api/0/organizations/acme";
 
-    expect(getCachedCompletionEntities(ISSUE_ENTITY, ["acme"])).toEqual([
-      { orgSlug: "acme", value: "CLI-1A", label: "TypeError: x is undefined" },
-    ]);
+  function json(body: unknown, init: ResponseInit = {}): Response {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      ...init,
+    });
+  }
+
+  test("issue lists and details are stored by short ID with their title", async () => {
+    await seedCompletionsFromResponse(
+      `${API}/issues/?query=is%3Aunresolved`,
+      json([
+        { shortId: "CLI-1A", title: "TypeError: x is undefined" },
+        { title: "No short ID" },
+      ]),
+    );
+    await seedCompletionsFromResponse(
+      `${API}/issues/123/`,
+      json({ shortId: "CLI-2B", title: "Timeout" }),
+    );
+    await seedCompletionsFromResponse(
+      `${API}/shortids/CLI-3C/`,
+      json({ group: { shortId: "CLI-3C", title: "Crash" } }),
+    );
+
+    expect(
+      getCachedCompletionEntities(ISSUE_ENTITY, ["acme"]).map((e) => e.value),
+    ).toEqual(["CLI-3C", "CLI-2B", "CLI-1A"]);
   });
 
-  test("dashboards are stored by numeric ID only", () => {
-    seedDashboardCompletions("acme", [
-      { id: "12", title: "Errors" },
-      { id: "default-overview", title: "Prebuilt" },
-    ]);
+  test("dashboards are stored by numeric ID only", async () => {
+    await seedCompletionsFromResponse(
+      `${API}/dashboards/`,
+      json([
+        { id: "12", title: "Errors" },
+        { id: "default-overview", title: "Prebuilt" },
+      ]),
+    );
 
     expect(getCachedCompletionEntities(DASHBOARD_ENTITY, ["acme"])).toEqual([
       { orgSlug: "acme", value: "12", label: "Errors" },
     ]);
+  });
+
+  test("ignores other endpoints, failed responses, and bodies that are not JSON", async () => {
+    const issue = { shortId: "CLI-1A", title: "Boom" };
+    await seedCompletionsFromResponse(
+      `${API}/issues/123/events/`,
+      json([issue]),
+    );
+    await seedCompletionsFromResponse(
+      `${API}/issues/`,
+      json([issue], { status: 500 }),
+    );
+    await seedCompletionsFromResponse(
+      `${API}/issues/`,
+      new Response("not json", {
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    expect(getCachedCompletionEntities(ISSUE_ENTITY, ["acme"])).toEqual([]);
+  });
+
+  test("leaves the response body readable", async () => {
+    const response = json([{ shortId: "CLI-1A" }]);
+    await seedCompletionsFromResponse(`${API}/issues/`, response);
+
+    expect(await response.json()).toEqual([{ shortId: "CLI-1A" }]);
   });
 });

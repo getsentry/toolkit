@@ -20,7 +20,6 @@ import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import { invalidateCachedResponsesMatching } from "../response-cache.js";
 import { getApiBaseUrl } from "../sentry-client.js";
-import { seedIssueCompletions } from "./completion-seed.js";
 
 import {
   API_MAX_PER_PAGE,
@@ -197,12 +196,7 @@ export async function listIssuesPaginated(
     },
   });
 
-  const page = unwrapPaginatedResult<SentryIssue[]>(
-    result,
-    "Failed to list issues",
-  );
-  seedIssueCompletions(orgSlug, page.data);
-  return page;
+  return unwrapPaginatedResult<SentryIssue[]>(result, "Failed to list issues");
 }
 
 /** Result from {@link listIssuesAllPages}. */
@@ -328,7 +322,6 @@ export async function getIssueInOrg(
       params: options?.collapse ? { collapse: options.collapse } : undefined,
     },
   );
-  seedIssueCompletions(orgSlug, [data]);
   return data;
 }
 
@@ -389,7 +382,6 @@ export async function getIssueByShortId(
       "Issue not found",
     );
   }
-  seedIssueCompletions(orgSlug, [data.group]);
   return data.group;
 }
 

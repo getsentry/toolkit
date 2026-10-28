@@ -3,11 +3,16 @@
  *
  * The general AND/OR rules are covered through the CLI wrapper in
  * `packages/cli/test/lib/search-query*.test.ts`. These tests cover what
- * `issueSearch: true` adds: `is:` OR groups and paren unwrapping.
+ * `issueSearch: true` adds: `is:` OR groups and paren unwrapping, and
+ * the completion of the last term of an issue search query.
  */
 
 import { describe, expect, it } from "vitest";
-import { rewriteSearchQuery, SearchQueryError } from "./search-query.js";
+import {
+  completeIssueSearchQuery,
+  rewriteSearchQuery,
+  SearchQueryError,
+} from "./search-query.js";
 
 function rewriteIssues(query: string): string {
   return rewriteSearchQuery(query, { issueSearch: true }).query;
@@ -169,5 +174,33 @@ describe("rewriteSearchQuery: parentheses in issue search", () => {
 
   it("keeps parentheses outside issue search", () => {
     expect(rewriteSearchQuery("(is:unresolved)").query).toBe("(is:unresolved)");
+  });
+});
+
+describe("completeIssueSearchQuery", () => {
+  it("completes is: values, keeping earlier terms and negation", () => {
+    expect(completeIssueSearchQuery("is:unr")).toEqual(["is:unresolved"]);
+    expect(completeIssueSearchQuery("level:error !is:reg")).toEqual([
+      "level:error !is:regressed",
+    ]);
+    expect(completeIssueSearchQuery("is:")).toContain(
+      "is:archived_until_escalating",
+    );
+  });
+
+  it("completes known keys for a bare word or a new term", () => {
+    expect(completeIssueSearchQuery("le")).toEqual(["level:"]);
+    expect(completeIssueSearchQuery("foo !a")).toEqual(["foo !assigned:"]);
+    expect(completeIssueSearchQuery("is:unresolved ")).toEqual([
+      "is:unresolved is:",
+      "is:unresolved level:",
+      "is:unresolved assigned:",
+    ]);
+  });
+
+  it("suggests nothing for values it cannot know", () => {
+    expect(completeIssueSearchQuery("release:1.")).toEqual([]);
+    expect(completeIssueSearchQuery('is:"unr')).toEqual([]);
+    expect(completeIssueSearchQuery('"timeout er')).toEqual([]);
   });
 });

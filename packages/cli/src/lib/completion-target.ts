@@ -1,16 +1,19 @@
 /**
- * Completion-aware positional parsers.
+ * Completion-aware argument parsers.
  *
- * Target positionals use a parser tagged with {@link withCompletionTarget}
- * instead of `String` so shell completion can read the target kind straight
- * from the command's `parameters`. `script/generate-completion-targets.ts`
- * collects them at build time because the `__complete` fast path cannot boot
- * Stricli to walk the route tree.
+ * Positionals and flags use a parser tagged with {@link withCompletionTarget}
+ * so shell completion can read what an argument completes straight from the
+ * command's `parameters`, the same place that says how it parses.
+ * `script/generate-completion-targets.ts` collects the kind of every
+ * positional and flag at build time because the `__complete` fast path
+ * cannot boot Stricli to walk the route tree. `src/lib/complete.ts` maps
+ * each kind to its completer.
  *
  * {@link parseOrgTarget}, {@link parseOrgProjectTarget},
  * {@link parseIssueTarget}, and {@link parseDashboardTarget} return their
  * input unchanged and only mark the kind. Parsers that also parse the value,
- * such as those in `target-positional.ts`, use the same tag.
+ * such as those in `target-positional.ts` and `sanitizeIssueQuery`, use the
+ * same tag.
  */
 
 /** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */
@@ -28,21 +31,25 @@ export const ISSUE_TARGET = "issue";
  */
 export const DASHBOARD_TARGET = "dashboard";
 
+/** Completes the term at the end of an issue search query (`is:` values). */
+export const ISSUE_QUERY_TARGET = "issue-query";
+
 /** Every completion target kind, in a stable order. */
 export const COMPLETION_TARGETS = [
   ORG_TARGET,
   ORG_PROJECT_TARGET,
   ISSUE_TARGET,
   DASHBOARD_TARGET,
+  ISSUE_QUERY_TARGET,
 ] as const;
 
-/** Which cached values shell completion suggests for a target positional. */
+/** What shell completion suggests for an argument. */
 export type CompletionTarget = (typeof COMPLETION_TARGETS)[number];
 
 const COMPLETION_TARGET_KEY = Symbol("completionTarget");
 
 /**
- * Tag a positional parser with the completion kind it accepts.
+ * Tag a positional or flag parser with the completion kind it accepts.
  *
  * @returns `parse` itself, so the tag travels with the function
  */
@@ -79,7 +86,7 @@ export const parseDashboardTarget = withCompletionTarget(
 );
 
 /**
- * Read the completion kind from a positional's `parse` function.
+ * Read the completion kind from a positional's or flag's `parse` function.
  *
  * @returns The kind a parser was tagged with by {@link withCompletionTarget},
  *   or `undefined` for any other parser

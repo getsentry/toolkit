@@ -1181,6 +1181,83 @@ function stripTrailingListCommas(query: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Completion
+// ---------------------------------------------------------------------------
+
+/** Sentry event levels. */
+const LEVEL_VALUES = ["fatal", "error", "warning", "info", "debug"];
+
+/**
+ * Issue search keys whose values are a known, fixed set, mapped to the
+ * values. `is:` reuses the status and substatus tables the rewriter maps
+ * `is:` values with.
+ */
+const ISSUE_SEARCH_KEY_VALUES: ReadonlyMap<string, readonly string[]> = new Map(
+  [
+    ["is", [...IS_STATUS_VALUES, ...IS_SUBSTATUS_PARENT.keys()]],
+    ["level", LEVEL_VALUES],
+    ["assigned", ["me", "none"]],
+  ],
+);
+
+/**
+ * Complete the term at the end of an issue search query.
+ *
+ * The query is read with the search grammar, so the term is what Sentry
+ * would read: a `[!]key:partial` filter on a key with known values (`is:`,
+ * `level:`, `assigned:`) completes the value, and a bare word completes
+ * those keys (`is` → `is:`). Anything else (quoted text, in-lists,
+ * comparisons, unknown keys) gets no suggestions.
+ *
+ * @param query - Query typed so far, ending with the term being completed
+ * @returns Full queries, each `query` with its last term completed, in
+ *   table order
+ */
+export function completeIssueSearchQuery(query: string): string[] {
+  const tokens = parseSearch(query, { config: { allowRegex: true } });
+  // An empty query, or one ending in a space, starts a new term
+  const last = tokens?.filter((token) => token.type !== Token.SPACES).at(-1);
+  if (!last || last.location.end.offset !== query.length) {
+    return tokens ? keyCompletions(query, "") : [];
+  }
+  if (last.type === Token.FREE_TEXT) {
+    if (last.text.includes('"')) {
+      return [];
+    }
+    // The grammar folds consecutive words into one free-text token
+    const term = last.text.split(FREE_TEXT_SEPARATOR_RE).at(-1) ?? "";
+    const negated = term.startsWith("!");
+    return keyCompletions(
+      query.slice(0, query.length - term.length) + (negated ? "!" : ""),
+      negated ? term.slice(1) : term,
+    );
+  }
+  if (
+    last.type !== Token.FILTER ||
+    (last.filter !== FilterType.TEXT && last.filter !== FilterType.IS) ||
+    last.key.type !== Token.KEY_SIMPLE ||
+    last.value.type !== Token.VALUE_TEXT ||
+    last.value.quoted
+  ) {
+    return [];
+  }
+  const values = ISSUE_SEARCH_KEY_VALUES.get(last.key.value) ?? [];
+  const partial = last.value.text.toLowerCase();
+  const head = query.slice(0, last.value.location.start.offset);
+  return values
+    .filter((value) => value.startsWith(partial))
+    .map((value) => `${head}${value}`);
+}
+
+/** `head` followed by each known key starting with `word`, as `key:`. */
+function keyCompletions(head: string, word: string): string[] {
+  const prefix = word.toLowerCase();
+  return [...ISSUE_SEARCH_KEY_VALUES.keys()]
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => `${head}${key}:`);
+}
+
+// ---------------------------------------------------------------------------
 // Test exports
 // ---------------------------------------------------------------------------
 
