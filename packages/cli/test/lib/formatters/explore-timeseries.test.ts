@@ -421,17 +421,22 @@ describe("Explore time-series graphics", () => {
     expect(output).toMatch(/2026-01-01 06:40:00\s+│\s+999/);
   });
 
-  test("falls back to the same table on a terminal without graphics", () => {
+  test("uses tables without graphics support or when plain output is requested", () => {
     vi.mocked(terminal.selectGraphicsFormat).mockReturnValue(undefined);
     const data = makeData();
     const unsupported = formatExploreTimeSeriesHuman(data);
-    vi.stubEnv("SENTRY_PLAIN_OUTPUT", "1");
 
     expect(unsupported).toContain("TIME (UTC)");
     expect(unsupported).toContain("1,234");
     expect(unsupported).toContain("Ingestion pending");
     expect(unsupported).not.toContain("\x1b_G");
-    expect(formatExploreTimeSeriesHuman(data)).toContain("TIME (UTC)");
+
+    vi.mocked(terminal.selectGraphicsFormat).mockReturnValue("kitty");
+    vi.stubEnv("SENTRY_PLAIN_OUTPUT", "1");
+    const plain = formatExploreTimeSeriesHuman(data);
+
+    expect(plain).toContain("TIME (UTC)");
+    expect(plain).not.toContain("\x1b_G");
   });
 
   test.each([undefined, ["timestamp", "value", "incomplete"]])(
