@@ -82,9 +82,11 @@
     "tsc": "tsc --noEmit"
   },
   "dependencies": {
-    "@sentry/search-syntax": "catalog:"
+    "@sentry/search-syntax": "catalog:",
+    "http-cache-semantics": "^4.2.0"
   },
   "devDependencies": {
+    "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
     "typescript": "catalog:",
     "vitest": "catalog:"

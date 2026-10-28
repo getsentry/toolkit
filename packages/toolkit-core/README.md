@@ -45,10 +45,22 @@ as a WebCrypto HMAC-SHA256 that matches the CLI's earlier `node:crypto` keys.
 `computeInvalidationPrefixes` lists the URL prefixes a successful mutation
 makes stale.
 
+`storeResponse` and `lookupResponse` make the HTTP caching decisions through
+`http-cache-semantics`. Server `Cache-Control` directives win over the tiers,
+including `max-age=0`; the tier applies only when the server sent none. Only
+2xx JSON responses are stored, and `no-store` is honored. A stale entry with an
+`ETag` comes back from `lookupResponse` as `stale`, with the `If-None-Match`
+header to send; a matching 304 passed to its `revalidate` renews the entry and
+returns the cached body. Entries are kept for their freshness lifetime, plus
+`REVALIDATION_WINDOW_MS` (24 hours) when they have an `ETag`. Both take the
+`CacheStore` and body codec to use, and throw for unreadable entries so the
+host can drop them.
+
 The host supplies an identity that is a stable hash of the login (never a raw
-token), applies server caching headers ahead of the tiers, and deletes only
-the requesting identity's entries under each invalidation prefix. The CLI's
-disk cache in `packages/cli/src/lib/response-cache.ts` uses it.
+token), derives the key, decides when caching is enabled, records telemetry,
+and deletes only the requesting identity's entries under each invalidation
+prefix. The CLI's disk cache in `packages/cli/src/lib/response-cache.ts` uses
+it.
 
 Entries live in a `CacheStore`: `get`, `set` with a TTL, and
 `deleteMatching(identity, urlPrefix)`. An entry holds a body already encoded
