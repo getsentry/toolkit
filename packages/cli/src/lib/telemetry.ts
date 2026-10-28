@@ -455,6 +455,18 @@ const hasGetSystemErrorMap = (() => {
 /** Current beforeExit handler, tracked so it can be replaced on re-init */
 let currentBeforeExitHandler: (() => void) | null = null;
 
+let manualHttpTracing = false;
+
+/**
+ * Whether API requests need CLI-made `http.client` spans and trace headers.
+ * Library mode excludes the SDK's Http/NodeFetch integrations because they
+ * would also trace the host's requests, and Bun's fetch doesn't fire the
+ * undici diagnostics channels they listen on.
+ */
+export function isManualHttpTracing(): boolean {
+  return manualHttpTracing;
+}
+
 /** Match all SaaS regional URLs (us.sentry.io, de.sentry.io, o1234.ingest.us.sentry.io, etc.) */
 const SENTRY_SAAS_SUBDOMAIN_RE = /^https:\/\/[^/]*\.sentry\.io(\/|$)/;
 
@@ -532,6 +544,8 @@ export function initSentry(
 ): Sentry.NodeClient | undefined {
   const libraryMode = options?.libraryMode ?? false;
   const environment = getCliEnvironment();
+  manualHttpTracing =
+    libraryMode || typeof process.versions.bun !== "undefined";
 
   /**
    * Ensure frame paths are absolute so Sentry's symbolicator can match them.

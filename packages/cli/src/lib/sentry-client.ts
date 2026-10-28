@@ -10,6 +10,7 @@
 
 import { setTimeout as sleepMs } from "node:timers/promises";
 import type { SentryClient } from "@sentry/api";
+import { getTraceData } from "@sentry/node";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
 import {
   formatAuthHeader,
@@ -58,6 +59,7 @@ import {
   isRetryableMethod,
 } from "./retry-policy.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
+import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import {
   isHostTrustedForClaim,
@@ -223,6 +225,16 @@ function prepareHeaders(
   headers.set("Authorization", formatAuthHeader(normalizedToken));
   if (!headers.has("User-Agent")) {
     headers.set("User-Agent", getUserAgent());
+  }
+
+  if (isManualHttpTracing()) {
+    const traceData = getTraceData();
+    if (traceData["sentry-trace"]) {
+      headers.set("sentry-trace", traceData["sentry-trace"]);
+    }
+    if (traceData.baggage) {
+      headers.set("baggage", traceData.baggage);
+    }
   }
 
   // Inject user-configured custom headers for self-hosted proxies (IAP,
@@ -800,68 +812,87 @@ function createAuthenticatedFetch(
       init?.method ?? (input instanceof Request ? input.method : "GET");
     const urlPath = extractUrlPath(input);
 
-    const fullUrl = extractInputUrl(input);
-    const startTime = performance.now();
+    const request = async (): Promise<Response> => {
+      const fullUrl = extractInputUrl(input);
+      const startTime = performance.now();
 
-    // Check cache before auth/retry for GET requests.
-    // Uses current token (no refresh) so lookups are fast but Vary-correct.
-    const credential = options.credential ?? getCredentialContext();
-    if (!credential) {
-      await refreshToken();
-      throw new Error("Authentication state was not available after refresh");
-    }
-    // A synthetic HTTP cache response has no validated final-origin or
-    // credential provenance. Discovery must obtain both from the network.
-    const lookup = options.validatedRedirects
-      ? undefined
-      : await tryCacheLookup(
-          method,
-          fullUrl,
-          authHeaders(credential.token),
-          credential.identity,
-        );
-    if (lookup?.kind === "hit") {
-      log.debug(
-        `${method} ${urlPath} → ${lookup.response.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
-      );
-      return lookup.response;
-    }
-
-    const retryContext: RetryContext = {
-      input,
-      init,
-      method,
-      fullUrl,
-      credential,
-      validatedRedirects: options.validatedRedirects === true,
-      idempotent: options.idempotent === true,
-      responseBodyMode:
-        method.toUpperCase() !== "GET"
-          ? "stream"
-          : ((input instanceof Request
-              ? sdkResponseBodyModes.get(input)
-              : undefined) ??
-            (options.bufferResponseBody ? "buffer" : "stream")),
-    };
-    let response = await fetchWithRetry({
-      ...retryContext,
-      conditionalHeaders: lookup?.conditionalHeaders,
-    });
-    if (lookup?.kind === "stale" && response.status === 304) {
-      const revalidated = await lookup.revalidate(response);
-      if (revalidated) {
-        log.debug(
-          `${method} ${urlPath} → 304 (revalidated cache entry, ${(performance.now() - startTime).toFixed(0)}ms)`,
-        );
-        return revalidated;
+      // Check cache before auth/retry for GET requests.
+      // Uses current token (no refresh) so lookups are fast but Vary-correct.
+      const credential = options.credential ?? getCredentialContext();
+      if (!credential) {
+        await refreshToken();
+        throw new Error("Authentication state was not available after refresh");
       }
-      // A 304 the entry cannot use has no body; fetch it unconditionally.
-      response = await fetchWithRetry(retryContext);
+      // A synthetic HTTP cache response has no validated final-origin or
+      // credential provenance. Discovery must obtain both from the network.
+      const lookup = options.validatedRedirects
+        ? undefined
+        : await tryCacheLookup(
+            method,
+            fullUrl,
+            authHeaders(credential.token),
+            credential.identity,
+          );
+      if (lookup?.kind === "hit") {
+        log.debug(
+          `${method} ${urlPath} → ${lookup.response.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
+        );
+        return lookup.response;
+      }
+
+      const retryContext: RetryContext = {
+        input,
+        init,
+        method,
+        fullUrl,
+        credential,
+        validatedRedirects: options.validatedRedirects === true,
+        idempotent: options.idempotent === true,
+        responseBodyMode:
+          method.toUpperCase() !== "GET"
+            ? "stream"
+            : ((input instanceof Request
+                ? sdkResponseBodyModes.get(input)
+                : undefined) ??
+              (options.bufferResponseBody ? "buffer" : "stream")),
+      };
+      let response = await fetchWithRetry({
+        ...retryContext,
+        conditionalHeaders: lookup?.conditionalHeaders,
+      });
+      if (lookup?.kind === "stale" && response.status === 304) {
+        const revalidated = await lookup.revalidate(response);
+        if (revalidated) {
+          log.debug(
+            `${method} ${urlPath} → 304 (revalidated cache entry, ${(performance.now() - startTime).toFixed(0)}ms)`,
+          );
+          return revalidated;
+        }
+        // A 304 the entry cannot use has no body; fetch it unconditionally.
+        response = await fetchWithRetry(retryContext);
+      }
+      log.debug(
+        `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
+      );
+      return response;
+    };
+
+    if (!isManualHttpTracing()) {
+      return await request();
     }
-    log.debug(
-      `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
+    return await withTracingSpan(
+      `${method} ${urlPath}`,
+      "http.client",
+      async (span) => {
+        const response = await request();
+        span.setAttribute("http.response.status_code", response.status);
+        if (!response.ok) {
+          span.setStatus({ code: 2, message: `${response.status}` });
+        }
+        return response;
+      },
+      { "http.request.method": method, "url.path": urlPath },
     );
-    return response;
   };
 }
 
