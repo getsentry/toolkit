@@ -6,6 +6,7 @@
 
 import {
   type EventAttachmentDetailsResponse,
+  type GetOrganizationIssueEventData,
   getOrganizationIssueEvent,
   getProjectEvent,
   listOrganizationIssueEvents,
@@ -43,6 +44,13 @@ export async function getLatestEvent(
   issueId: string,
 ): Promise<SentryEvent> {
   const config = await getOrgSdkConfig(orgSlug);
+  // `collapse=adjacentEvents` lets Sentry skip the next/previous-event Snuba
+  // lookups; the CLI never reads `nextEventID` or `previousEventID`. The
+  // generated query type omits `collapse`, so the intersection keeps the
+  // server-supported parameter without weakening the generated client type.
+  const query: NonNullable<GetOrganizationIssueEventData["query"]> & {
+    collapse: string[];
+  } = { collapse: ["adjacentEvents"] };
 
   const result = await getOrganizationIssueEvent({
     ...config,
@@ -51,6 +59,7 @@ export async function getLatestEvent(
       issue_id: issueId,
       event_id: "latest",
     },
+    query,
   });
 
   return unwrapResult<SentryEvent>(result, "Failed to get latest event");

@@ -26,6 +26,14 @@ describe("classifyUrl", () => {
     }
   });
 
+  it("keeps issue events volatile when adjacent events are collapsed", () => {
+    expect(
+      classifyUrl(
+        `${API}/organizations/acme/issues/123/events/latest/?collapse=adjacentEvents`,
+      ),
+    ).toBe("volatile");
+  });
+
   it("reuses full traces for at most 60 seconds, since spans can still arrive", () => {
     const url = `${API}/organizations/acme/trace/${TRACE_ID}/?limit=100`;
     expect(classifyUrl(url)).toBe("volatile");
