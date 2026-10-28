@@ -6,7 +6,7 @@
 
 import { stat } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 
 /**
  * Check if an error is an expected file system error that should be silently ignored.

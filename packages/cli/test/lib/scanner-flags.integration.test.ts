@@ -21,7 +21,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { ExitCode, run } from "@stricli/core";
 import { describe, expect, test, vi } from "vitest";
 import { app } from "../../src/app.js";

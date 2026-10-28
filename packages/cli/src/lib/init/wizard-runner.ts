@@ -19,7 +19,7 @@ import {
   captureException,
   getTraceData,
   setTag,
-} from "@sentry/node-core/light";
+} from "@sentry/node";
 import { formatAuthHeader } from "../auth-header.js";
 import { formatBanner } from "../banner.js";
 import { CLI_VERSION } from "../constants.js";

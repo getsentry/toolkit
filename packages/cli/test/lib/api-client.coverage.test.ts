@@ -7,7 +7,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { number, object, string } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { resolveEventInOrg } from "../../src/lib/api/events.js";

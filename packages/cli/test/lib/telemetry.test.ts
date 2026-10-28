@@ -7,7 +7,7 @@
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import {
   afterAll,
   afterEach,
@@ -106,6 +106,18 @@ describe("initSentry", () => {
   test("uses 0.0.0-dev version when SENTRY_CLI_VERSION is not defined", () => {
     const client = initSentry(true);
     expect(client?.getOptions().release).toBe("0.0.0-dev");
+  });
+
+  test("library mode installs only error-capture integrations", () => {
+    const client = initSentry(true, { libraryMode: true });
+    const names = client?.getOptions().integrations.map((i) => i.name);
+    expect(names?.sort()).toEqual([
+      "EventFilters",
+      "LinkedErrors",
+      "LocalVariablesAsync",
+      "NodeSystemError",
+      "RequestData",
+    ]);
   });
 
   describe("under VERCEL", () => {

@@ -8,7 +8,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import prettyMs from "pretty-ms";
 import type {
   DashboardDetail,

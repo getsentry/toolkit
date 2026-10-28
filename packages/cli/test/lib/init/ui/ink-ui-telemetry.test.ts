@@ -1,5 +1,5 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { InkUI } from "../../../../src/lib/init/ui/ink-ui.js";
 import {

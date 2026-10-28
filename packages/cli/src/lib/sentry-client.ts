@@ -10,7 +10,7 @@
 
 import { setTimeout as sleepMs } from "node:timers/promises";
 import type { SentryClient } from "@sentry/api";
-import { getTraceData } from "@sentry/node-core/light";
+import { getTraceData } from "@sentry/node";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
 import {
   formatAuthHeader,

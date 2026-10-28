@@ -11,8 +11,9 @@
 
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
+import type { Integration } from "@sentry/core";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 
 const _require = createRequire(import.meta.url);
 
@@ -271,9 +272,7 @@ export async function withTelemetry<T>(
  *
  * @internal Exported for testing
  */
-export function createBeforeExitHandler(
-  client: Sentry.LightNodeClient,
-): () => void {
+export function createBeforeExitHandler(client: Sentry.NodeClient): () => void {
   let isFlushing = false;
   return () => {
     if (isFlushing) {
@@ -429,6 +428,55 @@ const LIBRARY_EXCLUDED_INTEGRATIONS = new Set([
 ]);
 
 /**
+ * The v10 `@sentry/node-core/light` default integration set, rebuilt for v11.
+ *
+ * v11's `Sentry.init()` adds dozens of framework, database, and AI
+ * auto-instrumentations that would bloat the bundle and, in library mode,
+ * instrument the host application. Outgoing HTTP spans stay off because
+ * the CLI creates its own `http.client` spans around API requests.
+ */
+function getCliDefaultIntegrations(): Integration[] {
+  return [
+    Sentry.eventFiltersIntegration(),
+    Sentry.functionToStringIntegration(),
+    Sentry.linkedErrorsIntegration(),
+    Sentry.requestDataIntegration(),
+    Sentry.systemErrorIntegration(),
+    Sentry.consoleIntegration(),
+    Sentry.httpIntegration({ spans: false }),
+    Sentry.nativeNodeFetchIntegration({ spans: false }),
+    Sentry.onUncaughtExceptionIntegration(),
+    Sentry.onUnhandledRejectionIntegration(),
+    Sentry.contextLinesIntegration(),
+    Sentry.localVariablesIntegration(),
+    Sentry.nodeContextIntegration(),
+    Sentry.childProcessIntegration(),
+    Sentry.processSessionIntegration(),
+    Sentry.modulesIntegration(),
+  ];
+}
+
+/**
+ * v11 defaults that collect more than v10 did with `sendDefaultPii` unset.
+ * This is the v10 baseline from the v11 migration guide.
+ */
+const HEADER_DENYLIST = ["forwarded", "-ip", "remote-", "via", "-user"];
+const V10_DATA_COLLECTION: Sentry.NodeOptions["dataCollection"] = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: {
+    request: { deny: HEADER_DENYLIST },
+    response: { deny: HEADER_DENYLIST },
+  },
+  httpBodies: [],
+  urlQueryParams: { deny: HEADER_DENYLIST },
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  graphQL: { document: false, variables: false },
+};
+
+/**
  * Check whether `util.getSystemErrorMap` exists at setup time.
  * Bun does not implement this Node.js API, which the SDK's NodeSystemError
  * integration uses in its `processEvent` hook. When missing, the hook crashes
@@ -524,7 +572,7 @@ function setAgentTags(info: AgentInfo): void {
 export function initSentry(
   enabled: boolean,
   options?: { libraryMode?: boolean },
-): Sentry.LightNodeClient | undefined {
+): Sentry.NodeClient | undefined {
   const libraryMode = options?.libraryMode ?? false;
   const environment = getCliEnvironment();
 
@@ -588,9 +636,20 @@ export function initSentry(
   // close(0) removes listeners synchronously; we don't need to await the flush.
   Sentry.getClient()?.close(0);
 
-  const client = Sentry.init({
+  const client = Sentry.initWithoutDefaultIntegrations({
     dsn: SENTRY_CLI_DSN,
     enabled,
+    defaultIntegrations: getCliDefaultIntegrations(),
+    // Keep v10's transaction model: dashboards and alerts rely on scope tags
+    // on transactions, and beforeSendTransaction scrubs server_name.
+    traceLifecycle: "static",
+    dataCollection: V10_DATA_COLLECTION,
+    // v11 defaults this to true, which would mark sessions errored on
+    // informational captureMessage calls such as `unknown_command`.
+    attachStacktrace: false,
+    // The CLI ships as a bundle, so runtime module hooks can't instrument it;
+    // in library mode they would instrument the host application instead.
+    enableRuntimeChannelInjection: false,
     // Compress outgoing envelopes with zstd (level 3) instead of gzip —
     // smaller payloads, faster compress/decompress on both sides.
     // Automatic gzip fallback when running on Node < 22.15, where
@@ -608,8 +667,7 @@ export function initSentry(
     // The zstd-transport reads `caCerts` and passes it as `ca:` to
     // `http.request()`, and the SDK's fallback `makeNodeTransport` does the same.
     transportOptions: { caCerts: getCustomCaCerts() },
-    // Keep default integrations but filter out ones that add overhead without benefit.
-    // Important: Don't use defaultIntegrations: false as it may break debug ID support.
+    // Filter out default integrations that add overhead without benefit.
     // NodeSystemError is excluded on runtimes missing util.getSystemErrorMap (Bun) — CLI-K1.
     // Library mode uses the extended exclusion set to avoid polluting the host process.
     integrations: (defaults) => {
@@ -643,10 +701,9 @@ export function initSentry(
       return filtered;
     },
     environment,
-    // Enable Sentry structured logs for non-exception telemetry (e.g., unexpected input warnings).
-    // Disabled when telemetry is off or in library mode — the SDK registers
-    // beforeExit handlers for log flushing that keep the event loop alive.
-    enableLogs: enabled && !libraryMode,
+    // v11 removed `enableLogs` and always captures `Sentry.logger.*` calls.
+    // Library mode never sent logs in v10, so keep dropping them there.
+    ...(libraryMode && { beforeSendLog: () => null }),
     // Disable client reports when telemetry is off or in library mode — the SDK
     // registers a setInterval + beforeExit handler that keep the event loop alive.
     ...((libraryMode || !enabled) && { sendClientReports: false }),
@@ -694,6 +751,14 @@ export function initSentry(
     },
   });
 
+  // v11 attaches the client to the current scope before switching to the
+  // AsyncLocalStorage context strategy. When init runs inside a still-pending
+  // pre-init span (as in the CLI's middleware chain), that scope is lost in
+  // the switch and every later capture finds no client.
+  if (client) {
+    Sentry.setCurrentClient(client);
+  }
+
   // Always remove our own previous handler on re-init.
   if (currentBeforeExitHandler) {
     process.removeListener("beforeExit", currentBeforeExitHandler);
@@ -704,7 +769,7 @@ export function initSentry(
     const isBun = typeof process.versions.bun !== "undefined";
     const runtime = isBun ? "bun" : "node";
 
-    // LightNodeClient hardcodes runtime to { name: 'node' }. Override it so
+    // NodeClient defaults runtime to { name: 'node' }. Override it so
     // events carry the correct runtime when running as a compiled Bun binary.
     const opts = client.getOptions();
     opts.runtime = {
