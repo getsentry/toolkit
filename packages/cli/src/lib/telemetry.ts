@@ -450,6 +450,13 @@ const hasGetSystemErrorMap = (() => {
 /** Current beforeExit handler, tracked so it can be replaced on re-init */
 let currentBeforeExitHandler: (() => void) | null = null;
 
+/**
+ * SIGTERM listeners registered by the last `Sentry.init()`. Under `VERCEL`,
+ * the light SDK adds an anonymous flush handler per init and never removes
+ * it, so repeated library-mode inits leak one listener each.
+ */
+let sdkSigtermListeners: NodeJS.SignalsListener[] = [];
+
 /** Match all SaaS regional URLs (us.sentry.io, de.sentry.io, o1234.ingest.us.sentry.io, etc.) */
 const SENTRY_SAAS_SUBDOMAIN_RE = /^https:\/\/[^/]*\.sentry\.io(\/|$)/;
 
@@ -587,6 +594,10 @@ export function initSentry(
   // that keep the event loop alive and prevent the process from exiting.
   // close(0) removes listeners synchronously; we don't need to await the flush.
   Sentry.getClient()?.close(0);
+  for (const listener of sdkSigtermListeners) {
+    process.removeListener("SIGTERM", listener);
+  }
+  const preInitSigterm = new Set(process.listeners("SIGTERM"));
 
   const client = Sentry.init({
     dsn: SENTRY_CLI_DSN,
@@ -693,6 +704,10 @@ export function initSentry(
       return enrichEventWithGroupingTags(event);
     },
   });
+
+  sdkSigtermListeners = process
+    .listeners("SIGTERM")
+    .filter((listener) => !preInitSigterm.has(listener));
 
   // Always remove our own previous handler on re-init.
   if (currentBeforeExitHandler) {
