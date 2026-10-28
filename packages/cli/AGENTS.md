@@ -271,16 +271,32 @@ call `command.loader()` keep passing raw strings. Positionals whose
 meaning depends on how many arguments were given, such as
 `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
-**Shell completion:** Target positionals that take an org or project use a
-completion-aware parser from `src/lib/completion-target.ts` instead of
-`String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
-aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
-and `LIST_ORG_TARGET_POSITIONAL` already use them. A parser tagged with
-`withCompletionTarget`, such as the `target-positional.ts` parsers, completes
-the same way.
+**Shell completion:** Target positionals that take an org, project, issue, or
+dashboard use a completion-aware parser from `src/lib/completion-target.ts`
+instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
+and project aliases; `parseOrgTarget` completes org slugs only;
+`parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
+completes cached dashboards. `LIST_TARGET_POSITIONAL`,
+`LIST_ORG_TARGET_POSITIONAL`, and `issueIdPositional` already use them. A
+parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
+parsers, completes the same way. Shared value parsers are not tagged where
+they live; `PARSER_TARGETS` in `completion-target.ts` lists them instead, so
+every flag that parses with `sanitizeIssueQuery` completes issue search terms
+(`is:unr` → `is:unresolved`) and every flag that parses with `parsePeriod`
+completes relative periods. Fixed values (search keys, period units) come
+from the modules that define them through `COMPLETION_VALUES`.
+Issue and dashboard suggestions come from the `completion_cache` table. The
+authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
+`src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
+operations it lists (by URL template, type-checked against the SDK), so API
+functions never seed by hand. To complete a new entity type, add it to
+`CompletionEntityKind`, its operations in `completion-seed.ts`, a tagged
+parser, and an `entityCompleter` entry in `src/lib/complete.ts`.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path reads.
-`project create` keeps its dedicated `name:platform` completer in
+Completers that need a parser (`arg-parsing.ts`, the search grammar) import
+it when called, so the fast path only loads it for the arguments that need
+it. `project create` keeps its dedicated `name:platform` completer in
 `src/lib/complete.ts`.
 
 ### Multiple Values in Arguments

@@ -18,15 +18,16 @@ import { constantFrom, assert as fcAssert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
 import generatedTargets from "../../src/generated/completion-targets.json";
+import { COMPLETION_VALUES } from "../../src/lib/completion-target.js";
+import { parsePeriod } from "../../src/lib/time-range.js";
 import {
   extractCommandTree,
   generateBashCompletion,
   generateFishCompletion,
   generateZshCompletion,
 } from "../../src/lib/completions.js";
-import { COMPLETION_TARGETS } from "../../src/lib/completion-target.js";
 import {
-  extractCompletionTargets,
+  extractCommandCompletions,
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
@@ -400,17 +401,27 @@ echo "\${COMPREPLY[*]}"
 describe("complete.ts: generated completion targets", () => {
   // Use the ESM import (routes) instead of require() which fails under
   // vitest because Node's CJS require can't resolve .js→.ts for transitive imports.
-  const targets = extractCompletionTargets(routes as unknown as RouteMap);
+  const commands = extractCommandCompletions(routes as unknown as RouteMap);
 
   // A mismatch means src/generated/completion-targets.json is stale.
   // Regenerate with: pnpm run generate:completions
   test("generated completion targets match the route tree", () => {
-    expect(generatedTargets).toEqual(targets);
+    expect(generatedTargets).toEqual({ commands, values: COMPLETION_VALUES });
+  });
+
+  test("every suggested period is one --period accepts", () => {
+    const { periodPresets, periodUnits } = COMPLETION_VALUES;
+    for (const period of [
+      ...Object.keys(periodPresets),
+      ...periodUnits.map((unit) => `7${unit}`),
+    ]) {
+      expect(() => parsePeriod(period)).not.toThrow();
+    }
   });
 
   test("project create keeps its dedicated name:platform completer", () => {
-    for (const kind of COMPLETION_TARGETS) {
-      expect(generatedTargets[kind]).not.toContain("project create");
-    }
+    expect(Object.keys(generatedTargets.commands)).not.toContain(
+      "project create",
+    );
   });
 });

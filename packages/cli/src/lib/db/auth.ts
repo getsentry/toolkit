@@ -65,6 +65,7 @@ import {
 import { getAccountScope, resetAccountScopes } from "./account-scope.js";
 import { hashIdentity } from "./identity-hash.js";
 import { getDatabase } from "./index.js";
+import { clearCompletionCache } from "./completion-cache.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";
 
@@ -843,13 +844,14 @@ export function getAccountIdToReplace(host: string): string | undefined {
 
 /**
  * Clear caches whose entries are scoped to one identity's permissions but
- * not keyed by it (pagination cursors, issue-id → org mappings), plus the
- * in-process trust extension.
+ * not keyed by it (pagination cursors, issue-id → org mappings, completion
+ * entities), plus the in-process trust extension.
  */
 function clearUnscopedIdentityCaches(): void {
   const db = getDatabase();
   db.query("DELETE FROM pagination_cursors").run();
   clearAllIssueOrgCache();
+  clearCompletionCache();
   clearTrustedHostState();
 }
 

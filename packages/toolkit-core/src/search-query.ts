@@ -1181,6 +1181,73 @@ function stripTrailingListCommas(query: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Completion
+// ---------------------------------------------------------------------------
+
+/** `is:` values the issues endpoint maps to a status or substatus filter. */
+export const ISSUE_IS_VALUES: readonly string[] = [
+  ...IS_STATUS_VALUES,
+  ...IS_SUBSTATUS_PARENT.keys(),
+];
+
+/**
+ * Complete the term at the end of a search query.
+ *
+ * The query is read with the search grammar, so the term is what Sentry
+ * would read: a `[!]key:partial` filter on a key of `values` completes the
+ * value, and a bare word completes those keys (`le` → `level:`). Anything
+ * else (quoted text, in-lists, comparisons, other keys) gets no suggestions.
+ *
+ * @param query - Query typed so far, ending with the term being completed
+ * @param values - Keys with a known, fixed set of values, mapped to them
+ * @returns Full queries, each `query` with its last term completed, in the
+ *   order of `values`
+ */
+export function completeSearchQuery(
+  query: string,
+  values: Readonly<Record<string, readonly string[]>>,
+): string[] {
+  const keyCompletions = (head: string, word: string): string[] =>
+    Object.keys(values)
+      .filter((key) => key.startsWith(word.toLowerCase()))
+      .map((key) => `${head}${key}:`);
+
+  const tokens = parseSearch(query, { config: { allowRegex: true } });
+  // An empty query, or one ending in a space, starts a new term
+  const last = tokens?.filter((token) => token.type !== Token.SPACES).at(-1);
+  if (!last || last.location.end.offset !== query.length) {
+    return tokens ? keyCompletions(query, "") : [];
+  }
+  if (last.type === Token.FREE_TEXT) {
+    if (last.text.includes('"')) {
+      return [];
+    }
+    // The grammar folds consecutive words into one free-text token
+    const term = last.text.split(FREE_TEXT_SEPARATOR_RE).at(-1) ?? "";
+    const negated = term.startsWith("!");
+    return keyCompletions(
+      query.slice(0, query.length - term.length) + (negated ? "!" : ""),
+      negated ? term.slice(1) : term,
+    );
+  }
+  if (
+    last.type !== Token.FILTER ||
+    (last.filter !== FilterType.TEXT && last.filter !== FilterType.IS) ||
+    last.key.type !== Token.KEY_SIMPLE ||
+    last.value.type !== Token.VALUE_TEXT ||
+    last.value.quoted ||
+    !Object.hasOwn(values, last.key.value)
+  ) {
+    return [];
+  }
+  const partial = last.value.text.toLowerCase();
+  const head = query.slice(0, last.value.location.start.offset);
+  return (values[last.key.value] ?? [])
+    .filter((value) => value.startsWith(partial))
+    .map((value) => `${head}${value}`);
+}
+
+// ---------------------------------------------------------------------------
 // Test exports
 // ---------------------------------------------------------------------------
 

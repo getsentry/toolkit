@@ -17,6 +17,7 @@ import {
   normalizeAuthToken,
   trimAuthToken,
 } from "./auth-header.js";
+import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
 import {
   DEFAULT_SENTRY_URL,
@@ -793,10 +794,10 @@ type AuthenticatedFetchOptions = {
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  return async function authenticatedFetch(
+  const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
-  ): Promise<Response> {
+  ): Promise<Response> => {
     // Reset cache-hit age so it reflects only this request's outcome.
     // Commands read it after their primary API call to show cache-age hints.
     clearLastCacheHitAge();
@@ -894,6 +895,14 @@ function createAuthenticatedFetch(
       { "http.request.method": method, "url.path": urlPath },
     );
   };
+  // Every API response, fresh or cached, seeds shell completion, so no API
+  // function has to remember to. Awaited so a command that exits right
+  // after its request still stores the entities.
+  return async (input, init) =>
+    await seedCompletions(
+      extractInputUrl(input),
+      await authenticatedFetch(input, init),
+    );
 }
 
 /**

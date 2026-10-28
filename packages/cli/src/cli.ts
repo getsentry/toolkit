@@ -78,7 +78,7 @@ export async function runCompletion(completionArgs: string[]): Promise<void> {
   // Disable telemetry so db/index.ts skips the @sentry/node lazy-require (~100ms)
   getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
   const { handleComplete } = await import("./lib/complete.js");
-  handleComplete(completionArgs);
+  await handleComplete(completionArgs);
 }
 
 /**
