@@ -204,7 +204,7 @@ patchedDependencies:
   '@ai-sdk/provider-utils@2.2.8': 4649a74595006c4a262d453549e091db331ade06b4f4320957af1b2c659b8ee3
   '@cloudflare/workers-oauth-provider@0.10.3': 34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8
   '@sentry/core@10.63.0': e663994979ff877a26ab6d4dea5968fbaee4ccdfdeb85623983535a572678940
-  '@sentry/node-core@10.63.0': 0a5f08471bd72cb833a2b36220c96001d966e5c390d71aaf598fdef75b552640
+  '@sentry/node-core@10.63.0': a537ad4fb79b41d54b6294108829d470d10a45d3895041f16ab11168de0f1983
   '@stricli/core@1.2.8': cbf047581d38be04108d3921321c14a778272c24004da8110d4498d4f2a6b2e1
 
 importers:
@@ -481,7 +481,7 @@ importers:
         version: 10.65.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))
       '@sentry/node-core':
         specifier: 10.63.0
-        version: 10.63.0(patch_hash=0a5f08471bd72cb833a2b36220c96001d966e5c390d71aaf598fdef75b552640)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
+        version: 10.63.0(patch_hash=a537ad4fb79b41d54b6294108829d470d10a45d3895041f16ab11168de0f1983)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
       '@sentry/sqlish':
         specifier: ^1.0.1
         version: 1.0.1(react@19.2.8)
@@ -12787,7 +12787,7 @@ snapshots:
     dependencies:
       '@sentry/core': 11.6.0
 
-  '@sentry/node-core@10.63.0(patch_hash=0a5f08471bd72cb833a2b36220c96001d966e5c390d71aaf598fdef75b552640)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))':
+  '@sentry/node-core@10.63.0(patch_hash=a537ad4fb79b41d54b6294108829d470d10a45d3895041f16ab11168de0f1983)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@sentry/conventions': 0.12.0
       '@sentry/core': 10.63.0(patch_hash=e663994979ff877a26ab6d4dea5968fbaee4ccdfdeb85623983535a572678940)
