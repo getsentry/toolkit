@@ -26,6 +26,7 @@ import {
 } from "../db/completion-cache.js";
 import { reportCliError } from "../error-reporting.js";
 import { logger } from "../logger.js";
+import { parseSentryUrl } from "../sentry-url-parser.js";
 import { isAllDigits } from "../utils.js";
 
 const log = logger.withTag("completion-seed");
@@ -33,10 +34,15 @@ const log = logger.withTag("completion-seed");
 /** An endpoint whose response body holds entities to remember. */
 type CompletionSource = {
   kind: CompletionEntityKind;
-  /** Matches the URL path; the first group is the organization slug. */
+  /**
+   * Matches the URL path. The first group, when the path has one, is the
+   * organization slug.
+   */
   path: RegExp;
   /** Entities in the parsed JSON body, in display order. */
   extract: (body: unknown) => CompletionEntity[];
+  /** Organization of a body whose path names none (unscoped endpoints). */
+  org?: (body: unknown) => string | undefined;
 };
 
 /** Read a string property of an untyped JSON value. */
@@ -93,6 +99,17 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
       ),
   },
   {
+    // Unscoped numeric-ID lookup (`getIssue`, `updateIssueStatus` without an
+    // org); the org comes from the issue's permalink.
+    kind: ISSUE_ENTITY,
+    path: /\/api\/0\/issues\/\d+\/$/,
+    extract: issueEntities,
+    org: (body) => {
+      const permalink = stringField(body, "permalink");
+      return permalink ? parseSentryUrl(permalink)?.org : undefined;
+    },
+  },
+  {
     kind: DASHBOARD_ENTITY,
     path: /\/api\/0\/organizations\/([^/]+)\/dashboards\/(?:\d+\/)?$/,
     extract: dashboardEntities,
@@ -102,7 +119,7 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
 /** The source for a URL and the organization it names, if any. */
 function matchSource(
   url: string,
-): { source: CompletionSource; orgSlug: string } | undefined {
+): { source: CompletionSource; orgSlug?: string } | undefined {
   let pathname: string;
   try {
     pathname = new URL(url).pathname;
@@ -111,9 +128,10 @@ function matchSource(
     return;
   }
   for (const source of COMPLETION_SOURCES) {
-    const org = source.path.exec(pathname)?.[1];
-    if (org) {
-      return { source, orgSlug: decodeURIComponent(org) };
+    const match = source.path.exec(pathname);
+    if (match) {
+      const org = match[1];
+      return { source, orgSlug: org ? decodeURIComponent(org) : undefined };
     }
   }
   return;
@@ -142,12 +160,19 @@ export async function seedCompletionsFromResponse(
   if (!match) {
     return;
   }
-  const { source, orgSlug } = match;
+  const { source } = match;
   let body: unknown;
   try {
     body = await response.clone().json();
   } catch (error) {
     log.debug(`Not seeding ${source.kind} completions from '${url}'`, error);
+    return;
+  }
+  const orgSlug = match.orgSlug ?? source.org?.(body);
+  if (!orgSlug) {
+    log.debug(
+      `Not seeding ${source.kind} completions without an org: '${url}'`,
+    );
     return;
   }
   try {

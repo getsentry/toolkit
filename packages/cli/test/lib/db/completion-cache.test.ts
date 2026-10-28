@@ -99,6 +99,26 @@ describe("completion seeding from API responses", () => {
     ).toEqual(["CLI-3C", "CLI-2B", "CLI-1A"]);
   });
 
+  test("unscoped issue lookups take the org from the permalink", async () => {
+    const issues = "https://sentry.io/api/0/issues";
+    await seedCompletionsFromResponse(
+      `${issues}/123/`,
+      json({
+        shortId: "CLI-1A",
+        title: "Boom",
+        permalink: "https://acme.sentry.io/issues/123/",
+      }),
+    );
+    await seedCompletionsFromResponse(
+      `${issues}/456/`,
+      json({ shortId: "CLI-2B", title: "No permalink" }),
+    );
+
+    expect(getCachedCompletionEntities(ISSUE_ENTITY, ["acme"])).toEqual([
+      { orgSlug: "acme", value: "CLI-1A", label: "Boom" },
+    ]);
+  });
+
   test("dashboards are stored by numeric ID only", async () => {
     await seedCompletionsFromResponse(
       `${API}/dashboards/`,
