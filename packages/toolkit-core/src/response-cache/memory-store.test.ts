@@ -221,9 +221,12 @@ describe("createMemoryStore", () => {
     });
   });
 
-  it("does not keep the larger buffer behind a body view", async () => {
+  it.each([
+    ["Uint8Array", new Uint8Array(1024 * 1024)],
+    // `Buffer#slice` shares memory, unlike `Uint8Array#slice`.
+    ["Buffer", Buffer.alloc(1024 * 1024)],
+  ])("does not keep the larger buffer behind a %s view", async (_, backing) => {
     const store = createMemoryStore();
-    const backing = new Uint8Array(1024 * 1024);
     const bytes = backing.subarray(100, 400);
     await store.set(
       "k",

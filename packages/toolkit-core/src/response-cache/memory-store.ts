@@ -46,12 +46,13 @@ function limit(name: string, value: number | undefined, fallback: number) {
 
 /**
  * Copy `bytes` when it is a view into a larger buffer, so the store never
- * keeps memory it does not count.
+ * keeps memory it does not count. Copies with the `Uint8Array` constructor,
+ * because `Buffer#slice` returns a view that shares the original memory.
  */
 function ownBytes(bytes: Uint8Array): Uint8Array {
   return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
     ? bytes
-    : bytes.slice();
+    : new Uint8Array(bytes);
 }
 
 /**
