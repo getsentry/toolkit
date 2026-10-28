@@ -67,8 +67,19 @@ export const createCommand = buildCommand({
         command: "sentry release create 1.0.0 --project proj-a,proj-b",
       },
       {
+        description:
+          "Typical CI release: create, associate commits, finalize, and record a deploy",
+        command: [
+          "sentry release create my-org/1.0.0 --project my-project",
+          "sentry release set-commits my-org/1.0.0 --auto",
+          "sentry release finalize my-org/1.0.0",
+          "sentry release deploy my-org/1.0.0 production",
+        ],
+      },
+      {
         description: "Create a release from a proposed version",
-        command: "sentry release create $(sentry release propose-version)",
+        command:
+          'sentry release create "$(sentry release propose-version --json | jq -r .version)"',
       },
       {
         description: "Set the release ref and URL",

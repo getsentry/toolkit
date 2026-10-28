@@ -15,6 +15,12 @@ Manage Sentry dashboards
 
 List dashboards
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/title-filter...>` | [&lt;org/project&gt;] [&lt;name-glob&gt;] |
+
 **Flags:**
 - `-w, --web - Open in browser`
 - `-n, --limit <value> - Maximum number of dashboards to list - (default: "25")`
@@ -56,12 +62,18 @@ sentry dashboard list -w
 
 View a dashboard
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/dashboard...>` | [&lt;org/project&gt;] &lt;dashboard-id-or-title&gt; |
+
 **Flags:**
 - `-w, --web - Open in browser`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-r, --refresh <value> - Auto-refresh interval in seconds (default: 60, min: 10)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01"`
-- `--renderer <value> - Graphics renderer (defaults to auto; falls back to auto when unavailable) - (default: "auto")`
+- `--renderer <value> - Graphics renderer (falls back to auto when unavailable) - (default: "auto")`
 - `--no-graphics-cap - Use the terminal-native graphics width (may fall back to ASCII for very large dashboards)`
 
 **Examples:**
@@ -102,6 +114,12 @@ sentry dashboard view 12345 -w
 
 Create a dashboard
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/title...>` | [&lt;org/project&gt;] &lt;title&gt; |
+
 **Examples:**
 
 ```bash
@@ -118,6 +136,12 @@ sentry dashboard create my-org/my-project 'My Dashboard'
 ### `sentry dashboard widget add <org/project/dashboard/title...>`
 
 Add a widget to a dashboard
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/dashboard/title...>` | [&lt;org/project&gt;] &lt;dashboard&gt; &lt;title&gt; |
 
 **Flags:**
 - `-d, --display <value> - Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)`
@@ -150,11 +174,26 @@ sentry dashboard widget add 'My Dashboard' "Top Endpoints" --display table --que
 
 # Bar chart with a search filter
 sentry dashboard widget add 'My Dashboard' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description
+
+# P95 latency KPI
+sentry dashboard widget add 'My Dashboard' "P95" --display big_number --query p95:span.duration
+
+# Throughput KPI
+sentry dashboard widget add 'My Dashboard' "Throughput" --display big_number --query epm
+
+# Custom metric percentiles from the tracemetrics dataset
+sentry dashboard widget add 'My Dashboard' "Latency" --display line --dataset tracemetrics --query "p50(value,completion.duration_ms,distribution,none)" --query "p90(value,completion.duration_ms,distribution,none)"
 ```
 
 ### `sentry dashboard widget edit <org/project/dashboard...>`
 
 Edit a widget in a dashboard
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/dashboard...>` | [&lt;org/project&gt;] &lt;dashboard-id-or-title&gt; |
 
 **Flags:**
 - `-i, --index <value> - Widget index (0-based)`
@@ -194,6 +233,12 @@ Delete a widget from a dashboard
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/dashboard...>` | [&lt;org/project&gt;] &lt;dashboard-id-or-title&gt; |
+
 **Flags:**
 - `-i, --index <value> - Widget index (0-based)`
 - `-t, --title <value> - Widget title to match`
@@ -217,6 +262,12 @@ sentry dashboard widget delete 12345 --index 0 --dry-run
 ### `sentry dashboard revisions <org/dashboard...>`
 
 List dashboard revisions
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/dashboard...>` | [&lt;org/project&gt;] &lt;dashboard-id-or-title&gt; |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of revisions to list - (default: "25")`
@@ -244,6 +295,12 @@ sentry dashboard revisions my-org/ 12345 --json
 ### `sentry dashboard restore <org/dashboard...>`
 
 Restore a dashboard revision
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/dashboard...>` | [&lt;org/project&gt;] &lt;dashboard-id-or-title&gt; |
 
 **Flags:**
 - `-r, --revision <value> - Revision ID to restore`

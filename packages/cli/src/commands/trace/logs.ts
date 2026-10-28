@@ -102,10 +102,6 @@ export const logsCommand = buildCommand({
     brief: "View logs associated with a trace",
     fullDescription:
       "View logs associated with a specific distributed trace.\n\n" +
-      "Target specification:\n" +
-      "  sentry trace logs <trace-id>                    # auto-detect org\n" +
-      "  sentry trace logs <org>/<trace-id>              # explicit org\n" +
-      "  sentry trace logs <org>/<project>/<trace-id>    # filter to project\n\n" +
       "When a project is specified, only logs from that project are shown.\n" +
       "Use --query 'project:[a,b]' to filter to multiple projects.\n\n" +
       "The trace ID is the 32-character hexadecimal identifier.",
@@ -137,6 +133,10 @@ export const logsCommand = buildCommand({
       {
         description: "Output as JSON",
         command: "sentry trace logs --json abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Logs for a trace in an explicit organization",
+        command: "sentry trace logs my-org/abc123def456abc123def456abc12345",
       },
     ],
   },

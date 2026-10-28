@@ -276,21 +276,7 @@
                       "type": "string"
                     },
                     "integrationId": {
-                      "anyOf": [
-                        {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "number"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "number", "null"]
                     },
                     "data": {
                       "type": "object",
@@ -364,24 +350,10 @@
               "additionalProperties": false
             },
             "environment": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "triggers": {
               "anyOf": [
@@ -389,14 +361,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string",
@@ -408,14 +373,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -445,14 +403,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "logicType": {
                         "type": "string",
@@ -464,14 +415,7 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
@@ -489,34 +433,13 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
                             },
                             "integrationId": {
-                              "anyOf": [
-                                {
-                                  "anyOf": [
-                                    {
-                                      "type": "string"
-                                    },
-                                    {
-                                      "type": "number"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
+                              "type": ["string", "number", "null"]
                             },
                             "data": {
                               "type": "object",
@@ -668,14 +591,7 @@
           "maxLength": 200
         },
         "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "owner": {
           "description": "Owner actor, e.g. team:123 or user:123. Pass null to clear.",
@@ -711,14 +627,7 @@
             },
             "environment": {
               "default": null,
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "eventTypes": {
               "type": "array",
@@ -727,14 +636,7 @@
               }
             },
             "extrapolationMode": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "timeWindowSeconds": {
               "type": "integer",
@@ -912,27 +814,13 @@
               "type": "string"
             },
             "projectId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "enabled": {
               "type": "boolean"
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "workflowIds": {
               "type": "array",
@@ -944,14 +832,7 @@
               "type": "string"
             },
             "description": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "config": {
               "type": "object",
@@ -972,14 +853,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string"
@@ -990,14 +864,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -1040,14 +907,7 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "eventTypes": {
                         "type": "array",
@@ -1056,14 +916,7 @@
                         }
                       },
                       "extrapolationMode": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "timeWindowSeconds": {
                         "type": "number"
@@ -1088,24 +941,10 @@
               }
             },
             "dateCreated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "dateUpdated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": [
@@ -1193,14 +1032,7 @@
         "repository": {
           "default": null,
           "description": "Optional repository name to link to the project (e.g. 'getsentry/sentry'). The repo must already be connected to the organization via a VCS integration.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["organizationSlug", "teamSlug", "name"]
@@ -1331,7 +1163,10 @@
               {
                 "type": "string"
               }
-            ]
+            ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2
           },
           "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
@@ -1813,94 +1648,31 @@
                 "type": "string"
               },
               "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "actionMatch": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "filterMatch": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "frequencyMinutes": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["number", "null"]
               },
               "environment": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateCreated": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateUpdated": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastTriggered": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "webUrl": {
                 "type": "string"
@@ -1936,14 +1708,7 @@
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "enabled": {
                 "type": "boolean"
@@ -1956,74 +1721,25 @@
                 "enum": ["enabled", "disabled"]
               },
               "dataset": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "aggregate": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "query": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "timeWindowMinutes": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["number", "null"]
               },
               "environment": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateCreated": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "webUrl": {
                 "type": "string"
@@ -2057,14 +1773,7 @@
                   "type": "object",
                   "properties": {
                     "nextCursor": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     }
                   },
                   "required": ["nextCursor"],
@@ -2081,14 +1790,7 @@
                   "type": "object",
                   "properties": {
                     "nextCursor": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     }
                   },
                   "required": ["nextCursor"],
@@ -2214,40 +1916,19 @@
                 }
               },
               "createdBy": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateCreated": {
                 "type": "string"
               },
               "lastVisited": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "isFavorited": {
                 "type": "boolean"
               },
               "prebuiltId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "url": {
                 "type": "string",
@@ -2272,14 +1953,7 @@
           }
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["dashboards", "nextCursor"],
@@ -2513,7 +2187,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "direct"
+    "surface": "catalog"
   },
   {
     "name": "find_dsns",
@@ -2633,27 +2307,13 @@
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "enabled": {
                 "type": "boolean"
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "workflowIds": {
                 "type": "array",
@@ -2678,14 +2338,7 @@
           }
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["monitors", "nextCursor"],
@@ -2784,14 +2437,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "slug": {
                 "type": "string"
@@ -2800,41 +2446,20 @@
                 "type": "string"
               },
               "projectSlug": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastCheckIn": {
                 "anyOf": [
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -2846,7 +2471,7 @@
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -2863,44 +2488,16 @@
                     "type": "object",
                     "properties": {
                       "type": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "value": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "checkInMargin": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["number", "null"]
                       },
                       "maxRuntime": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["number", "null"]
                       }
                     },
                     "required": [
@@ -2922,31 +2519,17 @@
                   "type": "object",
                   "properties": {
                     "name": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     },
                     "status": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     },
                     "lastCheckIn": {
                       "anyOf": [
                         {
                           "type": "string",
                           "format": "date-time",
-                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                         },
                         {
                           "type": "null"
@@ -3064,14 +2647,7 @@
           "type": "boolean"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["organizations", "hasMore", "nextCursor"],
@@ -3150,14 +2726,7 @@
           "type": "boolean"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["projects", "hasMore", "nextCursor"],
@@ -3230,14 +2799,14 @@
               "dateCreated": {
                 "type": "string",
                 "format": "date-time",
-                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
               },
               "dateReleased": {
                 "anyOf": [
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -3249,7 +2818,7 @@
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -3261,7 +2830,7 @@
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -3286,29 +2855,15 @@
                         "type": "string"
                       },
                       "message": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "author": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "dateCreated": {
                         "type": "string",
                         "format": "date-time",
-                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                       }
                     },
                     "required": ["id", "message", "author", "dateCreated"],
@@ -3328,21 +2883,14 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "dateStarted": {
                         "anyOf": [
                           {
                             "type": "string",
                             "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                           },
                           {
                             "type": "null"
@@ -3354,7 +2902,7 @@
                           {
                             "type": "string",
                             "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                           },
                           {
                             "type": "null"
@@ -3473,14 +3021,7 @@
           "type": "boolean"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["teams", "hasMore", "nextCursor"],
@@ -3649,14 +3190,7 @@
           "type": "string"
         },
         "title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "organizationSlug": {
           "type": "string"
@@ -3681,24 +3215,10 @@
           "additionalProperties": false
         },
         "startTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "endTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "traceIds": {
           "type": "array",
@@ -3739,27 +3259,13 @@
                 "type": "string"
               },
               "parentSpanId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "project": {
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ]
+                "type": ["string", "number"]
               },
               "timestamp": {
                 "type": "number"
@@ -4135,14 +3641,7 @@
           "type": "string"
         },
         "title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "organizationSlug": {
           "type": "string"
@@ -4167,24 +3666,10 @@
           "additionalProperties": false
         },
         "startTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "endTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "traceIds": {
           "type": "array",
@@ -4225,27 +3710,13 @@
                 "type": "string"
               },
               "parentSpanId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "project": {
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ]
+                "type": ["string", "number"]
               },
               "timestamp": {
                 "type": "number"
@@ -4683,14 +4154,7 @@
         "cursor": {
           "default": null,
           "description": "Next cursor from the same section and filters.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "limit": {
           "default": 25,
@@ -4870,14 +4334,7 @@
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "enabled": {
                 "type": "boolean"
@@ -4901,14 +4358,7 @@
           }
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "inputGuide": {
           "type": "object",
@@ -5368,37 +4818,16 @@
                 "type": "object",
                 "properties": {
                   "value": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "type": ["string", "null"]
                   },
                   "count": {
                     "type": "number"
                   },
                   "firstSeen": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "type": ["string", "null"]
                   },
                   "lastSeen": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "type": ["string", "null"]
                   }
                 },
                 "required": ["value", "count", "firstSeen", "lastSeen"],
@@ -5577,27 +5006,13 @@
               "type": "string"
             },
             "projectId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "enabled": {
               "type": "boolean"
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "workflowIds": {
               "type": "array",
@@ -5609,14 +5024,7 @@
               "type": "string"
             },
             "description": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "config": {
               "type": "object",
@@ -5637,14 +5045,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string"
@@ -5655,14 +5056,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -5705,14 +5099,7 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "eventTypes": {
                         "type": "array",
@@ -5721,14 +5108,7 @@
                         }
                       },
                       "extrapolationMode": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "timeWindowSeconds": {
                         "type": "number"
@@ -5753,24 +5133,10 @@
               }
             },
             "dateCreated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "dateUpdated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": [
@@ -5823,14 +5189,7 @@
         "projectSlugOrId": {
           "default": null,
           "description": "Optional project slug or numeric ID. Use this to disambiguate monitors with the same slug or to scope a monitor URL that includes a project segment.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "monitorSlug": {
           "type": "string",
@@ -5854,7 +5213,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^\\d+[hdw]$",
+              "pattern": "^\\d+[mhdw]$",
               "description": "Relative time range. Defaults to `24h` when `start` and `end` are omitted."
             },
             {
@@ -5868,7 +5227,7 @@
             {
               "type": "string",
               "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
               "description": "Absolute start time. Must be provided with `end`; do not combine with `period`."
             },
             {
@@ -5882,7 +5241,7 @@
             {
               "type": "string",
               "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
               "description": "Absolute end time. Must be provided with `start`; do not combine with `period`."
             },
             {
@@ -5952,14 +5311,7 @@
         },
         "projectSlugOrId": {
           "description": "Project slug or numeric ID",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
+          "type": ["string", "number"]
         },
         "transactionName": {
           "description": "Transaction name (e.g., '/api/users', 'POST /graphql')",
@@ -5969,12 +5321,12 @@
           "default": "7d",
           "description": "Profiling time window (default: '7d'). Use '1h' for very recent profiling data.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "compareAgainstPeriod": {
           "description": "Compare against this baseline profiling time window. Enables regression detection.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "focusOnUserCode": {
           "default": true,
@@ -6023,14 +5375,7 @@
         },
         "projectSlugOrId": {
           "description": "Project slug or numeric ID",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
+          "type": ["string", "number"]
         },
         "profileId": {
           "description": "Transaction profile ID from a profile flamegraph URL",
@@ -6416,19 +5761,19 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
+          "pattern": "^\\d+[mhdw]$",
           "description": "Relative time range for recent checks. Defaults to `24h` when `start` and `end` are omitted."
         },
         "start": {
           "type": "string",
           "format": "date-time",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
           "description": "Absolute start time. Must be provided with `end`; do not combine with `period`."
         },
         "end": {
           "type": "string",
           "format": "date-time",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
           "description": "Absolute end time. Must be provided with `start`; do not combine with `period`."
         },
         "checkLimit": {
@@ -6498,14 +5843,7 @@
             "type": "string"
           },
           "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              }
-            ]
+            "type": ["string", "number"]
           }
         }
       },
@@ -6860,7 +6198,7 @@
           "default": "30d",
           "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "start": {
           "description": "Explicit start time for the search window.",
@@ -6901,14 +6239,7 @@
           "type": "number"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "conversations": {
           "type": "array",
@@ -6919,14 +6250,7 @@
                 "type": "string"
               },
               "title": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "url": {
                 "type": "string",
@@ -6969,24 +6293,10 @@
                 }
               },
               "firstInputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastOutputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "flow": {
                 "type": "array",
@@ -7006,24 +6316,10 @@
                     "type": "object",
                     "properties": {
                       "email": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "username": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       }
                     },
                     "required": ["email", "username"],
@@ -7125,7 +6421,7 @@
           "default": "30d",
           "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "start": {
           "description": "Explicit start time for the search window.",
@@ -7166,14 +6462,7 @@
           "type": "number"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "conversations": {
           "type": "array",
@@ -7184,14 +6473,7 @@
                 "type": "string"
               },
               "title": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "url": {
                 "type": "string",
@@ -7234,24 +6516,10 @@
                 }
               },
               "firstInputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastOutputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "flow": {
                 "type": "array",
@@ -7271,24 +6539,10 @@
                     "type": "object",
                     "properties": {
                       "email": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "username": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       }
                     },
                     "required": ["email", "username"],
@@ -7526,14 +6780,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7549,8 +6796,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7618,14 +6865,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). If omitted, event datasets default to -timestamp and replays default to -started_at. Use -count() for event aggregations. For dataset='replays', use replay sorts like -started_at or -count_errors.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7658,8 +6898,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7730,8 +6970,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "projectSlug": {
           "default": null,
@@ -7779,7 +7019,7 @@
   },
   {
     "name": "search_issues",
-    "description": "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.\n\nProvide `query` as natural language or Sentry issue search syntax. When an embedded agent is configured, it fixes query and sort before running while preserving explicit Sentry search syntax.\n\nReturns grouped issues with metadata like title, status, and user count.\n\nCommon Query Syntax:\n- is:unresolved / is:resolved / is:ignored / is:for_review / is:new / is:regressed / is:escalating\n- level:error / level:warning\n- firstSeen:-24h / lastSeen:-7d\n- assigned:me / assigned_or_suggested:me\n- release:latest\n- issue.category:feedback\n- issue.priority:high\n- environment:production\n- userCount:>100\n\nDO NOT USE FOR COUNTS/AGGREGATIONS → use search_errors\nDO NOT USE FOR individual events with timestamps → use search_errors, search_logs, or search_traces\nDO NOT USE FOR details about a specific issue → use get_sentry_resource\n\n<examples>\nsearch_issues(organizationSlug='my-org', query='critical bugs from last week')\nsearch_issues(organizationSlug='my-org', query='is:unresolved is:unassigned', sort='freq')\nsearch_issues(organizationSlug='my-org', query='level:error firstSeen:-24h', projectSlugOrId='my-project')\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlugOrId>.\n- Parse org/project notation directly without calling find_organizations or find_projects.\n- The projectSlugOrId parameter accepts both project slugs (e.g., 'my-project') and numeric IDs (e.g., '123456').\n</hints>",
+    "description": "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.\n\nProvide `query` as natural language or Sentry issue search syntax. When an embedded agent is configured, it fixes query and sort before running while preserving explicit Sentry search syntax.\n\nReturns grouped issues with metadata like title, status, and user count.\n\nCommon Query Syntax:\n- is:unresolved / is:resolved / is:ignored / is:for_review / is:new / is:regressed / is:escalating\n- level:error / level:warning\n- firstSeen:-24h / lastSeen:-7d\n- assigned:me / assigned_or_suggested:me\n- release:latest\n- issue.category:feedback\n- issue.priority:high\n- environment:production\n- userCount:>100\n\nNo AND/OR or parentheses: spaces mean AND. For OR on one field use field:[a,b]; for several statuses use status:[resolved,ignored] or substatus:[regressed,escalating].\n\nDO NOT USE FOR COUNTS/AGGREGATIONS → use search_errors\nDO NOT USE FOR individual events with timestamps → use search_errors, search_logs, or search_traces\nDO NOT USE FOR details about a specific issue → use get_sentry_resource\n\n<examples>\nsearch_issues(organizationSlug='my-org', query='critical bugs from last week')\nsearch_issues(organizationSlug='my-org', query='is:unresolved is:unassigned', sort='freq')\nsearch_issues(organizationSlug='my-org', query='level:error firstSeen:-24h', projectSlugOrId='my-project')\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlugOrId>.\n- Parse org/project notation directly without calling find_organizations or find_projects.\n- The projectSlugOrId parameter accepts both project slugs (e.g., 'my-project') and numeric IDs (e.g., '123456').\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7801,14 +7041,7 @@
         "projectSlugOrId": {
           "default": null,
           "description": "The project's slug or numeric ID (optional)",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "regionUrl": {
           "default": null,
@@ -7831,9 +7064,9 @@
         },
         "period": {
           "default": "30d",
-          "description": "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 24h for very recent issues or 90d for broader historical searches.",
+          "description": "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 1h or 24h for very recent issues or 90d for broader historical searches.",
           "type": "string",
-          "enum": ["24h", "7d", "14d", "30d", "90d"]
+          "enum": ["1h", "24h", "7d", "14d", "30d", "90d"]
         },
         "includeExplanation": {
           "default": false,
@@ -7877,14 +7110,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7900,8 +7126,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7964,14 +7190,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7987,8 +7206,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -8051,14 +7270,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -8074,8 +7286,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -8124,14 +7336,7 @@
         },
         "sort": {
           "description": "Replay sort (prefix with - for descending): -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -8164,8 +7369,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -8312,14 +7517,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -8335,8 +7533,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -8544,14 +7742,7 @@
           "type": "object",
           "properties": {
             "id": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
+              "type": ["string", "number"]
             },
             "logicType": {
               "type": "string",
@@ -8563,14 +7754,7 @@
                 "type": "object",
                 "properties": {
                   "id": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "number"
-                      }
-                    ]
+                    "type": ["string", "number"]
                   },
                   "type": {
                     "type": "string"
@@ -8591,14 +7775,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ]
+                "type": ["string", "number"]
               },
               "logicType": {
                 "type": "string",
@@ -8610,14 +7787,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "type": {
                       "type": "string"
@@ -8634,34 +7804,13 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "type": {
                       "type": "string"
                     },
                     "integrationId": {
-                      "anyOf": [
-                        {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "number"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "number", "null"]
                     },
                     "data": {
                       "type": "object",
@@ -8755,24 +7904,10 @@
               "additionalProperties": false
             },
             "environment": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "triggers": {
               "anyOf": [
@@ -8780,14 +7915,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string",
@@ -8799,14 +7927,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -8836,14 +7957,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "logicType": {
                         "type": "string",
@@ -8855,14 +7969,7 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
@@ -8880,34 +7987,13 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
                             },
                             "integrationId": {
-                              "anyOf": [
-                                {
-                                  "anyOf": [
-                                    {
-                                      "type": "string"
-                                    },
-                                    {
-                                      "type": "number"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
+                              "type": ["string", "number", "null"]
                             },
                             "data": {
                               "type": "object",
@@ -9192,14 +8278,7 @@
           "maxLength": 200
         },
         "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "status": {
           "type": "string",
@@ -9239,14 +8318,7 @@
               "minLength": 1
             },
             "environment": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "eventTypes": {
               "type": "array",
@@ -9255,14 +8327,7 @@
               }
             },
             "extrapolationMode": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "timeWindowSeconds": {
               "type": "integer",
@@ -9298,14 +8363,7 @@
           "type": "object",
           "properties": {
             "id": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
+              "type": ["string", "number"]
             },
             "logicType": {
               "type": "string"
@@ -9320,14 +8378,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "type": {
                         "type": "string",
@@ -9359,14 +8410,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "type": {
                         "type": "string",
@@ -9451,27 +8495,13 @@
               "type": "string"
             },
             "projectId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "enabled": {
               "type": "boolean"
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "workflowIds": {
               "type": "array",
@@ -9483,14 +8513,7 @@
               "type": "string"
             },
             "description": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "config": {
               "type": "object",
@@ -9511,14 +8534,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string"
@@ -9529,14 +8545,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -9579,14 +8588,7 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "eventTypes": {
                         "type": "array",
@@ -9595,14 +8597,7 @@
                         }
                       },
                       "extrapolationMode": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "timeWindowSeconds": {
                         "type": "number"
@@ -9627,24 +8622,10 @@
               }
             },
             "dateCreated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "dateUpdated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": [
@@ -9753,14 +8734,7 @@
               "type": "string"
             },
             "platform": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": ["id", "slug", "name", "platform"],
@@ -9842,20 +8816,16 @@
               {
                 "type": "string"
               }
-            ]
+            ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2
           },
           "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
         "body": {
           "description": "Request body. Pass `null` to clear the body.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "status": {
           "type": "string",
@@ -10000,14 +8970,7 @@
               "type": "string"
             },
             "name": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "email": {
               "type": "string"

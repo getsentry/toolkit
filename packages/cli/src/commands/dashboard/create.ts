@@ -143,8 +143,7 @@ export const createCommand = buildCommand({
     brief: "Create a dashboard",
     fullDescription:
       "Create a new Sentry dashboard.\n\n" +
-      "Add widgets after creation with:\n" +
-      '  sentry dashboard widget add <dashboard> "My Widget" --display line --query count',
+      "Add widgets after creation with `sentry dashboard widget add`.",
     examples: [
       {
         description: "Create a dashboard (organization auto-detected)",

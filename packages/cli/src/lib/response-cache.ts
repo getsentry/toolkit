@@ -1,202 +1,65 @@
 /**
- * Filesystem-based HTTP response cache for read-only API calls.
+ * HTTP response cache for read-only API calls.
  *
  * Uses `http-cache-semantics` (RFC 7234/9111) to make correct caching decisions.
  * When the server provides `Cache-Control` / `ETag` / `Expires` headers, they
  * are respected automatically. When the server sends no cache headers (Sentry's
  * current behavior), a URL-based fallback TTL is applied.
  *
- * Cache entries are stored as individual JSON files under `~/.sentry/cache/responses/`.
- * This keeps the response data separate from the config SQLite database, which
- * stores small structured data (tokens, org slugs, cursors). API responses can
- * be 50–500 KB each, so a dedicated cache directory avoids bloating the DB.
+ * Bodies are compressed with the toolkit-core codec and kept in a
+ * filesystem store under `~/.sentry/cache/responses/` (see
+ * `response-cache-store.ts`), separate from the config SQLite database, which
+ * stores small structured data (tokens, org slugs, cursors).
  *
  * @module
  */
 
-import { createHmac, randomUUID } from "node:crypto";
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  stat,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
 import { join } from "node:path";
+import {
+  buildCacheKey as buildIdentityCacheKey,
+  type CacheEntry,
+  classifyUrl,
+  FALLBACK_TTL_MS,
+} from "@sentry/toolkit-core/response-cache";
+import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
 import CachePolicy from "http-cache-semantics";
-import pLimit from "p-limit";
 
 import { getIdentityFingerprint } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
 import { getEnv } from "./env.js";
 import { logger } from "./logger.js";
+import { createFileStore, type FileStore } from "./response-cache-store.js";
 import { recordCacheHit, withCacheSpan } from "./telemetry.js";
 
 /** Tagged logger for diagnostic visibility into best-effort cache operations. */
 const log = logger.withTag("response-cache");
 
 // ---------------------------------------------------------------------------
-// TTL tiers — used as fallback when the server sends no cache headers
+// Cache keys — tiers, keys, and invalidation prefixes live in toolkit-core
 // ---------------------------------------------------------------------------
 
 /**
- * TTL tier classification for URLs.
- *
- * - `immutable`: data that never changes once created (events, traces)
- * - `stable`: data that changes infrequently (orgs, projects, teams)
- * - `volatile`: data that changes often (issue lists, log lists)
- * - `no-cache`: never cache (polling endpoints like autofix state)
- */
-type TtlTier = "immutable" | "stable" | "volatile" | "no-cache";
-
-/** Fallback TTL durations by tier (milliseconds). `no-cache` uses 0 as a sentinel. */
-const FALLBACK_TTL_MS: Record<TtlTier, number> = {
-  immutable: 24 * 60 * 60 * 1000, // 24 hours — events and traces never change
-  stable: 5 * 60 * 1000, // 5 minutes
-  volatile: 60 * 1000, // 60 seconds
-  "no-cache": 0,
-};
-
-/**
- * URL patterns grouped by TTL tier.
- *
- * Checked in tier priority order (no-cache → immutable → volatile).
- * "stable" has no patterns — it is the default fallback when nothing else matches.
- */
-const URL_TIER_REGEXPS: Readonly<Record<TtlTier, readonly RegExp[]>> = {
-  // Polling endpoints where state changes rapidly
-  "no-cache": [/\/(?:autofix|root-cause)\//],
-  // Specific resources by ID (events, traces, span details) — never change once created
-  immutable: [
-    /\/events\/[^/?]+\/?(?:\?|$)/,
-    /\/trace\/[0-9a-f]{32}\//,
-    /\/trace-items\/[0-9a-f]+\//,
-  ],
-  // Issue endpoints (lists AND detail views), dataset queries, trace-logs
-  volatile: [/\/issues\//, /[?&]dataset=(?:logs|spans)/, /\/trace-logs\//],
-  // Default fallback — no patterns needed
-  stable: [],
-};
-
-/** Tier check order — stable is the default and has no patterns to check. */
-const TIER_CHECK_ORDER: readonly TtlTier[] = [
-  "no-cache",
-  "immutable",
-  "volatile",
-];
-
-/**
- * Classify a URL into a TTL tier for fallback caching.
- *
- * @param url - Full URL string (with query params)
- * @returns The TTL tier
- * @internal Exported for testing
- */
-export function classifyUrl(url: string): TtlTier {
-  for (const tier of TIER_CHECK_ORDER) {
-    for (const pattern of URL_TIER_REGEXPS[tier]) {
-      if (pattern.test(url)) {
-        return tier;
-      }
-    }
-  }
-  return "stable";
-}
-
-// ---------------------------------------------------------------------------
-// Cache key generation
-// ---------------------------------------------------------------------------
-
-/**
- * Build a deterministic cache key from the active identity + method + URL.
- *
- * Query params are sorted alphabetically so `?a=1&b=2` and `?b=2&a=1`
- * produce the same key. The identity fingerprint scopes entries per
- * bearer token so switching accounts never serves another user's data.
+ * Build the cache key for the active identity + method + URL.
  *
  * @internal Exported for testing
  */
-export function buildCacheKey(
+export async function buildCacheKey(
   method: string,
   url: string,
   identity = getIdentityFingerprint(),
-): string {
-  const normalized = normalizeUrl(method, url);
-  return createHmac("sha256", identity).update(normalized).digest("hex");
-}
-
-/**
- * Normalize method + URL into a stable string for cache key derivation.
- * Sorts query params alphabetically for deterministic key generation.
- *
- * @throws {TypeError} If the URL cannot be parsed
- * @internal Exported for testing
- */
-export function normalizeUrl(method: string, url: string): string {
-  const parsed = new URL(url);
-  const sortedParams = new URLSearchParams(
-    [...parsed.searchParams.entries()].sort(([a], [b]) => {
-      if (a < b) {
-        return -1;
-      }
-      if (a > b) {
-        return 1;
-      }
-      return 0;
-    }),
-  );
-  parsed.search = sortedParams.toString() ? `?${sortedParams.toString()}` : "";
-  return `${method.toUpperCase()}|${parsed.toString()}`;
+): Promise<string> {
+  return await buildIdentityCacheKey(method, url, identity);
 }
 
 // ---------------------------------------------------------------------------
-// Cache storage types and constants
+// Cache constants
 // ---------------------------------------------------------------------------
-
-/** Shape of a serialized cache entry on disk */
-type CacheEntry = {
-  /** Serialized CachePolicy object (via policy.toObject()) */
-  policy: CachePolicy.CachePolicyObject;
-  /** Response body (already parsed JSON) */
-  body: unknown;
-  /** HTTP status code */
-  status: number;
-  /** Selected response headers (e.g., Link for pagination) */
-  headers: Record<string, string>;
-  /** Original URL, used for TTL tier classification during cleanup */
-  url: string;
-  /**
-   * Identity fingerprint that owns this entry. Used by
-   * {@link invalidateCachedResponsesMatching} to skip other identities'
-   * files. Optional for backwards compat: legacy entries are treated
-   * as foreign and skipped.
-   */
-  identity?: string;
-  /** When this entry was created (epoch ms) */
-  createdAt: number;
-  /**
-   * Pre-computed expiry timestamp (epoch ms).
-   * Allows cleanup to check freshness without deserializing CachePolicy.
-   * Optional for backwards compatibility with entries written before this field.
-   */
-  expiresAt?: number;
-};
 
 /** CachePolicy options for a single-user CLI cache */
 const POLICY_OPTIONS: CachePolicy.Options = {
   shared: false,
   cacheHeuristic: 0.1,
-  immutableMinTimeToLive: FALLBACK_TTL_MS.immutable,
 };
-
-/** Maximum number of cache files to retain */
-const MAX_CACHE_ENTRIES = 500;
-
-/** Probability of running cleanup on each cache write */
-const CLEANUP_PROBABILITY = 0.1;
 
 /**
  * Headers that should be preserved in the cache for consumers.
@@ -213,18 +76,21 @@ function getCacheDir(): string {
   return join(getConfigDir(), "cache", "responses");
 }
 
-/** Get the full file path for a cache key */
-function cacheFilePath(key: string): string {
-  return join(getCacheDir(), `${key}.json`);
-}
+const codec = createBodyCodec();
+const encoder = new TextEncoder();
 
-/** Check if an error is an ENOENT (file/directory not found) */
-function isNotFound(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
+let current: { dir: string; store: FileStore } | undefined;
+
+/**
+ * The store for the current config dir. Call it before any `await`, so a
+ * fire-and-forget write finishes in the directory its request started in.
+ */
+function getStore(): FileStore {
+  const dir = getCacheDir();
+  if (current?.dir !== dir) {
+    current = { dir, store: createFileStore({ dir }) };
+  }
+  return current.store;
 }
 
 /** Extract the subset of response headers worth caching */
@@ -325,7 +191,7 @@ function buildResponseHeaders(
 /**
  * Age of the most recent cache hit, in milliseconds.
  *
- * Set inside {@link getCachedResponse} on a hit, cleared at the start of each
+ * Set inside {@link lookupCachedResponse} on a hit, cleared at the start of each
  * `authenticatedFetch` call in `sentry-client.ts`. Commands read it via
  * {@link getLastCacheHitAge} to show "cached · 3m ago · use -f to refresh".
  *
@@ -351,7 +217,7 @@ export function clearLastCacheHitAge(): void {
 
 /**
  * Set the last cache-hit age directly. Test-only — production code paths
- * set this implicitly via {@link getCachedResponse} on a real cache hit.
+ * set this implicitly via {@link lookupCachedResponse} on a real cache hit.
  *
  * @internal Exported for testing
  */
@@ -414,23 +280,41 @@ function isCacheWriteDisabled(): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Attempt to serve a cached response for a GET request.
+ * Result of a cache lookup that found a usable entry.
  *
- * Reads the cache file directly and handles ENOENT (cache miss) without a
- * separate existence check. Reconstructs the `CachePolicy` from the stored
- * metadata and verifies the cached response still satisfies the new request.
+ * - `hit`: the entry is fresh; serve `response`.
+ * - `stale`: the entry is stale but has an `ETag`. Send the request with
+ *   `conditionalHeaders`, then pass the network response to `revalidate`.
+ *   On a matching 304 it renews the entry and returns the cached body;
+ *   otherwise it returns `undefined` and the network response stands (or,
+ *   for an unusable 304, the caller fetches again without the headers).
+ */
+export type CacheLookup =
+  | { kind: "hit"; response: Response }
+  | {
+      kind: "stale";
+      conditionalHeaders: Record<string, string>;
+      revalidate(response: Response): Promise<Response | undefined>;
+    };
+
+/**
+ * Look up a GET request in the cache.
+ *
+ * Reconstructs the `CachePolicy` from the stored entry and checks whether
+ * the cached response still satisfies the new request. A stale entry with an
+ * `ETag` is returned for conditional revalidation.
  *
  * @param method - HTTP method (only "GET" is cached)
  * @param url - Full request URL
  * @param requestHeaders - Headers from the new request
- * @returns A synthetic Response if cache hit, or undefined on miss/expired
+ * @returns The lookup result, or `undefined` on a miss
  */
-export async function getCachedResponse(
+export async function lookupCachedResponse(
   method: string,
   url: string,
   requestHeaders: Record<string, string>,
   identity = getIdentityFingerprint(),
-): Promise<Response | undefined> {
+): Promise<CacheLookup | undefined> {
   if (
     method !== "GET" ||
     isCacheDisabled() ||
@@ -439,57 +323,70 @@ export async function getCachedResponse(
     return;
   }
 
+  const store = getStore();
   let key: string;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url, identity);
+    key = await buildCacheKey(method, url, identity);
   } catch {
-    // Malformed URL — skip cache lookup. The request itself will surface
-    // any real URL error.
+    // Malformed URL or empty identity — skip cache lookup. The request
+    // itself will surface any real URL error.
     return;
   }
 
   return await withCacheSpan(
     url,
     "cache.get",
-    async (span) => {
-      const entry = await readCacheEntry(key);
-      if (!entry) {
+    async (span): Promise<CacheLookup | undefined> => {
+      const miss = (): void => {
         span.setAttribute("cache.hit", false);
         recordCacheHit("http", false);
+      };
+
+      const entry = await store.get(key);
+      if (!entry) {
+        miss();
         return;
       }
 
       try {
-        const policy = CachePolicy.fromObject(entry.policy);
+        const policy = CachePolicy.fromObject(
+          entry.policy as CachePolicy.CachePolicyObject,
+        );
+        const request = { url, method: "GET", headers: requestHeaders };
         if (!isEntryFresh(policy, entry, requestHeaders, url)) {
-          span.setAttribute("cache.hit", false);
-          recordCacheHit("http", false);
+          miss();
+          return staleLookup({ store, key, entry, policy, request });
+        }
+
+        // `undefined` when this runtime cannot read the encoding, such as a
+        // zstd entry after a downgrade to Node < 22.15.
+        const body = await codec.decode(entry.body);
+        if (!body) {
+          miss();
           return;
         }
 
-        const body = JSON.stringify(entry.body);
         span.setAttribute("cache.hit", true);
         recordCacheHit("http", true);
-        span.setAttribute("cache.item_size", body.length);
+        span.setAttribute("cache.item_size", body.byteLength);
 
         // Surface cache age for command-level hints (getsentry/cli#785 #1)
         lastCacheHitAgeMs = Date.now() - entry.createdAt;
 
-        const responseHeaders = buildResponseHeaders(policy, entry);
-        return new Response(body, {
-          status: entry.status,
-          headers: responseHeaders,
-        });
-      } catch {
-        // Corrupted or version-incompatible policy object — treat as cache miss.
-        // Best-effort cleanup of the broken entry.
-        span.setAttribute("cache.hit", false);
-        recordCacheHit("http", false);
-        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-        unlink(cacheFilePath(key)).catch(() => {
-          // Ignored — fire-and-forget
-        });
+        return {
+          kind: "hit",
+          response: new Response(body, {
+            status: entry.status,
+            headers: buildResponseHeaders(policy, entry),
+          }),
+        };
+      } catch (error) {
+        // Corrupted or version-incompatible policy or body — treat as a miss
+        // and drop the broken entry.
+        log.debug("Dropping unreadable cache entry", error);
+        await store.delete(key);
+        miss();
         return;
       }
     },
@@ -501,30 +398,102 @@ export async function getCachedResponse(
 }
 
 /**
- * Read and parse a cache entry from disk.
- * Returns undefined on ENOENT or parse errors.
+ * Attempt to serve a fresh cached response for a GET request.
+ *
+ * @returns A synthetic Response if cache hit, or undefined on miss/stale
+ * @internal Exported for testing
  */
-async function readCacheEntry(key: string): Promise<CacheEntry | undefined> {
-  const filePath = cacheFilePath(key);
-  let raw: string;
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    raw = await readFile(filePath, "utf-8");
-  } catch {
-    // ENOENT = cache miss; other read errors = treat as miss
+export async function getCachedResponse(
+  method: string,
+  url: string,
+  requestHeaders: Record<string, string>,
+  identity = getIdentityFingerprint(),
+): Promise<Response | undefined> {
+  const lookup = await lookupCachedResponse(
+    method,
+    url,
+    requestHeaders,
+    identity,
+  );
+  return lookup?.kind === "hit" ? lookup.response : undefined;
+}
+
+type StaleEntry = {
+  store: FileStore;
+  key: string;
+  entry: CacheEntry;
+  policy: CachePolicy;
+  request: CachePolicy.HttpRequest;
+};
+
+/** `revalidatedPolicy`'s result; `matches` is missing from its types. */
+type Revalidation = CachePolicy.RevalidationPolicy & { matches?: boolean };
+
+/** A `stale` lookup for an entry with an `ETag`, or `undefined` without one. */
+function staleLookup(stale: StaleEntry): CacheLookup | undefined {
+  const { store, key, entry, policy, request } = stale;
+  const etag = policy.revalidationHeaders(request)["if-none-match"];
+  if (typeof etag !== "string") {
     return;
   }
 
-  try {
-    return JSON.parse(raw) as CacheEntry;
-  } catch {
-    // Corrupted cache file — delete it
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    await unlink(filePath).catch(() => {
-      // Best-effort cleanup of corrupted file
-    });
-    return;
-  }
+  return {
+    kind: "stale",
+    conditionalHeaders: { "if-none-match": etag },
+    async revalidate(response) {
+      if (response.status !== 304) {
+        return;
+      }
+      const result: Revalidation = policy.revalidatedPolicy(request, {
+        status: response.status,
+        headers: headersToObject(response.headers),
+      });
+      // A 304 for a different or missing validator says nothing about
+      // this entry, so its body cannot be trusted.
+      if (result.modified || result.matches === false) {
+        return;
+      }
+      const body = await codec.decode(entry.body);
+      if (!body) {
+        return;
+      }
+
+      const renewed = {
+        ...entry,
+        policy: result.policy.toObject(),
+        createdAt: Date.now(),
+      };
+      store
+        .set(key, renewed, retentionMs(result.policy, entry.tier))
+        .catch((error) => {
+          log.debug("Failed to renew revalidated cache entry", error);
+        });
+      return new Response(body, {
+        status: entry.status,
+        headers: buildResponseHeaders(result.policy, entry),
+      });
+    },
+  };
+}
+
+/**
+ * How long a stale entry with an `ETag` is kept for revalidation. Bounded
+ * by the store's byte budget like any other entry.
+ */
+const REVALIDATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long to keep an entry: its freshness lifetime (the server's when it
+ * sent cache directives, otherwise the URL tier's), plus
+ * {@link REVALIDATION_WINDOW_MS} when it has an `ETag`.
+ */
+function retentionMs(policy: CachePolicy, tier: CacheEntry["tier"]): number {
+  const freshMs = hasServerCacheDirectives(policy)
+    ? policy.timeToLive()
+    : FALLBACK_TTL_MS[tier];
+  return policy.responseHeaders().etag === undefined
+    ? freshMs
+    : freshMs + REVALIDATION_WINDOW_MS;
 }
 
 /**
@@ -558,12 +527,13 @@ export async function storeCachedResponse(
     return;
   }
 
+  const store = getStore();
   let key: string;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    key = buildCacheKey(method, url, identity);
+    key = await buildCacheKey(method, url, identity);
   } catch {
-    // Malformed URL — skip caching this response
+    // Malformed URL or empty identity — skip caching this response
     return;
   }
 
@@ -574,6 +544,7 @@ export async function storeCachedResponse(
       "cache.put",
       async (span) => {
         const size = await writeResponseToCache({
+          store,
           key,
           identity,
           url,
@@ -594,40 +565,9 @@ export async function storeCachedResponse(
   }
 }
 
-/**
- * Atomically write a cache file by writing to a unique temp file in the same
- * directory and renaming it into place.
- *
- * A plain `writeFile` is not atomic: a concurrent reader (e.g. the probabilistic
- * {@link cleanupCache} sweep fired fire-and-forget by an earlier write) can read
- * the file mid-write, fail to `JSON.parse` the truncated content, and delete it
- * as "corrupted" — silently losing a valid cache entry. `rename` into place is
- * atomic on POSIX (same filesystem) and near-atomic on Windows (same volume), so
- * a concurrent reader sees either the complete old file or the complete new file
- * rather than a half-written one.
- *
- * Best-effort cleanup of the temp file on failure; the caller treats write
- * failures as non-fatal.
- */
-async function atomicWriteCacheFile(
-  finalPath: string,
-  serialized: string,
-): Promise<void> {
-  const tmpPath = `${finalPath}.${process.pid}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(tmpPath, serialized, "utf-8");
-    await rename(tmpPath, finalPath);
-  } catch (error) {
-    await unlink(tmpPath).catch((cleanupError) => {
-      // The temp file may never have been created (e.g. writeFile failed).
-      log.debug("Failed to clean up cache temp file", cleanupError);
-    });
-    throw error;
-  }
-}
-
 /** Inputs for {@link writeResponseToCache}, bundled to stay under useMaxParams. */
 type WriteRequest = {
+  store: FileStore;
   key: string;
   identity: string;
   url: string;
@@ -638,10 +578,10 @@ type WriteRequest = {
 /**
  * Core cache write logic. Always called for GET requests.
  *
- * @returns Serialized body size in bytes (0 if not storable).
+ * @returns Stored (compressed) body size in bytes (0 if not storable).
  */
 async function writeResponseToCache(req: WriteRequest): Promise<number> {
-  const { key, identity, url, requestHeaders, response } = req;
+  const { store, key, identity, url, requestHeaders, response } = req;
   const responseHeadersObj = headersToObject(response.headers);
 
   const policy = new CachePolicy(
@@ -654,85 +594,51 @@ async function writeResponseToCache(req: WriteRequest): Promise<number> {
     return 0;
   }
 
-  const body: unknown = await response.json();
+  const text = await response.text();
+  // Only JSON responses are cached. Throws for anything else, which the
+  // caller treats as not storable.
+  JSON.parse(text);
   const now = Date.now();
 
-  // Pre-compute expiry for cheap cleanup checks (avoids CachePolicy deserialization).
-  // When the server sent explicit cache directives, use its TTL (even if 0).
-  // Only fall back to URL-based tier when no server cache headers were present.
-  const serverTtl = policy.timeToLive();
-  const ttl = hasServerCacheDirectives(policy)
-    ? serverTtl
-    : FALLBACK_TTL_MS[classifyUrl(url)];
+  const tier = classifyUrl(url);
 
-  const entry: CacheEntry = {
-    policy: policy.toObject(),
-    body,
-    status: response.status,
-    headers: pickHeaders(response.headers),
-    url,
-    identity,
-    createdAt: now,
-    expiresAt: now + ttl,
-  };
-
-  const serialized = JSON.stringify(entry);
-  await mkdir(getCacheDir(), { recursive: true, mode: 0o700 });
-  await atomicWriteCacheFile(cacheFilePath(key), serialized);
-
-  // Probabilistic cleanup to avoid unbounded cache growth
-  if (Math.random() < CLEANUP_PROBABILITY) {
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    cleanupCache().catch(() => {
-      // Non-fatal: cleanup failure doesn't affect cache correctness
-    });
-  }
-
-  return serialized.length;
+  const body = await codec.encode(encoder.encode(text));
+  await store.set(
+    key,
+    {
+      url,
+      identity,
+      tier,
+      status: response.status,
+      headers: pickHeaders(response.headers),
+      body,
+      policy: policy.toObject(),
+      createdAt: now,
+    },
+    retentionMs(policy, tier),
+  );
+  return body.bytes.byteLength;
 }
 
 /**
  * Invalidate every cached GET whose URL starts with `prefix` and
  * belongs to the current identity. Best-effort; never throws.
  *
- * Cache filenames already scope entries by identity (see
- * {@link buildCacheKey}), but a prefix sweep has to read every file
- * to match on `url` — so we re-check `entry.identity` before deleting,
- * otherwise user A's mutation could evict user B's cached entries on
- * a shared cache dir. Entries written by older CLI versions lack the
- * `identity` field and are treated as foreign.
+ * Cache keys already scope entries by identity (see {@link buildCacheKey}),
+ * but a prefix sweep matches on `url`, so the store re-checks each entry's
+ * identity before deleting it. Otherwise user A's mutation could evict user
+ * B's cached entries on a shared cache dir. Entries written by older CLI
+ * versions without an `identity` are treated as foreign.
  */
 export async function invalidateCachedResponsesMatching(
   prefix: string,
   identity = getIdentityFingerprint(),
 ): Promise<void> {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const cacheDir = getCacheDir();
-    const files = await readdir(cacheDir);
-    const jsonFiles = files.filter((f) => f.endsWith(".json"));
-    if (jsonFiles.length === 0) {
-      return;
-    }
-
-    await cacheIO.map(jsonFiles, async (file) => {
-      const filePath = join(cacheDir, file);
-      // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-      try {
-        const raw = await readFile(filePath, "utf-8");
-        const entry = JSON.parse(raw) as CacheEntry;
-        if (entry.identity === identity && entry.url?.startsWith(prefix)) {
-          // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-          await unlink(filePath).catch(() => {
-            /* another process may have deleted it */
-          });
-        }
-      } catch {
-        /* unparseable/missing — leave to cleanup */
-      }
-    });
-  } catch {
-    /* best-effort: mutation has already succeeded upstream */
+    await getStore().deleteMatching(identity, prefix);
+  } catch (error) {
+    // Best-effort: the mutation has already succeeded upstream.
+    log.debug("Failed to invalidate cached responses", error);
   }
 }
 
@@ -741,185 +647,9 @@ export async function invalidateCachedResponsesMatching(
  * Called on `auth logout` and `auth login` since cached data is tied to the user.
  */
 export async function clearResponseCache(): Promise<void> {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    await rm(getCacheDir(), { recursive: true, force: true });
-  } catch {
-    // Ignore errors — directory may not exist
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Concurrency helper
-// ---------------------------------------------------------------------------
-
-/** Concurrency limit for parallel cache file I/O operations */
-const CACHE_IO_CONCURRENCY = 8;
-
-/** Shared concurrency limiter for all cache I/O — created once, reused across calls */
-const cacheIO = pLimit(CACHE_IO_CONCURRENCY);
-
-// ---------------------------------------------------------------------------
-// Cache cleanup
-// ---------------------------------------------------------------------------
-
-/**
- * Clean up expired and excess cache entries.
- *
- * Deletes entries that have expired (based on server TTL or fallback TTL),
- * then enforces a maximum entry count by evicting the oldest entries.
- */
-async function cleanupCache(): Promise<void> {
-  const cacheDir = getCacheDir();
-  let files: string[];
-  try {
-    files = await readdir(cacheDir);
+    await getStore().clear();
   } catch (error) {
-    if (isNotFound(error)) {
-      return;
-    }
-    throw error;
+    log.debug("Failed to clear the response cache", error);
   }
-
-  // Sweep orphaned temp files left by a crash between writeFile and rename in
-  // {@link atomicWriteCacheFile}. Done regardless of whether any .json files
-  // exist so leaked temp files can never accumulate unbounded.
-  const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
-  if (tmpFiles.length > 0) {
-    await deleteStaleTempFiles(cacheDir, tmpFiles);
-  }
-
-  const jsonFiles = files.filter((f) => f.endsWith(".json"));
-  if (jsonFiles.length === 0) {
-    return;
-  }
-
-  const entries = await collectEntryMetadata(cacheDir, jsonFiles);
-
-  // Both operations are best-effort — run them in parallel without blocking
-  await Promise.all([
-    deleteExpiredEntries(cacheDir, entries),
-    evictExcessEntries(cacheDir, entries),
-  ]);
-}
-
-/**
- * Age (ms) after which an orphaned `.tmp` file is considered abandoned.
- *
- * A live {@link atomicWriteCacheFile} writes then renames in well under a
- * second, so any `.tmp` file older than this was left by a crashed process and
- * is safe to remove. The generous threshold avoids racing a concurrent write.
- */
-const STALE_TEMP_FILE_MS = 60_000;
-
-/** Delete `.tmp` files older than {@link STALE_TEMP_FILE_MS}. Best-effort. */
-async function deleteStaleTempFiles(
-  cacheDir: string,
-  tmpFiles: string[],
-): Promise<void> {
-  const cutoff = Date.now() - STALE_TEMP_FILE_MS;
-  await cacheIO.map(tmpFiles, async (file) => {
-    const filePath = join(cacheDir, file);
-    try {
-      const stats = await stat(filePath);
-      if (stats.mtimeMs < cutoff) {
-        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-        await unlink(filePath).catch(() => {
-          // Already gone — another sweep or the owning process removed it.
-        });
-      }
-    } catch (error) {
-      log.debug("Failed to inspect cache temp file during sweep", error);
-    }
-  });
-}
-
-/** Metadata for a cache entry, used for cleanup decisions */
-type EntryMetadata = { file: string; createdAt: number; expired: boolean };
-
-/**
- * Read all cache files and determine which are expired.
- *
- * Uses the pre-computed `expiresAt` field when available (cheap — no
- * CachePolicy deserialization). Falls back to URL-based TTL classification
- * for entries written before `expiresAt` was added.
- */
-async function collectEntryMetadata(
-  cacheDir: string,
-  jsonFiles: string[],
-): Promise<EntryMetadata[]> {
-  const entries: EntryMetadata[] = [];
-  const now = Date.now();
-
-  await cacheIO.map(jsonFiles, async (file) => {
-    const filePath = join(cacheDir, file);
-
-    // Read and parse are handled separately so we can distinguish a transient
-    // read failure (skip — never delete) from genuine corruption (parse failed
-    // on a fully-read file — safe to delete). Atomic writes
-    // ({@link atomicWriteCacheFile}) guarantee readers never see a half-written
-    // file, so a parse failure here means real corruption, not a torn read —
-    // deleting was previously a data-loss bug when writes were non-atomic.
-    let raw: string;
-    try {
-      raw = await readFile(filePath, "utf-8");
-    } catch (error) {
-      // Transient read failure (locking, AV scanner, ENOENT from a concurrent
-      // sweep). Skip — a later sweep will reconsider the file.
-      log.debug("Skipping cache file with unreadable contents", error);
-      return;
-    }
-
-    try {
-      const entry = JSON.parse(raw) as CacheEntry;
-      const expired =
-        entry.expiresAt !== undefined
-          ? now >= entry.expiresAt
-          : now - entry.createdAt >
-            FALLBACK_TTL_MS[classifyUrl(entry.url ?? "")];
-      entries.push({ file, createdAt: entry.createdAt, expired });
-    } catch (error) {
-      // Fully read but unparseable — genuine corruption. Mark expired so
-      // {@link deleteExpiredEntries} reclaims it; this also keeps eviction
-      // counts accurate (corrupt files are not invisible to MAX_CACHE_ENTRIES).
-      log.debug("Reclaiming corrupt cache file during cleanup", error);
-      entries.push({ file, createdAt: now, expired: true });
-    }
-  });
-
-  return entries;
-}
-
-/** Delete cache files that have expired */
-async function deleteExpiredEntries(
-  cacheDir: string,
-  entries: EntryMetadata[],
-): Promise<void> {
-  const expired = entries.filter((e) => e.expired);
-  await cacheIO.map(expired, (entry) =>
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    unlink(join(cacheDir, entry.file)).catch(() => {
-      // Best-effort: file may have been deleted by another process
-    }),
-  );
-}
-
-/** Evict the oldest entries when over the max count */
-async function evictExcessEntries(
-  cacheDir: string,
-  entries: EntryMetadata[],
-): Promise<void> {
-  const remaining = entries.filter((e) => !e.expired);
-  if (remaining.length <= MAX_CACHE_ENTRIES) {
-    return;
-  }
-
-  remaining.sort((a, b) => a.createdAt - b.createdAt);
-  const toEvict = remaining.slice(0, remaining.length - MAX_CACHE_ENTRIES);
-  await cacheIO.map(toEvict, (entry) =>
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    unlink(join(cacheDir, entry.file)).catch(() => {
-      // Best-effort eviction
-    }),
-  );
 }

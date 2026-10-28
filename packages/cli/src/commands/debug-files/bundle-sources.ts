@@ -79,9 +79,6 @@ export const bundleSourcesCommand = buildCommand({
       "this is normally run on the build machine right after compiling. " +
       "Referenced files that are not present locally are skipped. The format " +
       "is auto-detected, and this command makes no network requests.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files bundle-sources ./libexample.so\n" +
-      "  sentry debug-files bundle-sources ./app.pdb -o ./app.src.zip\n\n" +
       "Exits non-zero if no referenced source files are found on disk.",
     examples: [
       {

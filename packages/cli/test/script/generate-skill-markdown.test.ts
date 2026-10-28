@@ -10,10 +10,18 @@ import {
 import { listCommand } from "../../src/commands/agent-conversation/list.js";
 import { viewCommand } from "../../src/commands/agent-conversation/view.js";
 import { sendCommand } from "../../src/commands/event/send.js";
+import { listCommand as feedbackListCommand } from "../../src/commands/feedback/list.js";
 import { mergeCommand } from "../../src/commands/issue/merge.js";
 import { createCommand } from "../../src/commands/project/create.js";
 import { deleteCommand } from "../../src/commands/project/delete.js";
+import { listCommand as teamListCommand } from "../../src/commands/team/list.js";
+import { listCommand as traceListCommand } from "../../src/commands/trace/list.js";
 import { buildCommandInfo } from "../../src/lib/introspect.js";
+import {
+  NAMED_LIST_TARGET_BRIEF,
+  ORG_ALL_TARGET_BRIEF,
+  PROJECT_TARGET_BRIEF,
+} from "../../src/lib/list-command.js";
 
 describe("command metadata in generated references", () => {
   test("derives conversation signatures and examples from command metadata", () => {
@@ -92,9 +100,26 @@ describe("command metadata in generated references", () => {
       expect(content).not.toContain(
         "sentry agent-conversation view my-org conv-123",
       );
+      expect(content).toContain(
+        "| `[<org>/]<conversation-id>` | Organization slug (optional) and conversation ID |",
+      );
     }
-    expect(docs).toContain(
-      "| `[<org>/]<conversation-id>` | Organization slug (optional) and conversation ID |",
+  });
+
+  test("list targets take their syntax from the shared briefs", () => {
+    const brief = (cmd: unknown, path: string) =>
+      buildCommandInfo(cmd as never, path).positionals[0]?.brief;
+    expect(brief(listCommand, "sentry agent-conversation list")).toBe(
+      ORG_ALL_TARGET_BRIEF,
+    );
+    expect(brief(feedbackListCommand, "sentry feedback list")).toBe(
+      ORG_ALL_TARGET_BRIEF,
+    );
+    expect(brief(teamListCommand, "sentry team list")).toBe(
+      NAMED_LIST_TARGET_BRIEF,
+    );
+    expect(brief(traceListCommand, "sentry trace list")).toBe(
+      PROJECT_TARGET_BRIEF,
     );
   });
 

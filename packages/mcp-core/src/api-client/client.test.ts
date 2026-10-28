@@ -11,6 +11,7 @@ import { SentryApiService } from "./client";
 import {
   ApiNotFoundError,
   ApiPermissionError,
+  ApiRateLimitError,
   ApiServerError,
   ApiValidationError,
 } from "./errors";
@@ -1442,8 +1443,32 @@ describe("transient 5xx retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("does not retry a non-gateway 500", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(internalError());
+  it("retries a 500 on a GET", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(internalError())
+      .mockResolvedValueOnce(authOk());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.getAuthenticatedUser();
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a deterministic 5xx such as 501", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Not Implemented" }), {
+        status: 501,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     globalThis.fetch = fetchMock;
 
     const apiService = new SentryApiService({
@@ -1499,6 +1524,192 @@ describe("transient 5xx retry", () => {
     ).request("/auth/", undefined, { allowStatuses: [503] });
 
     expect(response.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("rate limit retry", () => {
+  let originalFetch: typeof globalThis.fetch;
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0, 300);
+  const nowSeconds = Math.floor(now / 1000);
+
+  // Shaped like Sentry's rate-limit middleware response for a fixed window.
+  const rateLimited = (resetSeconds: number, headers = {}) =>
+    new Response(
+      JSON.stringify({
+        detail:
+          "You are attempting to use this endpoint too frequently. Limit is 40 requests in 1 seconds",
+      }),
+      {
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sentry-Rate-Limit-Remaining": "0",
+          "X-Sentry-Rate-Limit-Limit": "40",
+          "X-Sentry-Rate-Limit-Reset": String(resetSeconds),
+          ...headers,
+        },
+      },
+    );
+
+  const authOk = () =>
+    new Response(
+      JSON.stringify({ id: "1", name: "Test User", email: "test@example.com" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+  const rawRequest = (apiService: SentryApiService) =>
+    (
+      apiService as unknown as {
+        request: (path: string, options?: RequestInit) => Promise<Response>;
+      }
+    ).request.bind(apiService);
+
+  const apiService = () =>
+    new SentryApiService({ host: "sentry.io", accessToken: "test-token" });
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    vi.useFakeTimers({ now });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("waits for the rate-limit reset and retries a GET", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(rateLimited(nowSeconds + 1))
+      .mockResolvedValueOnce(authOk());
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    // The reset is 700ms away; no retry before then.
+    await vi.advanceTimersByTimeAsync(699);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a concurrency-limit 429 with backoff", async () => {
+    const concurrencyLimited = new Response(
+      JSON.stringify({
+        detail:
+          "You are attempting to go above the allowed concurrency for this endpoint. Concurrency limit is 25",
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sentry-Rate-Limit-Remaining": "30",
+          "X-Sentry-Rate-Limit-Reset": String(nowSeconds + 1),
+          "X-Sentry-Rate-Limit-ConcurrentRemaining": "0",
+          "X-Sentry-Rate-Limit-ConcurrentLimit": "25",
+        },
+      },
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(concurrencyLimited)
+      .mockResolvedValueOnce(authOk());
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    // The first backoff step is at most 250ms, well before the window reset.
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after the retry budget with the delay in the message", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => rateLimited(Math.floor(Date.now() / 1000) + 1));
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    const error = await promise.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiRateLimitError);
+    expect((error as ApiRateLimitError).toUserMessage()).toMatch(
+      /Retry in 1 second\.$/,
+    );
+    // Initial attempt + 2 retries.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not wait for a reset beyond the per-wait cap", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(rateLimited(nowSeconds + 30));
+    globalThis.fetch = fetchMock;
+
+    const error = await apiService()
+      .getAuthenticatedUser()
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiRateLimitError);
+    expect((error as ApiRateLimitError).retryAfterMs).toBe(29_700);
+    expect((error as ApiRateLimitError).toUserMessage()).toBe(
+      "API error (429): You are attempting to use this endpoint too frequently. Limit is 40 requests in 1 seconds. Retry in 30 seconds.",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("honors a proxy's Retry-After over the Sentry reset", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(rateLimited(nowSeconds + 1, { "Retry-After": "120" }));
+    globalThis.fetch = fetchMock;
+
+    const error = await apiService()
+      .getAuthenticatedUser()
+      .catch((e: unknown) => e);
+
+    expect((error as ApiRateLimitError).retryAfterMs).toBe(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a rate-limited POST, which Sentry rejected before running it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => rateLimited(Math.floor(Date.now() / 1000) + 1));
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().createTeam({
+      organizationSlug: "my-org",
+      name: "My Team",
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toBeInstanceOf(ApiRateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.method).toBe("POST");
+    }
+  });
+
+  it("stops waiting when the request is aborted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(rateLimited(nowSeconds + 1));
+    globalThis.fetch = fetchMock;
+    const controller = new AbortController();
+    const reason = new Error("tool call cancelled");
+
+    const promise = rawRequest(apiService())("/auth/", {
+      signal: controller.signal,
+    });
+    promise.catch(() => {});
+    await vi.advanceTimersByTimeAsync(100);
+    controller.abort(reason);
+
+    await expect(promise).rejects.toBe(reason);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

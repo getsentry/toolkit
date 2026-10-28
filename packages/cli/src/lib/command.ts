@@ -38,6 +38,7 @@ import {
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
 import { appendCacheHint } from "./cache-hint.js";
+import { type CommandExample, exampleSteps } from "./command-example.js";
 import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { AuthError, CliError, OutputError } from "./errors.js";
@@ -66,8 +67,8 @@ import {
   setLogLevel,
 } from "./logger.js";
 import {
-  applyLazyPositionals,
-  markDestructive,
+  applyBoundPositionals,
+  checkDestructive,
   rawPositional,
 } from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
@@ -99,12 +100,6 @@ type BaseArgs = readonly unknown[];
  */
 type StricliBuilderArgs<CONTEXT extends CommandContext> =
   import("@stricli/core").CommandBuilderArguments<BaseFlags, BaseArgs, CONTEXT>;
-
-/** A runnable example stored with its command for generated documentation. */
-export type CommandExample = {
-  readonly description: string;
-  readonly command: string;
-};
 
 /**
  * Native Stricli documentation plus canonical examples for generated docs.
@@ -201,7 +196,7 @@ type LocalCommandBuilderArguments<
    * Mark the command as destructive or irreversible. Defaults to `false`.
    *
    * Destructive commands are listed in the agent Safety Rules (generated from
-   * this flag), so agents ask the user before running them, and their lazy
+   * this flag), so agents ask the user before running them, and their bound
    * target positionals refuse an auto-detected target.
    * `buildDeleteCommand` sets this automatically, and `check:destructive`
    * fails CI when a command that sends an HTTP DELETE lacks it. Set it
@@ -459,7 +454,14 @@ function prepareNativeDocs(
     return nativeDocs;
   }
   const rendered = examples
-    .map(({ description, command }) => `  ${command} # ${description}`)
+    .map((example) => {
+      const steps = exampleSteps(example);
+      return steps.length === 1
+        ? `  ${steps[0]} # ${example.description}`
+        : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(
+            "\n",
+          );
+    })
     .join("\n");
   return {
     ...nativeDocs,
@@ -730,17 +732,13 @@ export function buildCommand<
     ...positionalArgs: unknown[]
   ) {
     // Callers that skip Stricli's scanner (SDK invoke, tests) pass raw
-    // strings, and omitted optional positionals are undefined; give lazily
-    // parsed positionals the value Stricli would.
-    const args = applyLazyPositionals(
+    // strings, and omitted optional positionals are undefined; give bound
+    // positionals the value Stricli would.
+    const args = applyBoundPositionals(
       positionalArgs,
       existingParams.positional,
       this,
     );
-    // Lazy target positionals of destructive commands refuse to auto-detect
-    if (builderArgs.destructive) {
-      markDestructive(args);
-    }
 
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
@@ -833,6 +831,12 @@ export function buildCommand<
       if (!skipRcUrlCheck && "cwd" in this) {
         const { assertRcUrlTrusted } = await import("./sentryclirc.js");
         await assertRcUrlTrusted(this.cwd as string);
+      }
+
+      // Bound target positionals of destructive commands refuse to
+      // auto-detect, whether `func` reads `parsed` or `resolved`
+      if (builderArgs.destructive) {
+        checkDestructive(args);
       }
 
       // Execution phase: core command logic, API calls, org/project resolution

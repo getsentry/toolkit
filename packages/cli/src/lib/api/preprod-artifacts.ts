@@ -273,6 +273,10 @@ export async function uploadBuild(
       method: "POST",
       body,
       schema: BuildAssembleResponseSchema,
+      // This loop already re-sends the identical body to poll, and the server
+      // reuses the in-progress artifact row (get_or_create), so a transport
+      // retry is no riskier than the next poll.
+      idempotent: true,
     });
 
     if (data.state === "error") {

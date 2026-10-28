@@ -1,13 +1,27 @@
 
 
+## Context recovery
+
+If auto-detection cannot find a project, authenticated non-interactive runs show
+one copyable retry example and compact lists of other available organizations
+and `org/project` targets. Choose the project that matches your task; the retry
+keeps your query, period, limit, sort, and output flags. Navigation keywords such as `--cursor next`
+become `--cursor first` because the chosen project may have no saved pagination state;
+raw API cursors are preserved. Suggestions are a bounded sample, with one
+`sentry project list` example to discover other projects. Showing suggestions
+does not save defaults.
+
 ## Search syntax
 
 :::caution[Search syntax]
 Sentry search uses **implicit AND** — space-separated terms are all required.
 **AND/OR operators are not supported** for issue search. Use alternatives:
 - `key:[val1,val2]` — in-list syntax (matches val1 OR val2 for one key)
+- `status:[resolved,ignored]` or `substatus:[regressed,escalating]` — `is:` has no in-list form
 - Run separate queries for different terms
 - `*term*` — wildcard matching
+
+The CLI rewrites same-key ORs to in-lists automatically, including `is:resolved OR is:ignored` → `status:[resolved,ignored]`.
 
 Full syntax reference: [Sentry Search Docs](https://docs.sentry.io/concepts/search/)
 :::

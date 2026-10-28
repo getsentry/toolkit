@@ -50,7 +50,7 @@ export type { SentrySDK } from "./sdk.generated.js";
  *
  * // Escape hatch for any CLI command
  * const version = await sdk.run("--version");
- * const text = await sdk.run("issue", "list", "-l", "5");
+ * const text = await sdk.run("issue", "list", "-n", "5");
  * ```
  */
 export function createSentrySDK(

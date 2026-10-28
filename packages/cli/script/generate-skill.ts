@@ -25,6 +25,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import {
+  formatCommandArguments,
   formatCommandExamples,
   formatDestructiveNotice,
 } from "./generate-skill-markdown.js";
@@ -358,6 +359,10 @@ function generateFullCommandDoc(cmd: CommandInfo): string {
       "",
       `**Destructive:** ${destructiveNotice} Confirm with the user before running it.`,
     );
+  }
+
+  if (cmd.positionals.length > 0) {
+    lines.push("", formatCommandArguments(cmd.positionals));
   }
 
   const visibleFlags = getVisibleFlags(cmd);

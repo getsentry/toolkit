@@ -21,6 +21,13 @@ rg -n "class OrganizationAIConversations|ai-conversations" ~/src/sentry/src ~/sr
 Use the verified source contract to define Zod schemas, query parameters,
 pagination behavior, feature-gate handling, and test fixtures.
 
+### Issue Activity Attribution
+
+`source` identifies the channel or client, such as `mcp:claude`; `user` and
+`sentry_app` identify the actor. `commentId` is the reference accepted by the
+notes endpoints and can differ from the activity `id`. For comment creation
+responses, use `commentId ?? id`. Both `source` and `commentId` may be absent or null.
+
 ### Client Creation
 
 ```typescript
@@ -73,7 +80,7 @@ fail to resolve for legacy mixed-case project slugs; keep them for display.
 Organization discovery uses `/api/0/organizations/`; a limit over 100 follows
 bounded pages through Sentry's Link cursors. Organization, team, and project
 lists use `@sentry/api` operations to build GET paths and queries. The MCP
-client still owns the request transport, token handling, GET retries, error
+client still owns the request transport, token handling, retries, error
 types, and Zod response validation. Public SaaS hosts use `sentry.io` to list
 organizations across regions. Single-tenant hosts under `*.my.sentry.io` and
 self-hosted instances keep their configured host for this request.
@@ -252,18 +259,35 @@ See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
 ### Automatic Retries
 
-`SentryApiService.request()` transparently retries transient upstream gateway
-failures (`502`/`503`/`504`) using exponential backoff. Retries are:
+`SentryApiService.request()` transparently retries failed requests using the
+shared policy in `@sentry/toolkit-core/api-retry`. This page describes the
+behavior; the values live only in code, so read them there instead of copying
+them here:
 
-- **GET-only** — non-idempotent methods (`POST`/`PUT`/`DELETE`) are never
-  retried, so an automatic retry can never replay a mutation.
-- **Gateway-only** — gated on `ApiServerError.isGatewayError()`. Persistent
-  `500`s, `4xx` client errors, and network/configuration errors fail fast.
+- Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
+  [`api-retry.ts`](../../packages/toolkit-core/src/api-retry.ts). In short, a
+  rate-limited request retries for any method, a transient server error only
+  for an idempotent one, and other errors never.
+- How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
+  [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
+
+Retries are:
+
+- **Rate-limit aware** — a `429` waits for its `Retry-After` header, or for
+  Sentry's `X-Sentry-Rate-Limit-Reset`. Concurrency-limit `429`s and `5xx`
+  errors use jittered exponential backoff.
+- **Capped** — by retry count, single wait, and total wait. A reset further
+  out than the single-wait cap fails at once with an `ApiRateLimitError` whose
+  `retryAfterMs` and user message say when to retry.
+- **Abortable** — aborting the request's `signal` ends the wait.
+- **Fail-fast otherwise** — network and configuration errors are not retried.
+  A rate-limited tool call returns a **Rate Limited** message with the retry
+  time, not an input error.
 - **Bypassed by `allowStatuses`** — a status the caller opts into is returned
   as-is from `requestOnce`, never retried.
 
 Callers and tools need no changes: a retried request either resolves normally or
-throws the same `ApiServerError` it would have thrown without retries.
+throws the same error it would have thrown without retries.
 
 ## Best Practices
 

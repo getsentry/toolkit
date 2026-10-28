@@ -15,6 +15,12 @@ CLI-related commands
 
 Print the shell completion script
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<shell>]` | Shell to generate completions for (bash, zsh, or fish) |
+
 **Examples:**
 
 ```bash
@@ -34,6 +40,12 @@ sentry cli completion fish > ~/.config/fish/completions/sentry.fish
 ### `sentry cli defaults <key value...>`
 
 View and manage default settings
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<key value...>` | Setting key and optional value |
 
 **Flags:**
 - `--clear - Clear the specified default, or all defaults if no key is given`
@@ -86,6 +98,12 @@ sentry cli defaults --clear --yes
 ### `sentry cli feedback <message...>`
 
 Send feedback about the CLI
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<message...>` | Your feedback message |
 
 **Examples:**
 
@@ -210,6 +228,12 @@ sentry cli uninstall
 
 Update the Sentry CLI to the latest version
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<version>]` | Specific version (e.g. 0.5.0), "nightly"/"stable" to switch channel, or "undo" to return to the previous version; omit to update within current channel |
+
 **Flags:**
 - `--check - Check for updates without installing`
 - `--force - Force upgrade even if already on the latest version`
@@ -234,6 +258,9 @@ sentry cli upgrade stable
 
 # Install a specific stable version
 sentry cli upgrade 0.5.0
+
+# Return to the version before the last upgrade
+sentry cli upgrade undo
 
 # Force re-download even if up to date
 sentry cli upgrade --force

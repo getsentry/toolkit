@@ -299,7 +299,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_CLI_NO_AUTO_REPAIR",
     description:
-      "Disable automatic database schema repair. By default, the CLI automatically repairs its SQLite database when it detects schema drift. Set this to `1` to prevent auto-repair.",
+      "Disable automatic database schema repair. By default, the CLI automatically repairs its SQLite database when it detects schema drift, including clearing cached data a newer CLI version wrote. Set this to `1` to prevent auto-repair; `sentry cli fix` still repairs on demand.",
     example: "1",
   },
 ];

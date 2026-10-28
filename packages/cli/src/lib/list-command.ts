@@ -19,7 +19,7 @@ import type { SentryContext } from "../context.js";
 
 const _require = createRequire(import.meta.url);
 
-import { parseOrgProjectArg } from "./arg-parsing.js";
+import { parseListTarget, parseOrgProjectArg } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
@@ -44,7 +44,7 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
-import { applyLazyPositionals, rawPositional } from "./positional-parse.js";
+import { applyBoundPositionals, rawPositional } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
@@ -69,6 +69,26 @@ export const LIST_MIN_LIMIT = 1;
 export const LIST_DEFAULT_LIMIT = 25;
 
 /**
+ * Accepted forms of an `[<org>/][<project>]` target that supports org-all
+ * mode. Positional briefs render in `--help`, the generated command docs, and
+ * the skill references, so the target syntax is described here once instead
+ * of in each command's `fullDescription`.
+ */
+export const ORG_ALL_TARGET_BRIEF =
+  "<org>/ (all projects), <org>/<project>, or <project> (search)";
+
+/**
+ * {@link ORG_ALL_TARGET_BRIEF} for list commands that also match names
+ * (see {@link parseListTarget}): a glob filters names, and a name that is
+ * no project matches names instead.
+ */
+export const NAMED_LIST_TARGET_BRIEF =
+  "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)";
+
+/** Accepted forms of a target that names one project (no org-all mode). */
+export const PROJECT_TARGET_BRIEF = "<org>/<project> or <project> (search)";
+
+/**
  * Positional `org/project` parameter shared by all list commands.
  *
  * Accepts `<org>/`, `<org>/<project>`, or bare `<project>` (search).
@@ -79,7 +99,7 @@ export const LIST_TARGET_POSITIONAL = {
   parameters: [
     {
       placeholder: "org/project",
-      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
+      brief: ORG_ALL_TARGET_BRIEF,
       parse: parseOrgProjectTarget,
       optional: true as const,
     },
@@ -95,9 +115,34 @@ export const LIST_ORG_TARGET_POSITIONAL = {
   parameters: [
     {
       placeholder: "org/project",
-      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
+      brief: ORG_ALL_TARGET_BRIEF,
       parse: parseOrgTarget,
       optional: true as const,
+    },
+  ],
+};
+
+/**
+ * {@link LIST_TARGET_POSITIONAL} for list commands whose target also
+ * matches names; parse it with {@link parseListTarget}.
+ */
+export const NAMED_LIST_TARGET_POSITIONAL = {
+  kind: "tuple" as const,
+  parameters: [
+    { ...LIST_TARGET_POSITIONAL.parameters[0], brief: NAMED_LIST_TARGET_BRIEF },
+  ],
+};
+
+/**
+ * {@link LIST_ORG_TARGET_POSITIONAL} for org-scoped resources whose target
+ * also matches names; parse it with {@link parseListTarget}.
+ */
+export const NAMED_LIST_ORG_TARGET_POSITIONAL = {
+  kind: "tuple" as const,
+  parameters: [
+    {
+      ...LIST_ORG_TARGET_POSITIONAL.parameters[0],
+      brief: NAMED_LIST_TARGET_BRIEF,
     },
   ],
 };
@@ -629,8 +674,8 @@ export function buildListCommand<
         args[0] = undefined;
       }
     }
-    // A dropped lazy target becomes an omitted one (auto-detect)
-    const finalArgs = applyLazyPositionals(args, params.positional, this);
+    // A dropped bound target becomes an omitted one (auto-detect)
+    const finalArgs = applyBoundPositionals(args, params.positional, this);
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
@@ -716,7 +761,9 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       schema: config.schema,
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
-      positional: LIST_ORG_TARGET_POSITIONAL,
+      positional: config.namesOf
+        ? NAMED_LIST_ORG_TARGET_POSITIONAL
+        : LIST_ORG_TARGET_POSITIONAL,
       flags: {
         limit: buildListLimitFlag(config.entityPlural),
       },
@@ -731,15 +778,18 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
         readonly fresh: boolean;
         readonly fields?: string[];
       },
-      target?: string,
+      rawTarget?: string,
     ) {
       const { cwd } = this;
-      const parsed = parseOrgProjectArg(target);
+      const { parsed, filter } = config.namesOf
+        ? parseListTarget(rawTarget)
+        : { parsed: parseOrgProjectArg(rawTarget), filter: undefined };
       const result = await dispatchOrgScopedList({
         config,
         cwd,
         flags,
         parsed,
+        filter,
       });
       yield new CommandOutput(result);
       // Only forward hint to the footer when items exist — empty results

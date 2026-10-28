@@ -283,6 +283,22 @@ describe("buildCommandInfo", () => {
     ]);
   });
 
+  test("renders multi-step workflow examples one step per line", () => {
+    const cmd = makeCommand({
+      brief: "Create things",
+      __examples: [
+        {
+          description: "Create, then finalize",
+          command: ["sentry thing create a", "sentry thing finalize a"],
+        },
+      ],
+    });
+    const info = buildCommandInfo(cmd, "sentry thing create");
+    expect(info.examples).toEqual([
+      "# Create, then finalize\nsentry thing create a\nsentry thing finalize a",
+    ]);
+  });
+
   test("handles command with no positional args", () => {
     const cmd = makeCommand({ brief: "Do something" });
     const info = buildCommandInfo(cmd, "sentry do");

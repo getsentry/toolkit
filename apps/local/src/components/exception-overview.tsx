@@ -1,3 +1,5 @@
+import { attributeFields } from "./inspector-data.ts";
+import { DetailFields } from "./span-detail.tsx";
 import { formatExceptionTitle, type EventException } from "@/lib/exceptions.ts";
 
 /** Render SDK text as text, including source lines; never execute or fetch source. */
@@ -46,6 +48,25 @@ export function ExceptionOverview({
                         ? `:${frame.line}${frame.column !== undefined ? `:${frame.column}` : ""}`
                         : ""}
                     </code>
+                    {(frame.editorPath ?? frame.filename).startsWith("/") ? (
+                      <a
+                        className="inline-block text-xs text-primary underline"
+                        href={`vscode://file${encodeURI(frame.editorPath ?? frame.filename).replace(/[#?]/g, encodeURIComponent)}${frame.line === undefined ? "" : `:${frame.line}${frame.column === undefined ? "" : `:${frame.column}`}`}`}
+                      >
+                        Open in VS Code
+                      </a>
+                    ) : null}
+                    {frame.variables ? (
+                      <details open>
+                        <summary className="cursor-pointer text-xs">
+                          Local variables
+                        </summary>
+                        <DetailFields
+                          label="Frame variables"
+                          fields={attributeFields(frame.variables)}
+                        />
+                      </details>
+                    ) : null}
                     {frame.source ? (
                       <pre className="overflow-x-auto whitespace-pre-wrap break-words bg-muted/40 p-2 text-xs">
                         <code>{frame.source}</code>

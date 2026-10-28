@@ -15,6 +15,12 @@ List and view agent conversations
 
 List recent agent conversations
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Number of conversations (1-1000) - (default: "25")`
 - `-q, --query <value> - Any matching span selects its conversation; totals include all spans in selected projects and time range`
@@ -89,6 +95,12 @@ sentry agent-conversation list my-org/my-project -c next
 ### `sentry agent-conversation view [<org>/]<conversation-id>`
 
 View an agent conversation transcript
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>/]<conversation-id>` | Organization slug (optional) and conversation ID |
 
 **Flags:**
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`

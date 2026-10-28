@@ -15,6 +15,12 @@ Work with Sentry integrations
 
 List installed integrations
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of integrations to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -44,6 +50,12 @@ sentry integration list my-org/
 # Fetch the next page
 sentry integration list my-org/ -c next
 
+# Only integrations whose name or provider matches a glob
+sentry integration list 'my-org/git*'
+
+# Integrations named like 'GitHub' (fuzzy when nothing matches exactly)
+sentry integration list my-org/githb
+
 # Output as JSON
 sentry integration list --json
 ```
@@ -53,6 +65,12 @@ sentry integration list --json
 Remove an installed integration
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/integration-id>` | [&lt;org&gt;/]&lt;integration-id&gt; - Integration to remove |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`

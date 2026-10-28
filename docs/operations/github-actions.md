@@ -35,6 +35,13 @@ version to 100% and repeat the smoke tests. On failure,
 it restores the exact captured prior version only if the live deployments still
 belong to this run.
 
+Cloudflare can list the previous deployment first for a few seconds after a
+deploy succeeds, so every check that follows a deploy re-reads the deployment
+list for up to 30 seconds. Recovery fails rather than passing when Wrangler
+staged a candidate that Cloudflare never lists. A leftover stage (one version
+at 100%, the candidate at 0%) counts as its 100% version, so the next
+deployment can replace it. Failure messages name the check that failed.
+
 ### recover-cloudflare-deployment.yml
 
 Manual `workflow_dispatch` recovery accepts a deployment run ID and attempt.

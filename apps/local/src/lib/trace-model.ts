@@ -14,6 +14,7 @@ export type TraceSpan = {
   endTimestamp?: number;
   durationMs?: number;
   item: LocalFeedItem;
+  payload: unknown;
   metadata: EventMetadata;
   children: TraceSpan[];
 };
@@ -34,6 +35,7 @@ export type TraceGroup = {
 
 type MutableTraceGroup = Omit<TraceGroup, "roots" | "spans" | "itemCount"> & {
   spanMap: Map<string, TraceSpan>;
+  titlePriority: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,6 +98,7 @@ function getPayloadSpan(
     endTimestamp,
     durationMs: getDurationMs(startTimestamp, endTimestamp),
     item,
+    payload,
     metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
   };
@@ -128,6 +131,7 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         endTimestamp,
         durationMs: getDurationMs(startTimestamp, endTimestamp),
         item,
+        payload: value,
         metadata: getEventMetadata(value, "span"),
         children: [],
       },
@@ -200,6 +204,7 @@ export function buildTraceGroups(
     const trace: MutableTraceGroup = traces.get(traceId) ?? {
       id: traceId,
       title: item.metadata?.title ?? item.type,
+      titlePriority: 0,
       items: [],
       logCount: 0,
       errorCount: 0,
@@ -221,6 +226,16 @@ export function buildTraceGroups(
       const rootSpan = getPayloadSpan(item.payload, item);
       if (rootSpan) {
         trace.spanMap.set(rootSpan.id, rootSpan);
+        const isSegment =
+          isRecord(item.payload) && item.payload.is_segment === true;
+        if (item.type === "transaction" || isSegment) {
+          // A local segment can have a remote parent absent from this receiver.
+          const priority = rootSpan.parentId ? 1 : 2;
+          if (priority > trace.titlePriority) {
+            trace.title = item.metadata?.title ?? rootSpan.description;
+            trace.titlePriority = priority;
+          }
+        }
       }
     }
     for (const childSpan of getChildSpans(item.payload, item)) {

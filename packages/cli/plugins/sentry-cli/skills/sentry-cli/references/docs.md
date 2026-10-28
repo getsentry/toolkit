@@ -15,6 +15,12 @@ Search and query current Sentry documentation
 
 Find Sentry documentation pages by keyword
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<keywords...>` | Documentation keywords |
+
 **Flags:**
 - `-n, --limit <value> - Maximum matches to return (1-20) - (default: "8")`
 
@@ -34,6 +40,12 @@ sentry docs list "source maps" --json
 ### `sentry docs query <question...>`
 
 Ask a cited question about Sentry documentation
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<question...>` | Natural-language docs question |
 
 **Examples:**
 

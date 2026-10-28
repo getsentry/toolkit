@@ -5,6 +5,7 @@
  * its bearer-protected API while SDKs receive only scoped ingestion URLs.
  */
 
+import { randomBytes } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { type Context, Hono } from "hono";
@@ -14,9 +15,9 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { isLoopbackHost } from "./loopback.js";
 import {
   buildSSEHandler,
-  isHostedUiOrigin,
   MAX_BODY_BYTES,
   spotlightEnvelopeId,
 } from "./server.js";
@@ -27,6 +28,12 @@ import {
   type LocalSessionStore,
 } from "./session-store.js";
 
+import {
+  isHostedUiOrigin,
+  LOCAL_DIRECTORY_EVENT,
+  LOCAL_SESSION_EVENT,
+  type LocalSessionEvent,
+} from "./viewer-protocol.js";
 import { LOCAL_RETENTION_EVENT } from "./retention-limits.js";
 import {
   RetentionLimitError,
@@ -39,6 +46,7 @@ const LOOPBACK_ORIGIN_RE =
 const SESSION_UI_ACTION_RE =
   /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close|retention)$/;
 const SESSION_INGEST_RE = /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+$/;
+const VIEWER_SESSIONS_PATH = "/_local/v1/ui/sessions";
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
 /** Authenticated HTTP application and its in-memory session registry. */
@@ -118,6 +126,10 @@ export function createLocalControlPlane({
 }: CreateLocalControlPlaneOptions): LocalControlPlane {
   const app = new Hono();
   const baseUrl = formatLocalServerUrl(host, port);
+  // Separate opt-in capability: a scoped stream never grants sibling discovery.
+  // This token dies with the daemon and never authorizes the control API.
+  const viewerCapability = randomBytes(24).toString("base64url");
+  const directoryUrl = `${baseUrl}${VIEWER_SESSIONS_PATH}?cap=${viewerCapability}`;
   const sessionExists = (reference: string): boolean => {
     sessionStore.pruneExpired();
     try {
@@ -134,6 +146,19 @@ export function createLocalControlPlane({
     }
   };
 
+  app.use("*", async (c, next) => {
+    // Same-origin browser GETs may omit Origin after DNS rebinding. The Node
+    // adapter derives ordinary URLs from Host but accepts absolute targets too.
+    const authority = c.req.header("host");
+    if (
+      !isLoopbackHost(new URL(c.req.url).hostname) ||
+      (authority !== undefined &&
+        !LOOPBACK_ORIGIN_RE.test(`http://${authority.toLowerCase()}`))
+    )
+      return c.body(null, 403);
+    await next();
+  });
+
   app.get("/health", (c) => {
     c.header("X-Sentry-Local-Mode", "daemon");
     return c.text("OK");
@@ -141,6 +166,7 @@ export function createLocalControlPlane({
 
   app.use(`${CONTROL_PLANE_PREFIX}/*`, async (c, next) => {
     if (
+      c.req.path === VIEWER_SESSIONS_PATH ||
       SESSION_STREAM_RE.test(c.req.path) ||
       ((c.req.method === "POST" || c.req.method === "OPTIONS") &&
         SESSION_INGEST_RE.test(c.req.path)) ||
@@ -178,47 +204,122 @@ export function createLocalControlPlane({
     allowMethods: ["GET", "OPTIONS"],
     origin: (origin) => (isHostedUiOrigin(origin) ? origin : null),
   });
-  app.use(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, async (c, next) => {
-    const origin = c.req.header("origin") ?? "";
-    const isWrite =
-      c.req.method === "POST" ||
-      (c.req.method === "OPTIONS" &&
-        c.req.header("access-control-request-method") !== "GET");
-    if (isWrite && !isLoopbackBrowserRequest(c.req.raw)) {
-      return c.body(null, 403);
-    }
-    if (!isHostedUiOrigin(origin)) {
-      return await loopbackCors(c, next);
-    }
-    if (c.req.method === "OPTIONS") {
-      if (c.req.header("access-control-request-method") !== "GET") {
+  for (const path of [
+    `${CONTROL_PLANE_PREFIX}/sessions/:id/stream`,
+    VIEWER_SESSIONS_PATH,
+    "/stream",
+  ])
+    app.use(path, async (c, next) => {
+      if (c.req.path === VIEWER_SESSIONS_PATH || c.req.path === "/stream") {
+        if (
+          (c.req.method !== "GET" && c.req.method !== "OPTIONS") ||
+          (c.req.method === "OPTIONS" &&
+            c.req.header("access-control-request-method") !== "GET")
+        )
+          return c.body(null, 403);
+        if (
+          !isLoopbackBrowserRequest(c.req.raw) &&
+          !isHostedUiOrigin(c.req.header("origin") ?? "")
+        )
+          return c.body(null, 403);
+      }
+      const origin = c.req.header("origin") ?? "";
+      const isWrite =
+        c.req.method === "POST" ||
+        (c.req.method === "OPTIONS" &&
+          c.req.header("access-control-request-method") !== "GET");
+      if (isWrite && !isLoopbackBrowserRequest(c.req.raw)) {
         return c.body(null, 403);
       }
-      c.header("Access-Control-Allow-Origin", origin);
-      c.header("Access-Control-Allow-Methods", "GET, OPTIONS");
-      c.header("Access-Control-Allow-Headers", "Last-Event-ID");
+      if (!isHostedUiOrigin(origin)) {
+        return await loopbackCors(c, next);
+      }
+      if (c.req.method === "OPTIONS") {
+        if (c.req.header("access-control-request-method") !== "GET") {
+          return c.body(null, 403);
+        }
+        c.header("Access-Control-Allow-Origin", origin);
+        c.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+        c.header("Access-Control-Allow-Headers", "Last-Event-ID");
+        if (c.req.header("access-control-request-private-network") === "true") {
+          c.header("Access-Control-Allow-Private-Network", "true");
+        }
+        c.header(
+          "Vary",
+          "Origin, Access-Control-Request-Headers, Access-Control-Request-Private-Network",
+        );
+        return c.body(null, 204);
+      }
+      if (c.req.method !== "GET") {
+        return c.body(null, 403);
+      }
+      return await hostedCors(c, next);
+    });
+  const sessionUiCors = cors({
+    allowMethods: ["POST", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
+    origin: (origin) =>
+      LOOPBACK_ORIGIN_RE.test(origin) || isHostedUiOrigin(origin)
+        ? origin
+        : null,
+  });
+  app.use(`${CONTROL_PLANE_PREFIX}/sessions/:id/ui/*`, async (c, next) => {
+    const hostedRetention =
+      c.req.path.endsWith("/ui/retention") &&
+      isHostedUiOrigin(c.req.header("origin"));
+    if (!isLoopbackBrowserRequest(c.req.raw) && !hostedRetention)
+      return c.body(null, 403);
+    if (hostedRetention && c.req.method === "OPTIONS") {
+      if (c.req.header("access-control-request-method") !== "POST")
+        return c.body(null, 403);
       if (c.req.header("access-control-request-private-network") === "true") {
         c.header("Access-Control-Allow-Private-Network", "true");
+        c.header("Vary", "Access-Control-Request-Private-Network");
       }
-      c.header(
-        "Vary",
-        "Origin, Access-Control-Request-Headers, Access-Control-Request-Private-Network",
-      );
-      return c.body(null, 204);
     }
-    if (c.req.method !== "GET") {
-      return c.body(null, 403);
-    }
-    return await hostedCors(c, next);
+    return await sessionUiCors(c, next);
   });
-  app.use(
-    `${CONTROL_PLANE_PREFIX}/sessions/:id/ui/*`,
-    cors({
-      allowMethods: ["POST", "OPTIONS"],
-      allowHeaders: ["Content-Type"],
-      origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
-    }),
-  );
+
+  // Choosing the daemon-wide entry point opts into discovering its sessions.
+  // Browser origins remain restricted; scoped streams never emit this metadata.
+  app.get("/stream", (c) => {
+    const response = streamSSE(c, async (stream) => {
+      await stream.writeSSE({
+        event: LOCAL_DIRECTORY_EVENT,
+        data: JSON.stringify({
+          directoryUrl: new URL(
+            `${VIEWER_SESSIONS_PATH}?cap=${viewerCapability}`,
+            c.req.url,
+          ).toString(),
+        }),
+      });
+      await new Promise<void>((resolve) => stream.onAbort(resolve));
+    });
+    c.header("Cache-Control", "no-store");
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  });
+
+  app.get(VIEWER_SESSIONS_PATH, (c) => {
+    if (c.req.query("cap") !== viewerCapability) return c.body(null, 401);
+    sessionStore.pruneExpired();
+    c.header("Cache-Control", "no-store");
+    // Stay on the exact loopback origin the viewer chose (localhost/127.0.0.1/::1).
+    const viewerBaseUrl = new URL(c.req.url).origin;
+    return c.json({
+      sessions: sessionStore
+        .list()
+        .map(({ id, label, cwd, state, createdAt, expiresAt }) => ({
+          id,
+          label,
+          cwd,
+          state,
+          createdAt,
+          expiresAt,
+          streamUrl: `${viewerBaseUrl}${CONTROL_PLANE_PREFIX}/sessions/${id}/stream?cap=${sessionStore.getCapabilities(id).stream}`,
+        })),
+    });
+  });
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions`, (c) => {
     sessionStore.pruneExpired();
@@ -234,6 +335,7 @@ export function createLocalControlPlane({
     const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
     return c.json({
       ...session,
+      directoryUrl,
       ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
       streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
     });
@@ -277,6 +379,7 @@ export function createLocalControlPlane({
     return c.json(
       {
         ...session,
+        directoryUrl,
         ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
         streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
       },
@@ -314,6 +417,12 @@ export function createLocalControlPlane({
     const browserBeacon =
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
       c.req.header("origin");
+    // Close can occur while the body is being read. Check at the commit boundary.
+    if (sessionStore.resolve(reference).state === "retained")
+      return c.json(
+        { error: "Session is closed; create a new session to capture events." },
+        410,
+      );
     pushToSpotlightBuffer({
       spotlightBuffer: sessionStore.getBuffer(reference),
       body,
@@ -339,18 +448,32 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
     return streamSSE(c, async (stream) => {
-      const retention = sessionStore.getRetention(c.req.param("id"));
+      const reference = c.req.param("id");
+      const retention = sessionStore.getRetention(reference);
+      // Serialize metadata and envelopes so a close notification is the final
+      // message, after every envelope accepted before capture stopped.
+      let pending = Promise.resolve();
+      const writer = {
+        writeSSE(message: { id?: string; event?: string; data: string }) {
+          const write = pending.then(() => stream.writeSSE(message));
+          pending = write.catch((error) =>
+            logger.debug("Local session stream closed", error),
+          );
+          return pending;
+        },
+      };
+      const sendSession = (event: LocalSessionEvent) =>
+        writer.writeSSE({
+          event: LOCAL_SESSION_EVENT,
+          data: JSON.stringify(event),
+        });
       const sendSettings = (
         settings: ReturnType<typeof retention.getSettings>,
       ) => {
-        void stream
-          .writeSSE({
-            event: LOCAL_RETENTION_EVENT,
-            data: JSON.stringify(settings),
-          })
-          .catch((error) =>
-            logger.debug("Local retention stream closed", error),
-          );
+        void writer.writeSSE({
+          event: LOCAL_RETENTION_EVENT,
+          data: JSON.stringify(settings),
+        });
       };
       const unsubscribeSettings =
         c.req.query("retention") === "1"
@@ -359,16 +482,38 @@ export function createLocalControlPlane({
       if (c.req.query("retention") === "1")
         sendSettings(retention.getSettings());
       const readerId = buffer.subscribe(
-        buildSSEHandler(stream, c.req.query("base64") !== undefined),
+        buildSSEHandler(writer, c.req.query("base64") !== undefined),
         c.req.header("Last-Event-ID"),
       );
-      await new Promise<void>((resolve) => {
-        stream.onAbort(() => {
-          buffer.unsubscribe(readerId);
-          unsubscribeSettings();
-          resolve();
-        });
+      let finish: () => void = () => {};
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
       });
+      const unsubscribeSession = sessionStore.subscribe(reference, (event) => {
+        if (event.state === "retained" && event.action !== "reset") {
+          buffer.stream(readerId);
+          buffer.unsubscribe(readerId);
+          void sendSession(event).finally(finish);
+        } else {
+          void sendSession(event);
+        }
+      });
+      stream.onAbort(finish);
+      try {
+        const { state, expiresAt } = sessionStore.resolve(reference);
+        if (state === "retained") {
+          buffer.stream(readerId);
+          await sendSession({ state, expiresAt });
+        } else {
+          await sendSession({ state });
+          await finished;
+        }
+        await pending;
+      } finally {
+        buffer.unsubscribe(readerId);
+        unsubscribeSettings();
+        unsubscribeSession();
+      }
     });
   });
 
@@ -403,7 +548,7 @@ export function createLocalControlPlane({
     if (!sessionExists(c.req.param("id"))) {
       return c.body(null, 404);
     }
-    sessionStore.getBuffer(c.req.param("id")).clear();
+    sessionStore.reset(c.req.param("id"));
     return c.body(null, 204);
   });
 
@@ -418,9 +563,6 @@ export function createLocalControlPlane({
     if (!(isSessionUiAction(c.req.path) && sessionExists(c.req.param("id")))) {
       return c.body(null, 404);
     }
-    if (!isLoopbackBrowserRequest(c.req.raw)) {
-      return c.body(null, 403);
-    }
     if (
       c.req.query("cap") !==
       sessionStore.getCapabilities(c.req.param("id")).stream
@@ -429,7 +571,7 @@ export function createLocalControlPlane({
     }
     if (c.req.param("action") === "retention") return await updateRetention(c);
     if (c.req.param("action") === "reset") {
-      sessionStore.getBuffer(c.req.param("id")).clear();
+      sessionStore.reset(c.req.param("id"));
       return c.body(null, 204);
     }
     return c.json(sessionStore.close(c.req.param("id")));

@@ -44,12 +44,13 @@ export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
  * Returns a single page of results with cursor metadata.
  *
  * @param orgSlug - Organization slug
- * @param options - Pagination options
+ * @param options - Pagination options; `query` keeps only teams whose slug
+ *   or name contains it (case-insensitive, matched by the server)
  * @returns Single page of teams with cursor metadata
  */
 export async function listTeamsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {},
+  options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryTeam[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -59,7 +60,8 @@ export async function listTeamsPaginated(
     query: {
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
-    } as { cursor?: string; per_page?: number },
+      query: options.query,
+    } as { cursor?: string; per_page?: number; query?: string },
   });
 
   return unwrapPaginatedResult<SentryTeam[]>(result, "Failed to list teams");

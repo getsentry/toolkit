@@ -114,6 +114,12 @@ describe("getCompletions: context detection", () => {
     expect(result.some((c) => c.value === "test-org/")).toBe(true);
   });
 
+  test("returns org/project completions for the top-level explore command", async () => {
+    await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
+    const result = getCompletions(["explore"], "");
+    expect(result.some((c) => c.value === "my-org/")).toBe(true);
+  });
+
   test("returns org-only completions for team list", async () => {
     await seedOrgs([{ slug: "acme", name: "Acme Inc" }]);
     const result = getCompletions(["team", "list"], "");

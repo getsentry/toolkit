@@ -19,6 +19,13 @@ The DSN is resolved in priority order:
 2. `SENTRY_DSN` environment variable
 3. Auto-detection from the current project (`.env`, source code, env files)
 
+## Selecting an event from an issue
+
+Copy a full event ID from `sentry issue events PROJ-ABC` and pass it after the
+issue short ID to open that event. The issue resolves the project; omitting the
+event ID selects the latest event. Invalid event IDs return an error instead of
+selecting the latest event.
+
 ## Attachments
 
 `sentry event view --json` lists an event's attachment metadata. Download an

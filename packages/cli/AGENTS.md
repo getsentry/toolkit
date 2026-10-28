@@ -16,7 +16,7 @@ Guidelines for AI agents working in this codebase.
 
 ### Key Features
 
-- **DSN Auto-Detection** - Scans `.env` files and source code (JS, Python, Go, Java, Ruby, PHP) to find Sentry DSNs
+- **DSN Auto-Detection** - Scans `.env` files and source code (any file type in `TEXT_EXTENSIONS`, `src/lib/scan/constants.ts`) to find Sentry DSNs
 - **Project Root Detection** - Walks up from CWD to find project boundaries using VCS, language, and build markers
 - **Directory Name Inference** - Fallback project matching using bidirectional word boundary matching
 - **Multi-Region Support** - Automatic region detection with fan-out to regional APIs (us.sentry.io, de.sentry.io)
@@ -123,9 +123,10 @@ Top-level layout:
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).
 - **`src/lib/`** — shared utilities. Key subtrees: `api/` (domain API modules),
-  `db/` (SQLite layer), `dsn/` (DSN detection, with per-language extractors under
-  `dsn/languages/`), and `formatters/` (output formatting). See the file-locations
-  table below and the JSDoc in each module for details.
+  `db/` (SQLite layer), `dsn/` (DSN detection with one language-agnostic regex),
+  `scan/` (file walker and scanned extensions), and `formatters/` (output
+  formatting). See the file-locations table below and the JSDoc in each module
+  for details.
 - **`src/types/`** — TypeScript types and Valibot schemas.
 - **`test/`** — tests mirroring `src/` (unit, `*.property.test.ts`,
   `*.model-based.test.ts`, `e2e/`, `fixtures/`, `mocks/`).
@@ -254,17 +255,19 @@ one of these types and never reads `.resolved`.
 Resolvers need no command name: they read it from `this.commandPrefix`, which
 Stricli's `forCommand` and the SDK invoker set (test mock contexts set it
 too). In a destructive command (`buildDeleteCommand`, or `buildCommand` with
-`destructive: true`), the target refuses to auto-detect, so those commands
-don't call `requireExplicitTarget` for it.
+`destructive: true`), an auto-detected target fails before `func` runs, so
+those commands don't call `requireExplicitTarget` for it.
 
-Both steps are lazy (`lazyPositional` in `src/lib/positional-parse.ts`): the
-parse runs on the first `parsed` read and the resolver on the first
-`resolved` read, both inside `func` after the auth guard. Invalid input still
-throws the parser's `CliError` with its exit code. `target.raw` is what the
-user typed; shared code that handles any positional uses
-`rawPositional(value)`. `buildCommand` runs these parsers on
-positionals that arrive as strings or are omitted, so the SDK invoke path and
-tests that call `command.loader()` keep passing raw strings. Positionals whose
+`boundPositional` in `src/lib/positional-parse.ts` builds these parsers.
+Stricli runs the parse in its argument scanner, so invalid input fails like
+any other argument: `Failed to parse "<input>" for <placeholder>: …` and exit
+code 252. The parse must have no side effects; anything that changes state
+(such as applying a pasted Sentry URL's server) goes in the resolver, which
+runs on the first `resolved` read, inside `func` after the auth guard.
+`target.raw` is what the user typed; shared code that handles any positional
+uses `rawPositional(value)`. `buildCommand` runs these parsers on positionals
+that arrive as strings or are omitted, so the SDK invoke path and tests that
+call `command.loader()` keep passing raw strings. Positionals whose
 meaning depends on how many arguments were given, such as
 `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
@@ -516,11 +519,15 @@ All command docs and skill files are generated via `pnpm run generate:docs` (whi
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write an `Examples:` block in `fullDescription` or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
+- **Target syntax belongs to the positional**: describe accepted target forms in the positional `brief` (use `ORG_ALL_TARGET_BRIEF` or `PROJECT_TARGET_BRIEF` from `src/lib/list-command.ts` for `[<org>/][<project>]` targets), not in a `Target patterns:` block. The brief renders in `--help`, the generated docs, and the skill references.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
-- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. For a real workflow, sample output, or cross-command guide, put `<!-- allow-commands: <reason> -->` on the line directly above the block.
+- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `command` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
+- Don't restate a value flag's `default` in its `brief`; help and docs already show it (`test/lib/flag-briefs.test.ts`).
+- `pnpm run check:doc-examples` also checks string-literal `sdk.run(…)` calls in TypeScript fences and `@example` JSDoc (`src/index.ts`). They are found by parsing with the TypeScript compiler (`script/sdk-run-calls.ts`); don't add regex-based source parsing.
+- Lists that mirror code (scanned DSN extensions, alias examples, destructive commands, detected agents, the `library-usage.md` `sdk.run()` sample built from `issue list` examples) are generated sections in `script/generate-docs-sections.ts`; add new mirrors there instead of hand-writing them.
 
 ### Valibot Schemas for Validation
 
@@ -722,7 +729,7 @@ Before creating a new `src/lib/*.ts` utility file, check whether existing shared
 | Table/markdown output | `src/lib/formatters/` directory |
 | Pagination | `src/lib/db/pagination.ts`, `src/lib/list-command.ts` |
 | Error classes | `src/lib/errors.ts` (never create ad-hoc error types) |
-| Search query building | `src/lib/search-query.ts`, `src/lib/arg-parsing.ts` |
+| Search query building | `src/lib/search-query.ts` (wraps `@sentry/toolkit-core/search-query`), `src/lib/arg-parsing.ts` |
 
 If an existing module covers ≥80% of what you need, extend it with new exported functions rather than creating a new file. New files are appropriate when the domain is genuinely new (e.g., `replay-search.ts` for replay-specific field resolution).
 
@@ -1101,7 +1108,7 @@ vi.mock("./some-module", () => ({
 | Add config types | `src/types/config.ts` |
 | Add Seer types | `src/types/seer.ts` |
 | Add utility | `src/lib/` |
-| Add DSN language support | `src/lib/dsn/languages/` |
+| Add DSN language support | `TEXT_EXTENSIONS` in `src/lib/scan/constants.ts` |
 | Add DB operations | `src/lib/db/` |
 | Build scripts | `script/` |
 | Add property tests | `test/lib/<name>.property.test.ts` |

@@ -340,6 +340,8 @@ async function uploadArtifactBundle(opts: {
       method: "POST",
       body: assembleBody,
       schema: AssembleResponseSchema,
+      // Assembly state is keyed by checksum; re-sending only polls it.
+      idempotent: true,
     },
   );
 

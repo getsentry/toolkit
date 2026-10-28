@@ -555,10 +555,10 @@ export async function resolveTraceOrgProject(
     case "auto-detect": {
       // resolveOrgAndProject already sets telemetry context. On a failed
       // auto-detect, guideOrgProjectFailure offers an interactive picker (TTY)
-      // or an actionable error listing the user's accessible orgs.
+      // or an actionable error listing explicit project candidates.
       const resolved =
         (await resolveOrgAndProject({ cwd, usageHint })) ??
-        (await guideOrgProjectFailure({ usageHint }));
+        (await guideOrgProjectFailure({ cwd, usageHint }));
       return {
         traceId: parsed.traceId,
         org: resolved.org,

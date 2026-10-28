@@ -175,6 +175,8 @@ export async function uploadProguardMappings(
       method: "POST",
       body: assembleBody,
       schema: DifAssembleResponseSchema,
+      // Assembly state is keyed by checksum; re-sending only polls it.
+      idempotent: true,
     },
   );
 
@@ -235,6 +237,7 @@ async function pollDifAssembly(params: {
         method: "POST",
         body,
         schema: DifAssembleResponseSchema,
+        idempotent: true,
       },
     );
 

@@ -15,8 +15,14 @@ Manage Sentry issues
 
 List issues in a project
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
-- `-q, --query <value> - Search query (Sentry syntax, implicit AND, no OR operator)`
+- `-q, --query <value> - Search query (Sentry syntax, implicit AND; same-key OR becomes an in-list)`
 - `-n, --limit <value> - Maximum number of issues to list - (default: "25")`
 - `-s, --sort <value> - Sort by: recommended, date, new, freq, user (default: recommended on sentry.io, else date)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "90d")`
@@ -51,6 +57,9 @@ List issues in a project
 **Examples:**
 
 ```bash
+# List issues (project auto-detected)
+sentry issue list
+
 # List issues in a specific project
 sentry issue list my-org/frontend
 
@@ -85,6 +94,12 @@ sentry issue list --query "browser:[Chrome,Firefox]"
 ### `sentry issue events <issue>`
 
 List events for a specific issue
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
 
 **Flags:**
 - `-n, --limit <value> - Number of events (1-1000) - (default: "25")`
@@ -143,6 +158,12 @@ sentry issue events FRONT-ABC --json
 
 Analyze one or more issues using Seer AI
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue...>` | One or more issue IDs |
+
 **Flags:**
 - `--force - Force new analysis even if one exists`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -176,6 +197,12 @@ sentry issue explain 123456789 --json
 
 Generate a solution plan using Seer AI
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+
 **Flags:**
 - `--force - Force new plan even if one exists`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -199,6 +226,12 @@ sentry issue plan 123456789 --force
 ### `sentry issue view <issue...>`
 
 View details of one or more issues
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue...>` | One or more issue IDs |
 
 **Flags:**
 - `-w, --web - Open in browser`
@@ -278,6 +311,12 @@ sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == "exc
 
 Mark an issue as resolved
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+
 **Flags:**
 - `-i, --in <value> - Resolve in a release, next release, or commit ('<version>' | '@next' | '@commit' | '@commit:<repo>@<sha>')`
 
@@ -310,6 +349,12 @@ sentry issue resolve my-org/CLI-G5
 
 Reopen a resolved issue
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+
 **Examples:**
 
 ```bash
@@ -326,6 +371,12 @@ sentry issue unresolve my-org/CLI-G5
 ### `sentry issue archive <issue>`
 
 Archive (ignore) an issue
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
 
 **Flags:**
 - `-u, --until <value> - Condition for unarchival: forever, auto, 30m, 10x, 10u, 10x/5m, etc.`
@@ -373,6 +424,12 @@ Merge 2+ issues into a single canonical group
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Confirm with the user before running it.
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue...>` | Issue IDs to merge (2 or more required) |
+
 **Flags:**
 - `-i, --into <value> - Prefer this issue as the canonical parent (included in the merge if not already listed)`
 
@@ -395,6 +452,13 @@ sentry issue merge cli-k9 cli-15h --into cli-k9
 ### `sentry issue link <issue> <url>`
 
 Link an existing external issue
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+| `<url>` | URL of an existing tracker issue or GitHub pull request |
 
 **Flags:**
 - `--integration <value> - Native integration ID, when multiple installations match`
@@ -429,6 +493,13 @@ sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --js
 Unlink an external issue
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+| `<url>` | URL of an existing tracker issue or GitHub pull request |
 
 **Flags:**
 - `--integration <value> - Native integration ID, when multiple installations match`

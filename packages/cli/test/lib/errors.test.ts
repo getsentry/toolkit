@@ -16,6 +16,7 @@ import {
   isSearchQueryParseError,
   isUserError,
   OutputError,
+  RateLimitError,
   ResolutionError,
   SeerError,
   stringifyUnknown,
@@ -719,6 +720,12 @@ describe("exit codes", () => {
 
   test("ApiError has exit code API", () => {
     expect(new ApiError("fail", 500).exitCode).toBe(EXIT.API);
+  });
+
+  test("RateLimitError has exit code RATE_LIMITED", () => {
+    const err = new RateLimitError("/api/0/organizations/", 2000);
+    expect(err.exitCode).toBe(EXIT.RATE_LIMITED);
+    expect(err.status).toBe(429);
   });
 
   test("ConfigError has exit code CONFIG", () => {

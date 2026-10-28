@@ -11,10 +11,15 @@ import {
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
+import {
+  nextRetryDelayMs,
+  parseRetryDelayMs,
+  type RetryPolicy,
+  sleep,
+} from "@sentry/toolkit-core/api-retry";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
-import { retryWithBackoff } from "../internal/fetch-utils";
 import { logIssue, logWarn } from "../telem/logging";
 import type { SentryProtocol } from "../types";
 import {
@@ -47,8 +52,9 @@ import {
 import { USER_AGENT } from "../version";
 import { apiPath } from "./api-path";
 import {
+  ApiError,
   ApiNotFoundError,
-  ApiServerError,
+  ApiRateLimitError,
   ApiValidationError,
   createApiError,
 } from "./errors";
@@ -299,16 +305,22 @@ type RequestOptions = {
 };
 
 /**
- * Automatic retry policy for transient upstream gateway failures (502/503/504).
+ * Caps for automatic retries. Which statuses and methods are retried is the
+ * shared rule in `@sentry/toolkit-core/api-retry`.
  *
- * Sentry's edge intermittently returns short-lived gateway errors (e.g.
- * "upstream connect error or disconnect/reset before headers") that clear on a
- * retry. We retry only idempotent GET requests so an automatic retry can never
- * replay a mutation, and keep the budget small so a still-failing tool call
- * resolves quickly under the Cloudflare Workers request lifetime.
+ * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
+ * in 1 seconds"), so a 429's reset is usually under a second away and two
+ * retries fit in about 2 seconds. A reset further out than `maxDelayMs` means
+ * a longer window; the tool call fails at once with the delay in its message
+ * instead of holding the Workers request open.
  */
-const RETRYABLE_REQUEST_MAX_RETRIES = 2;
-const RETRYABLE_REQUEST_INITIAL_DELAY_MS = 250;
+const REQUEST_RETRY_POLICY: RetryPolicy = {
+  maxRetries: 2,
+  baseDelayMs: 250,
+  maxDelayMs: 2000,
+  maxTotalDelayMs: 3000,
+};
+
 const API_MAX_PER_PAGE = 100;
 const MAX_LIST_PAGES = 50;
 
@@ -759,13 +771,14 @@ export class SentryApiService {
 
   /**
    * Makes an authenticated request to the Sentry API, transparently retrying
-   * transient upstream gateway failures (502/503/504).
+   * rate-limited (429) requests and 500/502/503/504 GET and HEAD requests
+   * under `REQUEST_RETRY_POLICY`.
    *
-   * Retries are limited to idempotent GET requests so an automatic retry can
-   * never replay a mutation, and are gated on `ApiServerError.isGatewayError()`
-   * so persistent 500s, 4xx client errors, and network/configuration errors
-   * fail fast without waiting. Callers that opt a 5xx into `allowStatuses`
-   * receive the raw response from `requestOnce` and are never retried.
+   * A 429 waits for its `Retry-After` or `X-Sentry-Rate-Limit-Reset` delay;
+   * everything else uses jittered backoff. Writes that hit a 5xx, other 4xx
+   * errors, and network/configuration errors fail fast. Callers that opt
+   * a status into `allowStatuses` receive the raw response from `requestOnce`
+   * and are never retried. Aborting `options.signal` ends any wait.
    *
    * @param path API endpoint path (without /api/0 prefix)
    * @param options Fetch options
@@ -779,18 +792,32 @@ export class SentryApiService {
     options: RequestInit = {},
     requestOptions: { host?: string; allowStatuses?: number[] } = {},
   ): Promise<Response> {
-    const method = (options.method ?? "GET").toUpperCase();
-    const isIdempotent = method === "GET";
+    const method = options.method ?? "GET";
+    let waitedMs = 0;
 
-    return await retryWithBackoff(
-      () => this.requestOnce(path, options, requestOptions),
-      {
-        maxRetries: isIdempotent ? RETRYABLE_REQUEST_MAX_RETRIES : 0,
-        initialDelay: RETRYABLE_REQUEST_INITIAL_DELAY_MS,
-        shouldRetry: (error) =>
-          error instanceof ApiServerError && error.isGatewayError(),
-      },
-    );
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.requestOnce(path, options, requestOptions);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status === undefined) {
+          throw error;
+        }
+        const delayMs = nextRetryDelayMs({
+          policy: REQUEST_RETRY_POLICY,
+          method,
+          status: error.status,
+          serverDelayMs:
+            error instanceof ApiRateLimitError ? error.retryAfterMs : undefined,
+          attempt,
+          waitedMs,
+        });
+        if (delayMs === undefined) {
+          throw error;
+        }
+        await sleep(delayMs, options.signal);
+        waitedMs += delayMs;
+      }
+    }
   }
 
   /**
@@ -899,6 +926,7 @@ export class SentryApiService {
       if (allowStatuses?.includes(response.status)) {
         return response;
       }
+      const retryAfterMs = parseRetryDelayMs(response.status, response.headers);
       const errorText = await response.text();
       let parsed: unknown;
       try {
@@ -923,6 +951,7 @@ export class SentryApiService {
             response.status,
             errorText,
             undefined,
+            retryAfterMs,
           );
         }
         logWarn("Failed to parse JSON error response", {
@@ -952,6 +981,7 @@ export class SentryApiService {
             response.status,
             data.detail,
             parsed,
+            retryAfterMs,
           );
         }
 
@@ -978,6 +1008,7 @@ export class SentryApiService {
         response.status,
         errorText,
         undefined,
+        retryAfterMs,
       );
     }
 
@@ -5401,12 +5432,10 @@ export class SentryApiService {
     {
       organizationSlug,
       issueId,
-      eventId,
-      instruction = "",
+      instruction,
     }: {
       organizationSlug: string;
       issueId: string;
-      eventId?: string;
       instruction?: string;
     },
     opts?: RequestOptions,
@@ -5416,8 +5445,7 @@ export class SentryApiService {
       {
         method: "POST",
         body: JSON.stringify({
-          event_id: eventId,
-          instruction,
+          user_context: instruction || undefined,
         }),
       },
       opts,

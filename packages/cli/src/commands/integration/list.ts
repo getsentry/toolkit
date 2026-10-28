@@ -48,6 +48,9 @@ const integrationListConfig: OrgListConfig<
   listForOrg: (org) => listIntegrations(org),
   listPaginated: (org, opts) => listIntegrationsPaginated(org, opts),
   withOrg: (integration, orgSlug) => ({ ...integration, orgSlug }),
+  // The install label (e.g. a GitHub org) and the product (`GitHub`), so
+  // `<org>/git*` finds GitHub installs whatever their label.
+  namesOf: (integration) => [integration.name, integration.provider.name],
   displayTable: (integrations: IntegrationWithOrg[]) =>
     formatTable(integrations, INTEGRATION_COLUMNS),
   schema: SentryIntegrationSchema,
@@ -58,14 +61,7 @@ const docs: OrgListCommandDocs = {
   fullDescription:
     "List integrations installed on an organization (GitHub, GitLab, Slack, Jira, ...).\n\n" +
     "Includes integrations that are disabled or pending deletion.\n\n" +
-    "Target specification:\n" +
-    "  sentry integration list               # auto-detect from DSN or config\n" +
-    "  sentry integration list <org>/        # list all integrations in org (paginated)\n" +
-    "  sentry integration list <org>/<proj>  # list integrations in org (project context)\n" +
-    "  sentry integration list <org>         # list integrations in org\n\n" +
-    "Pagination:\n" +
-    "  sentry integration list <org>/ -c next  # fetch next page\n" +
-    "  sentry integration list <org>/ -c prev  # fetch previous page\n\n" +
+    "`<org>/<name>` lists integrations whose name or provider matches `<name>`, a glob (`<org>/git*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry integrations` → `sentry integration list`",
   examples: [
     {
@@ -79,6 +75,15 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry integration list my-org/ -c next",
+    },
+    {
+      description: "Only integrations whose name or provider matches a glob",
+      command: "sentry integration list 'my-org/git*'",
+    },
+    {
+      description:
+        "Integrations named like 'GitHub' (fuzzy when nothing matches exactly)",
+      command: "sentry integration list my-org/githb",
     },
     {
       description: "Output as JSON",
