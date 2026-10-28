@@ -2,7 +2,7 @@
  * CLI runner with fast-path dispatch.
  *
  * Shell completion (`__complete`) is dispatched before any heavy imports
- * to avoid loading `@sentry/node` (~45ms in the bundle). All other commands go through
+ * to avoid loading `@sentry/node` (~100ms). All other commands go through
  * the full CLI with telemetry, middleware, and error recovery.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
@@ -75,7 +75,7 @@ async function preloadProjectContext(cwd: string): Promise<void> {
  * completion engine and SQLite cache modules.
  */
 export async function runCompletion(completionArgs: string[]): Promise<void> {
-  // Disable telemetry so db/index.ts skips the @sentry/node lazy-require (~45ms)
+  // Disable telemetry so db/index.ts skips the @sentry/node lazy-require (~100ms)
   getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
   const { handleComplete } = await import("./lib/complete.js");
   handleComplete(completionArgs);
