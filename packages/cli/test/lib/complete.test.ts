@@ -101,6 +101,24 @@ describe("getCompletions: context detection", () => {
     ).toBeGreaterThan(0);
   });
 
+  test("ends a flag's value at the next flag", async () => {
+    await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
+    // `--time-series` may be given without a value (`inferEmpty`), so the
+    // next flag is a flag, not its value.
+    expect(
+      (await getCompletions(["explore", "--time-series", "--period"], "")).map(
+        (c) => c.value,
+      ),
+    ).toContain("24h");
+    expect(
+      (await getCompletions(["explore", "--time-series", "-t"], "")).map(
+        (c) => c.value,
+      ),
+    ).toContain("24h");
+    // Without a following flag, the next word is still its value.
+    expect(await getCompletions(["explore", "--time-series"], "")).toEqual([]);
+  });
+
   test("completes --period values", async () => {
     expect(await getCompletions(["issue", "list", "--period"], "")).toEqual([
       { value: "1h", description: "Last hour" },
