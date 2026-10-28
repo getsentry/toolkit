@@ -684,9 +684,10 @@ export const exploreCommand = buildListCommand("explore", {
       "Query the Sentry Explore API for aggregate event data.\n\n" +
       "Supports arbitrary fields including columns (title, project),\n" +
       "aggregates (count(), count_unique(user), p50(span.duration)),\n" +
-      "and equations. Results are returned as a table.\n\n" +
+      "and equations. Results default to a table.\n\n" +
       "Use --time-series to calculate aggregates in time buckets with an automatic interval, " +
       "or pass a bucket duration such as --time-series 15m (-b 15m). " +
+      "Time series use one chart per aggregate on graphics-capable terminals, with table fallback. " +
       "This is a single historical query, not a live stream. " +
       "Grouping, --sort, --limit, and --cursor are table-only.\n\n" +
       "Datasets:\n" +
