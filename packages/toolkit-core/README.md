@@ -51,6 +51,14 @@ of the tiers, stores entries, and deletes only the requesting identity's
 entries under each invalidation prefix. The CLI's disk cache in
 `packages/cli/src/lib/response-cache.ts` uses it.
 
+`response-cache/codec` compresses cached bodies with `node:zlib`: zstd level 3
+where the runtime has it (Node 22.15+, Workers with `nodejs_compat`), brotli
+quality 4 otherwise, and no compression below 256 bytes. Each entry records
+its encoding and original size; `decode` returns `undefined` for an entry this
+runtime cannot read, such as zstd on older Node, so the caller treats it as a
+miss. It is a separate entry point so the policy above stays free of Node
+APIs.
+
 ## Resource identity
 
 The `resource-identity` types describe the identifiers shared by organization,
