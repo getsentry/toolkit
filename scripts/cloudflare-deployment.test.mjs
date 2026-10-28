@@ -9,6 +9,8 @@ import {
   verifyStagedCandidate,
   verifyPromotedCandidate,
   recoverManualSnapshot,
+  listSettled,
+  recoverUnverifiedStage,
 } from "./cloudflare-deployment.mjs";
 
 const previousVersion = "11111111-1111-4111-8111-111111111111";
@@ -40,6 +42,12 @@ const promoted = {
   ...candidate,
   annotations: { "workers/message": `${marker}:promote` },
 };
+const recovered = {
+  id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  versions: [{ version_id: previousVersion, percentage: 100 }],
+  annotations: { "workers/message": "Toolkit recovery 123" },
+};
+const noSleep = async () => {};
 
 test("extracts only a confirmed upload of the production Worker", () => {
   const session = {
@@ -275,7 +283,8 @@ test("restores only the captured version and checks Cloudflare's resulting state
       calls.push(args);
       return { status: 0 };
     },
-    list: async () => [previous, candidate],
+    list: async () => [recovered, candidate, previous],
+    sleep: noSleep,
   });
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], "pnpm");
@@ -325,4 +334,115 @@ test("never restores when ownership changed or the journal is malformed", async 
     /ownership or prior version changed/,
   );
   assert.equal(calls.length, 0);
+});
+
+test("a leftover stage counts as its 100% version so later deployments proceed", () => {
+  const captured = capturePrevious([staged, previous], marker);
+  assert.deepEqual(captured.previous, {
+    id: stagedId,
+    version: previousVersion,
+  });
+  const nextCandidate = "33333333-3333-4333-8333-333333333333";
+  const nextMarker = marker.replace(":123:", ":124:");
+  const nextStage = {
+    id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    versions: [
+      { version_id: previousVersion, percentage: 100 },
+      { version_id: nextCandidate, percentage: 0 },
+    ],
+    annotations: { "workers/message": `${nextMarker}:stage` },
+  };
+  const journal = verifyStagedCandidate([nextStage, staged, previous], {
+    ...capturePrevious([staged, previous], nextMarker),
+    candidateVersion: nextCandidate,
+  });
+  assert.equal(journal.previous.version, previousVersion);
+  for (const versions of [
+    [
+      { version_id: previousVersion, percentage: 100 },
+      { version_id: candidateVersion, percentage: 100 },
+    ],
+    [
+      { version_id: previousVersion, percentage: 50 },
+      { version_id: candidateVersion, percentage: 50 },
+    ],
+    [
+      { version_id: previousVersion, percentage: 100 },
+      { version_id: "../other", percentage: 0 },
+    ],
+  ]) {
+    assert.throws(
+      () => capturePrevious([{ ...staged, versions }], marker),
+      /single active Worker version/,
+    );
+  }
+});
+
+test("re-reads deployments until Cloudflare lists the expected one", async () => {
+  const reads = [[previous], [previous], [staged, previous]];
+  let sleeps = 0;
+  const listed = await listSettled(
+    {},
+    (deployments) => deployments[0].id === stagedId,
+    {
+      list: async () => reads.shift(),
+      sleep: async () => {
+        sleeps++;
+      },
+    },
+  );
+  assert.equal(listed[0].id, stagedId);
+  assert.equal(sleeps, 2);
+
+  let attempts = 0;
+  const stale = await listSettled({}, () => false, {
+    list: async () => {
+      attempts++;
+      return [previous];
+    },
+    sleep: noSleep,
+  });
+  assert.equal(stale[0].id, priorId);
+  assert.equal(attempts, 15);
+});
+
+test("recovery rolls back a stage that Cloudflare lists late", async () => {
+  const journal = {
+    ...capturePrevious([previous], marker),
+    candidateVersion,
+    stageDeployed: true,
+  };
+  const reads = [[previous], [staged, previous], [recovered, staged, previous]];
+  const calls = [];
+  await recoverUnverifiedStage(
+    journal,
+    { GITHUB_RUN_ID: "123" },
+    {
+      list: async () => reads.shift(),
+      sleep: noSleep,
+      spawn: (...args) => {
+        calls.push(args);
+        return { status: 0 };
+      },
+    },
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1][4], `${previousVersion}@100`);
+});
+
+test("recovery fails instead of passing when a deployed stage never appears", async () => {
+  const journal = {
+    ...capturePrevious([previous], marker),
+    candidateVersion,
+  };
+  const options = {
+    list: async () => [previous],
+    sleep: noSleep,
+    spawn: () => assert.fail("must not deploy"),
+  };
+  await recoverUnverifiedStage(journal, {}, options);
+  await assert.rejects(
+    recoverUnverifiedStage({ ...journal, stageDeployed: true }, {}, options),
+    /does not list the staged candidate/,
+  );
 });
