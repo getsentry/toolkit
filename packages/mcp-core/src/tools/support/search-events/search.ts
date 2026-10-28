@@ -128,9 +128,13 @@ function buildRequestFields(
   dataset: PublicEventsDataset | "replays",
   fields: string[],
 ): string[] {
-  return dataset !== "replays" &&
-    isMetricsDataset(dataset) &&
-    !isAggregateQuery(fields)
+  if (dataset === "replays" || isAggregateQuery(fields)) {
+    return fields;
+  }
+  if (dataset === "logs") {
+    return Array.from(new Set([...fields, "id"]));
+  }
+  return isMetricsDataset(dataset)
     ? Array.from(new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS]))
     : fields;
 }
