@@ -1026,7 +1026,13 @@ importers:
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
+      http-cache-semantics:
+        specifier: ^4.2.0
+        version: 4.2.0
     devDependencies:
+      '@types/http-cache-semantics':
+        specifier: ^4.2.0
+        version: 4.2.0
       fast-check:
         specifier: ^4.8.0
         version: 4.10.1
