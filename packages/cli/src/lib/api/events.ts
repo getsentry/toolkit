@@ -6,7 +6,7 @@
 
 import {
   type EventAttachmentDetailsResponse,
-  type GetProjectEventData,
+  type GetOrganizationIssueEventData,
   getOrganizationIssueEvent,
   getProjectEvent,
   listOrganizationIssueEvents,
@@ -33,18 +33,6 @@ import {
 import { listOrganizations } from "./organizations.js";
 
 /**
- * Query for event-details requests. `collapse=adjacentEvents` lets Sentry skip
- * the next/previous-event Snuba lookups; the CLI never reads `nextEventID` or
- * `previousEventID`. Servers without the option ignore unknown values.
- *
- * The generated query types don't list `collapse`, so the intersection keeps
- * the server-supported parameter without weakening the generated client type.
- */
-const EVENT_DETAILS_QUERY: NonNullable<GetProjectEventData["query"]> & {
-  collapse: string[];
-} = { collapse: ["adjacentEvents"] };
-
-/**
  * Get the latest event for an issue.
  * Uses region-aware routing for multi-region support.
  *
@@ -56,6 +44,13 @@ export async function getLatestEvent(
   issueId: string,
 ): Promise<SentryEvent> {
   const config = await getOrgSdkConfig(orgSlug);
+  // `collapse=adjacentEvents` lets Sentry skip the next/previous-event Snuba
+  // lookups; the CLI never reads `nextEventID` or `previousEventID`. The
+  // generated query type omits `collapse`, so the intersection keeps the
+  // server-supported parameter without weakening the generated client type.
+  const query: NonNullable<GetOrganizationIssueEventData["query"]> & {
+    collapse: string[];
+  } = { collapse: ["adjacentEvents"] };
 
   const result = await getOrganizationIssueEvent({
     ...config,
@@ -64,7 +59,7 @@ export async function getLatestEvent(
       issue_id: issueId,
       event_id: "latest",
     },
-    query: EVENT_DETAILS_QUERY,
+    query,
   });
 
   return unwrapResult<SentryEvent>(result, "Failed to get latest event");
@@ -88,7 +83,6 @@ export async function getEvent(
       project_id_or_slug: projectSlug,
       event_id: eventId,
     },
-    query: EVENT_DETAILS_QUERY,
   });
 
   return unwrapResult<SentryEvent>(result, "Failed to get event");

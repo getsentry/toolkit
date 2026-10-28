@@ -26,13 +26,12 @@ describe("classifyUrl", () => {
     }
   });
 
-  it("keeps event details volatile when adjacent events are collapsed", () => {
-    for (const url of [
-      `${API}/organizations/acme/issues/123/events/latest/?collapse=adjacentEvents`,
-      `${API}/projects/acme/web/events/deadbeef/?collapse=adjacentEvents`,
-    ]) {
-      expect(classifyUrl(url)).toBe("volatile");
-    }
+  it("keeps issue events volatile when adjacent events are collapsed", () => {
+    expect(
+      classifyUrl(
+        `${API}/organizations/acme/issues/123/events/latest/?collapse=adjacentEvents`,
+      ),
+    ).toBe("volatile");
   });
 
   it("reuses full traces for at most 60 seconds, since spans can still arrive", () => {
