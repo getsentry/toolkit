@@ -2,7 +2,7 @@ import { log } from "../logger.ts";
 import type { SentryProfileWithTraceMeta } from "../store/types.ts";
 import type { Span, Trace } from "../types.ts";
 import { getFunctionNameFromFrame } from "../utils/profileUtils.ts";
-import { compareSpans } from "../utils/traces.ts";
+import { compareSpans, groupSpans } from "../utils/traces.ts";
 
 /** Non-cryptographic FNV-1a identity for a derived profile frame, stable across replays. */
 function profileSpanId(parts: unknown[]): string {
@@ -23,12 +23,32 @@ function profileSpanId(parts: unknown[]): string {
  * @returns Span[] A list of spans with the same description and op consolidated into a single span
  */
 function consolidateSpans(trace: Trace, spans: Span[]): Span[] {
-  const consolidatedSpans: Span[] = [];
-  let lastSpan = spans[0];
-  let spanIdx = 1;
-  while (spanIdx < spans.length + 1) {
-    const span = spans[spanIdx];
-    spanIdx += 1;
+  type Level = {
+    spans: Span[];
+    result: Span[];
+    lastSpan?: Span;
+    index: number;
+    owner?: Span;
+    pendingSpan?: Span;
+  };
+  const result: Span[] = [];
+  const levels: Level[] = [{ spans, result, lastSpan: spans[0], index: 1 }];
+  while (levels.length) {
+    const level = levels[levels.length - 1];
+    if (level.pendingSpan) {
+      // Match recursive postorder: children enter the lookup before their parent.
+      level.result.push(level.pendingSpan);
+      trace.spans.set(level.pendingSpan.span_id, level.pendingSpan);
+      level.pendingSpan = undefined;
+      continue;
+    }
+    if (level.index > level.spans.length) {
+      if (level.owner) level.owner.children = level.result;
+      levels.pop();
+      continue;
+    }
+    const lastSpan = level.lastSpan!;
+    const span = level.spans[level.index++];
     if (
       span &&
       span.description === lastSpan.description &&
@@ -49,19 +69,26 @@ function consolidateSpans(trace: Trace, spans: Span[]): Span[] {
         }
       }
     } else {
-      // Discard very short spans
+      level.lastSpan = span;
+      // Discard very short spans.
       if (lastSpan.timestamp - lastSpan.start_timestamp > 0) {
         if (lastSpan.children) {
-          lastSpan.children = consolidateSpans(trace, lastSpan.children);
+          level.pendingSpan = lastSpan;
+          levels.push({
+            spans: lastSpan.children,
+            result: [],
+            lastSpan: lastSpan.children[0],
+            index: 1,
+            owner: lastSpan,
+          });
+        } else {
+          level.result.push(lastSpan);
+          trace.spans.set(lastSpan.span_id, lastSpan);
         }
-        consolidatedSpans.push(lastSpan);
-        trace.spans.set(lastSpan.span_id, lastSpan);
       }
-      lastSpan = span;
     }
   }
-
-  return consolidatedSpans;
+  return result;
 }
 
 // This is done per platform right now but we may want to make it use
@@ -83,7 +110,8 @@ const SENTRY_FRAME_FILTER_PER_PLATFORM: Record<
     if (module) {
       return (
         module.startsWith("@sentry") ||
-        module.startsWith("@opentelemetry.instrumentation")
+        module.startsWith("@opentelemetry.instrumentation") ||
+        /^@opentelemetry\/instrumentation(?:$|[-/])/.test(module)
       );
     }
     // This one below is to match things like `http://localhost:3000/node_modules/.vite/deps/@sentry_react.js?v=6942e78f` etc.
@@ -106,7 +134,10 @@ export function getSpansFromProfile(
   threadIds.add(profile.active_thread_id);
 
   const sentryFrameFilter =
-    profile.platform && SENTRY_FRAME_FILTER_PER_PLATFORM[profile.platform];
+    profile.platform &&
+    Object.hasOwn(SENTRY_FRAME_FILTER_PER_PLATFORM, profile.platform)
+      ? SENTRY_FRAME_FILTER_PER_PLATFORM[profile.platform]
+      : undefined;
   const nextSampleTimestamps: Array<number | undefined> = [];
   const nextTimestampByThread = new Map<string, number>();
   for (
@@ -226,64 +257,100 @@ function getThreadId(span: Span | Trace | undefined): string | undefined {
 }
 
 /**
- * Modifies the spanTree in place recursively by adding spans from the
- * profile data where there are gaps in the trace data.
- * @param spanTree Span[] The tree of spans to graft profile spans into
+ * Rebuilds derived profile spans from the latest samples and real span topology.
+ * Real spans retain their transaction references; stale derived children and
+ * missing-parent wrappers are reconstructed rather than grafted a second time.
  */
 export function graftProfileSpans(
+  trace: Trace,
+  profile: SentryProfileWithTraceMeta,
+) {
+  trace.spans = new Map(
+    Array.from(trace.spans)
+      .filter(
+        ([, span]) => span.tags?.source !== "profile" && span.op !== "orphan",
+      )
+      .map(([id, span]) => [id, { ...span, children: undefined }]),
+  );
+  trace.spanTree = groupSpans(trace.spans);
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const span of trace.spans.values()) {
+    if (span.op === "orphan") continue;
+    if (
+      Number.isFinite(span.start_timestamp) &&
+      Number.isFinite(span.timestamp)
+    ) {
+      start = Math.min(start, span.start_timestamp);
+      end = Math.max(end, span.timestamp);
+    }
+  }
+  // Trace timestamps include context-only errors and logs. Profile gaps must
+  // instead follow captured work, including real spans beyond a transaction.
+  if (start < end) {
+    graftProfileSpansIntoTree(trace, profile, trace.spanTree, {
+      ...trace,
+      start_timestamp: start,
+      timestamp: end,
+    });
+  }
+  trace.profileGrafted = true;
+}
+
+function graftProfileSpansIntoTree(
   trace: Trace,
   profile: SentryProfileWithTraceMeta,
   spanTree: Span[] = trace.spanTree,
   parent: Span | Trace = trace,
 ) {
   log(`Grafting profile spans into trace ${trace.trace_id}`);
-  if (trace.profileGrafted) {
-    log(`Trace already has profile grafted ${trace.trace_id}`);
-    return;
-  }
-
-  let idx = -1;
-  while (idx < spanTree.length) {
-    const span = spanTree[idx] as Span | undefined;
+  const levels: { spanTree: Span[]; parent: Span | Trace; index: number }[] = [
+    { spanTree, parent, index: -1 },
+  ];
+  while (levels.length) {
+    const level = levels[levels.length - 1];
+    if (level.index >= level.spanTree.length) {
+      levels.pop();
+      continue;
+    }
+    const span = level.spanTree[level.index] as Span | undefined;
     if (span?.tags?.source === "profile") {
-      idx += 1;
+      level.index++;
       continue;
     }
-    const nextSpan = spanTree[idx + 1];
+    const nextSpan = level.spanTree[level.index + 1];
     if (nextSpan?.tags?.source === "profile") {
-      idx += 1;
+      level.index++;
       continue;
     }
 
-    const startTs = span ? span.timestamp : parent.start_timestamp;
-    const endTs = nextSpan ? nextSpan.start_timestamp : parent.timestamp;
+    const startTs = span ? span.timestamp : level.parent.start_timestamp;
+    const endTs = nextSpan ? nextSpan.start_timestamp : level.parent.timestamp;
     const threadIds = new Set([
       getThreadId(span),
       getThreadId(nextSpan),
-      getThreadId(parent),
+      getThreadId(level.parent),
     ]);
     threadIds.delete(undefined);
     if (endTs - startTs > 0) {
       const fillers = getSpansFromProfile(
         trace,
         profile,
-        parent.span_id,
+        level.parent.span_id,
         startTs,
         endTs,
         threadIds as Set<string>,
       );
       if (fillers.length) {
-        spanTree.splice(idx + 1, 0, ...fillers);
-        idx += fillers.length;
+        level.spanTree.splice(level.index + 1, 0, ...fillers);
+        level.index += fillers.length;
       }
     }
+    level.index++;
     if (span) {
       span.children ??= [];
-      graftProfileSpans(trace, profile, span.children, span);
+      // Resume the current sibling level only after its child's gaps are grafted.
+      levels.push({ spanTree: span.children, parent: span, index: -1 });
     }
-    idx += 1;
   }
-  // Only mark as grafted at the top level to avoid early quitting during
-  // recursive calls above for child spans
-  trace.profileGrafted = trace.spanTree === spanTree;
 }

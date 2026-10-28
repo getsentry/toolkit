@@ -136,7 +136,10 @@ export const createEnvelopesSlice =
         if (SUPPORTED_EVENT_TYPES.has(itemHeader.type)) {
           const item = structuredClone(itemData) as SentryEvent;
           item.type ??= itemHeader.type as SentryEvent["type"];
-          if (!RAW_TYPES.has(itemHeader.type)) {
+          if (
+            !RAW_TYPES.has(itemHeader.type) &&
+            (typeof item.platform !== "string" || !item.platform.trim())
+          ) {
             item.platform = sdkToPlatform(sdk.name);
           }
           if (traceContext) {

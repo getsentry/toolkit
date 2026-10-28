@@ -168,6 +168,12 @@ invalidates in-flight/queued work. `prune()` explicitly enforces retention.
 Eviction rebuilds derived state from retained envelopes, with cost proportional
 to retained telemetry. Choose smaller limits for large profiles or heavy streams.
 
+### AI usage in incomplete traces
+
+Vercel AI token summaries reconcile each span's reported usage with its observed child subtrees, taking the larger subtotal rather than adding an aggregate parent twice. This supports both legacy last-step values and newer aggregate spans. If spans are missing, the result is the strongest observed subtotal; it cannot reconstruct unseen model calls. Invalid/non-finite values do not contribute to these subtotals.
+
+Continuous profile chunks refresh the merged profile and its derived spans. Profile grafting uses the bounds of observed real spans; later context-only errors or logs can extend trace timestamps without inventing extra profiled work.
+
 ## Pure processing helpers
 
 The same portable entry also exports models that can be computed without retaining a telemetry session:

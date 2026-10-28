@@ -133,9 +133,11 @@ export function createTelemetryPipeline(
   }
 
   // Register before public listeners so decoded history commits with the core snapshot.
-  telemetry.subscribe((snapshot) => {
-    for (const envelope of snapshot.envelopes) {
-      const envelopeId = stringifyValue(envelope[0].__spotlight_envelope_id);
+  telemetry.subscribe((_snapshot, change) => {
+    // An eviction can publish an existing ID while its redispatch is staged.
+    // Only successful ingestion authorizes replacing decoded delivery bytes.
+    if (change.type !== "ingest") return;
+    for (const envelopeId of change.envelopeIds) {
       const payload = stagedPayloads.get(envelopeId);
       if (!payload) continue;
       stagedPayloads.delete(envelopeId);

@@ -173,7 +173,7 @@ export function createLocalSessionStore({
       const session = resolveStored(reference);
       await session.retention.resize(value);
       return toPublicSession(
-        update(resolveStored(reference), { maxEnvelopes: value }),
+        update(resolveStored(session.id), { maxEnvelopes: value }),
       );
     },
     close(reference) {

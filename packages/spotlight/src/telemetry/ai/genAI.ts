@@ -1,6 +1,7 @@
 import { stringifyValue } from "../utils/stringifyValue.ts";
 import { getAllSpansInTree } from "../store/helpers.ts";
 import type { AILibraryHandler, AIToolCall, AITrace, Span } from "../types.ts";
+import { extractFinishReason } from "./finishReason.ts";
 
 // Generic handler for the standardized `gen_ai.*` span conventions. Any SDK
 // that follows sentry-conventions (sentry-python's PydanticAI/OpenAI/Anthropic
@@ -315,16 +316,6 @@ function extractPromptData(span: Span, trace: AITrace) {
     messages: [{ role: "unknown", content: stringifyValue(promptMessages) }],
     system: systemText,
   };
-}
-
-function extractFinishReason(finishReasons: unknown): string | undefined {
-  if (Array.isArray(finishReasons) && finishReasons.length > 0) {
-    return stringifyValue(finishReasons[0]);
-  }
-  if (typeof finishReasons === "string" && finishReasons) {
-    return finishReasons;
-  }
-  return undefined;
 }
 
 function extractResponseData(

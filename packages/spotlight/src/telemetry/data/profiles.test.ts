@@ -31,7 +31,14 @@ function profile(
 }
 
 describe("profile span frames", () => {
-  it.each([undefined, "ruby", "javascript"])(
+  it.each([
+    undefined,
+    "ruby",
+    "javascript",
+    "constructor",
+    "__proto__",
+    "toString",
+  ])(
     "retains the first frame without a matching SDK frame on %s",
     (platform) => {
       const spans = getSpansFromProfile(
@@ -66,6 +73,47 @@ describe("profile span frames", () => {
       new Set(),
     );
     expect(spans).toMatchObject([{ description: "app", op: "main" }]);
+  });
+
+  it.each([
+    "@opentelemetry/instrumentation",
+    "@opentelemetry/instrumentation-http",
+    "@opentelemetry.instrumentation.http",
+  ])("removes OpenTelemetry SDK frames from %s", (module) => {
+    const spans = getSpansFromProfile(
+      trace(),
+      profile({
+        platform: "javascript",
+        frames: [
+          { module, function: "instrument" },
+          { module: "app", function: "main" },
+        ],
+        stacks: [[0, 1]],
+      }),
+      undefined,
+      0,
+      10,
+      new Set(),
+    );
+    expect(spans).toMatchObject([{ description: "app", op: "main" }]);
+  });
+
+  it.each([
+    "@opentelemetry-user/instrumentation-http",
+    "@opentelemetry/instrumentationhttp",
+  ])("retains user scopes and lookalike names such as %s", (module) => {
+    const spans = getSpansFromProfile(
+      trace(),
+      profile({
+        platform: "javascript",
+        frames: [{ module, function: "main" }],
+      }),
+      undefined,
+      0,
+      10,
+      new Set(),
+    );
+    expect(spans).toMatchObject([{ description: module, op: "main" }]);
   });
 
   it.each([
@@ -226,14 +274,23 @@ describe("profile graft thread selection", () => {
     "uses the Sentry thread.id from the %s span",
     (source) => {
       const target = trace();
+      const root: Span = {
+        span_id: "root",
+        start_timestamp: 0,
+        timestamp: 10,
+      };
+      target.spans.set(root.span_id, root);
       const neighbor: Span = {
         span_id: "neighbor",
+        parent_span_id: "root",
         start_timestamp: source === "next" ? 5 : 0,
         timestamp: source === "next" ? 10 : 5,
         data: { "thread.id": 7 },
       };
-      if (source === "parent") target.data = { "thread.id": 7 };
-      else target.spanTree = [neighbor];
+      if (source === "parent") root.data = { "thread.id": 7 };
+      else {
+        target.spans.set(neighbor.span_id, neighbor);
+      }
       const start = source === "previous" ? 5 : 0;
       graftProfileSpans(
         target,
@@ -243,7 +300,9 @@ describe("profile graft thread selection", () => {
         }),
       );
       expect(
-        target.spanTree.filter((span) => span.tags?.source === "profile"),
+        target.spans
+          .get("root")
+          ?.children?.filter((span) => span.tags?.source === "profile"),
       ).toMatchObject([{ description: "app", op: "main" }]);
       expect(target.profileGrafted).toBe(true);
     },
@@ -251,7 +310,12 @@ describe("profile graft thread selection", () => {
 
   it("retains active-thread and legacy threadId fallbacks", () => {
     const target = trace();
-    target.data = { threadId: "worker" };
+    target.spans.set("root", {
+      span_id: "root",
+      start_timestamp: 0,
+      timestamp: 10,
+      data: { threadId: "worker" },
+    });
     graftProfileSpans(
       target,
       profile({
@@ -267,9 +331,8 @@ describe("profile graft thread selection", () => {
         ],
       }),
     );
-    expect(target.spanTree.map((span) => span.children?.[0]?.op)).toEqual([
-      "main",
-      "worker",
-    ]);
+    expect(
+      target.spans.get("root")?.children?.map((span) => span.children?.[0]?.op),
+    ).toEqual(["main", "worker"]);
   });
 });

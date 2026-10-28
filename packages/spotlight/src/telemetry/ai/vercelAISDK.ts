@@ -1,6 +1,7 @@
 import { stringifyValue } from "../utils/stringifyValue.ts";
 import { getAllSpansInTree } from "../store/helpers.ts";
 import type { AILibraryHandler, AIToolCall, AITrace, Span } from "../types.ts";
+import { extractFinishReason } from "./finishReason.ts";
 
 // https://ai-sdk.dev/docs/ai-sdk-core/telemetry
 const AI_SPAN_OP_PREFIX = "gen_ai.";
@@ -78,14 +79,6 @@ const AI_FIELD_MAPPINGS = {
   ],
   MODEL_PROVIDER: [AI_MODEL_PROVIDER_FIELD, GEN_AI_SYSTEM_FIELD],
   FUNCTION_ID: [AI_TELEMETRY_FUNCTION_ID_FIELD, GEN_AI_FUNCTION_ID_FIELD],
-  PROMPT_TOKENS: [
-    AI_USAGE_PROMPT_TOKENS_FIELD,
-    GEN_AI_USAGE_INPUT_TOKENS_FIELD,
-  ],
-  COMPLETION_TOKENS: [
-    AI_USAGE_COMPLETION_TOKENS_FIELD,
-    GEN_AI_USAGE_OUTPUT_TOKENS_FIELD,
-  ],
   PROMPT: [GEN_AI_PROMPT_FIELD, AI_PROMPT_FIELD],
   OPERATION_ID: [
     AI_OPERATION_ID_FIELD,
@@ -169,6 +162,8 @@ export const vercelAISDKHandler: AILibraryHandler = {
       rawSpan: rootSpan,
       metadata: {
         metadata: {},
+        promptTokens: tokenUsage.promptTokens,
+        completionTokens: tokenUsage.completionTokens,
       },
       toolCalls: [],
     };
@@ -205,100 +200,77 @@ function extractTokenUsage(spans: Span[]): {
   promptTokens?: number;
   completionTokens?: number;
 } {
-  let promptTokens: number | undefined;
-  let completionTokens: number | undefined;
-
-  for (const span of spans) {
-    if (!span.data) continue;
-
-    if (promptTokens === undefined) {
-      for (const field of TOKEN_FIELDS.PROMPT) {
-        const value = span.data[field];
-        if (value !== undefined) {
-          promptTokens = Number(value);
+  const totals = new Map<
+    Span,
+    { promptTokens?: number; completionTokens?: number }
+  >();
+  for (let index = spans.length - 1; index >= 0; index--) {
+    const span = spans[index];
+    const usage: { promptTokens?: number; completionTokens?: number } = {};
+    for (const [key, fields] of [
+      ["promptTokens", TOKEN_FIELDS.PROMPT],
+      ["completionTokens", TOKEN_FIELDS.COMPLETION],
+    ] as const) {
+      let reported: number | undefined;
+      for (const field of fields) {
+        const value = finiteNumber(span.data?.[field]);
+        if (value !== undefined && value >= 0) {
+          reported = value;
           break;
         }
       }
-    }
-
-    if (completionTokens === undefined) {
-      for (const field of TOKEN_FIELDS.COMPLETION) {
-        const value = span.data[field];
-        if (value !== undefined) {
-          completionTokens = Number(value);
-          break;
-        }
+      let observed: number | undefined;
+      for (const child of new Set(span.children)) {
+        const value = totals.get(child)?.[key];
+        if (value !== undefined) observed = (observed ?? 0) + value;
       }
+      // SDK versions report either last-step usage or an aggregate on agent
+      // parents, and Sentry normalizes both to the same keys. Reconcile each
+      // reported subtotal with its non-overlapping children instead of adding
+      // parent totals again or replacing a larger total with partial coverage.
+      usage[key] =
+        observed === undefined || !Number.isFinite(observed)
+          ? (reported ?? observed)
+          : reported === undefined
+            ? observed
+            : Math.max(reported, observed);
     }
-
-    if (promptTokens !== undefined && completionTokens !== undefined) {
-      break;
-    }
+    totals.set(span, usage);
   }
-
-  return { promptTokens, completionTokens };
+  const usage = totals.get(spans[0]);
+  // An unrepresentable child sum cannot become a public Infinity total.
+  return {
+    promptTokens: finiteNumber(usage?.promptTokens),
+    completionTokens: finiteNumber(usage?.completionTokens),
+  };
 }
 
 function determineOperation(
   spans: Span[],
   rootSpan: Span,
 ): { operation: string; hasToolCall: boolean; toolCallName?: string } {
-  let operation = UNKNOWN_OPERATION;
-  let hasToolCall = false;
-  let toolCallName: string | undefined;
-  let foundToolCallAsOperationId = false;
-
-  for (const span of spans) {
-    if (
+  const operationId =
+    rootSpan.data && extractFieldFromSpan(rootSpan.data, "OPERATION_ID");
+  const operation =
+    typeof operationId === "string" && operationId
+      ? operationId
+      : rootSpan.op || rootSpan.description || UNKNOWN_OPERATION;
+  const isTool = (span: Span) => {
+    const id = span.data && extractFieldFromSpan(span.data, "OPERATION_ID");
+    return (
       span.op === AI_TOOL_CALL_OPERATION ||
-      span.op === AI_EXECUTE_TOOL_OPERATION
-    ) {
-      hasToolCall = true;
-    }
-
-    if (!span.data) continue;
-
-    const operationId = extractFieldFromSpan(span.data, "OPERATION_ID") as
-      | string
-      | undefined;
-
-    // Handle tool call operation
-    if (operationId === AI_TOOL_CALL_OPERATION) {
-      operation = AI_TOOL_CALL_OPERATION;
-      foundToolCallAsOperationId = true;
-      hasToolCall = true;
-
-      if (span.data[GEN_AI_TOOL_NAME_FIELD]) {
-        toolCallName = stringifyValue(span.data[GEN_AI_TOOL_NAME_FIELD]);
-      }
-    }
-
-    // Handle other operations (prioritize root and direct children)
-    if (
-      !foundToolCallAsOperationId &&
-      operationId &&
-      operation === UNKNOWN_OPERATION
-    ) {
-      const isHighPriority =
-        span.span_id === rootSpan.span_id ||
-        rootSpan.children?.some((child) => child.span_id === span.span_id);
-
-      if (isHighPriority) {
-        operation = operationId;
-      }
-    }
-  }
-
-  // Fallback logic
-  if (operation === UNKNOWN_OPERATION) {
-    if (rootSpan.op) {
-      operation = rootSpan.op;
-    } else if (rootSpan.description) {
-      operation = rootSpan.description;
-    }
-  }
-
-  return { operation, hasToolCall, toolCallName };
+      span.op === AI_EXECUTE_TOOL_OPERATION ||
+      id === AI_TOOL_CALL_OPERATION ||
+      id === AI_EXECUTE_TOOL_OPERATION ||
+      id === "execute_tool"
+    );
+  };
+  const name = rootSpan.data?.[GEN_AI_TOOL_NAME_FIELD];
+  return {
+    operation,
+    hasToolCall: spans.some(isTool),
+    toolCallName: isTool(rootSpan) && name ? stringifyValue(name) : undefined,
+  };
 }
 
 function determineTraceName(
@@ -390,36 +362,18 @@ function extractAIMetadata(span: Span, trace: AITrace) {
     }
   }
 
-  const maxRetries = finiteSetting(span.data[AI_SETTINGS_MAX_RETRIES_FIELD]);
+  const maxRetries = finiteNumber(span.data[AI_SETTINGS_MAX_RETRIES_FIELD]);
   if (maxRetries !== undefined) {
     trace.metadata.maxRetries = maxRetries;
   }
 
-  const maxSteps = finiteSetting(span.data[AI_SETTINGS_MAX_STEPS_FIELD]);
+  const maxSteps = finiteNumber(span.data[AI_SETTINGS_MAX_STEPS_FIELD]);
   if (maxSteps !== undefined) {
     trace.metadata.maxSteps = maxSteps;
   }
-
-  // Token usage - use === undefined to allow 0 values
-  if (trace.metadata.promptTokens === undefined) {
-    const promptTokens = extractFieldFromSpan(span.data, "PROMPT_TOKENS");
-    if (promptTokens !== undefined) {
-      trace.metadata.promptTokens = Number(promptTokens);
-    }
-  }
-
-  if (trace.metadata.completionTokens === undefined) {
-    const completionTokens = extractFieldFromSpan(
-      span.data,
-      "COMPLETION_TOKENS",
-    );
-    if (completionTokens !== undefined) {
-      trace.metadata.completionTokens = Number(completionTokens);
-    }
-  }
 }
 
-function finiteSetting(value: unknown): number | undefined {
+function finiteNumber(value: unknown): number | undefined {
   if (
     typeof value !== "number" &&
     (typeof value !== "string" || !value.trim())
@@ -497,13 +451,11 @@ function extractResponseData(span: Span, trace: AITrace) {
     trace.response.finishReason = stringifyValue(finishReason);
   }
 
-  const finishReasons = span.data[GEN_AI_RESPONSE_FINISH_REASONS_FIELD];
-  if (
-    !trace.response.finishReason &&
-    Array.isArray(finishReasons) &&
-    finishReasons.length > 0
-  ) {
-    trace.response.finishReason = stringifyValue(finishReasons[0]);
+  if (!trace.response.finishReason) {
+    const reason = extractFinishReason(
+      span.data[GEN_AI_RESPONSE_FINISH_REASONS_FIELD],
+    );
+    if (reason !== undefined) trace.response.finishReason = reason;
   }
 
   const responseText = span.data[AI_RESPONSE_TEXT_FIELD];

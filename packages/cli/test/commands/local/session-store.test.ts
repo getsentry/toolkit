@@ -167,3 +167,32 @@ describe("LocalSessionStore", () => {
     unsubscribe();
   });
 });
+
+test("retention by label remains bound to its session when the label becomes ambiguous", async () => {
+  const store = createLocalSessionStore();
+  const original = store.create({
+    label: "web",
+    cwd: "/first",
+    maxEnvelopes: 2,
+  });
+  const resize = store.setMaxEnvelopes("web", 4);
+  const other = store.create({ label: "web", cwd: "/second", maxEnvelopes: 3 });
+  store.close(original.id);
+  try {
+    await expect(resize).resolves.toMatchObject({
+      id: original.id,
+      maxEnvelopes: 4,
+      state: "retained",
+    });
+    expect(store.resolve(original.id)).toMatchObject({
+      maxEnvelopes: 4,
+      state: "retained",
+    });
+    expect(store.getRetention(original.id).getSettings().maxEnvelopes).toBe(4);
+    expect(store.resolve(other.id).maxEnvelopes).toBe(3);
+    expect(store.getRetention(other.id).getSettings().maxEnvelopes).toBe(3);
+  } finally {
+    store.getBuffer(original.id).dispose();
+    store.getBuffer(other.id).dispose();
+  }
+});
