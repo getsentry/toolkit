@@ -4454,8 +4454,12 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Event> {
+    // `collapse=adjacentEvents` lets Sentry skip the next/previous-event
+    // lookups; no tool reads `nextEventID` or `previousEventID`. Servers
+    // without the option ignore unknown collapse values.
     const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/`,
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/` +
+        "?collapse=adjacentEvents",
       undefined,
       opts,
     );

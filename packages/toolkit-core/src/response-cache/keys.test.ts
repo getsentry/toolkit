@@ -11,6 +11,17 @@ describe("normalizeUrl", () => {
     );
   });
 
+  it("keeps the order of repeated query params", () => {
+    expect(
+      normalizeUrl(
+        "GET",
+        "https://us.sentry.io/api/0/issues/1/events/latest/?collapse=fullRelease&a=1&collapse=adjacentEvents",
+      ),
+    ).toBe(
+      "GET|https://us.sentry.io/api/0/issues/1/events/latest/?a=1&collapse=fullRelease&collapse=adjacentEvents",
+    );
+  });
+
   it("keeps self-hosted hosts", () => {
     expect(
       normalizeUrl("GET", "https://sentry.mycompany.internal/api/0/issues/"),
