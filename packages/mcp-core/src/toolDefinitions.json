@@ -2187,7 +2187,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "direct"
+    "surface": "catalog"
   },
   {
     "name": "find_dsns",
