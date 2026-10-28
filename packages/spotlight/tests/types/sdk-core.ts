@@ -9,7 +9,7 @@ import {
   serializeSnapshot,
   serializeSummaries,
   serializeTrace,
-} from "@sentry/telemetry";
+} from "@sentry/spotlight";
 
 const telemetry = createTelemetryStore();
 const queries: readonly QuerySummary[] = telemetry.getDatabaseQuerySummaries({

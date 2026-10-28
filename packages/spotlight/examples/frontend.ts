@@ -1,4 +1,4 @@
-import { type IngestOptions, createTelemetryStore } from "@sentry/telemetry";
+import { type IngestOptions, createTelemetryStore } from "@sentry/spotlight";
 
 /** Keep one instance for the lifetime of the telemetry view. */
 export function createFrontendTelemetry() {

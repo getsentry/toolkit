@@ -111,20 +111,20 @@ workspaces:
         id: "@sentry/mcp-server"
         includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
 
-  packages/telemetry:
+  packages/spotlight:
     changelogPolicy: none
-    preReleaseCommand: bash -c 'cd packages/telemetry && npm version "$CRAFT_NEW_VERSION" --no-git-tag-version'
-    releaseBranchPrefix: release/telemetry
+    preReleaseCommand: bash -c 'cd packages/spotlight && npm version "$CRAFT_NEW_VERSION" --no-git-tag-version'
+    releaseBranchPrefix: release/spotlight
     artifactProvider:
       name: github
       config:
         artifacts:
           Post-merge tasks:
-            - "/^sentry-telemetry-.*$/"
+            - "/^sentry-spotlight-.*$/"
     targets:
       - name: github
-        tagPrefix: "telemetry@"
-        includeNames: '/^sentry-telemetry-\d.*\.tgz$/'
+        tagPrefix: "spotlight@"
+        includeNames: '/^sentry-spotlight-\d.*\.tgz$/'
       - name: npm
-        id: "@sentry/telemetry"
-        includeNames: '/^sentry-telemetry-\d.*\.tgz$/'
+        id: "@sentry/spotlight"
+        includeNames: '/^sentry-spotlight-\d.*\.tgz$/'

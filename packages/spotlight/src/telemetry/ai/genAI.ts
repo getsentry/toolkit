@@ -83,21 +83,30 @@ export const genAIHandler: AILibraryHandler = {
 
   extractRootSpans: (spans: Span[]): Span[] => {
     const resultRoots: Span[] = [];
-
-    const findAndCollectAIRoots = (spansToSearch: Span[]) => {
-      for (const currentSpan of spansToSearch) {
-        if (isGenAIConventionSpan(currentSpan)) {
-          resultRoots.push(currentSpan);
-        } else if (!isGenAISpan(currentSpan) && currentSpan.children?.length) {
-          // Stop at any gen_ai.* span: it's the shallowest AI root for its
-          // tree (claimed by this handler or the Vercel one), so its nested
-          // gen_ai.* children must not be surfaced as separate roots.
-          findAndCollectAIRoots(currentSpan.children);
+    const pending = [...spans].reverse();
+    const visited = new Set<Span>();
+    for (
+      let currentSpan = pending.pop();
+      currentSpan;
+      currentSpan = pending.pop()
+    ) {
+      if (visited.has(currentSpan)) continue;
+      visited.add(currentSpan);
+      if (isGenAIConventionSpan(currentSpan)) {
+        resultRoots.push(currentSpan);
+      } else if (!isGenAISpan(currentSpan)) {
+        // Stop at any gen_ai.* span: it's the shallowest AI root for its
+        // tree (claimed by this handler or the Vercel one), so its nested
+        // gen_ai.* children must not be surfaced as separate roots.
+        for (
+          let index = (currentSpan.children?.length ?? 0) - 1;
+          index >= 0;
+          index--
+        ) {
+          pending.push(currentSpan.children![index]);
         }
       }
-    };
-
-    findAndCollectAIRoots(spans);
+    }
     return resultRoots;
   },
 

@@ -6,8 +6,8 @@ import {
   createTelemetryPipeline,
   type TelemetryPayload,
   type TelemetryPipeline,
-} from "@sentry/telemetry/node";
-import type { IgnoreReason, IngestResult } from "@sentry/telemetry";
+} from "@sentry/spotlight/node";
+import type { IgnoreReason, IngestResult } from "@sentry/spotlight";
 import { MAX_ENVELOPES } from "./retention-limits.js";
 
 /** Parsed wire records consumed by the existing terminal and SSE formatters. */

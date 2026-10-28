@@ -13,7 +13,7 @@ The receiver can also be a named Local session or an explicitly selected remote
 receiver. Capture lifecycle and retention are managed through the existing
 Local controls.
 
-The browser uses `@sentry/telemetry` for trace assembly, database and resource
+The browser uses `@sentry/spotlight` for trace assembly, database and resource
 summaries, AI field interpretation, profile call trees and Web Vitals analysis.
 Raw envelopes, item headers and attachment payloads remain available for inspection.
 Each receiver connection owns a bounded, memory-only processing store; clearing

@@ -1,4 +1,4 @@
-import { createTelemetryStore } from "@sentry/telemetry";
+import { createTelemetryStore } from "@sentry/spotlight";
 import {
   adaptTraceGroups,
   traceIdForItem,

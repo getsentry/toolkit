@@ -77,7 +77,7 @@ Increasing the limit preserves existing envelopes, their IDs, and active streams
 previously evicted envelopes cannot be recovered. Lowering below the retained count
 is rejected without changing any data. Clear envelopes first to reduce that limit.
 Changing capacity does not reset the session's three-hour lifecycle retention.
-The receiver decodes and processes envelopes with `@sentry/telemetry/node`, shared
+The receiver decodes and processes envelopes with `@sentry/spotlight/node`, shared
 with the browser viewer's telemetry engine. Envelope retention also has a 64 MiB
 parsed-data budget. Raw downloads have a separate 64 MiB decoded-body budget;
 a raw download returns 404 once its decoded bytes have been evicted. Both budgets

@@ -1,5 +1,5 @@
 {
-  "name": "@sentry/telemetry",
+  "name": "@sentry/spotlight",
   "version": "0.1.0",
   "description": "Shared Sentry envelope processing, trace assembly, and telemetry queries for browsers and servers",
   "type": "module",
@@ -7,7 +7,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/getsentry/toolkit.git",
-    "directory": "packages/telemetry"
+    "directory": "packages/spotlight"
   },
   "engines": {
     "node": ">=20.19.0"

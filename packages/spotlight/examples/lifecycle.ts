@@ -1,5 +1,5 @@
-import { SDK_CAPABILITIES, type SentryEnvelope } from "@sentry/telemetry";
-import { createTelemetryPipeline } from "@sentry/telemetry/node";
+import { SDK_CAPABILITIES, type SentryEnvelope } from "@sentry/spotlight";
+import { createTelemetryPipeline } from "@sentry/spotlight/node";
 import { createFrontendTelemetry } from "./frontend.js";
 import { inspectTrace, readEventIds } from "./reader.js";
 

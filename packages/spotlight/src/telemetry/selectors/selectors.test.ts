@@ -3,6 +3,7 @@ import type { SentryProcessedProfile, Span } from "../types.ts";
 import { getDatabaseQuerySummaries } from "./database.ts";
 import { getProfileFunctionSummaries } from "./profiles.ts";
 import { getResourceSummaries } from "./resources.ts";
+import { summarizeSpans } from "./spans.ts";
 
 function span(overrides: Partial<Span> = {}): Span {
   return {
@@ -44,7 +45,6 @@ describe("domain summaries", () => {
       first,
       span({ op: "http.client" }),
       second,
-      span({ description: "   " }),
       span({ timestamp: Number.NaN }),
       span({ start_timestamp: Number.POSITIVE_INFINITY }),
     ]);
@@ -167,4 +167,28 @@ it("averages known resource sizes across captured aliases without treating absen
   expect(
     getResourceSummaries([span({ op: "resource.script" })])[0],
   ).not.toHaveProperty("averageSizeBytes");
+});
+
+it("groups unnamed spans by operation or ID without changing captured descriptions", () => {
+  const unnamed = span({ description: undefined });
+  const blank = span({ span_id: "blank", description: "   " });
+  const noOperation = span({ span_id: "only-id", description: " ", op: " " });
+  expect(summarizeSpans([unnamed, blank, noOperation])).toEqual([
+    {
+      description: "db.sql.query",
+      count: 2,
+      totalDurationMs: 20,
+      averageDurationMs: 10,
+      spans: [unnamed, blank],
+    },
+    {
+      description: "only-id",
+      count: 1,
+      totalDurationMs: 10,
+      averageDurationMs: 10,
+      spans: [noOperation],
+    },
+  ]);
+  expect(unnamed.description).toBeUndefined();
+  expect(blank.description).toBe("   ");
 });

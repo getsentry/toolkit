@@ -352,9 +352,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.4.1
         version: 1.4.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@sentry/telemetry':
+      '@sentry/spotlight':
         specifier: workspace:*
-        version: link:../../packages/telemetry
+        version: link:../../packages/spotlight
       '@shikijs/core':
         specifier: ^3.23.0
         version: 3.23.0
@@ -488,9 +488,9 @@ importers:
       '@sentry/symbolic':
         specifier: 13.7.0
         version: 13.7.0
-      '@sentry/telemetry':
+      '@sentry/spotlight':
         specifier: workspace:*
-        version: link:../telemetry
+        version: link:../spotlight
       '@sentry/toolkit-core':
         specifier: workspace:*
         version: link:../toolkit-core
@@ -1021,7 +1021,7 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.16.0)(@vitest/coverage-v8@4.1.11)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.16.0)(typescript@5.9.3))(vite@8.3.3(@types/node@22.16.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
-  packages/telemetry:
+  packages/spotlight:
     dependencies:
       '@sentry/core':
         specifier: ^10.63.0

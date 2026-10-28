@@ -1,8 +1,8 @@
-import type { IngestResult, TelemetryReader } from "@sentry/telemetry";
+import type { IngestResult, TelemetryReader } from "@sentry/spotlight";
 import {
   type TelemetryPayload,
   createTelemetryPipeline,
-} from "@sentry/telemetry/node";
+} from "@sentry/spotlight/node";
 
 const pipeline = createTelemetryPipeline({
   maxPending: 4,

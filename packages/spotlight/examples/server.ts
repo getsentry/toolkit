@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createTelemetryPipeline } from "@sentry/telemetry/node";
+import { createTelemetryPipeline } from "@sentry/spotlight/node";
 
 const maxPayloadBytes = 8 * 1024 * 1024;
 

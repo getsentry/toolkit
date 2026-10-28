@@ -2,7 +2,7 @@ name: Post-merge tasks
 
 on:
   push:
-    branches: ["main", "release/*", "release/mcp/**", "release/telemetry/**"]
+    branches: ["main", "release/*", "release/mcp/**", "release/spotlight/**"]
   workflow_dispatch:
 
 jobs:
@@ -38,13 +38,13 @@ jobs:
         working-directory: packages/mcp-server
         run: pnpm pack --pack-destination dist
 
-      - name: Package telemetry
-        working-directory: packages/telemetry
+      - name: Package Spotlight SDK
+        working-directory: packages/spotlight
         run: pnpm pack --pack-destination dist
 
-      - name: Check packed telemetry consumer
-        working-directory: packages/telemetry
-        run: node scripts/check-package.mjs dist/sentry-telemetry-*.tgz
+      - name: Check packed Spotlight SDK consumer
+        working-directory: packages/spotlight
+        run: node scripts/check-package.mjs dist/sentry-spotlight-*.tgz
 
       - name: Archive artifacts
         uses: actions/upload-artifact@v4
@@ -53,11 +53,11 @@ jobs:
           path: |
             ${{ github.workspace }}/packages/mcp-server/dist/*.tgz
 
-      - name: Archive telemetry artifact
+      - name: Archive Spotlight SDK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sentry-telemetry-${{ github.sha }}
-          path: ${{ github.workspace }}/packages/telemetry/dist/*.tgz
+          name: sentry-spotlight-${{ github.sha }}
+          path: ${{ github.workspace }}/packages/spotlight/dist/*.tgz
           if-no-files-found: error
 
       - name: Publish Test Report

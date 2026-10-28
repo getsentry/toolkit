@@ -22,11 +22,12 @@ export function getSpans(
     .flatMap((trace) => Array.from(trace.spans.values()));
 }
 
-/** Groups normalized spans by description, preserving their input order. Durations are milliseconds. */
+/** Groups spans by description, falling back to operation or ID. Durations are milliseconds. */
 export function summarizeSpans(spans: Iterable<Span>): SpanSummary[] {
   const groups = new Map<string, SpanSummary>();
   for (const span of spans) {
-    const description = span.description?.trim();
+    const description =
+      span.description?.trim() || span.op?.trim() || span.span_id;
     if (
       !description ||
       !Number.isFinite(span.timestamp) ||

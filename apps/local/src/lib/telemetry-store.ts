@@ -1,4 +1,4 @@
-import { createTelemetryStore } from "@sentry/telemetry";
+import { createTelemetryStore } from "@sentry/spotlight";
 import { adaptTraceGroups, type TraceGroup } from "./trace-model.ts";
 import { aiItems } from "./inspection.ts";
 import {
@@ -148,6 +148,9 @@ export function createLocalTelemetryStore({
             processedRawIds.add(raw.id);
           }
           if (epoch !== generation) return;
+          // A capture can change while ingestion yields. Rebuild against the
+          // latest retention window before publishing any of that work.
+          if (dirty) continue;
           publish(
             snapshot.items,
             snapshot.envelopes,
@@ -188,15 +191,21 @@ export function createLocalTelemetryStore({
       envelopeItems.set(envelope.id, decoded);
       const envelopes = [...snapshot.envelopes, envelope].slice(-limit);
       const retainedIds = new Set(envelopes.map((item) => item.id));
-      for (const id of envelopeItems.keys())
-        if (!retainedIds.has(id)) envelopeItems.delete(id);
+      for (const id of envelopeItems.keys()) {
+        if (!retainedIds.has(id)) {
+          envelopeItems.delete(id);
+          needsRebuild = true;
+        }
+      }
+      const items = envelopes.flatMap((item) => [
+        ...(envelopeItems.get(item.id) ?? []),
+      ]);
       publish(
-        envelopes.flatMap((item) => [...(envelopeItems.get(item.id) ?? [])]),
+        items,
         envelopes,
-        adaptTraceGroups(
-          envelopes.flatMap((item) => [...(envelopeItems.get(item.id) ?? [])]),
-          processor.getTraces(),
-        ),
+        // The shared processor still contains the previous retention window
+        // until its asynchronous rebuild. Never expose those evicted spans.
+        adaptTraceGroups(items, needsRebuild ? [] : processor.getTraces()),
       );
       updateProcessed();
     },

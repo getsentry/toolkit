@@ -1,4 +1,4 @@
-import { type ProcessedTrace, type ProcessedSpan } from "@sentry/telemetry";
+import { type ProcessedTrace, type ProcessedSpan } from "@sentry/spotlight";
 import {
   getEventMetadata,
   type EventMetadata,
@@ -107,29 +107,34 @@ export function adaptTraceGroups(
       // use the JavaScript call stack merely to create presentation objects.
       const sharedSpans = [...trace.spans.values()];
       for (const span of sharedSpans) if (span.op !== "orphan") adapt(span);
+      function visibleChildren(spans: readonly ProcessedSpan[]): TraceSpan[] {
+        const visible: TraceSpan[] = [];
+        const pending = [...spans].reverse();
+        const visited = new Set<string>();
+        while (pending.length) {
+          const span = pending.pop()!;
+          if (visited.has(span.span_id)) continue;
+          visited.add(span.span_id);
+          if (span.op === "orphan") {
+            // Missing-parent wrappers can occur below real spans as well as at
+            // the root. Promote their captured children at every depth.
+            for (
+              let index = (span.children?.length ?? 0) - 1;
+              index >= 0;
+              index--
+            )
+              pending.push(span.children![index]!);
+          } else {
+            visible.push(adapt(span));
+          }
+        }
+        return visible;
+      }
       for (const span of sharedSpans) {
         const local = mapped.get(span.span_id);
-        if (local)
-          local.children = (span.children ?? []).flatMap((child) => {
-            const converted = mapped.get(child.span_id);
-            return converted ? [converted] : [];
-          });
+        if (local) local.children = visibleChildren(span.children ?? []);
       }
-      const roots: TraceSpan[] = [];
-      const pending = [...trace.spanTree].reverse();
-      while (pending.length) {
-        const span = pending.pop()!;
-        if (span.op === "orphan") {
-          for (
-            let index = (span.children?.length ?? 0) - 1;
-            index >= 0;
-            index--
-          )
-            pending.push(span.children![index]!);
-        } else {
-          roots.push(adapt(span));
-        }
-      }
+      const roots = visibleChildren(trace.spanTree);
       return [
         {
           id: trace.trace_id,

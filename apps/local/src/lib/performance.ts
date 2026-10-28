@@ -3,7 +3,7 @@ import {
   groupWebVitalPages,
   type VitalVisit as SharedVitalVisit,
   type TelemetrySnapshot,
-} from "@sentry/telemetry";
+} from "@sentry/spotlight";
 import type { LocalFeedItem } from "./spotlight.ts";
 import type { TraceGroup, TraceSpan } from "./trace-model.ts";
 import { record, text } from "./inspection.ts";
@@ -77,8 +77,8 @@ export function spanInsights(
   });
 }
 
-export { WEB_VITALS as VITALS } from "@sentry/telemetry";
-export type { VitalName, VitalMeasurement } from "@sentry/telemetry";
+export { WEB_VITALS as VITALS } from "@sentry/spotlight";
+export type { VitalName, VitalMeasurement } from "@sentry/spotlight";
 export type VitalVisit = {
   item: LocalFeedItem;
   metrics: SharedVitalVisit["metrics"];

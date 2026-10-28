@@ -1,4 +1,4 @@
-# `@sentry/telemetry`
+# `@sentry/spotlight`
 
 This package shares Sentry envelope normalization, trace assembly, and insight calculations across
 server and frontend consumers. Each instance owns its state; feed server and
@@ -9,15 +9,15 @@ comparing their retained histories.
 
 | Entry                    | Factory                     | Input                                                              |
 | ------------------------ | --------------------------- | ------------------------------------------------------------------ |
-| `@sentry/telemetry`      | `createTelemetryStore()`    | Parsed Sentry envelopes in portable runtimes                       |
-| `@sentry/telemetry/node` | `createTelemetryPipeline()` | Adds serialized bodies, decompression, and decoded payload history |
+| `@sentry/spotlight`      | `createTelemetryStore()`    | Parsed Sentry envelopes in portable runtimes                       |
+| `@sentry/spotlight/node` | `createTelemetryPipeline()` | Adds serialized bodies, decompression, and decoded payload history |
 
 ## Ingest and read telemetry
 
-Use `@sentry/telemetry` for parsed Sentry envelopes in a browser, worker, or Node application. Use `@sentry/telemetry/node` for serialized or compressed payloads on Node 20+. Both expose the same processing and read APIs; creating an instance does not start a server. The portable entry has no Node or React dependency.
+Use `@sentry/spotlight` for parsed Sentry envelopes in a browser, worker, or Node application. Use `@sentry/spotlight/node` for serialized or compressed payloads on Node 20+. Both expose the same processing and read APIs; creating an instance does not start a server. The portable entry has no Node or React dependency.
 
 ```ts
-import { createTelemetryStore, serializeSnapshot } from "@sentry/telemetry";
+import { createTelemetryStore, serializeSnapshot } from "@sentry/spotlight";
 
 const telemetry = createTelemetryStore();
 const receipt = await telemetry.ingestEnvelope(parsedEnvelope, {
@@ -39,7 +39,7 @@ telemetry.dispose();
 The Node adapter accepts `string`, `Uint8Array`, and `Buffer` bodies. `ingestPayload({ body, contentType?, encoding?, userAgent?, deliveryId?, signal? })` decodes `application/x-sentry-envelope` (the default content type) and supports identity, gzip, deflate, and Brotli encoding. Use `getDecodedPayload(envelopeId)` for a copied decompressed payload when it remains in the independently bounded history. Parsed envelopes still use `ingestEnvelope`; the payload methods are `ingestPayload` and `ingestPayloads`.
 
 ```ts
-import { createTelemetryPipeline } from "@sentry/telemetry/node";
+import { createTelemetryPipeline } from "@sentry/spotlight/node";
 
 const pipeline = createTelemetryPipeline({
   decodedHistory: { maxEntries: 100 },
@@ -132,23 +132,23 @@ Limits must be positive safe integers; Node `decodedHistory.maxEntries` and `dec
 
 `SDK_CAPABILITIES` exposes readonly machine-readable metadata for legacy and v2 spans, profile v1/v2, supported item types, and timestamp units. Supported item types include event/error, transaction, span, log, profile/profile_chunk, feedback, and attachment; individual wire versions can still be unsupported. Portable runtimes need standard JavaScript APIs including `AbortController`, `TextEncoder`, timers, maps, and sets. React is required only by your React consumer; compressed payload decoding is provided by the Node entry.
 
-The [SDK examples](examples) cover a bounded HTTP server, a frontend transport adapter, a reader-only consumer, React subscription, and an executable lifecycle walkthrough with receipts, retry, partial batches, cancellation, drain, JSON, and paging. Run `pnpm --filter @sentry/telemetry test` to typecheck the published declarations and every example, then execute the lifecycle walkthrough. CI runs this check after the package build; it does not add a whole-project TypeScript gate.
+The [SDK examples](examples) cover a bounded HTTP server, a frontend transport adapter, a reader-only consumer, React subscription, and an executable lifecycle walkthrough with receipts, retry, partial batches, cancellation, drain, JSON, and paging. Run `pnpm --filter @sentry/spotlight test` to typecheck the published declarations and every example, then execute the lifecycle walkthrough. CI runs this check after the package build; it does not add a whole-project TypeScript gate.
 
 ### Getter reference
 
-| Read                                                            | Result                                                          |
-| --------------------------------------------------------------- | --------------------------------------------------------------- |
-| `getTrace(traceId)`, `getTraces(filter?)`                       | Assembled traces                                                |
-| `getEvent(eventId)`, `getEvents(filter?)`, `getErrors(filter?)` | Normalized events and captured exceptions                       |
-| `getSpans(filter?)`                                             | Normalized spans                                                |
-| `getLog(logId)`, `getLogs(filter?)`                             | Logs and trace correlation                                      |
-| `getDatabaseQuerySummaries(filter?)`                            | Database spans grouped by trimmed description                   |
-| `getResourceSummaries(filter?)`                                 | Resource timings and encoded sizes                              |
-| `getProfile(traceId)`, `getProfileFunctionSummaries(filter?)`   | Associated profiles and inclusive frame durations/sample counts |
-| `getAITraces(filter?)`                                          | AI interactions, tokens, prompts, responses, and tools          |
-| `getWebVitals(filter?)`                                         | Scored page-load events                                         |
-| `getEnvelope(envelopeId)`, `getEnvelopes()`                     | Retained wire envelopes                                         |
-| `getSdks()`                                                     | Observed SDK identities                                         |
+| Read                                                            | Result                                                               |
+| --------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `getTrace(traceId)`, `getTraces(filter?)`                       | Assembled traces                                                     |
+| `getEvent(eventId)`, `getEvents(filter?)`, `getErrors(filter?)` | Normalized events and captured exceptions                            |
+| `getSpans(filter?)`                                             | Normalized spans                                                     |
+| `getLog(logId)`, `getLogs(filter?)`                             | Logs and trace correlation                                           |
+| `getDatabaseQuerySummaries(filter?)`                            | Database spans grouped by trimmed description, operation, or span ID |
+| `getResourceSummaries(filter?)`                                 | Resource timings and encoded sizes                                   |
+| `getProfile(traceId)`, `getProfileFunctionSummaries(filter?)`   | Associated profiles and inclusive frame durations/sample counts      |
+| `getAITraces(filter?)`                                          | AI interactions, tokens, prompts, responses, and tools               |
+| `getWebVitals(filter?)`                                         | Scored page-load events                                              |
+| `getEnvelope(envelopeId)`, `getEnvelopes()`                     | Retained wire envelopes                                              |
+| `getSdks()`                                                     | Observed SDK identities                                              |
 
 Event reads accept `traceId` and `spanId`; trace/log/span/profile/summary reads
 accept `traceId`; query summaries also accept `description`. The time/order/limit
@@ -177,7 +177,7 @@ import {
   buildProfileModel,
   groupWebVitalPages,
   inspectAI,
-} from "@sentry/telemetry";
+} from "@sentry/spotlight";
 
 const profile = buildProfileModel(rawProfilePayload, selectedThreadId);
 // profile.root, profile.functions, profile.threads; durations are milliseconds.
@@ -194,12 +194,12 @@ const pages = groupWebVitalPages([
 
 ## Ownership and adoption
 
-This Apache-2.0 implementation originated in [Spotlight](https://github.com/getsentry/spotlight/pull/1374). Toolkit owns subsequent shared processing changes. The Local receiver imports `@sentry/telemetry/node`; the Local browser app imports `@sentry/telemetry`. UI rendering, HTTP/SSE transport, sessions, and terminal formatting stay in their applications.
+This Apache-2.0 implementation originated in [Spotlight](https://github.com/getsentry/spotlight/pull/1374). Toolkit owns subsequent shared processing changes. The Local receiver imports `@sentry/spotlight/node`; the Local browser app imports `@sentry/spotlight`. UI rendering, HTTP/SSE transport, sessions, and terminal formatting stay in their applications.
 
-The package exports built JavaScript and declarations. Run `pnpm --filter @sentry/telemetry build` before direct source development in a consumer. Workspace build/test scripts prepare this dependency. The portable entry has no React or Node runtime dependency.
+The package exports built JavaScript and declarations. Run `pnpm --filter @sentry/spotlight build` before direct source development in a consumer. Workspace build/test scripts prepare this dependency. The portable entry has no React or Node runtime dependency.
 
 After the first npm release, Spotlight can replace its extraction with imports from this package and remove its local processing implementation. Existing Spotlight `/sdk` transport helpers are a separate compatibility API. No npm publication occurs as part of the migration PR.
 
 ## Release
 
-Use the repository Release workflow with product `telemetry`. The `packages/telemetry` Craft workspace publishes the independently versioned `@sentry/telemetry` npm artifact built by Post-merge tasks. The portable and Node consumer contracts and executable examples are checked against emitted declarations before packing.
+Use the repository Release workflow with product `spotlight`. The `packages/spotlight` Craft workspace publishes the independently versioned `@sentry/spotlight` npm artifact built by Post-merge tasks. The portable and Node consumer contracts and executable examples are checked against emitted declarations before packing.

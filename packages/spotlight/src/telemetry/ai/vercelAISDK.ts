@@ -120,18 +120,27 @@ export const vercelAISDKHandler: AILibraryHandler = {
 
   extractRootSpans: (spans: Span[]): Span[] => {
     const resultRoots: Span[] = [];
-
-    const findAndCollectAIRoots = (spansToSearch: Span[]) => {
-      for (const currentSpan of spansToSearch) {
-        if (currentSpan.op?.toLowerCase().startsWith(AI_SPAN_OP_PREFIX)) {
-          resultRoots.push(currentSpan);
-        } else if (currentSpan.children?.length) {
-          findAndCollectAIRoots(currentSpan.children);
+    const pending = [...spans].reverse();
+    const visited = new Set<Span>();
+    for (
+      let currentSpan = pending.pop();
+      currentSpan;
+      currentSpan = pending.pop()
+    ) {
+      if (visited.has(currentSpan)) continue;
+      visited.add(currentSpan);
+      if (currentSpan.op?.toLowerCase().startsWith(AI_SPAN_OP_PREFIX)) {
+        resultRoots.push(currentSpan);
+      } else {
+        for (
+          let index = (currentSpan.children?.length ?? 0) - 1;
+          index >= 0;
+          index--
+        ) {
+          pending.push(currentSpan.children![index]);
         }
       }
-    };
-
-    findAndCollectAIRoots(spans);
+    }
     return resultRoots;
   },
 
@@ -381,14 +390,14 @@ function extractAIMetadata(span: Span, trace: AITrace) {
     }
   }
 
-  if (span.data[AI_SETTINGS_MAX_RETRIES_FIELD]) {
-    trace.metadata.maxRetries = Number(
-      span.data[AI_SETTINGS_MAX_RETRIES_FIELD],
-    );
+  const maxRetries = finiteSetting(span.data[AI_SETTINGS_MAX_RETRIES_FIELD]);
+  if (maxRetries !== undefined) {
+    trace.metadata.maxRetries = maxRetries;
   }
 
-  if (span.data[AI_SETTINGS_MAX_STEPS_FIELD]) {
-    trace.metadata.maxSteps = Number(span.data[AI_SETTINGS_MAX_STEPS_FIELD]);
+  const maxSteps = finiteSetting(span.data[AI_SETTINGS_MAX_STEPS_FIELD]);
+  if (maxSteps !== undefined) {
+    trace.metadata.maxSteps = maxSteps;
   }
 
   // Token usage - use === undefined to allow 0 values
@@ -408,6 +417,17 @@ function extractAIMetadata(span: Span, trace: AITrace) {
       trace.metadata.completionTokens = Number(completionTokens);
     }
   }
+}
+
+function finiteSetting(value: unknown): number | undefined {
+  if (
+    typeof value !== "number" &&
+    (typeof value !== "string" || !value.trim())
+  ) {
+    return undefined;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }
 
 function extractTelemetryMetadata(span: Span, trace: AITrace) {
@@ -493,7 +513,15 @@ function extractResponseData(span: Span, trace: AITrace) {
 
   const toolCalls = span.data[AI_RESPONSE_TOOL_CALLS_FIELD];
   if (toolCalls) {
-    trace.response.toolCalls = JSON.parse(stringifyValue(toolCalls));
+    try {
+      const parsed: unknown =
+        typeof toolCalls === "string" ? JSON.parse(toolCalls) : toolCalls;
+      if (Array.isArray(parsed)) {
+        trace.response.toolCalls = parsed;
+      }
+    } catch {
+      // Truncated tool-call JSON must not discard the rest of the AI trace.
+    }
   }
 }
 

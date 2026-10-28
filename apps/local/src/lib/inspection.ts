@@ -1,8 +1,8 @@
-import { inspectAI, isAIInteraction as isAiPayload } from "@sentry/telemetry";
+import { inspectAI, isAIInteraction as isAiPayload } from "@sentry/spotlight";
 export {
   isAIInteraction as isAiPayload,
   readSpanData as spanData,
-} from "@sentry/telemetry";
+} from "@sentry/spotlight";
 import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
 

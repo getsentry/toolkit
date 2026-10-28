@@ -1,4 +1,4 @@
-import type { TelemetryReader, TelemetryStore } from "@sentry/telemetry";
+import type { TelemetryReader, TelemetryStore } from "@sentry/spotlight";
 import { useSyncExternalStore } from "react";
 
 type Props = {

@@ -1,4 +1,4 @@
-import { buildProfileModel, type ParsedProfile } from "@sentry/telemetry";
+import { buildProfileModel, type ParsedProfile } from "@sentry/spotlight";
 import type { LocalFeedItem } from "./spotlight.ts";
 import type { TraceGroup } from "./trace-model.ts";
 import { record, finite, text } from "./inspection.ts";
@@ -6,7 +6,7 @@ export type {
   ProfileNode,
   ProfileFunction,
   ParsedProfile,
-} from "@sentry/telemetry";
+} from "@sentry/spotlight";
 
 export function parseProfile(
   item: LocalFeedItem,

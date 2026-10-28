@@ -32,7 +32,9 @@ function consolidateSpans(trace: Trace, spans: Span[]): Span[] {
     if (
       span &&
       span.description === lastSpan.description &&
-      span.op === lastSpan.op
+      span.op === lastSpan.op &&
+      (span.op !== "Thread" ||
+        span.data?.thread_id === lastSpan.data?.thread_id)
     ) {
       // Require the spans are sorted by start_timestamp
       lastSpan.timestamp = span.timestamp;
@@ -105,6 +107,19 @@ export function getSpansFromProfile(
 
   const sentryFrameFilter =
     profile.platform && SENTRY_FRAME_FILTER_PER_PLATFORM[profile.platform];
+  const nextSampleTimestamps: Array<number | undefined> = [];
+  const nextTimestampByThread = new Map<string, number>();
+  for (
+    let sampleIdx = profile.samples.length - 1;
+    sampleIdx >= 0;
+    sampleIdx--
+  ) {
+    const sample = profile.samples[sampleIdx];
+    nextSampleTimestamps[sampleIdx] = nextTimestampByThread.get(
+      sample.thread_id,
+    );
+    nextTimestampByThread.set(sample.thread_id, sample.start_timestamp);
+  }
   // Try to fill in the gaps from profile data
   const fillerSpans: Span[] = [];
   for (let sampleIdx = 0; sampleIdx < profile.samples.length; sampleIdx++) {
@@ -116,8 +131,7 @@ export function getSpansFromProfile(
     if (sampleTs < startTs || sampleTs > endTs) {
       continue;
     }
-    const nextSample = profile.samples[sampleIdx + 1];
-    const timestamp = nextSample ? nextSample.start_timestamp : endTs;
+    const timestamp = nextSampleTimestamps[sampleIdx] ?? endTs;
 
     if (timestamp > endTs) {
       continue;
@@ -162,7 +176,7 @@ export function getSpansFromProfile(
     const currentStack = profile.stacks[sample.stack_id];
     const lastSentryFrameIdx = sentryFrameFilter
       ? currentStack.findLastIndex(sentryFrameFilter, profile.frames)
-      : 0;
+      : -1;
     for (
       let frameIdxIdx = lastSentryFrameIdx + 1;
       frameIdxIdx < currentStack.length;
@@ -171,7 +185,10 @@ export function getSpansFromProfile(
       const frame = profile.frames[currentStack[frameIdxIdx]];
       // XXX: We may wanna skip frames that doesn't have `in_app` set to true
       //      that said it's better to have this as a dynamic filter
-      const [description, op] = getFunctionNameFromFrame(frame).split("@");
+      const description =
+        frame.module || frame.filename || frame.abs_path || "<unknown>";
+      // The separator follows the complete module; either component may contain @.
+      const op = getFunctionNameFromFrame(frame).slice(description.length + 1);
       const spanFromFrame: Span = {
         span_id: profileSpanId([...identity, "frame", frameIdxIdx]),
         parent_span_id: currentSpan.span_id,
@@ -199,6 +216,13 @@ export function getSpansFromProfile(
     (span) =>
       span.timestamp - span.start_timestamp > 0 && span.timestamp <= endTs,
   );
+}
+
+function getThreadId(span: Span | Trace | undefined): string | undefined {
+  const threadId = span?.data?.["thread.id"] ?? span?.data?.threadId;
+  return typeof threadId === "string" || typeof threadId === "number"
+    ? String(threadId)
+    : undefined;
 }
 
 /**
@@ -234,9 +258,9 @@ export function graftProfileSpans(
     const startTs = span ? span.timestamp : parent.start_timestamp;
     const endTs = nextSpan ? nextSpan.start_timestamp : parent.timestamp;
     const threadIds = new Set([
-      span?.data?.threadId,
-      nextSpan?.data?.threadId,
-      parent?.data?.threadId,
+      getThreadId(span),
+      getThreadId(nextSpan),
+      getThreadId(parent),
     ]);
     threadIds.delete(undefined);
     if (endTs - startTs > 0) {

@@ -3,7 +3,7 @@ import {
   serializeSnapshot,
   serializeSummaries,
   serializeTrace,
-} from "@sentry/telemetry";
+} from "@sentry/spotlight";
 
 /** Business logic only needs a reader, independent of how telemetry arrives. */
 export function inspectTrace(reader: TelemetryReader, traceId: string) {

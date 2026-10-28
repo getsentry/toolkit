@@ -9,7 +9,7 @@ export type ProfileFunctionSummary = {
   traceIds: Set<TraceId>;
 };
 
-/** Inclusive frame durations in milliseconds, using each sample's interval to the next sample. */
+/** Inclusive frame durations in milliseconds, using intervals between samples of the same thread. */
 export function getProfileFunctionSummaries(
   profilesByTraceId: ReadonlyMap<string, SentryProcessedProfile>,
   filter: SpanFilter = {},
@@ -17,15 +17,25 @@ export function getProfileFunctionSummaries(
   const aggregateCalls = new Map<string, ProfileFunctionSummary>();
   for (const [traceId, profile] of profilesByTraceId) {
     if (filter.traceId !== undefined && traceId !== filter.traceId) continue;
-    // The final sample has no known duration and is not included.
+    const durations: Array<number | undefined> = [];
+    const nextTimestampByThread = new Map<string, number>();
     for (
-      let sampleIdx = 0;
-      sampleIdx < profile.samples.length - 1;
-      sampleIdx++
+      let sampleIdx = profile.samples.length - 1;
+      sampleIdx >= 0;
+      sampleIdx--
     ) {
       const sample = profile.samples[sampleIdx];
-      const duration =
-        profile.samples[sampleIdx + 1].start_timestamp - sample.start_timestamp;
+      const nextTimestamp = nextTimestampByThread.get(sample.thread_id);
+      if (nextTimestamp !== undefined) {
+        durations[sampleIdx] = nextTimestamp - sample.start_timestamp;
+      }
+      nextTimestampByThread.set(sample.thread_id, sample.start_timestamp);
+    }
+    // Each thread's final sample has no known duration and is not included.
+    for (let sampleIdx = 0; sampleIdx < profile.samples.length; sampleIdx++) {
+      const sample = profile.samples[sampleIdx];
+      const duration = durations[sampleIdx];
+      if (duration === undefined) continue;
       for (const frameIdx of profile.stacks[sample.stack_id]) {
         const name = getFunctionNameFromFrame(profile.frames[frameIdx]);
         const callData = aggregateCalls.get(name);

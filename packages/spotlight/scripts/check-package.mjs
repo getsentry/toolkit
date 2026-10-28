@@ -82,7 +82,7 @@ try {
     );
     const scope = join(consumerDirectory, "node_modules", "@sentry");
     await mkdir(scope, { recursive: true });
-    await symlink(packedDirectory, join(scope, "telemetry"), "junction");
+    await symlink(packedDirectory, join(scope, "spotlight"), "junction");
     const manifest = JSON.parse(
       await readFile(join(packedDirectory, "package.json"), "utf8"),
     );
@@ -123,7 +123,7 @@ try {
           );
         } catch {
           throw new Error(
-            "Build @sentry/telemetry before checking its public package",
+            "Build @sentry/spotlight before checking its public package",
           );
         }
       }
@@ -142,7 +142,7 @@ try {
   if (!tarball) {
     const scope = join(output, "node_modules", "@sentry");
     await mkdir(scope, { recursive: true });
-    await symlink(packageDirectory, join(scope, "telemetry"), "junction");
+    await symlink(packageDirectory, join(scope, "spotlight"), "junction");
   }
   run(join(output, "lifecycle.js"));
   console.log(
