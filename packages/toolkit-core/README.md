@@ -45,11 +45,19 @@ as a WebCrypto HMAC-SHA256 that matches the CLI's earlier `node:crypto` keys.
 `computeInvalidationPrefixes` lists the URL prefixes a successful mutation
 makes stale.
 
-The module has no storage. The host supplies an identity that is a stable
-hash of the login (never a raw token), applies server caching headers ahead
-of the tiers, stores entries, and deletes only the requesting identity's
-entries under each invalidation prefix. The CLI's disk cache in
-`packages/cli/src/lib/response-cache.ts` uses it.
+The host supplies an identity that is a stable hash of the login (never a raw
+token), applies server caching headers ahead of the tiers, and deletes only
+the requesting identity's entries under each invalidation prefix. The CLI's
+disk cache in `packages/cli/src/lib/response-cache.ts` uses it.
+
+Entries live in a `CacheStore`: `get`, `set` with a TTL, and
+`deleteMatching(identity, urlPrefix)`. An entry holds a body already encoded
+by `response-cache/codec`, plus its URL, identity, tier, status, headers, and
+serialized cache policy. `createMemoryStore` is a store with a byte budget
+(default 24 MiB), evicting the least recently used entries first. It skips
+bodies over a per-entry cap on compressed size (default 1 MiB) or a ceiling on
+original size (default 32 MiB), and charges a flat 1 KiB per entry for
+metadata, so many small entries cannot outgrow the budget.
 
 `response-cache/codec` compresses cached bodies with `node:zlib`: zstd level 3
 where the runtime has it (Node 22.15+, Workers with `nodejs_compat`), brotli
