@@ -639,13 +639,15 @@ describe("getCompletions: dashboards", () => {
       { value: "12", label: "Errors" },
     ]);
 
+    // Always `org/<id>`, even with one org: a bare ID would be read in the
+    // auto-detected org.
     expect(await getCompletions(["dashboard", "view"], "")).toEqual([
       { value: "acme/", description: "Acme" },
-      { value: "12", description: "Errors" },
+      { value: "acme/12", description: "Errors" },
     ]);
     // A title finds its ID.
     expect(await getCompletions(["dashboard", "view"], "err")).toEqual([
-      { value: "12", description: "Errors" },
+      { value: "acme/12", description: "Errors" },
     ]);
     expect(await getCompletions(["dashboard", "view"], "acme/")).toEqual([
       { value: "acme/12", description: "Errors" },

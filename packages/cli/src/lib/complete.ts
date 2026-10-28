@@ -175,9 +175,15 @@ type Completer = (
   slot: CompletionSlot,
 ) => Completion[] | Promise<Completion[]>;
 
-/** `org/` prefixes and `org/<id>` dashboards; dashboards are org-scoped. */
-const completeDashboards = entityCompleter("dashboard", (partial) =>
-  partial.includes("/") ? [] : completeOrgSlugs(partial, "/"),
+/**
+ * `org/` prefixes and `org/<id>` dashboards. Always qualified: dashboard IDs
+ * are sequential integers, so a bare ID would be read in whichever org is
+ * auto-detected, not the one it was seen in.
+ */
+const completeDashboards = entityCompleter(
+  "dashboard",
+  (partial) => (partial.includes("/") ? [] : completeOrgSlugs(partial, "/")),
+  { qualify: true },
 );
 
 /** The completer of every kind a parser can declare. */
@@ -546,16 +552,19 @@ function matchCachedEntities(
  * every entity kind follows the same rules: the target suggestions for the
  * partial (`org/`, the org's projects, …), then the entities of the org
  * typed, or of every org when none is. Entities are written `org/<value>`
- * after `org/`, and when more than one org is known, so the value names
- * its org.
+ * after `org/`, when more than one org is known, and with `qualify`, so
+ * the value names its org.
  *
  * @param kind - Entity type to complete
  * @param target - Completes the target part of the argument (`org/`,
  *   `org/project`, …), offered next to the entities
+ * @param options.qualify - Always write `org/<value>`, for values that do
+ *   not identify their org on their own
  */
 function entityCompleter(
   kind: CompletionEntityKind,
   target: (partial: string) => Completion[],
+  options: { qualify?: boolean } = {},
 ): (partial: string) => Promise<Completion[]> {
   return async (partial) => {
     const scope = await parseTargetScope(partial);
@@ -565,7 +574,8 @@ function entityCompleter(
     const orgs = scope.org
       ? [scope.org]
       : getCompletionOrganizations().map((org) => org.slug);
-    const qualified = scope.org !== undefined || orgs.length > 1;
+    const qualified =
+      options.qualify || scope.org !== undefined || orgs.length > 1;
     return [
       ...target(partial),
       ...matchCachedEntities(kind, scope.rest, orgs).map(
