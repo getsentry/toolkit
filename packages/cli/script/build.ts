@@ -154,6 +154,9 @@ async function bundleJs(): Promise<boolean> {
         SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
         "process.env.NODE_ENV": JSON.stringify("production"),
         __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
+        // Tree-shakes the SDK's runtime module hooks, which can't instrument a
+        // bundle and would hook the host app in library mode.
+        __SENTRY_CHANNEL_INJECTION__: "false",
       },
       plugins: [
         textImportPlugin,

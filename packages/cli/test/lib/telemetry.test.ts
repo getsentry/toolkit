@@ -41,7 +41,6 @@ import {
   setOrgProjectContext,
   withDbSpan,
   withFsSpan,
-  withHttpSpan,
   withSerializeSpan,
   withTelemetry,
   withTracing,
@@ -848,21 +847,6 @@ describe("setArgsContext", () => {
       values: ["123", '{"key":"value"}'],
       count: 2,
     });
-  });
-});
-
-describe("withHttpSpan", () => {
-  test("executes function and returns result", async () => {
-    const result = await withHttpSpan("GET", "/test", async () => "success");
-    expect(result).toBe("success");
-  });
-
-  test("propagates errors", async () => {
-    await expect(
-      withHttpSpan("POST", "/test", async () => {
-        throw new Error("http error");
-      }),
-    ).rejects.toThrow("http error");
   });
 });
 

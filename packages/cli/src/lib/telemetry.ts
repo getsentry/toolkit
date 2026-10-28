@@ -402,8 +402,6 @@ export function recordApiErrorOnSpan(span: Span, error: ApiError): void {
 const EXCLUDED_INTEGRATIONS = new Set([
   "Console", // Captures console output - too noisy for CLI
   "Context", // Replaced below with cpu: false to avoid os.cpus() crash (CLI-1ED)
-  "Http", // Replaced below with spans: false
-  "NodeFetch", // Replaced below with spans: false
   "ContextLines", // Reads source files - we rely on uploaded sourcemaps instead
   "LocalVariables", // Captures local variables - adds significant overhead
   "Modules", // Lists all loaded modules - unnecessary for CLI telemetry
@@ -607,8 +605,8 @@ export function initSentry(
     // Keep v10's transaction model: dashboards and alerts rely on scope tags
     // on transactions, and beforeSendTransaction scrubs server_name.
     traceLifecycle: "static",
-    // The CLI ships as a bundle, so runtime module hooks can't instrument it;
-    // in library mode they would instrument the host application instead.
+    // Shipped bundles strip these hooks via the `__SENTRY_CHANNEL_INJECTION__`
+    // build define; this keeps unbundled runs (dev, tests) consistent.
     enableRuntimeChannelInjection: false,
     // Compress outgoing envelopes with zstd (level 3) instead of gzip —
     // smaller payloads, faster compress/decompress on both sides.
@@ -645,16 +643,6 @@ export function initSentry(
       if (!libraryMode) {
         filtered.push(
           Sentry.nodeContextIntegration({ device: { cpu: false } }),
-        );
-      }
-
-      // API requests already get an `http.client` span from the CLI, which
-      // also covers cache hits and retries. SDK spans would double-count
-      // them in span.op:http.client queries.
-      if (!libraryMode) {
-        filtered.push(
-          Sentry.httpIntegration({ spans: false }),
-          Sentry.nativeNodeFetchIntegration({ spans: false }),
         );
       }
 
@@ -1044,7 +1032,7 @@ export function createWizardPromptTelemetry(): WizardPromptTelemetry {
  * to OK on success or Error on failure.
  *
  * Use this generic helper for custom operations, or use the specialized
- * helpers (withHttpSpan, withDbSpan, withFsSpan, withSerializeSpan) for
+ * helpers (withDbSpan, withFsSpan, withSerializeSpan) for
  * common operation types.
  *
  * @param name - Span name (e.g., "scanDirectory", "findProjectRoot")
@@ -1133,28 +1121,6 @@ export function withTracingSpan<T>(
       }
     },
   );
-}
-
-/**
- * Wrap an HTTP request with a span for tracing.
- *
- * Creates a child span under the current active span to track
- * HTTP request duration and status.
- *
- * @param method - HTTP method (GET, POST, etc.)
- * @param url - Request URL or path
- * @param fn - The async function that performs the HTTP request
- * @returns The result of the function
- */
-export function withHttpSpan<T>(
-  method: string,
-  url: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  return withTracing(`${method} ${url}`, "http.client", fn, {
-    "http.request.method": method,
-    "url.path": url,
-  });
 }
 
 /**
