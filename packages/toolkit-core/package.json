@@ -59,6 +59,10 @@
       "types": "./src/response-cache/index.ts",
       "default": "./src/response-cache/index.ts"
     },
+    "./response-cache/codec": {
+      "types": "./src/response-cache/codec.ts",
+      "default": "./src/response-cache/codec.ts"
+    },
     "./search-query": {
       "types": "./src/search-query.ts",
       "default": "./src/search-query.ts"
