@@ -878,27 +878,25 @@ function createAuthenticatedFetch(
       return response;
     };
 
-    if (!isManualHttpTracing()) {
-      return await request();
-    }
-    return await withTracingSpan(
-      `${method} ${urlPath}`,
-      "http.client",
-      async (span) => {
-        const response = await request();
-        span.setAttribute("http.response.status_code", response.status);
-        if (!response.ok) {
-          span.setStatus({ code: 2, message: `${response.status}` });
-        }
-        return response;
-      },
-      { "http.request.method": method, "url.path": urlPath },
-    ).then(
-      // Every API response, fresh or cached, seeds shell completion, so no
-      // API function has to remember to. Awaited so a command that exits
-      // right after its request still stores the entities.
-      (response) => seedCompletions(extractInputUrl(input), response),
-    );
+    const response = isManualHttpTracing()
+      ? await withTracingSpan(
+          `${method} ${urlPath}`,
+          "http.client",
+          async (span) => {
+            const traced = await request();
+            span.setAttribute("http.response.status_code", traced.status);
+            if (!traced.ok) {
+              span.setStatus({ code: 2, message: `${traced.status}` });
+            }
+            return traced;
+          },
+          { "http.request.method": method, "url.path": urlPath },
+        )
+      : await request();
+    // Every API response, fresh or cached and traced or not, seeds shell
+    // completion, so no API function has to remember to. Awaited so a
+    // command that exits right after its request still stores the entities.
+    return await seedCompletions(extractInputUrl(input), response);
   };
 }
 
