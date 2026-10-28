@@ -330,6 +330,25 @@ describe("runInteractiveLogin", () => {
       expect.any(Object),
       1000,
       "project:read org:read",
+      undefined,
+    );
+  });
+
+  test("sends the expected email as the login hint", async () => {
+    performDeviceFlowSpy = vi
+      .spyOn(oauth, "performDeviceFlow")
+      .mockResolvedValue(makeTokenResponse());
+
+    await runInteractiveLogin({
+      timeout: 1000,
+      expectedEmail: "test@example.com",
+    });
+
+    expect(performDeviceFlowSpy).toHaveBeenCalledWith(
+      expect.any(Object),
+      1000,
+      undefined,
+      "test@example.com",
     );
   });
 
@@ -350,6 +369,7 @@ describe("runInteractiveLogin", () => {
     expect(performDeviceFlowSpy).toHaveBeenCalledWith(
       expect.any(Object),
       1000,
+      undefined,
       undefined,
     );
   });
