@@ -23,7 +23,8 @@ export type CacheEntry = {
   body: EncodedBody;
   /**
    * The serialized `http-cache-semantics` policy. Stores keep it as is and
-   * never read it; the host uses it to decide freshness and revalidation.
+   * never read it; `lookupResponse` uses it to decide freshness and
+   * revalidation.
    */
   policy: unknown;
   /** When the response was received (epoch ms). */

@@ -105,7 +105,6 @@ export function createLocalAgentServer() {
 function startServer(): void {
   init({
     dsn: process.env.SENTRY_DSN,
-    enableLogs: true,
     tracesSampleRate: 1,
   });
 

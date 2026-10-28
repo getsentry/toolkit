@@ -225,15 +225,6 @@ for (const [key, patchPath] of Object.entries(patches)) {
  * `-v`=version alias in `runApplication` so `-v` stays the Sentry CLI's
  * `--verbose` alias at every position; `--version` remains the version flag.
  * The stale marker is the original `inputs[0] === "-v"` version check.
- *
- * @sentry/core and @sentry/node-core: these are tree-shaking patches that strip
- * unused re-exports (AI/integration modules) from the build barrels so esbuild
- * excludes them from the bundle. They edit bundler-generated barrels and are
- * therefore especially prone to silent context drift on a version bump. Each
- * marker is a re-export the patch removes (present in the pristine package,
- * absent once patched); its presence means the strip did NOT apply and the
- * bundle will re-bloat with the AI integrations — re-introducing the dangling
- * re-export class the patch guards against.
  */
 const CONTENT_ASSERTIONS: ReadonlyArray<{
   /** Installed file to inspect, relative to the resolved node_modules dir. */
@@ -307,30 +298,6 @@ const CONTENT_ASSERTIONS: ReadonlyArray<{
     requiredMarker: "renderHelp",
     description:
       "@stricli/core CJS: pluggable `renderHelp` hook missing (`sentry --help --json` will fall back to text help instead of structured JSON)",
-  },
-  {
-    file: "@sentry/core/build/cjs/index.js",
-    staleMarker: "exports.instrumentOpenAiClient",
-    description:
-      "@sentry/core CJS: tree-shaking strip not applied (AI integrations re-bundled)",
-  },
-  {
-    file: "@sentry/core/build/esm/index.js",
-    staleMarker: "from './tracing/openai/index.js'",
-    description:
-      "@sentry/core ESM: tree-shaking strip not applied (AI integrations re-bundled)",
-  },
-  {
-    file: "@sentry/node-core/build/cjs/light/index.js",
-    staleMarker: "exports.dedupeIntegration",
-    description:
-      "@sentry/node-core CJS light: integration re-export strip not applied",
-  },
-  {
-    file: "@sentry/node-core/build/esm/light/index.js",
-    staleMarker: "dedupeIntegration",
-    description:
-      "@sentry/node-core ESM light: integration re-export strip not applied",
   },
 ];
 

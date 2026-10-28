@@ -7,7 +7,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { number, object, string } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { resolveEventInOrg } from "../../src/lib/api/events.js";
@@ -1006,6 +1006,9 @@ describe("events.ts", () => {
         const req = new Request(input!, init);
         expect(req.url).toContain("/organizations/test-org/issues/");
         expect(req.url).toContain("/events/latest/");
+        expect(new URL(req.url).searchParams.getAll("collapse")).toEqual([
+          "adjacentEvents",
+        ]);
         return new Response(JSON.stringify(event), {
           status: 200,
           headers: { "Content-Type": "application/json" },

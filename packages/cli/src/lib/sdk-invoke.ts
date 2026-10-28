@@ -204,7 +204,7 @@ const ANSI_RE = /\x1b\[[0-9;]*m/g;
 async function flushTelemetry(): Promise<void> {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const Sentry = await import("@sentry/node-core/light");
+    const Sentry = await import("@sentry/node");
     const client = Sentry.getClient();
     if (client) {
       await client.flush(3000);
