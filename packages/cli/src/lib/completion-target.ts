@@ -1,20 +1,23 @@
 /**
- * Completion-aware argument parsers.
+ * What shell completion suggests for each argument, read from its parser.
  *
- * Positionals and flags use a parser tagged with {@link withCompletionTarget}
- * so shell completion can read what an argument completes straight from the
- * command's `parameters`, the same place that says how it parses.
- * `script/generate-completion-targets.ts` collects the kind of every
- * positional and flag at build time because the `__complete` fast path
- * cannot boot Stricli to walk the route tree. `src/lib/complete.ts` maps
- * each kind to its completer.
+ * A positional or flag completes a kind when its `parse` function is tagged
+ * with {@link withCompletionTarget}, or is one of the shared value parsers
+ * in {@link PARSER_TARGETS}. `script/generate-completion-targets.ts`
+ * collects the kind of every argument at build time, because the
+ * `__complete` fast path cannot boot Stricli to walk the route tree, and
+ * `src/lib/complete.ts` maps each kind to its completer.
  *
  * {@link parseOrgTarget}, {@link parseOrgProjectTarget},
  * {@link parseIssueTarget}, and {@link parseDashboardTarget} return their
  * input unchanged and only mark the kind. Parsers that also parse the value,
- * such as those in `target-positional.ts`, `sanitizeIssueQuery`, and
- * `parsePeriod`, use the same tag.
+ * such as those in `target-positional.ts`, use the same tag.
  */
+
+import { ISSUE_IS_VALUES } from "@sentry/toolkit-core/search-query";
+import { ISSUE_LEVELS } from "../types/sentry.js";
+import { sanitizeIssueQuery } from "./search-query.js";
+import { parsePeriod, UNIT_SECONDS } from "./time-range.js";
 
 /** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */
 export const ORG_TARGET = "org";
@@ -25,13 +28,10 @@ export const ORG_PROJECT_TARGET = "org/project";
 /** Completes everything {@link ORG_PROJECT_TARGET} does plus cached issue short IDs. */
 export const ISSUE_TARGET = "issue";
 
-/**
- * Completes `org/` prefixes and cached dashboards: `org/<id>` in the first
- * positional, bare IDs after an org positional.
- */
+/** Completes `org/` prefixes and cached dashboards (`org/<id>`) in the first positional. */
 export const DASHBOARD_TARGET = "dashboard";
 
-/** Completes the term at the end of an issue search query (`is:` values). */
+/** Completes the term at the end of an issue search query (`is:`, `level:`). */
 export const ISSUE_QUERY_TARGET = "issue-query";
 
 /** Completes relative `--period` values (`24h`, `7d`, a number plus a unit). */
@@ -90,10 +90,24 @@ export const parseDashboardTarget = withCompletionTarget(
 );
 
 /**
+ * Shared value parsers and what their arguments complete. Listed here, not
+ * tagged where they are defined, so those modules know nothing about
+ * completion: every flag that parses with one completes the same way.
+ */
+const PARSER_TARGETS: ReadonlyMap<unknown, CompletionTarget> = new Map<
+  unknown,
+  CompletionTarget
+>([
+  [sanitizeIssueQuery, ISSUE_QUERY_TARGET],
+  [parsePeriod, PERIOD_TARGET],
+]);
+
+/**
  * Read the completion kind from a positional's or flag's `parse` function.
  *
- * @returns The kind a parser was tagged with by {@link withCompletionTarget},
- *   or `undefined` for any other parser
+ * @returns The kind a parser was tagged with by {@link withCompletionTarget}
+ *   or is listed with in {@link PARSER_TARGETS}, or `undefined` for any
+ *   other parser
  */
 export function getCompletionTarget(
   parse: unknown,
@@ -101,7 +115,39 @@ export function getCompletionTarget(
   if (typeof parse !== "function") {
     return;
   }
-  return (parse as { [COMPLETION_TARGET_KEY]?: CompletionTarget })[
-    COMPLETION_TARGET_KEY
-  ];
+  return (
+    (parse as { [COMPLETION_TARGET_KEY]?: CompletionTarget })[
+      COMPLETION_TARGET_KEY
+    ] ?? PARSER_TARGETS.get(parse)
+  );
 }
+
+/** Fixed values the completers offer (see {@link COMPLETION_VALUES}). */
+export type CompletionValues = {
+  /** Issue search keys with a fixed set of values, for {@link ISSUE_QUERY_TARGET} */
+  issueSearch: Readonly<Record<string, readonly string[]>>;
+  /** Units of a relative period, for {@link PERIOD_TARGET} (`7` → `7d`) */
+  periodUnits: readonly string[];
+  /** Relative periods offered for {@link PERIOD_TARGET}, with descriptions */
+  periodPresets: Readonly<Record<string, string>>;
+};
+
+/**
+ * Fixed values the completers offer, taken from the modules that define
+ * them. The generator writes them next to the command metadata so the
+ * `__complete` fast path gets them without loading those modules.
+ */
+export const COMPLETION_VALUES: CompletionValues = {
+  issueSearch: { is: ISSUE_IS_VALUES, level: ISSUE_LEVELS },
+  periodUnits: Object.keys(UNIT_SECONDS),
+  // The presets of Sentry's time range selector (`DEFAULT_RELATIVE_PERIODS`
+  // in getsentry/sentry).
+  periodPresets: {
+    "1h": "Last hour",
+    "24h": "Last 24 hours",
+    "7d": "Last 7 days",
+    "14d": "Last 14 days",
+    "30d": "Last 30 days",
+    "90d": "Last 90 days",
+  },
+};

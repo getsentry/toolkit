@@ -4,7 +4,7 @@
  * `sentry __complete` makes no API calls, so it suggests entities that
  * earlier commands fetched (see `src/lib/db/completion-cache.ts`). Every
  * response that passes through the authenticated fetch in
- * `src/lib/sentry-client.ts` is offered to {@link seedCompletionsFromResponse},
+ * `src/lib/sentry-client.ts` is offered to {@link seedCompletions},
  * which matches its path against {@link COMPLETION_SOURCES}: the
  * `@sentry/api` operations that return issues or dashboards, by their URL
  * templates. Any command that
@@ -30,8 +30,6 @@ import {
   type CompletionEntity,
   type CompletionEntityKind,
   cacheCompletionEntities,
-  DASHBOARD_ENTITY,
-  ISSUE_ENTITY,
 } from "../db/completion-cache.js";
 import { reportCliError } from "../error-reporting.js";
 import { logger } from "../logger.js";
@@ -100,17 +98,17 @@ function dashboardEntities(body: unknown): CompletionEntity[] {
  */
 const COMPLETION_SOURCES: readonly CompletionSource[] = [
   {
-    kind: ISSUE_ENTITY,
+    kind: "issue",
     url: "/api/0/organizations/{organization_id_or_slug}/issues/" satisfies ListOrganizationIssuesData["url"],
     extract: issueEntities,
   },
   {
-    kind: ISSUE_ENTITY,
+    kind: "issue",
     url: "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/" satisfies GetOrganizationIssueData["url"],
     extract: issueEntities,
   },
   {
-    kind: ISSUE_ENTITY,
+    kind: "issue",
     url: "/api/0/organizations/{organization_id_or_slug}/shortids/{issue_id}/" satisfies ResolveOrganizationShortIdData["url"],
     extract: (body) =>
       issueEntities(
@@ -123,7 +121,7 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     // The deprecated unscoped lookup (`getIssue`, `updateIssueStatus`
     // without an org) is not in `@sentry/api`. Its path names no org, so
     // the org comes from the issue's permalink.
-    kind: ISSUE_ENTITY,
+    kind: "issue",
     url: "/api/0/issues/{issue_id}/",
     extract: issueEntities,
     org: (body) => {
@@ -132,12 +130,12 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     },
   },
   {
-    kind: DASHBOARD_ENTITY,
+    kind: "dashboard",
     url: "/api/0/organizations/{organization_id_or_slug}/dashboards/" satisfies ListOrganizationDashboardsData["url"],
     extract: dashboardEntities,
   },
   {
-    kind: DASHBOARD_ENTITY,
+    kind: "dashboard",
     url: "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/" satisfies GetOrganizationDashboardData["url"],
     extract: dashboardEntities,
   },
@@ -189,25 +187,33 @@ function matchSource(
  *
  * Reads a clone of the body, so the caller's response is untouched.
  * Responses from paths without a {@link CompletionSource}, and responses
- * that are not JSON, are ignored without reading their body.
+ * that are not JSON, are ignored without reading their body. Finishes
+ * storing before it resolves, so a command that exits right after its
+ * request still keeps the entities.
  *
  * @param url - Request URL
  * @param response - Response returned to the caller
+ * @returns `response`
  */
-export async function seedCompletionsFromResponse(
+export async function seedCompletions(
   url: string,
   response: Response,
+): Promise<Response> {
+  if (response.ok && response.headers.get("Content-Type")?.includes("json")) {
+    const match = matchSource(url);
+    if (match) {
+      await seedFromBody(url, response, match);
+    }
+  }
+  return response;
+}
+
+/** Store the entities of a response whose URL matched `match`. */
+async function seedFromBody(
+  url: string,
+  response: Response,
+  { source, orgSlug: pathOrg }: { source: CompletionSource; orgSlug?: string },
 ): Promise<void> {
-  if (
-    !(response.ok && response.headers.get("Content-Type")?.includes("json"))
-  ) {
-    return;
-  }
-  const match = matchSource(url);
-  if (!match) {
-    return;
-  }
-  const { source } = match;
   let body: unknown;
   try {
     body = await response.clone().json();
@@ -215,7 +221,7 @@ export async function seedCompletionsFromResponse(
     log.debug(`Not seeding ${source.kind} completions from '${url}'`, error);
     return;
   }
-  const orgSlug = match.orgSlug ?? source.org?.(body);
+  const orgSlug = pathOrg ?? source.org?.(body);
   if (!orgSlug) {
     log.debug(
       `Not seeding ${source.kind} completions without an org: '${url}'`,

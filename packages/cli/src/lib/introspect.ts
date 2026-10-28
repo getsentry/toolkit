@@ -400,7 +400,7 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
  * Kinds come from the parsers the command already declares (see
  * `completion-target.ts`); `null` marks an argument without one.
  */
-export type CommandCompletion = {
+type CommandCompletion = {
   /**
    * Kind of each positional, by index. A variadic positional has one entry
    * that applies to every word.

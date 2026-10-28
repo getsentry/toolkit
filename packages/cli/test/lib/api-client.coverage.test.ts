@@ -48,10 +48,7 @@ import {
   updateIssueStatus,
 } from "../../src/lib/api-client.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
-import {
-  getCachedCompletionEntities,
-  ISSUE_ENTITY,
-} from "../../src/lib/db/completion-cache.js";
+import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
 import { ApiError, AuthError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
@@ -218,7 +215,7 @@ describe("issues.ts", () => {
 
       await getIssueByShortId("test-org", "test-1");
 
-      expect(getCachedCompletionEntities(ISSUE_ENTITY, ["test-org"])).toEqual([
+      expect(getCachedCompletionEntities("issue", ["test-org"])).toEqual([
         { orgSlug: "test-org", value: "TEST-1", label: "Boom" },
       ]);
     });

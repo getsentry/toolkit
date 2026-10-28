@@ -16,19 +16,19 @@
  * other caches in `maybeCleanupCaches()`, and logout clears the table.
  */
 
+import type { CompletionTarget } from "../completion-target.js";
 import { getDatabase, maybeCleanupCaches } from "./index.js";
 import { runUpsert } from "./utils.js";
 
-/** Issues, completed by short ID with the title as description. */
-export const ISSUE_ENTITY = "issue";
-
-/** Dashboards, completed by numeric ID with the title as description. */
-export const DASHBOARD_ENTITY = "dashboard";
-
-/** Entity types stored for shell completion. */
-export type CompletionEntityKind =
-  | typeof ISSUE_ENTITY
-  | typeof DASHBOARD_ENTITY;
+/**
+ * Entity types stored for shell completion, named after the completion
+ * kind of the arguments that take them: issues by short ID, dashboards by
+ * numeric ID, both with the title as description.
+ */
+export type CompletionEntityKind = Extract<
+  CompletionTarget,
+  "issue" | "dashboard"
+>;
 
 /** Most recently seen entries kept per kind and org. */
 export const MAX_ENTITIES_PER_ORG = 500;

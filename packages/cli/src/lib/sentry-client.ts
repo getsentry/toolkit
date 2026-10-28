@@ -17,7 +17,6 @@ import {
   normalizeAuthToken,
   trimAuthToken,
 } from "./auth-header.js";
-import { seedCompletionsFromResponse } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
 import {
   DEFAULT_SENTRY_URL,
@@ -816,7 +815,7 @@ function createAuthenticatedFetch(
       init?.method ?? (input instanceof Request ? input.method : "GET");
     const urlPath = extractUrlPath(input);
 
-    const responsePromise = withTracingSpan(
+    return withTracingSpan(
       `${method} ${urlPath}`,
       "http.client",
       async (span) => {
@@ -895,14 +894,12 @@ function createAuthenticatedFetch(
         return response;
       },
       { "http.request.method": method, "url.path": urlPath },
-    );
-    // Every API response, fresh or cached, seeds shell completion, so no
-    // API function has to remember to. Awaited so a command that exits right
-    // after its request still stores the entities; responses from other
-    // endpoints return without their body being read.
-    return responsePromise.then(async (response) => {
-      await seedCompletionsFromResponse(extractInputUrl(input), response);
-      return response;
+    ).then(async (response) => {
+      // Every API response, fresh or cached, seeds shell completion, so no
+      // API function has to remember to. Imported on demand to keep it out
+      // of the `__complete` fast path, which loads this module.
+      const { seedCompletions } = await import("./api/completion-seed.js");
+      return await seedCompletions(extractInputUrl(input), response);
     });
   };
 }

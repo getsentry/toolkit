@@ -10,7 +10,6 @@
  * Datetimes with explicit timezone offsets are passed through as-is.
  */
 
-import { PERIOD_TARGET, withCompletionTarget } from "./completion-target.js";
 import { ValidationError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
@@ -58,19 +57,6 @@ export const UNIT_SECONDS: Record<string, number> = {
 
 /** Valid unit suffixes for relative period strings, derived from UNIT_SECONDS */
 const PERIOD_UNITS = new Set(Object.keys(UNIT_SECONDS));
-
-/**
- * Relative periods offered by shell completion, the presets of Sentry's
- * time range selector (`DEFAULT_RELATIVE_PERIODS` in getsentry/sentry).
- */
-export const PERIOD_PRESETS: Readonly<Record<string, string>> = {
-  "1h": "Last hour",
-  "24h": "Last 24 hours",
-  "7d": "Last 7 days",
-  "14d": "Last 14 days",
-  "30d": "Last 30 days",
-  "90d": "Last 90 days",
-};
 
 /** Stable example dates keep generated help and skill references reproducible. */
 const EXAMPLE_START = "2024-01-01";
@@ -324,9 +310,6 @@ export function parsePeriod(value: string): TimeRange {
     throwInvalidPeriod(trimmed)
   );
 }
-
-// `--period` flags complete relative periods (see `completion-target.ts`)
-withCompletionTarget(PERIOD_TARGET, parsePeriod);
 
 /** Throw a helpful error for unrecognized period values. */
 function throwInvalidPeriod(value: string): never {

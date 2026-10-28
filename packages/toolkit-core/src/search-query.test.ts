@@ -9,7 +9,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  completeIssueSearchQuery,
+  completeSearchQuery,
+  ISSUE_IS_VALUES,
   rewriteSearchQuery,
   SearchQueryError,
 } from "./search-query.js";
@@ -177,30 +178,32 @@ describe("rewriteSearchQuery: parentheses in issue search", () => {
   });
 });
 
-describe("completeIssueSearchQuery", () => {
-  it("completes is: values, keeping earlier terms and negation", () => {
-    expect(completeIssueSearchQuery("is:unr")).toEqual(["is:unresolved"]);
-    expect(completeIssueSearchQuery("level:error !is:reg")).toEqual([
+describe("completeSearchQuery", () => {
+  const values = { is: ISSUE_IS_VALUES, level: ["error", "warning"] };
+  const complete = (query: string) => completeSearchQuery(query, values);
+
+  it("completes known values, keeping earlier terms and negation", () => {
+    expect(complete("is:unr")).toEqual(["is:unresolved"]);
+    expect(complete("level:error !is:reg")).toEqual([
       "level:error !is:regressed",
     ]);
-    expect(completeIssueSearchQuery("is:")).toContain(
-      "is:archived_until_escalating",
-    );
+    expect(complete("is:")).toContain("is:archived_until_escalating");
+    expect(complete("level:WA")).toEqual(["level:warning"]);
   });
 
   it("completes known keys for a bare word or a new term", () => {
-    expect(completeIssueSearchQuery("le")).toEqual(["level:"]);
-    expect(completeIssueSearchQuery("foo !a")).toEqual(["foo !assigned:"]);
-    expect(completeIssueSearchQuery("is:unresolved ")).toEqual([
+    expect(complete("le")).toEqual(["level:"]);
+    expect(complete("foo !i")).toEqual(["foo !is:"]);
+    expect(complete("is:unresolved ")).toEqual([
       "is:unresolved is:",
       "is:unresolved level:",
-      "is:unresolved assigned:",
     ]);
   });
 
   it("suggests nothing for values it cannot know", () => {
-    expect(completeIssueSearchQuery("release:1.")).toEqual([]);
-    expect(completeIssueSearchQuery('is:"unr')).toEqual([]);
-    expect(completeIssueSearchQuery('"timeout er')).toEqual([]);
+    expect(complete("release:1.")).toEqual([]);
+    expect(complete("constructor:")).toEqual([]);
+    expect(complete('is:"unr')).toEqual([]);
+    expect(complete('"timeout er')).toEqual([]);
   });
 });

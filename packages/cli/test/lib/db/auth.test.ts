@@ -248,21 +248,18 @@ describe("clearAuth: integration with per-account caches", () => {
   });
 
   test("clearAuth drops remembered completion entities", async () => {
-    const {
-      cacheCompletionEntities,
-      getCachedCompletionEntities,
-      ISSUE_ENTITY,
-    } = await import("../../../src/lib/db/completion-cache.js");
+    const { cacheCompletionEntities, getCachedCompletionEntities } =
+      await import("../../../src/lib/db/completion-cache.js");
 
     setAuthToken("test-token");
-    cacheCompletionEntities(ISSUE_ENTITY, "previous-account-org", [
+    cacheCompletionEntities("issue", "previous-account-org", [
       { value: "CLI-1", label: "Private issue title" },
     ]);
 
     await clearAuth();
 
     expect(
-      getCachedCompletionEntities(ISSUE_ENTITY, ["previous-account-org"]),
+      getCachedCompletionEntities("issue", ["previous-account-org"]),
     ).toEqual([]);
   });
 });

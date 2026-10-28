@@ -18,6 +18,8 @@ import { constantFrom, assert as fcAssert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
 import generatedTargets from "../../src/generated/completion-targets.json";
+import { COMPLETION_VALUES } from "../../src/lib/completion-target.js";
+import { parsePeriod } from "../../src/lib/time-range.js";
 import {
   extractCommandTree,
   generateBashCompletion,
@@ -404,7 +406,17 @@ describe("complete.ts: generated completion targets", () => {
   // A mismatch means src/generated/completion-targets.json is stale.
   // Regenerate with: pnpm run generate:completions
   test("generated completion targets match the route tree", () => {
-    expect(generatedTargets).toEqual({ commands });
+    expect(generatedTargets).toEqual({ commands, values: COMPLETION_VALUES });
+  });
+
+  test("every suggested period is one --period accepts", () => {
+    const { periodPresets, periodUnits } = COMPLETION_VALUES;
+    for (const period of [
+      ...Object.keys(periodPresets),
+      ...periodUnits.map((unit) => `7${unit}`),
+    ]) {
+      expect(() => parsePeriod(period)).not.toThrow();
+    }
   });
 
   test("project create keeps its dedicated name:platform completer", () => {

@@ -1184,36 +1184,34 @@ function stripTrailingListCommas(query: string): string {
 // Completion
 // ---------------------------------------------------------------------------
 
-/** Sentry event levels. */
-const LEVEL_VALUES = ["fatal", "error", "warning", "info", "debug"];
+/** `is:` values the issues endpoint maps to a status or substatus filter. */
+export const ISSUE_IS_VALUES: readonly string[] = [
+  ...IS_STATUS_VALUES,
+  ...IS_SUBSTATUS_PARENT.keys(),
+];
 
 /**
- * Issue search keys whose values are a known, fixed set, mapped to the
- * values. `is:` reuses the status and substatus tables the rewriter maps
- * `is:` values with.
- */
-const ISSUE_SEARCH_KEY_VALUES: ReadonlyMap<string, readonly string[]> = new Map(
-  [
-    ["is", [...IS_STATUS_VALUES, ...IS_SUBSTATUS_PARENT.keys()]],
-    ["level", LEVEL_VALUES],
-    ["assigned", ["me", "none"]],
-  ],
-);
-
-/**
- * Complete the term at the end of an issue search query.
+ * Complete the term at the end of a search query.
  *
  * The query is read with the search grammar, so the term is what Sentry
- * would read: a `[!]key:partial` filter on a key with known values (`is:`,
- * `level:`, `assigned:`) completes the value, and a bare word completes
- * those keys (`is` → `is:`). Anything else (quoted text, in-lists,
- * comparisons, unknown keys) gets no suggestions.
+ * would read: a `[!]key:partial` filter on a key of `values` completes the
+ * value, and a bare word completes those keys (`le` → `level:`). Anything
+ * else (quoted text, in-lists, comparisons, other keys) gets no suggestions.
  *
  * @param query - Query typed so far, ending with the term being completed
- * @returns Full queries, each `query` with its last term completed, in
- *   table order
+ * @param values - Keys with a known, fixed set of values, mapped to them
+ * @returns Full queries, each `query` with its last term completed, in the
+ *   order of `values`
  */
-export function completeIssueSearchQuery(query: string): string[] {
+export function completeSearchQuery(
+  query: string,
+  values: Readonly<Record<string, readonly string[]>>,
+): string[] {
+  const keyCompletions = (head: string, word: string): string[] =>
+    Object.keys(values)
+      .filter((key) => key.startsWith(word.toLowerCase()))
+      .map((key) => `${head}${key}:`);
+
   const tokens = parseSearch(query, { config: { allowRegex: true } });
   // An empty query, or one ending in a space, starts a new term
   const last = tokens?.filter((token) => token.type !== Token.SPACES).at(-1);
@@ -1237,24 +1235,16 @@ export function completeIssueSearchQuery(query: string): string[] {
     (last.filter !== FilterType.TEXT && last.filter !== FilterType.IS) ||
     last.key.type !== Token.KEY_SIMPLE ||
     last.value.type !== Token.VALUE_TEXT ||
-    last.value.quoted
+    last.value.quoted ||
+    !Object.hasOwn(values, last.key.value)
   ) {
     return [];
   }
-  const values = ISSUE_SEARCH_KEY_VALUES.get(last.key.value) ?? [];
   const partial = last.value.text.toLowerCase();
   const head = query.slice(0, last.value.location.start.offset);
-  return values
+  return (values[last.key.value] ?? [])
     .filter((value) => value.startsWith(partial))
     .map((value) => `${head}${value}`);
-}
-
-/** `head` followed by each known key starting with `word`, as `key:`. */
-function keyCompletions(head: string, word: string): string[] {
-  const prefix = word.toLowerCase();
-  return [...ISSUE_SEARCH_KEY_VALUES.keys()]
-    .filter((key) => key.startsWith(prefix))
-    .map((key) => `${head}${key}:`);
 }
 
 // ---------------------------------------------------------------------------

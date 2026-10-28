@@ -13,10 +13,6 @@ import {
   type SearchQueryOptions,
   SearchQueryError,
 } from "@sentry/toolkit-core/search-query";
-import {
-  ISSUE_QUERY_TARGET,
-  withCompletionTarget,
-} from "./completion-target.js";
 import { ValidationError } from "./errors.js";
 import { logger } from "./logger.js";
 
@@ -90,7 +86,6 @@ export function sanitizeQuery(
  * @returns The sanitized query
  * @throws {ValidationError} When OR cannot be rewritten to in-list syntax
  */
-export const sanitizeIssueQuery = withCompletionTarget(
-  ISSUE_QUERY_TARGET,
-  (query: string): string => sanitizeQuery(query, { issueSearch: true }),
-);
+export function sanitizeIssueQuery(query: string): string {
+  return sanitizeQuery(query, { issueSearch: true });
+}
