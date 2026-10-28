@@ -459,7 +459,7 @@ View, list, and send Sentry events
 
 Make an authenticated API request
 
-- `sentry api <endpoint>` — Make an authenticated API request
+- `sentry api [<endpoint>]` — Make an authenticated API request
 
 → Full flags and examples: `references/api.md`
 

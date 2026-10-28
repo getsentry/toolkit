@@ -11,7 +11,7 @@ requires:
 
 Make an authenticated API request
 
-### `sentry api <endpoint>`
+### `sentry api [<endpoint>]`
 
 Make an authenticated API request
 
@@ -19,7 +19,7 @@ Make an authenticated API request
 
 | Argument | Description |
 |----------|-------------|
-| `<endpoint>` | API endpoint relative to /api/0/, or an absolute HTTP(S) URL |
+| `[<endpoint>]` | API endpoint relative to /api/0/, or an absolute HTTP(S) URL; omit to resume a recent query |
 
 **Flags:**
 - `-X, --method <value> - The HTTP method for the request - (default: "GET")`
@@ -42,11 +42,10 @@ sentry api organizations/
 # Read a page and its pagination metadata
 sentry api organizations/ -f per_page=2 --json
 
-# Continue the same query using shared pagination
-sentry api organizations/ -f per_page=2 --cursor next --json
-
-# Return to the previously visited page
-sentry api organizations/ -f per_page=2 --cursor prev --json
+# Navigate a recent query without repeating its arguments
+sentry api organizations/ -f per_page=2 --json
+sentry api --cursor next --json
+sentry api --cursor prev --json
 
 # Get a specific issue
 sentry api issues/123456789/

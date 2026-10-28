@@ -206,7 +206,7 @@ describe("library mode (bundled)", () => {
 
   // --- Typed SDK ---
 
-  test("sdk.api accepts an opaque cursor and continues with shared navigation", async () => {
+  test("sdk.api restores a saved query without repeating its arguments", async () => {
     const { stdout } = await runNodeScriptOk(`
       const { createSentrySDK } = require('./dist/index.cjs');
       const requests = [];
@@ -223,17 +223,27 @@ describe("library mode (bundled)", () => {
         url: 'http://localhost:9000',
         cwd: ${JSON.stringify(getConfigDir())},
       });
-      const endpoint = 'organizations/';
-      sdk.api({ endpoint, cursor: 'page-token+/=:1' }).then(async response => {
-        const next = await sdk.api({ endpoint, cursor: 'next' });
-        console.log(JSON.stringify({ requests, response, next }));
-      }).catch(error => {
+      const endpoint = 'organizations/?query=sample';
+      (async () => {
+        const missing = await sdk.api({ cursor: 'next' }).catch(error => error.exitCode);
+        const response = await sdk.api({ endpoint, cursor: 'page-token+/=:1' });
+        const otherDirectory = createSentrySDK({
+          token: 'test-sdk-token',
+          url: 'http://localhost:9000',
+          cwd: ${JSON.stringify(join(getConfigDir(), "another-project"))},
+        });
+        const isolated = await otherDirectory.api({ cursor: 'next' }).catch(error => error.exitCode);
+        const next = await sdk.api({ cursor: 'next' });
+        console.log(JSON.stringify({ requests, missing, isolated, response, next }));
+      })().catch(error => {
         console.error(error);
         process.exitCode = 1;
       });
     `);
 
     const result = JSON.parse(stdout.trim());
+    expect(result.missing).toBe(EXIT.VALIDATION);
+    expect(result.isolated).toBe(EXIT.VALIDATION);
     expect(
       result.requests.map((url: string) =>
         new URL(url).searchParams.get("cursor"),
@@ -244,6 +254,50 @@ describe("library mode (bundled)", () => {
       pagination: { nextCursor: "100:2:0", hasPrev: false },
     });
     expect(result.next.pagination.hasPrev).toBe(true);
+    expect(new URL(result.requests[1]).searchParams.get("query")).toBe(
+      "sample",
+    );
+  });
+
+  test("sdk.api refuses ambiguous queries from concurrent calls", async () => {
+    const { stdout } = await runNodeScriptOk(`
+      const { createSentrySDK } = require('./dist/index.cjs');
+      const requests = [];
+      globalThis.fetch = async (input, init) => {
+        requests.push(new Request(input, init).url);
+        return Response.json(${JSON.stringify([organizationsFixture[0]])}, {
+          headers: {
+            Link: '<http://localhost:9000/next>; rel="next"; results="true"; cursor="100:1:0"',
+          },
+        });
+      };
+      const sdk = createSentrySDK({
+        token: 'test-sdk-token',
+        url: 'http://localhost:9000',
+        cwd: ${JSON.stringify(getConfigDir())},
+      });
+      (async () => {
+        await Promise.all([
+          sdk.api({ endpoint: 'organizations/?query=first' }),
+          sdk.api({ endpoint: 'organizations/?query=second' }),
+        ]);
+        const ambiguous = await sdk.api({ cursor: 'next' }).catch(error => ({
+          exitCode: error.exitCode,
+          message: error.message,
+        }));
+        console.log(JSON.stringify({ requests, ambiguous }));
+      })().catch(error => {
+        console.error(error);
+        process.exitCode = 1;
+      });
+    `);
+
+    const result = JSON.parse(stdout.trim());
+    expect(result.requests).toHaveLength(2);
+    expect(result.ambiguous.exitCode).toBe(EXIT.VALIDATION);
+    expect(result.ambiguous.message).toMatch(
+      /multiple|more than one|ambiguous/i,
+    );
   });
 
   test("sourcemap upload rejects a split token without leaking it or fetching", async () => {

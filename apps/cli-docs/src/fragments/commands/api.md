@@ -18,8 +18,22 @@ When querying the Events API (`/events/` endpoint), valid dataset values are: `s
 Each invocation fetches one server page. Repeat the same GET endpoint and filters
 with `--cursor next` (`-c next`) to continue, `--cursor prev` to revisit a page,
 or `--cursor first` to start again. The shared history expires after five minutes
-and is scoped to the request and authenticated identity. Keep the same query
-parameters and headers when navigating. The endpoint remains required.
+and is scoped to the request, authenticated identity, configured host, and working
+directory. Keep the same query parameters and headers when navigating explicitly.
+
+When there is exactly one recent paginated query in that scope, omit the endpoint
+and request arguments with `--cursor next`, `prev`, or `first`. The CLI recovers
+the original endpoint and filters, including repeated parameters. Detail requests
+without pagination do not replace that query. If several paginated queries were
+run recently, repeat the endpoint and filters to select one; the CLI does not
+choose the most recent query or switch to another when a query reaches its end.
+
+Only successful GETs save a query. The saved URL expires with its cursor history
+after five minutes. Explicit headers (`-H`) and request bodies are not saved;
+requests that need them must repeat their endpoint and options. Current configured
+headers are used again and must match the saved query's configuration. Output
+flags such as `--json`, `--fields`, and `--silent` apply only to the current call.
+Request-changing flags require an explicit endpoint, as do raw or custom cursors.
 
 Raw server cursors and custom cursors from the CLI's shared paginator are also
 accepted. Custom cursors preserve the page size and skip rows already returned,

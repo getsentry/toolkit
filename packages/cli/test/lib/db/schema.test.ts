@@ -317,6 +317,43 @@ describe("isReadonlyError", () => {
 });
 
 describe("runMigrations", () => {
+  test("migration 20→21 preserves cursor stacks without assigning a request", () => {
+    const db = new Database(join(getTestDir(), "test.db"));
+    initSchema(db);
+    db.exec("DROP TABLE pagination_cursors");
+    db.exec(generatePreMigrationTableDDL("pagination_cursors"));
+    const legacyRow = {
+      command_key: "api",
+      context: "existing-query",
+      cursor_stack: JSON.stringify(["", "page-2", "page-3"]),
+      page_index: 1,
+      expires_at: Date.now() + 60_000,
+    };
+    db.query(
+      "INSERT INTO pagination_cursors (command_key, context, cursor_stack, page_index, expires_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(
+      legacyRow.command_key,
+      legacyRow.context,
+      legacyRow.cursor_stack,
+      legacyRow.page_index,
+      legacyRow.expires_at,
+    );
+    db.query("UPDATE schema_version SET version = 20").run();
+
+    runMigrations(db);
+
+    expect(db.query("SELECT * FROM pagination_cursors").get()).toEqual({
+      ...legacyRow,
+      request_scope: null,
+      request_url: null,
+    });
+    expect(db.query("SELECT version FROM schema_version").get()).toEqual({
+      version: CURRENT_SCHEMA_VERSION,
+    });
+    expect(getSchemaIssues(db)).toEqual([]);
+    db.close();
+  });
+
   test("no-op when already at current version", () => {
     const db = new Database(join(getTestDir(), "test.db"));
     initSchema(db);

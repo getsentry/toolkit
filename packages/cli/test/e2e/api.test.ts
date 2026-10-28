@@ -245,7 +245,7 @@ describe("sentry api", () => {
     });
   });
 
-  test("navigates next, prev and first while preserving filters and --fields", async () => {
+  test("navigates without repeating the endpoint or query arguments", async () => {
     await ctx.setAuthToken(TEST_TOKEN);
     const args = [
       "api",
@@ -261,14 +261,18 @@ describe("sentry api", () => {
       "name",
     ];
 
-    for (const [cursor, start, hasPrev] of [
-      ["first", 0, false],
-      ["next", 2, true],
-      ["prev", 0, false],
-      ["next", 2, true],
-      ["first", 0, false],
-    ] as const) {
-      const result = await ctx.run([...args, "-c", cursor]);
+    for (const [index, [cursor, start, hasPrev]] of (
+      [
+        ["first", 0, false],
+        ["next", 2, true],
+        ["prev", 0, false],
+        ["next", 2, true],
+        ["first", 0, false],
+      ] as const
+    ).entries()) {
+      const navigationArgs =
+        index === 0 ? args : ["api", "--json", "--fields", "name"];
+      const result = await ctx.run([...navigationArgs, "-c", cursor]);
       expect(result.exitCode, result.stderr + result.stdout).toBe(0);
       const page = JSON.parse(result.stdout);
       expect(page).toEqual({
@@ -279,6 +283,14 @@ describe("sentry api", () => {
           .map(({ name }) => ({ name })),
         pagination: hasPrev ? { prevCursor, hasPrev } : { nextCursor, hasPrev },
       });
+      if (index === 0) {
+        const detail = await ctx.run([
+          "api",
+          "organizations/test-org/",
+          "--json",
+        ]);
+        expect(detail.exitCode, detail.stderr + detail.stdout).toBe(0);
+      }
     }
     expect(
       paginationRequests.map((url) => url.searchParams.getAll("cursor")),
@@ -290,25 +302,45 @@ describe("sentry api", () => {
     }
   });
 
+  test("restores query parameters supplied as GET data", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const first = await ctx.run([
+      "api",
+      `${mockServer.url}/api/0/api-pagination/?project=1&project=2`,
+      "-d",
+      '{"query":"level:error","per_page":2}',
+      "--json",
+    ]);
+    expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+
+    const second = await ctx.run(["api", "-c", "next", "--json"]);
+    expect(second.exitCode, second.stderr + second.stdout).toBe(0);
+    expect(JSON.parse(second.stdout).body).toEqual(
+      cursorOrganizations.slice(2),
+    );
+    expect(paginationRequests).toHaveLength(2);
+    for (const request of paginationRequests) {
+      expect(request.searchParams.get("query")).toBe("level:error");
+      expect(request.searchParams.get("per_page")).toBe("2");
+      expect(request.searchParams.getAll("project")).toEqual(["1", "2"]);
+    }
+  });
+
   test("dry-runs and failed requests do not advance pagination history", async () => {
     await ctx.setAuthToken(TEST_TOKEN);
     const request = ["api", "api-pagination/", "-f", "per_page=2"];
     const args = [...request, "--json"];
+    const nextArgs = ["api", "--cursor", "next", "--json"];
     const preview = await ctx.run([...args, "--dry-run"]);
     expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
-    const missing = await ctx.run([...args, "--cursor", "next"]);
+    const missing = await ctx.run(nextArgs);
     expect(missing.exitCode).toBe(EXIT.VALIDATION);
     expect(paginationRequests).toHaveLength(0);
 
     const first = await ctx.run([...request, "--silent"]);
     expect(first.exitCode, first.stderr + first.stdout).toBe(0);
     expect(first.stdout).toBe("");
-    const nextPreview = await ctx.run([
-      ...args,
-      "--cursor",
-      "next",
-      "--dry-run",
-    ]);
+    const nextPreview = await ctx.run([...nextArgs, "--dry-run"]);
     expect(nextPreview.exitCode, nextPreview.stderr + nextPreview.stdout).toBe(
       0,
     );
@@ -318,10 +350,10 @@ describe("sentry api", () => {
     expect(paginationRequests).toHaveLength(1);
 
     failNextPage = true;
-    const failed = await ctx.run([...args, "--cursor", "next"]);
+    const failed = await ctx.run(nextArgs);
     expect(failed.exitCode).toBe(EXIT.OUTPUT_ERROR);
     expect(JSON.parse(failed.stdout).status).toBe(403);
-    const retried = await ctx.run([...args, "--cursor", "next"]);
+    const retried = await ctx.run(nextArgs);
     expect(retried.exitCode, retried.stderr + retried.stdout).toBe(0);
     expect(JSON.parse(retried.stdout).body).toEqual(
       cursorOrganizations.slice(2),
@@ -329,12 +361,12 @@ describe("sentry api", () => {
     expect(
       paginationRequests.map((url) => url.searchParams.get("cursor")),
     ).toEqual([null, nextCursor, nextCursor]);
-    const exhausted = await ctx.run([...args, "--cursor", "next"]);
+    const exhausted = await ctx.run(nextArgs);
     expect(exhausted.exitCode).toBe(EXIT.VALIDATION);
     expect(paginationRequests).toHaveLength(3);
   });
 
-  test.each(["query", "host", "identity"])(
+  test.each(["query", "host", "identity", "headers"])(
     "does not reuse pagination history after changing the %s",
     async (change) => {
       const args = ["api", "api-pagination/", "-f", "per_page=2", "--json"];
@@ -344,14 +376,15 @@ describe("sentry api", () => {
         SENTRY_CONFIG_DIR: testConfigDir,
         SENTRY_URL: mockServer.url,
         SENTRY_CLI_NO_TELEMETRY: "1",
+        SENTRY_CUSTOM_HEADERS: "X-Test-Query: initial",
       };
       const first = await runCli(args, { env });
       expect(first.exitCode, first.stderr + first.stdout).toBe(0);
       const changed = await runCli(
         [
-          ...args,
+          ...(change === "query" ? args : ["api", "--json"]),
           "--cursor",
-          "next",
+          change === "headers" ? "first" : "next",
           ...(change === "query" ? ["-f", "query=other"] : []),
         ],
         {
@@ -363,17 +396,110 @@ describe("sentry api", () => {
                 : mockServer.url,
             SENTRY_AUTH_TOKEN:
               change === "identity" ? alternateToken : TEST_TOKEN,
+            SENTRY_CUSTOM_HEADERS:
+              change === "headers"
+                ? "X-Test-Query: changed"
+                : env.SENTRY_CUSTOM_HEADERS,
           },
         },
       );
       expect(changed.exitCode).toBe(EXIT.VALIDATION);
       expect(paginationRequests).toHaveLength(1);
-      const resumed = await runCli([...args, "--cursor", "next"], { env });
+      const resumed = await runCli(["api", "--cursor", "next", "--json"], {
+        env,
+      });
       expect(resumed.exitCode, resumed.stderr + resumed.stdout).toBe(0);
       expect(JSON.parse(resumed.stdout).body).toEqual(
         cursorOrganizations.slice(2),
       );
       expect(paginationRequests).toHaveLength(2);
+    },
+  );
+
+  test("requires an explicit query when another saved query is exhausted", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const firstArgs = ["api", "api-pagination/?query=first", "--json"];
+    const first = await ctx.run(firstArgs);
+    expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+    const exhausted = await ctx.run(["api", "-c", "next", "--json"]);
+    expect(exhausted.exitCode, exhausted.stderr + exhausted.stdout).toBe(0);
+    expect(JSON.parse(exhausted.stdout).pagination.nextCursor).toBeUndefined();
+
+    const other = await ctx.run([
+      "api",
+      "api-pagination/?query=other",
+      "--json",
+    ]);
+    expect(other.exitCode, other.stderr + other.stdout).toBe(0);
+    const ambiguous = await ctx.run(["api", "-c", "next", "--json"]);
+    expect(ambiguous.exitCode).toBe(EXIT.VALIDATION);
+    expect(ambiguous.stderr + ambiguous.stdout).toMatch(
+      /multiple|more than one|ambiguous/i,
+    );
+    expect(paginationRequests).toHaveLength(3);
+
+    const previous = await ctx.run([...firstArgs, "-c", "prev"]);
+    expect(previous.exitCode, previous.stderr + previous.stdout).toBe(0);
+    expect(JSON.parse(previous.stdout).body).toEqual(
+      cursorOrganizations.slice(0, 2),
+    );
+    expect(paginationRequests.at(-1)?.searchParams.get("query")).toBe("first");
+  });
+
+  test("does not resume past a saved request that used explicit headers", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const protectedRequest = await ctx.run([
+      "api",
+      "api-pagination/?query=protected",
+      "-H",
+      "X-Test-Query: private-value",
+      "--json",
+    ]);
+    expect(
+      protectedRequest.exitCode,
+      protectedRequest.stderr + protectedRequest.stdout,
+    ).toBe(0);
+    const unsupported = await ctx.run(["api", "-c", "next", "--json"]);
+    expect(unsupported.exitCode).toBe(EXIT.VALIDATION);
+    expect(unsupported.stderr + unsupported.stdout).toMatch(/endpoint|header/i);
+    expect(paginationRequests).toHaveLength(1);
+
+    const other = await ctx.run([
+      "api",
+      "api-pagination/?query=other",
+      "--json",
+    ]);
+    expect(other.exitCode, other.stderr + other.stdout).toBe(0);
+    const ambiguous = await ctx.run(["api", "-c", "next", "--json"]);
+    expect(ambiguous.exitCode).toBe(EXIT.VALIDATION);
+    expect(ambiguous.stderr + ambiguous.stdout).toMatch(
+      /multiple|more than one|ambiguous/i,
+    );
+    expect(paginationRequests).toHaveLength(2);
+  });
+
+  test.each([
+    { name: "no cursor", args: [] },
+    { name: "a mutation without a cursor", args: ["-X", "POST"] },
+    { name: "a raw cursor", args: ["-c", nextCursor] },
+    { name: "GET data", args: ["-c", "next", "-d", "query=other"] },
+    { name: "a typed field", args: ["-c", "next", "-F", "per_page=1"] },
+    { name: "a raw field", args: ["-c", "next", "-f", "query=other"] },
+    { name: "a header", args: ["-c", "next", "-H", "X-Test: value"] },
+    { name: "stdin input", args: ["-c", "next", "--input", "-"] },
+    { name: "a mutation", args: ["-c", "next", "-X", "POST"] },
+  ])(
+    "rejects $name without an endpoint before sending another request",
+    async ({ args }) => {
+      await ctx.setAuthToken(TEST_TOKEN);
+      const first = await ctx.run(["api", "api-pagination/", "--json"]);
+      expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+      const result = await ctx.run(["api", ...args, "--json"]);
+      expect(result.exitCode).toBe(
+        args.includes("-c") ? EXIT.VALIDATION : EXIT.CONTEXT_MISSING,
+      );
+      expect(result.stderr + result.stdout).toMatch(/endpoint|GET/i);
+      expect(paginationRequests).toHaveLength(1);
     },
   );
 
@@ -411,7 +537,12 @@ describe("sentry api", () => {
         ["next", rows.slice(2), true],
         ["prev", rows.slice(1, 2), false],
       ] as const) {
-        const result = await ctx.run([...args, "--cursor", pageCursor]);
+        const navigationArgs = pageCursor === cursor ? args : ["api", "--json"];
+        const result = await ctx.run([
+          ...navigationArgs,
+          "--cursor",
+          pageCursor,
+        ]);
         expect(result.exitCode, result.stderr + result.stdout).toBe(0);
         const page = JSON.parse(result.stdout);
         expect(page.body).toEqual(
