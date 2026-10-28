@@ -1,0 +1,55 @@
+id: no-expand-top-level-tools
+valid:
+  - |
+    export const TOP_LEVEL_TOOL_NAMES = [
+      "find_organizations",
+      "find_projects",
+      "update_issue",
+      "search_errors",
+      "search_logs",
+      "search_traces",
+      "search_metrics",
+      "search_profiles",
+      "search_replays",
+      "analyze_issue_with_seer",
+      "search_issues",
+      "get_sentry_resource",
+      ...CATALOG_INFRASTRUCTURE_TOOL_NAMES,
+    ] as const;
+  - |
+    export const EXPERIMENTAL_TOP_LEVEL_TOOL_NAMES = TOP_LEVEL_TOOL_NAMES;
+invalid:
+  - |
+    export const TOP_LEVEL_TOOL_NAMES = [
+      "find_organizations",
+      "find_projects",
+      "update_issue",
+      "search_errors",
+      "search_logs",
+      "search_traces",
+      "search_metrics",
+      "search_profiles",
+      "search_replays",
+      "find_dropped_events",
+      "analyze_issue_with_seer",
+      "search_issues",
+      "get_sentry_resource",
+      ...CATALOG_INFRASTRUCTURE_TOOL_NAMES,
+    ] as const;
+  - |
+    export const TOP_LEVEL_TOOL_NAMES = [
+      "find_organizations",
+      "find_projects",
+      "update_issue",
+      "search_errors",
+      "search_logs",
+      "search_traces",
+      "search_metrics",
+      "search_profiles",
+      "search_replays",
+      "analyze_issue_with_seer",
+      "search_issues",
+      "get_sentry_resource",
+      ...CATALOG_INFRASTRUCTURE_TOOL_NAMES,
+      ...EXTRA_TOOL_NAMES,
+    ] as const;
