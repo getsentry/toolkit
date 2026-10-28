@@ -212,8 +212,9 @@ export type ApiRequestOptions<T = unknown> = {
   /** Manually validate each redirect before forwarding credentials. */
   validatedRedirects?: boolean;
   /**
-   * Retry transient failures even for writes. Only for requests the server
-   * dedupes (see `idempotent` in sentry-client.ts).
+   * Retry transient failures even for writes the server does not mark
+   * idempotent. Only for requests the server dedupes (see `idempotent` in
+   * sentry-client.ts).
    */
   idempotent?: boolean;
 };

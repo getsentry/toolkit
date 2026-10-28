@@ -45,6 +45,7 @@ import {
   TimeoutError,
 } from "./errors.js";
 import { extractInputUrl } from "./fetch-input.js";
+import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
 import {
   type CacheLookup,
@@ -707,7 +708,10 @@ async function fetchWithRetry({
   }
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
-  const methodRetryable = isRetryableMethod(method, idempotent);
+  const methodRetryable = isRetryableMethod(
+    method,
+    idempotent || isIdempotentOperation(method, fullUrl),
+  );
   const urlPath = extractUrlPath(fullUrl);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -763,7 +767,8 @@ async function fetchWithRetry({
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController
  * - Automatic retry on transient HTTP errors (408, 429, 5xx), network errors,
- *   and timeouts — for GET/HEAD/OPTIONS, or any method with `idempotent`
+ *   and timeouts — for GET/HEAD/OPTIONS, operations Sentry marks idempotent
+ *   (see idempotent-operations.ts), or any method with `idempotent`
  * - 429 handling (any method; rejected before processing): waits for the
  *   server's rate-limit reset when it fits the cap, otherwise throws
  *   {@link RateLimitError}
@@ -784,8 +789,9 @@ type AuthenticatedFetchOptions = {
   bufferResponseBody?: boolean;
   /**
    * Caller asserts that replaying the request is harmless, so transient
-   * failures retry for any method. Only for writes the server dedupes, such
-   * as content-addressed chunk uploads and checksum-keyed assemble calls.
+   * failures retry for any method. Operations Sentry marks idempotent retry
+   * without this; set it only for writes the server dedupes but does not
+   * mark, such as preprod assemble polling.
    */
   idempotent?: boolean;
 };

@@ -244,6 +244,45 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
   });
 });
 
+describe("operations Sentry marks idempotent", () => {
+  test("retries a marked POST on a transient status without an opt-in", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("busy", { status: 503 })
+        : jsonResponse({ state: "ok", missingChunks: [] });
+    });
+
+    const res = await getAuthenticatedFetch()(
+      `${REGION_URL}/api/0/organizations/acme/artifactbundle/assemble/`,
+      { method: "POST", body: "{}" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  test("retries a marked POST after a network error without an opt-in", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new TypeError("fetch failed");
+      }
+      return jsonResponse({});
+    });
+
+    const res = await getAuthenticatedFetch()(
+      `${REGION_URL}/api/0/projects/acme/web/files/difs/assemble/`,
+      { method: "POST", body: "{}" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+});
+
 describe("non-idempotent requests", () => {
   test("does not retry a POST on a transient status", async () => {
     let calls = 0;

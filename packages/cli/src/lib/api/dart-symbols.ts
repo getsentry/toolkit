@@ -159,8 +159,6 @@ export async function uploadDartSymbolMap(
       method: "POST",
       body: assembleBody,
       schema: DifAssembleResponseSchema,
-      // Assembly state is keyed by checksum; re-sending only polls it.
-      idempotent: true,
     },
   );
 
@@ -196,7 +194,6 @@ export async function uploadDartSymbolMap(
         method: "POST",
         body: assembleBody,
         schema: DifAssembleResponseSchema,
-        idempotent: true,
       },
     );
 
