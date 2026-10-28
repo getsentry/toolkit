@@ -7,7 +7,7 @@
  * that auto-creates a personal team for eligible members.
  */
 
-import { captureException } from "@sentry/node-core/light";
+import { captureException } from "@sentry/node";
 import {
   createProjectWithAutoTeam,
   createProjectWithDsn,

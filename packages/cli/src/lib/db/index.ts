@@ -224,7 +224,7 @@ export function getDatabase(): Database {
     }
 
     // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node-core (~85ms).
+    // Lazy-require telemetry to avoid top-level import of @sentry/node (~100ms).
     // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
     if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
       db = rawDb;

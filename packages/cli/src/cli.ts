@@ -2,7 +2,7 @@
  * CLI runner with fast-path dispatch.
  *
  * Shell completion (`__complete`) is dispatched before any heavy imports
- * to avoid loading `@sentry/node-core` (~280ms). All other commands go through
+ * to avoid loading `@sentry/node` (~100ms). All other commands go through
  * the full CLI with telemetry, middleware, and error recovery.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
@@ -26,7 +26,7 @@ async function preloadProjectContext(cwd: string): Promise<void> {
   // Snapshot env-token host BEFORE anything mutates env.SENTRY_HOST/URL
   // (the .sentryclirc shim or the default-URL fallback below). Pins the
   // env-token's trust scope to the user's shell, not a repo-local file.
-  // Dynamic import: env-token-host chains into db/auth → telemetry → @sentry/node-core
+  // Dynamic import: env-token-host chains into db/auth → telemetry → @sentry/node
   const { captureEnvTokenHost } = await import("./lib/env-token-host.js");
   captureEnvTokenHost();
 
@@ -70,12 +70,12 @@ async function preloadProjectContext(cwd: string): Promise<void> {
 /**
  * Fast-path: shell completion.
  *
- * Dispatched before importing the full CLI to avoid loading @sentry/node-core,
+ * Dispatched before importing the full CLI to avoid loading @sentry/node,
  * @stricli/core, and other heavy dependencies. Only loads the lightweight
  * completion engine and SQLite cache modules.
  */
 export async function runCompletion(completionArgs: string[]): Promise<void> {
-  // Disable telemetry so db/index.ts skips the @sentry/node-core lazy-require (~280ms)
+  // Disable telemetry so db/index.ts skips the @sentry/node lazy-require (~100ms)
   getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
   const { handleComplete } = await import("./lib/complete.js");
   handleComplete(completionArgs);
@@ -624,7 +624,7 @@ export async function runCli(cliArgs: string[]): Promise<void> {
    * fuzzy matches and extracts org/project context from the raw argv.
    */
   async function reportUnknownCommand(argv: string[]): Promise<void> {
-    const Sentry = await import("@sentry/node-core/light");
+    const Sentry = await import("@sentry/node");
     const { resolveCommandPath } = await import("./lib/introspect.js");
     const { routes } = await import("./app.js");
     const { getDefaultOrganization } = await import("./lib/db/defaults.js");
@@ -665,7 +665,9 @@ export async function runCli(cliArgs: string[]): Promise<void> {
     // Fixed message string so all unknown commands group into one Sentry
     // issue. The per-event detail (which token, suggestions) lives in the
     // structured context above and is queryable via Discover.
-    Sentry.captureMessage("unknown_command", "info");
+    // captureEvent, not captureMessage: with `attachStacktrace` on,
+    // captureMessage adds a synthetic exception that marks the session errored.
+    Sentry.captureEvent({ message: "unknown_command", level: "info" });
   }
 
   /** Build the command executor by composing error-recovery middlewares. */

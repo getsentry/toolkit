@@ -24,7 +24,7 @@
  * module only owns the recovery-specific control flow.
  */
 
-import { addBreadcrumb } from "@sentry/node-core/light";
+import { addBreadcrumb } from "@sentry/node";
 
 import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";

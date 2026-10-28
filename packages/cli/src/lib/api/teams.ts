@@ -11,7 +11,7 @@ import {
   listProjectTeams as sdkListProjectTeams,
 } from "@sentry/api";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 
 import type { SentryTeam } from "../../types/index.js";
 

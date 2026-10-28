@@ -5,8 +5,6 @@ packages:
 patchedDependencies:
   "@ai-sdk/provider-utils@2.2.8": patches/@ai-sdk__provider-utils@2.2.8.patch
   "@cloudflare/workers-oauth-provider@0.10.3": patches/@cloudflare__workers-oauth-provider@0.10.3.patch
-  "@sentry/core@10.63.0": packages/cli/patches/@sentry%2Fcore@10.63.0.patch
-  "@sentry/node-core@10.63.0": packages/cli/patches/@sentry%2Fnode-core@10.63.0.patch
   "@stricli/core@1.2.8": packages/cli/patches/@stricli%2Fcore@1.2.8.patch
 
 packageExtensions:
