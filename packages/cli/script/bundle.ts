@@ -166,9 +166,10 @@ const sentrySourcemapPlugin: Plugin = {
  * it stays a runtime `require()` that fails in a real install (the driver is
  * a devDependency, not shipped). `node:sqlite` in the same file stays a
  * builtin and is left external by esbuild regardless.
+ * `formatters/json` loads its generated parser only when --fields is parsed.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|list-command|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.

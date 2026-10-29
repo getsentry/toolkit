@@ -9,6 +9,8 @@ import { conversationRoute } from "./commands/agent-conversation/index.js";
 import { listCommand as conversationListCommand } from "./commands/agent-conversation/list.js";
 import { alertRoute } from "./commands/alert/index.js";
 import { apiCommand } from "./commands/api.js";
+import { attributeRoute } from "./commands/attribute/index.js";
+import { listCommand as attributeListCommand } from "./commands/attribute/list.js";
 import { authRoute } from "./commands/auth/index.js";
 import { whoamiCommand } from "./commands/auth/whoami.js";
 import { bashHookCommand } from "./commands/bash-hook.js";
@@ -97,6 +99,7 @@ import { buildRouteMap } from "./lib/route-map.js";
  */
 const PLURAL_TO_SINGULAR: Record<string, string> = {
   "agent-conversations": "agent-conversation",
+  attributes: "attribute",
   dashboards: "dashboard",
   dsns: "dsn",
   events: "event",
@@ -122,6 +125,7 @@ export const routes = buildRouteMap({
   routes: {
     help: helpCommand,
     alert: alertRoute,
+    attribute: attributeRoute,
     auth: authRoute,
     build: buildRoute,
     cli: cliRoute,
@@ -168,6 +172,7 @@ export const routes = buildRouteMap({
     "send-envelope": sendEnvelopeCommand,
     "bash-hook": bashHookCommand,
     "agent-conversations": conversationListCommand,
+    attributes: attributeListCommand,
     dashboards: dashboardListCommand,
     dsns: dsnListCommand,
     integrations: integrationListCommand,
@@ -195,6 +200,7 @@ export const routes = buildRouteMap({
     hideRoute: {
       dsns: true,
       "agent-conversations": true,
+      attributes: true,
       dashboards: true,
       events: true,
       integrations: true,

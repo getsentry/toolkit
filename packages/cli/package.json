@@ -104,6 +104,7 @@
     "@sentry/core": "catalog:",
     "@sentry/mcp-server": "workspace:*",
     "@sentry/node": "catalog:",
+    "@sentry/search-syntax": "catalog:",
     "@sentry/sqlish": "^1.0.1",
     "@sentry/symbolic": "13.7.0",
     "@sentry/toolkit-core": "workspace:*",

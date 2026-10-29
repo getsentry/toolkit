@@ -477,6 +477,9 @@ importers:
       '@sentry/node':
         specifier: 'catalog:'
         version: 11.6.0(@babel/core@7.28.0)(rollup@4.62.4)
+      '@sentry/search-syntax':
+        specifier: 'catalog:'
+        version: 1.0.0
       '@sentry/sqlish':
         specifier: ^1.0.1
         version: 1.0.1(react@19.2.8)
