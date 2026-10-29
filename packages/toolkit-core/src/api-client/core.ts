@@ -1,19 +1,33 @@
 /**
  * The request core that endpoint wrappers build on. It sends a request
  * through the host's transport, turns network failures and error responses
- * into the shared errors, and reads JSON bodies.
+ * into the shared errors, and reads JSON bodies. `@sentry/api` operations
+ * get a client that sends through the same path, and {@link listPage} walks
+ * their pages.
  *
  * The host supplies the transport (retries, caching), the per-request
  * headers (credentials, user agent, attribution), and logging.
  */
 
+import {
+  createSentryClient,
+  parseSentryLinkHeader,
+  type SentryClient,
+} from "@sentry/api";
 import { buildSentryApiUrl } from "../api-request.js";
-import { type ApiError, ConfigurationError, createApiError } from "./errors.js";
+import {
+  type ApiError,
+  ApiValidationError,
+  ConfigurationError,
+  createApiError,
+} from "./errors.js";
+import { API_MAX_PER_PAGE } from "./pagination.js";
 import {
   type ErrorResponseBody,
   readErrorResponse,
   readJsonResponse,
 } from "./response.js";
+import { type ResponseSchema, validateResponse } from "./validate.js";
 
 /** What the core needs from the host's transport. */
 export type ApiRequestTransport = {
@@ -60,7 +74,22 @@ export type ApiClientCore = {
     path: string,
     init?: RequestInit,
   ): Promise<unknown>;
+  /**
+   * A `@sentry/api` client for one GET to `expectedPath` on `origin`. The
+   * operation builds the path and query; the request goes through
+   * {@link ApiClientCore.request}. Any other target or method throws.
+   */
+  sdkClient(origin: string, expectedPath: string): SentryClient["client"];
 };
+
+/** Where an endpoint wrapper sends: the core, and the region or host origin. */
+export type ApiTarget = { core: ApiClientCore; origin: string };
+
+/** Most pages {@link listPage} fetches for one call. */
+export const MAX_LIST_PAGES = 50;
+
+/** Rows from {@link listPage}, and the cursor for the next call. */
+export type ListPage<T> = { items: T[]; nextCursor: string | null };
 
 /** Readable messages for common network error codes. */
 const NETWORK_ERROR_MESSAGES: Record<string, string> = {
@@ -70,6 +99,8 @@ const NETWORK_ERROR_MESSAGES: Record<string, string> = {
   ETIMEDOUT: "Connection timed out. Check network connectivity.",
   ECONNRESET: "Connection reset. Try again in a moment.",
 };
+
+const API_PREFIX = "/api/0";
 
 /** Network failures that mean the host is wrong or unreachable. */
 const CONFIGURATION_ERROR_CODES = new Set([
@@ -219,5 +250,94 @@ export function createApiClientCore({
     async requestJson(origin, path, init) {
       return await readJsonResponse(await request(origin, path, init));
     },
+
+    sdkClient(origin, expectedPath) {
+      const base = new URL(origin).origin;
+      return createSentryClient({
+        baseUrl: base,
+        fetch: async (sdkRequest) => {
+          if (!(sdkRequest instanceof Request)) {
+            throw new ConfigurationError("Unexpected SDK request input");
+          }
+          const url = new URL(sdkRequest.url);
+          if (
+            url.origin !== base ||
+            url.pathname !== API_PREFIX.concat(expectedPath) ||
+            sdkRequest.method !== "GET"
+          ) {
+            throw new ConfigurationError(
+              "Unexpected SDK request target or method",
+            );
+          }
+          const response = await request(
+            origin,
+            `${url.pathname.slice(API_PREFIX.length)}${url.search}`,
+            { method: "GET", signal: sdkRequest.signal },
+          );
+          const contentType = response.headers.get("content-type");
+          if (!contentType?.includes("application/json")) {
+            await readJsonResponse(response);
+          }
+          return response;
+        },
+      }).client;
+    },
   };
+}
+
+/**
+ * Fetch up to `limit` rows from a list endpoint, starting at `cursor`.
+ *
+ * Each page asks for exactly the rows still missing, up to
+ * {@link API_MAX_PER_PAGE}, and is validated with `schema`. The walk stops
+ * once it has `limit` rows or the server has no next page, and returns the
+ * server's cursor for the page after the last one fetched.
+ *
+ * @throws {ApiValidationError} When `limit` is not between 1 and
+ *   `API_MAX_PER_PAGE * MAX_LIST_PAGES`
+ * @throws {ApiResponseValidationError} When a page does not match `schema`
+ * @throws {Error} When a page has more rows than requested, a cursor
+ *   repeats, or the walk passes {@link MAX_LIST_PAGES}
+ */
+export async function listPage<T>(
+  fetchPage: (
+    perPage: number,
+    cursor: string | undefined,
+  ) => Promise<{ data: unknown; response: Response }>,
+  schema: ResponseSchema<T[]>,
+  limit: number,
+  initialCursor?: string | null,
+): Promise<ListPage<T>> {
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > API_MAX_PER_PAGE * MAX_LIST_PAGES
+  ) {
+    throw new ApiValidationError(
+      `limit must be an integer between 1 and ${API_MAX_PER_PAGE * MAX_LIST_PAGES}`,
+    );
+  }
+  const items: T[] = [];
+  const seenCursors = new Set<string>();
+  let cursor = initialCursor ?? undefined;
+  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+    const perPage = Math.min(API_MAX_PER_PAGE, limit - items.length);
+    const { data, response } = await fetchPage(perPage, cursor);
+    const rows = validateResponse(schema, data);
+    if (rows.length > perPage) {
+      throw new Error("API returned more items than requested");
+    }
+    items.push(...rows);
+    const nextCursor =
+      parseSentryLinkHeader(response.headers.get("link")).nextCursor ?? null;
+    if (items.length >= limit || !nextCursor) {
+      return { items, nextCursor };
+    }
+    if (seenCursors.has(nextCursor) || nextCursor === cursor) {
+      throw new Error("API returned a repeated pagination cursor");
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+  throw new Error("API pagination exceeded its page limit");
 }

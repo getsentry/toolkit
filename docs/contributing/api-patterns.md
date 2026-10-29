@@ -264,7 +264,11 @@ through the shared request core, `@sentry/toolkit-core/api-client/core`,
 which builds them from `readErrorResponse` in
 `@sentry/toolkit-core/api-client/response`. The CLI reads raw error
 responses with the same helper and maps them to its own exit-coded
-`ApiError`. See
+`ApiError`. Endpoints that have moved to the shared client live in
+`@sentry/toolkit-core/api-client/endpoints/*`; `SentryApiService` calls
+them with its Zod schemas, and a malformed response throws
+`ApiResponseValidationError` from
+`@sentry/toolkit-core/api-client/validate`. See
 [`packages/toolkit-core/README.md`](../../packages/toolkit-core/README.md#api-client).
 
 ### Automatic Retries
