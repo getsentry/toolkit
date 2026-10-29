@@ -105,8 +105,8 @@ to wait before trying again. An aborted request SHALL stop waiting at once.
 ### Requirement: Retries do not stack
 
 A request SHALL be retried by one layer only. When the MCP sends its
-requests through a host-supplied or shared transport, `SentryApiService`
-SHALL not retry them again.
+requests through the shared transport, `SentryApiService` SHALL not retry
+them again.
 
 #### Scenario: MCP on the shared transport
 

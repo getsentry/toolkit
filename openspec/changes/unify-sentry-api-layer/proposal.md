@@ -17,6 +17,18 @@ features land in one product and not the other, and the two pin different
 - SDK errors flatten HTTP status into exit codes.
 
 The shared layer must therefore sit below both products, on `@sentry/api`.
+Its end state is inside `@sentry/api` itself, so every consumer, including
+the Sentry frontend in the browser, gets one Sentry API client.
+
+The plan has two steps:
+
+1. Consolidate every `SentryApiService`-like layer, the MCP's
+   `SentryApiService` and the CLI's API modules, into one shared client in
+   `@sentry/toolkit-core`, structured the way it will live in
+   `@sentry/api`.
+2. Copy that client into getsentry/sentry-api-schema, publish a new
+   `@sentry/api`, switch toolkit's imports to it, and delete the
+   toolkit-core copies.
 
 ## What Changes
 
@@ -41,9 +53,22 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
   credentials, storage, and telemetry injected by the host. It covers retries
   through the shared policy, timeouts, redirect validation, and region
   routing.
-- `runMcpServer()` accepts a host-supplied transport. `sentry mcp` passes the
-  CLI's authenticated transport, so local MCP sessions reuse the CLI login,
-  refresh, and on-disk cache.
+- The MCP's `SentryApiService` sends every request through the shared
+  transport and drops its own retry loop.
+- **Step 1:** add a shared API client to `@sentry/toolkit-core`, in one PR
+  that also switches both products and deletes the code it replaces. It
+  covers endpoint wrappers by domain on top of `@sentry/api` operations,
+  the error types (`ApiError`, rate limits, `retryAfterMs`), response
+  validation (`@sentry/api/zod` where it covers the endpoint), pagination,
+  the cache policy, the retry policy, and the transport.
+- **Portability rule:** the shared client imports only `@sentry/api` and
+  toolkit-core modules that move with it, and uses only web-standard APIs,
+  so it runs in Node, Workers, and browsers. No `node:*` imports, `Buffer`,
+  `fs`, `process`, or `AsyncLocalStorage`. Credentials, storage, the
+  fresh-read scope, and telemetry are interfaces each host provides. A lint
+  rule and a browser-target typecheck enforce it.
+- **Step 2:** move the shared client into `@sentry/api`, publish it, and
+  switch toolkit over.
 - The hosted MCP on Cloudflare uses a tiered cache:
   - an in-memory LRU, limited by bytes, for every tier
   - R2 for an allowlist of organization event details and project
@@ -51,19 +76,21 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
     for at most 5 minutes
   - zstd level 3 compression on both
 - MCP read tools accept a `fresh` parameter that bypasses the cache, matching
-  the CLI's `--fresh` flag.
-- MCP API methods move onto `@sentry/api` operations domain by domain. The
+  the CLI's `--fresh` flag. The request-scoped flag lives in the MCP host,
+  not in shared code.
+- Shared endpoint wrappers use `@sentry/api` operations where they exist. The
   endpoints `@sentry/api` lacks go through the same shared transport.
 - Both products use one `@sentry/api` version from the pnpm catalog.
-- **Deprecation:** the standalone `@sentry/mcp-server` device-code login is
-  deprecated in favor of `sentry mcp` and `sentry auth login`.
 
 Out of scope, tracked separately:
 
 - Server-side `Cache-Control` for event and trace-item detail responses
   (getsentry/sentry#128818, prototype in getsentry/sentry#128828).
-- Moving the shared infrastructure into `@sentry/api` once it has proven
-  itself in `toolkit-core`.
+- A later phase, after step 2: `sentry mcp` passes the CLI's authenticated
+  fetch so local MCP sessions reuse the CLI login and on-disk cache, the
+  CLI's OAuth scopes are widened to cover MCP tools, and the standalone
+  `@sentry/mcp-server` login is deprecated. Using the CLI as an SDK from
+  the MCP belongs to that phase too.
 
 ## Capabilities
 
@@ -76,8 +103,9 @@ Out of scope, tracked separately:
   bounded, compressed storage.
 - `sentry-api-transport`: When a Sentry API request is retried, how long it
   waits, and what a caller sees when it gives up.
-- `mcp-host-transport`: How an MCP host supplies credentials and the Sentry
-  API transport, including `sentry mcp` reusing the CLI's login and cache.
+- `sentry-api-client`: One portable Sentry API client, shared by the CLI and
+  MCP from `toolkit-core` and later from `@sentry/api`, with host-injected
+  credentials, storage, and telemetry.
 
 ### Modified Capabilities
 
@@ -86,19 +114,23 @@ None.
 ## Impact
 
 - `packages/toolkit-core`: new `pagination`, `response-cache`, retry, and
-  transport modules, with tests.
+  transport modules, then the `api-client` module, with tests, a lint guard
+  against Node-only APIs, and a browser-target typecheck.
 - `packages/cli/src/lib/api/infrastructure.ts`,
   `packages/cli/src/lib/response-cache.ts`,
   `packages/cli/src/lib/sentry-client.ts`: switch to the shared modules.
   Apart from the narrower cache tiers, CLI behavior does not change.
-- `packages/mcp-core/src/api-client/client.ts`: the transport is replaced and
-  methods move to `@sentry/api`.
+- `packages/mcp-core/src/api-client/`: the transport is replaced, then the
+  endpoints, schemas, and errors move to the shared client. The MCP keeps
+  its Zod-to-tool output formatting.
+- `packages/cli/src/lib/api/`: endpoint wrappers, API errors, and
+  pagination move to the shared client. The CLI keeps credential storage,
+  the cache store, region storage, telemetry, and exit-code mapping.
 - `packages/mcp-core` read tools gain a `fresh` input, and generated tool
   definitions change.
-- `packages/mcp-server/src/index.ts`: `McpServerOptions` gains a transport
-  option, and the standalone auth flow is deprecated.
-- `packages/cli/src/lib/mcp.ts`: passes the CLI transport.
 - `packages/mcp-cloudflare`: in-memory cache, an R2 bucket binding for
   allowlisted detail responses, and a wrangler config change.
-- `pnpm-workspace.yaml`: a catalog entry for `@sentry/api`.
+- `pnpm-workspace.yaml`: a catalog entry for `@sentry/api`, bumped in step 2
+  to the release that contains the shared client.
+- getsentry/sentry-api-schema: receives the shared client in step 2.
 - Snapshot and eval churn in `mcp-core` and `mcp-server-evals`.
