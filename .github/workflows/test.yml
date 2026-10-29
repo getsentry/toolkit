@@ -216,12 +216,6 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
-    env:
-      BRAINTRUST_API_KEY: ci-test-key
-      GITHUB_TOKEN: ci-test-token
-      HONEYCOMB_API_KEY: ci-test-key
-      SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
-      SENTRY_OAUTH_CLIENT_SECRET: ci-test-secret
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -231,7 +225,6 @@ jobs:
         with:
           node-version-file: .github/node-versions/22
           cache: pnpm
-      - run: cp .env.example .env.local
       - run: pnpm install --frozen-lockfile
       - name: Install zsh for CLI completion regression tests
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
