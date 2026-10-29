@@ -316,9 +316,9 @@ what leaves a target for `func` to parse: the completion-only parsers
 `resolve*FromArg` helpers. Commands not migrated yet are on
 `UNBOUND_TARGET_PARSING_ALLOWED` in `lint-rules/cli-oxlint-plugin.js`, each
 with its follow-up; the list is a ratchet, so a file that stops using them
-fails until its entry is removed. `AD_HOC_ID_PARSING_ALLOWED` does the same
-for ID positionals, including the completion-only `parseIssueTarget` and
-`parseDashboardTarget`.
+fails until its entry is removed. `sentry-cli/no-ad-hoc-id-arguments` has no
+allow-list: no command may parse IDs by hand, and the completion-only
+`parseIssueTarget` and `parseDashboardTarget` are rejected too.
 
 **Release positionals:** `[<org>/]<version>` uses
 `releaseParameter(USAGE_HINT, brief)` from `src/commands/release/parse.ts`

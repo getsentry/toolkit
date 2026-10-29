@@ -183,13 +183,6 @@ const AD_HOC_ID_PARSING = new Set([
 ]);
 
 /**
- * Commands still allowed to, each with its follow-up. A ratchet: an entry
- * whose file no longer uses them is reported, so the list only shrinks.
- * Empty: every command parses its IDs with `parseIdArguments()`.
- */
-const AD_HOC_ID_PARSING_ALLOWED = new Map();
-
-/**
  * Helpers that leave a target positional for `func` to parse:
  * `parseOrgTarget` and `parseOrgProjectTarget` only tag it for completion,
  * and the others parse a raw string (applying a pasted URL's server as they
@@ -206,7 +199,10 @@ const UNBOUND_TARGET_PARSING = new Set([
   "resolveProjectBoundFromArg",
 ]);
 
-/** Commands still allowed to, each with its follow-up; a ratchet too. */
+/**
+ * Commands still allowed to, each with its follow-up. A ratchet: an entry
+ * whose file no longer uses them is reported, so the list only shrinks.
+ */
 const UNBOUND_TARGET_PARSING_ALLOWED = new Map([
   // Follow-ups (#1564):
   // `[<org>/[<project>/]]<rule>`, resolving to every matching project
@@ -230,11 +226,28 @@ function allowedFollowUp(allowed, file) {
   return undefined;
 }
 
+/** Whether `node` uses one of `names`; imports and `typeof` do not. */
+function usesName(node, names) {
+  return (
+    names.has(node.name) &&
+    node.parent?.type !== "ImportSpecifier" &&
+    node.parent?.type !== "TSTypeQuery"
+  );
+}
+
+/** Visitors reporting each use of one of `names` in a command file. */
+function bannedNames(file, names, report, message) {
+  if (!file.includes("/src/commands/")) return {};
+  return {
+    Identifier(node) {
+      if (usesName(node, names)) report(node, message);
+    },
+  };
+}
+
 /**
- * Visitors reporting each reference to one of `names` in a command file,
- * except in files on `allowed`; those are reported instead when they no
- * longer reference any, so the allow-list only shrinks. Imports and
- * `typeof` references are not uses.
+ * Like {@link bannedNames}, except in files on `allowed`; those are reported
+ * instead when they no longer use any, so the allow-list only shrinks.
  */
 function ratchetedNames(file, names, allowed, report, message) {
   if (!file.includes("/src/commands/")) return {};
@@ -242,12 +255,7 @@ function ratchetedNames(file, names, allowed, report, message) {
   let used = false;
   return {
     Identifier(node) {
-      if (
-        !names.has(node.name) ||
-        node.parent?.type === "ImportSpecifier" ||
-        node.parent?.type === "TSTypeQuery"
-      )
-        return;
+      if (!usesName(node, names)) return;
       used = true;
       if (followUp === undefined) report(node, message);
     },
@@ -453,12 +461,7 @@ const rules = {
       if (!file.includes("/src/") || file.endsWith("/lib/id-arguments.ts"))
         return {};
       return {
-        ...ratchetedNames(
-          file,
-          AD_HOC_ID_PARSING,
-          AD_HOC_ID_PARSING_ALLOWED,
-          report,
-        ),
+        ...bannedNames(file, AD_HOC_ID_PARSING, report),
         CallExpression(node) {
           if (
             ID_ARGUMENT_PARSERS.has(node.callee.name) &&
