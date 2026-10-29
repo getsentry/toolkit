@@ -9,7 +9,7 @@ import {
 import findDsns from "./find-dsns.js";
 
 describe("find_dsns", () => {
-  it("returns all project DSNs as structured content", async () => {
+  it("returns all project DSNs with status and rate limit as structured content", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/projects/test-org/test-project/keys/",
@@ -24,6 +24,7 @@ describe("find_dsns", () => {
               },
               isActive: true,
               dateCreated: "2026-07-28T12:00:00.000Z",
+              rateLimit: { window: 3600, count: 1000 },
               secretKey: "do-not-leak",
               backendOnlyField: "do-not-leak",
             },
@@ -35,6 +36,7 @@ describe("find_dsns", () => {
               },
               isActive: false,
               dateCreated: "2026-07-28T12:00:00.000Z",
+              rateLimit: null,
             },
           ]),
       ),
@@ -56,12 +58,19 @@ describe("find_dsns", () => {
           {
             "dsn": "https://public@example.ingest.sentry.io/1",
             "id": "123",
+            "isActive": true,
             "name": "Production",
+            "rateLimit": {
+              "count": 1000,
+              "window": 3600,
+            },
           },
           {
             "dsn": "https://development@example.ingest.sentry.io/2",
             "id": "456",
+            "isActive": false,
             "name": "Development",
+            "rateLimit": null,
           },
         ],
       }
