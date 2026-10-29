@@ -49,8 +49,9 @@ const URL_TIER_PATTERNS: readonly [TtlTier, readonly RegExp[]][] = [
       /\/trace-logs\//,
       // Full traces gain spans as they arrive
       /\/trace\/[0-9a-f]{32}\//,
-      // Project event details embed `nextEventID`/`previousEventID` and user
-      // reports, and reprocessing can change them for the same ID
+      // Project event details embed user reports (and `nextEventID`/
+      // `previousEventID` unless collapsed), and reprocessing can change them
+      // for the same ID
       /\/projects\/[^/]+\/[^/]+\/events\/[^/?]+\/?(?:\?|$)/,
     ],
   ],
