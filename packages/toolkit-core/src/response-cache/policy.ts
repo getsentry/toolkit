@@ -10,7 +10,7 @@
  */
 
 import CachePolicy from "http-cache-semantics";
-import type { BodyCodec } from "./codec.js";
+import type { BodyCodec } from "./body.js";
 import type { CacheEntry, CacheStore } from "./store.js";
 import { classifyUrl, FALLBACK_TTL_MS } from "./tiers.js";
 

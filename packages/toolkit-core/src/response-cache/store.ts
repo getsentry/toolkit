@@ -4,7 +4,7 @@
  * `response-cache/codec`, and each enforces its own byte budget.
  */
 
-import type { EncodedBody } from "./codec.js";
+import type { EncodedBody } from "./body.js";
 import type { TtlTier } from "./tiers.js";
 
 /** A cached response as a store holds it. */
