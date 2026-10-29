@@ -348,6 +348,14 @@ export function looksLikeSlug(input: string): boolean {
 }
 
 /**
+ * {@link looksLikeSlug} after URL fragment prefixes are stripped: a prefix
+ * (`trace-<id>`) has a dash and letters, but does not make the input a slug.
+ */
+function looksLikeUnprefixedSlug(input: string): boolean {
+  return looksLikeSlug(stripUrlFragmentPrefixes(input.trim().toLowerCase()));
+}
+
+/**
  * Whether `input`, not a valid ID, still has enough of one for
  * {@link recoverHexId} to look it up: a hex prefix or ellipsized ID of at
  * least {@link MIN_FUZZY_PREFIX} chars that is not a slug. The ID argument
@@ -355,9 +363,7 @@ export function looksLikeSlug(input: string): boolean {
  * project.
  */
 export function looksLikeHexIdFragment(input: string): boolean {
-  // A URL fragment prefix (`trace-<id>`) has a dash and letters, but does
-  // not make the input a slug
-  if (looksLikeSlug(stripUrlFragmentPrefixes(input.trim().toLowerCase()))) {
+  if (looksLikeUnprefixedSlug(input)) {
     return false;
   }
   const { cleaned, sentinel } = preNormalize(input);
@@ -816,11 +822,12 @@ async function recoverHexIdInternal(
     return redirect;
   }
 
-  // Slug-shape check on the RAW input before fuzzy lookup. Slug-like
-  // inputs where the dashless form happens to start with enough hex
-  // chars (e.g. `cafe-babe-app` → `cafebabeapp`) would otherwise reach
+  // Slug-shape check on the input (without URL fragment prefixes, but
+  // before partial-UUID dashes are stripped) before fuzzy lookup.
+  // Slug-like inputs where the dashless form happens to start with enough
+  // hex chars (e.g. `cafe-babe-app` → `cafebabeapp`) would otherwise reach
   // runFuzzyLookup and waste an API call on a clearly-mistaken input.
-  if (looksLikeSlug(input)) {
+  if (looksLikeUnprefixedSlug(input)) {
     return {
       kind: "failed",
       original: input,
