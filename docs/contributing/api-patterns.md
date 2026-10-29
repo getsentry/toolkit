@@ -281,7 +281,11 @@ Retries are:
   out than the single-wait cap fails at once with an `ApiRateLimitError` whose
   `retryAfterMs` and user message say when to retry.
 - **Abortable** — aborting the request's `signal` ends the wait.
-- **Fail-fast otherwise** — network and configuration errors are not retried.
+- **Network failures retry for idempotent requests** — when `fetch` itself
+  fails (DNS, connection refused or reset, socket timeout), only GET, HEAD,
+  and OPTIONS retry, since a write may already have reached Sentry.
+- **Fail-fast otherwise** — configuration errors (such as a malformed token)
+  are not retried.
   A rate-limited tool call returns a **Rate Limited** message with the retry
   time, not an input error.
 - **Bypassed by `allowStatuses`** — a status the caller opts into is returned
@@ -289,6 +293,12 @@ Retries are:
 
 Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
+
+The CLI's transport (`packages/cli/src/lib/sentry-client.ts`) follows the same
+shared rule. Only the caps differ (`RETRY_POLICY`): the hosted MCP keeps its
+total wait short so a Workers request isn't held open, while the CLI can wait
+longer. The CLI also applies its own per-request timeout, which counts as a
+network failure.
 
 ## Best Practices
 

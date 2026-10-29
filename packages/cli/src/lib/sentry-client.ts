@@ -11,6 +11,12 @@
 import { setTimeout as sleepMs } from "node:timers/promises";
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node";
+import {
+  isIdempotentRequest,
+  nextRetryDelayMs,
+  parseRetryDelayMs,
+  type RetryPolicy,
+} from "@sentry/toolkit-core/api-retry";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
 import {
   formatAuthHeader,
@@ -55,11 +61,6 @@ import {
   lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
-import {
-  backoffDelayMs,
-  decideStatusRetry,
-  isRetryableMethod,
-} from "./retry-policy.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
 import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
 import { parseSntrysClaim } from "./token-claims.js";
@@ -88,16 +89,22 @@ const ENDPOINT_TIMEOUT_OVERRIDES: TimeoutOverride[] = [
   { pattern: /\/autofix\/?(?:\?|$)/, timeoutMs: 120_000 },
 ];
 
-/** Maximum retry attempts for failed requests */
-const MAX_RETRIES = 2;
-
 /**
- * Longest wait before a retry, in milliseconds. Caps the jittered backoff
- * and the server-requested wait (`Retry-After`, rate-limit reset); a longer
- * server-requested wait is not retried, so it surfaces instead of hanging. Sentry's API rate-limit
- * windows are usually one second, so honored waits are typically short.
+ * Caps for automatic retries. Which statuses and methods retry is the shared
+ * rule in `@sentry/toolkit-core/api-retry`.
+ *
+ * `maxDelayMs` caps the jittered backoff and the server-requested wait
+ * (`Retry-After`, rate-limit reset); a longer server-requested wait is not
+ * retried, so it surfaces instead of hanging. Sentry's API rate-limit windows
+ * are usually one second, so honored waits are typically short. The per-wait
+ * cap binds first; the total only bounds the worst case.
  */
-const MAX_BACKOFF_MS = 10_000;
+const RETRY_POLICY: RetryPolicy = {
+  maxRetries: 2,
+  baseDelayMs: 1000,
+  maxDelayMs: 10_000,
+  maxTotalDelayMs: 30_000,
+};
 
 /** Header to mark requests as retries, preventing infinite token refresh loops */
 const RETRY_MARKER_HEADER = "x-sentry-cli-retry";
@@ -398,12 +405,33 @@ type AttemptResult =
 
 /** Per-attempt retry inputs. */
 type AttemptRetryState = {
+  method: string;
+  /** Sentry marks the operation idempotent, or the caller opted in. */
+  idempotent: boolean;
+  /** Retries already made for this request, starting at 0. */
   attempt: number;
-  /** Method is idempotent or the caller opted in; see retry-policy.ts. */
-  methodRetryable: boolean;
+  /** Total time already spent waiting between attempts. */
+  waitedMs: number;
   /** Request path, for error messages. */
   urlPath: string;
 };
+
+/** Delay before retrying after `status` (undefined for a network error or timeout). */
+function retryDelayMs(
+  { method, idempotent, attempt, waitedMs }: AttemptRetryState,
+  status: number | undefined,
+  serverDelayMs: number | undefined,
+): number | undefined {
+  return nextRetryDelayMs({
+    policy: RETRY_POLICY,
+    method,
+    idempotent,
+    status,
+    serverDelayMs,
+    attempt,
+    waitedMs,
+  });
+}
 
 /** Best-effort `detail` from a Sentry error body. */
 async function readErrorDetail(
@@ -422,17 +450,17 @@ async function readErrorDetail(
  * Decide what to do with a successful HTTP response.
  *
  * A 401 refreshes the token and retries for any method: the server rejected
- * the request before processing it. Other transient statuses retry only per
- * {@link decideStatusRetry}. A 429 that is not retried throws
+ * the request before processing it. Other transient statuses retry per the
+ * shared policy in `@sentry/toolkit-core/api-retry`. A 429 that is not retried throws
  * {@link RateLimitError} so the user learns when to try again.
  */
 async function handleResponse(
   response: Response,
   headers: Headers,
   credential: CredentialContext,
-  { attempt, methodRetryable, urlPath }: AttemptRetryState,
+  retryState: AttemptRetryState,
 ): Promise<AttemptResult> {
-  if (response.status === 401 && attempt < MAX_RETRIES) {
+  if (response.status === 401 && retryState.attempt < RETRY_POLICY.maxRetries) {
     const refreshed = await handleUnauthorized(headers, credential);
     if (refreshed) {
       await cancelResponseBody(response);
@@ -441,25 +469,18 @@ async function handleResponse(
     return { action: "done", response };
   }
 
-  const decision = decideStatusRetry({
-    status: response.status,
-    headers: response.headers,
-    methodRetryable,
-    attempt,
-    maxRetries: MAX_RETRIES,
-    maxDelayMs: MAX_BACKOFF_MS,
-    nowMs: Date.now(),
-  });
-  if (decision.retry) {
+  const serverDelayMs = parseRetryDelayMs(response.status, response.headers);
+  const delayMs = retryDelayMs(retryState, response.status, serverDelayMs);
+  if (delayMs !== undefined) {
     await cancelResponseBody(response);
-    return { action: "retry", delayMs: decision.delayMs };
+    return { action: "retry", delayMs };
   }
   if (response.status === 429) {
     return {
       action: "throw",
       error: new RateLimitError(
-        urlPath,
-        decision.retryAfterMs,
+        retryState.urlPath,
+        serverDelayMs,
         await readErrorDetail(response),
       ),
     };
@@ -477,9 +498,8 @@ async function handleResponse(
 function handleFetchError(
   error: unknown,
   signal: AbortSignal | undefined | null,
-  { attempt, methodRetryable }: AttemptRetryState,
+  retryState: AttemptRetryState,
 ): AttemptResult {
-  const canRetry = methodRetryable && attempt < MAX_RETRIES;
   if (error instanceof HostScopeError) {
     return { action: "throw", error };
   }
@@ -499,7 +519,8 @@ function handleFetchError(
     };
   }
 
-  if (isInternalTimeout(error) && !canRetry) {
+  const delayMs = retryDelayMs(retryState, undefined, undefined);
+  if (isInternalTimeout(error) && delayMs === undefined) {
     const timeoutMs =
       (error as { timeoutMs?: number }).timeoutMs ?? REQUEST_TIMEOUT_MS;
     const seconds = Math.round(timeoutMs / 1000);
@@ -507,16 +528,16 @@ function handleFetchError(
       action: "throw",
       error: new TimeoutError(
         `Request timed out after ${seconds}s.`,
-        methodRetryable
+        isIdempotentRequest(retryState.method, retryState.idempotent)
           ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
           : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
       ),
     };
   }
-  if (!canRetry) {
+  if (delayMs === undefined) {
     return { action: "throw", error };
   }
-  return { action: "retry", delayMs: backoffDelayMs(attempt, MAX_BACKOFF_MS) };
+  return { action: "retry", delayMs };
 }
 
 /** Extract the URL pathname for logging and cache keys */
@@ -660,8 +681,9 @@ async function buildAttemptFactory(
 /**
  * Authenticate and execute a request with retry logic.
  *
- * Refreshes the auth token, then retries the request up to `MAX_RETRIES`
- * times on transient errors (retry-policy.ts decides which and how long).
+ * Refreshes the auth token, then retries the request up to
+ * `RETRY_POLICY.maxRetries` times on transient errors
+ * (`@sentry/toolkit-core/api-retry` decides which and how long).
  */
 type RetryContext = {
   input: Request | string | URL;
@@ -709,20 +731,25 @@ async function fetchWithRetry({
   }
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
-  const methodRetryable = isRetryableMethod(
-    method,
-    idempotent || isIdempotentOperation(method, fullUrl),
-  );
+  const operationIdempotent =
+    idempotent || isIdempotentOperation(method, fullUrl);
   const urlPath = extractUrlPath(fullUrl);
+  let waitedMs = 0;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= RETRY_POLICY.maxRetries; attempt++) {
     const { input: attemptInput, init: attemptInit } = attemptFactory();
     const result = await executeAttempt({
       input: attemptInput,
       init: attemptInit,
       headers,
       credential: effectiveCredential,
-      retryState: { attempt, methodRetryable, urlPath },
+      retryState: {
+        method,
+        idempotent: operationIdempotent,
+        attempt,
+        waitedMs,
+        urlPath,
+      },
       timeoutMs,
       validatedRedirects,
       responseBodyMode,
@@ -751,9 +778,10 @@ async function fetchWithRetry({
     }
 
     log.debug(
-      `${method} ${urlPath} → retry ${attempt + 1}/${MAX_RETRIES} after ${result.delayMs}ms`,
+      `${method} ${urlPath} → retry ${attempt + 1}/${RETRY_POLICY.maxRetries} after ${Math.round(result.delayMs)}ms`,
     );
     await sleepMs(result.delayMs);
+    waitedMs += result.delayMs;
   }
 
   // Unreachable: the last attempt always returns 'done' or 'throw'
@@ -767,7 +795,7 @@ async function fetchWithRetry({
  * - **Response caching** for GET requests (checked before hitting the network)
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController
- * - Automatic retry on transient HTTP errors (408, 429, 5xx), network errors,
+ * - Automatic retry on transient HTTP errors (429, 500, 502-504), network errors,
  *   and timeouts — for GET/HEAD/OPTIONS, operations Sentry marks idempotent
  *   (see idempotent-operations.ts), or any method with `idempotent`
  * - 429 handling (any method; rejected before processing): waits for the
