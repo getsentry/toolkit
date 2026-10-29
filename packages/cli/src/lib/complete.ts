@@ -134,7 +134,10 @@ type CompletionSlot = {
  * Commands are leaves of the route tree, so at most one prefix of the
  * preceding words names a command; the rest are positionals and flags. A
  * value-taking flag written as `--period 7d` consumes the next word;
- * `--period=7d` is a single word. Other `-`-prefixed words are flags.
+ * `--period=7d` is a single word. Other `-`-prefixed words are flags, and
+ * like Stricli's scanner, a flag ends the one before it instead of becoming
+ * its value: an `inferEmpty` flag such as `--time-series` then takes an
+ * empty value, and any other flag would be a usage error anyway.
  *
  * @returns The slot, or `undefined` when the words name no command with
  *   completion metadata
@@ -148,10 +151,10 @@ function findSlot(words: string[]): CompletionSlot | undefined {
     const positionals: string[] = [];
     let flag: string | undefined;
     for (const word of words.slice(length)) {
-      if (flag !== undefined) {
-        flag = undefined;
-      } else if (word.startsWith("-")) {
+      if (word.startsWith("-")) {
         flag = word in command.flags ? word : undefined;
+      } else if (flag !== undefined) {
+        flag = undefined;
       } else {
         positionals.push(word);
       }
