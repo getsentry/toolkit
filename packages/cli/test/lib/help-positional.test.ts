@@ -198,6 +198,14 @@ describe("help recovery on argument parse errors", () => {
     expect(stderr).not.toContain("Failed to parse");
   });
 
+  test("sentry trace logs help → shows help instead of the parse error", async () => {
+    const { stdout, stderr } = await runCommand(["trace", "logs", "help"]);
+
+    expect(stdout).toContain("sentry trace logs");
+    expect(stderr).toContain("sentry trace logs --help");
+    expect(stderr).not.toContain("Failed to parse");
+  });
+
   test("sentry replay view not-hex → argument parse error", async () => {
     // Stricli writes argument errors to the real process's stderr
     const stderrWrite = vi

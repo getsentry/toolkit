@@ -21,12 +21,8 @@ import {
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
-import {
-  nextRetryDelayMs,
-  parseRetryDelayMs,
-  type RetryPolicy,
-  sleep,
-} from "@sentry/toolkit-core/api-retry";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
+import { createApiTransport } from "@sentry/toolkit-core/api-transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -60,14 +56,14 @@ import {
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
 import { USER_AGENT } from "../version";
-import { apiPath } from "./api-path";
+import { apiPath } from "@sentry/toolkit-core/api-client/api-path";
 import {
   ApiError,
   ApiNotFoundError,
   ApiRateLimitError,
   ApiValidationError,
   createApiError,
-} from "./errors";
+} from "@sentry/toolkit-core/api-client/errors";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -75,7 +71,6 @@ import {
   AlertActionOptionSchema,
   AlertConditionOptionSchema,
   AlertRuleProjectScopeSchema,
-  ApiErrorSchema,
   AutofixRunSchema,
   AutofixRunStateSchema,
   ClientKeyListSchema,
@@ -216,6 +211,11 @@ import type {
   User,
   UserReportList,
 } from "./types";
+import {
+  type ErrorResponseBody,
+  readErrorResponse,
+  readJsonResponse,
+} from "@sentry/toolkit-core/api-client/response";
 
 // TODO: this is shared - so ideally, for safety, it uses @sentry/core, but currently
 // logger isnt exposed (or rather, it is, but its not the right logger)
@@ -332,11 +332,11 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
 };
 
 /**
- * Errors thrown because `fetch` itself failed (DNS, connection refused or
- * reset, socket timeout), as opposed to configuration checks before the
- * request. The shared policy retries these for idempotent requests only.
+ * Every request goes through the shared transport. `SentryApiService` sets its
+ * own headers, including Authorization, so the transport only retries; as
+ * before, it adds no timeout.
  */
-const fetchFailures = new WeakSet<object>();
+const transport = createApiTransport({ retry: REQUEST_RETRY_POLICY });
 
 const API_MAX_PER_PAGE = 100;
 const MAX_LIST_PAGES = 50;
@@ -786,17 +786,87 @@ export class SentryApiService {
     }
   }
 
+  /** Map a failed response's body to the matching `ApiError` subclass. */
+  private errorFromResponse(
+    response: Response,
+    body: ErrorResponseBody,
+    path: string,
+  ): ApiError {
+    const { retryAfterMs } = body;
+    const errorText = body.text ?? "";
+    const logExtra = {
+      status: response.status,
+      statusText: response.statusText,
+      host: this.host,
+      path,
+    };
+    const bodyPreview =
+      errorText.length > 256 ? `${errorText.slice(0, 253)}…` : errorText;
+
+    if (body.parseError !== undefined) {
+      if (body.isHtml) {
+        logWarn("Received HTML error page instead of JSON", {
+          loggerScope: ["api", "client"],
+          extra: { ...logExtra, parseErrorMessage: body.parseError },
+        });
+        // HTML response instead of JSON typically indicates a server configuration issue
+        return createApiError(
+          `Server error: Received HTML instead of JSON (${response.status} ${response.statusText}). This may indicate an invalid URL or server issue.`,
+          response.status,
+          errorText,
+          undefined,
+          retryAfterMs,
+        );
+      }
+      logWarn("Failed to parse JSON error response", {
+        loggerScope: ["api", "client"],
+        extra: { ...logExtra, bodyPreview, parseErrorMessage: body.parseError },
+      });
+    } else if (body.json) {
+      if (body.detail !== undefined) {
+        return createApiError(
+          body.detail,
+          response.status,
+          body.detail,
+          body.json,
+          retryAfterMs,
+        );
+      }
+      logWarn("Failed to parse validated API error response", {
+        loggerScope: ["api", "client"],
+        extra: {
+          ...logExtra,
+          bodyPreview,
+          validationErrorMessage: "Error response has no string detail",
+        },
+      });
+    }
+
+    // Use the error factory to create the appropriate error type based on status
+    return createApiError(
+      `API request failed: ${response.statusText}\n${errorText}`,
+      response.status,
+      errorText,
+      undefined,
+      retryAfterMs,
+    );
+  }
+
   /**
-   * Makes an authenticated request to the Sentry API, transparently retrying
-   * rate-limited (429) requests, and GET and HEAD requests that hit a
-   * 500/502/503/504 or a network failure, under `REQUEST_RETRY_POLICY`.
+   * Makes an authenticated request to the Sentry API through the shared transport.
    *
-   * A 429 waits for its `Retry-After` or `X-Sentry-Rate-Limit-Reset` delay;
-   * everything else uses jittered backoff. Writes that hit a 5xx or a network
-   * failure, other 4xx errors, and configuration checks before the request
-   * fail fast. Callers that opt
-   * a status into `allowStatuses` receive the raw response from `requestOnce`
-   * and are never retried. Aborting `options.signal` ends any wait.
+   * Handles:
+   * - Bearer token authentication
+   * - Error response parsing and enhancement
+   * - Multi-region host overrides
+   * - Fetch availability validation
+   *
+   * Retries happen in the transport, never here, so they do not stack: a
+   * rate-limited (429) request, or a GET that hits a 500/502/503/504 or a
+   * network failure, is retried under `REQUEST_RETRY_POLICY`, and the final
+   * failure is thrown here, with
+   * `ApiRateLimitError.retryAfterMs` from its headers.
+   * Callers that opt a status into `allowStatuses` receive the raw response.
    *
    * @param path API endpoint path (without /api/0 prefix)
    * @param options Fetch options
@@ -806,60 +876,6 @@ export class SentryApiService {
    * @throws {Error} Network or parsing errors
    */
   private async request(
-    path: string,
-    options: RequestInit = {},
-    requestOptions: { host?: string; allowStatuses?: number[] } = {},
-  ): Promise<Response> {
-    const method = options.method ?? "GET";
-    let waitedMs = 0;
-
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await this.requestOnce(path, options, requestOptions);
-      } catch (error) {
-        const status = error instanceof ApiError ? error.status : undefined;
-        const networkFailure =
-          error instanceof Error &&
-          fetchFailures.has(error) &&
-          !options.signal?.aborted;
-        if (status === undefined && !networkFailure) {
-          throw error;
-        }
-        const delayMs = nextRetryDelayMs({
-          policy: REQUEST_RETRY_POLICY,
-          method,
-          status,
-          serverDelayMs:
-            error instanceof ApiRateLimitError ? error.retryAfterMs : undefined,
-          attempt,
-          waitedMs,
-        });
-        if (delayMs === undefined) {
-          throw error;
-        }
-        await sleep(delayMs, options.signal);
-        waitedMs += delayMs;
-      }
-    }
-  }
-
-  /**
-   * Internal method for making authenticated requests to Sentry API.
-   *
-   * Handles:
-   * - Bearer token authentication
-   * - Error response parsing and enhancement
-   * - Multi-region host overrides
-   * - Fetch availability validation
-   *
-   * @param path API endpoint path (without /api/0 prefix)
-   * @param options Fetch options
-   * @param requestOptions Additional request configuration
-   * @returns Promise resolving to Response object
-   * @throws {ApiError} Enhanced API errors with user-friendly messages
-   * @throws {Error} Network or parsing errors
-   */
-  private async requestOnce(
     path: string,
     options: RequestInit = {},
     { host, allowStatuses }: { host?: string; allowStatuses?: number[] } = {},
@@ -903,11 +919,15 @@ export class SentryApiService {
     // logger.info(logger.fmt`[sentryApi] ${options.method || "GET"} ${url}`);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await transport.request(url, {
         ...options,
         headers,
       });
     } catch (error) {
+      // An abort, including one during a retry wait, keeps the caller's reason.
+      if (options.signal?.aborted) {
+        throw error;
+      }
       // Extract the root cause from the error chain
       let rootCause = error;
       while (rootCause instanceof Error && rootCause.cause) {
@@ -938,16 +958,10 @@ export class SentryApiService {
         errorCode === "ETIMEDOUT" ||
         errorMessage.includes("Connect Timeout Error")
       ) {
-        const configError = new ConfigurationError(friendlyMessage, {
-          cause: error,
-        });
-        fetchFailures.add(configError);
-        throw configError;
+        throw new ConfigurationError(friendlyMessage, { cause: error });
       }
 
-      const networkError = new Error(friendlyMessage, { cause: error });
-      fetchFailures.add(networkError);
-      throw networkError;
+      throw new Error(friendlyMessage, { cause: error });
     }
 
     // Handle error responses generically
@@ -955,141 +969,14 @@ export class SentryApiService {
       if (allowStatuses?.includes(response.status)) {
         return response;
       }
-      const retryAfterMs = parseRetryDelayMs(response.status, response.headers);
-      const errorText = await response.text();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(errorText);
-      } catch (error) {
-        // If we can't parse JSON, check if it's HTML (server error)
-        if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
-          logWarn("Received HTML error page instead of JSON", {
-            loggerScope: ["api", "client"],
-            extra: {
-              status: response.status,
-              statusText: response.statusText,
-              host: this.host,
-              path,
-              parseErrorMessage:
-                error instanceof Error ? error.message : String(error),
-            },
-          });
-          // HTML response instead of JSON typically indicates a server configuration issue
-          throw createApiError(
-            `Server error: Received HTML instead of JSON (${response.status} ${response.statusText}). This may indicate an invalid URL or server issue.`,
-            response.status,
-            errorText,
-            undefined,
-            retryAfterMs,
-          );
-        }
-        logWarn("Failed to parse JSON error response", {
-          loggerScope: ["api", "client"],
-          extra: {
-            status: response.status,
-            statusText: response.statusText,
-            host: this.host,
-            path,
-            bodyPreview:
-              errorText.length > 256
-                ? `${errorText.slice(0, 253)}…`
-                : errorText,
-            parseErrorMessage:
-              error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
-
-      if (parsed) {
-        const { data, success, error } = ApiErrorSchema.safeParse(parsed);
-
-        if (success) {
-          // Use the new error factory to create the appropriate error type
-          throw createApiError(
-            data.detail,
-            response.status,
-            data.detail,
-            parsed,
-            retryAfterMs,
-          );
-        }
-
-        logWarn("Failed to parse validated API error response", {
-          loggerScope: ["api", "client"],
-          extra: {
-            status: response.status,
-            statusText: response.statusText,
-            host: this.host,
-            path,
-            bodyPreview:
-              errorText.length > 256
-                ? `${errorText.slice(0, 253)}…`
-                : errorText,
-            validationErrorMessage:
-              error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
-
-      // Use the error factory to create the appropriate error type based on status
-      throw createApiError(
-        `API request failed: ${response.statusText}\n${errorText}`,
-        response.status,
-        errorText,
-        undefined,
-        retryAfterMs,
+      throw this.errorFromResponse(
+        response,
+        await readErrorResponse(response),
+        path,
       );
     }
 
     return response;
-  }
-
-  /**
-   * Safely parses a JSON response, checking Content-Type header first.
-   *
-   * @param response The Response object from fetch
-   * @returns Promise resolving to the parsed JSON object
-   * @throws {Error} If response is not JSON or parsing fails
-   */
-  private async parseJsonResponse(response: Response): Promise<unknown> {
-    // Handle case where response might not have all properties (e.g., in tests or promise chains)
-    if (!response.headers?.get) {
-      return await response.json();
-    }
-
-    const contentType = response.headers.get("content-type");
-
-    // Check if the response is JSON
-    if (!contentType || !contentType.includes("application/json")) {
-      const responseText = await response.text();
-
-      // Check if it's HTML
-      if (
-        contentType?.includes("text/html") ||
-        responseText.includes("<!DOCTYPE") ||
-        responseText.includes("<html")
-      ) {
-        // HTML when expecting JSON usually indicates authentication or routing issues
-        throw new Error(
-          `Expected JSON response but received HTML (${response.status} ${response.statusText}). This may indicate you're not authenticated, the URL is incorrect, or there's a server issue.`,
-        );
-      }
-
-      // Generic non-JSON error
-      throw new Error(
-        `Expected JSON response but received ${contentType || "unknown content type"} ` +
-          `(${response.status} ${response.statusText})`,
-      );
-    }
-
-    try {
-      return await response.json();
-    } catch (error) {
-      // JSON parsing failure after successful response
-      throw new Error(
-        `Failed to parse JSON response: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
   }
 
   /**
@@ -1112,7 +999,7 @@ export class SentryApiService {
     requestOptions?: { host?: string },
   ): Promise<unknown> {
     const response = await this.request(path, options, requestOptions);
-    return await this.parseJsonResponse(response);
+    return await readJsonResponse(response);
   }
 
   /** Let SDK operations build paths and queries while MCP owns transport and errors. */
@@ -1142,7 +1029,7 @@ export class SentryApiService {
         );
         const contentType = response.headers.get("content-type");
         if (!contentType?.includes("application/json")) {
-          await this.parseJsonResponse(response);
+          await readJsonResponse(response);
         }
         return response;
       },
@@ -2009,7 +1896,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
 
     return {
       dashboards: DashboardListSchema.parse(body),
@@ -2215,7 +2102,7 @@ export class SentryApiService {
         { method: "GET" },
         opts,
       );
-      const body = await this.parseJsonResponse(response);
+      const body = await readJsonResponse(response);
       repos.push(...RepositoryListSchema.parse(body));
       cursor = getNextCursor(response.headers.get("link"));
     } while (cursor);
@@ -2309,7 +2196,7 @@ export class SentryApiService {
       opts,
     );
     const rules = IssueAlertRuleListSchema.parse(
-      await this.parseJsonResponse(response),
+      await readJsonResponse(response),
     );
     const targetLimit = limit ?? 100;
     return {
@@ -2509,7 +2396,7 @@ export class SentryApiService {
     return {
       detectors: z
         .array(DetectorSchema)
-        .parse(await this.parseJsonResponse(response)),
+        .parse(await readJsonResponse(response)),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2541,7 +2428,7 @@ export class SentryApiService {
     return {
       actions: z
         .array(AlertActionOptionSchema)
-        .parse(await this.parseJsonResponse(response)),
+        .parse(await readJsonResponse(response)),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2573,7 +2460,7 @@ export class SentryApiService {
     return {
       conditions: z
         .array(AlertConditionOptionSchema)
-        .parse(await this.parseJsonResponse(response)),
+        .parse(await readJsonResponse(response)),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2715,7 +2602,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
     return {
       rules: MetricAlertRuleListSchema.parse(body),
       nextCursor: getNextCursor(response.headers.get("link")),
@@ -2778,7 +2665,7 @@ export class SentryApiService {
       opts,
     );
     return {
-      data: await this.parseJsonResponse(response),
+      data: await readJsonResponse(response),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2818,7 +2705,7 @@ export class SentryApiService {
         undefined,
         opts,
       );
-      const body = await this.parseJsonResponse(response);
+      const body = await readJsonResponse(response);
       teams.push(...TeamListSchema.parse(body));
       cursor = getNextCursor(response.headers.get("link"));
     } while (cursor);
@@ -3980,7 +3867,7 @@ export class SentryApiService {
       undefined,
       { ...opts, allowStatuses: [400] },
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
     // ParseError responses use a detail envelope instead of validation results.
     // Keep malformed validation results reportable, even when their status is 400.
     if (
@@ -4265,7 +4152,7 @@ export class SentryApiService {
         undefined,
         opts,
       );
-      return { data: await this.parseJsonResponse(response), response };
+      return { data: await readJsonResponse(response), response };
     }, schema);
   }
 
@@ -4336,9 +4223,7 @@ export class SentryApiService {
       opts,
     );
     return {
-      issue: NativeExternalIssueSchema.parse(
-        await this.parseJsonResponse(response),
-      ),
+      issue: NativeExternalIssueSchema.parse(await readJsonResponse(response)),
       changed: response.status === 201,
     };
   }
@@ -4453,7 +4338,7 @@ export class SentryApiService {
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
     );
     return {
-      issue: ExternalIssueSchema.parse(await this.parseJsonResponse(response)),
+      issue: ExternalIssueSchema.parse(await readJsonResponse(response)),
       changed: response.status === 201,
     };
   }
@@ -4509,7 +4394,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
     return {
       reports: UserReportListSchema.parse(body),
       nextCursor: getNextCursor(response.headers.get("link")),
@@ -5756,7 +5641,7 @@ export class SentryApiService {
         undefined,
         opts,
       );
-      const body = await this.parseJsonResponse(response);
+      const body = await readJsonResponse(response);
       const details = AIConversationDetailsResponseSchema.parse(body);
       // Pages repeat the same conversation-scoped title.
       title = details.title;
@@ -5838,7 +5723,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
 
     return {
       conversations: AIConversationSummaryListSchema.parse(body),

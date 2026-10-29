@@ -9,7 +9,7 @@ import { formatReopenedFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
 import { SentryFeedbackSchema } from "../../types/index.js";
-import { feedbackIdPositional, resolveFeedback } from "./utils.js";
+import { type FeedbackTarget, feedbackPositional } from "./positional.js";
 
 export const unresolveCommand = buildCommand({
   docs: {
@@ -48,15 +48,11 @@ export const unresolveCommand = buildCommand({
     schema: SentryFeedbackSchema,
   },
   parameters: {
-    positional: feedbackIdPositional,
+    positional: feedbackPositional("unresolve"),
   },
-  async *func(this: SentryContext, _flags, feedbackArg: string) {
+  async *func(this: SentryContext, _flags, target: FeedbackTarget) {
     disableResponseCache();
-    const { org, feedback } = await resolveFeedback(
-      feedbackArg,
-      this.cwd,
-      "unresolve",
-    );
+    const { org, feedback } = await target.resolved;
     const updated = await updateIssueStatus(feedback.id, "unresolved", {
       orgSlug: org,
     });

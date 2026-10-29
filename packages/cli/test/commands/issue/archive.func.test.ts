@@ -355,4 +355,39 @@ describe("archiveCommand.func()", () => {
     expect(output).toContain("Archived");
     expect(output).toContain("CLI-G5");
   });
+
+  test("parses the issue before resolving it", async () => {
+    resolveIssueSpy.mockResolvedValue({
+      org: "test-org",
+      issue: makeMockIssue(),
+    });
+    updateSpy.mockResolvedValue(makeMockIssue());
+
+    const { context } = createMockContext();
+    await func.call(context, { json: false }, "test-org/CLI-G5");
+
+    expect(resolveIssueSpy).toHaveBeenCalledExactlyOnceWith({
+      issueArg: {
+        text: "test-org/CLI-G5",
+        parsed: {
+          type: "explicit",
+          org: "test-org",
+          project: "cli",
+          suffix: "G5",
+        },
+      },
+      cwd: context.cwd,
+      command: "archive",
+      commandBase: "sentry issue",
+    });
+  });
+
+  test("rejects a malformed issue without resolving it", async () => {
+    const { context } = createMockContext();
+    await expect(
+      func.call(context, { json: false }, "test-org/"),
+    ).rejects.toThrow(/Missing issue ID after slash/);
+    expect(resolveIssueSpy).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
 });

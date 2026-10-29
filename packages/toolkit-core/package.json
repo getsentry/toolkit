@@ -78,21 +78,28 @@
     "./sentry-origin": {
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
+    },
+    "./api-client/*": {
+      "types": "./src/api-client/*.ts",
+      "default": "./src/api-client/*.ts"
     }
   },
   "scripts": {
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc --noEmit && tsc -p tsconfig.browser.json"
   },
   "dependencies": {
     "@sentry/search-syntax": "catalog:",
+    "@standard-schema/spec": "1.1.0",
     "http-cache-semantics": "^4.2.0"
   },
   "devDependencies": {
     "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "valibot": "^1.4.2",
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

@@ -228,8 +228,8 @@ export const myRoute = buildRouteMap({
 ### Positional Arguments
 
 Required identifiers (trace IDs, span IDs) should be **positional args**, not
-flags. Every command that takes trace, span, replay, or log IDs parses them
-with `parseIdArguments` (or `parseIdArgument` for exactly one) from
+flags. Every command that takes trace, span, replay, log, or event IDs parses
+them with `parseIdArguments` (or `parseIdArgument` for exactly one) from
 `src/lib/id-arguments.ts`, so they all take the same forms:
 
 - `<id>`, `<org>/<id>`, `<org>/<project>/<id>`, `<target> <id>`, a Sentry URL
@@ -248,8 +248,18 @@ target is known. The result is a `target` string for `parseOrgProjectInput`
 and the IDs. Add a kind to `ID_KINDS` rather than validating IDs in a command;
 the `sentry-cli/no-ad-hoc-id-arguments` lint rule rejects hand-written ID
 parsing (`parseSlashSeparatedArg`, `HEX_ID_RE`, ...) in commands and kinds
-defined outside `ID_KINDS`. Issue IDs (and `event view`, which takes them)
-keep their own syntax.
+defined outside `ID_KINDS`. Issue IDs keep their own syntax; `event view`,
+which also takes them, checks for an issue first (`parseEventViewInput`).
+
+**Issue positionals:** issue IDs, short IDs, selectors, and issue URLs are
+parsed by `parseIssueArgument` (`src/lib/issue-arguments.ts`), whose forms
+are defined by `grammar/issue-argument.pegjs`. A command that takes one
+issue declares `issuePositional({ command })` (or `issueParameter` inside a
+tuple) from `src/commands/issue/positional.ts`: `func` takes an
+`IssueTarget` and awaits `target.resolved` for the org and issue. A command
+that resolves it another way (`resolveOrgAndIssueId`, or recovery hints that
+keep its other arguments) passes `requireIssueArgument(target.parsed, ...)`
+instead of the raw string.
 
 ```typescript
 import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
@@ -318,7 +328,7 @@ command's help instead. The same purity rule applies: return a pasted URL's serv
 (`baseUrl`) and any warnings from the parse, and apply them in `resolve`
 (`parseTraceTargetInput` and `parseDualModeInput` in `trace-target.ts` do
 this for trace targets). Commands that recover a malformed ID (`trace view`,
-`span view`, `log view`) parse it unvalidated and validate or recover it in
+`span view`, `log view`, `event view`) parse it unvalidated and validate or recover it in
 `resolve`, which can look the prefix up: `parseTraceArgumentsInput` and
 `resolveTraceArguments` do this for trace IDs. A missing ID or a bad target
 still fails the parse.
@@ -334,7 +344,7 @@ dashboard use a completion-aware parser from `src/lib/completion-target.ts`
 instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
 and project aliases; `parseOrgTarget` completes org slugs only;
 `parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
-completes cached dashboards. `issueIdPositional` already uses them. A
+completes cached dashboards. `issueIdsPositional` already uses them. A
 parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
 parsers behind `listTargetPositional`, completes the same way. Shared value
 parsers are not tagged where they live; `PARSER_TARGETS` in

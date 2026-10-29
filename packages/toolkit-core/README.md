@@ -15,6 +15,29 @@ retains its own credential storage, regional cache identity and persistence,
 host allowlists, routing, polling deadline, response validation, and
 user-facing errors.
 
+## API client
+
+`api-client/` is the shared Sentry API client, built here first and moved
+into `@sentry/api` later, so it uses only web-standard APIs and runs in Node,
+Workers, and browsers. Lint bans `node:*` imports and Node globals in
+toolkit-core, and `pnpm run tsc` also typechecks it against the DOM library
+with no Node types (`tsconfig.browser.json`). The `node:zlib` cache codec is
+the one exception.
+
+- `errors` holds `ApiError` and its status subclasses, `createApiError`, and
+  the `UserInputError` and `ConfigurationError` the client throws. The MCP
+  re-exports them from `packages/mcp-core/src/errors.ts`.
+- `api-path` builds API paths with every identifier segment encoded.
+- `validate` checks a response with any
+  [Standard Schema](https://standardschema.dev) validator the host passes in:
+  Zod in the MCP, valibot in the CLI. Shared code depends only on the
+  interface's types.
+- `response` reads responses. `readErrorResponse` reads a failed response's
+  text, parsed JSON, string `detail`, whether it is an HTML page, and the
+  rate-limit wait, and each host maps that to its own errors.
+  `readJsonResponse` parses a successful body after checking its
+  Content-Type.
+
 ## API transport
 
 `api-transport` is the authenticated fetch both products send Sentry API
@@ -36,6 +59,11 @@ request, a `TransportCache`, its error classes for timeouts, rate limits, and
 fatal fetch errors such as TLS failures, a logger, and a span hook. The CLI's
 `packages/cli/src/lib/sentry-client.ts` wires in its stored credentials,
 host-scope checks, disk cache, and telemetry.
+
+Credentials and timeouts are optional. Without a `CredentialProvider`, the
+transport keeps the request's own Authorization header, never refreshes, and
+skips the cache, since entries are scoped to a credential. The MCP's
+`SentryApiService` uses it that way, with retries only.
 
 ## Pagination
 

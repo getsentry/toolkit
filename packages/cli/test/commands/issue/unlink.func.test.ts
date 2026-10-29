@@ -106,7 +106,15 @@ describe("issue unlink", () => {
       );
 
       expect(resolveOrgAndIssueId).toHaveBeenCalledExactlyOnceWith({
-        issueArg: "test-org/APP-42",
+        issueArg: {
+          text: "test-org/APP-42",
+          parsed: {
+            type: "explicit",
+            org: "test-org",
+            project: "app",
+            suffix: "42",
+          },
+        },
         cwd: "/tmp/example-project",
         command: "unlink",
       });

@@ -66,10 +66,13 @@ const BOUND_TARGET_TYPES = new Set([
   "OrgProjectTarget",
   "ProjectBoundTarget",
   "BoundArguments",
+  "EventViewArguments",
   "LogListArguments",
   "LogViewArguments",
   "ReplayArguments",
+  "SpanListArguments",
   "SpanViewArguments",
+  "TraceLogsArguments",
   "TraceViewArguments",
 ]);
 
@@ -162,12 +165,6 @@ const AD_HOC_ID_PARSING = new Set([
   "HEX_ID_RE",
   "SPAN_ID_RE",
 ]);
-
-/**
- * Commands still allowed to: `event view` also takes issue IDs, which are
- * not hex IDs and have their own syntax.
- */
-const AD_HOC_ID_PARSING_ALLOWED = ["/src/commands/event/view.ts"];
 
 const ID_ARGUMENT_PARSERS = new Set(["parseIdArguments", "parseIdArgument"]);
 
@@ -353,9 +350,7 @@ const rules = {
     (_context, file, report) => {
       if (!file.includes("/src/") || file.endsWith("/lib/id-arguments.ts"))
         return {};
-      const commands =
-        file.includes("/src/commands/") &&
-        !AD_HOC_ID_PARSING_ALLOWED.some((allowed) => file.endsWith(allowed));
+      const commands = file.includes("/src/commands/");
       return {
         Identifier(node) {
           if (

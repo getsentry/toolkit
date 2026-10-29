@@ -21,12 +21,7 @@ import {
   triggerRootCauseAnalysis,
   tryGetIssueByShortId,
 } from "../../lib/api-client.js";
-import {
-  type IssueSelector,
-  type ParsedIssueArg,
-  parseIssueArg,
-  splitNewlineArg,
-} from "../../lib/arg-parsing.js";
+import { type IssueSelector, splitNewlineArg } from "../../lib/arg-parsing.js";
 import { parseIssueTarget } from "../../lib/completion-target.js";
 import {
   clearCachedIssueOrg,
@@ -44,6 +39,11 @@ import {
   withAuthGuard,
 } from "../../lib/errors.js";
 import { getProgressMessage } from "../../lib/formatters/seer.js";
+import {
+  type IssueArgument,
+  type ParsedIssueArg,
+  parseIssueArgument,
+} from "../../lib/issue-arguments.js";
 import { expandToFullShortId, isShortSuffix } from "../../lib/issue-id.js";
 import { logger } from "../../lib/logger.js";
 import { poll } from "../../lib/polling.js";
@@ -54,7 +54,10 @@ import {
   resolveOrg,
   resolveOrgAndProject,
 } from "../../lib/resolve-target.js";
-import { parseSentryUrl } from "../../lib/sentry-url-parser.js";
+import {
+  applySentryUrlContext,
+  parseSentryUrl,
+} from "../../lib/sentry-url-parser.js";
 import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits, shellQuote } from "../../lib/utils.js";
@@ -62,19 +65,6 @@ import type { SentryIssue } from "../../types/index.js";
 import { type AutofixState, isTerminalStatus } from "../../types/seer.js";
 
 const log = logger.withTag("issue.utils");
-
-/** Shared positional parameter for issue ID */
-export const issueIdPositional = {
-  kind: "tuple",
-  parameters: [
-    {
-      placeholder: "issue",
-      brief:
-        "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix",
-      parse: parseIssueTarget,
-    },
-  ],
-} as const;
 
 /** Variadic positional parameter for commands that accept multiple issues. */
 export const issueIdsPositional = {
@@ -680,8 +670,11 @@ async function resolveShareIssue(
  * Options for resolving an issue ID.
  */
 export type ResolveIssueOptions = {
-  /** User-provided issue argument (raw CLI input) */
-  issueArg: string;
+  /**
+   * The issue argument: parsed by the command's positional, or as typed (it
+   * is parsed here then)
+   */
+  issueArg: string | IssueArgument;
   /** Current working directory for context resolution */
   cwd: string;
   /** Command name for error messages (e.g., "view", "explain") */
@@ -848,10 +841,15 @@ async function resolveNumericIssue(
   }
 }
 
+/** An issue argument, parsed unless the command's positional parsed it. */
+function issueArgumentOf(issueArg: string | IssueArgument): IssueArgument {
+  return typeof issueArg === "string" ? parseIssueArgument(issueArg) : issueArg;
+}
+
 /**
  * Resolve an issue ID to organization slug and full issue object.
  *
- * Supports all issue ID formats (now parsed by parseIssueArg in arg-parsing.ts):
+ * Supports all issue ID formats (parsed by parseIssueArgument in issue-arguments.ts):
  * - selector: "@latest", "sentry/@most_frequent" → top issue by criteria
  * - explicit: "sentry/cli-G" → org + project + suffix
  * - explicit-org-suffix: "sentry/G" → org + suffix (needs DSN for project)
@@ -868,12 +866,15 @@ async function resolveNumericIssue(
 export async function resolveIssue(
   options: ResolveIssueOptions,
 ): Promise<ResolvedIssueResult> {
-  const { issueArg, cwd, command, commandBase, trailingArgs = [] } = options;
+  const { cwd, command, commandBase, trailingArgs = [] } = options;
   const effectiveCommandBase = commandBase ?? "sentry issue";
-  const parsed = parseIssueArg(issueArg);
+  const { text, parsed, baseUrl } = issueArgumentOf(options.issueArg);
+  if (baseUrl) {
+    applySentryUrlContext(baseUrl);
+  }
   const commandHint = buildCommandHint(
     command,
-    issueArg,
+    text,
     effectiveCommandBase,
     trailingArgs,
   );
@@ -1000,7 +1001,7 @@ export async function resolveOrgAndIssueId(
   if (!result.org) {
     const commandHint = buildCommandHint(
       options.command,
-      options.issueArg,
+      issueArgumentOf(options.issueArg).text,
       options.commandBase,
       options.trailingArgs,
     );

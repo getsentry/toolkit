@@ -130,28 +130,6 @@ export type ResolvedTraceOrg = {
 // Parsing
 // ---------------------------------------------------------------------------
 
-/**
- * Parse trace-related positional arguments into a {@link ParsedTraceTarget}.
- *
- * Takes the forms every ID-taking command does (see `id-arguments.ts`):
- * `<trace-id>`, `<org>/<trace-id>`, `<org>/<project>/<trace-id>`,
- * `<target> <trace-id>`, `<trace-id> <target>`, or a trace URL. Extra
- * arguments are ignored with a warning.
- *
- * @param args - Positional arguments from CLI
- * @param usageHint - Usage example for error messages
- * @returns Parsed trace target with type discrimination
- * @throws {ContextError} If no arguments are provided
- * @throws {ValidationError} If the trace ID format is invalid
- */
-export function parseTraceTarget(
-  args: readonly string[],
-  usageHint: string,
-  options: TraceArgumentsOptions = {},
-): ParsedTraceTarget {
-  return applyTraceTargetInput(parseTraceTargetInput(args, usageHint, options));
-}
-
 /** How a trace command takes its trace ID. */
 export type TraceArgumentsOptions = {
   /**
@@ -162,9 +140,17 @@ export type TraceArgumentsOptions = {
 };
 
 /**
- * Parse trace-related positional arguments like {@link parseTraceTarget},
+ * Parse trace-related positional arguments into a {@link ParsedTraceTarget},
  * without side effects: the server of a pasted Sentry URL and the warnings
- * are returned for the caller to apply.
+ * are returned for the caller to apply ({@link applyTraceTargetInput}).
+ *
+ * Takes the forms every ID-taking command does (see `id-arguments.ts`):
+ * `<trace-id>`, `<org>/<trace-id>`, `<org>/<project>/<trace-id>`,
+ * `<target> <trace-id>`, `<trace-id> <target>`, or a trace URL. Extra
+ * arguments are ignored with a warning.
+ *
+ * @throws {ContextError} When the trace ID is missing
+ * @throws {ValidationError} When the trace ID or the target is invalid
  */
 export function parseTraceTargetInput(
   args: readonly string[],
@@ -535,51 +521,22 @@ export async function resolveTraceOrg(
 // ---------------------------------------------------------------------------
 
 /**
- * Result from dual-mode argument disambiguation.
- *
- * Used by commands that support both project-scoped listing (no trace ID)
- * and trace-scoped listing (trace ID provided), like `span list` and
- * `log list`.
- *
- * Discriminated on `mode`:
- * - `"project"` — no trace ID detected; `target` is the optional org/project arg
- * - `"trace"` — a 32-char hex trace ID was found; `parsed` contains the full target
+ * Positional arguments of a dual-mode list command, parsed without side
+ * effects. Discriminated on `mode`:
+ * - `"project"` — no trace ID; `target` is the optional org/project argument
+ * - `"trace"` — a trace ID; `trace` is the target to apply and resolve
  */
-export type ParsedDualModeArgs =
-  | { mode: "project"; target?: string }
-  | { mode: "trace"; parsed: ParsedTraceTarget };
-
-/**
- * Disambiguate positional arguments for dual-mode list commands.
- *
- * Trace mode when the arguments name a trace ID in any of the forms
- * {@link parseTraceTarget} takes; otherwise project mode, with the first
- * argument as the target.
- *
- * @param args - Positional arguments from CLI
- * @param traceUsageHint - Usage hint for trace-mode error messages
- * @returns Parsed args with mode discrimination
- */
-export function parseDualModeArgs(
-  args: readonly string[],
-  traceUsageHint: string,
-  options: TraceArgumentsOptions = {},
-): ParsedDualModeArgs {
-  const input = parseDualModeInput(args, traceUsageHint, options);
-  return input.mode === "trace"
-    ? { mode: "trace", parsed: applyTraceTargetInput(input.trace) }
-    : input;
-}
-
-/** {@link ParsedDualModeArgs} parsed without side effects. */
 export type DualModeInput =
   | { mode: "project"; target?: string }
   | { mode: "trace"; trace: TraceTargetInput };
 
 /**
- * Disambiguate dual-mode arguments like {@link parseDualModeArgs}, without
- * side effects: trace mode returns a {@link TraceTargetInput} for the caller
- * to apply.
+ * Disambiguate positional arguments for dual-mode list commands (`span list`,
+ * `log list`), without side effects.
+ *
+ * Trace mode when the arguments name a trace ID in any of the forms
+ * {@link parseTraceTargetInput} takes; otherwise project mode, with the
+ * first argument as the target.
  */
 export function parseDualModeInput(
   args: readonly string[],

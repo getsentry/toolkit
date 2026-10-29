@@ -1,20 +1,22 @@
 /** Shared arguments for external issue association commands. */
 
 import { ValidationError } from "../../lib/errors.js";
-import { issueIdPositional } from "./utils.js";
+import { issueParameter } from "./positional.js";
 
 /** Required source issue and existing external resource URL for link and unlink. */
-export const EXTERNAL_ISSUE_POSITIONALS = {
-  kind: "tuple",
-  parameters: [
-    ...issueIdPositional.parameters,
-    {
-      placeholder: "url",
-      parse: String,
-      brief: "URL of an existing tracker issue or GitHub pull request",
-    },
-  ],
-} as const;
+export function externalIssuePositionals(command: string) {
+  return {
+    kind: "tuple",
+    parameters: [
+      issueParameter({ command }),
+      {
+        placeholder: "url",
+        parse: String,
+        brief: "URL of an existing tracker issue or GitHub pull request",
+      },
+    ],
+  } as const;
+}
 
 /** Flags identifying an existing external issue and its Sentry integration. */
 export const EXTERNAL_ISSUE_FLAGS = {
