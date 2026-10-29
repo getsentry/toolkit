@@ -94,7 +94,8 @@ Out of scope, tracked separately:
   stdio and the hosted MCP bundles on Workers. `sentry mcp` passes the
   CLI's authenticated fetch so local MCP sessions reuse the CLI login and
   on-disk cache, and the CLI's OAuth scopes are widened to cover MCP tools.
-  The future of `@sentry/mcp-server` is decided in its own PR.
+  `@sentry/mcp-server` becomes a stdio proxy to the hosted MCP with no
+  toolkit dependencies, in its own PR.
 
 ## Capabilities
 
