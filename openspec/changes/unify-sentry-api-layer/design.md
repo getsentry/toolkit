@@ -9,6 +9,8 @@ See proposal.md for motivation. Current state that shapes the approach:
   `cli/src/lib/mcp.ts` already passes credentials into `runMcpServer()`
   through `resolveAccessToken` and `onUpstreamUnauthorized`. Shared code
   must therefore live below both products, in `toolkit-core`.
+  `@sentry/mcp-server` is being retired in favor of `sentry mcp`, after
+  which the CLI depends on `mcp-core` directly.
 - **CLI request stack.**
   - `sentry-client.ts` handles auth, refresh on 401, timeouts, GET retries,
     redirect validation, and custom headers.
@@ -61,9 +63,11 @@ See proposal.md for motivation. Current state that shapes the approach:
 
 - Client-side caching in the Sentry frontend. Browser HTTP caching driven
   by server headers covers that (getsentry/sentry#128818).
-- Using `createSentrySDK()`, or the CLI as an SDK in general, from the MCP,
-  and `sentry mcp` passing the CLI's fetch. Both are deferred to a later
-  phase after step 2 (task group 11).
+- Importing the CLI package from the MCP, including `createSentrySDK()`.
+  The MCP reaches the same operations through the shared client instead
+  (see "Dependencies point down"). Moving the CLI SDK's operations down and
+  injecting the CLI's host capabilities into `sentry mcp` are deferred to a
+  later phase after step 2 (task group 11).
 - Replacing every hand-written response schema with a generated one, or
   moving either product to the other's validation library.
 
@@ -434,6 +438,45 @@ The cache codec uses `node:zlib`, which Node and Workers have and browsers do
 not. It is storage, so it stays a host-side module outside the guarded set
 and does not move in step 2.
 
+### Dependencies point down; the MCP never imports the CLI
+
+Package dependencies only point down:
+
+```
+cli → mcp-core → toolkit-core (→ @sentry/api)
+mcp-cloudflare → mcp-core
+```
+
+`mcp-core` never imports `sentry`, not even type-only. `sentry mcp` is the
+composition root that builds an MCP server from `mcp-core` and the CLI's
+host pieces.
+
+"The MCP uses the CLI SDK underneath" is done by moving the CLI SDK's
+portable operations down into the shared client layer, not by importing
+the CLI. `createSentrySDK()`, the CLI commands, and the MCP tools then
+become thin faces over the same operations. This also keeps the hosted MCP
+working on Workers, since the CLI SDK is Node-only today (SQLite, the
+filesystem, and `process`).
+
+Capabilities only the CLI host has are optional interfaces declared in
+`mcp-core` or `toolkit-core`:
+
+- the SQLite response cache store
+- the region cache
+- DSN detection from local files
+- file uploads
+
+`sentry mcp` injects the CLI's implementations. `mcp-cloudflare` injects
+its own, such as the memory cache store, or omits them, and tools that
+need a missing capability say so or stay unavailable.
+
+Two checks enforce the direction, both added by the `@sentry/mcp-server`
+retirement PR: a lint rule that bans importing `sentry` from `mcp-core`
+and `mcp-cloudflare`, type-only imports included, and a check over the
+workspace package manifests that fails on a dependency cycle. That PR also
+moves the MCP registry entry (`server.json`) from `@sentry/mcp-server` to
+`sentry mcp`.
+
 ### `fresh` is a shared read-tool input
 
 Read-only tools gain an optional `fresh: boolean`, defined once in the
@@ -500,7 +543,7 @@ bumps move both products together.
   browser-target typecheck fail CI.
 - **CLI-issued tokens lack MCP scopes.** The MCP and CLI use different OAuth
   client IDs and scope lists today. When the deferred `sentry mcp` phase is
-  picked up, compare them before deprecating the standalone login. If they
+  picked up, compare them before relying on the CLI session for MCP tools. If they
   differ, widen the CLI's requested scopes.
 
 ## Migration Plan
@@ -519,8 +562,11 @@ bumps move both products together.
    client, and both products switched over.
 7. Step 2: copy the client into getsentry/sentry-api-schema, publish
    `@sentry/api`, switch toolkit to it, and delete the toolkit-core copies.
-8. Later phase: `sentry mcp` on the CLI session, and deprecating the
-   standalone MCP login.
+8. Later phase: move the CLI SDK's portable operations into the shared
+   client, and have `sentry mcp` inject the CLI's host capabilities
+   (session, cache store, region cache, DSN detection, file uploads).
+   `@sentry/mcp-server` is retired separately, with the registry entry
+   moved to `sentry mcp`.
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
 `off` restores today's uncached behavior. Each CLI step is a refactor that

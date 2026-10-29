@@ -89,9 +89,10 @@ Out of scope, tracked separately:
   (getsentry/sentry#128818, prototype in getsentry/sentry#128828).
 - A later phase, after step 2: `sentry mcp` passes the CLI's authenticated
   fetch so local MCP sessions reuse the CLI login and on-disk cache, the
-  CLI's OAuth scopes are widened to cover MCP tools, and the standalone
-  `@sentry/mcp-server` login is deprecated. Using the CLI as an SDK from
-  the MCP belongs to that phase too.
+  CLI's OAuth scopes are widened to cover MCP tools, and the CLI SDK's
+  portable operations move into the shared client so the CLI and MCP share
+  them without the MCP importing the CLI. `@sentry/mcp-server` is retired
+  in favor of `sentry mcp` in its own PR.
 
 ## Capabilities
 

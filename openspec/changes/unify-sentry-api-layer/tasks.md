@@ -67,13 +67,15 @@ One PR, stacked on 6.1, not one per domain. Earlier, issues and events moved ont
 - [ ] 10.2 Add dictionary compression with a versioned `dictId` and a startup self-test that detects a silently ignored `dictionary` option (as in workerd today). Verify a test where an ignored dictionary falls back to plain zstd.
 - [ ] 10.3 On Workers, evaluate WASM zstd for dictionary compression: bundle size, CPU in ms/MB, and ratio against native zstd-3. Record the results in design.md and adopt it only if the memory-tier gain outweighs the CPU cost.
 
-## 11. Deferred: MCP on the CLI session
+## 11. Deferred: MCP on the CLI's operations and host capabilities
 
-Picked up after step 2; it gets its own spec then. Using the CLI as an SDK from the MCP is part of this later phase.
+Picked up after step 2; it gets its own spec then. Dependencies only point down (`cli → mcp-core → toolkit-core`, `mcp-cloudflare → mcp-core`), and `mcp-core` never imports `sentry`, not even type-only. See "Dependencies point down" in design.md.
 
-- [ ] 11.1 Pass the CLI's authenticated fetch from `cli/src/lib/mcp.ts` (formerly 6.2). Verify a CLI test where `sentry mcp` tool calls hit the shared cache, and `/mcp-qa` stdio QA passes.
-- [ ] 11.2 Compare the OAuth scopes the CLI requests with the MCP `SCOPES`, and widen the CLI's requested scopes if needed (formerly 9.1). Verify a test that the CLI's scope list covers every MCP tool's required scopes.
-- [ ] 11.3 Add a deprecation notice to the standalone `@sentry/mcp-server` auth flow and docs pointing to `sentry mcp` (formerly 9.2). Verify with an output test and an update to `docs/operations/stdio-auth.md`.
+- [ ] 11.1 Move the CLI SDK's portable operations into the shared client layer, so `createSentrySDK()`, the CLI commands, and the MCP tools are thin faces over the same operations. Verify the CLI SDK tests and the `mcp-core` and `mcp-cloudflare` suites pass, and that `mcp-core` has no import of `sentry`.
+- [ ] 11.2 Declare the CLI-only host capabilities as optional interfaces in `mcp-core` or `toolkit-core`: the SQLite response cache store, the region cache, DSN detection from local files, and file uploads. `sentry mcp` injects the CLI's implementations and authenticated fetch from `cli/src/lib/mcp.ts` (formerly 6.2); `mcp-cloudflare` injects its own or omits them. Verify a CLI test where `sentry mcp` tool calls hit the shared cache, a Workers test with the capabilities omitted, and `/mcp-qa` stdio QA.
+- [ ] 11.3 Compare the OAuth scopes the CLI requests with the MCP `SCOPES`, and widen the CLI's requested scopes if needed (formerly 9.1). Verify a test that the CLI's scope list covers every MCP tool's required scopes.
+- [ ] 11.4 Retire `@sentry/mcp-server` in favor of `sentry mcp`, and move the MCP registry entry (`server.json`) to `sentry mcp` (replaces the former deprecation notice, 9.2). Tracked by the `@sentry/mcp-server` retirement PR. Verify `docs/operations/stdio-auth.md` and `docs/releases/stdio.md` point to `sentry mcp`.
+- [ ] 11.5 Enforce the dependency direction: a lint rule that bans importing `sentry` from `mcp-core` and `mcp-cloudflare`, type-only imports included, and a manifest check that fails on a workspace dependency cycle. Both land in the retirement PR. Verify each fails on a planted import or dependency.
 
 ## 12. Integration
 
