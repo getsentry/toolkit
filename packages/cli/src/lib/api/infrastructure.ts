@@ -13,6 +13,7 @@ import {
   type SdkResult,
   SentryApiError,
 } from "@sentry/api";
+import { readErrorResponse } from "@sentry/toolkit-core/api-client/response";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import {
   API_MAX_PER_PAGE,
@@ -702,25 +703,20 @@ async function throwRawApiError(
   response: Response,
   endpoint: string,
 ): Promise<never> {
+  const body = await readErrorResponse(response);
   let detail: string | undefined;
-  try {
-    const text = await response.text();
-    try {
-      const parsed = JSON.parse(text) as { detail?: string };
-      // Enriched statuses (403, 401) pass undefined when there is no
-      // usable string detail so the enrichment renders without a noisy
-      // `{"detail":null}` prefix. Other statuses get the full JSON as
-      // a debug aid.
-      if (typeof parsed.detail === "string") {
-        detail = parsed.detail;
-      } else if (response.status !== 403 && response.status !== 401) {
-        detail = JSON.stringify(parsed);
-      }
-    } catch {
-      detail = text || undefined;
-    }
-  } catch {
+  if (body.text === undefined) {
     detail = response.statusText;
+  } else if (body.parseError !== undefined) {
+    detail = body.text || undefined;
+  } else if (body.detail !== undefined) {
+    detail = body.detail;
+  } else if (response.status !== 403 && response.status !== 401) {
+    // Enriched statuses (403, 401) pass undefined when there is no
+    // usable string detail so the enrichment renders without a noisy
+    // `{"detail":null}` prefix. Other statuses get the full JSON as
+    // a debug aid.
+    detail = JSON.stringify(body.json);
   }
   // Attach a small allowlisted subset of response headers to the Sentry
   // event as context. This lets us distinguish Sentry-app 4xx/5xx (which
