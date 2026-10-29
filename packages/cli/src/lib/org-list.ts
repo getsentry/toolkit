@@ -1056,7 +1056,7 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
       .filter((r): r is AuthGuardSuccess<TWithOrg[]> => r.ok)
       .flatMap((r) => r.value);
   } else {
-    const uniqueOrgs = [...new Set(matches.map((m) => m.orgSlug))];
+    const uniqueOrgs = Array.from(new Set(matches.map((m) => m.orgSlug)));
     const results = await Promise.all(
       uniqueOrgs.map((org) => fetchOrgSafe(config, org)),
     );

@@ -66,7 +66,7 @@ describe("listTraceItemAttributes", () => {
     expect(capturedUrl!.pathname).toBe(
       "/api/0/organizations/test-org/trace-items/attributes/",
     );
-    expect([...capturedUrl!.searchParams.keys()]).toEqual(["dataset"]);
+    expect(Array.from(capturedUrl!.searchParams.keys())).toEqual(["dataset"]);
     expect(capturedUrl!.searchParams.get("dataset")).toBe("spans");
     expect(data).toEqual(ATTRIBUTES);
   });
@@ -98,7 +98,7 @@ describe("listTraceItemAttributes", () => {
       query: "",
     });
 
-    expect([...capturedUrl!.searchParams.keys()]).toEqual(["dataset"]);
+    expect(Array.from(capturedUrl!.searchParams.keys())).toEqual(["dataset"]);
   });
 
   test("sends perPage as per_page", async () => {

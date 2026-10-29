@@ -189,7 +189,7 @@ async function resolveOrgs(
     projectSearchResolution,
   });
   return {
-    orgs: [...new Set(targets.map((t: ResolvedTarget) => t.org))],
+    orgs: Array.from(new Set(targets.map((t: ResolvedTarget) => t.org))),
     footer,
   };
 }
@@ -215,7 +215,7 @@ async function resolveWebUrl(
   }
 
   const { orgs } = await resolveOrgs(parsed, cwd, projectSearchResolution);
-  const uniqueOrgs = [...new Set(orgs)];
+  const uniqueOrgs = Array.from(new Set(orgs));
   if (uniqueOrgs.length === 0) {
     throw new ContextError("Organization", USAGE_HINT);
   }
@@ -249,10 +249,10 @@ async function handleResolvedOrgs(
     throw new ContextError("Organization", USAGE_HINT);
   }
 
-  const uniqueOrgs = [...new Set(resolved)];
+  const uniqueOrgs = Array.from(new Set(resolved));
 
   const contextKey = buildMultiOrgContextKey(uniqueOrgs, flags.query);
-  const sortedOrgKeys = [...uniqueOrgs].sort();
+  const sortedOrgKeys = Array.from(uniqueOrgs).sort();
 
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,

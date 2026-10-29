@@ -269,7 +269,9 @@ function pathNotFoundError(
 ): never {
   const samePath = findEndpointsByPath(query.path);
   if (query.method && samePath.length > 0) {
-    const methods = [...new Set(samePath.map((endpoint) => endpoint.method))]
+    const methods = Array.from(
+      new Set(samePath.map((endpoint) => endpoint.method)),
+    )
       .sort()
       .join(", ");
     const example =

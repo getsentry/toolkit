@@ -1394,7 +1394,7 @@ describe("detectPackageManagerFromPath", () => {
   let originalArgv: string[];
 
   beforeEach(() => {
-    originalArgv = [...process.argv];
+    originalArgv = Array.from(process.argv);
   });
 
   afterEach(() => {
@@ -1480,7 +1480,7 @@ describe("detectInstallationMethod — node_modules path fallback", () => {
   let originalExecPath: string;
 
   beforeEach(() => {
-    originalArgv = [...process.argv];
+    originalArgv = Array.from(process.argv);
     originalExecPath = process.execPath;
     // Typical Node.js execPath — not Homebrew, not curl
     Object.defineProperty(process, "execPath", {
@@ -2773,7 +2773,7 @@ describe("detectInstallationMethod — legacy pm detection via isInstalledWith",
 
   beforeEach(() => {
     originalExecPath = process.execPath;
-    originalArgv = [...process.argv];
+    originalArgv = Array.from(process.argv);
     // Non-Homebrew, non-known-curl execPath so detection falls through to pm checks
     Object.defineProperty(process, "execPath", {
       value: "/usr/bin/sentry",

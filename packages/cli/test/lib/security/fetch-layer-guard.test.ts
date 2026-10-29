@@ -54,7 +54,7 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
 
     expect(headers.get("X-IAP-Token")).toBeNull();
     // Verify no other custom headers leaked either
-    expect([...headers.keys()]).toHaveLength(0);
+    expect(Array.from(headers.keys())).toHaveLength(0);
   });
 
   test("applyCustomHeaders: IAP token attaches to trusted URL", () => {

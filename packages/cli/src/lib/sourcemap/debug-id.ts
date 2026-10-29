@@ -440,7 +440,7 @@ export async function injectInlineDebugId(
   // modifying the file. Return an EMPTY debug ID and no map content so the
   // upload path attaches nothing — otherwise a debug ID and pre-injection map
   // would be uploaded for a bundle that has no snippet/comment/updated map.
-  const matches = [...jsContent.matchAll(INLINE_DIRECTIVE_RE)];
+  const matches = Array.from(jsContent.matchAll(INLINE_DIRECTIVE_RE));
   const last = matches.at(-1);
   if (last?.index === undefined) {
     log.debug(

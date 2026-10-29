@@ -81,7 +81,7 @@ function extractFlagEntries(
     if (def.kind === "enum" && "values" in def) {
       const enumDef = def as FlagDef & { values?: readonly string[] };
       if (enumDef.values) {
-        entry.enumValues = [...enumDef.values];
+        entry.enumValues = Array.from(enumDef.values);
       }
     }
     entries.push(entry);
@@ -261,7 +261,7 @@ export function generateBashCompletion(binaryName: string): string {
     )
     .join("\n");
 
-  const uniqueEnumFlags = [...new Set(enumFlagNames)];
+  const uniqueEnumFlags = Array.from(new Set(enumFlagNames));
   const enumFlagWords = uniqueEnumFlags.join(" ");
 
   // Build the enum flag test only if there are any enum flags

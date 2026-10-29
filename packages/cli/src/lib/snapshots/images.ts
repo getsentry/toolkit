@@ -27,7 +27,7 @@ export const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
 
 /** Same extensions in the walker's `.ext` (lowercased, dotted) form. */
 const WALK_EXTENSIONS: ReadonlySet<string> = new Set(
-  [...IMAGE_EXTENSIONS].map((ext) => `.${ext}`),
+  Array.from(IMAGE_EXTENSIONS).map((ext) => `.${ext}`),
 );
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

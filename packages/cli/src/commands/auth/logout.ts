@@ -198,7 +198,7 @@ export const logoutCommand = buildCommand({
  * active one never picks an account that is about to be removed too.
  */
 async function removeAccounts(accounts: AccountSummary[]): Promise<void> {
-  const ordered = [...accounts].sort(
+  const ordered = Array.from(accounts).sort(
     (a, b) => Number(a.active) - Number(b.active),
   );
   for (const account of ordered) {

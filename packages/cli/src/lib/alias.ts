@@ -206,7 +206,9 @@ function processUniqueSlugs(
   aliasMap: Map<string, string>,
 ): void {
   const uniqueProjects = pairs.filter((p) => uniqueSlugs.has(p.project));
-  const uniqueProjectSlugs = [...new Set(uniqueProjects.map((p) => p.project))];
+  const uniqueProjectSlugs = Array.from(
+    new Set(uniqueProjects.map((p) => p.project)),
+  );
 
   if (uniqueProjectSlugs.length === 0) {
     return;
@@ -227,7 +229,7 @@ function processUniqueSlugs(
   // Handle prefix relationships (e.g., "cli" is prefix of "cli-website")
   applyPrefixRelationships(uniqueProjectSlugs, slugToRemainder);
 
-  const uniqueRemainders = [...slugToRemainder.values()];
+  const uniqueRemainders = Array.from(slugToRemainder.values());
   const uniquePrefixes = findShortestUniquePrefixes(uniqueRemainders);
 
   for (const { org, project } of uniqueProjects) {
@@ -255,11 +257,13 @@ function processCollidingSlugs(
     }
   }
 
-  const orgPrefixes = findShortestUniquePrefixes([...collidingOrgs]);
+  const orgPrefixes = findShortestUniquePrefixes(Array.from(collidingOrgs));
 
   // Compute unique prefixes for colliding project slugs to handle
   // cases like "api" and "app" both colliding across orgs
-  const projectPrefixes = findShortestUniquePrefixes([...collidingSlugs]);
+  const projectPrefixes = findShortestUniquePrefixes(
+    Array.from(collidingSlugs),
+  );
 
   for (const slug of collidingSlugs) {
     const orgs = projectToOrgs.get(slug);

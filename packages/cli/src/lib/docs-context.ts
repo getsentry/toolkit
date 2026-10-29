@@ -129,8 +129,8 @@ export async function detectDocsContextFromReader(
   }
 
   return {
-    frameworks: [...frameworks].sort(),
-    languages: [...languages].sort(),
+    frameworks: Array.from(frameworks).sort(),
+    languages: Array.from(languages).sort(),
     sentryConfigured,
   };
 }

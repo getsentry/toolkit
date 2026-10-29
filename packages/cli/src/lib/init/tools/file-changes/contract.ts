@@ -63,7 +63,9 @@ export function parseFileChangesRequest(
 ): FileChangesContractResult {
   const result = safeParse(legacyApplyPatchsetPayloadSchema, input);
   if (!result.success) {
-    const details = [...new Set(result.issues.map((issue) => issue.message))];
+    const details = Array.from(
+      new Set(result.issues.map((issue) => issue.message)),
+    );
     return {
       error: `Invalid file changes request: ${details.join("; ")}`,
       ok: false,

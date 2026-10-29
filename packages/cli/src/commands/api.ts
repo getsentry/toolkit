@@ -344,7 +344,9 @@ export function parseFieldKey(key: string): string[] {
   // Extract bracket contents: "[name][age]" -> ["name", "age"]
   // Empty brackets [] result in empty string "" for array push
   const segments: string[] = brackets
-    ? [...brackets.matchAll(BRACKET_CONTENTS_REGEX)].map((m) => m[1] ?? "")
+    ? Array.from(brackets.matchAll(BRACKET_CONTENTS_REGEX)).map(
+        (m) => m[1] ?? "",
+      )
     : [];
 
   return [baseKey, ...segments];

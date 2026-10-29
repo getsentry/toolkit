@@ -1083,7 +1083,7 @@ function formatDetailWithSuggestions(
   detailLines: string[],
   suggestions: string[],
 ): string {
-  const lines = [...detailLines];
+  const lines = Array.from(detailLines);
   if (lines.length > 0) {
     lines.push("");
   }

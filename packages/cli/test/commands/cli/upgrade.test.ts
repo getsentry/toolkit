@@ -933,7 +933,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     spawnSpy = vi
       .spyOn(child_process, "spawn")
       .mockImplementation((cmd: string, args?: readonly string[]) => {
-        spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+        spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
         return fakeChildProcess(0);
       });
   });
@@ -1025,7 +1025,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
     let versionAtSetup: number | undefined;
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       versionAtSetup = readSchemaVersion();
       return fakeChildProcess(0);
     });
@@ -1081,7 +1081,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     mockBinaryDownloadWithVersion("0.47.0");
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       // Another invocation of this CLI re-migrates the database meanwhile.
       getRawDatabase()
         .query("UPDATE schema_version SET version = ?")
@@ -1115,7 +1115,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
     let versionAtSetup: number | undefined;
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       versionAtSetup = readSchemaVersion();
       return fakeChildProcess(1);
     });
@@ -1150,7 +1150,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     mockTaggedBinaryDownload("0.47.0");
     const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       return fakeChildProcess(1);
     });
 
@@ -1196,7 +1196,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     mockBinaryDownloadWithVersion(NEXT_RELEASE);
     let backupsAtSetup: string[] = [];
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       backupsAtSetup = readdirSync(getBackupDir());
       return fakeChildProcess(0);
     });
@@ -1221,7 +1221,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     mockTaggedBinaryDownload(NEXT_RELEASE);
     let markerAtSetup: string | undefined;
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       const db = new Database(getDbPath());
       try {
         markerAtSetup = getMetadata(db, [marker]).get(marker);
@@ -1254,7 +1254,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     setMetadata(getRawDatabase(), { [marker]: "current" });
     mockTaggedBinaryDownload(NEXT_RELEASE);
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       return fakeChildProcess(1);
     });
 
@@ -1311,7 +1311,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
     mockBinaryDownloadWithVersion(LATER_RELEASE);
     spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
-      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      spawnedArgs.push({ cmd, args: Array.from(args ?? []) });
       return fakeChildProcess(1);
     });
 

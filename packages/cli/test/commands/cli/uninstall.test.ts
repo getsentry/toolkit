@@ -32,7 +32,7 @@ const getConfigDir = useTestConfigDir("uninstall-");
 let savedArgv: string[];
 
 beforeEach(() => {
-  savedArgv = [...process.argv];
+  savedArgv = Array.from(process.argv);
   // Override argv[1] to avoid vitest's node_modules path triggering
   // detectRuntimePackageManager() in every test
   process.argv[1] = "/usr/local/bin/sentry";

@@ -965,7 +965,7 @@ function formatExceptionValueMarkdown(exception: ExceptionValue): string {
   lines.push("");
 
   const frames = exception.stacktrace?.frames ?? [];
-  const reversedFrames = [...frames].reverse();
+  const reversedFrames = Array.from(frames).reverse();
   for (const frame of reversedFrames) {
     lines.push(formatStackFrameMarkdown(frame));
   }

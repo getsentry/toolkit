@@ -62,7 +62,7 @@ function resolveRefreshScope(flags: RefreshFlags): string {
     );
   }
   if (flags.scope?.length) {
-    const scopes = [...flags.scope].flatMap((v) => v.split(","));
+    const scopes = Array.from(flags.scope).flatMap((v) => v.split(","));
     return resolveOAuthScopeString({ scopes });
   }
   return resolveOAuthScopeString({ readOnly: true });

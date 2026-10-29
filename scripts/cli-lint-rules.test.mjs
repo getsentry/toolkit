@@ -204,6 +204,36 @@ tester.run(
   },
 );
 
+tester.run("prefer-array-from", plugin.rules["prefer-array-from"], {
+  valid: [
+    { filename: source, code: "const copy = Array.from(items);" },
+    { filename: source, code: "const merged = [...first, ...second];" },
+    { filename: source, code: "const withTail = [...items, tail];" },
+    { filename: source, code: "call(...args);" },
+    { filename: source, code: "const merged = { ...base };" },
+  ],
+  invalid: [
+    {
+      filename: source,
+      code: "const keys = [...map.keys()].sort();",
+      output: "const keys = Array.from(map.keys()).sort();",
+      errors: 1,
+    },
+    {
+      filename: "/repo/packages/cli/test/example.test.ts",
+      code: "const copy = [...(values ?? fallback)];",
+      output: "const copy = Array.from(values ?? fallback);",
+      errors: 1,
+    },
+    {
+      filename: source,
+      code: "const copy = [...(first, second)];",
+      output: "const copy = Array.from((first, second));",
+      errors: 1,
+    },
+  ],
+});
+
 tester.run(
   "no-regex-markdown-parsing",
   plugin.rules["no-regex-markdown-parsing"],

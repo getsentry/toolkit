@@ -239,7 +239,7 @@ describe("asset-catalog extraction boundary", () => {
             ...imageEntry(id),
             name: i ? "Other.jpg" : "Logo.jpg",
           }));
-          const output = await writeOutput(args, [...assets].reverse());
+          const output = await writeOutput(args, Array.from(assets).reverse());
           for (const asset of assets) {
             await writeFile(join(output, `${asset.imageId}.jpg`), asset.name);
           }

@@ -151,7 +151,7 @@ export async function resolveMetricAlertRule(
     );
   }
 
-  const uniqueNames = [...new Set(allNames)];
+  const uniqueNames = Array.from(new Set(allNames));
   const similar = fuzzyMatch(ref, uniqueNames, { maxResults: 5 });
   if (similar.length > 0) {
     const lines = similar.map((n) => `  ${n}`).join("\n");

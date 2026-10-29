@@ -35,20 +35,22 @@ describe("drawPixelText", () => {
   });
 
   test("keeps Spleen's native box and block glyphs for dashboard content", () => {
-    expect([...getSpleenGlyph("▀")]).toEqual([
+    expect(Array.from(getSpleenGlyph("▀"))).toEqual([
       255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0,
     ]);
-    expect([...getSpleenGlyph("─")]).toEqual([
+    expect(Array.from(getSpleenGlyph("─"))).toEqual([
       0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0,
     ]);
   });
 
   test("uses a question mark for unsupported text glyphs", () => {
-    expect([...getSpleenGlyph("\u6f22")]).toEqual([...getSpleenGlyph("?")]);
+    expect(Array.from(getSpleenGlyph("\u6f22"))).toEqual(
+      Array.from(getSpleenGlyph("?")),
+    );
   });
 
   test("includes the dashboard axis, sparkline, and ellipsis glyphs", () => {
-    const questionMark = [...getSpleenGlyph("?")];
+    const questionMark = Array.from(getSpleenGlyph("?"));
     for (const character of [
       "│",
       "└",
@@ -66,7 +68,7 @@ describe("drawPixelText", () => {
       "▓",
       "■",
     ]) {
-      expect([...getSpleenGlyph(character)]).not.toEqual(questionMark);
+      expect(Array.from(getSpleenGlyph(character))).not.toEqual(questionMark);
     }
   });
 

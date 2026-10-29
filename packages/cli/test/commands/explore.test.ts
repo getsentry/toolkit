@@ -1772,7 +1772,7 @@ describe("sentry explore", () => {
         {
           ...DEFAULT_FLAGS,
           dataset: "replays",
-          field: [...DEFAULT_REPLAY_EXPLORE_FIELDS],
+          field: Array.from(DEFAULT_REPLAY_EXPLORE_FIELDS),
         },
         "test-org/",
       );

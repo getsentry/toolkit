@@ -376,9 +376,9 @@ function specMatches(a: FixtureMeta["spec"], b: FixtureSpec): boolean {
 export function hashSpec(spec: FixtureMeta["spec"]): string {
   const canonical = JSON.stringify({
     ...spec,
-    fileExtensions: [...spec.fileExtensions].sort(),
+    fileExtensions: Array.from(spec.fileExtensions).sort(),
     binaryExtensions: spec.binaryExtensions
-      ? [...spec.binaryExtensions].sort()
+      ? Array.from(spec.binaryExtensions).sort()
       : undefined,
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 16);

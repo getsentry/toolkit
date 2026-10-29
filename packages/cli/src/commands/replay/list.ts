@@ -395,7 +395,7 @@ export const listCommand = buildListCommand("replay", {
       () =>
         listReplays(resolved.org, {
           environment,
-          fields: [...REPLAY_LIST_FIELDS],
+          fields: Array.from(REPLAY_LIST_FIELDS),
           limit: flags.limit,
           query,
           projectSlugs: resolved.project ? [resolved.project] : undefined,

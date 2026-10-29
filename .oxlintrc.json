@@ -74,6 +74,7 @@
         "sentry-cli/no-namespace-import": "error",
         "sentry-cli/no-examples-in-full-description": "error",
         "sentry-cli/no-regex-markdown-parsing": "error",
+        "sentry-cli/prefer-array-from": "error",
         "no-restricted-imports": [
           "error",
           {

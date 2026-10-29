@@ -256,7 +256,7 @@ export function createDsnFingerprint(dsns: DetectedDsn[]): string {
     .sort();
 
   // Deduplicate (same DSN might be detected from multiple sources)
-  return [...new Set(keys)].join(",");
+  return Array.from(new Set(keys)).join(",");
 }
 
 /**

@@ -97,7 +97,7 @@ function extractFromRecord(record: Record<string, unknown>): string[] {
     }
     const scopes = collectScopesFromArray(value);
     if (scopes.length > 0) {
-      return [...new Set(scopes)];
+      return Array.from(new Set(scopes));
     }
   }
   return [];
@@ -142,5 +142,5 @@ function extractFromText(text: string): string[] {
   if (!matches) {
     return [];
   }
-  return [...new Set(matches.map((m) => m.toLowerCase()))];
+  return Array.from(new Set(matches.map((m) => m.toLowerCase())));
 }

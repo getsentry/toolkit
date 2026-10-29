@@ -90,7 +90,7 @@ describe("fuzzyMatch: unit tests", () => {
 
   test("empty partial returns all candidates sorted", () => {
     const result = fuzzyMatch("", candidates);
-    expect(result).toEqual([...candidates].sort());
+    expect(result).toEqual(Array.from(candidates).sort());
   });
 
   test("exact match ranks first", () => {

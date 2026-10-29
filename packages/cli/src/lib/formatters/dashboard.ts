@@ -400,7 +400,7 @@ type BarItem = { label: string; total: number; unit?: string | null };
 
 /** Sort items by value descending, "Other" pinned to end. */
 function sortBarItems(items: BarItem[]): BarItem[] {
-  return [...items].sort((a, b) => {
+  return Array.from(items).sort((a, b) => {
     if (a.label === "Other") {
       return 1;
     }

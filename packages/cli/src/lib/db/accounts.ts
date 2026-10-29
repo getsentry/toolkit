@@ -351,7 +351,7 @@ export function findSimilarAccounts(
     }
   }
   const ranked: AccountSummary[] = [];
-  for (const value of fuzzyMatch(needle, [...byValue.keys()])) {
+  for (const value of fuzzyMatch(needle, Array.from(byValue.keys()))) {
     for (const account of byValue.get(value) ?? []) {
       if (!ranked.some((a) => a.id === account.id)) {
         ranked.push(account);

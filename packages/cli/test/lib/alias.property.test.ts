@@ -86,7 +86,7 @@ describe("property: findShortestUniquePrefixes", () => {
     fcAssert(
       property(uniqueStringsArb, (strings) => {
         const prefixes = findShortestUniquePrefixes(strings);
-        const prefixValues = [...prefixes.values()];
+        const prefixValues = Array.from(prefixes.values());
         const uniquePrefixValues = new Set(prefixValues);
 
         // All prefixes should be unique
@@ -284,7 +284,7 @@ describe("property: buildOrgAwareAliases", () => {
         array(orgProjectPairArb, { minLength: 1, maxLength: 10 }),
         (pairs) => {
           const { aliasMap } = buildOrgAwareAliases(pairs);
-          const aliases = [...aliasMap.values()];
+          const aliases = Array.from(aliasMap.values());
           const uniqueAliases = new Set(aliases);
 
           expect(uniqueAliases.size).toBe(aliases.length);

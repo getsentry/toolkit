@@ -90,7 +90,7 @@ function deduplicateTrials(entries: TrialListEntry[]): TrialListEntry[] {
       byName.set(entry.name, entry);
     }
   }
-  return [...byName.values()];
+  return Array.from(byName.values());
 }
 
 /**

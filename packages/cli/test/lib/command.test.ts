@@ -445,7 +445,7 @@ describe("buildCommand telemetry integration", () => {
 describe("LOG_LEVEL_FLAG", () => {
   test("is an enum flag with all log level names", () => {
     expect(LOG_LEVEL_FLAG.kind).toBe("enum");
-    expect(LOG_LEVEL_FLAG.values).toEqual([...LOG_LEVEL_NAMES]);
+    expect(LOG_LEVEL_FLAG.values).toEqual(Array.from(LOG_LEVEL_NAMES));
   });
 
   test("is optional and hidden", () => {

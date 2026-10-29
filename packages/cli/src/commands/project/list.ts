@@ -294,9 +294,9 @@ async function resolveOrgsForAutoDetect(cwd: string): Promise<OrgResolution> {
   if (targetsResult.ok) {
     const { targets, footer, skippedSelfHosted } = targetsResult.value;
     if (targets.length > 0) {
-      const uniqueOrgs = [
-        ...new Set(targets.map((t: ResolvedTarget) => t.org)),
-      ];
+      const uniqueOrgs = Array.from(
+        new Set(targets.map((t: ResolvedTarget) => t.org)),
+      );
       return { orgs: uniqueOrgs, footer, skippedSelfHosted };
     }
     return { orgs: [], skippedSelfHosted };

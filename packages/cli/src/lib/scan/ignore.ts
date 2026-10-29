@@ -115,7 +115,7 @@ export class IgnoreStack implements IgnoreMatcher {
     // These apply even when `respectGitignore: false` because they're
     // the walker's policy, not part of the user's gitignore.
     if (opts.alwaysSkipDirs.length > 0) {
-      root.add([...opts.alwaysSkipDirs]);
+      root.add(Array.from(opts.alwaysSkipDirs));
     }
     if (respectGitignore) {
       await appendGitignoreFile(root, path.join(opts.cwd, ".gitignore"));

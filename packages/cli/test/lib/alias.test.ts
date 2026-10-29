@@ -37,7 +37,7 @@ describe("alias generation integration", () => {
     expect(slugToRemainder.get("spotlight")).toBe("spotlight"); // No prefix to strip
 
     // Find unique prefixes for remainders
-    const remainders = [...slugToRemainder.values()];
+    const remainders = Array.from(slugToRemainder.values());
     const prefixes = findShortestUniquePrefixes(remainders);
 
     expect(prefixes.get("electron")).toBe("e");
@@ -123,7 +123,7 @@ describe("buildOrgAwareAliases specific outputs", () => {
     expect(result.aliasMap.get("org2/web")).toContain("/");
 
     // All should be unique
-    const aliases = [...result.aliasMap.values()];
+    const aliases = Array.from(result.aliasMap.values());
     const uniqueAliases = new Set(aliases);
     expect(uniqueAliases.size).toBe(aliases.length);
   });
@@ -138,7 +138,7 @@ describe("buildOrgAwareAliases specific outputs", () => {
     ]);
 
     // All four should be unique
-    const aliases = [...result.aliasMap.values()];
+    const aliases = Array.from(result.aliasMap.values());
     const uniqueAliases = new Set(aliases);
     expect(uniqueAliases.size).toBe(4);
 
@@ -197,7 +197,7 @@ describe("buildOrgAwareAliases specific outputs", () => {
     ]);
 
     // All aliases must be unique
-    const aliases = [...result.aliasMap.values()];
+    const aliases = Array.from(result.aliasMap.values());
     const uniqueAliases = new Set(aliases);
     expect(uniqueAliases.size).toBe(aliases.length);
 

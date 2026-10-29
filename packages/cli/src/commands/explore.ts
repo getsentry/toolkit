@@ -862,7 +862,7 @@ export const exploreCommand = buildListCommand("explore", {
     let fieldList =
       flags["time-series"] !== undefined
         ? ["count()"]
-        : [...defaultFieldsForDataset(dataset)];
+        : Array.from(defaultFieldsForDataset(dataset));
     if (userSuppliedFields) {
       fieldList = flags.field;
     }

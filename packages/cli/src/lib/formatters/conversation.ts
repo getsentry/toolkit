@@ -331,7 +331,7 @@ function extractAssistantContent(span: AgentConversationSpan): string | null {
 export function extractTurns(
   spans: AgentConversationSpan[],
 ): ConversationTurn[] {
-  const sorted = [...spans].sort(
+  const sorted = Array.from(spans).sort(
     (a, b) => a["precise.start_ts"] - b["precise.start_ts"],
   );
   const aiClientSpans = sorted.filter(
@@ -557,9 +557,9 @@ export function buildTranscriptResult(
     // double-counting parent agent spans.
     totalTokens:
       stats?.totalTokens ?? turns.reduce((sum, t) => sum + t.totalTokens, 0),
-    traceIds: [...new Set(spans.map((s) => s.trace))].sort(),
+    traceIds: Array.from(new Set(spans.map((s) => s.trace))).sort(),
     spanCount: spans.length,
-    projects: [...new Set(spans.map((s) => s.project))].sort(),
+    projects: Array.from(new Set(spans.map((s) => s.project))).sort(),
     startTimestamp:
       spans.length > 0
         ? spans.reduce(

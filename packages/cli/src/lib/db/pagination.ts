@@ -273,7 +273,7 @@ export function advancePaginationState(
     case "prev": {
       const newIndex = Math.max(0, state.index - 1);
       // Refresh the "next" entry from this position in case data shifted
-      const stack = [...state.stack];
+      const stack = Array.from(state.stack);
       if (nextCursor) {
         stack[newIndex + 1] = nextCursor;
       }
@@ -525,6 +525,9 @@ export function buildMultiOrgContextKey(
   orgs: string[],
   query: string | undefined,
 ): string {
-  const sortedOrgs = [...orgs].sort().map(escapeContextKeyValue).join(",");
+  const sortedOrgs = Array.from(orgs)
+    .sort()
+    .map(escapeContextKeyValue)
+    .join(",");
   return buildPaginationContextKey("multi-org", sortedOrgs, { q: query });
 }

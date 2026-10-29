@@ -202,7 +202,11 @@ export function parseTraceFields(
       additionalAttributes.add(field);
     }
   }
-  return { paths, attributes, additionalAttributes: [...additionalAttributes] };
+  return {
+    paths,
+    attributes,
+    additionalAttributes: Array.from(additionalAttributes),
+  };
 }
 
 type ProjectedTraceSpan = Partial<Omit<TraceSpan, "children">> & {
@@ -346,7 +350,7 @@ export function computeTraceSummary(
     traceId,
     duration,
     spanCount: state.spanCount,
-    projects: [...state.projects],
+    projects: Array.from(state.projects),
     rootTransaction: state.rootTransaction,
     rootOp: state.rootOp,
     startTimestamp: state.minStart,

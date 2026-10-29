@@ -132,7 +132,7 @@ export function applyBoundPositionals(
 ): unknown[] {
   const def = positional as PositionalDef | undefined;
   if (!def) {
-    return [...args];
+    return Array.from(args);
   }
   const count =
     def.kind === "tuple"

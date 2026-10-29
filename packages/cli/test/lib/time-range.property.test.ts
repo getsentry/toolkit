@@ -41,7 +41,7 @@ const isoDateArb = date({
 /** Generate a pair of sorted ISO date strings for valid ranges */
 const sortedDatePairArb = array(isoDateArb, { minLength: 2, maxLength: 2 }).map(
   (dates) => {
-    const sorted = [...dates].sort();
+    const sorted = Array.from(dates).sort();
     // Ensure they're different (no zero-length range issues)
     if (sorted[0] === sorted[1]) {
       const d = new Date(sorted[1]!);

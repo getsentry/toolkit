@@ -119,7 +119,7 @@ export function extractDsnsFromContent(
       }
     }
   }
-  return [...dsns];
+  return Array.from(dsns);
 }
 
 /**
@@ -300,7 +300,7 @@ function scanDirectory(cwd: string): Promise<CodeScanResult> {
           "dsn.dsns_found": seen.size,
         });
 
-        return { dsns: [...seen.values()], sourceMtimes, dirMtimes };
+        return { dsns: Array.from(seen.values()), sourceMtimes, dirMtimes };
       } catch (error) {
         if (error instanceof ConfigError) {
           throw error;

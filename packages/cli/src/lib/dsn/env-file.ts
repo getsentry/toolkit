@@ -118,7 +118,7 @@ export async function detectFromEnvFiles(
     "detectFromEnvFiles",
     "dsn.detect.env",
     async (span) => {
-      const { dsns } = await scanSpecificFiles(cwd, [...ENV_FILES], {
+      const { dsns } = await scanSpecificFiles(cwd, Array.from(ENV_FILES), {
         stopOnFirst: true,
         processFile: (_relativePath, content) => {
           const dsn = extractDsnFromEnvContent(content);
@@ -157,7 +157,7 @@ export async function detectFromAllEnvFiles(
 
       // 1. Check root .env files (all of them, not just first)
       const { dsns: rootDsns, sourceMtimes: rootMtimes } =
-        await scanSpecificFiles(cwd, [...ENV_FILES], {
+        await scanSpecificFiles(cwd, Array.from(ENV_FILES), {
           stopOnFirst: false,
           processFile: (_relativePath, content) => {
             const dsn = extractDsnFromEnvContent(content);
@@ -260,7 +260,7 @@ async function detectDsnInPackage(
 ): Promise<PackageDsnResult> {
   const { dsns, sourceMtimes: rawMtimes } = await scanSpecificFiles(
     pkgDir,
-    [...ENV_FILES],
+    Array.from(ENV_FILES),
     {
       stopOnFirst: true,
       processFile: (_relativePath, content) => {

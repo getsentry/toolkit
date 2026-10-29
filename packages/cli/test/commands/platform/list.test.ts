@@ -53,7 +53,7 @@ describe("platform list", () => {
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
     expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed).toEqual([...VALID_PLATFORMS]);
+    expect(parsed).toEqual(Array.from(VALID_PLATFORMS));
   });
 
   test("--search filters to matching platforms only", async () => {

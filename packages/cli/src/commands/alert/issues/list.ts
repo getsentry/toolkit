@@ -191,7 +191,7 @@ async function resolveWebUrl(
     throw new ContextError("Organization and project", USAGE_HINT);
   }
 
-  const orgs = [...new Set(targets.map((t) => t.org))];
+  const orgs = Array.from(new Set(targets.map((t) => t.org)));
   if (orgs.length !== 1) {
     throw new ValidationError(
       "--web resolved alert rules in multiple organizations. Specify an explicit <org>/ or <org>/<project> target.",
@@ -199,7 +199,7 @@ async function resolveWebUrl(
     );
   }
 
-  const projects = [...new Set(targets.map((t) => t.project))];
+  const projects = Array.from(new Set(targets.map((t) => t.project)));
   return buildIssueAlertsUrl(
     // oxlint-disable-next-line typescript/no-non-null-assertion -- orgs length is checked above
     orgs[0]!,

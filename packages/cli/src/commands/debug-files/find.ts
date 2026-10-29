@@ -67,7 +67,7 @@ function formatFindResult(data: FindResult): string {
 /** Resolve the requested types, validating each against the known set. */
 function resolveTypes(flags: FindFlags): string[] {
   if (!(flags.type && flags.type.length > 0)) {
-    return [...FIND_DIF_TYPES];
+    return Array.from(FIND_DIF_TYPES);
   }
   const types = flags.type.map((t) => t.trim().toLowerCase());
   for (const type of types) {

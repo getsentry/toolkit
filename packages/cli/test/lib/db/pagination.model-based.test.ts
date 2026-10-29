@@ -147,7 +147,7 @@ class AdvancePrevCommand implements AsyncCommand<PaginationModel, RealDb> {
     advancePaginationState(CMD_KEY, CTX_KEY, "prev", this.nextCursor);
 
     const newIndex = Math.max(0, model.index! - 1);
-    const stack = [...model.stack!];
+    const stack = Array.from(model.stack!);
     if (this.nextCursor) {
       stack[newIndex + 1] = this.nextCursor;
     }
