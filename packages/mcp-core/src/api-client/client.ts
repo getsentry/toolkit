@@ -316,7 +316,7 @@ type RequestOptions = {
 
 /**
  * Caps for automatic retries. Which statuses and methods are retried is the
- * shared rule in `@sentry/toolkit-core/api-retry`.
+ * shared rule in `@sentry/toolkit-core/api-client/retry`.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two

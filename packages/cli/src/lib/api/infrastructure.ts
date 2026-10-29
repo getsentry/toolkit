@@ -493,7 +493,7 @@ export async function autoPaginate<T>(
  * This is the only supported way to build a limit-bounded list; the
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
  * (#1458, #1608). Page sizing and resume-safe cursors live in
- * `@sentry/toolkit-core/pagination`, shared with the MCP; this wrapper sets
+ * `@sentry/toolkit-core/api-client/pagination`, shared with the MCP; this wrapper sets
  * the CLI's page cap and default limit and logs the CLI's warnings.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
