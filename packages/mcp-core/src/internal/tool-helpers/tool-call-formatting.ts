@@ -65,10 +65,13 @@ export function formatToolCall({
 /**
  * Formats user-facing tool guidance as a direct call, catalog gateway call, or
  * fallback message based on the current session's available/direct tools.
+ * `showArguments` renders the full call when the arguments are concrete values
+ * the agent can run as-is rather than placeholders.
  */
 export function formatToolCallInstruction({
   toolName,
-  arguments: _args = {},
+  arguments: args = {},
+  showArguments = false,
   experimentalMode,
   purpose,
   availableToolNames,
@@ -77,6 +80,7 @@ export function formatToolCallInstruction({
 }: {
   toolName: string;
   arguments?: Record<string, JsonValue>;
+  showArguments?: boolean;
   experimentalMode: boolean;
   purpose?: string;
   availableToolNames?: ReadonlySet<string>;
@@ -88,11 +92,15 @@ export function formatToolCallInstruction({
     availableToolNames,
   );
 
+  const toolReference = showArguments
+    ? formatToolCall({ toolName, arguments: args })
+    : toolName;
+
   if (
     targetAvailable &&
     isDirectTool(toolName, experimentalMode, directToolNames)
   ) {
-    return `Use the Sentry tool \`${toolName}\`${formatPurpose(purpose)}`;
+    return `Use the Sentry tool \`${toolReference}\`${formatPurpose(purpose)}`;
   }
 
   const catalogGatewayAvailable =
@@ -102,7 +110,7 @@ export function formatToolCallInstruction({
     isDirectTool("execute_sentry_tool", experimentalMode, directToolNames);
 
   if (targetAvailable && catalogGatewayAvailable) {
-    return `Use the Sentry tool \`${toolName}\`${formatPurpose(purpose)}`;
+    return `Use the Sentry tool \`${toolReference}\`${formatPurpose(purpose)}`;
   }
 
   return (

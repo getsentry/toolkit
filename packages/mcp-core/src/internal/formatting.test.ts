@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SentryApiService } from "../api-client";
 import type { AutofixRunState, Event, Issue } from "../api-client/types";
 import {
@@ -2208,69 +2208,144 @@ describe("formatEventOutput", () => {
   });
 });
 
-describe("formatEventOutput metric alert details", () => {
-  it("includes alert rule query context for metric_issue events", () => {
-    const event = {
-      id: "metric-event-1",
-      type: "generic",
-      title: "High error count",
-      message: null,
-      platform: "other",
-      dateCreated: "2026-06-01T00:00:00.000Z",
-      entries: [],
-      tags: [{ key: "level", value: "error" }],
-      occurrence: {
-        id: "occ-1",
-        projectId: 1,
-        eventId: "metric-event-1",
-        fingerprint: ["abc"],
-        issueTitle: "High error count",
-        subtitle: "Critical: Number of events in the last minute above 100",
-        type: 8001,
-        culprit: "",
-        evidenceData: {
-          value: 150,
-          alert_id: 42,
-          conditions: [{ type: "gt", comparison: 100 }],
-          data_sources: [
-            {
-              query_obj: {
-                snuba_query: {
-                  dataset: "events",
-                  query: "process_shard OR OutboxFlushError",
-                  aggregate: "count()",
-                  time_window: 60,
-                  environment: "production",
-                },
-              },
-            },
-          ],
-        },
-        evidenceDisplay: [],
+/**
+ * Mirrors a real metric issue event from `GET /issues/{id}/events/{id}/`: the
+ * event serializer camelCases the occurrence payload, including nested
+ * workflow-engine evidence and the serialized data source.
+ */
+function createMetricIssueEvent({
+  evidenceData,
+  dateCreated = "2026-10-28T11:39:52.000Z",
+}: {
+  evidenceData: Record<string, unknown>;
+  dateCreated?: string;
+}): Event {
+  return {
+    id: "4d6e1b607c564714a7de102a835fae54",
+    type: "generic",
+    title: "Error logs above 4000 over past 1 hour",
+    message: null,
+    platform: "python",
+    dateCreated,
+    entries: [],
+    tags: [
+      { key: "interface_type", value: "contexts" },
+      { key: "level", value: "error" },
+    ],
+    contexts: {
+      trace: {
+        trace_id: "bfa06a9c589f4d4f89236378d2194adc",
+        span_id: "bfa06a9c589f4d4f",
+        status: "unknown",
+        type: "trace",
       },
-    } as Event;
+    },
+    occurrence: {
+      id: "occ-1",
+      projectId: 1,
+      eventId: "4d6e1b607c564714a7de102a835fae54",
+      fingerprint: ["abc"],
+      issueTitle: "Error logs above 4000 over past 1 hour",
+      subtitle: "Critical: Number of error logs in the last hour above 4000",
+      type: 8001,
+      culprit: "",
+      evidenceData,
+      evidenceDisplay: [],
+    },
+  } as unknown as Event;
+}
 
-    const output = formatEventOutput(event);
+function createLogsMonitorEvidence(
+  snubaQuery: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    value: 4988,
+    detectorId: 1234567,
+    dataPacketSourceId: "998877",
+    conditions: [{ id: 1, type: "gt", comparison: 4000, conditionResult: 75 }],
+    config: { detectionType: "static", thresholdPeriod: 1 },
+    dataSources: [
+      {
+        id: "55",
+        organizationId: "1",
+        type: "snuba_query_subscription",
+        sourceId: "998877",
+        queryObj: {
+          id: "998877",
+          status: 0,
+          subscription: "sub-1",
+          snubaQuery: {
+            id: "77",
+            dataset: "events_analytics_platform",
+            query: "severity:error",
+            aggregate: "count(message)",
+            timeWindow: 3600,
+            environment: "prod",
+            eventTypes: ["trace_item_log"],
+            extrapolationMode: "unknown",
+            ...snubaQuery,
+          },
+        },
+      },
+    ],
+  };
+}
+
+describe("formatEventOutput metric alert details", () => {
+  it("includes monitor query context from camelCased evidence", () => {
+    const output = formatEventOutput(
+      createMetricIssueEvent({ evidenceData: createLogsMonitorEvidence() }),
+    );
 
     expect(output).toMatchInlineSnapshot(`
       "### Metric Alert Details
 
-      **Dataset**: events
-      **Aggregate**: count()
-      **Query**: \`process_shard OR OutboxFlushError\`
-      **Interval**: 60 second(s)
-      **Environment**: production
-
-      **Evaluated Value**: 150
-      **Threshold**: above 100
-      **Alert Rule ID**: 42
+      **Monitor ID**: 1234567
+      **Dataset**: Logs
+      **Aggregate**: count(message)
+      **Query**: \`severity:error\`
+      **Interval**: 3600 second(s)
+      **Environment**: prod
+      **Evaluated Window**: 2026-10-28T10:39:52.000Z to 2026-10-28T11:39:52.000Z
+      **Evaluated Value**: 4988
+      **Threshold**: above 4000
 
       ### Tags
 
+      **interface_type**: contexts
       **level**: error
+
+      ### Additional Context
+
+      These are additional context provided by the user when they're instrumenting their application.
+
+      **trace**
+      trace_id: "bfa06a9c589f4d4f89236378d2194adc"
+      span_id: "bfa06a9c589f4d4f"
+      status: "unknown"
 
       "
     `);
+  });
+
+  it("labels errors and spans datasets and keeps unknown datasets verbatim", () => {
+    const datasetLabel = (snubaQuery: Record<string, unknown>) =>
+      formatEventOutput(
+        createMetricIssueEvent({
+          evidenceData: createLogsMonitorEvidence(snubaQuery),
+        }),
+      ).match(/\*\*Dataset\*\*: (.+)/)?.[1];
+
+    expect(datasetLabel({ dataset: "events", eventTypes: ["error"] })).toBe(
+      "Errors",
+    );
+    expect(datasetLabel({ eventTypes: ["trace_item_span"] })).toBe("Spans");
+    expect(datasetLabel({ eventTypes: ["trace_item_metric"] })).toBe(
+      "Application metrics",
+    );
+    expect(
+      datasetLabel({ dataset: "transactions", eventTypes: ["transaction"] }),
+    ).toBe("transactions");
   });
 
   it("keeps performance regression formatting for regression evidence", () => {
@@ -2312,123 +2387,157 @@ describe("formatEventOutput metric alert details", () => {
     expect(output).toContain("POST /oauth/token duration increased");
   });
 
-  it("formats below-threshold conditions using workflow-engine type strings", () => {
-    const event = {
-      id: "metric-event-2",
-      type: "generic",
-      title: "Low throughput",
-      message: null,
-      platform: "other",
-      dateCreated: "2026-06-01T00:00:00.000Z",
-      entries: [],
-      occurrence: {
-        id: "occ-3",
-        projectId: 1,
-        eventId: "metric-event-2",
-        fingerprint: ["ghi"],
-        issueTitle: "Low throughput",
-        type: 8001,
-        culprit: "",
-        evidenceData: {
-          value: 5,
-          alert_id: 99,
-          conditions: [{ type: "lt", comparison: 10 }],
-          data_sources: [
-            {
-              query_obj: {
-                snuba_query: {
-                  dataset: "events",
-                  query: "",
-                  aggregate: "count()",
-                  time_window: 300,
-                },
-              },
-            },
-          ],
-        },
-      },
-    } as Event;
+  it("formats below-threshold conditions and omits an empty environment", () => {
+    const evidenceData = createLogsMonitorEvidence({ environment: null });
+    evidenceData.conditions = [{ type: "lt", comparison: 10 }];
 
-    const output = formatEventOutput(event);
+    const output = formatEventOutput(createMetricIssueEvent({ evidenceData }));
 
     expect(output).toContain("**Threshold**: below 10");
     expect(output).not.toContain("**Environment**:");
   });
 
-  it("supports alert_id-only metric alert evidence without data_sources", () => {
-    const event = {
-      id: "metric-event-3",
-      type: "generic",
-      title: "Alert triggered",
-      message: null,
-      platform: "other",
-      dateCreated: "2026-06-01T00:00:00.000Z",
-      entries: [],
-      occurrence: {
-        id: "occ-4",
-        projectId: 1,
-        eventId: "metric-event-3",
-        fingerprint: ["jkl"],
-        issueTitle: "Alert triggered",
-        type: 8001,
-        culprit: "",
+  it("renders value, threshold and legacy alert rule ID without data sources", () => {
+    const output = formatEventOutput(
+      createMetricIssueEvent({
         evidenceData: {
           value: 42,
-          alert_id: 7,
+          alertId: 7,
           conditions: [
             { type: "gte", comparison: 40 },
             { type: "lte", comparison: 50 },
           ],
         },
-      },
-    } as Event;
-
-    const output = formatEventOutput(event);
+      }),
+    );
 
     expect(output).toContain("**Evaluated Value**: 42");
     expect(output).toContain("**Alert Rule ID**: 7");
     expect(output).toContain("**Threshold**: at or above 40, at or below 50");
     expect(output).not.toContain("**Dataset**:");
+    expect(output).not.toContain("**Evaluated Window**:");
   });
 
   it("formats dynamic alert values without object placeholders", () => {
-    const event = {
-      id: "metric-event-4",
-      type: "generic",
-      title: "Dynamic throughput alert",
-      message: null,
-      platform: "other",
-      dateCreated: "2026-06-01T00:00:00.000Z",
-      entries: [],
-      occurrence: {
-        id: "occ-5",
-        projectId: 1,
-        eventId: "metric-event-4",
-        fingerprint: ["mno"],
-        issueTitle: "Dynamic throughput alert",
-        type: 8001,
-        culprit: "",
-        evidenceData: {
-          value: { value: 12.5, source_id: "123", timestamp: 1780272000 },
-          alert_id: 11,
-          conditions: [
-            {
-              type: "anomaly_detection",
-              comparison: {
-                sensitivity: "medium",
-                seasonality: "auto",
-                threshold_type: 0,
-              },
-            },
-          ],
+    const evidenceData = createLogsMonitorEvidence();
+    evidenceData.value = {
+      value: 12.5,
+      source_id: "123",
+      timestamp: 1780272000,
+    };
+    evidenceData.conditions = [
+      {
+        type: "anomaly_detection",
+        comparison: {
+          sensitivity: "medium",
+          seasonality: "auto",
+          thresholdType: 0,
         },
       },
-    } as Event;
+    ];
 
-    const output = formatEventOutput(event);
+    const output = formatEventOutput(createMetricIssueEvent({ evidenceData }));
 
     expect(output).toContain("**Evaluated Value**: 12.5");
     expect(output).not.toContain("[object Object]");
     expect(output).not.toContain("**Threshold**:");
+  });
+});
+
+describe("formatIssueOutput metric issue response notes", () => {
+  const metricIssue = {
+    id: "7001",
+    shortId: "SEER-A18",
+    title: "Error logs above 4000 over past 1 hour",
+    count: "2",
+    userCount: 0,
+    status: "resolved",
+    issueType: "metric_issue",
+    issueCategory: "metric",
+    project: { name: "seer", slug: "seer" },
+  } as Issue;
+  const apiService = {
+    getIssueUrl: () => "https://sentry.sentry.io/issues/SEER-A18",
+  } as unknown as SentryApiService;
+
+  function responseNotes(evidenceData: Record<string, unknown>): string {
+    const output = formatIssueOutput({
+      organizationSlug: "sentry",
+      issue: metricIssue,
+      event: createMetricIssueEvent({ evidenceData }),
+      apiService,
+    });
+    return output.slice(output.indexOf("## Response Notes"));
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: new Date("2026-10-29T02:30:00.000Z") });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("points at the monitor and the data that breached it", () => {
+    expect(responseNotes(createLogsMonitorEvidence())).toMatchInlineSnapshot(`
+      "## Response Notes
+
+      - Commit message issue reference: \`Fixes SEER-A18\` automatically closes the issue when the commit is merged.
+      - Metric Monitor configuration and connected Alerts: Use the Sentry tool \`get_metric_monitor_details(organizationSlug='sentry', monitorId='1234567')\`
+      - Logs matched by the monitor query: Use the Sentry tool \`search_logs(organizationSlug='sentry', projectSlug='seer', query='severity:error environment:prod', period='16h')\`, then focus on 2026-10-28T10:39:52.000Z to 2026-10-28T11:39:52.000Z
+      - Issue event search: Use the Sentry tool \`search_issue_events\`
+      "
+    `);
+  });
+
+  it("groups an OR monitor query before adding the environment filter", () => {
+    expect(
+      responseNotes(
+        createLogsMonitorEvidence({
+          query: "severity:error OR severity:fatal",
+        }),
+      ),
+    ).toContain("query='(severity:error OR severity:fatal) environment:prod'");
+  });
+
+  it("uses the dataset-specific search tool", () => {
+    expect(
+      responseNotes(
+        createLogsMonitorEvidence({
+          dataset: "events",
+          query: "",
+          environment: "my env",
+          eventTypes: ["error", "default"],
+        }),
+      ),
+    ).toContain(
+      "Use the Sentry tool `search_errors(organizationSlug='sentry', projectSlug='seer', query='environment:\"my env\"', period='16h')`",
+    );
+    expect(
+      responseNotes(
+        createLogsMonitorEvidence({ eventTypes: ["trace_item_span"] }),
+      ),
+    ).toContain(
+      "Spans matched by the monitor query: Use the Sentry tool `search_traces(",
+    );
+  });
+
+  it("omits the search call when the dataset has no matching search tool", () => {
+    const notes = responseNotes(
+      createLogsMonitorEvidence({
+        dataset: "metrics",
+        eventTypes: [],
+      }),
+    );
+
+    expect(notes).toContain("get_metric_monitor_details(");
+    expect(notes).not.toContain("matched by the monitor query");
+  });
+
+  it("drops stacktrace and evaluation trace hints", () => {
+    const notes = responseNotes(createLogsMonitorEvidence());
+
+    expect(notes).not.toContain("stacktrace");
+    expect(notes).not.toContain("trace:bfa06a9c589f4d4f89236378d2194adc");
   });
 });

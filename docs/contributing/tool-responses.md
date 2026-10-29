@@ -125,6 +125,14 @@ omits the section. Commit lookup is optional: failures do not prevent issue
 details from loading, but unexpected server or response-validation failures
 are reported to Sentry.
 
+For metric issues, `Metric Alert Details` comes from the occurrence's
+`evidenceData`, which the event API returns camelCased
+(`dataSources[].queryObj.snubaQuery`, `detectorId`). It shows the Metric
+Monitor ID, dataset, aggregate, query, interval, environment, evaluated window,
+value, and threshold. Response Notes replace the stacktrace and trace hints with
+`get_metric_monitor_details` and a pre-filled `search_errors`, `search_logs`,
+`search_traces`, or `search_metrics` call for the monitor's query.
+
 The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
 preserving the event's error, stacktrace, and structured `contexts` data.
