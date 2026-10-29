@@ -56,65 +56,138 @@ export function getNestedValue(
   return { found: true, value: current };
 }
 
-/**
- * Set a nested value in an object, creating intermediate objects as needed.
- *
- * When `literalKey` is true, the path is used as a literal property name
- * (no dot splitting). This preserves dotted attribute names like
- * `"gen_ai.usage.input_tokens"` as flat keys in the output.
- *
- * @param target - Target object to write into (mutated in place)
- * @param path - Key path: literal name or dot-separated nesting
- * @param value - Value to set at the leaf
- * @param literalKey - When true, skip dot splitting
- */
-function setNestedValue(
-  target: Record<string, unknown>,
-  path: string,
-  value: unknown,
-  literalKey = false,
-): void {
-  if (literalKey) {
-    target[path] = value;
-    return;
+type FieldProjection = { found: true; value: unknown } | { found: false };
+
+const INDEXED_FIELD_PATTERN = /^(0|[1-9]\d*)(?:\.(.*))?$/;
+
+/** Keep array positions without exposing unselected object properties. */
+function emptyArrayItem(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(emptyArrayItem);
   }
-  const segments = path.split(".");
-  let current: Record<string, unknown> = target;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments.at(i);
-    if (seg === undefined) {
+  return value !== null && typeof value === "object" ? {} : null;
+}
+
+/**
+ * Project nested arrays without turning numeric paths into object keys.
+ * Named paths apply to every item; explicit indices retain their position.
+ */
+function projectArray(data: unknown[], fields: string[]): FieldProjection {
+  const shared: string[] = [];
+  const indexed = new Map<number, string[] | null>();
+  for (const field of fields) {
+    const match = INDEXED_FIELD_PATTERN.exec(field);
+    if (!match) {
+      shared.push(field);
       continue;
     }
-    if (
-      current[seg] === undefined ||
-      current[seg] === null ||
-      typeof current[seg] !== "object"
-    ) {
-      current[seg] = {};
+    const index = Number(match[1]);
+    if (index >= data.length) {
+      continue;
     }
-    current = current[seg] as Record<string, unknown>;
+    const suffix = match[2];
+    if (suffix === undefined) {
+      indexed.set(index, null);
+    } else if (indexed.get(index) !== null) {
+      indexed.set(index, [...(indexed.get(index) ?? []), suffix]);
+    }
   }
-  const lastSeg = segments.at(-1);
-  if (lastSeg !== undefined) {
-    current[lastSeg] = value;
+
+  if (shared.length === 0 && indexed.size === 0) {
+    return { found: false };
   }
+  return {
+    found: true,
+    value: data.map((item, index) => {
+      const specific = indexed.get(index);
+      if (specific === null) {
+        return item;
+      }
+      const itemFields = [...shared, ...(specific ?? [])];
+      const projection = projectFields(item, itemFields);
+      return projection.found ? projection.value : emptyArrayItem(item);
+    }),
+  };
+}
+
+/**
+ * Group selections by the actual source key before descending. Selecting a
+ * whole property dominates its descendants, regardless of selector order.
+ * Checking literal keys at every level preserves dotted attribute names.
+ */
+function groupObjectFields(
+  data: object,
+  fields: string[],
+): Map<string, string[] | null> {
+  const selections = new Map<string, string[] | null>();
+  for (const field of fields) {
+    if (Object.hasOwn(data, field)) {
+      selections.set(field, null);
+      continue;
+    }
+    const separator = field.indexOf(".");
+    if (separator < 0) {
+      continue;
+    }
+    const key = field.slice(0, separator);
+    if (!Object.hasOwn(data, key) || selections.get(key) === null) {
+      continue;
+    }
+    selections.set(key, [
+      ...(selections.get(key) ?? []),
+      field.slice(separator + 1),
+    ]);
+  }
+
+  return selections;
+}
+
+/** Recursively project the selected source containers and literal keys. */
+function projectFields(data: unknown, fields: string[]): FieldProjection {
+  if (Array.isArray(data)) {
+    return projectArray(data, fields);
+  }
+  if (data === null || typeof data !== "object") {
+    return { found: false };
+  }
+
+  const selections = groupObjectFields(data, fields);
+  const entries: [string, unknown][] = [];
+  for (const [key, nestedFields] of selections) {
+    const value = (data as Record<string, unknown>)[key];
+    const projection =
+      nestedFields === null
+        ? { found: true, value }
+        : projectFields(value, nestedFields);
+    if (projection.found) {
+      entries.push([key, projection.value]);
+    }
+  }
+  return entries.length > 0
+    ? { found: true, value: Object.fromEntries(entries) }
+    : { found: false };
 }
 
 /**
  * Filter an object (or array of objects) to include only the specified fields.
  *
- * Supports dot-notation for nested field access:
+ * Supports dot-notation for nested field access, including array elements:
  * ```ts
- * filterFields({ a: 1, b: { c: 2, d: 3 } }, ["a", "b.c"])
- * // → { a: 1, b: { c: 2 } }
+ * filterFields({ spans: [{ data: { "http.method": "GET" } }] }, [
+ *   "spans.data.http.method",
+ * ])
+ * // → { spans: [{ data: { "http.method": "GET" } }] }
  * ```
  *
- * When `data` is an array, each element is filtered independently.
- * Fields that don't exist in the source are silently skipped.
+ * Literal keys take precedence over dot-separated paths at each level.
+ * Nested arrays keep their order and shape; absent object fields yield `{}`
+ * at their original position. Numeric paths select an explicit array index.
+ * When `data` itself is an array, each element is filtered independently.
+ * Missing fields are skipped and the original data is never mutated.
  *
  * @param data - Source data to filter
- * @param fields - List of field paths to include (dot-separated for nesting)
- * @returns Filtered copy of the data — original is never mutated
+ * @param fields - Field paths to include (dot-separated for nesting)
+ * @returns Filtered copy of the data
  */
 export function filterFields<T>(data: T, fields: string[]): Partial<T> {
   if (Array.isArray(data)) {
@@ -122,25 +195,11 @@ export function filterFields<T>(data: T, fields: string[]): Partial<T> {
       filterFields(item, fields),
     ) as unknown as Partial<T>;
   }
-
   if (data === null || data === undefined || typeof data !== "object") {
     return data as Partial<T>;
   }
-
-  const result: Record<string, unknown> = {};
-
-  for (const field of fields) {
-    const lookup = getNestedValue(data, field);
-    if (lookup.found) {
-      // Use literal key when the field name exists as a direct property
-      // (e.g., "gen_ai.usage.input_tokens" as a flat key)
-      const isLiteral =
-        typeof data === "object" && data !== null && Object.hasOwn(data, field);
-      setNestedValue(result, field, lookup.value, isLiteral);
-    }
-  }
-
-  return result as Partial<T>;
+  const projection = projectFields(data, fields);
+  return (projection.found ? projection.value : {}) as Partial<T>;
 }
 
 /**

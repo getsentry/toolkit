@@ -1,6 +1,8 @@
 [
   {
     "id": "4633816000",
+    "commentId": "4633816000",
+    "source": "mcp:claude",
     "user": {
       "id": "12345",
       "name": "Jane Developer",

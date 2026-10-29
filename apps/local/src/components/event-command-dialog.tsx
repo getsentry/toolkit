@@ -29,6 +29,8 @@ type EventCommandDialogProps = {
   onOpenChange: (open: boolean) => void;
   onQueryChange: (query: string) => void;
   onSelectItem: (item: LocalFeedItem) => void;
+  onFilterView?: (query: string) => void;
+  currentViewLabel?: string;
 };
 
 export function EventCommandDialog({
@@ -42,6 +44,8 @@ export function EventCommandDialog({
   onOpenChange,
   onQueryChange,
   onSelectItem,
+  onFilterView,
+  currentViewLabel = "current view",
 }: EventCommandDialogProps) {
   useEffect(() => {
     if (!enabled) {
@@ -82,8 +86,8 @@ export function EventCommandDialog({
   return (
     <CommandDialog
       open={open}
-      title="Search Local events"
-      description="Search Explorer views and retained Local events."
+      title="Search this session"
+      description="Find events across this capture or jump to another view. Your view filter changes only when you choose Filter."
       onOpenChange={(nextOpen) => {
         if (nextOpen) {
           onOpenChange(true);
@@ -94,6 +98,7 @@ export function EventCommandDialog({
     >
       <CommandInput
         autoFocus
+        aria-label="Search this session"
         placeholder="Search events and views"
         value={query}
         onValueChange={onQueryChange}
@@ -138,15 +143,18 @@ export function EventCommandDialog({
             </CommandItem>
           ))}
         </CommandGroup>
-        {query.trim() ? (
-          <CommandGroup heading="Filter current view">
+        {query.trim() && onFilterView ? (
+          <CommandGroup heading={`Filter ${currentViewLabel}`}>
             <CommandItem
               value={`filter current view ${query}`}
-              onSelect={close}
+              onSelect={() => {
+                onFilterView(query.trim());
+                close();
+              }}
             >
               <Search aria-hidden="true" />
               <span className="min-w-0 truncate">
-                Filter current view for “{query.trim()}”
+                Filter {currentViewLabel} for “{query.trim()}”
               </span>
             </CommandItem>
           </CommandGroup>

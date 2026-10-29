@@ -395,7 +395,9 @@ export async function uploadMissingChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const { fetch: authFetch } = getSdkConfig(regionUrl);
+  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+  // explicitly: the server-provided URL need not match the catalog path.
+  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
 
   await Promise.all(
     missingChunks.map((chunk) =>
@@ -487,7 +489,9 @@ export async function uploadMissingBufferChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const { fetch: authFetch } = getSdkConfig(regionUrl);
+  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+  // explicitly: the server-provided URL need not match the catalog path.
+  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
 
   await Promise.all(
     missingChunks.map((chunk) =>

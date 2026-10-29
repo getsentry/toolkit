@@ -7,7 +7,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { number, object, string } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { resolveEventInOrg } from "../../src/lib/api/events.js";
@@ -48,6 +48,7 @@ import {
   updateIssueStatus,
 } from "../../src/lib/api-client.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
+import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
 import { ApiError, AuthError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
@@ -200,6 +201,23 @@ describe("issues.ts", () => {
 
       const result = await getIssueByShortId("test-org", "test-1");
       expect(result.shortId).toBe("TEST-1");
+    });
+
+    test("remembers the issue for shell completion", async () => {
+      const issue = mockIssue({ shortId: "TEST-1", title: "Boom" });
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(JSON.stringify({ group: issue }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+
+      await getIssueByShortId("test-org", "test-1");
+
+      expect(getCachedCompletionEntities("issue", ["test-org"])).toEqual([
+        { orgSlug: "test-org", value: "TEST-1", label: "Boom" },
+      ]);
     });
 
     test("passes collapse query params when provided", async () => {
@@ -988,6 +1006,9 @@ describe("events.ts", () => {
         const req = new Request(input!, init);
         expect(req.url).toContain("/organizations/test-org/issues/");
         expect(req.url).toContain("/events/latest/");
+        expect(new URL(req.url).searchParams.getAll("collapse")).toEqual([
+          "adjacentEvents",
+        ]);
         return new Response(JSON.stringify(event), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -1417,9 +1438,9 @@ describe("infrastructure.ts", () => {
     test("parses JSON error detail from non-ok response", async () => {
       globalThis.fetch = mockFetch(
         async () =>
-          new Response(JSON.stringify({ detail: "Rate limited" }), {
-            status: 429,
-            statusText: "Too Many Requests",
+          new Response(JSON.stringify({ detail: "Invalid query" }), {
+            status: 400,
+            statusText: "Bad Request",
             headers: { "Content-Type": "application/json" },
           }),
       );
@@ -1430,8 +1451,8 @@ describe("infrastructure.ts", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError);
         const apiErr = error as ApiError;
-        expect(apiErr.status).toBe(429);
-        expect(apiErr.detail).toBe("Rate limited");
+        expect(apiErr.status).toBe(400);
+        expect(apiErr.detail).toBe("Invalid query");
       }
     });
 

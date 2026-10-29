@@ -16,7 +16,7 @@ Guidelines for AI agents working in this codebase.
 
 ### Key Features
 
-- **DSN Auto-Detection** - Scans `.env` files and source code (JS, Python, Go, Java, Ruby, PHP) to find Sentry DSNs
+- **DSN Auto-Detection** - Scans `.env` files and source code (any file type in `TEXT_EXTENSIONS`, `src/lib/scan/constants.ts`) to find Sentry DSNs
 - **Project Root Detection** - Walks up from CWD to find project boundaries using VCS, language, and build markers
 - **Directory Name Inference** - Fallback project matching using bidirectional word boundary matching
 - **Multi-Region Support** - Automatic region detection with fan-out to regional APIs (us.sentry.io, de.sentry.io)
@@ -123,9 +123,10 @@ Top-level layout:
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).
 - **`src/lib/`** — shared utilities. Key subtrees: `api/` (domain API modules),
-  `db/` (SQLite layer), `dsn/` (DSN detection, with per-language extractors under
-  `dsn/languages/`), and `formatters/` (output formatting). See the file-locations
-  table below and the JSDoc in each module for details.
+  `db/` (SQLite layer), `dsn/` (DSN detection with one language-agnostic regex),
+  `scan/` (file walker and scanned extensions), and `formatters/` (output
+  formatting). See the file-locations table below and the JSDoc in each module
+  for details.
 - **`src/types/`** — TypeScript types and Valibot schemas.
 - **`test/`** — tests mirroring `src/` (unit, `*.property.test.ts`,
   `*.model-based.test.ts`, `e2e/`, `fixtures/`, `mocks/`).
@@ -270,16 +271,32 @@ call `command.loader()` keep passing raw strings. Positionals whose
 meaning depends on how many arguments were given, such as
 `[<org>/<project>/]<trace-id>`, keep parsing in `func`.
 
-**Shell completion:** Target positionals that take an org or project use a
-completion-aware parser from `src/lib/completion-target.ts` instead of
-`String`: `parseOrgProjectTarget` completes `org/`, `org/project`, and project
-aliases; `parseOrgTarget` completes org slugs only. `LIST_TARGET_POSITIONAL`
-and `LIST_ORG_TARGET_POSITIONAL` already use them. A parser tagged with
-`withCompletionTarget`, such as the `target-positional.ts` parsers, completes
-the same way.
+**Shell completion:** Target positionals that take an org, project, issue, or
+dashboard use a completion-aware parser from `src/lib/completion-target.ts`
+instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
+and project aliases; `parseOrgTarget` completes org slugs only;
+`parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
+completes cached dashboards. `LIST_TARGET_POSITIONAL`,
+`LIST_ORG_TARGET_POSITIONAL`, and `issueIdPositional` already use them. A
+parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
+parsers, completes the same way. Shared value parsers are not tagged where
+they live; `PARSER_TARGETS` in `completion-target.ts` lists them instead, so
+every flag that parses with `sanitizeIssueQuery` completes issue search terms
+(`is:unr` → `is:unresolved`) and every flag that parses with `parsePeriod`
+completes relative periods. Fixed values (search keys, period units) come
+from the modules that define them through `COMPLETION_VALUES`.
+Issue and dashboard suggestions come from the `completion_cache` table. The
+authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
+`src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
+operations it lists (by URL template, type-checked against the SDK), so API
+functions never seed by hand. To complete a new entity type, add it to
+`CompletionEntityKind`, its operations in `completion-seed.ts`, a tagged
+parser, and an `entityCompleter` entry in `src/lib/complete.ts`.
 `pnpm run generate:completions` collects these into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path reads.
-`project create` keeps its dedicated `name:platform` completer in
+Completers that need a parser (`arg-parsing.ts`, the search grammar) import
+it when called, so the fast path only loads it for the arguments that need
+it. `project create` keeps its dedicated `name:platform` completer in
 `src/lib/complete.ts`.
 
 ### Multiple Values in Arguments
@@ -514,9 +531,12 @@ All command docs and skill files are generated via `pnpm run generate:docs` (whi
 - **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
 - **Target syntax belongs to the positional**: describe accepted target forms in the positional `brief` (use `ORG_ALL_TARGET_BRIEF` or `PROJECT_TARGET_BRIEF` from `src/lib/list-command.ts` for `[<org>/][<project>]` targets), not in a `Target patterns:` block. The brief renders in `--help`, the generated docs, and the skill references.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
-- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. For a real workflow, sample output, or cross-command guide, put `<!-- allow-commands: <reason> -->` on the line directly above the block.
+- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `command` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
+- Don't restate a value flag's `default` in its `brief`; help and docs already show it (`test/lib/flag-briefs.test.ts`).
+- `pnpm run check:doc-examples` also checks string-literal `sdk.run(…)` calls in TypeScript fences and `@example` JSDoc (`src/index.ts`). They are found by parsing with the TypeScript compiler (`script/sdk-run-calls.ts`); don't add regex-based source parsing.
+- Lists that mirror code (scanned DSN extensions, alias examples, destructive commands, detected agents, the `library-usage.md` `sdk.run()` sample built from `issue list` examples) are generated sections in `script/generate-docs-sections.ts`; add new mirrors there instead of hand-writing them.
 
 ### Valibot Schemas for Validation
 
@@ -718,7 +738,7 @@ Before creating a new `src/lib/*.ts` utility file, check whether existing shared
 | Table/markdown output | `src/lib/formatters/` directory |
 | Pagination | `src/lib/db/pagination.ts`, `src/lib/list-command.ts` |
 | Error classes | `src/lib/errors.ts` (never create ad-hoc error types) |
-| Search query building | `src/lib/search-query.ts`, `src/lib/arg-parsing.ts` |
+| Search query building | `src/lib/search-query.ts` (wraps `@sentry/toolkit-core/search-query`), `src/lib/arg-parsing.ts` |
 
 If an existing module covers ≥80% of what you need, extend it with new exported functions rather than creating a new file. New files are appropriate when the domain is genuinely new (e.g., `replay-search.ts` for replay-specific field resolution).
 
@@ -1097,7 +1117,7 @@ vi.mock("./some-module", () => ({
 | Add config types | `src/types/config.ts` |
 | Add Seer types | `src/types/seer.ts` |
 | Add utility | `src/lib/` |
-| Add DSN language support | `src/lib/dsn/languages/` |
+| Add DSN language support | `TEXT_EXTENSIONS` in `src/lib/scan/constants.ts` |
 | Add DB operations | `src/lib/db/` |
 | Build scripts | `script/` |
 | Add property tests | `test/lib/<name>.property.test.ts` |

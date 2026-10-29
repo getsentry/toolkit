@@ -1,4 +1,5 @@
-// Grammar for the `[<org>/][<project>[,<project>...]]` target positional.
+// Grammar for the `[<org>/][<project>[,<project>...]]` target positional,
+// and the `[<org>/]<glob>` name filter of list commands.
 // `pnpm run generate:grammar` compiles it, with the types in
 // org-project-target.d.ts, into the gitignored src/generated/; the build,
 // typecheck, and test scripts run it.
@@ -6,8 +7,8 @@
 // `parseOrgProjectArg()` (src/lib/arg-parsing.ts) runs this parser after it
 // keeps the first non-blank line and handles the omitted and URL forms. The
 // grammar owns the structure; character-level checks go through the
-// `checkSlug`, `rejectAt`, and `invalid` hooks in `options`, so its errors
-// match the rest of the CLI.
+// `checkSlug`, `rejectAt`, `invalid`, and `isNameFilter` hooks in `options`,
+// so its errors and glob syntax match the rest of the CLI.
 //
 // The target syntax tables in the docs are generated from the `@form` lines
 // here (script/generate-docs-sections.ts). Every `target` alternative needs
@@ -22,7 +23,22 @@
 //   project in the URL, or the whole organization when it names no project
 
 {
-  const { multi = false, checkSlug, rejectAt, invalid } = options;
+  const { multi = false, isNameFilter, checkSlug, rejectAt, invalid } =
+    options;
+
+  // List commands pass `isNameFilter`: a target it accepts (a glob, which no
+  // slug can be) filters names instead of naming a project.
+  function isFilter(value) {
+    return isNameFilter !== undefined && isNameFilter(value);
+  }
+
+  function nameFilter(value, org) {
+    return {
+      type: "name-filter",
+      filter: value.trim(),
+      ...(org !== undefined && { org }),
+    };
+  }
 
   function slug(value, label) {
     rejectAt(value, label);
@@ -80,8 +96,15 @@
 // rejected as an organization slug before it is parsed as a project (covered
 // by "@latest throws with redirect to issue view" in arg-parsing.test.ts).
 target
+  // @form `<org>/<glob>` — Entities in that organization whose names match
+  //   the glob, e.g. `<org>/web-*` (list commands that filter by name)
+  = o:org "/" g:rest &{ return isFilter(g); } { return nameFilter(g, orgSlug(o)); }
+  // @form `<glob>` — Entities whose names match the glob, in the
+  //   auto-detected organization (list commands that filter by name)
+  // @form `/<glob>` — Same as `<glob>`
+  / "/"? g:rest &{ return isFilter(g); } { return nameFilter(g); }
   // @form `<org>/<project>` — That project in that organization
-  = o:org "/" p:slug !{ return multi && p.includes(","); }
+  / o:org "/" p:slug !{ return multi && p.includes(","); }
     { const org = orgSlug(o); return { type: "explicit", org, project: projectSlug(p) }; }
   // @form `<org>/<project>,<project>` — Several projects in the same
   //   organization (commands that accept several projects)
@@ -105,6 +128,9 @@ target
 
 // Everything before the first slash.
 org = $[^/]+
+
+// The rest of the input when it has no more slashes.
+rest = $([^/]* !.)
 
 // The rest of the input when it has no spaces. Slashes, commas, and other
 // characters are kept so `checkSlug` reports them.

@@ -3,15 +3,8 @@
 ## Release workflow
 
 A typical CI release creates the release, associates commits, finalizes it, and
-records a deploy:
-
-<!-- allow-commands: multi-step CI release workflow -->
-```bash
-sentry release create my-org/1.0.0 --project my-project
-sentry release set-commits my-org/1.0.0 --auto
-sentry release finalize my-org/1.0.0
-sentry release deploy my-org/1.0.0 production
-```
+records a deploy. The `sentry release create` examples above show the full
+sequence.
 
 ## Important Notes
 

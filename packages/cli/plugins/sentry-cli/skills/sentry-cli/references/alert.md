@@ -87,7 +87,7 @@ Create an issue alert rule
 - `--name <value> - Rule name`
 - `-c, --condition <value>... - Condition object JSON (repeatable, or pass one JSON array)`
 - `-a, --action <value>... - Action object JSON (repeatable, or pass one JSON array)`
-- `--frequency <value> - Frequency in minutes (default: 30) - (default: 30)`
+- `--frequency <value> - Frequency in minutes - (default: 30)`
 - `--environment <value> - Environment filter`
 - `--filter <value>... - Filter object JSON (repeatable, or pass one JSON array)`
 - `-m, --filter-match <value> - Filter match mode: all or any`
@@ -225,6 +225,9 @@ sentry alert metrics view my-org/12345
 
 # View by name
 sentry alert metrics view my-org/'P95 latency alert'
+
+# Inspect native thresholds and notification workflows
+sentry alert metrics view my-org/12345 --json
 ```
 
 ### `sentry alert metrics create <target>`

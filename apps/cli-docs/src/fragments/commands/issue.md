@@ -17,8 +17,11 @@ does not save defaults.
 Sentry search uses **implicit AND** — space-separated terms are all required.
 **AND/OR operators are not supported** for issue search. Use alternatives:
 - `key:[val1,val2]` — in-list syntax (matches val1 OR val2 for one key)
+- `status:[resolved,ignored]` or `substatus:[regressed,escalating]` — `is:` has no in-list form
 - Run separate queries for different terms
 - `*term*` — wildcard matching
+
+The CLI rewrites same-key ORs to in-lists automatically, including `is:resolved OR is:ignored` → `status:[resolved,ignored]`.
 
 Full syntax reference: [Sentry Search Docs](https://docs.sentry.io/concepts/search/)
 :::

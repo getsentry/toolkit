@@ -14,6 +14,7 @@ export const MCP_SERVER_NAME = "Sentry MCP" as const;
  * Intentionally bounded for query performance; lower-level API methods still accept arbitrary Sentry statsPeriod strings.
  */
 export const SEARCH_ISSUES_PERIOD_VALUES = [
+  "1h",
   "24h",
   "7d",
   "14d",

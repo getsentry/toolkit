@@ -119,7 +119,6 @@ async function callRegisteredTool(
 const DEFAULT_DIRECT_TOOL_NAMES = [
   "analyze_issue_with_seer",
   "execute_sentry_tool",
-  "find_dropped_events",
   "find_organizations",
   "find_projects",
   "get_sentry_resource",
@@ -251,6 +250,26 @@ describe("buildServer", () => {
       content: [{ type: "text", text: "v2:ok" }],
     });
   });
+
+  it.each(["v1", "v2"] as const)(
+    "explains how to recover a missing organizationSlug on SDK %s",
+    async (sdkVersion) => {
+      const server =
+        sdkVersion === "v2"
+          ? buildServer({ context: baseContext, sdkVersion })
+          : buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_issues", {
+        query: "is:unresolved",
+        period: "1h",
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      const text = getTextContent(result);
+      expect(text).toContain("Required. Call `find_organizations()`");
+      expect(text).not.toContain("period");
+    },
+  );
 
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {
@@ -1492,6 +1511,50 @@ describe("buildServer", () => {
         "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
       );
     });
+
+    it.each([
+      ["get_issue_activity", {}],
+      ["add_issue_note", { text: "Investigating after the latest deploy." }],
+    ] as const)(
+      "execute_sentry_tool preserves attribution for %s",
+      async (name, args) => {
+        mswServer.use(
+          http.post(
+            "*/api/0/organizations/:org/issues/:issueId/notes/",
+            ({ params }) => {
+              expect(params.org).toBe("sentry-mcp-evals");
+              return HttpResponse.json({
+                id: "activity-1",
+                commentId: "comment-1",
+                type: "note",
+                source: "mcp:claude",
+                user: { name: "Jane Developer" },
+                data: { text: "Investigating after the latest deploy." },
+              });
+            },
+          ),
+        );
+        const server = buildServer({
+          context: {
+            ...baseContext,
+            constraints: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlug: null,
+            },
+          },
+        });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name,
+          arguments: { issueId: "CLOUDFLARE-MCP-41", ...args },
+        });
+
+        expect(result.isError).not.toBe(true);
+        expect(getTextContent(result)).toContain(
+          "Jane Developer (Claude via MCP)",
+        );
+      },
+    );
 
     it("execute_sentry_tool dispatches to catalog-only event stacktrace", async () => {
       const server = buildServer({

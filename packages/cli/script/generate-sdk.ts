@@ -141,8 +141,12 @@ function inferFlagType(def: FlagDef): {
     };
   }
 
-  // kind === "parsed" — infer from default value
+  // Optional numeric flags may have no parser default; their placeholder
+  // preserves the input type without making the default appear explicit.
   const numberType = f.createKeywordTypeNode(ts.SyntaxKind.NumberKeyword);
+  if (def.placeholder === "number") {
+    return { type: numberType, kind: "parsed" };
+  }
   if (def.default !== undefined && typeof def.default === "number") {
     return { type: numberType, kind: "parsed" };
   }

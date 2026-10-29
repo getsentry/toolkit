@@ -10,14 +10,15 @@
 
 import { setTimeout as sleepMs } from "node:timers/promises";
 import type { SentryClient } from "@sentry/api";
-import { getTraceData } from "@sentry/node-core/light";
+import { getTraceData } from "@sentry/node";
+import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
 import {
   formatAuthHeader,
   normalizeAuthToken,
   trimAuthToken,
 } from "./auth-header.js";
+import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
-import { computeInvalidationPrefixes } from "./cache-keys.js";
 import {
   DEFAULT_SENTRY_URL,
   getConfiguredSentryUrl,
@@ -41,18 +42,26 @@ import {
   ApiError,
   HostScopeError,
   MalformedAuthTokenError,
+  RateLimitError,
   TimeoutError,
 } from "./errors.js";
 import { extractInputUrl } from "./fetch-input.js";
+import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
 import {
+  type CacheLookup,
   clearLastCacheHitAge,
-  getCachedResponse,
   invalidateCachedResponsesMatching,
+  lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
+import {
+  backoffDelayMs,
+  decideStatusRetry,
+  isRetryableMethod,
+} from "./retry-policy.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
-import { withTracingSpan } from "./telemetry.js";
+import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import {
   isHostTrustedForClaim,
@@ -82,11 +91,13 @@ const ENDPOINT_TIMEOUT_OVERRIDES: TimeoutOverride[] = [
 /** Maximum retry attempts for failed requests */
 const MAX_RETRIES = 2;
 
-/** Maximum backoff delay between retries in milliseconds */
+/**
+ * Longest wait before a retry, in milliseconds. Caps the jittered backoff
+ * and the server-requested wait (`Retry-After`, rate-limit reset); a longer
+ * server-requested wait is not retried, so it surfaces instead of hanging. Sentry's API rate-limit
+ * windows are usually one second, so honored waits are typically short.
+ */
 const MAX_BACKOFF_MS = 10_000;
-
-/** HTTP status codes that trigger automatic retry */
-const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 
 /** Header to mark requests as retries, preventing infinite token refresh loops */
 const RETRY_MARKER_HEADER = "x-sentry-cli-retry";
@@ -144,11 +155,6 @@ export function getResponseCredentialIdentity(
   response: Response,
 ): string | undefined {
   return responseCredentialIdentities.get(response);
-}
-
-/** Calculate exponential backoff delay, capped at MAX_BACKOFF_MS */
-function backoffDelay(attempt: number): number {
-  return Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
 }
 
 /** Check if an error is a user-initiated abort */
@@ -223,16 +229,14 @@ function prepareHeaders(
     headers.set("User-Agent", getUserAgent());
   }
 
-  // Inject distributed tracing headers to connect CLI spans to backend traces.
-  // Manual injection is required because Bun's fetch doesn't fire undici
-  // diagnostics channels, so the SDK's nativeNodeFetchIntegration cannot work.
-  // When telemetry is disabled, getTraceData() returns {} — no headers injected.
-  const traceData = getTraceData();
-  if (traceData["sentry-trace"]) {
-    headers.set("sentry-trace", traceData["sentry-trace"]);
-  }
-  if (traceData.baggage) {
-    headers.set("baggage", traceData.baggage);
+  if (isManualHttpTracing()) {
+    const traceData = getTraceData();
+    if (traceData["sentry-trace"]) {
+      headers.set("sentry-trace", traceData["sentry-trace"]);
+    }
+    if (traceData.baggage) {
+      headers.set("baggage", traceData.baggage);
+    }
   }
 
   // Inject user-configured custom headers for self-hosted proxies (IAP,
@@ -389,48 +393,93 @@ async function fetchWithTimeout({
 /** Result of a single fetch attempt - drives the retry loop */
 type AttemptResult =
   | { action: "done"; response: Response }
-  | { action: "retry" }
+  | { action: "retry"; delayMs: number }
   | { action: "throw"; error: unknown };
+
+/** Per-attempt retry inputs. */
+type AttemptRetryState = {
+  attempt: number;
+  /** Method is idempotent or the caller opted in; see retry-policy.ts. */
+  methodRetryable: boolean;
+  /** Request path, for error messages. */
+  urlPath: string;
+};
+
+/** Best-effort `detail` from a Sentry error body. */
+async function readErrorDetail(
+  response: Response,
+): Promise<string | undefined> {
+  try {
+    const parsed = JSON.parse(await response.text()) as { detail?: unknown };
+    return typeof parsed.detail === "string" ? parsed.detail : undefined;
+  } catch (error) {
+    log.debug("Failed to read rate-limit response detail", error);
+    return;
+  }
+}
 
 /**
  * Decide what to do with a successful HTTP response.
- * Returns 'done' for final responses, 'retry' for retryable errors and 401s.
- * Only refresh credentials when another attempt can use them.
+ *
+ * A 401 refreshes the token and retries for any method: the server rejected
+ * the request before processing it. Other transient statuses retry only per
+ * {@link decideStatusRetry}. A 429 that is not retried throws
+ * {@link RateLimitError} so the user learns when to try again.
  */
 async function handleResponse(
   response: Response,
   headers: Headers,
   credential: CredentialContext,
-  isLastAttempt: boolean,
+  { attempt, methodRetryable, urlPath }: AttemptRetryState,
 ): Promise<AttemptResult> {
-  if (response.status === 401 && !isLastAttempt) {
+  if (response.status === 401 && attempt < MAX_RETRIES) {
     const refreshed = await handleUnauthorized(headers, credential);
     if (refreshed) {
       await cancelResponseBody(response);
-      return { action: "retry" };
+      return { action: "retry", delayMs: 0 };
     }
     return { action: "done", response };
   }
 
-  if (RETRYABLE_STATUS_CODES.includes(response.status) && !isLastAttempt) {
+  const decision = decideStatusRetry({
+    status: response.status,
+    headers: response.headers,
+    methodRetryable,
+    attempt,
+    maxRetries: MAX_RETRIES,
+    maxDelayMs: MAX_BACKOFF_MS,
+    nowMs: Date.now(),
+  });
+  if (decision.retry) {
     await cancelResponseBody(response);
-    return { action: "retry" };
+    return { action: "retry", delayMs: decision.delayMs };
   }
-
+  if (response.status === 429) {
+    return {
+      action: "throw",
+      error: new RateLimitError(
+        urlPath,
+        decision.retryAfterMs,
+        await readErrorDetail(response),
+      ),
+    };
+  }
   return { action: "done", response };
 }
 
 /**
- * Decide what to do with a fetch error. User aborts and an internal
- * timeout on the last attempt throw immediately; TLS cert errors throw
- * immediately with actionable guidance (retrying is pointless); other
- * errors retry until the last attempt, then propagate.
+ * Decide what to do with a fetch error. User aborts throw immediately; TLS
+ * cert errors throw immediately with actionable guidance (retrying is
+ * pointless). Network errors and internal timeouts retry only for retryable
+ * methods with attempts left: a write may have reached the server, so
+ * replaying it could apply it twice.
  */
 function handleFetchError(
   error: unknown,
   signal: AbortSignal | undefined | null,
-  isLastAttempt: boolean,
+  { attempt, methodRetryable }: AttemptRetryState,
 ): AttemptResult {
+  const canRetry = methodRetryable && attempt < MAX_RETRIES;
   if (error instanceof HostScopeError) {
     return { action: "throw", error };
   }
@@ -450,7 +499,7 @@ function handleFetchError(
     };
   }
 
-  if (isInternalTimeout(error) && isLastAttempt) {
+  if (isInternalTimeout(error) && !canRetry) {
     const timeoutMs =
       (error as { timeoutMs?: number }).timeoutMs ?? REQUEST_TIMEOUT_MS;
     const seconds = Math.round(timeoutMs / 1000);
@@ -458,17 +507,19 @@ function handleFetchError(
       action: "throw",
       error: new TimeoutError(
         `Request timed out after ${seconds}s.`,
-        "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io.",
+        methodRetryable
+          ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
+          : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
       ),
     };
   }
-  if (isLastAttempt) {
+  if (!canRetry) {
     return { action: "throw", error };
   }
-  return { action: "retry" };
+  return { action: "retry", delayMs: backoffDelayMs(attempt, MAX_BACKOFF_MS) };
 }
 
-/** Extract the URL pathname for span naming */
+/** Extract the URL pathname for logging and cache keys */
 function extractUrlPath(input: Request | string | URL): string {
   const raw = extractInputUrl(input);
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
@@ -480,22 +531,22 @@ function extractUrlPath(input: Request | string | URL): string {
 }
 
 /**
- * Attempt to serve a GET request from the response cache.
- * Returns the cached Response if valid, or undefined on miss.
+ * Look up a GET request in the response cache: a fresh hit, a stale entry
+ * to revalidate, or undefined on miss.
  *
  * @param requestHeaders - Headers that were (or will be) sent with the request,
  *   needed for correct `Vary` handling in CachePolicy freshness checks.
  */
-async function tryCacheHit(
+async function tryCacheLookup(
   method: string,
   fullUrl: string,
   requestHeaders: Record<string, string>,
   identity: string,
-): Promise<Response | undefined> {
+): Promise<CacheLookup | undefined> {
   if (method !== "GET") {
     return;
   }
-  return await getCachedResponse(method, fullUrl, requestHeaders, identity);
+  return await lookupCachedResponse(method, fullUrl, requestHeaders, identity);
 }
 
 /**
@@ -609,8 +660,8 @@ async function buildAttemptFactory(
 /**
  * Authenticate and execute a request with retry logic.
  *
- * Refreshes the auth token, then retries the request up to `MAX_RETRIES` times
- * with exponential backoff on transient errors.
+ * Refreshes the auth token, then retries the request up to `MAX_RETRIES`
+ * times on transient errors (retry-policy.ts decides which and how long).
  */
 type RetryContext = {
   input: Request | string | URL;
@@ -620,6 +671,9 @@ type RetryContext = {
   credential: CredentialContext;
   validatedRedirects: boolean;
   responseBodyMode: ResponseBodyMode;
+  idempotent: boolean;
+  /** Validators for a stale cache entry, such as `If-None-Match`. */
+  conditionalHeaders?: Record<string, string>;
 };
 
 async function fetchWithRetry({
@@ -630,6 +684,8 @@ async function fetchWithRetry({
   credential,
   validatedRedirects,
   responseBodyMode,
+  idempotent,
+  conditionalHeaders = {},
 }: RetryContext): Promise<Response> {
   const shouldRefresh = Boolean(
     credential.refreshable &&
@@ -648,18 +704,25 @@ async function fetchWithRetry({
     token: refreshed.token,
   });
   const headers = prepareHeaders(input, init, effectiveCredential);
+  for (const [name, value] of Object.entries(conditionalHeaders)) {
+    headers.set(name, value);
+  }
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
+  const methodRetryable = isRetryableMethod(
+    method,
+    idempotent || isIdempotentOperation(method, fullUrl),
+  );
+  const urlPath = extractUrlPath(fullUrl);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const isLastAttempt = attempt === MAX_RETRIES;
     const { input: attemptInput, init: attemptInit } = attemptFactory();
     const result = await executeAttempt({
       input: attemptInput,
       init: attemptInit,
       headers,
       credential: effectiveCredential,
-      isLastAttempt,
+      retryState: { attempt, methodRetryable, urlPath },
       timeoutMs,
       validatedRedirects,
       responseBodyMode,
@@ -687,11 +750,10 @@ async function fetchWithRetry({
       throw result.error;
     }
 
-    const delay = backoffDelay(attempt);
     log.debug(
-      `${method} ${new URL(fullUrl).pathname} → retry ${attempt + 1}/${MAX_RETRIES} after ${delay}ms`,
+      `${method} ${urlPath} → retry ${attempt + 1}/${MAX_RETRIES} after ${result.delayMs}ms`,
     );
-    await sleepMs(delay);
+    await sleepMs(result.delayMs);
   }
 
   // Unreachable: the last attempt always returns 'done' or 'throw'
@@ -705,11 +767,15 @@ async function fetchWithRetry({
  * - **Response caching** for GET requests (checked before hitting the network)
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController
- * - Automatic retry on transient HTTP errors (408, 429, 5xx)
- * - 401 handling: force-refreshes the token and retries once
- * - Exponential backoff between retries
+ * - Automatic retry on transient HTTP errors (408, 429, 5xx), network errors,
+ *   and timeouts — for GET/HEAD/OPTIONS, operations Sentry marks idempotent
+ *   (see idempotent-operations.ts), or any method with `idempotent`
+ * - 429 handling (any method; rejected before processing): waits for the
+ *   server's rate-limit reset when it fits the cap, otherwise throws
+ *   {@link RateLimitError}
+ * - 401 handling: force-refreshes the token and retries once (any method)
+ * - Jittered exponential backoff between retries
  * - User-Agent header for API analytics
- * - Automatic HTTP span tracing for every request
  *
  * Cache is checked first — on a hit, auth refresh, timeout, and retry logic are
  * all skipped. On a miss or for non-GET methods, the full authenticated flow runs
@@ -722,15 +788,22 @@ type AuthenticatedFetchOptions = {
   validatedRedirects?: boolean;
   /** Complete successful GET bodies inside the retry/timeout budget. */
   bufferResponseBody?: boolean;
+  /**
+   * Caller asserts that replaying the request is harmless, so transient
+   * failures retry for any method. Operations Sentry marks idempotent retry
+   * without this; set it for writes the server dedupes that the catalog
+   * cannot match, such as chunk uploads to the server-provided URL.
+   */
+  idempotent?: boolean;
 };
 
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  return function authenticatedFetch(
+  const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
-  ): Promise<Response> {
+  ): Promise<Response> => {
     // Reset cache-hit age so it reflects only this request's outcome.
     // Commands read it after their primary API call to show cache-age hints.
     clearLastCacheHitAge();
@@ -746,67 +819,96 @@ function createAuthenticatedFetch(
       init?.method ?? (input instanceof Request ? input.method : "GET");
     const urlPath = extractUrlPath(input);
 
-    return withTracingSpan(
+    const request = async (): Promise<Response> => {
+      const fullUrl = extractInputUrl(input);
+      const startTime = performance.now();
+
+      // Check cache before auth/retry for GET requests.
+      // Uses current token (no refresh) so lookups are fast but Vary-correct.
+      const credential = options.credential ?? getCredentialContext();
+      if (!credential) {
+        await refreshToken();
+        throw new Error("Authentication state was not available after refresh");
+      }
+      // A synthetic HTTP cache response has no validated final-origin or
+      // credential provenance. Discovery must obtain both from the network.
+      const lookup = options.validatedRedirects
+        ? undefined
+        : await tryCacheLookup(
+            method,
+            fullUrl,
+            authHeaders(credential.token),
+            credential.identity,
+          );
+      if (lookup?.kind === "hit") {
+        log.debug(
+          `${method} ${urlPath} → ${lookup.response.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
+        );
+        return lookup.response;
+      }
+
+      const retryContext: RetryContext = {
+        input,
+        init,
+        method,
+        fullUrl,
+        credential,
+        validatedRedirects: options.validatedRedirects === true,
+        idempotent: options.idempotent === true,
+        responseBodyMode:
+          method.toUpperCase() !== "GET"
+            ? "stream"
+            : ((input instanceof Request
+                ? sdkResponseBodyModes.get(input)
+                : undefined) ??
+              (options.bufferResponseBody ? "buffer" : "stream")),
+      };
+      let response = await fetchWithRetry({
+        ...retryContext,
+        conditionalHeaders: lookup?.conditionalHeaders,
+      });
+      if (lookup?.kind === "stale" && response.status === 304) {
+        const revalidated = await lookup.revalidate(response);
+        if (revalidated) {
+          log.debug(
+            `${method} ${urlPath} → 304 (revalidated cache entry, ${(performance.now() - startTime).toFixed(0)}ms)`,
+          );
+          return revalidated;
+        }
+        // A 304 the entry cannot use has no body; fetch it unconditionally.
+        response = await fetchWithRetry(retryContext);
+      }
+      log.debug(
+        `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
+      );
+      return response;
+    };
+
+    if (!isManualHttpTracing()) {
+      return await request();
+    }
+    return await withTracingSpan(
       `${method} ${urlPath}`,
       "http.client",
       async (span) => {
-        const fullUrl = extractInputUrl(input);
-        const startTime = performance.now();
-
-        // Check cache before auth/retry for GET requests.
-        // Uses current token (no refresh) so lookups are fast but Vary-correct.
-        const credential = options.credential ?? getCredentialContext();
-        if (!credential) {
-          await refreshToken();
-          throw new Error(
-            "Authentication state was not available after refresh",
-          );
-        }
-        // A synthetic HTTP cache response has no validated final-origin or
-        // credential provenance. Discovery must obtain both from the network.
-        const cached = options.validatedRedirects
-          ? undefined
-          : await tryCacheHit(
-              method,
-              fullUrl,
-              authHeaders(credential.token),
-              credential.identity,
-            );
-        if (cached) {
-          span.setAttribute("http.response.status_code", cached.status);
-          log.debug(
-            `${method} ${urlPath} → ${cached.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
-          );
-          return cached;
-        }
-
-        const response = await fetchWithRetry({
-          input,
-          init,
-          method,
-          fullUrl,
-          credential,
-          validatedRedirects: options.validatedRedirects === true,
-          responseBodyMode:
-            method.toUpperCase() !== "GET"
-              ? "stream"
-              : ((input instanceof Request
-                  ? sdkResponseBodyModes.get(input)
-                  : undefined) ??
-                (options.bufferResponseBody ? "buffer" : "stream")),
-        });
+        const response = await request();
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
           span.setStatus({ code: 2, message: `${response.status}` });
         }
-        log.debug(
-          `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
-        );
         return response;
       },
       { "http.request.method": method, "url.path": urlPath },
     );
   };
+  // Every API response, fresh or cached, seeds shell completion, so no API
+  // function has to remember to. Awaited so a command that exits right
+  // after its request still stores the entities.
+  return async (input, init) =>
+    await seedCompletions(
+      extractInputUrl(input),
+      await authenticatedFetch(input, init),
+    );
 }
 
 /**
@@ -817,7 +919,7 @@ type ExecuteAttemptArgs = {
   init: RequestInit | undefined;
   headers: Headers;
   credential: CredentialContext;
-  isLastAttempt: boolean;
+  retryState: AttemptRetryState;
   timeoutMs: number;
   validatedRedirects: boolean;
   responseBodyMode: ResponseBodyMode;
@@ -947,7 +1049,7 @@ async function fetchFollowingValidatedRedirects({
   responseBodyMode,
 }: Omit<
   ExecuteAttemptArgs,
-  "isLastAttempt" | "validatedRedirects"
+  "retryState" | "validatedRedirects"
 >): Promise<Response> {
   const original = new Request(input, init);
   const visited = new Set([redirectLoopKey(new URL(original.url))]);
@@ -1010,7 +1112,7 @@ async function executeAttempt({
   init,
   headers,
   credential,
-  isLastAttempt,
+  retryState,
   timeoutMs,
   validatedRedirects,
   responseBodyMode,
@@ -1041,11 +1143,11 @@ async function executeAttempt({
           responseBodyMode,
         });
   } catch (error) {
-    return handleFetchError(error, signal, isLastAttempt);
+    return handleFetchError(error, signal, retryState);
   }
   // Outside the try: response handling errors must not be treated as fetch
   // failures (and retried).
-  return await handleResponse(response, headers, credential, isLastAttempt);
+  return await handleResponse(response, headers, credential, retryState);
 }
 
 /** Singleton authenticated fetch instance - reused across all requests */
@@ -1061,7 +1163,8 @@ function getAuthenticatedFetch(
   if (
     options.credential ||
     options.validatedRedirects ||
-    options.bufferResponseBody
+    options.bufferResponseBody ||
+    options.idempotent
   ) {
     return createAuthenticatedFetch(options) as unknown as typeof fetch;
   }

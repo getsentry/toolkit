@@ -6,12 +6,14 @@
  * code block in a fragment that runs `sentry …` is almost always an example
  * in disguise, whatever its heading says.
  *
- * Blocks that legitimately need commands (multi-step workflows, sample output,
- * cross-command guides) opt out with an HTML comment directly above the block:
+ * Multi-step workflows belong there too, as an example whose `command` is an
+ * array of steps. Blocks that legitimately need commands (sample output, guides
+ * that interleave non-`sentry` commands) opt out with an HTML comment directly
+ * above the block:
  *
- *   <!-- allow-commands: multi-step release workflow -->
+ *   <!-- allow-commands: sample output with the ACCOUNT column -->
  *   ```bash
- *   sentry release create …
+ *   sentry org list
  *   ```
  *
  * The reason is required so reviewers can judge each exception.
@@ -120,7 +122,7 @@ function checkTokens(
       } else if (!marker && commands.length > 0) {
         issues.push({
           line: line(token),
-          message: `code block runs \`${commands[0]}\`; move it to the command's docs.examples, or mark a workflow or sample-output block with <!-- allow-commands: <reason> --> on the line above`,
+          message: `code block runs \`${commands[0]}\`; move it to the command's docs.examples (multi-step workflows take an array of steps), or mark a sample-output block with <!-- allow-commands: <reason> --> on the line above`,
         });
       }
     } else if (marker) {

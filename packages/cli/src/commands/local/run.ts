@@ -26,6 +26,7 @@ import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
+  printLocalViewerHint,
   type FilterValue,
   type FormatValue,
   formatEnvelopeLines,
@@ -405,6 +406,24 @@ export const runCommand = buildCommand({
         command: "sentry local run -- python manage.py runserver",
       },
       {
+        description:
+          "Capture into a daemon session, inspect it after the app exits, then clean up",
+        command: [
+          "sentry local run --session web -- npm run dev",
+          "sentry local session list --json",
+          "sentry local session view web --json",
+          "sentry local session retention web --max-envelopes 2000",
+          "sentry local event list web --json",
+          "sentry local event view web <event-id> --json",
+          "sentry local envelope list web --json",
+          "sentry local envelope view web <envelope-id> --json",
+          "sentry local session reset web",
+          "sentry local session close web",
+          "sentry local daemon status",
+          "sentry local daemon stop",
+        ],
+      },
+      {
         description: "Run your app and open the Sentry Local UI",
         command: "sentry local run --open -- npm run dev",
       },
@@ -429,13 +448,13 @@ export const runCommand = buildCommand({
       port: {
         kind: "parsed",
         parse: parsePort,
-        brief: `Port for the local server (default ${DEFAULT_PORT})`,
+        brief: "Port for the local server",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
         parse: String,
-        brief: "Hostname for the local server (default localhost)",
+        brief: "Hostname for the local server",
         default: "localhost",
       },
       filter: {
@@ -516,6 +535,7 @@ export const runCommand = buildCommand({
     let daemonSessionId: string | undefined;
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
+    let daemonDirectoryUrl: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
@@ -531,6 +551,7 @@ export const runCommand = buildCommand({
           daemonSessionId = session.id;
           daemonIngestUrl = session.ingestUrl;
           daemonStreamUrl = session.streamUrl;
+          daemonDirectoryUrl = session.directoryUrl;
           return attachToExistingServer({
             activeFilters,
             showAttributes: flags.attributes,
@@ -548,8 +569,13 @@ export const runCommand = buildCommand({
           showAttributes: flags.attributes,
         });
     url = tail.url;
+    printLocalViewerHint(url, useJson);
 
-    await openLocalUiIfRequested(flags.open, daemonStreamUrl ?? url);
+    await openLocalUiIfRequested(
+      flags.open,
+      daemonStreamUrl ?? url,
+      daemonDirectoryUrl,
+    );
 
     const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
     const wrangler = await injectWranglerSpotlightBinding(
@@ -703,6 +729,7 @@ async function* runWithVerify(
   );
   const url = formatLocalServerUrl(flags.host, boundPort);
   logger.info(`Verify server listening on ${bold(url)}`);
+  printLocalViewerHint(url, flags.format === "json");
 
   const spotlightUrl = `${url}/stream`;
 

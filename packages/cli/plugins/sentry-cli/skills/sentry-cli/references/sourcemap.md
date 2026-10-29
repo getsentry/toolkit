@@ -57,7 +57,7 @@ Upload sourcemaps to Sentry
 **Flags:**
 - `--release <value> - Release version to associate with the upload`
 - `--dist <value> - Distribution identifier to disambiguate builds within a release`
-- `--url-prefix <value> - URL prefix for uploaded files (default: ~/) - (default: "~/")`
+- `--url-prefix <value> - URL prefix for uploaded files - (default: "~/")`
 - `--ext <value> - Comma-separated file extensions to process (default: .js,.cjs,.mjs)`
 - `--ignore <value> - Comma-separated glob patterns to exclude (gitignore-style)`
 - `--ignore-file <value> - Path to a file with gitignore-style patterns to exclude`

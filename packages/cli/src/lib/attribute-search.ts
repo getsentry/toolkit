@@ -3,11 +3,8 @@
  * (free text and `has:` terms, via the shared search grammar) and `--type`.
  */
 
-import {
-  FilterType,
-  parseSearch,
-  Token,
-} from "@sentry/toolkit-core/search-syntax";
+import { parseSearch } from "@sentry/search-syntax/parser";
+import { FilterType, Token } from "@sentry/search-syntax/tokens";
 import type { TraceItemAttributeValueType } from "./api/traces.js";
 import { ValidationError } from "./errors.js";
 import { parseFieldsList } from "./formatters/json.js";

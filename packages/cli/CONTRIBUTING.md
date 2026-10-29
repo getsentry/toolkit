@@ -23,6 +23,9 @@ sentry issue list [<org>/<project>] [--json]
 |--------|---------|
 | _(omitted)_ | Auto-detect the org and project from config, DSNs, or the directory name |
 | `https://<org>.sentry.io/...` | A Sentry web URL. Selects the org and project in the URL, or the whole organization when it names no project |
+| `<org>/<glob>` | Entities in that organization whose names match the glob, e.g. `<org>/web-*` (list commands that filter by name) |
+| `<glob>` | Entities whose names match the glob, in the auto-detected organization (list commands that filter by name) |
+| `/<glob>` | Same as `<glob>` |
 | `<org>/<project>` | That project in that organization |
 | `<org>/<project>,<project>` | Several projects in the same organization (commands that accept several projects) |
 | `<org>/<Project Name>` | A project in that organization whose display name matches. A target with a space is a name, not a slug |

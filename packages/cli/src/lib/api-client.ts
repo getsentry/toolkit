@@ -62,8 +62,16 @@ export {
   type ResolvedEvent,
   resolveEventInOrg,
 } from "./api/events.js";
-export type { MetricMeta } from "./api/explore.js";
-export { queryEvents, queryMetricsMeta } from "./api/explore.js";
+export type {
+  EventsTimeSeriesResponse,
+  ExploreTimeSeriesQueryOptions,
+  MetricMeta,
+} from "./api/explore.js";
+export {
+  queryEvents,
+  queryEventsTimeSeries,
+  queryMetricsMeta,
+} from "./api/explore.js";
 export {
   buildFeedbackQuery,
   type FeedbackPage,
@@ -145,6 +153,7 @@ export {
   type ProjectSearchResult,
   type ProjectWithOrg,
   resolveOrgDisplayName,
+  searchProjects,
   tryGetPrimaryDsn,
 } from "./api/projects.js";
 export {

@@ -98,6 +98,18 @@ sentry trace view abc123def456abc123def456abc12345 -w
 
 # Find a project across organizations
 sentry trace view cli-server abc123def456abc123def456abc12345
+
+# Select the trace ID and an attribute across the whole span tree
+sentry trace view abc123def456abc123def456abc12345 --json --fields traceId,http.method
+
+# Keep full spans while requesting an additional attribute
+sentry trace view abc123def456abc123def456abc12345 --json --fields spans,http.method
+
+# Select IDs and detail attributes from root spans only
+sentry trace view abc123def456abc123def456abc12345 --json --fields spans.span_id,spans.data.http.method
+
+# Select an additional attribute from immediate child spans
+sentry trace view abc123def456abc123def456abc12345 --json --fields spans.children.additional_attributes.http.method
 ```
 
 ### `sentry trace logs <org/project/trace-id...>`

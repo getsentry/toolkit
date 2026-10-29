@@ -27,7 +27,7 @@ import {
   parseIssueArg,
   splitNewlineArg,
 } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { parseIssueTarget } from "../../lib/completion-target.js";
 import {
   clearCachedIssueOrg,
   getCachedIssueOrg,
@@ -71,7 +71,7 @@ export const issueIdPositional = {
       placeholder: "issue",
       brief:
         "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix",
-      parse: parseOrgProjectTarget,
+      parse: parseIssueTarget,
     },
   ],
 } as const;
@@ -82,7 +82,7 @@ export const issueIdsPositional = {
   parameter: {
     placeholder: "issue",
     brief: "One or more issue IDs",
-    parse: parseOrgProjectTarget,
+    parse: parseIssueTarget,
   },
 } as const;
 
