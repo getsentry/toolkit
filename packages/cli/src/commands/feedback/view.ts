@@ -28,7 +28,7 @@ import {
 } from "../../lib/replay-search.js";
 import type { FeedbackViewResult, SentryEvent } from "../../types/index.js";
 import { FeedbackViewOutputSchema } from "../../types/index.js";
-import { feedbackIdPositional, resolveFeedback } from "./utils.js";
+import { type FeedbackTarget, feedbackPositional } from "./positional.js";
 
 const log = logger.withTag("feedback.view");
 
@@ -146,7 +146,7 @@ export const viewCommand = buildCommand({
     schema: FeedbackViewOutputSchema,
   },
   parameters: {
-    positional: feedbackIdPositional,
+    positional: feedbackPositional("view"),
     flags: {
       web: {
         kind: "boolean",
@@ -157,9 +157,9 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, feedbackArg: string) {
+  async *func(this: SentryContext, flags: ViewFlags, target: FeedbackTarget) {
     applyFreshFlag(flags);
-    const { org, feedback } = await resolveFeedback(feedbackArg, this.cwd);
+    const { org, feedback } = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(feedback.permalink, "feedback");

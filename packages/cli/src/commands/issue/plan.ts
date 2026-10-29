@@ -31,8 +31,12 @@ import {
   type SolutionArtifact,
 } from "../../types/seer.js";
 import {
+  type IssueTarget,
+  issuePositional,
+  requireIssueArgument,
+} from "./positional.js";
+import {
   ensureRootCauseAnalysis,
-  issueIdPositional,
   pollAutofixState,
   resolveOrgAndIssueId,
 } from "./utils.js";
@@ -242,7 +246,7 @@ export const planCommand = buildCommand({
     human: formatPlanOutput,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: "plan" }),
     flags: {
       force: {
         kind: "boolean",
@@ -253,9 +257,10 @@ export const planCommand = buildCommand({
     },
     aliases: FRESH_ALIASES,
   },
-  async *func(this: SentryContext, flags: PlanFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: PlanFlags, target: IssueTarget) {
     applyFreshFlag(flags);
     const { cwd } = this;
+    const issueArg = requireIssueArgument(target.parsed, { command: "plan" });
 
     let resolvedOrg: string | undefined;
 
@@ -312,7 +317,7 @@ export const planCommand = buildCommand({
           "Plan creation timed out after 6 minutes. Try again or check the issue in Sentry web UI.",
         timeoutHint:
           "The plan may still be generated in the background.\n" +
-          `  Or retry: sentry issue plan ${issueArg}`,
+          `  Or retry: sentry issue plan ${issueArg.text}`,
       });
 
       if (finalState.status === "ERROR") {

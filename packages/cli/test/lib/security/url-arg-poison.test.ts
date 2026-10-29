@@ -13,10 +13,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parsePositionalArgs } from "../../../src/commands/event/view.js";
-import {
-  parseIssueArg,
-  parseOrgProjectArg,
-} from "../../../src/lib/arg-parsing.js";
+import { parseOrgProjectArg } from "../../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../../src/lib/issue-arguments.js";
 import { resetEnvTokenHostForTesting } from "../../../src/lib/env-token-host.js";
 import { useEnvSandbox } from "../../helpers.js";
 
