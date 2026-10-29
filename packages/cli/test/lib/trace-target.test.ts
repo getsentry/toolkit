@@ -1,7 +1,7 @@
 /**
  * Tests for shared trace-target parsing and resolution.
  *
- * Tests parseTraceTarget, the dual-mode parsers, and the resolvers from
+ * Tests the trace-target and dual-mode parsers, and the resolvers from
  * src/lib/trace-target.ts. The syntax itself is tested in
  * id-arguments.test.ts.
  */
@@ -38,9 +38,8 @@ import {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as region from "../../src/lib/region.js";
 import {
-  parseDualModeArgs,
+  type ParsedTraceTarget,
   parseDualModeInput,
-  parseTraceTarget,
   parseTraceArgumentsInput,
   parseTraceTargetInput,
   resolveTraceArguments,
@@ -51,22 +50,33 @@ import {
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 
-describe("parseTraceTarget with one argument", () => {
+/** The target {@link parseTraceTargetInput} parses `args` into. */
+function parsedTraceTarget(
+  args: readonly string[],
+  usageHint: string,
+): ParsedTraceTarget {
+  return parseTraceTargetInput(args, usageHint).parsed;
+}
+
+describe("parseTraceTargetInput with one argument", () => {
   const HINT = "sentry span list [<org>/<project>/]<trace-id>";
 
   test("bare trace ID → auto-detect", () => {
-    const result = parseTraceTarget([VALID_TRACE_ID], HINT);
+    const result = parsedTraceTarget([VALID_TRACE_ID], HINT);
     expect(result.type).toBe("auto-detect");
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("normalizes uppercase trace ID", () => {
-    const result = parseTraceTarget(["AAAA1111BBBB2222CCCC3333DDDD4444"], HINT);
+    const result = parsedTraceTarget(
+      ["AAAA1111BBBB2222CCCC3333DDDD4444"],
+      HINT,
+    );
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("strips UUID dashes from trace ID", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       ["aaaa1111-bbbb-2222-cccc-3333dddd4444"],
       HINT,
     );
@@ -74,7 +84,7 @@ describe("parseTraceTarget with one argument", () => {
   });
 
   test("org/trace-id → org-scoped", () => {
-    const result = parseTraceTarget([`my-org/${VALID_TRACE_ID}`], HINT);
+    const result = parsedTraceTarget([`my-org/${VALID_TRACE_ID}`], HINT);
     expect(result.type).toBe("org-scoped");
     expect(result.traceId).toBe(VALID_TRACE_ID);
     if (result.type === "org-scoped") {
@@ -83,7 +93,7 @@ describe("parseTraceTarget with one argument", () => {
   });
 
   test("org/project/trace-id → explicit", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       [`my-org/my-project/${VALID_TRACE_ID}`],
       HINT,
     );
@@ -98,7 +108,7 @@ describe("parseTraceTarget with one argument", () => {
   test("preserves underscores in slugs (see #770)", () => {
     // Sentry accepts underscores in project slugs, so they must flow
     // through the trace-target parser unchanged.
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       [`my_org/my_project/${VALID_TRACE_ID}`],
       HINT,
     );
@@ -111,19 +121,19 @@ describe("parseTraceTarget with one argument", () => {
   });
 
   test("trailing slash without trace ID throws", () => {
-    expect(() => parseTraceTarget(["my-org/"], HINT)).toThrow(ContextError);
+    expect(() => parsedTraceTarget(["my-org/"], HINT)).toThrow(ContextError);
   });
 
   test("invalid trace ID throws ValidationError", () => {
-    expect(() => parseTraceTarget(["not-a-trace-id"], HINT)).toThrow(
+    expect(() => parsedTraceTarget(["not-a-trace-id"], HINT)).toThrow(
       ValidationError,
     );
   });
 });
 
-describe("parseTraceTarget with a target argument", () => {
+describe("parseTraceTargetInput with a target argument", () => {
   test("explicit target (org/project)", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       ["my-org/my-project", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -132,7 +142,7 @@ describe("parseTraceTarget with a target argument", () => {
   });
 
   test("org-all target (org/) → org-scoped", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       ["my-org/", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -143,7 +153,7 @@ describe("parseTraceTarget with a target argument", () => {
   });
 
   test("bare slug → project-search", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       ["frontend", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -154,7 +164,7 @@ describe("parseTraceTarget with a target argument", () => {
   });
 
   test("preserves scoped display-name metadata", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       ["my-org/My Project", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -167,7 +177,7 @@ describe("parseTraceTarget with a target argument", () => {
   });
 
   test("empty string → auto-detect", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       ["", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -198,7 +208,7 @@ describe("trace target resolution", () => {
       ],
       orgs: [{ slug: "project-owner", name: "Project Owner" }],
     });
-    const parsed = parseTraceTarget(
+    const parsed = parsedTraceTarget(
       ["frontend", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -214,7 +224,7 @@ describe("trace target resolution", () => {
 
   test("project-bound errors preserve the full trace usage hint", async () => {
     findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
-    const parsed = parseTraceTarget(
+    const parsed = parsedTraceTarget(
       ["missing", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -231,7 +241,7 @@ describe("trace target resolution", () => {
 
   test("org-capable errors preserve the full trace usage hint", async () => {
     findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
-    const parsed = parseTraceTarget(
+    const parsed = parsedTraceTarget(
       ["missing", VALID_TRACE_ID],
       "sentry trace view <target> <trace-id>",
     );
@@ -247,21 +257,21 @@ describe("trace target resolution", () => {
   });
 });
 
-describe("parseTraceTarget", () => {
+describe("parseTraceTargetInput", () => {
   const HINT = "sentry span list [<org>/<project>/]<trace-id>";
 
   test("empty args throws ContextError", () => {
-    expect(() => parseTraceTarget([], HINT)).toThrow(ContextError);
+    expect(() => parsedTraceTarget([], HINT)).toThrow(ContextError);
   });
 
   test("single arg: bare trace ID → auto-detect", () => {
-    const result = parseTraceTarget([VALID_TRACE_ID], HINT);
+    const result = parsedTraceTarget([VALID_TRACE_ID], HINT);
     expect(result.type).toBe("auto-detect");
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("single arg: org/project/trace-id → explicit", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       [`my-org/my-project/${VALID_TRACE_ID}`],
       HINT,
     );
@@ -270,12 +280,12 @@ describe("parseTraceTarget", () => {
   });
 
   test("single arg: org/trace-id → org-scoped", () => {
-    const result = parseTraceTarget([`my-org/${VALID_TRACE_ID}`], HINT);
+    const result = parsedTraceTarget([`my-org/${VALID_TRACE_ID}`], HINT);
     expect(result.type).toBe("org-scoped");
   });
 
   test("two args: target + trace-id", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       ["my-org/my-project", VALID_TRACE_ID],
       HINT,
     );
@@ -284,13 +294,13 @@ describe("parseTraceTarget", () => {
   });
 
   test("two args: bare slug + trace-id → project-search", () => {
-    const result = parseTraceTarget(["frontend", VALID_TRACE_ID], HINT);
+    const result = parsedTraceTarget(["frontend", VALID_TRACE_ID], HINT);
     expect(result.type).toBe("project-search");
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("invalid trace ID throws ValidationError", () => {
-    expect(() => parseTraceTarget(["not-valid"], HINT)).toThrow(
+    expect(() => parsedTraceTarget(["not-valid"], HINT)).toThrow(
       ValidationError,
     );
   });
@@ -320,7 +330,7 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   });
 
   test("canonical trace URL with trailing slash → org-scoped", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       [`https://my-org.sentry.io/explore/traces/trace/${VALID_TRACE_ID}/`],
       HINT,
     );
@@ -332,7 +342,7 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   });
 
   test("trace URL without trailing slash and with query → org-scoped", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       [
         `https://my-org.sentry.io/explore/traces/trace/${VALID_TRACE_ID}?statsPeriod=24h`,
       ],
@@ -346,7 +356,7 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   });
 
   test("legacy /organizations/ trace URL → org-scoped", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       [`https://sentry.io/organizations/my-org/traces/${VALID_TRACE_ID}/`],
       HINT,
     );
@@ -356,12 +366,12 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
 
   test("a Sentry URL without a trace ID is not a trace URL", () => {
     expect(() =>
-      parseTraceTarget(["https://sentry.io/organizations/my-org/"], HINT),
+      parsedTraceTarget(["https://sentry.io/organizations/my-org/"], HINT),
     ).toThrow(ContextError);
   });
 
   test("org/project/<trace-id>/ → explicit", () => {
-    const result = parseTraceTarget(
+    const result = parsedTraceTarget(
       [`my-org/my-project/${VALID_TRACE_ID}/`],
       HINT,
     );
@@ -374,29 +384,31 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   });
 
   test("<trace-id>/ → auto-detect", () => {
-    const result = parseTraceTarget([`${VALID_TRACE_ID}/`], HINT);
+    const result = parsedTraceTarget([`${VALID_TRACE_ID}/`], HINT);
     expect(result).toEqual({ type: "auto-detect", traceId: VALID_TRACE_ID });
   });
 
   test("org/project/ still throws ContextError (trace ID omitted)", () => {
-    expect(() => parseTraceTarget(["my-org/my-project/"], HINT)).toThrow(
+    expect(() => parsedTraceTarget(["my-org/my-project/"], HINT)).toThrow(
       ContextError,
     );
   });
 
-  test("parseDualModeArgs treats a trace URL as trace mode", () => {
-    const result = parseDualModeArgs(
+  test("parseDualModeInput treats a trace URL as trace mode", () => {
+    const result = parseDualModeInput(
       [`https://my-org.sentry.io/explore/traces/trace/${VALID_TRACE_ID}/`],
       HINT,
     );
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       mode: "trace",
-      parsed: { type: "org-scoped", traceId: VALID_TRACE_ID, org: "my-org" },
+      trace: {
+        parsed: { type: "org-scoped", traceId: VALID_TRACE_ID, org: "my-org" },
+      },
     });
   });
 
-  test("parseDualModeArgs treats org/<trace-id>/ as trace mode", () => {
-    const result = parseDualModeArgs([`my-org/${VALID_TRACE_ID}/`], HINT);
+  test("parseDualModeInput treats org/<trace-id>/ as trace mode", () => {
+    const result = parseDualModeInput([`my-org/${VALID_TRACE_ID}/`], HINT);
     expect(result.mode).toBe("trace");
   });
 });
