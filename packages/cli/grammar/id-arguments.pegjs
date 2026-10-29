@@ -53,11 +53,11 @@ arguments
     }
   // Any other URL is a target
   / sep t:url x:more { return { target: t, ids: x }; }
-  // `<id> <org>/<project>`: the arguments are reversed. When IDs are
-  // optional, only a real ID can come first.
+  // `<id> <org>/<project> [<id>...]`: the arguments are reversed. When IDs
+  // are optional, only a real ID can come first.
   / sep i:segment &{ return !optional || isId(i); } sep !idPath
-    t:$([^/\0]* "/" [^\0]*) end
-    { return { target: t, ids: [{ text: i, id: i }], reversed: true }; }
+    t:$([^/\0]* "/" [^\0]*) x:more
+    { return { target: t, ids: [{ text: i, id: i }, ...x], reversed: true }; }
   // `[<org>/[<project>/]]<id> [<id>...]`
   / sep p:idPath x:more {
       return {

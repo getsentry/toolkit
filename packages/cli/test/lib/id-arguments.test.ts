@@ -25,6 +25,7 @@ const HINT = "sentry thing view [<org>/<project>/]<id>";
 /** An ID of each kind, and a second one */
 const EXAMPLES: Record<keyof typeof ID_KINDS, readonly [string, string]> = {
   trace: [HEX, HEX2],
+  event: [HEX, HEX2],
   replay: [HEX, HEX2],
   log: [HEX, HEX2],
   span: [SPAN, SPAN2],
@@ -71,6 +72,14 @@ describe.each(KINDS)("%s IDs", (_name, kind, id, other) => {
     expect(parse(kind, [id, "acme/web"])).toEqual({
       target: "acme/web",
       ids: [id],
+      warnings: [`Arguments appear reversed. Interpreting as: acme/web ${id}`],
+    });
+  });
+
+  test("reads more IDs after reversed arguments", () => {
+    expect(parse(kind, [id, "acme/web", other], { multiple: true })).toEqual({
+      target: "acme/web",
+      ids: [id, other],
       warnings: [`Arguments appear reversed. Interpreting as: acme/web ${id}`],
     });
   });
@@ -239,6 +248,13 @@ describe("URLs", () => {
       warnings: [],
     });
     expect(parse(ID_KINDS.replay, [replayUrl])).toEqual({
+      target: "acme/",
+      ids: [HEX],
+      baseUrl: "https://sentry.io",
+      warnings: [],
+    });
+    const eventUrl = `https://sentry.io/organizations/acme/issues/1/events/${HEX}/`;
+    expect(parse(ID_KINDS.event, [eventUrl])).toEqual({
       target: "acme/",
       ids: [HEX],
       baseUrl: "https://sentry.io",
