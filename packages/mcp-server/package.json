@@ -1,7 +1,10 @@
 {
   "name": "@sentry/mcp-server",
-  "mcpName": "io.github.getsentry/sentry-mcp",
   "version": "0.42.0",
+  "description": "Deprecated: use `sentry mcp` from the `sentry` package instead",
+  "sentryCi": {
+    "enabled": false
+  },
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "engines": {
@@ -12,60 +15,30 @@
   },
   "license": "FSL-1.1-ALv2",
   "author": "Sentry",
-  "homepage": "https://github.com/getsentry/sentry-mcp",
+  "homepage": "https://github.com/getsentry/toolkit",
   "keywords": [
     "sentry",
     "mcp",
     "model-context-protocol"
   ],
   "bugs": {
-    "url": "https://github.com/getsentry/sentry-mcp/issues"
+    "url": "https://github.com/getsentry/toolkit/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:getsentry/sentry-mcp.git"
+    "url": "git+https://github.com/getsentry/toolkit.git"
   },
   "bin": {
-    "sentry-mcp": "./dist/index.js"
+    "sentry-mcp": "./bin/sentry-mcp.js"
   },
   "files": [
-    "./dist/*"
+    "bin/sentry-mcp.js",
+    "lib/shim.js"
   ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./transports/stdio": {
-      "types": "./dist/transports/stdio.d.ts",
-      "default": "./dist/transports/stdio.js"
-    }
-  },
   "scripts": {
-    "build": "tsdown",
-    "dev": "tsdown --watch",
-    "start": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
-    "test:watch": "vitest",
-    "tsc": "tsc --noEmit"
+    "test": "node --test lib/shim.test.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "catalog:",
-    "@sentry/node": "catalog:",
-    "@sentry/core": "catalog:",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@sentry/mcp-core": "workspace:*",
-    "@sentry/mcp-server-mocks": "workspace:*",
-    "@sentry/mcp-server-tsconfig": "workspace:*",
-    "@sentry/toolkit-core": "workspace:*",
-    "@types/node": "catalog:",
-    "tsdown": "catalog:",
-    "tsx": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+    "sentry": "workspace:>=0.48.0-dev.0"
   }
 }

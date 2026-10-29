@@ -47,7 +47,7 @@ export function AmpInstructions({ transport }: AmpInstructionsProps) {
   } as const;
   const coreConfig = {
     command: "npx",
-    args: ["@sentry/mcp-server@latest"],
+    args: ["-y", "sentry@latest", "mcp"],
     env: defaultEnv,
   };
 

@@ -11,7 +11,7 @@ const orderedSkills = [...skillDefinitions]
   .sort((a, b) => a.order - b.order);
 
 export default function StdioSetup() {
-  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
+  const mcpStdioSnippet = `npx -y ${NPM_PACKAGE_NAME}@latest mcp`;
 
   const selfHostedHostExample = [
     `${mcpStdioSnippet}`,
@@ -23,11 +23,12 @@ export default function StdioSetup() {
     <>
       <Prose className="mb-6">
         <p>
-          The stdio client is made available on npm at{" "}
+          The stdio server is the <code>sentry mcp</code> command in the{" "}
           <Link href={`https://www.npmjs.com/package/${NPM_PACKAGE_NAME}`}>
             {NPM_PACKAGE_NAME}
-          </Link>
-          .
+          </Link>{" "}
+          CLI package. If you have run <code>sentry auth login</code>, it uses
+          that session and you can skip the token below.
         </p>
         <p>
           <strong>Note:</strong> The MCP is developed against the cloud service
@@ -92,7 +93,10 @@ export default function StdioSetup() {
               <dt className="font-medium text-slate-100">
                 <code>--access-token</code> / <code>SENTRY_ACCESS_TOKEN</code>
               </dt>
-              <dd className="text-slate-300">Required user auth token.</dd>
+              <dd className="text-slate-300">
+                User auth token. Optional when you have run{" "}
+                <code>sentry auth login</code>.
+              </dd>
 
               <dt className="font-medium text-slate-100">
                 <code>--host</code> / <code>SENTRY_HOST</code>
@@ -173,9 +177,8 @@ export default function StdioSetup() {
           </section>
         </div>
         <p className="mt-4 text-sm text-slate-300">
-          Need something else? Run{" "}
-          <code>npx @sentry/mcp-server@latest --help</code> to view the full
-          flag list.
+          Need something else? Run <code>npx -y sentry@latest mcp --help</code>{" "}
+          to view the full flag list.
         </p>
       </Prose>
     </>

@@ -471,9 +471,9 @@ importers:
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
-      '@sentry/mcp-server':
+      '@sentry/mcp-core':
         specifier: workspace:*
-        version: link:../mcp-server
+        version: link:../mcp-core
       '@sentry/node':
         specifier: 'catalog:'
         version: 11.6.0(@babel/core@7.28.0)(rollup@4.62.4)
@@ -854,49 +854,9 @@ importers:
 
   packages/mcp-server:
     dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.0
-        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      '@sentry/core':
-        specifier: 'catalog:'
-        version: 11.6.0
-      '@sentry/node':
-        specifier: 'catalog:'
-        version: 11.6.0(@babel/core@7.28.0)(rollup@4.62.4)
-      dotenv:
-        specifier: 'catalog:'
-        version: 16.6.1
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
-    devDependencies:
-      '@sentry/mcp-core':
-        specifier: workspace:*
-        version: link:../mcp-core
-      '@sentry/mcp-server-mocks':
-        specifier: workspace:*
-        version: link:../mcp-server-mocks
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
-      '@sentry/toolkit-core':
-        specifier: workspace:*
-        version: link:../toolkit-core
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.16.0
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.12.9(typescript@5.8.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.20.3
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.16.0)(@vitest/coverage-v8@4.1.11)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.16.0)(typescript@5.8.3))(vite@8.3.3(@types/node@22.16.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
+      sentry:
+        specifier: workspace:>=0.48.0-dev.0
+        version: link:../cli
 
   packages/mcp-server-evals:
     dependencies:
@@ -912,9 +872,6 @@ importers:
       '@sentry/mcp-core':
         specifier: workspace:*
         version: link:../mcp-core
-      '@sentry/mcp-server':
-        specifier: workspace:*
-        version: link:../mcp-server
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks

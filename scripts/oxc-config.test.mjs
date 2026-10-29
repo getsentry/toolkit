@@ -70,3 +70,22 @@ test("CI lint checks formatting for commits that skip the pre-commit hook", () =
   assert.match(scripts.lint, /pnpm run lint:format/);
   assert.match(workflow, /^\s*- run: pnpm run lint$/m);
 });
+
+test("mcp-core and toolkit-core cannot import the CLI", () => {
+  const { overrides } = readRootJson(".oxlintrc.json");
+  const { scripts } = readRootJson("package.json");
+  const shared = overrides.find(({ files }) =>
+    files.includes("packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}"),
+  );
+  assert.ok(
+    shared.files.includes("packages/toolkit-core/**/*.{ts,tsx,js,mjs,cjs}"),
+  );
+  const [level, { paths, patterns }] = shared.rules["no-restricted-imports"];
+  assert.equal(level, "error");
+  assert.deepEqual(
+    paths.map(({ name }) => name),
+    ["sentry"],
+  );
+  assert.ok(patterns[0].group.includes("sentry/**"));
+  assert.match(scripts.lint, /pnpm run lint:deps/);
+});

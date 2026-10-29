@@ -2,7 +2,7 @@
 
 This is a prototype of an MCP server, acting as a middleware to the upstream Sentry API provider.
 
-This package is primarily for running the `stdio` MCP server. If you do not know what that is, or do not need it, we suggest using the public remote service:
+This package holds the MCP tools and server shared by the hosted service and the local `stdio` server, which ships as `sentry mcp` in the [`sentry` CLI](https://www.npmjs.com/package/sentry). If you do not know what that is, or do not need it, we suggest using the public remote service:
 
 <https://mcp.sentry.dev>
 
@@ -31,22 +31,22 @@ You can limit which skills are granted using the `--skills` flag:
 
 ```shell
 # Default: active skills (inspect, seer, triage, project-management)
-npx @sentry/mcp-server@latest --access-token=sentry-user-token
+npx -y sentry@latest mcp --access-token=sentry-user-token
 
 # Limit to specific skills only
-npx @sentry/mcp-server@latest --access-token=TOKEN --skills=inspect,docs
+npx -y sentry@latest mcp --access-token=TOKEN --skills=inspect,docs
 
 # Grant all active, non-deprecated skills, overriding MCP_SKILLS
-npx @sentry/mcp-server@latest --access-token=TOKEN --all-skills
+npx -y sentry@latest mcp --access-token=TOKEN --all-skills
 
 # Self-hosted Sentry
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com
+npx -y sentry@latest mcp --access-token=TOKEN --host=sentry.example.com
 
 # Override OpenAI endpoint for AI-powered tools (stdio only)
-npx @sentry/mcp-server@latest --access-token=TOKEN --openai-base-url=https://proxy.example.com/v1
+npx -y sentry@latest mcp --access-token=TOKEN --openai-base-url=https://proxy.example.com/v1
 
 # Azure OpenAI / Azure-compatible deployment routing (stdio only)
-npx @sentry/mcp-server@latest --access-token=TOKEN --agent-provider=azure-openai --openai-base-url=https://example.openai.azure.com/openai/v1/
+npx -y sentry@latest mcp --access-token=TOKEN --agent-provider=azure-openai --openai-base-url=https://example.openai.azure.com/openai/v1/
 ```
 
 For Azure OpenAI or Azure-compatible deployment proxies, use the dedicated
@@ -120,10 +120,10 @@ If you're currently using scopes:
 
 ```shell
 # OLD (deprecated)
-npx @sentry/mcp-server --access-token=TOKEN --scopes=org:read,event:write
+npx -y sentry@latest mcp --access-token=TOKEN --scopes=org:read,event:write
 
 # NEW (recommended)
-npx @sentry/mcp-server --access-token=TOKEN --skills=inspect,triage
+npx -y sentry@latest mcp --access-token=TOKEN --skills=inspect,triage
 ```
 
 The host configuration accepts two distinct formats:
@@ -137,8 +137,8 @@ By default we also enable Sentry reporting (traces, errors) upstream to our clou
 
 ```shell
 # disable sentry reporting
-npx @sentry/mcp-server@latest --sentry-dsn=
+npx -y sentry@latest mcp --sentry-dsn=
 
 # use custom sentry instance
-npx @sentry/mcp-server@latest --sentry-dsn=https://publicKey@mysentry.example.com/...
+npx -y sentry@latest mcp --sentry-dsn=https://publicKey@mysentry.example.com/...
 ```

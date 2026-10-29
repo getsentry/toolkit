@@ -113,7 +113,7 @@ function structuredOutputToCallToolResult(
  * @example Usage with stdio transport
  * ```typescript
  * import { buildServer } from "@sentry/mcp-core/server";
- * import { startStdio } from "@sentry/mcp-server/transports/stdio";
+ * import { startStdio } from "@sentry/mcp-core/transports/stdio";
  *
  * const context = {
  *   accessToken: process.env.SENTRY_TOKEN,

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Existing stable release (e.g. 0.40.0)
+        description: Existing stable CLI release (e.g. 0.48.0)
         required: true
         type: string
 
@@ -24,8 +24,8 @@ concurrency:
 jobs:
   publish:
     if: >-
-      (github.repository == 'getsentry/sentry-mcp' || github.repository == 'getsentry/toolkit') &&
-      ((github.event_name == 'release' && !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'cli@')) ||
+      github.repository == 'getsentry/toolkit' &&
+      ((github.event_name == 'release' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'cli@')) ||
        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -33,7 +33,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      VERSION: ${{ inputs.version || github.event.release.tag_name }}
+      RELEASE: ${{ inputs.version || github.event.release.tag_name }}
     steps:
       # Use the maintained manifest on main, including for older releases.
       - uses: actions/checkout@v4
@@ -45,8 +45,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The registry entry points at the `sentry` npm package (`sentry mcp`),
+          # which is released from the CLI workspace with `cli@` tags.
+          VERSION="${RELEASE#cli@}"
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          gh release view "$VERSION" --repo getsentry/sentry-mcp --json isDraft,isPrerelease \
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          gh release view "cli@$VERSION" --repo getsentry/toolkit --json isDraft,isPrerelease \
             | jq -e '(.isDraft | not) and (.isPrerelease | not)'
           jq --arg version "$VERSION" '.version = $version | .packages[0].version = $version' \
             server.json > "$RUNNER_TEMP/server.json"
@@ -54,10 +58,10 @@ jobs:
           # Craft publishes the GitHub release before npm. Wait for the exact package.
           curl --fail --silent --show-error --retry 40 --retry-all-errors \
             --retry-delay 15 --retry-max-time 600 --max-time 15 \
-            "https://registry.npmjs.org/@sentry%2Fmcp-server/$VERSION" \
+            "https://registry.npmjs.org/sentry/$VERSION" \
             -o "$RUNNER_TEMP/npm.json"
           jq -e --arg version "$VERSION" --slurpfile manifest "$RUNNER_TEMP/server.json" \
-            '.name == "@sentry/mcp-server" and .version == $version and .mcpName == $manifest[0].name' \
+            '.name == "sentry" and .version == $version and .mcpName == $manifest[0].name' \
             "$RUNNER_TEMP/npm.json"
 
       - name: Check for an existing listing

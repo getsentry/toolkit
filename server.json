@@ -3,21 +3,22 @@
   "name": "io.github.getsentry/sentry-mcp",
   "description": "MCP server for Sentry - error monitoring, issue tracking, and debugging for AI assistants",
   "repository": {
-    "url": "https://github.com/getsentry/sentry-mcp",
+    "url": "https://github.com/getsentry/toolkit",
     "source": "github",
-    "subfolder": "packages/mcp-server"
+    "subfolder": "packages/cli"
   },
-  "version": "0.40.0",
+  "version": "0.48.0",
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@sentry/mcp-server",
-      "version": "0.40.0",
+      "identifier": "sentry",
+      "version": "0.48.0",
       "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }],
       "environmentVariables": [
         {
-          "description": "Your Sentry user authentication token",
-          "isRequired": true,
+          "description": "Sentry user auth token. Optional when you have run `sentry auth login`.",
+          "isRequired": false,
           "format": "string",
           "isSecret": true,
           "name": "SENTRY_ACCESS_TOKEN"

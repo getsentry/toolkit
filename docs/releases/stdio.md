@@ -1,105 +1,58 @@
 # stdio Release
 
-npm package release process for the MCP server stdio transport.
+How the local stdio MCP server ships.
 
 ## Overview
 
-The MCP server is published to npm as `@sentry/mcp-server` for use with:
+The stdio MCP server is the `sentry mcp` command in the `sentry` npm package
+(`packages/cli`). It ships with every CLI release (the `packages/cli` Craft
+workspace in `.craft.yml`); there is no separate MCP package to version or
+publish.
 
-- Claude Desktop
-- Cursor IDE
-- VS Code with MCP extension
-- Other MCP clients supporting stdio transport
+`sentry mcp` bundles `@sentry/mcp-core` (tools, server, and the stdio
+transport) and uses the CLI's own authentication:
 
-## Package Structure
+- `sentry auth login` session (refreshed automatically, including after an
+  upstream 401)
+- `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`, as for every CLI command
+- `--access-token` / `SENTRY_ACCESS_TOKEN`: a static token for `sentry mcp`
+  only, kept for configurations written for the retired `@sentry/mcp-server`
+  package. It is never refreshed, and org auth tokens (`sntrys_`) are still
+  scoped to the host they were issued for.
 
-Published package includes:
+## Retired `@sentry/mcp-server` package
 
-- Compiled TypeScript (`dist/`)
-- stdio transport implementation
-- Type definitions
-- Tool definitions
+`packages/mcp-server` is a deprecation shim kept for one last release. Its
+`sentry-mcp` bin prints a one-line stderr notice and runs `sentry mcp` with the
+same arguments (`auth login|logout|status` map to `sentry auth ...`). It depends
+on `sentry` (`>=0.48.0`, the first release with full flag parity), so publish
+it only after that CLI release is on npm.
 
-## Release Process
+Remaining maintainer steps:
 
-### 1. Version Bump
-
-Update version in `packages/mcp-server/package.json`:
-
-```json
-{
-  "name": "@sentry/mcp-server",
-  "version": "1.2.3"
-}
-```
-
-Follow semantic versioning:
-
-- **Major**: Breaking changes to tool interfaces
-- **Minor**: New tools or non-breaking features
-- **Patch**: Bug fixes
-
-### 2. Update Changelog
-
-Document changes in `CHANGELOG.md`:
-
-```markdown
-## [1.2.3] - 2025-01-16
-
-### Added
-
-- New `search_docs` tool for documentation search
-
-### Fixed
-
-- Fix context propagation in tool handlers
-```
-
-### 3. Quality Checks
-
-**MANDATORY before publishing:**
-
-```bash
-pnpm -w run lint:fix    # Fix linting issues
-pnpm tsc --noEmit       # TypeScript type checking
-pnpm test               # Run all tests
-pnpm run build          # Ensure clean build
-```
-
-All checks must pass.
-
-### 4. Publish to npm
-
-```bash
-cd packages/mcp-server
-
-# Dry run to verify package contents
-npm publish --dry-run
-
-# Publish to npm
-npm publish
-```
-
-### 5. Tag Release
-
-```bash
-git tag v1.2.3
-git push origin v1.2.3
-```
+1. Release `@sentry/mcp-server` once more through the `packages/mcp-server`
+   Craft workspace (`release/mcp` branches).
+2. Deprecate it on npm with `npm deprecate @sentry/mcp-server "<message>"`,
+   pointing users at `npx -y sentry mcp`.
+3. Delete `packages/mcp-server`, its Craft workspace, and the pack step in
+   `.github/workflows/merge-jobs.yml`.
 
 ## MCP Registry
 
-The **Publish MCP Registry** workflow publishes `server.json` on stable GitHub
-releases using GitHub Actions OIDC; no registry secret is needed. It reads the
-manifest from `main` and sets both versions from the release, so there is no
-extra version bump to maintain. The listing includes npm and the hosted endpoint.
+The **Publish MCP Registry** workflow publishes `server.json` on stable CLI
+releases (`cli@X.Y.Z` tags) using GitHub Actions OIDC; no registry secret is
+needed. It reads the manifest from `main` and sets both versions from the
+release, so there is no extra version bump to maintain. The listing points at
+the `sentry` npm package with `mcp` as a package argument, plus the hosted
+endpoint. npm verifies ownership through `mcpName` in
+`packages/cli/package.json`.
 
 Craft publishes GitHub before npm. The workflow waits for the npm package before
 publishing the listing. Check this Actions run separately from the Craft release.
-To retry or publish an existing release after merging the workflow:
+To retry or publish an existing release:
 
 ```bash
-gh workflow run mcp-registry.yml --repo getsentry/sentry-mcp --ref main -f version=0.40.0
+gh workflow run mcp-registry.yml --repo getsentry/toolkit --ref main -f version=0.48.0
 ```
 
 An identical active listing is safe to rerun. Different metadata for an existing
@@ -108,127 +61,35 @@ changes with the next release. Registry failures do not undo the npm release.
 
 ## User Installation
 
-Users install via npx in their MCP client configuration:
-
-### Claude Desktop
+Users run the server through npx in their MCP client configuration:
 
 ```json
 {
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["-y", "@sentry/mcp-server"],
-      "env": {
-        "SENTRY_ACCESS_TOKEN": "sntrys_...",
-        "SENTRY_HOST": "sentry.io"
-      }
+      "args": ["-y", "sentry@latest", "mcp"]
     }
   }
 }
 ```
 
-Config location:
+Without a `sentry auth login` session, add `"env": { "SENTRY_ACCESS_TOKEN":
+"sntryu_..." }`. Pin a version with `sentry@0.48.0`.
 
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-### Cursor IDE
-
-Add to `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "sentry": {
-      "command": "npx",
-      "args": ["-y", "@sentry/mcp-server"],
-      "env": {
-        "SENTRY_ACCESS_TOKEN": "sntrys_...",
-        "SENTRY_HOST": "sentry.io"
-      }
-    }
-  }
-}
-```
-
-## Environment Variables
-
-Required:
-
-- `SENTRY_ACCESS_TOKEN` - Sentry API access token
-- `SENTRY_HOST` - Sentry instance hostname (default: `sentry.io`)
-
-Optional:
-
-- `SENTRY_ORG` - Default organization slug
-- `SENTRY_PROJECT` - Default project slug
-- `MCP_DISABLE_SKILLS` - Disable specific skills, comma-separated (e.g. `seer`)
-
-## Version Pinning
-
-Users can pin to specific versions:
-
-```json
-{
-  "args": ["-y", "@sentry/mcp-server@1.2.3"]
-}
-```
-
-## Testing Releases
-
-### Local Testing Before Publishing
-
-Test the built package locally:
+## Testing Before a Release
 
 ```bash
-cd packages/mcp-server
-npm pack
-# Creates sentry-mcp-server-1.2.3.tgz
+# Run the server from source
+pnpm --silent --dir packages/cli run cli mcp --help
 
-# Test installation
-npm install -g ./sentry-mcp-server-1.2.3.tgz
-
-# Run stdio server
-SENTRY_ACCESS_TOKEN=... @sentry/mcp-server
+# Exercise it with the test client
+pnpm -w run cli --transport stdio "who am I?"
 ```
-
-### Beta Releases
-
-For testing with users before stable release:
-
-```bash
-npm publish --tag beta
-```
-
-Users install with:
-
-```json
-{
-  "args": ["-y", "@sentry/mcp-server@beta"]
-}
-```
-
-## Troubleshooting
-
-### Package Not Found
-
-- Verify package name: `@sentry/mcp-server` (with scope)
-- Check npm registry: `npm view @sentry/mcp-server`
-
-### Version Mismatch
-
-- Users may have cached version: `npx clear-npx-cache`
-- Recommend version pinning for stability
-
-### Build Failures
-
-- Ensure `pnpm run build` succeeds before publishing
-- Check TypeScript compilation errors
-- Verify all dependencies are listed in package.json
 
 ## References
 
-- Package config: `packages/mcp-server/package.json`
-- stdio transport: `packages/mcp-server/src/transports/stdio.ts`
-- Build script: `packages/mcp-server/scripts/build.ts`
-- npm publishing docs: https://docs.npmjs.com/cli/publish
+- Command entry: `packages/cli/src/lib/mcp.ts`
+- Host (flags, env, telemetry): `packages/cli/src/lib/mcp/`
+- stdio transport: `packages/mcp-core/src/transports/stdio.ts`
+- Deprecation shim: `packages/mcp-server/`

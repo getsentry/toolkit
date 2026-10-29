@@ -66,14 +66,14 @@ export function VSCodeInstructions({ transport }: VSCodeInstructionsProps) {
   }
 
   // Stdio transport
-  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
+  const mcpStdioSnippet = `npx -y ${NPM_PACKAGE_NAME}@latest mcp`;
   const defaultEnv = {
     SENTRY_ACCESS_TOKEN: "sentry-user-token",
     OPENAI_API_KEY: "your-openai-key",
   } as const;
   const coreConfig = {
     command: "npx",
-    args: ["@sentry/mcp-server@latest"],
+    args: ["-y", "sentry@latest", "mcp"],
     env: defaultEnv,
   };
 

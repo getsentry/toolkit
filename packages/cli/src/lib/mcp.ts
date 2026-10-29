@@ -3,9 +3,10 @@ import { getConfiguredSentryUrl } from "./constants.js";
 import { refreshToken } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { HostScopeError, ValidationError } from "./errors.js";
+import { parseSntrysClaim } from "./token-claims.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 
-type McpServerConfig = {
+type McpTarget = {
   sentryHost: string;
   sentryProtocol: "http" | "https";
 };
@@ -59,7 +60,7 @@ export function prepareMcpServerArgs(
  * a long-running server picks up a fresh token without being restarted.
  */
 export async function resolveCliMcpAccessToken(
-  config: McpServerConfig,
+  config: McpTarget,
   options: { force?: boolean } = {},
 ): Promise<string> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
@@ -91,7 +92,7 @@ export async function resolveCliMcpAccessToken(
  * "run `sentry auth login`" message instead of a hung browser prompt.
  */
 async function resolveMcpAccessTokenWithLogin(
-  config: McpServerConfig,
+  config: McpTarget,
 ): Promise<string> {
   try {
     return await resolveCliMcpAccessToken(config);
@@ -123,6 +124,29 @@ async function resolveMcpAccessTokenWithLogin(
   }
 }
 
+/**
+ * Validate a static token from `--access-token` / `SENTRY_ACCESS_TOKEN`.
+ *
+ * The token is used as given and never refreshed. An org auth token
+ * (`sntrys_`) records the server it was issued for; refuse to send it to any
+ * other host, the same way the CLI scopes its own env tokens.
+ */
+export function resolveStaticMcpAccessToken(
+  config: McpTarget & { accessToken: string },
+): string {
+  const token = normalizeAuthToken(config.accessToken);
+  const claimedHost = parseSntrysClaim(token)?.url;
+  const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
+  if (claimedHost && !isHostTrusted(targetUrl, claimedHost)) {
+    throw new HostScopeError(
+      "Cannot start MCP server with the provided access token",
+      targetUrl,
+      claimedHost,
+    );
+  }
+  return token;
+}
+
 /** Start the local stdio server without introducing a second auth flow. */
 export async function startMcpServer(args: string[]): Promise<void> {
   if (args[0] === "auth") {
@@ -131,35 +155,29 @@ export async function startMcpServer(args: string[]): Promise<void> {
     );
   }
 
-  const { runMcpServer } = await import("@sentry/mcp-server");
-  const {
-    SENTRY_HOST: _sentryHost,
-    SENTRY_URL: _sentryUrl,
-    ...mcpEnv
-  } = getEnv();
+  const env = getEnv();
+  const { parseMcpInvocation, serveMcpStdio } = await import("./mcp/server.js");
+  const invocation = parseMcpInvocation(prepareMcpServerArgs(args), env);
+  if (invocation.kind === "output") {
+    process.stdout.write(`${invocation.text}\n`);
+    return;
+  }
 
-  // Remember the resolved target so the 401 handler can refresh against the
-  // same host without re-parsing args.
-  let resolvedConfig: McpServerConfig | undefined;
+  const { config } = invocation;
+  const { accessToken } = config;
+  if (accessToken) {
+    serveMcpStdio(config, {
+      accessToken: resolveStaticMcpAccessToken({ ...config, accessToken }),
+      env,
+    });
+    return;
+  }
 
-  await runMcpServer(prepareMcpServerArgs(args), {
-    environment: mcpEnv,
-    packageName: "sentry mcp",
-    resolveAccessToken: (config) => {
-      resolvedConfig = config;
-      return resolveMcpAccessTokenWithLogin(config);
-    },
-    onUpstreamUnauthorized: async (setAccessToken) => {
-      if (!resolvedConfig) {
-        return;
-      }
-      // Force a refresh past the usual threshold: the upstream already rejected
-      // the current token, so mirror `--follow`'s refresh-on-401 behavior.
-      const token = await resolveCliMcpAccessToken(resolvedConfig, {
-        force: true,
-      });
-      setAccessToken(token);
-    },
-    throwOnError: true,
+  serveMcpStdio(config, {
+    accessToken: await resolveMcpAccessTokenWithLogin(config),
+    // Force a refresh past the usual threshold: the upstream already rejected
+    // the current token, so mirror `--follow`'s refresh-on-401 behavior.
+    refreshAccessToken: () => resolveCliMcpAccessToken(config, { force: true }),
+    env,
   });
 }

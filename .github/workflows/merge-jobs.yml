@@ -26,7 +26,7 @@ jobs:
         run: pnpm install
 
       - name: Build
-        run: pnpm --filter '@sentry/mcp-server...' --if-present run build
+        run: pnpm --filter '@sentry/mcp-core...' --if-present run build
 
       - name: Run linter
         run: pnpm lint
@@ -34,6 +34,8 @@ jobs:
       - name: Run tests
         run: pnpm test:ci
 
+      # @sentry/mcp-server is a deprecation shim for `sentry mcp`; delete this
+      # step with the package after its final publish.
       - name: Package mcp-server
         working-directory: packages/mcp-server
         run: pnpm pack --pack-destination dist

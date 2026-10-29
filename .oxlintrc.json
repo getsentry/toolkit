@@ -55,6 +55,31 @@
     },
     {
       "files": [
+        "packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/toolkit-core/**/*.{ts,tsx,js,mjs,cjs}"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "sentry",
+                "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["sentry/**", "**/cli/src/**", "**/packages/cli/**"],
+                "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
         "packages/cli/src/**/*.{ts,tsx}",
         "packages/cli/test/**/*.{ts,tsx}"
       ],

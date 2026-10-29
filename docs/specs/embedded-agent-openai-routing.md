@@ -124,10 +124,9 @@ Update:
 
 - `packages/mcp-core/src/internal/agents/types.ts`
 - `packages/mcp-core/src/internal/agents/provider-factory.ts`
-- `packages/mcp-server/src/cli/types.ts`
-- `packages/mcp-server/src/cli/parse.ts`
-- `packages/mcp-server/src/cli/resolve.ts`
-- `packages/mcp-server/src/cli/usage.ts`
+- `packages/cli/src/lib/mcp/args.ts`
+- `packages/cli/src/lib/mcp/config.ts`
+- `packages/cli/src/lib/mcp/usage.ts`
 
 Add:
 
@@ -156,7 +155,7 @@ The key requirement is conceptual separation, not the specific SDK choice.
 ### Direct OpenAI
 
 ```bash
-npx @sentry/mcp-server --access-token=TOKEN
+npx -y sentry@latest mcp --access-token=TOKEN
 ```
 
 Result: auto-detects `openai` when `OPENAI_API_KEY` is present and uses
@@ -165,7 +164,7 @@ Responses API.
 ### Generic OpenAI-Compatible Proxy
 
 ```bash
-npx @sentry/mcp-server \
+npx -y sentry@latest mcp \
   --access-token=TOKEN \
   --agent-provider=openai \
   --openai-base-url=https://proxy.example.com/v1 \
@@ -178,7 +177,7 @@ deployment alias.
 ### Azure-Compatible Deployment Proxy
 
 ```bash
-npx @sentry/mcp-server \
+npx -y sentry@latest mcp \
   --access-token=TOKEN \
   --agent-provider=azure-openai \
   --openai-base-url=https://proxy.example.com/openai/deployments/my-assistant \
@@ -193,7 +192,7 @@ alias.
 ```bash
 export OPENAI_API_VERSION=2024-02-15-preview
 
-npx @sentry/mcp-server \
+npx -y sentry@latest mcp \
   --access-token=TOKEN \
   --agent-provider=azure-openai \
   --openai-base-url=https://my-resource.openai.azure.com/openai/v1/ \

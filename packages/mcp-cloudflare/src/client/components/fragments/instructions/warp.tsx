@@ -83,7 +83,7 @@ export function WarpInstructions({ transport }: WarpInstructionsProps) {
   } as const;
   const coreConfig = {
     command: "npx",
-    args: ["@sentry/mcp-server@latest"],
+    args: ["-y", "sentry@latest", "mcp"],
     env: defaultEnv,
   };
 

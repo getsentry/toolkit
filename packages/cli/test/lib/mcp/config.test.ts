@@ -1,25 +1,20 @@
-import { describe, it, expect } from "vitest";
-import { finalize } from "./resolve";
+import { describe, expect, it } from "vitest";
+import type { McpMergedArgs } from "../../../src/lib/mcp/args.js";
+import { finalizeMcpConfig } from "../../../src/lib/mcp/config.js";
+import { ValidationError } from "../../../src/lib/errors.js";
 
-describe("cli/finalize", () => {
+function finalize(input: Partial<McpMergedArgs>) {
+  return finalizeMcpConfig({
+    agentProviderFromFlag: false,
+    unknownArgs: [],
+    ...input,
+  });
+}
+
+describe("finalizeMcpConfig", () => {
   it("returns undefined accessToken when none provided", () => {
-    const cfg = finalize({ unknownArgs: [] } as any);
+    const cfg = finalize({});
     expect(cfg.accessToken).toBeUndefined();
-  });
-
-  it("uses DEFAULT_SENTRY_CLIENT_ID when no clientId provided", () => {
-    const cfg = finalize({ accessToken: "tok", unknownArgs: [] });
-    expect(cfg.clientId).toBeDefined();
-    expect(typeof cfg.clientId).toBe("string");
-  });
-
-  it("uses provided clientId over default", () => {
-    const cfg = finalize({
-      accessToken: "tok",
-      clientId: "custom-client-id",
-      unknownArgs: [],
-    });
-    expect(cfg.clientId).toBe("custom-client-id");
   });
 
   it("normalizes host from URL", () => {
@@ -106,7 +101,7 @@ describe("cli/finalize", () => {
         insecureHttp: true,
         unknownArgs: [],
       }),
-    ).toThrow(/cannot be used with --url or SENTRY_URL/);
+    ).toThrow(/cannot be used with --url/);
   });
 
   it("surfaces the --insecure-http + --url conflict before URL validation", () => {
@@ -120,7 +115,7 @@ describe("cli/finalize", () => {
         insecureHttp: true,
         unknownArgs: [],
       }),
-    ).toThrow(/cannot be used with --url or SENTRY_URL/);
+    ).toThrow(/cannot be used with --url/);
   });
 
   it.each(["sentry.io", "example.my.sentry.io"])(
@@ -376,5 +371,45 @@ describe("cli/finalize", () => {
     expect(cfg.finalSkills.size).toBe(2);
     expect(cfg.finalSkills.has("inspect")).toBe(true);
     expect(cfg.finalSkills.has("triage")).toBe(true);
+  });
+
+  it("rejects unknown arguments with a pointer to --help", () => {
+    expect(() => finalize({ unknownArgs: ["--bogus"] })).toThrow(
+      /Invalid argument\(s\): --bogus\nRun `sentry mcp --help`/,
+    );
+  });
+
+  it("reports invalid input as a CLI validation error", () => {
+    expect(() => finalize({ url: "http://bad" })).toThrow(ValidationError);
+    expect(() => finalize({ skills: "nope" })).toThrow(ValidationError);
+  });
+
+  it("keeps the static token, constraints, and embedded agent settings", () => {
+    const cfg = finalize({
+      accessToken: "tok",
+      mcpUrl: "https://mcp.example.com",
+      sentryDsn: "dsn",
+      openaiModel: "gpt-test",
+      anthropicBaseUrl: "https://anthropic.example.com",
+      anthropicModel: "claude-test",
+      agentProvider: "Anthropic",
+      agentProviderFromFlag: true,
+      experimental: true,
+      organizationSlug: "acme",
+      projectSlug: "web",
+    });
+    expect(cfg).toMatchObject({
+      accessToken: "tok",
+      mcpUrl: "https://mcp.example.com",
+      sentryDsn: "dsn",
+      openaiModel: "gpt-test",
+      anthropicBaseUrl: "https://anthropic.example.com/",
+      anthropicModel: "claude-test",
+      agentProvider: "anthropic",
+      agentProviderFromFlag: true,
+      experimental: true,
+      organizationSlug: "acme",
+      projectSlug: "web",
+    });
   });
 });

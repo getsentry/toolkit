@@ -26,17 +26,24 @@ export async function connectToMCPServer(
       },
       async (span) => {
         try {
-          // Resolve the path to the mcp-server binary
-          const __dirname = dirname(fileURLToPath(import.meta.url));
-          const mcpServerPath = join(
-            __dirname,
-            "../../mcp-server/dist/index.js",
+          // Run the workspace CLI's `sentry mcp` from source.
+          const cliDir = join(
+            dirname(fileURLToPath(import.meta.url)),
+            "../../cli",
           );
           const launchConfig = buildStdioServerLaunchConfig(config);
 
           const transport = new Experimental_StdioMCPTransport({
-            command: "node",
-            args: [mcpServerPath, ...launchConfig.args],
+            command: "pnpm",
+            args: [
+              "--silent",
+              "--dir",
+              cliDir,
+              "run",
+              "cli",
+              "mcp",
+              ...launchConfig.args,
+            ],
             env: launchConfig.env,
           });
 

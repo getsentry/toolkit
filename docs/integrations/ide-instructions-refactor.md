@@ -181,7 +181,7 @@ export default function InstallTabs({
 ```typescript
 <Tab id="claude-code" title="Claude Code">
   <ol>
-    <li>Run <code>npx @sentry/mcp-server</code></li>
+    <li>Run <code>npx -y sentry@latest mcp</code></li>
     {/* ... inline instructions */}
   </ol>
 </Tab>

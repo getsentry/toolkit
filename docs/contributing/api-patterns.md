@@ -43,7 +43,7 @@ const api = new SentryApiService({
 });
 ```
 
-See `packages/mcp-server/src/api-utils.ts` and
+See `packages/mcp-core/src/api-utils.ts` and
 [adding-tools.md](adding-tools.md#step-2-implement-the-handler) for usage in
 tools.
 
@@ -311,7 +311,7 @@ applies its own per-request timeout, which counts as a network failure.
 
 ## References
 
-- API Client: `packages/mcp-server/src/api-client/`
+- API Client: `packages/mcp-core/src/api-client/`
 - Mock handlers: `packages/mcp-server-mocks/src/handlers/`
 - Fixtures: `packages/mcp-server-mocks/src/fixtures/`
-- API Utils: `packages/mcp-server/src/api-utils.ts`
+- API Utils: `packages/mcp-core/src/api-utils.ts`

@@ -52,7 +52,7 @@ export function CodexCLIInstructions({ transport }: CodexCLIInstructionsProps) {
   const codexConfigToml = [
     "[mcp_servers.sentry]",
     'command = "npx"',
-    'args = ["@sentry/mcp-server@latest"]',
+    'args = ["-y", "sentry@latest", "mcp"]',
     'env = { SENTRY_ACCESS_TOKEN = "sentry-user-token", OPENAI_API_KEY = "your-openai-key" }',
   ].join("\n");
   const selfHostedEnvLine =

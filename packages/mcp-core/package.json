@@ -140,6 +140,10 @@
     "./scopes": {
       "types": "./dist/scopes.d.ts",
       "default": "./dist/scopes.js"
+    },
+    "./transports/stdio": {
+      "types": "./dist/transports/stdio.d.ts",
+      "default": "./dist/transports/stdio.js"
     }
   },
   "scripts": {

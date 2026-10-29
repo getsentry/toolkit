@@ -291,7 +291,7 @@ export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
   try {
     await startMcpServer(mcpArgs);
   } catch (mcpError) {
-    process.stderr.write(`${formatError(mcpError)}\n`);
+    process.stderr.write(`Error: ${formatError(mcpError)}\n`);
     process.exitCode = getExitCode(mcpError);
     // MCP setup errors are terminal, unlike a running stdio server. Clean up
     // network resources only on this error path so successful servers retain

@@ -12,8 +12,10 @@ The project is a pnpm monorepo with clear separation of concerns:
 
 ```
 packages/
+├── cli/                 # Sentry CLI, including the `sentry mcp` stdio server
+├── toolkit-core/        # Shared CLI/MCP primitives
 ├── mcp-core/            # Core MCP implementation (private package)
-├── mcp-server/           # stdio transport (published as @sentry/mcp-server)
+├── mcp-server/          # Deprecated shim that runs `sentry mcp`
 ├── mcp-cloudflare/      # Cloudflare Workers deployment
 ├── mcp-server-evals/    # Evaluation test suite
 ├── mcp-server-mocks/    # Shared mock data
@@ -31,6 +33,7 @@ src/
 ├── api-client/         # Sentry API client
 ├── internal/           # Utilities (not exposed)
 ├── tools/              # Tool implementations
+├── transports/         # stdio transport
 ├── toolDefinitions.ts  # Tool schemas and metadata
 ├── server.ts           # buildServer() function
 ├── errors.ts           # Custom error types
@@ -52,27 +55,21 @@ catalog changes. Modern `subscriptions/listen` acknowledgments therefore omit
 
 **Note:** This package is **not published to npm**. It's a workspace-only package.
 
-### packages/mcp-server
+### packages/cli (`sentry mcp`)
 
-Published stdio transport package (as `@sentry/mcp-server`).
+The local stdio MCP server is the `sentry mcp` command in the Sentry CLI.
 
-**Structure:**
+- `src/lib/mcp.ts` resolves credentials from the CLI session (or a static
+  `--access-token` / `SENTRY_ACCESS_TOKEN`) and lazily loads the host, so normal
+  CLI startup never loads mcp-core or Zod.
+- `src/lib/mcp/` parses server flags and environment variables, configures the
+  embedded agent provider and telemetry, and starts mcp-core's stdio transport.
 
-```
-src/
-├── cli/                # CLI argument parsing
-├── transports/         # stdio transport
-└── index.ts            # Main entry point
-```
+### packages/mcp-server (deprecated)
 
-**Key responsibilities:**
-
-- CLI entry point for the MCP server
-- stdio transport implementation
-- Bundles all mcp-core code at build time
-- Published to npm for end users
-
-**Build:** Uses tsdown to bundle mcp-core code, resulting in a self-contained package.
+A deprecation shim for one last `@sentry/mcp-server` release. Its `sentry-mcp`
+bin prints a notice and runs `sentry mcp` with the same arguments. Delete it after
+the final publish; see [stdio release](../releases/stdio.md).
 
 ### packages/mcp-cloudflare
 
@@ -113,6 +110,32 @@ Interactive CLI for testing the MCP server with an AI agent.
 - OAuth authentication for remote servers
 - Stdio transport for local testing
 - Clean terminal output with tool call visualization
+
+## Package Dependency Direction
+
+Workspace dependencies point one way:
+
+```
+sentry (packages/cli) ──> @sentry/mcp-core ──> @sentry/toolkit-core
+@sentry/mcp-cloudflare ──> @sentry/mcp-core
+```
+
+mcp-core and toolkit-core never import the CLI, and toolkit-core never imports
+mcp-core. When an MCP tool needs a capability only the CLI host has, such as
+the SQLite cache, DSN detection from local files, or file uploads, define an
+interface in mcp-core or toolkit-core and let the CLI inject an implementation
+(the way `sentry mcp` passes the access token and the refresh callback through
+`ServerContext`). The hosted server can then supply its own implementation or
+leave the capability out.
+
+Two checks enforce this in `pnpm run lint`:
+
+- oxlint `no-restricted-imports` (`.oxlintrc.json`) rejects `sentry`,
+  `sentry/*`, and relative CLI paths inside `packages/mcp-core` and
+  `packages/toolkit-core`.
+- `scripts/check-workspace-deps.mjs` (`pnpm run lint:deps`) reads every
+  workspace `package.json` and fails on a dependency cycle or a forbidden edge,
+  such as mcp-core reaching `sentry` or toolkit-core reaching mcp-core.
 
 ## Key Architectural Decisions
 

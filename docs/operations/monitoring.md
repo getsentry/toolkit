@@ -15,7 +15,7 @@ Different Sentry SDKs for different environments:
 
 ### Error Logging
 
-See `logIssue` in `packages/mcp-server/src/telem/logging.ts` (documented in [Logging Reference](logging.md)) for the canonical way to create an Issue and structured log entry.
+See `logIssue` in `packages/mcp-core/src/telem/logging.ts` (documented in [Logging Reference](logging.md)) for the canonical way to create an Issue and structured log entry.
 
 For event schema failures, see [Event Validation Diagnostics](../../TELEMETRY.md#event-validation-diagnostics)
 for the `contextType` diagnostic and its privacy constraints.
@@ -365,7 +365,7 @@ NODE_ENV=production
 
 ## References
 
-- Core logging: `packages/mcp-server/src/logging.ts`
+- Core logging: `packages/mcp-core/src/logging.ts`
 - Worker config: `packages/mcp-cloudflare/src/server/sentry.config.ts`
-- Tracing helpers: `packages/mcp-server/src/tracing.ts`
+- Tracing helpers: `packages/mcp-core/src/tracing.ts`
 - Sentry docs: https://docs.sentry.io/

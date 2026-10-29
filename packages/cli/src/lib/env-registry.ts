@@ -66,6 +66,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     selfHosted: true,
     devGuide: "Force env token to take priority over stored OAuth token",
   },
+  {
+    name: "SENTRY_ACCESS_TOKEN",
+    description:
+      "Static auth token for `sentry mcp`, kept for MCP client configurations written for the retired `@sentry/mcp-server` package (same as `sentry mcp --access-token`). It replaces the CLI session for the MCP server only and is never refreshed. Other commands ignore it.",
+    example: "sntryu_YOUR_TOKEN_HERE",
+  },
   // -- Targeting --
   {
     name: "SENTRY_ORG",

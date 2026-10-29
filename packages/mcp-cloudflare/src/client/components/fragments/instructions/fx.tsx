@@ -42,7 +42,7 @@ export function FxInstructions({ transport }: FxInstructionsProps) {
   }
 
   // Stdio transport
-  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
+  const mcpStdioSnippet = `npx -y ${NPM_PACKAGE_NAME}@latest mcp`;
   return (
     <>
       <ol>

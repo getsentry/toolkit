@@ -45,7 +45,9 @@ While this repository is focused on acting as an MCP service, we also support a 
 
 **Note:** The AI-powered search tools (`search_errors`, `search_traces`, `search_logs`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
 
-To utilize the `stdio` transport, you'll need to create an User Auth Token in Sentry with the necessary scopes. As of writing this is:
+The `stdio` transport is the `sentry mcp` command in the [`sentry` CLI](https://cli.sentry.dev). It uses your CLI login (`sentry auth login`). MCP client configurations written for the retired `@sentry/mcp-server` package keep working: `--access-token` and `SENTRY_ACCESS_TOKEN` still pass a static token, and every other flag is unchanged.
+
+To use a static token, create a User Auth Token in Sentry with the necessary scopes. As of writing this is:
 
 ```
 org:read
@@ -59,7 +61,8 @@ event:write
 Launch the transport:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=sentry-user-token
+npx -y sentry@latest mcp                                 # uses `sentry auth login`
+npx -y sentry@latest mcp --access-token=sentry-user-token
 ```
 
 Need to connect to a self-hosted deployment? Add <code>--host</code> (hostname
@@ -72,20 +75,20 @@ default skill set whenever `--host` points at a non-`sentry.io` host. If your
 self-hosted deployment does run Seer, opt back in explicitly:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
+npx -y sentry@latest mcp --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
 ```
 
 You can also disable any other skill to prevent unsupported tools from being
 exposed:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --disable-skills=project-management
+npx -y sentry@latest mcp --access-token=TOKEN --host=sentry.example.com --disable-skills=project-management
 ```
 
 For self-hosted instances without TLS:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.internal:9000 --insecure-http
+npx -y sentry@latest mcp --access-token=TOKEN --host=sentry.internal:9000 --insecure-http
 ```
 
 #### Remote with an Explicit Sentry Token
@@ -118,7 +121,7 @@ tools with `?skills=inspect,triage` or `?disable-skills=seer`.
 #### Environment Variables
 
 ```shell
-SENTRY_ACCESS_TOKEN=         # Required: Your Sentry auth token
+SENTRY_ACCESS_TOKEN=         # Optional with `sentry auth login`: static Sentry auth token
 
 # LLM Provider Configuration (required for AI-powered search tools)
 EMBEDDED_AGENT_PROVIDER=     # Required when multiple provider keys are set: 'openai', 'azure-openai', 'anthropic', or 'openrouter'
@@ -143,7 +146,7 @@ MCP_DISABLE_SKILLS=          # Disable specific skills (comma-separated, e.g. 'p
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server"],
+      "args": ["-y", "sentry@latest", "mcp"],
       "env": {
         "SENTRY_ACCESS_TOKEN": "your-token",
         "EMBEDDED_AGENT_PROVIDER": "openai",
@@ -166,7 +169,7 @@ self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server"],
+      "args": ["-y", "sentry@latest", "mcp"],
       "env": {
         "SENTRY_ACCESS_TOKEN": "your-token",
         "SENTRY_HOST": "sentry.example.com",
