@@ -26,7 +26,7 @@
 // the IDs, validates them, and parses the target like any org/project target.
 
 {
-  const { optional, isId, idUrl } = options;
+  const { optional, isId, mayBeId, idUrl } = options;
 
   // `[<org>/[<project>/]]` before an ID; the caller makes it a target
   function pathTarget(prefix) {
@@ -67,8 +67,11 @@ arguments
     }
   // One token that does not end in an ID. Unless IDs are optional, it still
   // names one, so it can be reported or recovered: the last segment after
-  // two slashes (`<org>/<project>/<id>`), or the whole token. With one slash,
+  // two slashes (`<org>/<project>/<id>`), after one when it looks like a
+  // malformed ID (`<org>/<partial-id>`), or the whole token. Otherwise,
   // `<org>/<project>` is a target without an ID.
+  / sep t:segment "/" i:segment end &{ return !optional && mayBeId(i); }
+    { return { ...pathTarget(t), ids: [{ text: text().slice(1), id: i }] }; }
   / sep !"/" t:$(segment "/" segment "/" [^\0]*) end &{ return !optional; } {
       const slash = t.lastIndexOf("/");
       return {

@@ -147,6 +147,29 @@ describe.each(KINDS)("%s IDs", (_name, kind, id, other) => {
     });
   });
 
+  test.each([
+    [`acme/${id.slice(0, 12)}`, id.slice(0, 12)],
+    [
+      `acme/${id.slice(0, 8)}...${id.slice(-8)}`,
+      `${id.slice(0, 8)}...${id.slice(-8)}`,
+    ],
+    [`acme/${id}xyz`, `${id}xyz`],
+  ])("%j → invalid ID, or raw ID %j after the org", (arg, raw) => {
+    expect(() => parse(kind, [arg])).toThrow(ValidationError);
+    expect(parse(kind, [arg], { validate: false })).toEqual({
+      target: "acme/",
+      ids: [raw],
+      warnings: [],
+    });
+  });
+
+  test.each([["acme/abc123"], ["acme/deadbeef-app"], ["acme/null"]])(
+    "%j does not look like an ID → missing ID",
+    (arg) => {
+      expect(() => parse(kind, [arg])).toThrow(ContextError);
+    },
+  );
+
   test("a command that needs a project reads `<x>/<id>` as the project", () => {
     expect(parse(kind, [`web/${id}`], { needsProject: true })).toEqual({
       target: "web",
@@ -164,6 +187,7 @@ describe.each(KINDS)("%s IDs", (_name, kind, id, other) => {
       [["acme/"], "acme/"],
       [["acme/web"], "acme/web"],
       [["acme/web/"], "acme/web/"],
+      [[`acme/${id.slice(0, 12)}`], `acme/${id.slice(0, 12)}`],
     ])("%j → target %j, no ID", (args, target) => {
       expect(parse(kind, args, optional)).toEqual({
         target,

@@ -18,6 +18,8 @@ export type IdArgumentsGrammarOptions = {
   optional: boolean;
   /** Whether `value` is an ID of the kind the command takes. */
   isId: (value: string) => boolean;
+  /** Whether `value`, not an ID, still looks like a malformed one. */
+  mayBeId: (value: string) => boolean;
   /** The ID in a Sentry URL, or `null` for anything else. */
   idUrl: (value: string) => IdUrl | null;
 };

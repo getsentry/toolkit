@@ -34,6 +34,7 @@ import {
   validateHexId,
   validateSpanId,
 } from "./hex-id.js";
+import { looksLikeHexIdFragment } from "./hex-id-recovery.js";
 import { type ParsedSentryUrl, parseSentryUrl } from "./sentry-url-parser.js";
 
 /** A kind of ID a command takes. */
@@ -42,6 +43,11 @@ export type IdKind = {
   readonly label: string;
   /** Whether `value` is an ID of this kind (after normalizing) */
   readonly isId: (value: string) => boolean;
+  /**
+   * Whether `value`, not an ID, still looks like a malformed one, so
+   * `<org>/<value>` names an ID to report or recover, not a project
+   */
+  readonly mayBeId: (value: string) => boolean;
   /**
    * Normalize an ID.
    *
@@ -63,6 +69,7 @@ function hexKind(
   return {
     label,
     isId: (value) => tryNormalizeHexId(value) !== undefined,
+    mayBeId: looksLikeHexIdFragment,
     validate: (value) => validateHexId(value, lower),
     fromUrl,
     urlExample,
@@ -82,6 +89,7 @@ export const ID_KINDS = {
   span: {
     label: "Span ID",
     isId: isSpanId,
+    mayBeId: looksLikeHexIdFragment,
     validate: validateSpanId,
     fromUrl: () => undefined,
   },
@@ -148,6 +156,7 @@ export function parseIdArguments(
   const syntax = parse(tokens.map((token) => `\0${token}`).join(""), {
     optional,
     isId: kind.isId,
+    mayBeId: kind.mayBeId,
     idUrl: (value) => idUrl(value, kind),
   });
   const warnings: string[] = [];

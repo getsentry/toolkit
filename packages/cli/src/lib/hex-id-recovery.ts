@@ -343,6 +343,35 @@ export function looksLikeSlug(input: string): boolean {
   return !(PURE_HEX_RE.test(dashless) && dashless.length >= MIN_FUZZY_PREFIX);
 }
 
+/**
+ * Whether `input`, not a valid ID, still has enough of one for
+ * {@link recoverHexId} to look it up: a hex prefix or ellipsized ID of at
+ * least {@link MIN_FUZZY_PREFIX} chars that is not a slug. The ID argument
+ * grammar uses it to read `<org>/<input>` as an ID to recover, not as a
+ * project.
+ */
+export function looksLikeHexIdFragment(input: string): boolean {
+  if (looksLikeSlug(input)) {
+    return false;
+  }
+  const { cleaned, sentinel } = preNormalize(input);
+  if (sentinel) {
+    return false;
+  }
+  return isLongEnough(extractHexCandidate(cleaned));
+}
+
+/** Whether `candidate` has enough hex chars for a fuzzy lookup */
+function isLongEnough(
+  candidate: HexCandidate | null,
+): candidate is HexCandidate {
+  return (
+    candidate !== null &&
+    (candidate.prefix.length >= MIN_FUZZY_PREFIX ||
+      (candidate.suffix?.length ?? 0) >= MIN_FUZZY_PREFIX)
+  );
+}
+
 /** Returns true for paths with 4+ slash-separated non-empty segments. */
 export function isOverNestedPath(input: string): boolean {
   return input.split("/").filter(Boolean).length >= OVER_NESTED_MIN_SEGMENTS;
@@ -795,11 +824,7 @@ async function recoverHexIdInternal(
   }
 
   const candidate = extractHexCandidate(cleaned);
-  const longEnough =
-    candidate !== null &&
-    (candidate.prefix.length >= MIN_FUZZY_PREFIX ||
-      (candidate.suffix?.length ?? 0) >= MIN_FUZZY_PREFIX);
-  if (!(longEnough && candidate)) {
+  if (!isLongEnough(candidate)) {
     // Raw-input slug check already ran above; here it's either a short
     // pure-hex prefix or a short non-hex blob — neither is a slug.
     return {
