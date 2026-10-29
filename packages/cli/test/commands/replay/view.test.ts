@@ -167,6 +167,13 @@ describe("parseReplayArguments", () => {
     );
   });
 
+  test("an empty target before the replay ID auto-detects", () => {
+    // e.g. `sentry replay view "$ORG" <replay-id>` with `$ORG` unset
+    const result = parseReplayArguments(["", REPLAY_ID]);
+    expect(result.replayId).toBe(REPLAY_ID);
+    expect(result.target).toEqual({ type: "auto-detect" });
+  });
+
   test("throws ContextError for org/project with no replay ID", () => {
     expect(() => parseReplayArguments(["test-org/cli"])).toThrow(ContextError);
     expect(() => parseReplayArguments(["test-org/cli/"])).toThrow(ContextError);

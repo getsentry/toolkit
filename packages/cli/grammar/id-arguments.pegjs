@@ -128,7 +128,7 @@ replay
         "positional",
       );
     }
-  / sep argEnd arg? end { missing(); }
+  / sep end { missing(); }
   / u:arg &{ return url(u) !== null; } arg? end {
       const parsed = url(u);
       if (!(parsed.replayId && parsed.org)) {
