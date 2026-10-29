@@ -431,7 +431,7 @@ function drawChartLabels(
   image: ReturnType<typeof createPixelCanvas>,
   options: {
     modelKind: "timeseries" | "categorical";
-    series: { label: string; values: number[] }[];
+    series: { label: string }[];
     data: Extract<WidgetDataResult, { type: "timeseries" }>;
     x: number;
     y: number;
@@ -478,7 +478,7 @@ function drawChartLabels(
 function drawLegend(
   image: ReturnType<typeof createPixelCanvas>,
   options: {
-    series: { label: string; values: number[] }[];
+    series: { label: string }[];
     x: number;
     y: number;
     width: number;
