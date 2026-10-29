@@ -75,6 +75,7 @@ const BOUND_TARGET_TYPES = new Set([
   "EventViewArguments",
   "InitArguments",
   "IntegrationArguments",
+  "IssuesArguments",
   "LogListArguments",
   "LogViewArguments",
   "ProjectCreateArguments",
@@ -169,8 +170,8 @@ function regexSource(node) {
  * Helpers that parse ID positionals by hand. Commands parse IDs with
  * `parseIdArguments()` (src/lib/id-arguments.ts), so every command takes
  * the same forms. `parseIssueTarget` and `parseDashboardTarget` only tag a
- * positional for completion, leaving the parsing to `func`; issues have
- * their own grammar (`issuePositional`, src/lib/issue-arguments.ts).
+ * positional for completion, leaving the parsing to `func`; issues take
+ * `issuePositional` or `issuesPositional` (src/commands/issue/positional.ts).
  */
 const AD_HOC_ID_PARSING = new Set([
   "parseSlashSeparatedArg",
@@ -184,13 +185,9 @@ const AD_HOC_ID_PARSING = new Set([
 /**
  * Commands still allowed to, each with its follow-up. A ratchet: an entry
  * whose file no longer uses them is reported, so the list only shrinks.
+ * Empty: every command parses its IDs with `parseIdArguments()`.
  */
-const AD_HOC_ID_PARSING_ALLOWED = new Map([
-  // Follow-up (#1564): several issues per command (`issue view`,
-  // `issue explain`, `issue merge`) need an array issue positional
-  ["/src/commands/issue/utils.ts", "#1564: array issue positional"],
-  ["/src/commands/issue/merge.ts", "#1564: array issue positional"],
-]);
+const AD_HOC_ID_PARSING_ALLOWED = new Map();
 
 /**
  * Helpers that leave a target positional for `func` to parse:

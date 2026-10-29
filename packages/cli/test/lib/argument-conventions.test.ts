@@ -29,12 +29,15 @@ import { initCommand } from "../../src/commands/init.js";
 import { deleteCommand as integrationDeleteCommand } from "../../src/commands/integration/delete.js";
 import { archiveCommand } from "../../src/commands/issue/archive.js";
 import { eventsCommand as issueEventsCommand } from "../../src/commands/issue/events.js";
+import { explainCommand as issueExplainCommand } from "../../src/commands/issue/explain.js";
 import { linkCommand as issueLinkCommand } from "../../src/commands/issue/link.js";
+import { mergeCommand as issueMergeCommand } from "../../src/commands/issue/merge.js";
 import { planCommand as issuePlanCommand } from "../../src/commands/issue/plan.js";
 import { resolveCommand as issueResolveCommand } from "../../src/commands/issue/resolve.js";
 import { tagsCommand as issueTagsCommand } from "../../src/commands/issue/tags.js";
 import { unlinkCommand as issueUnlinkCommand } from "../../src/commands/issue/unlink.js";
 import { unresolveCommand as issueUnresolveCommand } from "../../src/commands/issue/unresolve.js";
+import { viewCommand as issueViewCommand } from "../../src/commands/issue/view.js";
 import { listCommand as logListCommand } from "../../src/commands/log/list.js";
 import { viewCommand as logViewCommand } from "../../src/commands/log/view.js";
 import { viewCommand as orgViewCommand } from "../../src/commands/org/view.js";
@@ -541,6 +544,63 @@ describe("issue arguments", () => {
 });
 
 /**
+ * Commands that take several issues, through `issuesPositional`: each in
+ * any form the single-issue commands take, but no search text.
+ */
+const MULTI_ISSUE_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["issue view", issueViewCommand],
+  ["issue explain", issueExplainCommand],
+  ["issue merge", issueMergeCommand],
+];
+
+/** The issues a multi-issue command parsed. */
+function parseIssues(command: unknown, args: readonly string[]) {
+  const [bound] = bind(command, args);
+  expect(bound).toBeInstanceOf(BoundPositional);
+  return (bound as BoundPositional<readonly { text: string }[], unknown>)
+    .parsed;
+}
+
+describe.each(MULTI_ISSUE_COMMANDS)("%s", (name, command) => {
+  const [[, reference]] = ISSUE_COMMANDS;
+
+  test("reads each issue as issue resolve does", () => {
+    // Search text is one of the single-issue inputs; see below
+    const issues = ISSUE_INPUTS.filter((input) => !input.includes(" "));
+    expect(parseIssues(command, issues)).toEqual(
+      issues.map((input) => parseIssue(reference, input).parsed),
+    );
+  });
+
+  test("splits IDs pasted into one argument", () => {
+    expect(
+      parseIssues(command, ["CLI-1\nCLI-2 CLI-3"]).map(({ text }) => text),
+    ).toEqual(["CLI-1", "CLI-2", "CLI-3"]);
+  });
+
+  test("takes no search text: each word is an issue", () => {
+    expect(parseIssues(command, ["login timeout"])).toHaveLength(2);
+  });
+
+  test("a malformed issue fails to parse, before the command runs", () => {
+    const error = parseError(command, ["CLI-1", "my-org/"]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+  });
+
+  // `issue merge` counts the issues itself, `--into` included
+  test.runIf(name !== "issue merge")(
+    "a missing issue fails to parse, before the command runs",
+    () => {
+      const error = parseError(command, []);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(
+        ContextError,
+      );
+    },
+  );
+});
+
+/**
  * Commands that take one dashboard, through `dashboardArguments` or alike:
  * `[<org/project>] <dashboard-id-or-title>`.
  */
@@ -891,11 +951,14 @@ describe.each(ORG_COMMANDS)("%s", (name, command, before) => {
     expect(orgOf(bindOrg(name, command, before))).toEqual({});
   });
 
-  test.each(["my-org", "my-org/"])("%s names the org", (org) => {
-    expect(orgOf(bindOrg(name, command, [...before, org]))).toEqual({
-      org: "my-org",
-    });
-  });
+  test.each(["my-org", "my-org/", "my-org\nappended notes"])(
+    "%j names the org",
+    (org) => {
+      expect(orgOf(bindOrg(name, command, [...before, org]))).toEqual({
+        org: "my-org",
+      });
+    },
+  );
 
   test("a project fails to parse: only an org is taken", () => {
     expect(() => bindOrg(name, command, [...before, "my-org/web"])).toThrow(
