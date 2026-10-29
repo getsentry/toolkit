@@ -263,9 +263,8 @@ function initMcpTelemetry(
       zodErrorsIntegration(),
       vercelAIIntegration({ recordInputs: true, recordOutputs: true }),
     ],
-    environment:
-      env.SENTRY_ENVIRONMENT ??
-      (env.NODE_ENV !== "production" ? "development" : "production"),
+    // The retired package fixed this at build time; keep the same value.
+    environment: "stdio",
   });
 }
 
