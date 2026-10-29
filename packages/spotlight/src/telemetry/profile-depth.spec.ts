@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createTelemetryStore } from "../sdk/core.ts";
+import { createTelemetryStore, serializeTrace } from "../sdk/core.ts";
 
 const depth = 12000;
 
@@ -74,6 +74,21 @@ test("public ingestion retains and deterministically consolidates a 12000-frame 
       current = current?.children?.[0];
     }
     expect(current).toBeUndefined();
+    const serialized = JSON.parse(
+      JSON.stringify(serializeTrace(trace)),
+    ) as ReturnType<typeof serializeTrace>;
+    const spans = new Map(serialized.spans);
+    expect(spans.size).toBe(depth + 1);
+    for (const [id, span] of spans) {
+      for (const childId of span.childSpanIds) {
+        expect(spans.get(childId)?.parent_span_id).toBe(id);
+      }
+      if (id !== "root") {
+        expect(
+          spans.get(span.parent_span_id as string)?.childSpanIds,
+        ).toContain(id);
+      }
+    }
     const identities = [...trace.spans.keys()];
     store.reset();
     expect((await store.ingestEnvelope(input)).status).toBe("processed");

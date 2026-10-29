@@ -58,6 +58,10 @@ function consolidateSpans(trace: Trace, spans: Span[]): Span[] {
       // Require the spans are sorted by start_timestamp
       lastSpan.timestamp = span.timestamp;
       if (span.children) {
+        // This sample's span is discarded; its children now belong to the survivor.
+        for (const child of span.children) {
+          child.parent_span_id = lastSpan.span_id;
+        }
         if (lastSpan.children) {
           for (const child of span.children) {
             lastSpan.children.push(child);
@@ -234,11 +238,17 @@ export function getSpansFromProfile(
   if (!fillerSpans.length) {
     return [];
   }
-  const consolidated = consolidateSpans(trace, fillerSpans);
+  let consolidated = consolidateSpans(trace, fillerSpans);
   // Remove the extra layer of nesting if there is only one span which should be the "Thread" span
-  return (
-    consolidated.length === 1 ? consolidated[0].children || [] : consolidated
-  ).filter(
+  if (consolidated.length === 1) {
+    const threadSpan = consolidated[0];
+    consolidated = threadSpan.children || [];
+    trace.spans.delete(threadSpan.span_id);
+    for (const child of consolidated) {
+      child.parent_span_id = parent_span_id;
+    }
+  }
+  return consolidated.filter(
     (span) =>
       span.timestamp - span.start_timestamp > 0 && span.timestamp <= endTs,
   );
