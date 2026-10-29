@@ -437,3 +437,34 @@ describe("kinds with names", () => {
     expect("search" in dashboard || "search" in issue).toBe(false);
   });
 });
+
+describe("org-scoped kinds without hex IDs", () => {
+  const { conversation, integration } = ID_KINDS;
+
+  test("any word may be a conversation ID; a bad one is rejected", () => {
+    expect(parse(conversation, ["acme/conv_01H"])).toEqual({
+      target: "acme/",
+      ids: ["conv_01H"],
+      warnings: [],
+    });
+    // Every word reads as an ID; the command picks out the org
+    expect(parse(conversation, ["acme", "conv-1"], { multiple: true })).toEqual(
+      { ids: ["acme", "conv-1"], warnings: [] },
+    );
+    for (const bad of ["conv?x=1", "acme/conv#a", "acme/conv%20"]) {
+      expect(() => parse(conversation, [bad])).toThrow(ValidationError);
+    }
+  });
+
+  test("integration IDs are numeric", () => {
+    expect(parse(integration, ["acme", "42"])).toEqual({
+      target: "acme/",
+      ids: ["42"],
+      warnings: [],
+    });
+    expect(() => parse(integration, ["acme/github"])).toThrow(
+      "Use the numeric ID from 'sentry integration list'",
+    );
+    expect(() => parse(integration, ["acme/"])).toThrow(ContextError);
+  });
+});

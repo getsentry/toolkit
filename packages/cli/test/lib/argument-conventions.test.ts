@@ -10,12 +10,14 @@
 
 import { ArgumentParseError } from "@stricli/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { viewCommand as agentConversationViewCommand } from "../../src/commands/agent-conversation/view.js";
 import { listCommand as eventListCommand } from "../../src/commands/event/list.js";
 import { viewCommand as eventViewCommand } from "../../src/commands/event/view.js";
 import { resolveCommand as feedbackResolveCommand } from "../../src/commands/feedback/resolve.js";
 import { spamCommand as feedbackSpamCommand } from "../../src/commands/feedback/spam.js";
 import { unresolveCommand as feedbackUnresolveCommand } from "../../src/commands/feedback/unresolve.js";
 import { viewCommand as feedbackViewCommand } from "../../src/commands/feedback/view.js";
+import { deleteCommand as integrationDeleteCommand } from "../../src/commands/integration/delete.js";
 import { archiveCommand } from "../../src/commands/issue/archive.js";
 import { eventsCommand as issueEventsCommand } from "../../src/commands/issue/events.js";
 import { linkCommand as issueLinkCommand } from "../../src/commands/issue/link.js";
@@ -26,6 +28,7 @@ import { unlinkCommand as issueUnlinkCommand } from "../../src/commands/issue/un
 import { unresolveCommand as issueUnresolveCommand } from "../../src/commands/issue/unresolve.js";
 import { listCommand as logListCommand } from "../../src/commands/log/list.js";
 import { viewCommand as logViewCommand } from "../../src/commands/log/view.js";
+import { viewCommand as orgViewCommand } from "../../src/commands/org/view.js";
 import { archiveCommand as releaseArchiveCommand } from "../../src/commands/release/archive.js";
 import { createCommand as releaseCreateCommand } from "../../src/commands/release/create.js";
 import { deleteCommand as releaseDeleteCommand } from "../../src/commands/release/delete.js";
@@ -41,7 +44,9 @@ import { listCommand as spanListCommand } from "../../src/commands/span/list.js"
 import { viewCommand as spanViewCommand } from "../../src/commands/span/view.js";
 import { logsCommand as traceLogsCommand } from "../../src/commands/trace/logs.js";
 import { viewCommand as traceViewCommand } from "../../src/commands/trace/view.js";
-import { ContextError } from "../../src/lib/errors.js";
+import { listCommand as trialListCommand } from "../../src/commands/trial/list.js";
+import { startCommand as trialStartCommand } from "../../src/commands/trial/start.js";
+import { ContextError, ValidationError } from "../../src/lib/errors.js";
 import {
   applyBoundPositionals,
   BoundPositional,
@@ -547,5 +552,117 @@ describe.each(RELEASE_COMMANDS)("%s", (_name, command) => {
 
   test("a blank version fails to parse", () => {
     expect(() => bind(command, ["  "])).toThrow(ContextError);
+  });
+});
+
+/** Commands that take `[<org>/]<id>` with an org-scoped ID that is not hex. */
+const ORG_ID_COMMANDS: readonly (readonly [string, unknown, string])[] = [
+  ["agent-conversation view", agentConversationViewCommand, "conv-1"],
+  ["integration delete", integrationDeleteCommand, "42"],
+];
+
+/** The org and ID a command parsed from `[<org>/]<id>`. */
+function parseOrgId(command: unknown, args: readonly string[]) {
+  const [bound] = bind(command, args);
+  expect(bound).toBeInstanceOf(BoundPositional);
+  const parsed = (bound as BoundPositional<unknown, unknown>).parsed as {
+    readonly org: { readonly org?: string };
+    readonly conversationId?: string;
+    readonly id?: string;
+  };
+  return { org: parsed.org.org, id: parsed.conversationId ?? parsed.id };
+}
+
+describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
+  test("a bare ID auto-detects the org", () => {
+    expect(parseOrgId(command, [id])).toEqual({ org: undefined, id });
+  });
+
+  test("<org>/<id> and <org> <id> name the org", () => {
+    expect(parseOrgId(command, [`my-org/${id}`])).toEqual({
+      org: "my-org",
+      id,
+    });
+    expect(parseOrgId(command, ["my-org", id])).toEqual({ org: "my-org", id });
+  });
+
+  test("a project fails to parse: the ID is org-scoped", () => {
+    const error = parseError(command, [`my-org/web/${id}`]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ValidationError,
+    );
+  });
+
+  test("a missing ID fails to parse, before the command runs", () => {
+    const error = parseError(command, []);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ContextError,
+    );
+  });
+
+  test("a second ID fails to parse rather than being ignored", () => {
+    const error = parseError(command, ["my-org", id, id]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ValidationError,
+    );
+  });
+});
+
+/** Commands that take an org and nothing else, and where it goes. */
+const ORG_COMMANDS: readonly (readonly [string, unknown, readonly string[]])[] =
+  [
+    ["org view", orgViewCommand, []],
+    ["trial list", trialListCommand, []],
+    // The trial name comes first
+    ["trial start", trialStartCommand, ["seer"]],
+  ];
+
+/** Parse `args` with an org command's positional, run as `sentry <name>`. */
+function bindOrg(name: string, command: unknown, args: readonly string[]) {
+  const [bound] = applyBoundPositionals(args, positionalOf(command), {
+    ...CONTEXT,
+    commandPrefix: ["sentry", ...name.split(" ")],
+  });
+  expect(bound).toBeInstanceOf(BoundPositional);
+  return bound as BoundPositional<unknown, unknown>;
+}
+
+/** The org a command parsed: none to auto-detect, and a URL's server. */
+function orgOf(bound: BoundPositional<unknown, unknown>) {
+  const parsed = bound.parsed as { readonly org?: unknown };
+  // `trial start` has the trial name besides the org
+  return "name" in (bound.parsed as object) ? parsed.org : parsed;
+}
+
+describe.each(ORG_COMMANDS)("%s", (name, command, before) => {
+  test("no org auto-detects it", () => {
+    expect(orgOf(bindOrg(name, command, before))).toEqual({});
+  });
+
+  test.each(["my-org", "my-org/"])("%s names the org", (org) => {
+    expect(orgOf(bindOrg(name, command, [...before, org]))).toEqual({
+      org: "my-org",
+    });
+  });
+
+  test("a project fails to parse: only an org is taken", () => {
+    expect(() => bindOrg(name, command, [...before, "my-org/web"])).toThrow(
+      /takes no project/,
+    );
+  });
+
+  test("a pasted URL names the org; its server is applied on resolve, not parse", async () => {
+    const bound = bindOrg(name, command, [
+      ...before,
+      `${SERVER}/organizations/acme/`,
+    ]);
+    expect(orgOf(bound)).toEqual({ org: "acme", baseUrl: SERVER });
+    expect(applyUrl).not.toHaveBeenCalled();
+
+    await expect(bound.resolved).rejects.toBeInstanceOf(UrlApplied);
+    expect(applyUrl).toHaveBeenCalledWith(SERVER);
   });
 });

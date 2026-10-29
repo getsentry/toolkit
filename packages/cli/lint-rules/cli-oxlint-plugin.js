@@ -64,12 +64,15 @@ const BOUND_TARGET_TYPES = new Set([
   "ListCommandTarget",
   "OrgOptionalTarget",
   "OrgProjectTarget",
+  "OrgTarget",
   "ProjectBoundTarget",
   "ReleaseTarget",
   "BoundArguments",
+  "ConversationArguments",
   "DashboardArguments",
   "DashboardListArguments",
   "EventViewArguments",
+  "IntegrationArguments",
   "LogListArguments",
   "LogViewArguments",
   "ReplayArguments",
@@ -77,6 +80,7 @@ const BOUND_TARGET_TYPES = new Set([
   "SpanViewArguments",
   "TraceLogsArguments",
   "TraceViewArguments",
+  "TrialStartArguments",
   "WidgetAddArguments",
 ]);
 
@@ -216,13 +220,6 @@ const UNBOUND_TARGET_PARSING_ALLOWED = new Map([
   ["/src/commands/alert/metrics/edit.ts", "#1564: alert rule target"],
   ["/src/commands/alert/metrics/list.ts", "#1564: alert rule target"],
   ["/src/commands/alert/metrics/view.ts", "#1564: alert rule target"],
-  // `[<org>/]<id>` with a non-hex ID, like `releaseParameter`
-  ["/src/commands/agent-conversation/view.ts", "#1564: org-scoped ID"],
-  ["/src/commands/integration/delete.ts", "#1564: org-scoped ID"],
-  // An org slug alone
-  ["/src/commands/org/view.ts", "#1564: org positional"],
-  ["/src/commands/trial/list.ts", "#1564: org positional"],
-  ["/src/commands/trial/start.ts", "#1564: org positional"],
   // A target followed by other positionals
   ["/src/commands/dashboard/create.ts", "#1564: target and title"],
   ["/src/commands/init.ts", "#1564: target and directory"],

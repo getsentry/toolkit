@@ -5,6 +5,7 @@
  * Uses spyOn pattern to mock API client and resolve-target.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { startCommand } from "../../../src/commands/trial/start.js";
@@ -172,9 +173,15 @@ describe("trial start command", () => {
     const { context } = createMockContext();
     const func = await startCommand.loader();
 
-    await expect(
-      func.call(context, { json: false }, "unknown-name"),
-    ).rejects.toThrow(ValidationError);
+    const error = await func
+      .call(context, { json: false }, "unknown-name")
+      .catch((caught: unknown) => caught);
+    // Rejected while parsing the arguments, before resolving the org
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ValidationError,
+    );
+    expect(resolveOrgSpy).not.toHaveBeenCalled();
   });
 
   test("throws ValidationError when no trial available", async () => {
