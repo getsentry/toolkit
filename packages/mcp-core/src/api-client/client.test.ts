@@ -15,7 +15,7 @@ import {
   ApiRateLimitError,
   ApiServerError,
   ApiValidationError,
-} from "./errors";
+} from "@sentry/toolkit-core/api-client/errors";
 import { z } from "zod";
 
 describe("validateEvents error bodies", () => {

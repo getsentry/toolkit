@@ -1024,6 +1024,9 @@ importers:
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
+      '@standard-schema/spec':
+        specifier: 1.1.0
+        version: 1.1.0
       http-cache-semantics:
         specifier: ^4.2.0
         version: 4.2.0
@@ -1037,9 +1040,15 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
+      valibot:
+        specifier: ^1.4.2
+        version: 1.4.2(typescript@5.8.3)
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@4.1.11)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.8.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
 
 packages:
 

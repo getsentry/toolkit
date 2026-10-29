@@ -11,22 +11,9 @@
 // A namespace import, so a missing `zstdCompress` (Node < 22.15) is
 // `undefined` rather than a link error.
 import * as nodeZlib from "node:zlib";
+import type { BodyCodec, EncodedBody } from "./body.js";
 
-/** How an entry's body bytes are encoded. */
-export type BodyEncoding = "zstd" | "br" | "identity";
-
-/** A body as stored: its bytes plus what is needed to decode them. */
-export type EncodedBody = {
-  bytes: Uint8Array;
-  encoding: BodyEncoding;
-  /**
-   * Compression dictionary the bytes need. Never set today; recorded so a
-   * later dictionary rollout can tell its entries apart from plain ones.
-   */
-  dictId?: string;
-  /** Size of the original body, which bounds decompression. */
-  rawSize: number;
-};
+export type { BodyCodec, BodyEncoding, EncodedBody } from "./body.js";
 
 /** Bodies smaller than this are stored uncompressed. */
 export const MIN_COMPRESSED_BYTES = 256;
@@ -51,19 +38,6 @@ export type ZlibRuntime = {
   brotliDecompress: Transform<nodeZlib.BrotliOptions>;
   zstdCompress?: Transform<nodeZlib.ZstdOptions>;
   zstdDecompress?: Transform<nodeZlib.ZstdOptions>;
-};
-
-/** Encodes and decodes cached bodies. */
-export type BodyCodec = {
-  /** Compress a body for storage. */
-  encode(raw: Uint8Array): Promise<EncodedBody>;
-  /**
-   * Restore a stored body. Returns `undefined` when this runtime cannot read
-   * the entry (zstd on Node < 22.15, or a dictionary it does not have), so the
-   * caller treats it as a miss. Throws when the bytes are corrupt or do not
-   * decode to `rawSize` bytes.
-   */
-  decode(body: EncodedBody): Promise<Uint8Array | undefined>;
 };
 
 function run<Options>(

@@ -21,10 +21,7 @@ import {
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
-import {
-  parseRetryDelayMs,
-  type RetryPolicy,
-} from "@sentry/toolkit-core/api-retry";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
 import { createApiTransport } from "@sentry/toolkit-core/api-transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
@@ -59,14 +56,14 @@ import {
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
 import { USER_AGENT } from "../version";
-import { apiPath } from "./api-path";
+import { apiPath } from "@sentry/toolkit-core/api-client/api-path";
 import {
   ApiError,
   ApiNotFoundError,
   ApiRateLimitError,
   ApiValidationError,
   createApiError,
-} from "./errors";
+} from "@sentry/toolkit-core/api-client/errors";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -74,7 +71,6 @@ import {
   AlertActionOptionSchema,
   AlertConditionOptionSchema,
   AlertRuleProjectScopeSchema,
-  ApiErrorSchema,
   AutofixRunSchema,
   AutofixRunStateSchema,
   ClientKeyListSchema,
@@ -215,6 +211,11 @@ import type {
   User,
   UserReportList,
 } from "./types";
+import {
+  type ErrorResponseBody,
+  readErrorResponse,
+  readJsonResponse,
+} from "@sentry/toolkit-core/api-client/response";
 
 // TODO: this is shared - so ideally, for safety, it uses @sentry/core, but currently
 // logger isnt exposed (or rather, it is, but its not the right logger)
@@ -785,6 +786,72 @@ export class SentryApiService {
     }
   }
 
+  /** Map a failed response's body to the matching `ApiError` subclass. */
+  private errorFromResponse(
+    response: Response,
+    body: ErrorResponseBody,
+    path: string,
+  ): ApiError {
+    const { retryAfterMs } = body;
+    const errorText = body.text ?? "";
+    const logExtra = {
+      status: response.status,
+      statusText: response.statusText,
+      host: this.host,
+      path,
+    };
+    const bodyPreview =
+      errorText.length > 256 ? `${errorText.slice(0, 253)}…` : errorText;
+
+    if (body.parseError !== undefined) {
+      if (body.isHtml) {
+        logWarn("Received HTML error page instead of JSON", {
+          loggerScope: ["api", "client"],
+          extra: { ...logExtra, parseErrorMessage: body.parseError },
+        });
+        // HTML response instead of JSON typically indicates a server configuration issue
+        return createApiError(
+          `Server error: Received HTML instead of JSON (${response.status} ${response.statusText}). This may indicate an invalid URL or server issue.`,
+          response.status,
+          errorText,
+          undefined,
+          retryAfterMs,
+        );
+      }
+      logWarn("Failed to parse JSON error response", {
+        loggerScope: ["api", "client"],
+        extra: { ...logExtra, bodyPreview, parseErrorMessage: body.parseError },
+      });
+    } else if (body.json) {
+      if (body.detail !== undefined) {
+        return createApiError(
+          body.detail,
+          response.status,
+          body.detail,
+          body.json,
+          retryAfterMs,
+        );
+      }
+      logWarn("Failed to parse validated API error response", {
+        loggerScope: ["api", "client"],
+        extra: {
+          ...logExtra,
+          bodyPreview,
+          validationErrorMessage: "Error response has no string detail",
+        },
+      });
+    }
+
+    // Use the error factory to create the appropriate error type based on status
+    return createApiError(
+      `API request failed: ${response.statusText}\n${errorText}`,
+      response.status,
+      errorText,
+      undefined,
+      retryAfterMs,
+    );
+  }
+
   /**
    * Makes an authenticated request to the Sentry API through the shared transport.
    *
@@ -902,141 +969,14 @@ export class SentryApiService {
       if (allowStatuses?.includes(response.status)) {
         return response;
       }
-      const retryAfterMs = parseRetryDelayMs(response.status, response.headers);
-      const errorText = await response.text();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(errorText);
-      } catch (error) {
-        // If we can't parse JSON, check if it's HTML (server error)
-        if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
-          logWarn("Received HTML error page instead of JSON", {
-            loggerScope: ["api", "client"],
-            extra: {
-              status: response.status,
-              statusText: response.statusText,
-              host: this.host,
-              path,
-              parseErrorMessage:
-                error instanceof Error ? error.message : String(error),
-            },
-          });
-          // HTML response instead of JSON typically indicates a server configuration issue
-          throw createApiError(
-            `Server error: Received HTML instead of JSON (${response.status} ${response.statusText}). This may indicate an invalid URL or server issue.`,
-            response.status,
-            errorText,
-            undefined,
-            retryAfterMs,
-          );
-        }
-        logWarn("Failed to parse JSON error response", {
-          loggerScope: ["api", "client"],
-          extra: {
-            status: response.status,
-            statusText: response.statusText,
-            host: this.host,
-            path,
-            bodyPreview:
-              errorText.length > 256
-                ? `${errorText.slice(0, 253)}…`
-                : errorText,
-            parseErrorMessage:
-              error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
-
-      if (parsed) {
-        const { data, success, error } = ApiErrorSchema.safeParse(parsed);
-
-        if (success) {
-          // Use the new error factory to create the appropriate error type
-          throw createApiError(
-            data.detail,
-            response.status,
-            data.detail,
-            parsed,
-            retryAfterMs,
-          );
-        }
-
-        logWarn("Failed to parse validated API error response", {
-          loggerScope: ["api", "client"],
-          extra: {
-            status: response.status,
-            statusText: response.statusText,
-            host: this.host,
-            path,
-            bodyPreview:
-              errorText.length > 256
-                ? `${errorText.slice(0, 253)}…`
-                : errorText,
-            validationErrorMessage:
-              error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
-
-      // Use the error factory to create the appropriate error type based on status
-      throw createApiError(
-        `API request failed: ${response.statusText}\n${errorText}`,
-        response.status,
-        errorText,
-        undefined,
-        retryAfterMs,
+      throw this.errorFromResponse(
+        response,
+        await readErrorResponse(response),
+        path,
       );
     }
 
     return response;
-  }
-
-  /**
-   * Safely parses a JSON response, checking Content-Type header first.
-   *
-   * @param response The Response object from fetch
-   * @returns Promise resolving to the parsed JSON object
-   * @throws {Error} If response is not JSON or parsing fails
-   */
-  private async parseJsonResponse(response: Response): Promise<unknown> {
-    // Handle case where response might not have all properties (e.g., in tests or promise chains)
-    if (!response.headers?.get) {
-      return await response.json();
-    }
-
-    const contentType = response.headers.get("content-type");
-
-    // Check if the response is JSON
-    if (!contentType || !contentType.includes("application/json")) {
-      const responseText = await response.text();
-
-      // Check if it's HTML
-      if (
-        contentType?.includes("text/html") ||
-        responseText.includes("<!DOCTYPE") ||
-        responseText.includes("<html")
-      ) {
-        // HTML when expecting JSON usually indicates authentication or routing issues
-        throw new Error(
-          `Expected JSON response but received HTML (${response.status} ${response.statusText}). This may indicate you're not authenticated, the URL is incorrect, or there's a server issue.`,
-        );
-      }
-
-      // Generic non-JSON error
-      throw new Error(
-        `Expected JSON response but received ${contentType || "unknown content type"} ` +
-          `(${response.status} ${response.statusText})`,
-      );
-    }
-
-    try {
-      return await response.json();
-    } catch (error) {
-      // JSON parsing failure after successful response
-      throw new Error(
-        `Failed to parse JSON response: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
   }
 
   /**
@@ -1059,7 +999,7 @@ export class SentryApiService {
     requestOptions?: { host?: string },
   ): Promise<unknown> {
     const response = await this.request(path, options, requestOptions);
-    return await this.parseJsonResponse(response);
+    return await readJsonResponse(response);
   }
 
   /** Let SDK operations build paths and queries while MCP owns transport and errors. */
@@ -1089,7 +1029,7 @@ export class SentryApiService {
         );
         const contentType = response.headers.get("content-type");
         if (!contentType?.includes("application/json")) {
-          await this.parseJsonResponse(response);
+          await readJsonResponse(response);
         }
         return response;
       },
@@ -1956,7 +1896,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
 
     return {
       dashboards: DashboardListSchema.parse(body),
@@ -2162,7 +2102,7 @@ export class SentryApiService {
         { method: "GET" },
         opts,
       );
-      const body = await this.parseJsonResponse(response);
+      const body = await readJsonResponse(response);
       repos.push(...RepositoryListSchema.parse(body));
       cursor = getNextCursor(response.headers.get("link"));
     } while (cursor);
@@ -2256,7 +2196,7 @@ export class SentryApiService {
       opts,
     );
     const rules = IssueAlertRuleListSchema.parse(
-      await this.parseJsonResponse(response),
+      await readJsonResponse(response),
     );
     const targetLimit = limit ?? 100;
     return {
@@ -2456,7 +2396,7 @@ export class SentryApiService {
     return {
       detectors: z
         .array(DetectorSchema)
-        .parse(await this.parseJsonResponse(response)),
+        .parse(await readJsonResponse(response)),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2488,7 +2428,7 @@ export class SentryApiService {
     return {
       actions: z
         .array(AlertActionOptionSchema)
-        .parse(await this.parseJsonResponse(response)),
+        .parse(await readJsonResponse(response)),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2520,7 +2460,7 @@ export class SentryApiService {
     return {
       conditions: z
         .array(AlertConditionOptionSchema)
-        .parse(await this.parseJsonResponse(response)),
+        .parse(await readJsonResponse(response)),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2662,7 +2602,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
     return {
       rules: MetricAlertRuleListSchema.parse(body),
       nextCursor: getNextCursor(response.headers.get("link")),
@@ -2725,7 +2665,7 @@ export class SentryApiService {
       opts,
     );
     return {
-      data: await this.parseJsonResponse(response),
+      data: await readJsonResponse(response),
       nextCursor: getNextCursor(response.headers.get("link")),
     };
   }
@@ -2765,7 +2705,7 @@ export class SentryApiService {
         undefined,
         opts,
       );
-      const body = await this.parseJsonResponse(response);
+      const body = await readJsonResponse(response);
       teams.push(...TeamListSchema.parse(body));
       cursor = getNextCursor(response.headers.get("link"));
     } while (cursor);
@@ -3927,7 +3867,7 @@ export class SentryApiService {
       undefined,
       { ...opts, allowStatuses: [400] },
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
     // ParseError responses use a detail envelope instead of validation results.
     // Keep malformed validation results reportable, even when their status is 400.
     if (
@@ -4212,7 +4152,7 @@ export class SentryApiService {
         undefined,
         opts,
       );
-      return { data: await this.parseJsonResponse(response), response };
+      return { data: await readJsonResponse(response), response };
     }, schema);
   }
 
@@ -4283,9 +4223,7 @@ export class SentryApiService {
       opts,
     );
     return {
-      issue: NativeExternalIssueSchema.parse(
-        await this.parseJsonResponse(response),
-      ),
+      issue: NativeExternalIssueSchema.parse(await readJsonResponse(response)),
       changed: response.status === 201,
     };
   }
@@ -4400,7 +4338,7 @@ export class SentryApiService {
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
     );
     return {
-      issue: ExternalIssueSchema.parse(await this.parseJsonResponse(response)),
+      issue: ExternalIssueSchema.parse(await readJsonResponse(response)),
       changed: response.status === 201,
     };
   }
@@ -4456,7 +4394,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
     return {
       reports: UserReportListSchema.parse(body),
       nextCursor: getNextCursor(response.headers.get("link")),
@@ -5703,7 +5641,7 @@ export class SentryApiService {
         undefined,
         opts,
       );
-      const body = await this.parseJsonResponse(response);
+      const body = await readJsonResponse(response);
       const details = AIConversationDetailsResponseSchema.parse(body);
       // Pages repeat the same conversation-scoped title.
       title = details.title;
@@ -5785,7 +5723,7 @@ export class SentryApiService {
       undefined,
       opts,
     );
-    const body = await this.parseJsonResponse(response);
+    const body = await readJsonResponse(response);
 
     return {
       conversations: AIConversationSummaryListSchema.parse(body),
