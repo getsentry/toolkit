@@ -6,6 +6,48 @@ import { decodeEnvelope } from "./codec.ts";
 const encode = (value: string) => new TextEncoder().encode(value);
 
 describe("portable byte envelope codec", () => {
+  test.each([
+    [
+      "client_report",
+      { discarded_events: [{ reason: "sample_rate", quantity: 1 }] },
+    ],
+    ["session", { sid: "session-id", status: "ok", attrs: { release: "1.0" } }],
+    [
+      "user_report",
+      { event_id: "reported-event", comments: "Something broke" },
+    ],
+  ] as const)(
+    "strict decoding retains %s JSON fields without a content type",
+    (type, payload) => {
+      const bytes = encode(
+        `{}\n${JSON.stringify({ type })}\n${JSON.stringify(payload)}`,
+      );
+      const errors = vi.fn();
+      const strict = decodeEnvelope(bytes, undefined, errors, true)!;
+      expect(strict[1][0][1]).toEqual({ ...payload, type });
+      expect(strict[1]).toEqual(decodeEnvelope(bytes)![1]);
+      expect(errors).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["future_json", "replay_recording"])(
+    "strict decoding keeps unrecognized %s payloads opaque",
+    (type) => {
+      const payload = encode('{"custom":"value"}\nopaque');
+      const header = encode(
+        `{}\n${JSON.stringify({ type, length: payload.length })}\n`,
+      );
+      const bytes = new Uint8Array(header.length + payload.length);
+      bytes.set(header);
+      bytes.set(payload, header.length);
+      const errors = vi.fn();
+      expect(decodeEnvelope(bytes, undefined, errors, true)![1][0][1]).toEqual({
+        data: btoa(String.fromCharCode(...payload)),
+      });
+      expect(errors).not.toHaveBeenCalled();
+    },
+  );
+
   test("parses Uint8Array text attachment bytes with explicit byte lengths", () => {
     const text = "é\nhello";
     const payload = encode(text);

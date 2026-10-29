@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
@@ -10,6 +11,70 @@ const fixture = readFileSync(
 );
 
 describe("Node Telemetry adapter", () => {
+  test.each([
+    [
+      "client_report",
+      { discarded_events: [{ reason: "sample_rate", quantity: 1 }] },
+    ],
+    ["session", { sid: "session-id", status: "ok", attrs: { release: "1.0" } }],
+    [
+      "user_report",
+      { event_id: "reported-event", comments: "Something broke" },
+    ],
+  ] as const)(
+    "publishes retained %s JSON fields with an envelope-only receipt",
+    async (type, payload) => {
+      const telemetry = createTelemetryPipeline();
+      try {
+        const body = Buffer.from(
+          `{}\n${JSON.stringify({ type })}\n${JSON.stringify(payload)}`,
+        );
+        const observed: unknown[] = [];
+        telemetry.subscribe((snapshot) =>
+          observed.push(snapshot.envelopes[0][1][0][1]),
+        );
+        const result = await telemetry.ingestPayload({ body });
+        expect(result).toMatchObject({
+          status: "ignored",
+          reason: "unsupported_items",
+          envelopeId: expect.any(String),
+        });
+        if (result.status !== "ignored" || !result.envelopeId)
+          throw new Error("Expected retained envelope-only receipt");
+        expect(observed).toEqual([{ ...payload, type }]);
+        expect(telemetry.getEnvelopes()[0][1][0][1]).toEqual({
+          ...payload,
+          type,
+        });
+        expect(telemetry.getDecodedPayload(result.envelopeId)?.body).toEqual(
+          body,
+        );
+      } finally {
+        telemetry.dispose();
+      }
+    },
+  );
+
+  test.each(["client_report", "session", "user_report"])(
+    "rejects malformed %s JSON instead of retaining it as opaque bytes",
+    async (type) => {
+      const telemetry = createTelemetryPipeline();
+      try {
+        expect(
+          await telemetry.ingestPayload({
+            body: `{}\n${JSON.stringify({ type })}\nnot json`,
+          }),
+        ).toMatchObject({
+          status: "invalid",
+          diagnostics: [{ code: "invalid_envelope" }],
+        });
+        expect(telemetry.getEnvelopes()).toEqual([]);
+      } finally {
+        telemetry.dispose();
+      }
+    },
+  );
+
   test.each(["replay_recording", "future_binary"])(
     "retains an opaque %s item alongside supported telemetry",
     async (type) => {
@@ -70,7 +135,7 @@ describe("Node Telemetry adapter", () => {
     "subscribers observe %s raw bytes together with the envelope in one notification",
     async (_, body) => {
       const spotlight = createTelemetryPipeline();
-      const observations: (Buffer | undefined)[] = [];
+      const observations: (Uint8Array | undefined)[] = [];
       spotlight.subscribe((snapshot) => {
         const id = String(snapshot.envelopes[0][0].__spotlight_envelope_id);
         observations.push(spotlight.getDecodedPayload(id)?.body);
@@ -88,8 +153,8 @@ describe("Node Telemetry adapter", () => {
     if (first.status !== "processed")
       throw new Error("Expected processed envelope");
     const observations: {
-      old: Buffer | undefined;
-      newest: Buffer | undefined;
+      old: Uint8Array | undefined;
+      newest: Uint8Array | undefined;
     }[] = [];
     spotlight.subscribe((snapshot) => {
       const envelope = snapshot.envelopes.find(

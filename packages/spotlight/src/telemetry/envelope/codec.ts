@@ -4,6 +4,15 @@ import { RAW_TYPES, SUPPORTED_EVENT_TYPES } from "../constants/sentry.ts";
 import { opaquePayload } from "./payload.ts";
 import { type SourceType, inferEnvelopeSource } from "./source.ts";
 
+// JSON wire items also include reports retained for inspection without a processed model.
+const JSON_ITEM_TYPES = new Set([
+  ...SUPPORTED_EVENT_TYPES,
+  "span",
+  "client_report",
+  "session",
+  "user_report",
+]);
+
 /**
  * Spotlight-specific extensions added to envelope headers for internal tracking
  */
@@ -104,9 +113,7 @@ export function decodeEnvelope(
     try {
       if (
         RAW_TYPES.has(itemHeader.type) ||
-        (strict &&
-          !SUPPORTED_EVENT_TYPES.has(itemHeader.type) &&
-          itemHeader.type !== "span")
+        (strict && !JSON_ITEM_TYPES.has(itemHeader.type))
       ) {
         if (
           !itemHeader.content_type &&
