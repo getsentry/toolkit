@@ -258,6 +258,13 @@ try {
 
 See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
+`ApiError` and its subclasses live in the shared client,
+`@sentry/toolkit-core/api-client/errors`, and `SentryApiService` builds them
+from `readErrorResponse` in `@sentry/toolkit-core/api-client/response`. The
+CLI reads raw error responses with the same helper and maps them to its own
+exit-coded `ApiError`. See
+[`packages/toolkit-core/README.md`](../../packages/toolkit-core/README.md#api-client).
+
 ### Automatic Retries
 
 `SentryApiService` sends every request, including `@sentry/api` operations,
