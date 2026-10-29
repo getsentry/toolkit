@@ -11,14 +11,6 @@
       "types": "./src/api-request.ts",
       "default": "./src/api-request.ts"
     },
-    "./api-retry": {
-      "types": "./src/api-retry.ts",
-      "default": "./src/api-retry.ts"
-    },
-    "./api-transport": {
-      "types": "./src/api-transport.ts",
-      "default": "./src/api-transport.ts"
-    },
     "./api-path-segment": {
       "types": "./src/api-path-segment.ts",
       "default": "./src/api-path-segment.ts"
@@ -47,10 +39,6 @@
       "types": "./src/oauth-poll.ts",
       "default": "./src/oauth-poll.ts"
     },
-    "./pagination": {
-      "types": "./src/pagination.ts",
-      "default": "./src/pagination.ts"
-    },
     "./region-cache": {
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
@@ -58,10 +46,6 @@
     "./resource-identity": {
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"
-    },
-    "./response-cache": {
-      "types": "./src/response-cache/index.ts",
-      "default": "./src/response-cache/index.ts"
     },
     "./response-cache/codec": {
       "types": "./src/response-cache/codec.ts",
@@ -78,6 +62,10 @@
     "./sentry-origin": {
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
+    },
+    "./api-client/response-cache": {
+      "types": "./src/api-client/response-cache/index.ts",
+      "default": "./src/api-client/response-cache/index.ts"
     },
     "./api-client/*": {
       "types": "./src/api-client/*.ts",

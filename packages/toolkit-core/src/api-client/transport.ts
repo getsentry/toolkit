@@ -4,7 +4,7 @@
  *
  * Per request it sets the Authorization header, refreshes the credential once
  * after a 401 (any method), times out each attempt, retries through
- * `api-retry`, replays request bodies, optionally follows redirects only to
+ * `retry`, replays request bodies, optionally follows redirects only to
  * trusted origins, and serves and invalidates cached GETs through an injected
  * cache. The host supplies credentials, header rules, error classes, logging,
  * and spans.
@@ -16,8 +16,8 @@ import {
   parseRetryDelayMs,
   type RetryPolicy,
   sleep,
-} from "./api-retry.js";
-import { sentryBearerHeader, trimAuthToken } from "./auth-token.js";
+} from "./retry.js";
+import { sentryBearerHeader, trimAuthToken } from "../auth-token.js";
 import type { CacheLookup } from "./response-cache/policy.js";
 
 type FetchInput = Request | string | URL;

@@ -9,7 +9,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { operations } from "@sentry/api/operations";
-import { isIdempotentRequest } from "@sentry/toolkit-core/api-retry";
+import { isIdempotentRequest } from "@sentry/toolkit-core/api-client/retry";
 import type { IdempotentOperation } from "../src/lib/idempotent-operations.js";
 import { projectApiOperations } from "./lib/api-schema.js";
 

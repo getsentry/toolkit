@@ -268,15 +268,15 @@ exit-coded `ApiError`. See
 ### Automatic Retries
 
 `SentryApiService` sends every request, including `@sentry/api` operations,
-through the shared transport in `@sentry/toolkit-core/api-transport`, which
+through the shared transport in `@sentry/toolkit-core/api-client/transport`, which
 retries failed requests using the shared policy in
-`@sentry/toolkit-core/api-retry`. `SentryApiService` never retries on top, so
+`@sentry/toolkit-core/api-client/retry`. `SentryApiService` never retries on top, so
 a request is retried by one layer only. This page describes the
 behavior; the values live only in code, so read them there instead of copying
 them here:
 
 - Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
-  [`api-retry.ts`](../../packages/toolkit-core/src/api-retry.ts). In short, a
+  [`retry.ts`](../../packages/toolkit-core/src/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
@@ -305,7 +305,7 @@ Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
 
 The CLI sends its requests through the shared transport in
-`@sentry/toolkit-core/api-transport`, configured in
+`@sentry/toolkit-core/api-client/transport`, configured in
 `packages/cli/src/lib/sentry-client.ts`. It follows the same shared rule; only
 the caps differ (`RETRY_POLICY`): the hosted MCP keeps its total wait short so
 a Workers request isn't held open, while the CLI can wait longer. The CLI also

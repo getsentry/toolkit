@@ -20,7 +20,7 @@ import {
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
   paginate as paginateFrom,
-} from "@sentry/toolkit-core/pagination";
+} from "@sentry/toolkit-core/api-client/pagination";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
@@ -493,7 +493,7 @@ export async function autoPaginate<T>(
  * This is the only supported way to build a limit-bounded list; the
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
  * (#1458, #1608). Page sizing and resume-safe cursors live in
- * `@sentry/toolkit-core/pagination`, shared with the MCP; this wrapper sets
+ * `@sentry/toolkit-core/api-client/pagination`, shared with the MCP; this wrapper sets
  * the CLI's page cap and default limit and logs the CLI's warnings.
  *
  * Callers own region resolution and query building inside `fetchPage`, and

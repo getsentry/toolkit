@@ -21,8 +21,8 @@ import {
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
-import { createApiTransport } from "@sentry/toolkit-core/api-transport";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
+import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -316,7 +316,7 @@ type RequestOptions = {
 
 /**
  * Caps for automatic retries. Which statuses and methods are retried is the
- * shared rule in `@sentry/toolkit-core/api-retry`.
+ * shared rule in `@sentry/toolkit-core/api-client/retry`.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two
