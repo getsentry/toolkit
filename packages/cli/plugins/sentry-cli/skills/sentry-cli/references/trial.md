@@ -55,8 +55,7 @@ Start a product trial
 
 | Argument | Description |
 |----------|-------------|
-| `<name>` | Trial name (seer, replays, performance, spans, profiling, logs, monitors, uptime, plan) |
-| `[<org>]` | Organization slug (auto-detected if omitted) |
+| `<name> [<org>]` | Trial name (seer, replays, performance, spans, profiling, logs, monitors, uptime, plan) and organization slug (auto-detected if omitted) |
 
 **Examples:**
 

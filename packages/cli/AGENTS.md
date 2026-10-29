@@ -301,8 +301,11 @@ Reference: `replay/view.ts`, `span/view.ts`, `log/view.ts`, and
 parser from `src/lib/target-positional.ts`, which binds the resolver:
 `orgOptionalTarget` (org, optional project), `projectBoundTarget` (one org and
 project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
-`project view`). `func` takes the matching type (`OrgOptionalTarget`,
-`ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the parsed form as
+`project view`). An org alone (`org view`) uses `orgTarget`; a
+`boundArguments` parser reads one with `parseOrgInput` and resolves it with
+`resolveOrgInput` (see `trial start`). `func` takes the matching type
+(`OrgOptionalTarget`, `ProjectBoundTarget`, `OrgProjectTarget<R>`,
+`OrgTarget`), reads the parsed form as
 `target.parsed` (e.g. `target.parsed.type`), and gets the org and project
 with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
 itself, and an omitted target arrives as auto-detect. The
