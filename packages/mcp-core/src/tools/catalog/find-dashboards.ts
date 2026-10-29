@@ -327,7 +327,7 @@ export default defineTool({
         id: String(dashboard.id),
         title: dashboard.title,
         widgetCount: dashboard.widgetPreview.length,
-        widgetTypes: Array.from(new Set(dashboard.widgetDisplay)),
+        widgetTypes: [...new Set(dashboard.widgetDisplay)],
         projects: dashboard.projects.map(String),
         environments: dashboard.environment,
         createdBy: dashboard.createdBy

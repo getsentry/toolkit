@@ -143,7 +143,7 @@ function extractExtraApiFields(
     expanded.delete(known);
   }
 
-  return expanded.size > 0 ? Array.from(expanded) : undefined;
+  return expanded.size > 0 ? [...expanded] : undefined;
 }
 
 /** Accepted values for the --sort flag (matches trace list) */

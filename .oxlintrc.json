@@ -37,7 +37,8 @@
         "allow": ["URL", "URLSearchParams"]
       }
     ],
-    "jsx-a11y/interactive-supports-focus": "off"
+    "jsx-a11y/interactive-supports-focus": "off",
+    "unicorn/prefer-spread": "error"
   },
   "overrides": [
     {

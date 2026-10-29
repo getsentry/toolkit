@@ -370,7 +370,7 @@ function extractJsonCandidates(text: string): string[] {
 
   // Strategy 1: Extract from markdown code blocks (```json ... ``` or ``` ... ```)
   const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?```/g;
-  const allMatches = Array.from(text.matchAll(codeBlockRegex));
+  const allMatches = [...text.matchAll(codeBlockRegex)];
   for (const match of allMatches) {
     candidates.add(match[1].trim());
   }
@@ -380,7 +380,7 @@ function extractJsonCandidates(text: string): string[] {
     candidates.add(jsonObject);
   }
 
-  return Array.from(candidates);
+  return [...candidates];
 }
 
 /**

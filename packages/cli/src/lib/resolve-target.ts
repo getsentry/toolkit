@@ -799,7 +799,7 @@ async function findSimilarProjectsAcrossOrgs(
 
     // Deduplicate slugs so fuzzyMatch doesn't waste slots on the same
     // project appearing in multiple orgs.
-    const uniqueSlugs = Array.from(new Set(allProjects.map((p) => p.slug)));
+    const uniqueSlugs = [...new Set(allProjects.map((p) => p.slug))];
     const slugMatches = fuzzyMatch(slug, uniqueSlugs, { maxResults: 5 });
 
     // When a display name is provided (input contained spaces), also
@@ -816,7 +816,7 @@ async function findSimilarProjectsAcrossOrgs(
           nameToSlug.set(p.name, p.slug);
         }
       }
-      const uniqueNames = Array.from(nameToSlug.keys());
+      const uniqueNames = [...nameToSlug.keys()];
       const matchedNames = fuzzyMatch(displayName, uniqueNames, {
         maxResults: 5,
       });
@@ -826,9 +826,7 @@ async function findSimilarProjectsAcrossOrgs(
     }
 
     // Merge slug matches and name matches, preferring slug matches.
-    const mergedSlugs = Array.from(
-      new Set(slugMatches.concat(nameMatchedSlugs)),
-    );
+    const mergedSlugs = [...new Set([...slugMatches, ...nameMatchedSlugs])];
 
     // Expand matched slugs back to org-qualified entries (may include
     // the same slug from multiple orgs — that's correct for suggestions).

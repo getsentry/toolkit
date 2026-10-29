@@ -169,7 +169,7 @@ describe.each(DRIVERS)("sqlite adapter [%s driver]", (kind) => {
     const row = db.query("SELECT data FROM t").get() as {
       data: Uint8Array;
     };
-    expect(Array.from(row.data)).toEqual([1, 2, 3, 255]);
+    expect([...row.data]).toEqual([1, 2, 3, 255]);
     db.close();
   });
 

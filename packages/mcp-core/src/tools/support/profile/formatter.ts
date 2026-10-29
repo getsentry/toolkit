@@ -621,7 +621,7 @@ function formatTopFramesByOccurrence(
     }
   }
 
-  const sortedFrames = Array.from(frameCounts.entries())
+  const sortedFrames = [...frameCounts.entries()]
     .filter(([frameIdx]) => {
       const frame = profile.frames[frameIdx];
       return frame !== undefined && (!options.focusOnUserCode || frame.in_app);

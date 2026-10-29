@@ -132,7 +132,7 @@ function buildRequestFields(
   return dataset !== "replays" &&
     isMetricsDataset(dataset) &&
     !isAggregateQuery(fields)
-    ? Array.from(new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS]))
+    ? [...new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS])]
     : fields;
 }
 

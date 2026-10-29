@@ -452,7 +452,7 @@ async function handleSuspendedStep(
       "done",
     ]);
     const history = stepHistory.get(stepId) ?? [];
-    const previousPhases = history.slice();
+    const previousPhases = [...history];
     history.push(summarizeToolPhaseForHistory(payload, phase, toolResult));
     stepHistory.set(stepId, history);
 

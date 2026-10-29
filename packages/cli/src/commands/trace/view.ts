@@ -205,7 +205,7 @@ const PROGRESS_THRESHOLD = 20;
 export function flattenSpanTree(spans: TraceSpan[]): TraceSpan[] {
   const result: TraceSpan[] = [];
   // Reverse so the first child is popped first (depth-first order)
-  const stack = Array.from(spans).reverse();
+  const stack = [...spans].reverse();
   let span = stack.pop();
   while (span) {
     result.push(span);

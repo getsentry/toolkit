@@ -162,9 +162,7 @@ function getSubcommandLabel(route: RouteInfo): string {
     const parts = cmd.path.split(" ");
     return parts.at(-1) ?? route.name;
   });
-  return Array.from(new Set(raw))
-    .sort((a, b) => a.localeCompare(b))
-    .join(", ");
+  return [...new Set(raw)].sort((a, b) => a.localeCompare(b)).join(", ");
 }
 
 /**

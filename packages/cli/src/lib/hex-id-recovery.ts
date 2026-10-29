@@ -486,7 +486,7 @@ export type FuzzyLookupAdapter = (ctx: LookupContext) => Promise<string[]>;
 
 /** Deduplicate while preserving order, then filter by prefix + suffix. */
 function filterByCandidate(ids: string[], candidate: HexCandidate): string[] {
-  const unique = Array.from(new Set(ids));
+  const unique = [...new Set(ids)];
   return unique.filter(
     (id) =>
       id.startsWith(candidate.prefix) &&

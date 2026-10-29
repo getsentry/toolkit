@@ -56,7 +56,7 @@ const FEATURE_SELECTION_CONTEXT =
   "Based on your project, these features are available to set up.";
 
 function sortFeatureOptions(features: string[]): string[] {
-  return features.slice().sort((a, b) => {
+  return [...features].sort((a, b) => {
     const rankDifference =
       (DEFAULT_FEATURE_RANK.get(a) ?? Number.MAX_SAFE_INTEGER) -
       (DEFAULT_FEATURE_RANK.get(b) ?? Number.MAX_SAFE_INTEGER);
