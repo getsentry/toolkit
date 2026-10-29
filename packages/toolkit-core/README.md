@@ -26,7 +26,9 @@ With `validateRedirects`, it follows redirects by hand, sends the credential
 only to origins the host trusts, and records the final origin for
 `getValidatedResponseSource`. With a cache, a GET is looked up first (a stale
 entry is revalidated with its `ETag`), a successful GET is stored, and a
-successful write invalidates what it made stale.
+successful write invalidates what it made stale. While the host's `fresh`
+hook returns true, such as during a tool call that asked for fresh data, GETs
+skip the lookup and their responses replace the cached entry.
 
 The host passes in a `CredentialProvider` (the current credential, an optional
 refresh ahead of expiry, and the 401 refresh), header rules that may reject a
