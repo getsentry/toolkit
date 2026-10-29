@@ -6,10 +6,11 @@
  * `ID_KINDS.issue` (`id-arguments.ts`): an issue identifier is one whole
  * token, which `issue-identifier.ts` takes apart, and anything that cannot
  * be one (text with spaces) is a name, which the command searches issues
- * for.
+ * for. Commands that take several issues (`parseIssueArguments`) take no
+ * names: each word is an issue.
  */
 
-import { firstNonBlankLine } from "./arg-parsing.js";
+import { firstNonBlankLine, splitNewlineArg } from "./arg-parsing.js";
 import { ValidationError } from "./errors.js";
 import { ID_KINDS, parseIdArguments } from "./id-arguments.js";
 import {
@@ -68,6 +69,56 @@ export function parseIssueArgument(arg: string): IssueArgument {
   }
   const { parsed, baseUrl } = parseIssueIdentifier(ids[0] ?? input);
   return { text: arg, parsed, ...(baseUrl && { baseUrl }) };
+}
+
+/** How a command takes several issues. */
+type IssueArgumentsOptions = {
+  /** Usage shown when no issue is given */
+  readonly usageHint: string;
+  /**
+   * Whether the command may get none, to report the count itself (as
+   * `issue merge` does, which also takes one from a flag)
+   */
+  readonly optional?: boolean;
+};
+
+/**
+ * Parse the arguments of a command that takes several issues, without side
+ * effects, like {@link parseIssueArgument} for each issue.
+ *
+ * Every whitespace-separated word of every argument is an issue, so IDs
+ * pasted or piped as one argument (`"CLI-1 CLI-2"`, one per line) still
+ * name each issue. That leaves no search text: these commands take a list
+ * of issues, and searching is `sentry issue list --query`.
+ *
+ * @throws {ContextError} When there is no issue, unless optional
+ * @throws {ValidationError} When an issue is a malformed identifier, or a
+ *   Sentry URL has no issue in it
+ *
+ * @example
+ * parseIssueArguments(["CLI-1", "my-org/CLI-2\n100"], { usageHint })
+ * // CLI-1, my-org/CLI-2, and 100, each parsed
+ */
+export function parseIssueArguments(
+  args: readonly string[],
+  options: IssueArgumentsOptions,
+): IssueArgument[] {
+  // Each word is a whole issue identifier, so the grammar reads them all
+  // as IDs
+  const { ids } = parseIdArguments(
+    args.flatMap(splitNewlineArg),
+    ID_KINDS.issue,
+    {
+      usageHint: options.usageHint,
+      multiple: true,
+      optional: options.optional,
+      validate: false,
+    },
+  );
+  return ids.map((id) => {
+    const { parsed, baseUrl } = parseIssueIdentifier(id);
+    return { text: id, parsed, ...(baseUrl && { baseUrl }) };
+  });
 }
 
 /**
