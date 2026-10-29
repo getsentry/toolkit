@@ -10,12 +10,14 @@
 
 import { ArgumentParseError } from "@stricli/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { createCommand as dashboardCreateCommand } from "../../src/commands/dashboard/create.js";
 import { listCommand as eventListCommand } from "../../src/commands/event/list.js";
 import { viewCommand as eventViewCommand } from "../../src/commands/event/view.js";
 import { resolveCommand as feedbackResolveCommand } from "../../src/commands/feedback/resolve.js";
 import { spamCommand as feedbackSpamCommand } from "../../src/commands/feedback/spam.js";
 import { unresolveCommand as feedbackUnresolveCommand } from "../../src/commands/feedback/unresolve.js";
 import { viewCommand as feedbackViewCommand } from "../../src/commands/feedback/view.js";
+import { initCommand } from "../../src/commands/init.js";
 import { archiveCommand } from "../../src/commands/issue/archive.js";
 import { eventsCommand as issueEventsCommand } from "../../src/commands/issue/events.js";
 import { linkCommand as issueLinkCommand } from "../../src/commands/issue/link.js";
@@ -26,6 +28,7 @@ import { unlinkCommand as issueUnlinkCommand } from "../../src/commands/issue/un
 import { unresolveCommand as issueUnresolveCommand } from "../../src/commands/issue/unresolve.js";
 import { listCommand as logListCommand } from "../../src/commands/log/list.js";
 import { viewCommand as logViewCommand } from "../../src/commands/log/view.js";
+import { createCommand as projectCreateCommand } from "../../src/commands/project/create.js";
 import { archiveCommand as releaseArchiveCommand } from "../../src/commands/release/archive.js";
 import { createCommand as releaseCreateCommand } from "../../src/commands/release/create.js";
 import { deleteCommand as releaseDeleteCommand } from "../../src/commands/release/delete.js";
@@ -547,5 +550,104 @@ describe.each(RELEASE_COMMANDS)("%s", (_name, command) => {
 
   test("a blank version fails to parse", () => {
     expect(() => bind(command, ["  "])).toThrow(ContextError);
+  });
+});
+
+const ORG_URL = `${SERVER}/organizations/acme/`;
+
+/**
+ * Commands that take an optional `[<org>/][<project>]` target, then other
+ * positionals of their own.
+ */
+const TARGET_THEN_POSITIONALS: readonly {
+  readonly name: string;
+  readonly command: unknown;
+  /** Arguments that name org `acme` */
+  readonly args: readonly string[];
+  /** The org the command parsed */
+  readonly org: (parsed: unknown) => string | undefined;
+  /** Arguments that fail to parse */
+  readonly invalid: readonly string[];
+  /** Whether the target may be a pasted Sentry URL */
+  readonly url: boolean;
+}[] = [
+  {
+    name: "init",
+    command: initCommand,
+    args: ["acme/", "./app"],
+    org: (parsed) => (parsed as { target: ParsedTarget }).target.org,
+    // Two targets, and no directory
+    invalid: ["acme/", "other/"],
+    url: true,
+  },
+  {
+    name: "dashboard create",
+    command: dashboardCreateCommand,
+    args: ["acme/", "My", "Dashboard"],
+    org: (parsed) => (parsed as { target: ParsedTarget }).target.org,
+    // No title
+    invalid: [],
+    url: true,
+  },
+  {
+    name: "project create",
+    command: projectCreateCommand,
+    args: ["acme/web:node", "acme/api:python"],
+    org: (parsed) => (parsed as { explicitOrg?: string }).explicitOrg,
+    // No platform
+    invalid: ["acme/web"],
+    url: false,
+  },
+];
+
+describe.each(TARGET_THEN_POSITIONALS)("$name", (entry) => {
+  test("parses its arguments before the command runs", () => {
+    const [bound] = bind(entry.command, entry.args);
+    expect(bound).toBeInstanceOf(BoundPositional);
+    expect(entry.org((bound as BoundPositional<unknown, unknown>).parsed)).toBe(
+      "acme",
+    );
+  });
+
+  test("invalid arguments fail to parse, before the command runs", () => {
+    expect(parseError(entry.command, entry.invalid)).toBeInstanceOf(
+      ArgumentParseError,
+    );
+  });
+
+  test.runIf(entry.url)(
+    "a pasted URL names the org; its server is applied on resolve, not parse",
+    async () => {
+      const [, ...rest] = entry.args;
+      const [bound] = bind(entry.command, [ORG_URL, ...rest]);
+      // Reading `resolved` starts the resolver, so only read `parsed` first
+      const value = bound as BoundPositional<unknown, unknown>;
+      expect(entry.org(value.parsed)).toBe("acme");
+      expect(value.parsed).toMatchObject({ baseUrl: SERVER });
+      expect(applyUrl).not.toHaveBeenCalled();
+
+      await expect(value.resolved).rejects.toBeInstanceOf(UrlApplied);
+      expect(applyUrl).toHaveBeenCalledWith(SERVER);
+    },
+  );
+});
+
+describe("init target and directory", () => {
+  test.each([
+    [["./app"], { directory: "./app", target: { type: "auto-detect" } }],
+    [
+      ["acme/web"],
+      { target: { type: "explicit", org: "acme", project: "web" } },
+    ],
+    [["acme/", "./app"], { directory: "./app" }],
+    [
+      ["./app", "acme/"],
+      { directory: "./app", warning: expect.stringMatching(REVERSED) },
+    ],
+  ])("tells the target from the directory in %j", (args, expected) => {
+    const [bound] = bind(initCommand, args);
+    expect((bound as BoundPositional<unknown, unknown>).parsed).toMatchObject(
+      expected,
+    );
   });
 });

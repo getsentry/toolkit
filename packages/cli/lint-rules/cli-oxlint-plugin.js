@@ -68,10 +68,13 @@ const BOUND_TARGET_TYPES = new Set([
   "ReleaseTarget",
   "BoundArguments",
   "DashboardArguments",
+  "DashboardCreateArguments",
   "DashboardListArguments",
   "EventViewArguments",
+  "InitArguments",
   "LogListArguments",
   "LogViewArguments",
+  "ProjectCreateArguments",
   "ReplayArguments",
   "SpanListArguments",
   "SpanViewArguments",
@@ -223,10 +226,6 @@ const UNBOUND_TARGET_PARSING_ALLOWED = new Map([
   ["/src/commands/org/view.ts", "#1564: org positional"],
   ["/src/commands/trial/list.ts", "#1564: org positional"],
   ["/src/commands/trial/start.ts", "#1564: org positional"],
-  // A target followed by other positionals
-  ["/src/commands/dashboard/create.ts", "#1564: target and title"],
-  ["/src/commands/init.ts", "#1564: target and directory"],
-  ["/src/commands/project/create.ts", "#1564: name and platform"],
 ]);
 
 /** The follow-up of `file` in an allow-list, if it is on it. */
