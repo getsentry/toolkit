@@ -78,6 +78,7 @@
     "tsc": "tsc --noEmit && tsc -p tsconfig.browser.json"
   },
   "dependencies": {
+    "@sentry/api": "catalog:",
     "@sentry/search-syntax": "catalog:",
     "@standard-schema/spec": "1.1.0",
     "http-cache-semantics": "^4.2.0"
@@ -85,7 +86,7 @@
   "devDependencies": {
     "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
-    "typescript": "catalog:",
+    "typescript": "^5.9.3",
     "valibot": "^1.4.2",
     "vitest": "catalog:",
     "zod": "catalog:"

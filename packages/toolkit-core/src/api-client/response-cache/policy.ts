@@ -171,6 +171,15 @@ function buildResponseHeaders(
   return result;
 }
 
+/**
+ * A decoded body as a `Response` body. TypeScript 5.9's DOM `BodyInit`
+ * takes only `ArrayBuffer`-backed views; stored bodies never sit on a
+ * `SharedArrayBuffer`.
+ */
+function responseBody(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return bytes as Uint8Array<ArrayBuffer>;
+}
+
 /** A `stale` lookup for an entry with an `ETag`, or `undefined` without one. */
 function staleLookup(
   options: LookupOptions,
@@ -213,7 +222,7 @@ function staleLookup(
       store
         .set(key, renewed, retentionMs(result.policy, entry.tier))
         .catch((error: unknown) => onRenewError?.(error));
-      return new Response(body, {
+      return new Response(responseBody(body), {
         status: entry.status,
         headers: buildResponseHeaders(result.policy, entry),
       });
@@ -253,7 +262,7 @@ export async function lookupResponse(
   }
   return {
     kind: "hit",
-    response: new Response(body, {
+    response: new Response(responseBody(body), {
       status: entry.status,
       headers: buildResponseHeaders(policy, entry),
     }),
