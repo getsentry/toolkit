@@ -52,6 +52,15 @@ describe("trace", () => {
     });
   });
 
+  test("a trace ID path is not a target for a second trace ID", () => {
+    const other = "bbbb2222cccc3333dddd4444eeee5555";
+    expect(trace(`acme/web/${ID}`, other)).toEqual({
+      id: ID,
+      scope: { type: "org-project", org: "acme", project: "web" },
+      warnings: [`Extra arguments ignored: ${other}. Expected: ${HINT}`],
+    });
+  });
+
   test("warns about arguments after the trace ID", () => {
     expect(trace("acme/web", ID, "a", "b").warnings).toEqual([
       `Extra arguments ignored: a b. Expected: ${HINT}`,
@@ -63,8 +72,6 @@ describe("trace", () => {
     [["acme/web/"]],
     [["acme/"]],
     [["/"]],
-    [[`acme//${ID}`]],
-    [[`/web/${ID}`]],
   ])("%j → missing trace ID", (args) => {
     expect(() => trace(...args)).toThrow(ContextError);
   });
@@ -74,7 +81,9 @@ describe("trace", () => {
     [["not-hex"]],
     [["acme/not-hex"]],
     [["acme/web", "not-hex"]],
-  ])("%j → invalid trace ID", (args) => {
+    [[`acme//${ID}`]],
+    [[`/web/${ID}`]],
+  ])("%j → invalid", (args) => {
     expect(() => trace(...args)).toThrow(ValidationError);
   });
 
@@ -144,6 +153,18 @@ describe("traceOrProject", () => {
       trace: {
         scope: { type: "org-project", org: "acme", project: "web" },
         warnings: [`Extra arguments ignored: extra. Expected: ${HINT}`],
+      },
+    });
+  });
+
+  test("a trace ID path wins over a trailing trace ID", () => {
+    const other = "bbbb2222cccc3333dddd4444eeee5555";
+    expect(parse(`acme/${ID}`, other)).toEqual({
+      mode: "trace",
+      trace: {
+        id: ID,
+        scope: { type: "org", org: "acme" },
+        warnings: [`Extra arguments ignored: ${other}. Expected: ${HINT}`],
       },
     });
   });

@@ -42,8 +42,8 @@
       : [];
   }
 
-  // `[<org>/[<project>/]]<id>`, as split by `idPath`. Without the ID, or with
-  // only one of `<org>/<project>`, the ID is missing.
+  // `[<org>/[<project>/]]<id>`, as split by `idPath`. Without the ID, the ID
+  // is missing; with an empty `<org>` or `<project>`, the path is invalid.
   function fromPath(path, warnings = []) {
     if (path.id === "" && (path.root || path.org !== undefined)) {
       missing();
@@ -56,7 +56,10 @@
       return { id: value, scope: { type: "org", org: path.org }, warnings };
     }
     if (path.org === "" || path.project === "") {
-      missing();
+      invalid(
+        `Invalid format: "${path.text}" needs an organization and a project before the ID.\n\nUsage: ${usageHint}`,
+        "positional",
+      );
     }
     const { org, project } = path;
     return { id: value, scope: { type: "org-project", org, project }, warnings };
@@ -90,9 +93,11 @@
 // `[<org>/[<project>/]]<trace-id>`, `<target> <trace-id>`, or a trace URL.
 // Arguments after those are ignored with a warning, or silently after a URL
 // (which may be followed by what the browser's address bar had around it).
+// A first argument that ends in a trace ID is never a target.
 trace
   = u:traceUrl arg* { return fromUrl(u, u.traceId); }
-  / sep p:idPath end { return fromPath(p); }
+  / sep p:idPath x:arg* &{ return x.length === 0 || isId(p.id); }
+    { return fromPath(p, ignored(x)); }
   / t:arg i:arg x:arg* { return fromTarget(t, i, ignored(x)); }
   / end { missing(); }
 
@@ -105,12 +110,13 @@ tracePath
 traceOrProject
   = end { return { mode: "project" }; }
   / u:traceUrl arg* { return traceMode(fromUrl(u, u.traceId)); }
+  // `[<org>/[<project>/]]<trace-id>`, before a trailing trace ID is read
+  // as the trace's
+  / sep p:idPath x:arg* &{ return isId(p.id); }
+    { return traceMode(fromPath(p, ignored(x))); }
   // `<target> <trace-id>`
   / t:arg x:(!lastArg @arg)* i:lastArg &{ return isId(i); }
     { return traceMode(fromTarget(t, i, ignored(x))); }
-  // `[<org>/[<project>/]]<trace-id>`
-  / sep p:idPath x:arg* &{ return isId(p.id); }
-    { return traceMode(fromPath(p, ignored(x))); }
   / t:arg arg* { return { mode: "project", target: t }; }
 
 // `[<org>/[<project>/]]<replay-id>`, `<target> <replay-id>`, or a replay URL
@@ -159,7 +165,7 @@ idPath
   / "/" i:idSegment argEnd { return { id: i, root: true }; }
   / o:$[^/\0]+ "/" i:idSegment argEnd { return { id: i, org: o }; }
   / o:$[^/\0]* "/" p:$(!("/" idSegment argEnd) [^\0])* "/" i:idSegment argEnd
-    { return { id: i, org: o, project: p }; }
+    { return { id: i, org: o, project: p, text: text() }; }
 
 // A segment, and the slashes after it when it is an ID
 idSegment
