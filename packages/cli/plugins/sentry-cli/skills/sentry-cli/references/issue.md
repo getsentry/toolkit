@@ -158,6 +158,13 @@ sentry issue events FRONT-ABC --json
 
 Show the top values of an issue tag
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+| `<key>` | Tag key, e.g. release, server_name, browser.name |
+
 **Flags:**
 - `-e, --environment <value> - Filter to one environment (default: all environments)`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`

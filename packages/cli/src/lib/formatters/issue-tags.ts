@@ -6,6 +6,7 @@
 import type { GetOrganizationIssueTagResponse } from "@sentry/api";
 import { sanitize } from "./local.js";
 import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
+import { fmtPct } from "./numbers.js";
 import { type Column, formatTable } from "./table.js";
 
 type TagValue = NonNullable<
@@ -16,9 +17,11 @@ function percentage(
   count: number | null,
   total: number | null | undefined,
 ): string {
-  return count !== null && typeof total === "number" && total > 0
-    ? `${((count / total) * 100).toFixed(1)}%`
-    : "—";
+  return fmtPct(
+    count !== null && typeof total === "number" && total > 0
+      ? (count / total) * 100
+      : null,
+  );
 }
 
 /** Show counts and shares of retained events, with any undisplayed remainder. */
