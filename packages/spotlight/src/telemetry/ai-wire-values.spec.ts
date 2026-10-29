@@ -356,3 +356,48 @@ test("GenAI queries omit null request messages", async () => {
   ]);
   expect(trace?.prompt).toBeUndefined();
 });
+
+test.each(
+  [calls, JSON.stringify(calls), []].map((toolCalls) => ({ toolCalls })),
+)(
+  "Vercel AI queries read standard response tool calls on child spans: $toolCalls",
+  async ({ toolCalls }) => {
+    const trace = await queryTrace([
+      span("root", { "vercel.ai.operationId": "ai.generateText" }),
+      span("child", { "gen_ai.response.tool_calls": toolCalls }, "root"),
+    ]);
+    expect(trace?.response?.toolCalls).toEqual(
+      typeof toolCalls === "string" ? calls : toolCalls,
+    );
+  },
+);
+
+test.each(invalidCalls.map((invalid) => ({ invalid })))(
+  "Vercel AI queries fall back to standard tool calls after a malformed proprietary alias: $invalid",
+  async ({ invalid }) => {
+    const trace = await queryTrace([
+      span("root", {
+        "vercel.ai.operationId": "ai.generateText",
+        "vercel.ai.response.toolCalls": invalid,
+        "gen_ai.response.tool_calls": JSON.stringify(calls),
+      }),
+    ]);
+    expect(trace?.response?.toolCalls).toEqual(calls);
+  },
+);
+
+test.each([calls, []].map((toolCalls) => ({ toolCalls })))(
+  "Vercel AI queries keep a valid proprietary tool-call alias ahead of the standard fallback: $toolCalls",
+  async ({ toolCalls }) => {
+    const trace = await queryTrace([
+      span("root", {
+        "vercel.ai.operationId": "ai.generateText",
+        "vercel.ai.response.toolCalls": toolCalls,
+        "gen_ai.response.tool_calls": [
+          { toolCallId: "other", toolName: "other", args: {} },
+        ],
+      }),
+    ]);
+    expect(trace?.response?.toolCalls).toEqual(toolCalls);
+  },
+);

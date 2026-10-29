@@ -29,6 +29,7 @@ const AI_PROMPT_FIELD = "vercel.ai.prompt";
 const AI_PROMPT_MESSAGES_FIELD = "gen_ai.request.messages";
 const AI_RESPONSE_FINISH_REASON_FIELD = "vercel.ai.response.finishReason";
 const GEN_AI_RESPONSE_FINISH_REASONS_FIELD = "gen_ai.response.finish_reasons";
+const GEN_AI_RESPONSE_TOOL_CALLS_FIELD = "gen_ai.response.tool_calls";
 const AI_RESPONSE_TEXT_FIELD = "gen_ai.response.text";
 const AI_RESPONSE_TOOL_CALLS_FIELD = "vercel.ai.response.toolCalls";
 
@@ -428,16 +429,14 @@ function extractResponseData(
     trace.response.finishReason = finishReason;
   }
 
-  const toolCalls = span.data[AI_RESPONSE_TOOL_CALLS_FIELD];
-  if (toolCalls) {
-    try {
-      const parsed: unknown =
-        typeof toolCalls === "string" ? JSON.parse(toolCalls) : toolCalls;
-      if (Array.isArray(parsed)) {
-        trace.response.toolCalls = parsed;
-      }
-    } catch {
-      // Truncated tool-call JSON must not discard the rest of the AI trace.
+  for (const field of [
+    AI_RESPONSE_TOOL_CALLS_FIELD,
+    GEN_AI_RESPONSE_TOOL_CALLS_FIELD,
+  ]) {
+    const toolCalls = parsed(span.data[field]);
+    if (Array.isArray(toolCalls)) {
+      trace.response.toolCalls = toolCalls;
+      break;
     }
   }
 }
