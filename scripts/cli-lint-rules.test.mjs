@@ -198,7 +198,7 @@ tester.run(
       },
       {
         // On the allow-list, with its follow-up
-        filename: "/repo/packages/cli/src/commands/org/view.ts",
+        filename: "/repo/packages/cli/src/commands/alert/metrics/view.ts",
         code: "const org = { placeholder: 'org', parse: parseOrgTarget };",
       },
     ],
@@ -230,7 +230,7 @@ tester.run(
       },
       {
         // A ratchet: an allow-listed file that takes a bound target now
-        filename: "/repo/packages/cli/src/commands/org/view.ts",
+        filename: "/repo/packages/cli/src/commands/alert/metrics/view.ts",
         code: "const org = { parse: orgOptionalTarget };",
         errors: [{ message: /Remove this file from the allow-list/ }],
       },

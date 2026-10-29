@@ -29,7 +29,7 @@ import {
   type RouteMapEntry,
   resolveCommandPath,
 } from "./introspect.js";
-import { sixelBanner, sixelBannerRows } from "./sixel.js";
+import { graphicsBanner, graphicsBannerExtraRows } from "./sixel.js";
 
 const TAGLINE = "The command-line interface for Sentry";
 
@@ -302,22 +302,22 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   const overview = Boolean(options.overview) && !detectAgent();
 
   const header: string[] = [];
-  // Extra rows the sixel image occupies beyond its single line of text.
-  let sixelExtraRows = 0;
+  // Extra rows the banner image occupies beyond its lines of text.
+  let imageExtraRows = 0;
 
   // Skip banner for non-TTY to avoid wasting tokens in agent loops
   if (process.stdout.isTTY) {
     const cols = process.stdout.columns ?? 80;
-    // Prefer a real sixel image on capable terminals; otherwise fall back to the
-    // block-art banner sized to the terminal width (returns "" only when the
-    // terminal is too narrow for even the compact mark).
-    const sixel = sixelBanner(cols);
-    const banner = sixel ?? formatBanner(cols);
+    // Prefer a real kitty/sixel image on capable terminals; otherwise fall back
+    // to the block-art banner sized to the terminal width (returns "" only when
+    // the terminal is too narrow for even the compact mark).
+    const image = graphicsBanner(cols);
+    const banner = image ?? formatBanner(cols);
     if (banner) {
       header.push("");
       header.push(banner);
       header.push("");
-      sixelExtraRows = sixel ? sixelBannerRows() - 1 : 0;
+      imageExtraRows = image ? graphicsBannerExtraRows() : 0;
     }
   }
 
@@ -360,7 +360,7 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   // fit above the fold. Entries such as the flags and env-var sections span
   // several lines, so count rendered lines rather than array entries.
   const reservedRows =
-    [...header, ...lines].join("\n").split("\n").length + sixelExtraRows;
+    [...header, ...lines].join("\n").split("\n").length + imageExtraRows;
   const commands = overview
     ? fitToTerminalHeight(generateOverviewCommands(loggedIn), reservedRows)
     : generateCommands();

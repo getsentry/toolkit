@@ -10,6 +10,7 @@ import {
   graphicsCellSize,
   selectGraphicsFormat,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../sixel.js";
 import { encodeImageToSixel } from "../sixel-image.js";
 import { rasterizeChart } from "./chart-core.js";
@@ -88,7 +89,7 @@ export function formatExploreTimeSeriesChart(
   }
   const output =
     format === "kitty"
-      ? encodeImageToKitty(image, width, true)
+      ? encodeImageToKitty(image, width, true, tmuxKittyPlacement(columns))
       : encodeImageToSixel(image, width, true);
   if (!output) {
     return;
