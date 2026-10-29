@@ -35,6 +35,7 @@ import {
   RECOMMENDED_FIELDS,
   TRACE_METRICS_SAMPLE_IDENTITY_FIELDS,
 } from "./config";
+import { buildDroppedEventsNote } from "./dropped-events-note";
 import { getFieldRecoveryHints } from "./field-hints";
 import {
   formatErrorResults,
@@ -1006,15 +1007,30 @@ async function executeSearchEvents(
     // request shape — fields + orderby — which is not what a timeseries
     // sends (yAxis + interval, no fields/sort). events-timeseries validates
     // the query server-side, so a bad query still surfaces as an API error.
-    const series = await apiService.getEventsTimeSeries({
-      organizationSlug,
-      query: timeSeriesQuery,
-      yAxis: timeSeries.yAxis,
-      interval: timeSeries.interval ?? undefined,
-      projectId,
-      dataset,
-      ...timeParams,
-    });
+    // Fetch drops for the same window in parallel with the series: wall-clock
+    // cost is max(series, drops), not the sum. The note is appended only when
+    // unintentional drops are material.
+    const [series, droppedEventsNote] = await Promise.all([
+      apiService.getEventsTimeSeries({
+        organizationSlug,
+        query: timeSeriesQuery,
+        yAxis: timeSeries.yAxis,
+        interval: timeSeries.interval ?? undefined,
+        projectId,
+        dataset,
+        ...timeParams,
+      }),
+      buildDroppedEventsNote({
+        apiService,
+        organizationSlug,
+        projectId,
+        dataset: dataset as PublicEventsDataset,
+        interval: timeSeries.interval,
+        timeParams,
+        toolAvailable:
+          context.availableToolNames?.has("find_dropped_events") ?? false,
+      }),
+    ]);
     // A series always has buckets, so count the ones with data.
     trackSeerOutcome(
       seerOutcome,
@@ -1036,17 +1052,20 @@ async function executeSearchEvents(
       timeParams.start,
       timeParams.end,
     );
+    const timeSeriesOutput = formatTimeSeriesResults({
+      series,
+      yAxis: timeSeries.yAxis,
+      interval: timeSeries.interval,
+      inputQuery: params.query || timeSeriesQuery,
+      includeExplanation: params.includeExplanation,
+      explanation,
+      timeRange: timeParams,
+      url: statsUrl,
+    });
     return withLeadingNote(
-      formatTimeSeriesResults({
-        series,
-        yAxis: timeSeries.yAxis,
-        interval: timeSeries.interval,
-        inputQuery: params.query || timeSeriesQuery,
-        includeExplanation: params.includeExplanation,
-        explanation,
-        timeRange: timeParams,
-        url: statsUrl,
-      }),
+      droppedEventsNote
+        ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
+        : timeSeriesOutput,
     );
   }
 
