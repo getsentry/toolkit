@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { type ApiRequestTransport, createApiClientCore } from "./core.js";
+import { z } from "zod";
+import {
+  type ApiRequestTransport,
+  createApiClientCore,
+  listPage,
+} from "./core.js";
 import {
   ApiNotFoundError,
   ApiRateLimitError,
   ApiServerError,
+  ApiValidationError,
   ConfigurationError,
 } from "./errors.js";
+import { ApiResponseValidationError } from "./validate.js";
 
 const ORIGIN = "https://us.sentry.io";
 
@@ -246,5 +253,61 @@ describe("createApiClientCore requestJson", () => {
     await expect(core.requestJson(ORIGIN, "/organizations/")).rejects.toThrow(
       "Expected JSON response but received HTML",
     );
+  });
+});
+
+describe("listPage", () => {
+  const rows = z.array(z.object({ id: z.number() }));
+
+  function page(ids: number[], nextCursor?: string) {
+    const headers: Record<string, string> = nextCursor
+      ? {
+          link: `<${ORIGIN}/api/0/x/?cursor=${nextCursor}>; rel="next"; results="true"; cursor="${nextCursor}"`,
+        }
+      : {};
+    return {
+      data: ids.map((id) => ({ id })),
+      response: new Response(null, { headers }),
+    };
+  }
+
+  it.each([0, 1.5, 5001])("rejects limit %s", async (limit) => {
+    await expect(
+      listPage(async () => page([]), rows, limit),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it("rejects a page with more rows than requested", async () => {
+    await expect(
+      listPage(async () => page([1, 2, 3]), rows, 2),
+    ).rejects.toThrow("API returned more items than requested");
+  });
+
+  it("rejects a repeated cursor", async () => {
+    await expect(
+      listPage(async () => page([1], "0:1:0"), rows, 5),
+    ).rejects.toThrow("API returned a repeated pagination cursor");
+  });
+
+  it("validates each page with the schema", async () => {
+    await expect(
+      listPage(
+        async () => ({ data: [{ id: "x" }], response: new Response(null) }),
+        rows,
+        5,
+      ),
+    ).rejects.toBeInstanceOf(ApiResponseValidationError);
+  });
+});
+
+describe("createApiClientCore sdkClient", () => {
+  it("rejects an SDK request to another path", async () => {
+    const { core, transport } = setup(async () => jsonResponse([]));
+    const client = core.sdkClient(ORIGIN, "/organizations/");
+
+    await expect(
+      client.get({ url: "/api/0/projects/", throwOnError: true }),
+    ).rejects.toThrow("Unexpected SDK request target or method");
+    expect(transport.request).not.toHaveBeenCalled();
   });
 });
