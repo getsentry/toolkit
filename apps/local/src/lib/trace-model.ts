@@ -128,7 +128,11 @@ export function adaptTraceGroups(
             visible.push(adapt(span));
           }
         }
-        return visible;
+        // Promoted children can interleave with siblings outside their wrapper.
+        return visible.sort(
+          (a, b) =>
+            (a.startTimestamp ?? Infinity) - (b.startTimestamp ?? Infinity),
+        );
       }
       for (const span of sharedSpans) {
         const local = mapped.get(span.span_id);

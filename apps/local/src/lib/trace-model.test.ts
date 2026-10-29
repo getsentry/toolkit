@@ -357,6 +357,64 @@ describe("buildTraceGroups", () => {
     ]);
   });
 
+  test.each([true, false])(
+    "orders promoted missing-parent spans with their visible siblings (real root: %s)",
+    async (hasRoot) => {
+      const [trace] = await buildTraceGroups(
+        decodeEnvelope(
+          JSON.stringify([
+            {},
+            [
+              [
+                { type: "span" },
+                {
+                  version: 2,
+                  items: [
+                    ...(hasRoot
+                      ? [{ span_id: "root", start_timestamp: 0 }]
+                      : []),
+                    {
+                      span_id: "a",
+                      parent_span_id: "missing-parent",
+                      start_timestamp: 1,
+                    },
+                    {
+                      span_id: "b",
+                      parent_span_id: hasRoot ? "root" : "other-missing-parent",
+                      start_timestamp: 2,
+                    },
+                    {
+                      span_id: "c",
+                      parent_span_id: "missing-parent",
+                      start_timestamp: 3,
+                    },
+                  ].map((span) => ({
+                    ...span,
+                    trace_id: "trace-promoted-order",
+                    end_timestamp: 4,
+                    attributes: {
+                      "sentry.op": { type: "string", value: "task" },
+                    },
+                  })),
+                },
+              ],
+            ],
+          ]),
+          "promoted-order",
+        ),
+      );
+
+      if (hasRoot) expect(trace?.roots).toHaveLength(1);
+      const siblings = hasRoot ? trace?.roots[0]?.children : trace?.roots;
+      expect(siblings?.map((span) => span.id)).toEqual(["a", "b", "c"]);
+      expect(siblings?.map((span) => span.parentId)).toEqual([
+        "missing-parent",
+        hasRoot ? "root" : "other-missing-parent",
+        "missing-parent",
+      ]);
+    },
+  );
+
   test("nests a standalone span using its top-level parent span id", async () => {
     const traces = await buildTraceGroups([
       item({
