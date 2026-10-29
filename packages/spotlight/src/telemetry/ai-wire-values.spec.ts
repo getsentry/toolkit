@@ -302,3 +302,57 @@ test("Vercel AI queries retain token usage on leaf spans without children", asyn
     tokensDisplay: "12 / 3",
   });
 });
+
+test.each(
+  [
+    null,
+    "null",
+    {},
+    "{}",
+    "not JSON",
+    42,
+    true,
+    [null],
+    [{ content: "no role" }],
+    [{ role: 7 }],
+  ].map((invalid) => ({ invalid })),
+)(
+  "GenAI queries upgrade malformed messages to the first valid conversation: $invalid",
+  async ({ invalid }) => {
+    const trace = await queryTrace([
+      span("root", {
+        "gen_ai.request.messages": invalid,
+        "gen_ai.system_instructions": "Be concise",
+      }),
+      span(
+        "valid",
+        {
+          "gen_ai.request.messages": JSON.stringify([
+            { role: "user", content: [{ type: "text", text: "Structured" }] },
+          ]),
+        },
+        "root",
+      ),
+      span(
+        "later",
+        {
+          "gen_ai.request.messages": [
+            { role: "user", content: "Later conversation" },
+          ],
+        },
+        "root",
+      ),
+    ]);
+    expect(trace?.prompt).toEqual({
+      messages: [{ role: "user", content: "Structured" }],
+      system: "Be concise",
+    });
+  },
+);
+
+test("GenAI queries omit null request messages", async () => {
+  const trace = await queryTrace([
+    span("root", { "gen_ai.request.messages": null }),
+  ]);
+  expect(trace?.prompt).toBeUndefined();
+});

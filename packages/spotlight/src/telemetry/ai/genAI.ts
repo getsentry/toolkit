@@ -1,3 +1,4 @@
+import { normalizePromptMessages } from "./messages.ts";
 import { stringifyValue } from "../utils/stringifyValue.ts";
 import { finiteNumber } from "../utils/finiteNumber.ts";
 import { getAllSpansInTree } from "../store/helpers.ts";
@@ -147,10 +148,11 @@ export const genAIHandler: AILibraryHandler = {
     };
 
     const responseState = { finishReasonFromText: false };
+    const promptState = { hasRequestMessages: false };
     for (const span of allSpans) {
       if (!span.data) continue;
       extractMetadata(span, trace);
-      extractPromptData(span, trace);
+      extractPromptData(span, trace, promptState);
       extractResponseData(span, trace, responseState);
       extractToolCallData(span, trace);
     }
@@ -240,24 +242,6 @@ function formatTokensDisplay(
   return UNKNOWN_OPERATION;
 }
 
-/**
- * Normalizes message content from a string or an array of content blocks to a
- * plain string. Only text blocks are surfaced; images/files would need UI work.
- */
-function normalizeMessageContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter(
-        (block): block is { type: string; text: string } =>
-          block?.type === "text" && typeof block.text === "string",
-      )
-      .map((block) => block.text)
-      .join("");
-  }
-  return "";
-}
-
 function extractMetadata(span: Span, trace: AITrace) {
   if (!span.data) return;
 
@@ -280,38 +264,35 @@ function extractMetadata(span: Span, trace: AITrace) {
   }
 }
 
-function extractPromptData(span: Span, trace: AITrace) {
-  if (!span.data || trace.prompt) return;
+function extractPromptData(
+  span: Span,
+  trace: AITrace,
+  state: { hasRequestMessages: boolean },
+) {
+  if (!span.data || state.hasRequestMessages) return;
 
   const promptMessages = span.data[GEN_AI_REQUEST_MESSAGES_FIELD];
-  if (promptMessages === undefined) return;
-
   const system = span.data[GEN_AI_SYSTEM_INSTRUCTIONS_FIELD];
-  const systemText = system !== undefined ? stringifyValue(system) : undefined;
-
-  try {
-    const messages =
-      typeof promptMessages === "string"
-        ? JSON.parse(promptMessages)
-        : promptMessages;
-    if (Array.isArray(messages)) {
-      const normalizedMessages = messages.map(
-        (msg: { role: string; content: unknown }) => ({
-          ...msg,
-          content: normalizeMessageContent(msg.content),
-        }),
-      );
-      trace.prompt = { messages: normalizedMessages, system: systemText };
-      return;
-    }
-  } catch {
-    // fall through to the raw representation below
+  const systemText =
+    system !== undefined && system !== null
+      ? stringifyValue(system)
+      : trace.prompt?.system;
+  const structured = normalizePromptMessages(promptMessages);
+  if (structured !== undefined) {
+    trace.prompt = { messages: structured, system: systemText };
+    state.hasRequestMessages = true;
+    return;
   }
+  if (trace.prompt) return;
 
-  trace.prompt = {
-    messages: [{ role: "unknown", content: stringifyValue(promptMessages) }],
-    system: systemText,
-  };
+  if (promptMessages !== undefined && promptMessages !== null) {
+    trace.prompt = {
+      messages: [{ role: "unknown", content: stringifyValue(promptMessages) }],
+      system: systemText,
+    };
+  } else if (systemText !== undefined) {
+    trace.prompt = { system: systemText };
+  }
 }
 
 function extractResponseData(
