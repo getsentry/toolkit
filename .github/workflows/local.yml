@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/local/**"
+      - "packages/spotlight/**"
       - "packages/cli/src/commands/local/**"
       - "packages/cli/test/commands/local/**"
       - "packages/cli/test/e2e/local.test.ts"

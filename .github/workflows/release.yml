@@ -11,6 +11,7 @@ on:
         options:
           - cli
           - mcp
+          - spotlight
       bump:
         description: Version bump type
         required: true
@@ -67,6 +68,10 @@ jobs:
             mcp)
               workspace=packages/mcp-server
               package_path=packages/mcp-server
+              ;;
+            spotlight)
+              workspace=packages/spotlight
+              package_path=packages/spotlight
               ;;
             *)
               echo "::error::Unsupported product: $PRODUCT"

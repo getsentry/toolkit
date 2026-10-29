@@ -5,7 +5,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import type { LocalTelemetryBuffer } from "./telemetry-buffer.js";
 import {
   createLocalRetentionBuffer,
   type LocalRetentionBuffer,
@@ -35,7 +35,7 @@ export type LocalSession = {
 };
 
 type StoredSession = LocalSession & {
-  buffer: ReturnType<typeof createSpotlightBuffer>;
+  buffer: LocalTelemetryBuffer;
   retention: LocalRetentionBuffer;
   ingestCapability: string;
   streamCapability: string;
@@ -62,7 +62,7 @@ export class AmbiguousLocalSessionError extends Error {
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
   create: (input: CreateLocalSessionInput) => LocalSession;
-  setMaxEnvelopes: (reference: string, value: number) => LocalSession;
+  setMaxEnvelopes: (reference: string, value: number) => Promise<LocalSession>;
   getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
   reset: (reference: string) => void;
@@ -74,7 +74,7 @@ export type LocalSessionStore = {
     ingest: string;
     stream: string;
   };
-  getBuffer: (reference: string) => ReturnType<typeof createSpotlightBuffer>;
+  getBuffer: (reference: string) => LocalTelemetryBuffer;
   list: () => LocalSession[];
   pruneExpired: () => string[];
   recordActivity: (reference: string) => LocalSession;
@@ -169,10 +169,12 @@ export function createLocalSessionStore({
     getRetention(reference) {
       return resolveStored(reference).retention;
     },
-    setMaxEnvelopes(reference, value) {
+    async setMaxEnvelopes(reference, value) {
       const session = resolveStored(reference);
-      session.retention.resize(value);
-      return toPublicSession(update(session, { maxEnvelopes: value }));
+      await session.retention.resize(value);
+      return toPublicSession(
+        update(resolveStored(session.id), { maxEnvelopes: value }),
+      );
     },
     close(reference) {
       const session = resolveStored(reference);
@@ -238,6 +240,7 @@ export function createLocalSessionStore({
         if (session?.clientId && clientSessions.get(session.clientId) === id) {
           clientSessions.delete(session.clientId);
         }
+        session?.buffer.dispose();
         sessions.delete(id);
         listeners.delete(id);
       }

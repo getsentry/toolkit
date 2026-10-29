@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { LocalFeedItem } from "./spotlight.ts";
+import { decodeEnvelope, type LocalFeedItem } from "./spotlight.ts";
 import { createLocalTelemetryStore } from "./telemetry-store.ts";
 
 function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
@@ -104,5 +104,113 @@ describe("LocalTelemetryStore", () => {
 
     expect(store.getSnapshot().items).toEqual([]);
     expect(store.getSnapshot().envelopes).toEqual([envelope]);
+  });
+});
+
+test("shared processing assembles streamed traces and keeps the original capture", async () => {
+  const store = createLocalTelemetryStore({ limit: 2 });
+  const capture = (id: string, payload: unknown) => {
+    const text = JSON.stringify([
+      {},
+      [[{ type: "span" }, { version: 2, items: [payload] }]],
+    ]);
+    const envelope = item({ id, type: "envelope", text, payload: text });
+    store.recordEnvelope(envelope, decodeEnvelope(text, id));
+    return envelope;
+  };
+  const child = capture("child", {
+    trace_id: "trace",
+    span_id: "query",
+    parent_span_id: "root",
+    name: "SELECT 1",
+    start_timestamp: 1.1,
+    end_timestamp: 1.2,
+    attributes: { "sentry.op": { type: "string", value: "db" } },
+  });
+  capture("parent", {
+    trace_id: "trace",
+    span_id: "root",
+    name: "GET /orders",
+    is_segment: true,
+    start_timestamp: 1,
+    end_timestamp: 2,
+  });
+  await store.drain();
+  expect(store.getSnapshot().traceGroups[0]).toMatchObject({
+    title: "GET /orders",
+    durationMs: 1000,
+    roots: [{ id: "root", children: [{ id: "query", durationMs: 100 }] }],
+  });
+  expect(store.getSnapshot().envelopes[0]).toBe(child);
+  expect(
+    store
+      .getSnapshot()
+      .traceGroups[0]?.spans.find((span) => span.id === "query")?.payload,
+  ).toEqual(JSON.parse(child.text)[1][0][1].items[0]);
+
+  // A retained parent must not keep spans from an evicted child envelope.
+  const raw = item({
+    id: "opaque",
+    type: "envelope",
+    text: '[{},[[{"type":"attachment","filename":"raw.txt"},"unmodified"]]]',
+  });
+  store.recordEnvelope(raw, decodeEnvelope(raw.text, raw.id));
+  await store.drain();
+  expect(
+    store.getSnapshot().traceGroups[0]?.spans.map((span) => span.id),
+  ).toEqual(["root"]);
+  expect(store.getSnapshot().attachments[0]?.payload).toBe("unmodified");
+});
+
+test("clearing invalidates queued processing from the previous capture", async () => {
+  const store = createLocalTelemetryStore();
+  const text = JSON.stringify([
+    {},
+    [
+      [
+        { type: "transaction" },
+        {
+          event_id: "old",
+          type: "transaction",
+          transaction: "old capture",
+          start_timestamp: 1,
+          timestamp: 2,
+          contexts: { trace: { trace_id: "old", span_id: "root" } },
+        },
+      ],
+    ],
+  ]);
+  store.recordEnvelope(
+    item({ id: "old", type: "envelope", text }),
+    decodeEnvelope(text, "old"),
+  );
+  store.clear();
+  await store.drain();
+  await Promise.resolve();
+  expect(store.getSnapshot().traceGroups).toEqual([]);
+  expect(store.getSnapshot().items).toEqual([]);
+});
+
+test("uncorrelated transactions stay discoverable without invented trace context", async () => {
+  const store = createLocalTelemetryStore();
+  const text = JSON.stringify([
+    {},
+    [
+      [
+        { type: "transaction" },
+        { transaction: "GET /standalone", timestamp: 2 },
+      ],
+    ],
+  ]);
+  const raw = item({ id: "standalone", type: "envelope", text });
+  store.recordEnvelope(raw, decodeEnvelope(text, raw.id));
+  await store.drain();
+  expect(store.getSnapshot().traceGroups).toMatchObject([
+    { id: "standalone:0", title: "GET /standalone", spans: [], itemCount: 1 },
+  ]);
+  expect(store.getSnapshot().envelopes[0]?.text).toBe(text);
+  expect(store.getSnapshot().items[0]?.payload).toEqual({
+    transaction: "GET /standalone",
+    timestamp: 2,
   });
 });

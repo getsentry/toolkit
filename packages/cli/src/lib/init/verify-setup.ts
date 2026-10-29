@@ -15,7 +15,7 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { addBreadcrumb, captureException, setTag } from "@sentry/node";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createLocalTelemetryBuffer } from "../../commands/local/telemetry-buffer.js";
 import { BUFFER_SIZE, shutdownServer } from "../../commands/local/run.js";
 import { buildApp, tryListen } from "../../commands/local/server.js";
 import { detectDevCommand } from "../dev-script.js";
@@ -373,7 +373,7 @@ export async function verifySetup(
 
   logger.debug(`Verification command: ${detected.args.join(" ")}`);
 
-  const buffer = createSpotlightBuffer(BUFFER_SIZE);
+  const buffer = createLocalTelemetryBuffer(BUFFER_SIZE);
   const app = buildApp(buffer);
 
   let server: Awaited<ReturnType<typeof tryListen>>["server"];

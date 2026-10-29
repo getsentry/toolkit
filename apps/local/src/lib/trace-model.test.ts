@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { decodeEnvelope, type LocalFeedItem } from "./spotlight.js";
-import { buildTraceGroups, traceIdForItem } from "./trace-model.js";
+import { traceIdForItem } from "./trace-model.js";
+import { buildTraceGroups } from "../test-fixtures/trace-groups.ts";
 
 function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
   return {
@@ -16,7 +17,7 @@ function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
 describe("buildTraceGroups", () => {
   test.each([undefined, "remote-parent"])(
     "promotes a late streamed segment title and reparents earlier children (parent: %s)",
-    (parentId) => {
+    async (parentId) => {
       const child = {
         trace_id: "trace-stream",
         span_id: "query",
@@ -32,7 +33,7 @@ describe("buildTraceGroups", () => {
           id,
         );
       const earlyItems = decode([child], "child");
-      expect(buildTraceGroups(earlyItems)[0]?.roots).toMatchObject([
+      expect((await buildTraceGroups(earlyItems))[0]?.roots).toMatchObject([
         { id: "query" },
       ]);
       const items = [
@@ -56,7 +57,7 @@ describe("buildTraceGroups", () => {
         ),
         ...decode([child], "redelivery"),
       ];
-      const [trace] = buildTraceGroups(items);
+      const [trace] = await buildTraceGroups(items);
       expect(trace).toMatchObject({
         title: "GET /orders",
         startTimestamp: 1700000000,
@@ -73,7 +74,7 @@ describe("buildTraceGroups", () => {
 
   test.each([true, false])(
     "combines legacy transactions and streamed spans without duplicate spans (transaction first: %s)",
-    (transactionFirst) => {
+    async (transactionFirst) => {
       const transaction = decodeEnvelope(
         JSON.stringify([
           {},
@@ -141,7 +142,7 @@ describe("buildTraceGroups", () => {
         ]),
         "streamed",
       );
-      const traces = buildTraceGroups(
+      const traces = await buildTraceGroups(
         transactionFirst
           ? [...transaction, ...streamed]
           : [...streamed, ...transaction],
@@ -158,7 +159,7 @@ describe("buildTraceGroups", () => {
     },
   );
 
-  test("reads trace timing in linear work for a long single trace", () => {
+  test("reads trace timing in linear work for a long single trace", async () => {
     let timestampReads = 0;
     const entries: LocalFeedItem[] = Array.from(
       { length: 1000 },
@@ -174,7 +175,7 @@ describe("buildTraceGroups", () => {
         },
       }),
     );
-    const [trace] = buildTraceGroups(entries);
+    const [trace] = await buildTraceGroups(entries);
     expect(trace).toMatchObject({
       itemCount: 1000,
       logCount: 1000,
@@ -185,14 +186,14 @@ describe("buildTraceGroups", () => {
     expect(timestampReads).toBeLessThanOrEqual(entries.length * 2);
   });
 
-  test("handles timing for a valid transaction with many child spans without argument overflow", () => {
+  test("handles timing for a valid transaction with many child spans without argument overflow", async () => {
     const spans = Array.from({ length: 70000 }, (_, index) => ({
       span_id: String(index),
       parent_span_id: "root",
       start_timestamp: index,
       timestamp: index + 1,
     }));
-    const [trace] = buildTraceGroups([
+    const [trace] = await buildTraceGroups([
       item({
         metadata: { title: "large transaction", traceId: "large-trace" },
         payload: {
@@ -225,8 +226,8 @@ describe("buildTraceGroups", () => {
     ).toBe("transaction-without-trace");
   });
 
-  test("keeps a standalone transaction discoverable when it has no trace context", () => {
-    const traces = buildTraceGroups([
+  test("keeps a standalone transaction discoverable when it has no trace context", async () => {
+    const traces = await buildTraceGroups([
       {
         id: "transaction-without-trace",
         type: "transaction",
@@ -242,8 +243,8 @@ describe("buildTraceGroups", () => {
     expect(traces[0]?.title).toBe("GET /standalone");
   });
 
-  test("builds a timestamped span tree and correlates trace errors and logs", () => {
-    const traces = buildTraceGroups([
+  test("builds a timestamped span tree and correlates trace errors and logs", async () => {
+    const traces = await buildTraceGroups([
       item({
         id: "transaction",
         timestamp: 1_700_000_000.012,
@@ -328,8 +329,8 @@ describe("buildTraceGroups", () => {
     ]);
   });
 
-  test("keeps a span visible when its declared parent is absent", () => {
-    const traces = buildTraceGroups([
+  test("keeps a span visible when its declared parent is absent", async () => {
+    const traces = await buildTraceGroups([
       item({
         metadata: {
           title: "orphaned work",
@@ -356,8 +357,66 @@ describe("buildTraceGroups", () => {
     ]);
   });
 
-  test("nests a standalone span using its top-level parent span id", () => {
-    const traces = buildTraceGroups([
+  test.each([true, false])(
+    "orders promoted missing-parent spans with their visible siblings (real root: %s)",
+    async (hasRoot) => {
+      const [trace] = await buildTraceGroups(
+        decodeEnvelope(
+          JSON.stringify([
+            {},
+            [
+              [
+                { type: "span" },
+                {
+                  version: 2,
+                  items: [
+                    ...(hasRoot
+                      ? [{ span_id: "root", start_timestamp: 0 }]
+                      : []),
+                    {
+                      span_id: "a",
+                      parent_span_id: "missing-parent",
+                      start_timestamp: 1,
+                    },
+                    {
+                      span_id: "b",
+                      parent_span_id: hasRoot ? "root" : "other-missing-parent",
+                      start_timestamp: 2,
+                    },
+                    {
+                      span_id: "c",
+                      parent_span_id: "missing-parent",
+                      start_timestamp: 3,
+                    },
+                  ].map((span) => ({
+                    ...span,
+                    trace_id: "trace-promoted-order",
+                    end_timestamp: 4,
+                    attributes: {
+                      "sentry.op": { type: "string", value: "task" },
+                    },
+                  })),
+                },
+              ],
+            ],
+          ]),
+          "promoted-order",
+        ),
+      );
+
+      if (hasRoot) expect(trace?.roots).toHaveLength(1);
+      const siblings = hasRoot ? trace?.roots[0]?.children : trace?.roots;
+      expect(siblings?.map((span) => span.id)).toEqual(["a", "b", "c"]);
+      expect(siblings?.map((span) => span.parentId)).toEqual([
+        "missing-parent",
+        hasRoot ? "root" : "other-missing-parent",
+        "missing-parent",
+      ]);
+    },
+  );
+
+  test("nests a standalone span using its top-level parent span id", async () => {
+    const traces = await buildTraceGroups([
       item({
         id: "root",
         metadata: {
@@ -409,7 +468,7 @@ describe("buildTraceGroups", () => {
   });
 });
 
-test("child spans retain their own raw payload independently of the transaction", () => {
+test("child spans retain their own raw payload independently of the transaction", async () => {
   const payload = {
     span_id: "query",
     parent_span_id: "root",
@@ -418,7 +477,7 @@ test("child spans retain their own raw payload independently of the transaction"
     start_timestamp: 1.1,
     timestamp: 1.2,
   };
-  const [trace] = buildTraceGroups(
+  const [trace] = await buildTraceGroups(
     decodeEnvelope(
       JSON.stringify([
         {},
