@@ -67,14 +67,12 @@ describe("trace", () => {
     ]);
   });
 
-  test.each([
-    [[]],
-    [["acme/web/"]],
-    [["acme/"]],
-    [["/"]],
-  ])("%j → missing trace ID", (args) => {
-    expect(() => trace(...args)).toThrow(ContextError);
-  });
+  test.each([[[]], [["acme/web/"]], [["acme/"]], [["/"]]])(
+    "%j → missing trace ID",
+    (args) => {
+      expect(() => trace(...args)).toThrow(ContextError);
+    },
+  );
 
   test.each([
     [[""]],
