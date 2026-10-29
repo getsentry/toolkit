@@ -191,7 +191,7 @@ async function validateAndRecoverSpanId(
   ctx: { org: string; project: string; traceId: string },
 ): Promise<string> {
   try {
-    return validateSpanId(rawSpanId);
+    return ID_KINDS.span.validate(rawSpanId);
   } catch (err) {
     if (!(err instanceof ValidationError)) {
       throw err;

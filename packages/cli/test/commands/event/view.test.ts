@@ -256,6 +256,18 @@ describe("parseEventViewInput", () => {
       expect(result.issueId).toBeUndefined();
     });
 
+    test("<org>/<short-id> and <org>/<numeric-id> keep their order around <short-id>/<event-id>", () => {
+      expect(parseEventViewInput(["my-org/CAM-82X"])).toMatchObject({
+        issueShortId: "CAM-82X",
+        targetArg: "my-org/",
+      });
+      // A short number is no event ID: the issue ID, after a target
+      expect(parseEventViewInput(["CAM-82X/123"])).toMatchObject({
+        issueId: "123",
+        targetArg: "CAM-82X/",
+      });
+    });
+
     test("rejects an incomplete event ID after <short-id>/", () => {
       // Not project `CAM-82X` with a partial event ID to recover
       expect(() => parseEventViewInput(["CAM-82X/95fd7f5a"])).toThrow(

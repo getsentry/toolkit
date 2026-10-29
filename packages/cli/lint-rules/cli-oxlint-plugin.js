@@ -67,6 +67,8 @@ const BOUND_TARGET_TYPES = new Set([
   "ProjectBoundTarget",
   "ReleaseTarget",
   "BoundArguments",
+  "DashboardArguments",
+  "DashboardListArguments",
   "EventViewArguments",
   "LogListArguments",
   "LogViewArguments",
@@ -75,6 +77,7 @@ const BOUND_TARGET_TYPES = new Set([
   "SpanViewArguments",
   "TraceLogsArguments",
   "TraceViewArguments",
+  "WidgetAddArguments",
 ]);
 
 function boundTargetParams(fn) {
@@ -176,12 +179,6 @@ const AD_HOC_ID_PARSING = new Set([
  * whose file no longer uses them is reported, so the list only shrinks.
  */
 const AD_HOC_ID_PARSING_ALLOWED = new Map([
-  // #1730 parses dashboard arguments with their own grammar
-  ["/src/commands/dashboard/restore.ts", "#1730"],
-  ["/src/commands/dashboard/revisions.ts", "#1730"],
-  ["/src/commands/dashboard/view.ts", "#1730"],
-  ["/src/commands/dashboard/widget/delete.ts", "#1730"],
-  ["/src/commands/dashboard/widget/edit.ts", "#1730"],
   // Follow-up (#1564): several issues per command (`issue view`,
   // `issue explain`, `issue merge`) need an array issue positional
   ["/src/commands/issue/utils.ts", "#1564: array issue positional"],
@@ -207,14 +204,6 @@ const UNBOUND_TARGET_PARSING = new Set([
 
 /** Commands still allowed to, each with its follow-up; a ratchet too. */
 const UNBOUND_TARGET_PARSING_ALLOWED = new Map([
-  // #1730 parses dashboard arguments with their own grammar
-  ["/src/commands/dashboard/list.ts", "#1730"],
-  ["/src/commands/dashboard/restore.ts", "#1730"],
-  ["/src/commands/dashboard/revisions.ts", "#1730"],
-  ["/src/commands/dashboard/view.ts", "#1730"],
-  ["/src/commands/dashboard/widget/add.ts", "#1730"],
-  ["/src/commands/dashboard/widget/delete.ts", "#1730"],
-  ["/src/commands/dashboard/widget/edit.ts", "#1730"],
   // Follow-ups (#1564):
   // `[<org>/[<project>/]]<rule>`, resolving to every matching project
   ["/src/commands/alert/issues/create.ts", "#1564: alert rule target"],
