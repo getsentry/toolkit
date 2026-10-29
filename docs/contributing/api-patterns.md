@@ -260,8 +260,11 @@ See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
 ### Automatic Retries
 
-`SentryApiService.request()` transparently retries failed requests using the
-shared policy in `@sentry/toolkit-core/api-retry`. This page describes the
+`SentryApiService` sends every request, including `@sentry/api` operations,
+through the shared transport in `@sentry/toolkit-core/api-transport`, which
+retries failed requests using the shared policy in
+`@sentry/toolkit-core/api-retry`. `SentryApiService` never retries on top, so
+a request is retried by one layer only. This page describes the
 behavior; the values live only in code, so read them there instead of copying
 them here:
 
@@ -288,8 +291,8 @@ Retries are:
   are not retried.
   A rate-limited tool call returns a **Rate Limited** message with the retry
   time, not an input error.
-- **Bypassed by `allowStatuses`** — a status the caller opts into is returned
-  as-is from `requestOnce`, never retried.
+- **Before `allowStatuses`** — a status the caller opts into is returned
+  as-is, after the transport has finished retrying it.
 
 Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.

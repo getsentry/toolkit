@@ -37,6 +37,11 @@ fatal fetch errors such as TLS failures, a logger, and a span hook. The CLI's
 `packages/cli/src/lib/sentry-client.ts` wires in its stored credentials,
 host-scope checks, disk cache, and telemetry.
 
+Credentials and timeouts are optional. Without a `CredentialProvider`, the
+transport keeps the request's own Authorization header, never refreshes, and
+skips the cache, since entries are scoped to a credential. The MCP's
+`SentryApiService` uses it that way, with retries only.
+
 ## Pagination
 
 `pagination` walks Sentry list endpoints up to a row limit. `paginate` splits

@@ -331,6 +331,29 @@ describe("timeouts and fetch errors", () => {
       );
     });
 
+  it("rejects an in-flight request with the caller's abort reason", async () => {
+    // Like fetch, reject with the signal's reason once it aborts.
+    const fetch = vi.fn(
+      (_input: Request | string | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("tool call cancelled");
+
+    const pending = transport(fetch)
+      .request(ISSUES_URL, { signal: controller.signal })
+      .catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    controller.abort(reason);
+
+    expect(await pending).toBe(reason);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("throws the host timeout error for a POST without retrying", async () => {
     const fetch = vi.fn(hang);
 
@@ -405,6 +428,17 @@ describe("headers", () => {
       authorization: "Bearer token-a",
       "user-agent": "test-agent",
     });
+  });
+
+  it("leaves Authorization to the request without credentials", async () => {
+    const { fetch, sent } = scriptedFetch([Response.json({})]);
+    const api = createApiTransport({ retry: policy, fetch });
+
+    await api.request(ISSUES_URL, {
+      headers: { Authorization: "Bearer from-request" },
+    });
+
+    expect(sent[0]?.headers.get("Authorization")).toBe("Bearer from-request");
   });
 });
 
@@ -565,6 +599,24 @@ describe("cache", () => {
 
     expect(await (await api.request(ISSUES_URL)).json()).toEqual({ v: 2 });
     expect(sent).toHaveLength(2);
+  });
+
+  it("is not consulted without credentials", async () => {
+    const lookup = vi.fn();
+    const store = vi.fn();
+    const { fetch, sent } = scriptedFetch([Response.json({})]);
+    const api = createApiTransport({
+      retry: policy,
+      fetch,
+      cache: { lookup, store, invalidate: vi.fn() },
+    });
+
+    await (await api.request(ISSUES_URL)).json();
+    await (await api.request(ISSUES_URL)).json();
+
+    expect(sent).toHaveLength(2);
+    expect(lookup).not.toHaveBeenCalled();
+    expect(store).not.toHaveBeenCalled();
   });
 
   it("revalidates a stale entry with its ETag", async () => {
