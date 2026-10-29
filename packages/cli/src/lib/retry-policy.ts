@@ -10,8 +10,10 @@
  * server already applied it, so replaying could duplicate the write.
  * PUT and DELETE are excluded too: Sentry uses PUT for partial updates with
  * side effects (issue merges, activity, notifications), and a replayed
- * DELETE turns a successful delete into a 404. Callers that know a write is
- * safe to replay (content-addressed uploads) opt in per request.
+ * DELETE turns a successful delete into a 404. Writes Sentry marks
+ * idempotent (`x-sentry-idempotent`, see idempotent-operations.ts) replay,
+ * and callers that know an unmarked write is safe to replay opt in per
+ * request.
  *
  * A 429 is the exception and retries for any method: Sentry's rate-limit
  * middleware rejects the request before the view runs, so nothing was

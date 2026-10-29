@@ -3,6 +3,12 @@
  * regression coverage.
  */
 
+import {
+  getActiveSpan,
+  SEMANTIC_ATTRIBUTE_SENTRY_OP,
+  spanToJSON,
+  startSpan,
+} from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { RateLimitError, TimeoutError } from "../../src/lib/errors.js";
@@ -12,6 +18,7 @@ import {
   getSdkConfig,
   resetAuthenticatedFetch,
 } from "../../src/lib/sentry-client.js";
+import { initSentry } from "../../src/lib/telemetry.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sentry-client-");
@@ -234,6 +241,45 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
       expect(body).toContain('name="file"');
       expect(body).toContain("chunk.bin");
     }
+  });
+});
+
+describe("operations Sentry marks idempotent", () => {
+  test("retries a marked POST on a transient status without an opt-in", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("busy", { status: 503 })
+        : jsonResponse({ state: "ok", missingChunks: [] });
+    });
+
+    const res = await getAuthenticatedFetch()(
+      `${REGION_URL}/api/0/organizations/acme/artifactbundle/assemble/`,
+      { method: "POST", body: "{}" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  test("retries a marked POST after a network error without an opt-in", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new TypeError("fetch failed");
+      }
+      return jsonResponse({});
+    });
+
+    const res = await getAuthenticatedFetch()(
+      `${REGION_URL}/api/0/projects/acme/web/files/difs/assemble/`,
+      { method: "POST", body: "{}" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
   });
 });
 
@@ -616,6 +662,49 @@ describe("user abort passthrough", () => {
     // ApiError wrapper. The central error handler in app.ts depends on it.
     expect(thrown).toBeInstanceOf(DOMException);
     expect((thrown as DOMException).name).toBe("AbortError");
+  });
+});
+
+describe("API request tracing", () => {
+  afterEach(() => {
+    initSentry(false);
+  });
+
+  async function tracedRequest(): Promise<{
+    headers: Headers;
+    activeSpanOp: string | undefined;
+  }> {
+    let headers = new Headers();
+    let activeSpanOp: string | undefined;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      headers = new Headers(
+        init?.headers ?? (input instanceof Request ? input.headers : undefined),
+      );
+      const span = getActiveSpan();
+      activeSpanOp = span
+        ? spanToJSON(span).attributes?.[SEMANTIC_ATTRIBUTE_SENTRY_OP]
+        : undefined;
+      return jsonResponse({ ok: true });
+    });
+    await startSpan({ name: "host", op: "test" }, () =>
+      getAuthenticatedFetch()(`${REGION_URL}/api/0/organizations/`),
+    );
+    return { headers, activeSpanOp };
+  }
+
+  test("adds its own http.client span and trace headers in library mode", async () => {
+    initSentry(true, { libraryMode: true });
+    const { headers, activeSpanOp } = await tracedRequest();
+    expect(headers.get("sentry-trace")).toBeTruthy();
+    expect(headers.get("baggage")).toBeTruthy();
+    expect(activeSpanOp).toBe("http.client");
+  });
+
+  test("leaves HTTP spans and headers to the SDK integrations in CLI mode", async () => {
+    initSentry(true);
+    const { headers, activeSpanOp } = await tracedRequest();
+    expect(headers.get("sentry-trace")).toBeNull();
+    expect(activeSpanOp).toBe("test");
   });
 });
 

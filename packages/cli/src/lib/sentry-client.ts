@@ -10,13 +10,14 @@
 
 import { setTimeout as sleepMs } from "node:timers/promises";
 import type { SentryClient } from "@sentry/api";
-import { getTraceData } from "@sentry/node-core/light";
+import { getTraceData } from "@sentry/node";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
 import {
   formatAuthHeader,
   normalizeAuthToken,
   trimAuthToken,
 } from "./auth-header.js";
+import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
 import {
   DEFAULT_SENTRY_URL,
@@ -45,11 +46,13 @@ import {
   TimeoutError,
 } from "./errors.js";
 import { extractInputUrl } from "./fetch-input.js";
+import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
 import {
+  type CacheLookup,
   clearLastCacheHitAge,
-  getCachedResponse,
   invalidateCachedResponsesMatching,
+  lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
 import {
@@ -58,7 +61,7 @@ import {
   isRetryableMethod,
 } from "./retry-policy.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
-import { withTracingSpan } from "./telemetry.js";
+import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import {
   isHostTrustedForClaim,
@@ -226,16 +229,14 @@ function prepareHeaders(
     headers.set("User-Agent", getUserAgent());
   }
 
-  // Inject distributed tracing headers to connect CLI spans to backend traces.
-  // Manual injection is required because Bun's fetch doesn't fire undici
-  // diagnostics channels, so the SDK's nativeNodeFetchIntegration cannot work.
-  // When telemetry is disabled, getTraceData() returns {} — no headers injected.
-  const traceData = getTraceData();
-  if (traceData["sentry-trace"]) {
-    headers.set("sentry-trace", traceData["sentry-trace"]);
-  }
-  if (traceData.baggage) {
-    headers.set("baggage", traceData.baggage);
+  if (isManualHttpTracing()) {
+    const traceData = getTraceData();
+    if (traceData["sentry-trace"]) {
+      headers.set("sentry-trace", traceData["sentry-trace"]);
+    }
+    if (traceData.baggage) {
+      headers.set("baggage", traceData.baggage);
+    }
   }
 
   // Inject user-configured custom headers for self-hosted proxies (IAP,
@@ -518,7 +519,7 @@ function handleFetchError(
   return { action: "retry", delayMs: backoffDelayMs(attempt, MAX_BACKOFF_MS) };
 }
 
-/** Extract the URL pathname for span naming */
+/** Extract the URL pathname for logging and cache keys */
 function extractUrlPath(input: Request | string | URL): string {
   const raw = extractInputUrl(input);
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
@@ -530,22 +531,22 @@ function extractUrlPath(input: Request | string | URL): string {
 }
 
 /**
- * Attempt to serve a GET request from the response cache.
- * Returns the cached Response if valid, or undefined on miss.
+ * Look up a GET request in the response cache: a fresh hit, a stale entry
+ * to revalidate, or undefined on miss.
  *
  * @param requestHeaders - Headers that were (or will be) sent with the request,
  *   needed for correct `Vary` handling in CachePolicy freshness checks.
  */
-async function tryCacheHit(
+async function tryCacheLookup(
   method: string,
   fullUrl: string,
   requestHeaders: Record<string, string>,
   identity: string,
-): Promise<Response | undefined> {
+): Promise<CacheLookup | undefined> {
   if (method !== "GET") {
     return;
   }
-  return await getCachedResponse(method, fullUrl, requestHeaders, identity);
+  return await lookupCachedResponse(method, fullUrl, requestHeaders, identity);
 }
 
 /**
@@ -671,6 +672,8 @@ type RetryContext = {
   validatedRedirects: boolean;
   responseBodyMode: ResponseBodyMode;
   idempotent: boolean;
+  /** Validators for a stale cache entry, such as `If-None-Match`. */
+  conditionalHeaders?: Record<string, string>;
 };
 
 async function fetchWithRetry({
@@ -682,6 +685,7 @@ async function fetchWithRetry({
   validatedRedirects,
   responseBodyMode,
   idempotent,
+  conditionalHeaders = {},
 }: RetryContext): Promise<Response> {
   const shouldRefresh = Boolean(
     credential.refreshable &&
@@ -700,9 +704,15 @@ async function fetchWithRetry({
     token: refreshed.token,
   });
   const headers = prepareHeaders(input, init, effectiveCredential);
+  for (const [name, value] of Object.entries(conditionalHeaders)) {
+    headers.set(name, value);
+  }
   const attemptFactory = await buildAttemptFactory(input, init);
   const timeoutMs = resolveTimeoutMs(fullUrl);
-  const methodRetryable = isRetryableMethod(method, idempotent);
+  const methodRetryable = isRetryableMethod(
+    method,
+    idempotent || isIdempotentOperation(method, fullUrl),
+  );
   const urlPath = extractUrlPath(fullUrl);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -758,14 +768,14 @@ async function fetchWithRetry({
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController
  * - Automatic retry on transient HTTP errors (408, 429, 5xx), network errors,
- *   and timeouts — for GET/HEAD/OPTIONS, or any method with `idempotent`
+ *   and timeouts — for GET/HEAD/OPTIONS, operations Sentry marks idempotent
+ *   (see idempotent-operations.ts), or any method with `idempotent`
  * - 429 handling (any method; rejected before processing): waits for the
  *   server's rate-limit reset when it fits the cap, otherwise throws
  *   {@link RateLimitError}
  * - 401 handling: force-refreshes the token and retries once (any method)
  * - Jittered exponential backoff between retries
  * - User-Agent header for API analytics
- * - Automatic HTTP span tracing for every request
  *
  * Cache is checked first — on a hit, auth refresh, timeout, and retry logic are
  * all skipped. On a miss or for non-GET methods, the full authenticated flow runs
@@ -780,8 +790,9 @@ type AuthenticatedFetchOptions = {
   bufferResponseBody?: boolean;
   /**
    * Caller asserts that replaying the request is harmless, so transient
-   * failures retry for any method. Only for writes the server dedupes, such
-   * as content-addressed chunk uploads and checksum-keyed assemble calls.
+   * failures retry for any method. Operations Sentry marks idempotent retry
+   * without this; set it for writes the server dedupes that the catalog
+   * cannot match, such as chunk uploads to the server-provided URL.
    */
   idempotent?: boolean;
 };
@@ -789,10 +800,10 @@ type AuthenticatedFetchOptions = {
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  return function authenticatedFetch(
+  const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
-  ): Promise<Response> {
+  ): Promise<Response> => {
     // Reset cache-hit age so it reflects only this request's outcome.
     // Commands read it after their primary API call to show cache-age hints.
     clearLastCacheHitAge();
@@ -808,68 +819,96 @@ function createAuthenticatedFetch(
       init?.method ?? (input instanceof Request ? input.method : "GET");
     const urlPath = extractUrlPath(input);
 
-    return withTracingSpan(
+    const request = async (): Promise<Response> => {
+      const fullUrl = extractInputUrl(input);
+      const startTime = performance.now();
+
+      // Check cache before auth/retry for GET requests.
+      // Uses current token (no refresh) so lookups are fast but Vary-correct.
+      const credential = options.credential ?? getCredentialContext();
+      if (!credential) {
+        await refreshToken();
+        throw new Error("Authentication state was not available after refresh");
+      }
+      // A synthetic HTTP cache response has no validated final-origin or
+      // credential provenance. Discovery must obtain both from the network.
+      const lookup = options.validatedRedirects
+        ? undefined
+        : await tryCacheLookup(
+            method,
+            fullUrl,
+            authHeaders(credential.token),
+            credential.identity,
+          );
+      if (lookup?.kind === "hit") {
+        log.debug(
+          `${method} ${urlPath} → ${lookup.response.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
+        );
+        return lookup.response;
+      }
+
+      const retryContext: RetryContext = {
+        input,
+        init,
+        method,
+        fullUrl,
+        credential,
+        validatedRedirects: options.validatedRedirects === true,
+        idempotent: options.idempotent === true,
+        responseBodyMode:
+          method.toUpperCase() !== "GET"
+            ? "stream"
+            : ((input instanceof Request
+                ? sdkResponseBodyModes.get(input)
+                : undefined) ??
+              (options.bufferResponseBody ? "buffer" : "stream")),
+      };
+      let response = await fetchWithRetry({
+        ...retryContext,
+        conditionalHeaders: lookup?.conditionalHeaders,
+      });
+      if (lookup?.kind === "stale" && response.status === 304) {
+        const revalidated = await lookup.revalidate(response);
+        if (revalidated) {
+          log.debug(
+            `${method} ${urlPath} → 304 (revalidated cache entry, ${(performance.now() - startTime).toFixed(0)}ms)`,
+          );
+          return revalidated;
+        }
+        // A 304 the entry cannot use has no body; fetch it unconditionally.
+        response = await fetchWithRetry(retryContext);
+      }
+      log.debug(
+        `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
+      );
+      return response;
+    };
+
+    if (!isManualHttpTracing()) {
+      return await request();
+    }
+    return await withTracingSpan(
       `${method} ${urlPath}`,
       "http.client",
       async (span) => {
-        const fullUrl = extractInputUrl(input);
-        const startTime = performance.now();
-
-        // Check cache before auth/retry for GET requests.
-        // Uses current token (no refresh) so lookups are fast but Vary-correct.
-        const credential = options.credential ?? getCredentialContext();
-        if (!credential) {
-          await refreshToken();
-          throw new Error(
-            "Authentication state was not available after refresh",
-          );
-        }
-        // A synthetic HTTP cache response has no validated final-origin or
-        // credential provenance. Discovery must obtain both from the network.
-        const cached = options.validatedRedirects
-          ? undefined
-          : await tryCacheHit(
-              method,
-              fullUrl,
-              authHeaders(credential.token),
-              credential.identity,
-            );
-        if (cached) {
-          span.setAttribute("http.response.status_code", cached.status);
-          log.debug(
-            `${method} ${urlPath} → ${cached.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
-          );
-          return cached;
-        }
-
-        const response = await fetchWithRetry({
-          input,
-          init,
-          method,
-          fullUrl,
-          credential,
-          validatedRedirects: options.validatedRedirects === true,
-          idempotent: options.idempotent === true,
-          responseBodyMode:
-            method.toUpperCase() !== "GET"
-              ? "stream"
-              : ((input instanceof Request
-                  ? sdkResponseBodyModes.get(input)
-                  : undefined) ??
-                (options.bufferResponseBody ? "buffer" : "stream")),
-        });
+        const response = await request();
         span.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
           span.setStatus({ code: 2, message: `${response.status}` });
         }
-        log.debug(
-          `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
-        );
         return response;
       },
       { "http.request.method": method, "url.path": urlPath },
     );
   };
+  // Every API response, fresh or cached, seeds shell completion, so no API
+  // function has to remember to. Awaited so a command that exits right
+  // after its request still stores the entities.
+  return async (input, init) =>
+    await seedCompletions(
+      extractInputUrl(input),
+      await authenticatedFetch(input, init),
+    );
 }
 
 /**

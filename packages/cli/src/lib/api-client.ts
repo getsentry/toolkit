@@ -211,7 +211,12 @@ export {
 } from "./api/teams.js";
 export type {
   FetchMultiSpanDetailsOptions,
+  ListTraceItemAttributesOptions,
   TraceItemAttribute,
+  TraceItemAttributeContext,
+  TraceItemAttributeDataset,
+  TraceItemAttributeDefinition,
+  TraceItemAttributeValueType,
   TraceItemDetail,
 } from "./api/traces.js";
 export {
@@ -221,6 +226,7 @@ export {
   getSpanDetails,
   getTraceMeta,
   listSpans,
+  listTraceItemAttributes,
   listTransactions,
   normalizeTraceSpan,
   REDUNDANT_DETAIL_ATTRS,

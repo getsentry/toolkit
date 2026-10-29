@@ -11,7 +11,7 @@ const sentryMocks = vi.hoisted(() => ({
   setTag: vi.fn(),
 }));
 
-vi.mock("@sentry/node-core/light", () => sentryMocks);
+vi.mock("@sentry/node", () => sentryMocks);
 
 type FixtureProcesses = {
   shellPid: number;

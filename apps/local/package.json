@@ -8,8 +8,8 @@
     "build": "pnpm --filter @sentry/spotlight run build && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "pnpm --filter @sentry/spotlight run build && vitest run",
-    "test:integration": "vitest run src/App.integration.test.tsx",
+    "test": "pnpm --filter @sentry/spotlight run build && pnpm --filter sentry exec node script/ensure-generated.mjs schema && vitest run",
+    "test:integration": "pnpm run test src/App.integration.test.tsx",
     "typecheck": "pnpm --filter @sentry/spotlight run build && tsc -b",
     "sample": "tsx scripts/replay.ts"
   },

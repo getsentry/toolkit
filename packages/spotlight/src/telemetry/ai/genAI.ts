@@ -1,4 +1,5 @@
 import { stringifyValue } from "../utils/stringifyValue.ts";
+import { finiteNumber } from "../utils/finiteNumber.ts";
 import { getAllSpansInTree } from "../store/helpers.ts";
 import type { AILibraryHandler, AIToolCall, AITrace, Span } from "../types.ts";
 import { extractFinishReason } from "./finishReason.ts";
@@ -206,26 +207,21 @@ function extractTokenUsage(spans: Span[]): {
   promptTokens?: number;
   completionTokens?: number;
 } {
-  let promptTokens: number | undefined;
-  let completionTokens: number | undefined;
-
-  for (const span of spans) {
-    if (!span.data) continue;
-
-    if (span.data[GEN_AI_USAGE_INPUT_TOKENS_FIELD] !== undefined) {
-      promptTokens =
-        (promptTokens ?? 0) +
-        Number(span.data[GEN_AI_USAGE_INPUT_TOKENS_FIELD]);
+  function sum(field: string): number | undefined {
+    let total: number | undefined;
+    for (const span of spans) {
+      const value = finiteNumber(span.data?.[field]);
+      if (value === undefined || value < 0) continue;
+      const next = (total ?? 0) + value;
+      if (!Number.isFinite(next)) return undefined;
+      total = next;
     }
-
-    if (span.data[GEN_AI_USAGE_OUTPUT_TOKENS_FIELD] !== undefined) {
-      completionTokens =
-        (completionTokens ?? 0) +
-        Number(span.data[GEN_AI_USAGE_OUTPUT_TOKENS_FIELD]);
-    }
+    return total;
   }
-
-  return { promptTokens, completionTokens };
+  return {
+    promptTokens: sum(GEN_AI_USAGE_INPUT_TOKENS_FIELD),
+    completionTokens: sum(GEN_AI_USAGE_OUTPUT_TOKENS_FIELD),
+  };
 }
 
 function formatTokensDisplay(

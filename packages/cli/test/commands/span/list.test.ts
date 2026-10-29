@@ -287,6 +287,31 @@ describe("listCommand.func (trace mode)", () => {
     );
   });
 
+  test("requests discovered typed attribute keys intact through --fields", async () => {
+    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    const { context } = createContext();
+
+    await func.call(
+      context,
+      {
+        limit: 25,
+        sort: "date",
+        period: parsePeriod("7d"),
+        fresh: false,
+        fields: "id,tags[cart.total,number],tags[items[*],array]",
+      },
+      VALID_TRACE_ID,
+    );
+
+    expect(listSpansSpy).toHaveBeenCalledWith(
+      "test-org",
+      "test-project",
+      expect.objectContaining({
+        extraFields: ["tags[cart.total,number]", "tags[items[*],array]"],
+      }),
+    );
+  });
+
   test("converts a search-query parse 400 to a ValidationError when --query is set (trace mode)", async () => {
     listSpansSpy.mockRejectedValue(
       new ApiError("bad", 400, "Error parsing search query: bad op filter"),

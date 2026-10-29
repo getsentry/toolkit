@@ -10,8 +10,8 @@
  *    renders in corrected local time — consola's default renders UTC in the SEA
  *    binaries this CLI ships.
  * 2. **Sentry.createConsolaReporter()** — auto-forwards all log messages to Sentry
- *    structured logs via `_INTERNAL_captureLog`. Requires `enableLogs: true` in
- *    `Sentry.init()` (already enabled in telemetry.ts).
+ *    structured logs via `_INTERNAL_captureLog`. Library mode drops these logs
+ *    in `beforeSendLog` (see telemetry.ts).
  *
  * ## Log levels
  *
@@ -59,11 +59,9 @@
  * @module
  */
 
-import { createRequire } from "node:module";
+import { createConsolaReporter } from "@sentry/node";
 import type { ConsolaInstance } from "consola";
 import { createConsola } from "consola";
-
-const _require = createRequire(import.meta.url);
 
 import { getEnv } from "./env.js";
 import { formatLogTime } from "./timezone.js";
@@ -277,22 +275,10 @@ export function attachSentryReporter(): void {
     return;
   }
 
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    // Dynamic import to avoid pulling in Sentry at module load time.
-    // The reporter is exported from @sentry/node-core/light (via @sentry/node → @sentry/core).
-    const Sentry = _require("@sentry/node-core/light") as {
-      createConsolaReporter: (options?: Record<string, unknown>) => {
-        log: (logObj: unknown) => void;
-      };
-    };
-
-    const sentryReporter = Sentry.createConsolaReporter();
-    logger.addReporter(sentryReporter);
-    sentryReporterAttached = true;
-  } catch {
-    // Sentry not available (e.g., telemetry disabled) — continue without reporter
-  }
+  // Imported statically: the bundler leaves a runtime `require()` unresolved,
+  // which would either fail or load a host application's `@sentry/node`.
+  logger.addReporter(createConsolaReporter());
+  sentryReporterAttached = true;
 }
 
 /**

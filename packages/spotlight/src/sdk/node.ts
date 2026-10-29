@@ -99,7 +99,8 @@ export function createTelemetryPipeline(
   const maxEnvelopeBytes = options.maxEnvelopeBytes ?? 32 * 1024 * 1024;
   const telemetry = createTelemetryStore(options);
   const decodedPayloads = new Map<string, DecodedPayload>();
-  const stagedPayloads = new Map<string, DecodedPayload>();
+  // null commits a parsed delivery or an oversized body without retaining raw bytes.
+  const stagedPayloads = new Map<string, DecodedPayload | null>();
   const pending = new Set<Promise<unknown>>();
   const decodeControllers = new Set<AbortController>();
   const coreAdmissions = new Set<symbol>();
@@ -110,16 +111,23 @@ export function createTelemetryPipeline(
   let queue = Promise.resolve();
   let pruning: Promise<void> | undefined;
 
-  function retainDecodedPayload(envelopeId: string, payload: DecodedPayload) {
+  function retainDecodedPayload(
+    envelopeId: string,
+    payload: DecodedPayload | null,
+  ) {
+    const previous = decodedPayloads.get(envelopeId);
+    if (previous) {
+      decodedBytes -= previous.body.length;
+      decodedPayloads.delete(envelopeId);
+    }
     // Oversized individual payloads are processed but cannot enter the decoded history.
     if (
+      !payload ||
       maxHistoryEntries === 0 ||
       payload.body.length > maxHistoryBytes ||
       maxHistoryBytes === 0
     )
       return;
-    const previous = decodedPayloads.get(envelopeId);
-    if (previous) decodedBytes -= previous.body.length;
     decodedPayloads.set(envelopeId, payload);
     decodedBytes += payload.body.length;
     while (
@@ -139,7 +147,7 @@ export function createTelemetryPipeline(
     if (change.type !== "ingest") return;
     for (const envelopeId of change.envelopeIds) {
       const payload = stagedPayloads.get(envelopeId);
-      if (!payload) continue;
+      if (payload === undefined) continue;
       stagedPayloads.delete(envelopeId);
       retainDecodedPayload(envelopeId, payload);
     }
@@ -259,13 +267,13 @@ export function createTelemetryPipeline(
       input.deliveryId ?? envelope[0].__spotlight_envelope_id.toString();
     const parsedEnvelope = envelope as Envelope;
     parsedEnvelope[0].__spotlight_envelope_id = envelopeId;
-    const payload = { body, contentType };
-    if (
+    const payload =
       maxHistoryEntries > 0 &&
       maxHistoryBytes > 0 &&
       body.length <= maxHistoryBytes
-    )
-      stagedPayloads.set(envelopeId, payload);
+        ? { body, contentType }
+        : null;
+    stagedPayloads.set(envelopeId, payload);
     try {
       const result = await withCoreAdmission(() =>
         telemetry.ingestEnvelope(parsedEnvelope, {
@@ -357,17 +365,22 @@ export function createTelemetryPipeline(
     }
   }
 
-  function processEnvelope(
+  async function processEnvelope(
     prepared: PreparedEnvelope,
     epoch: number,
   ): Promise<IngestResult> {
-    if (disposed) return Promise.resolve(ignored("disposed"));
-    if (epoch !== generation) return Promise.resolve(ignored("reset"));
-    if (prepared.options.signal?.aborted)
-      return Promise.resolve(ignored("aborted"));
-    return withCoreAdmission(() =>
-      telemetry.ingestEnvelope(prepared.envelope, prepared.options),
-    );
+    if (disposed) return ignored("disposed");
+    if (epoch !== generation) return ignored("reset");
+    if (prepared.options.signal?.aborted) return ignored("aborted");
+    const envelopeId = String(prepared.envelope[0].__spotlight_envelope_id);
+    stagedPayloads.set(envelopeId, null);
+    try {
+      return await withCoreAdmission(() =>
+        telemetry.ingestEnvelope(prepared.envelope, prepared.options),
+      );
+    } finally {
+      stagedPayloads.delete(envelopeId);
+    }
   }
 
   function pendingCount() {

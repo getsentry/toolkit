@@ -224,7 +224,7 @@ export function getDatabase(): Database {
     }
 
     // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node-core (~85ms).
+    // Lazy-require telemetry to avoid top-level import of @sentry/node (~100ms).
     // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
     if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
       db = rawDb;
@@ -303,6 +303,9 @@ function cleanupExpiredCaches(): void {
     .run(expiryTime);
   database
     .query("DELETE FROM project_aliases WHERE last_accessed < ?")
+    .run(expiryTime);
+  database
+    .query("DELETE FROM completion_cache WHERE last_seen < ?")
     .run(expiryTime);
   // project_root_cache uses ttl_expires_at instead of last_accessed
   database

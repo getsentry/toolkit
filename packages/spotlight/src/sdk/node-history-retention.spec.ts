@@ -5,6 +5,127 @@ function body(eventId: string): string {
   return `{}\n{"type":"event"}\n${JSON.stringify({ event_id: eventId, timestamp: 1 })}`;
 }
 
+test.each(["oversized", "within-budget"] as const)(
+  "reusing an evicted delivery ID replaces decoded history: %s",
+  async (scenario) => {
+    const original = body("old");
+    const other = body("other");
+    const replacement =
+      body("new") + " ".repeat(scenario === "oversized" ? 400 : 30);
+    const pipeline = createTelemetryPipeline({
+      retention: { maxEnvelopes: 1 },
+      decodedHistory: {
+        maxEntries: 10,
+        maxBytes: Buffer.byteLength(original + other) + 10,
+      },
+    });
+    try {
+      await pipeline.ingestPayload({ body: original, deliveryId: "reused" });
+      await pipeline.ingestPayload({ body: other, deliveryId: "other" });
+      const expected = scenario === "oversized" ? undefined : replacement;
+      const observed: (string | undefined)[] = [];
+      pipeline.subscribe((_snapshot, change) => {
+        if (change.type === "ingest")
+          observed.push(pipeline.getDecodedPayload("reused")?.body.toString());
+      });
+      expect(
+        await pipeline.ingestPayload({
+          body: replacement,
+          deliveryId: "reused",
+        }),
+      ).toMatchObject({ status: "processed" });
+      expect(pipeline.getEvent("new")).toBeDefined();
+      expect(pipeline.getDecodedPayload("reused")?.body.toString()).toBe(
+        expected,
+      );
+      expect(observed).toEqual([expected]);
+      expect(pipeline.getDecodedPayload("other")?.body.toString()).toBe(
+        scenario === "oversized" ? other : undefined,
+      );
+    } finally {
+      pipeline.dispose();
+    }
+  },
+);
+
+test("a re-admitted delivery becomes newest under the history entry limit", async () => {
+  const pipeline = createTelemetryPipeline({
+    retention: { maxEnvelopes: 1 },
+    decodedHistory: { maxEntries: 2 },
+  });
+  try {
+    await pipeline.ingestPayload({ body: body("old"), deliveryId: "reused" });
+    await pipeline.ingestPayload({ body: body("other"), deliveryId: "other" });
+    await pipeline.ingestPayload({ body: body("new"), deliveryId: "reused" });
+    await pipeline.ingestPayload({
+      body: body("latest"),
+      deliveryId: "latest",
+    });
+    expect(pipeline.getDecodedPayload("reused")?.body.toString()).toBe(
+      body("new"),
+    );
+    expect(pipeline.getDecodedPayload("other")).toBeUndefined();
+    expect(pipeline.getDecodedPayload("latest")?.body.toString()).toBe(
+      body("latest"),
+    );
+  } finally {
+    pipeline.dispose();
+  }
+});
+
+test("an oversized duplicate leaves the accepted delivery bytes intact", async () => {
+  const original = body("original");
+  const pipeline = createTelemetryPipeline({
+    decodedHistory: { maxBytes: Buffer.byteLength(original) },
+  });
+  try {
+    await pipeline.ingestPayload({ body: original, deliveryId: "same" });
+    expect(
+      await pipeline.ingestPayload({
+        body: body("replacement") + " ".repeat(400),
+        deliveryId: "same",
+      }),
+    ).toMatchObject({ status: "ignored", reason: "duplicate" });
+    expect(pipeline.getDecodedPayload("same")?.body.toString()).toBe(original);
+  } finally {
+    pipeline.dispose();
+  }
+});
+
+test("a parsed delivery clears old decoded bytes only after its ID is re-admitted", async () => {
+  const pipeline = createTelemetryPipeline({ retention: { maxEnvelopes: 1 } });
+  try {
+    const parsed = [
+      {},
+      [[{ type: "event" }, { event_id: "parsed", timestamp: 1 }]],
+    ];
+    await pipeline.ingestPayload({ body: body("old"), deliveryId: "reused" });
+    expect(
+      await pipeline.ingestEnvelope(parsed, { deliveryId: "reused" }),
+    ).toMatchObject({ status: "ignored", reason: "duplicate" });
+    expect(pipeline.getDecodedPayload("reused")?.body.toString()).toBe(
+      body("old"),
+    );
+    await pipeline.ingestPayload({ body: body("other"), deliveryId: "other" });
+    const observed: (string | undefined)[] = [];
+    pipeline.subscribe((_snapshot, change) => {
+      if (change.type === "ingest")
+        observed.push(pipeline.getDecodedPayload("reused")?.body.toString());
+    });
+    expect(
+      await pipeline.ingestEnvelope(parsed, { deliveryId: "reused" }),
+    ).toMatchObject({ status: "processed" });
+    expect(pipeline.getEvent("parsed")).toBeDefined();
+    expect(pipeline.getDecodedPayload("reused")).toBeUndefined();
+    expect(observed).toEqual([undefined]);
+    expect(pipeline.getDecodedPayload("other")?.body.toString()).toBe(
+      body("other"),
+    );
+  } finally {
+    pipeline.dispose();
+  }
+});
+
 async function retainedDelivery() {
   vi.setSystemTime(1000);
   const pipeline = createTelemetryPipeline({ retention: { maxAgeMs: 15 } });

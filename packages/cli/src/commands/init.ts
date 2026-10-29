@@ -18,7 +18,7 @@
  */
 
 import path from "node:path";
-import { setTag } from "@sentry/node-core/light";
+import { setTag } from "@sentry/node";
 import type { SentryContext } from "../context.js";
 import { looksLikePath, parseOrgProjectArg } from "../lib/arg-parsing.js";
 import { buildCommand } from "../lib/command.js";

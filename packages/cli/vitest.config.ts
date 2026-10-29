@@ -96,7 +96,7 @@ export default defineConfig({
         // vi.spyOn. Without inlining, ESM namespace objects are frozen
         // and spyOn throws "Cannot redefine property".
         inline: [
-          "@sentry/node-core",
+          "@sentry/node",
           "@sentry/core",
           "@clack/prompts",
           "node:child_process",

@@ -54,7 +54,7 @@ import { ReadStream } from "node:tty";
 
 const _require = createRequire(import.meta.url);
 
-import { addBreadcrumb, setTag } from "@sentry/node-core/light";
+import { addBreadcrumb, setTag } from "@sentry/node";
 import { FULL_BANNER_LINES } from "../../banner.js";
 import { openBrowser } from "../../browser.js";
 import { CLI_VERSION } from "../../constants.js";

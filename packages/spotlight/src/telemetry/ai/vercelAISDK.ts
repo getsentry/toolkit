@@ -1,4 +1,5 @@
 import { stringifyValue } from "../utils/stringifyValue.ts";
+import { finiteNumber } from "../utils/finiteNumber.ts";
 import { getAllSpansInTree } from "../store/helpers.ts";
 import type { AILibraryHandler, AIToolCall, AITrace, Span } from "../types.ts";
 import { extractFinishReason } from "./finishReason.ts";
@@ -324,13 +325,14 @@ function normalizeMessageContent(content: unknown): string {
 }
 
 function parseSpanData(spans: Span[], trace: AITrace) {
+  const responseState = { finishReasonFromText: false };
   for (const span of spans) {
     if (!span.data) continue;
 
     extractAIMetadata(span, trace);
     extractTelemetryMetadata(span, trace);
     extractPromptData(span, trace);
-    extractResponseData(span, trace);
+    extractResponseData(span, trace, responseState);
     extractToolCallData(span, trace);
   }
 }
@@ -371,17 +373,6 @@ function extractAIMetadata(span: Span, trace: AITrace) {
   if (maxSteps !== undefined) {
     trace.metadata.maxSteps = maxSteps;
   }
-}
-
-function finiteNumber(value: unknown): number | undefined {
-  if (
-    typeof value !== "number" &&
-    (typeof value !== "string" || !value.trim())
-  ) {
-    return undefined;
-  }
-  const number = Number(value);
-  return Number.isFinite(number) ? number : undefined;
 }
 
 function extractTelemetryMetadata(span: Span, trace: AITrace) {
@@ -441,26 +432,26 @@ function extractPromptData(span: Span, trace: AITrace) {
   }
 }
 
-function extractResponseData(span: Span, trace: AITrace) {
+function extractResponseData(
+  span: Span,
+  trace: AITrace,
+  state: { finishReasonFromText: boolean },
+) {
   if (!span.data) return;
 
   trace.response = trace.response || {};
 
-  const finishReason = span.data[AI_RESPONSE_FINISH_REASON_FIELD];
-  if (finishReason) {
-    trace.response.finishReason = stringifyValue(finishReason);
-  }
-
-  if (!trace.response.finishReason) {
-    const reason = extractFinishReason(
-      span.data[GEN_AI_RESPONSE_FINISH_REASONS_FIELD],
-    );
-    if (reason !== undefined) trace.response.finishReason = reason;
-  }
+  const finishReason =
+    extractFinishReason(span.data[AI_RESPONSE_FINISH_REASON_FIELD]) ??
+    extractFinishReason(span.data[GEN_AI_RESPONSE_FINISH_REASONS_FIELD]);
 
   const responseText = span.data[AI_RESPONSE_TEXT_FIELD];
   if (responseText) {
     trace.response.text = stringifyValue(responseText);
+    trace.response.finishReason = finishReason;
+    state.finishReasonFromText = true;
+  } else if (finishReason !== undefined && !state.finishReasonFromText) {
+    trace.response.finishReason = finishReason;
   }
 
   const toolCalls = span.data[AI_RESPONSE_TOOL_CALLS_FIELD];

@@ -52,6 +52,170 @@ const calls = [
   { toolCallId: "weather-call", toolName: "weather", args: { city: "Pune" } },
 ];
 
+test.each(
+  [
+    "bad",
+    "NaN",
+    "Infinity",
+    NaN,
+    Infinity,
+    -Infinity,
+    -1,
+    "",
+    " ",
+    null,
+    true,
+    [],
+    {},
+  ].map((invalid) => ({ invalid })),
+)("GenAI queries ignore invalid token usage: $invalid", async ({ invalid }) => {
+  const store = createTelemetryStore();
+  try {
+    await ingestSpans(store, [
+      span("root", {
+        "gen_ai.request.model": "model",
+        "gen_ai.usage.input_tokens": invalid,
+        "gen_ai.usage.output_tokens": invalid,
+      }),
+      span(
+        "valid",
+        { "gen_ai.usage.input_tokens": "0", "gen_ai.usage.output_tokens": "5" },
+        "root",
+      ),
+    ]);
+    expect(store.getAITraces()[0]).toMatchObject({
+      promptTokens: 0,
+      completionTokens: 5,
+      tokensDisplay: "0 / 5",
+      metadata: { promptTokens: 0, completionTokens: 5 },
+    });
+  } finally {
+    store.dispose();
+  }
+});
+
+test("GenAI queries omit overflowing totals without losing the other metric", async () => {
+  const store = createTelemetryStore();
+  try {
+    await ingestSpans(store, [
+      span("root", {
+        "gen_ai.usage.input_tokens": 1e308,
+        "gen_ai.usage.output_tokens": 2,
+      }),
+      span(
+        "child",
+        { "gen_ai.usage.input_tokens": 1e308, "gen_ai.usage.output_tokens": 3 },
+        "root",
+      ),
+    ]);
+    const trace = store.getAITraces()[0];
+    expect(trace?.promptTokens).toBeUndefined();
+    expect(trace?.metadata.promptTokens).toBeUndefined();
+    expect(trace).toMatchObject({
+      completionTokens: 5,
+      tokensDisplay: "? / 5",
+      metadata: { completionTokens: 5 },
+    });
+  } finally {
+    store.dispose();
+  }
+});
+
+test.each([
+  "gen_ai.response.finish_reasons",
+  "vercel.ai.response.finishReason",
+])("Vercel AI queries keep final text paired with its %s", async (field) => {
+  const store = createTelemetryStore();
+  try {
+    await ingestSpans(store, [
+      span("root", { "vercel.ai.operationId": "ai.generateText" }),
+      span(
+        "first",
+        { "gen_ai.response.text": "hello", [field]: "stop" },
+        "root",
+      ),
+      span(
+        "final",
+        { "gen_ai.response.text": "world", [field]: "length" },
+        "root",
+      ),
+    ]);
+    expect(store.getAITraces()[0]?.response).toMatchObject({
+      text: "world",
+      finishReason: "length",
+    });
+  } finally {
+    store.dispose();
+  }
+});
+
+test.each([
+  "gen_ai.response.finish_reasons",
+  "vercel.ai.response.finishReason",
+])(
+  "Vercel AI queries clear the previous turn's %s when final text has none",
+  async (field) => {
+    const store = createTelemetryStore();
+    try {
+      await ingestSpans(store, [
+        span("root", { "vercel.ai.operationId": "ai.generateText" }),
+        span(
+          "first",
+          { "gen_ai.response.text": "hello", [field]: "stop" },
+          "root",
+        ),
+        span("final", { "gen_ai.response.text": "world" }, "root"),
+      ]);
+      expect(store.getAITraces()[0]?.response?.text).toBe("world");
+      expect(store.getAITraces()[0]?.response?.finishReason).toBeUndefined();
+    } finally {
+      store.dispose();
+    }
+  },
+);
+
+test.each([
+  "gen_ai.response.finish_reasons",
+  "vercel.ai.response.finishReason",
+])(
+  "Vercel AI queries ignore later textless %s after a paired response",
+  async (field) => {
+    const store = createTelemetryStore();
+    try {
+      await ingestSpans(store, [
+        span("root", { "vercel.ai.operationId": "ai.generateText" }),
+        span(
+          "first",
+          { "gen_ai.response.text": "hello", [field]: "stop" },
+          "root",
+        ),
+        span("final", { [field]: "length" }, "root"),
+      ]);
+      expect(store.getAITraces()[0]?.response).toMatchObject({
+        text: "hello",
+        finishReason: "stop",
+      });
+    } finally {
+      store.dispose();
+    }
+  },
+);
+
+test("Vercel AI queries retain the last finish reason when text recording is disabled", async () => {
+  const store = createTelemetryStore();
+  try {
+    await ingestSpans(store, [
+      span("root", { "vercel.ai.operationId": "ai.generateText" }),
+      span("first", { "gen_ai.response.finish_reasons": '["stop"]' }, "root"),
+      span("final", { "gen_ai.response.finish_reasons": '["length"]' }, "root"),
+    ]);
+    expect(store.getAITraces()[0]?.response?.text).toBeUndefined();
+    expect(store.getAITraces()[0]?.response?.finishReason).toBe("length");
+  } finally {
+    store.dispose();
+  }
+});
+
 test.each([
   { value: '["stop"]', expected: "stop" },
   { value: '["stop","length"]', expected: "stop" },
