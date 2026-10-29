@@ -256,12 +256,24 @@
               {
                 "name": "zlib",
                 "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+              },
+              {
+                "name": "zod",
+                "message": "Shared toolkit-core modules validate through the Standard Schema interface; the host passes Zod or valibot schemas in."
+              },
+              {
+                "name": "valibot",
+                "message": "Shared toolkit-core modules validate through the Standard Schema interface; the host passes Zod or valibot schemas in."
               }
             ],
             "patterns": [
               {
                 "group": ["node:*"],
                 "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+              },
+              {
+                "group": ["zod/*", "@sentry/api/zod", "@sentry/api/valibot"],
+                "message": "Shared toolkit-core modules validate through the Standard Schema interface; the host passes Zod or valibot schemas in."
               }
             ]
           }

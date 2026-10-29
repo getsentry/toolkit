@@ -78,6 +78,10 @@
     "./sentry-origin": {
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
+    },
+    "./api-client/*": {
+      "types": "./src/api-client/*.ts",
+      "default": "./src/api-client/*.ts"
     }
   },
   "scripts": {
@@ -87,12 +91,15 @@
   },
   "dependencies": {
     "@sentry/search-syntax": "catalog:",
+    "@standard-schema/spec": "1.1.0",
     "http-cache-semantics": "^4.2.0"
   },
   "devDependencies": {
     "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "valibot": "^1.4.2",
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }
