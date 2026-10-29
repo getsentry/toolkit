@@ -533,8 +533,9 @@ from CLI source into one file with no runtime dependencies (#1731):
   same session.
 - When the tools move into the CLI's `sentry/mcp` entry, the bundle picks
   them up from the same source with no package change.
-- `sentry mcp` stays the canonical server and owns the MCP registry entry
-  (`server.json`).
+- `@sentry/mcp-server` stays the recommended stdio install and keeps the
+  MCP registry entry (`server.json`). `sentry mcp` runs the same server for
+  people who already use the CLI.
 
 A stdio proxy to the hosted MCP was considered and rejected (#1743): it
 cannot reach self-hosted Sentry, and it would be a second implementation
@@ -641,8 +642,8 @@ bumps move both products together.
    the MCP tools into the CLI's portable `sentry/mcp` entry; and have
    `sentry mcp` inject the CLI's host capabilities (session, cache store,
    region cache, DSN detection, file uploads) while `mcp-cloudflare`
-   bundles the same entry. The registry entry moves to `sentry mcp` in
-   #1731, and `@sentry/mcp-server` becomes a slim bundle of `sentry mcp`
+   bundles the same entry. The registry entry and recommended install stay
+   on `@sentry/mcp-server`, which #1731 turns into a slim bundle of `sentry mcp`
    (see "`@sentry/mcp-server` is a slim bundle of `sentry mcp`").
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
