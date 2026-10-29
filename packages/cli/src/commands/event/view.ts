@@ -378,17 +378,19 @@ function issueForms(tokens: readonly string[]): IssueInput | null {
     prefix === undefined || prefix.includes("/") ? prefix : `${prefix}/`;
 
   if (second === undefined) {
-    const issue = issueFromEventId(id, target);
-    if (issue || !(prefix && looksLikeIssueShortId(prefix))) {
-      return issue;
-    }
     // `<issue-short-id>/<event-id>`: the event of an issue. Short IDs are
-    // uppercase, and project slugs never are.
-    return {
-      eventId: ID_KINDS.event.validate(id),
-      targetArg: undefined,
-      issueShortId: prefix,
-    };
+    // uppercase, and project slugs never are. `<org>/<issue-short-id>` and
+    // `<org>/<numeric-issue-id>` take precedence, but not over an event ID.
+    const afterShortId =
+      prefix && looksLikeIssueShortId(prefix) && !looksLikeIssueShortId(id);
+    if (afterShortId && (ID_KINDS.event.isId(id) || !isAllDigits(id))) {
+      return {
+        eventId: ID_KINDS.event.validate(id),
+        targetArg: undefined,
+        issueShortId: prefix,
+      };
+    }
+    return issueFromEventId(id, target);
   }
   // `[<target>/]<issue-short-id> <event-id>`: the event of an issue. A
   // second argument with a slash is a target: the arguments are reversed.
