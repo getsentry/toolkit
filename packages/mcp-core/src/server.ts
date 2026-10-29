@@ -401,14 +401,18 @@ function configureServer({
         }
 
         // Upstream 401 during a tool call — route via the transport so it
-        // can revoke the MCP grant; swallow callback errors since the
-        // formatted tool response still needs to land.
+        // can revoke the MCP grant or refresh the token; swallow callback
+        // errors since the formatted tool response still needs to land.
         if (
           isApiAuthenticationErrorDeep(error) &&
           context.onUpstreamUnauthorized
         ) {
           try {
-            await context.onUpstreamUnauthorized();
+            const refreshedToken = await context.onUpstreamUnauthorized();
+            // Handlers read this shared copy, not the caller's context.
+            if (refreshedToken) {
+              contextWithToolAvailability.accessToken = refreshedToken;
+            }
           } catch {}
         }
 

@@ -330,7 +330,6 @@ export function serveMcpStdio(
   }
 
   const exitAfterError = installProcessHandlers();
-  const { refreshAccessToken } = options;
   const context: ServerContext = {
     accessToken: options.accessToken,
     grantedSkills: config.finalSkills,
@@ -345,13 +344,9 @@ export function serveMcpStdio(
     openaiBaseUrl: config.openaiBaseUrl,
     experimentalMode: config.experimental,
     transport: "stdio",
-    // Tool handlers read `context.accessToken` per call, so swapping it here
-    // lets a long-running server recover from an expired CLI session.
-    onUpstreamUnauthorized: refreshAccessToken
-      ? async () => {
-          context.accessToken = await refreshAccessToken();
-        }
-      : undefined,
+    // mcp-core uses the returned token for later tool calls, so a
+    // long-running server recovers from an expired CLI session.
+    onUpstreamUnauthorized: options.refreshAccessToken,
   };
 
   const server = buildServer({

@@ -65,7 +65,7 @@ export function FxInstructions({ transport }: FxInstructionsProps) {
                 mcp: {
                   sentry: {
                     type: "stdio",
-                    command: ["npx", `${NPM_PACKAGE_NAME}@latest`],
+                    command: ["npx", "-y", `${NPM_PACKAGE_NAME}@latest`, "mcp"],
                     environment: {
                       SENTRY_ACCESS_TOKEN: "sentry-user-token",
                       OPENAI_API_KEY: "your-openai-key",

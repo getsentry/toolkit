@@ -10,6 +10,7 @@ import {
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { ApiAuthenticationError } from "./api-client";
 import { UserInputError } from "./errors";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
@@ -173,6 +174,48 @@ describe("buildServer", () => {
     },
     handler: async () => "result",
     ...options,
+  });
+
+  describe("upstream 401", () => {
+    it("uses the token returned by onUpstreamUnauthorized for later calls", async () => {
+      const seenTokens: string[] = [];
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          accessToken: "expired-token",
+          onUpstreamUnauthorized: async () => "fresh-token",
+        },
+        tools: {
+          token_tool: createMockTool("token_tool", {
+            handler: async (_params, context) => {
+              seenTokens.push(context.accessToken);
+              if (context.accessToken === "expired-token") {
+                throw new ApiAuthenticationError("Unauthorized");
+              }
+              return "ok";
+            },
+          }),
+        },
+      });
+
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({
+        name: "server-test-client",
+        version: "1.0.0",
+      });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        await client.callTool({ name: "token_tool", arguments: {} });
+        await client.callTool({ name: "token_tool", arguments: {} });
+      } finally {
+        await client.close();
+        await server.close();
+      }
+
+      expect(seenTokens).toEqual(["expired-token", "fresh-token"]);
+    });
   });
 
   describe("tool failure telemetry", () => {
