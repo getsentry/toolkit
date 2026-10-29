@@ -18,10 +18,10 @@ import {
   detectSwappedViewArgs,
   looksLikeIssueShortId,
   normalizeSlug,
-  parseIssueArg,
   parseOrgProjectArg,
   parseSelector,
 } from "../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../src/lib/issue-arguments.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 // Arbitraries for generating valid inputs

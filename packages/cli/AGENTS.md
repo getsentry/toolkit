@@ -251,6 +251,16 @@ parsing (`parseSlashSeparatedArg`, `HEX_ID_RE`, ...) in commands and kinds
 defined outside `ID_KINDS`. Issue IDs (and `event view`, which takes them)
 keep their own syntax.
 
+**Issue positionals:** issue IDs, short IDs, selectors, and issue URLs are
+parsed by `parseIssueArgument` (`src/lib/issue-arguments.ts`), whose forms
+are defined by `grammar/issue-argument.pegjs`. A command that takes one
+issue declares `issuePositional({ command })` (or `issueParameter` inside a
+tuple) from `src/commands/issue/positional.ts`: `func` takes an
+`IssueTarget` and awaits `target.resolved` for the org and issue. A command
+that resolves it another way (`resolveOrgAndIssueId`, or recovery hints that
+keep its other arguments) passes `requireIssueArgument(target.parsed, ...)`
+instead of the raw string.
+
 ```typescript
 import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
 
@@ -334,7 +344,7 @@ dashboard use a completion-aware parser from `src/lib/completion-target.ts`
 instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
 and project aliases; `parseOrgTarget` completes org slugs only;
 `parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
-completes cached dashboards. `issueIdPositional` already uses them. A
+completes cached dashboards. `issueIdsPositional` already uses them. A
 parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
 parsers behind `listTargetPositional`, completes the same way. Shared value
 parsers are not tagged where they live; `PARSER_TARGETS` in

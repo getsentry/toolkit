@@ -12,13 +12,13 @@ import {
   detectSwappedViewArgs,
   looksLikeIssueShortId,
   normalizeSlug,
-  parseIssueArg,
   parseListTargetInput,
   parseOrgProjectArg,
   parseSlashSeparatedArg,
   rejectIssueCommandTokenListTarget,
   splitNewlineArg,
 } from "../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../src/lib/issue-arguments.js";
 import { stripDsnOrgPrefix } from "../../src/lib/dsn/index.js";
 import { ValidationError } from "../../src/lib/errors.js";
 
