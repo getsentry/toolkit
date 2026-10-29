@@ -8,8 +8,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { ValidationError } from "../../src/lib/errors.js";
-import { parseIssueArgument } from "../../src/lib/issue-arguments.js";
+import { ContextError, ValidationError } from "../../src/lib/errors.js";
+import {
+  parseIssueArgument,
+  parseIssueArguments,
+} from "../../src/lib/issue-arguments.js";
 import { useEnvSandbox } from "../helpers.js";
 
 describe("parseIssueArgument", () => {
@@ -124,5 +127,80 @@ describe("parseIssueArgument", () => {
         "https://sentry.io/organizations/acme/explore/traces/trace/aaaa1111bbbb2222cccc3333dddd4444/",
       ),
     ).toThrow(/does not contain an issue ID/);
+  });
+});
+
+describe("parseIssueArguments", () => {
+  useEnvSandbox(["SENTRY_HOST", "SENTRY_URL"]);
+  const usageHint = "sentry issue view <issue> [<issue>...]";
+  const texts = (args: readonly string[]) =>
+    parseIssueArguments(args, { usageHint }).map(({ text }) => text);
+
+  test("parses each issue like parseIssueArgument", () => {
+    const args = [
+      "CLI-G",
+      "acme/CLI-H",
+      "other/web/SUB-G",
+      "123",
+      "acme/@latest",
+      "https://sentry.example.com/organizations/acme/issues/456/",
+    ];
+    expect(parseIssueArguments(args, { usageHint })).toEqual(
+      args.map(parseIssueArgument),
+    );
+  });
+
+  test("splits pasted IDs at newlines and spaces, keeping the order", () => {
+    expect(texts(["IOS-1\nIOS-2", "  IOS-3  IOS-4 \n\n"])).toEqual([
+      "IOS-1",
+      "IOS-2",
+      "IOS-3",
+      "IOS-4",
+    ]);
+  });
+
+  test("keeps repeated issues: the command decides", () => {
+    expect(texts(["IOS-1", "IOS-1"])).toEqual(["IOS-1", "IOS-1"]);
+  });
+
+  test("does not split on commas", () => {
+    expect(texts(["IOS-1,IOS-2"])).toEqual(["IOS-1,IOS-2"]);
+  });
+
+  test("takes no search text: each word is an issue", () => {
+    expect(
+      parseIssueArguments(["login timeout"], { usageHint }).map(
+        ({ parsed }) => parsed,
+      ),
+    ).toEqual([
+      { type: "suffix-only", suffix: "LOGIN" },
+      { type: "suffix-only", suffix: "TIMEOUT" },
+    ]);
+  });
+
+  test("rejects a malformed issue, before any is resolved", () => {
+    expect(() =>
+      parseIssueArguments(["CLI-G", "acme/"], { usageHint }),
+    ).toThrow(ValidationError);
+  });
+
+  test("returns a pasted URL's server without applying it", () => {
+    const [issue] = parseIssueArguments(
+      ["https://sentry.example.com/organizations/acme/issues/123/"],
+      { usageHint },
+    );
+    expect(issue?.baseUrl).toBe("https://sentry.example.com");
+    expect(process.env.SENTRY_HOST).toBeUndefined();
+    expect(process.env.SENTRY_URL).toBeUndefined();
+  });
+
+  test.each([[[]], [["  \n "]]])("requires an issue: %j", (args) => {
+    expect(() => parseIssueArguments(args, { usageHint })).toThrow(
+      ContextError,
+    );
+  });
+
+  test("may take none, when optional", () => {
+    expect(parseIssueArguments([], { usageHint, optional: true })).toEqual([]);
   });
 });

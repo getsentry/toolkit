@@ -26,6 +26,7 @@ import {
   canRenderKitty,
   canRenderSixel,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../lib/sixel.js";
 import { imageBytesToSixel } from "../lib/sixel-image.js";
 import { setOrgProjectContext } from "../lib/telemetry.js";
@@ -1499,7 +1500,12 @@ export function resolveBinaryTtyOutput(
     const maxWidth = terminalPixelWidth();
     const contentType = headers.get("content-type");
     if (canRenderKitty()) {
-      const kitty = imageBytesToKitty(body, contentType, maxWidth);
+      const kitty = imageBytesToKitty(
+        body,
+        contentType,
+        maxWidth,
+        tmuxKittyPlacement(),
+      );
       if (kitty) {
         return kitty;
       }

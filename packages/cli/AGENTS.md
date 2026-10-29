@@ -279,6 +279,10 @@ A command that takes one issue declares `issuePositional({ command })` (or
 that resolves it another way (`resolveOrgAndIssueId`, or recovery hints that
 keep its other arguments) passes `requireIssueArgument(target.parsed, ...)`
 instead of the raw string.
+A command that takes several issues (`issue view`, `issue explain`,
+`issue merge`) declares `issuesPositional(...)`: every whitespace-separated
+word is an issue (no search text), parsed before `func` runs, and `func`
+resolves each `IssueArgument` from `await issues.resolved` itself.
 
 ```typescript
 import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
@@ -297,8 +301,11 @@ Reference: `replay/view.ts`, `span/view.ts`, `log/view.ts`, and
 parser from `src/lib/target-positional.ts`, which binds the resolver:
 `orgOptionalTarget` (org, optional project), `projectBoundTarget` (one org and
 project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
-`project view`). `func` takes the matching type (`OrgOptionalTarget`,
-`ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the parsed form as
+`project view`). An org alone (`org view`) uses `orgTarget`; a
+`boundArguments` parser reads one with `parseOrgInput` and resolves it with
+`resolveOrgInput` (see `trial start`). `func` takes the matching type
+(`OrgOptionalTarget`, `ProjectBoundTarget`, `OrgProjectTarget<R>`,
+`OrgTarget`), reads the parsed form as
 `target.parsed` (e.g. `target.parsed.type`), and gets the org and project
 with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
 itself, and an omitted target arrives as auto-detect. The
@@ -309,9 +316,9 @@ what leaves a target for `func` to parse: the completion-only parsers
 `resolve*FromArg` helpers. Commands not migrated yet are on
 `UNBOUND_TARGET_PARSING_ALLOWED` in `lint-rules/cli-oxlint-plugin.js`, each
 with its follow-up; the list is a ratchet, so a file that stops using them
-fails until its entry is removed. `AD_HOC_ID_PARSING_ALLOWED` does the same
-for ID positionals, including the completion-only `parseIssueTarget` and
-`parseDashboardTarget`.
+fails until its entry is removed. `sentry-cli/no-ad-hoc-id-arguments` has no
+allow-list: no command may parse IDs by hand, and the completion-only
+`parseIssueTarget` and `parseDashboardTarget` are rejected too.
 
 **Release positionals:** `[<org>/]<version>` uses
 `releaseParameter(USAGE_HINT, brief)` from `src/commands/release/parse.ts`

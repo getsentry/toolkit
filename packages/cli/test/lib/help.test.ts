@@ -101,7 +101,7 @@ describe("printCustomHelp", () => {
       process.stdout.isTTY = false;
       const withoutBanner = printCustomHelp();
       // stdin stays non-TTY under vitest, so sixel opts out and the block-art
-      // banner is used — exercises the `sixelBanner(cols) ?? formatBanner(cols)`
+      // banner is used — exercises the `graphicsBanner(cols) ?? formatBanner(cols)`
       // fallback inside the TTY-only banner branch.
       process.stdout.isTTY = true;
       const withBanner = printCustomHelp();
