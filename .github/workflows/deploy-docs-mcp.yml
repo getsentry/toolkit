@@ -142,9 +142,14 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import { readFile, writeFile } from 'node:fs/promises';
-          import { listDeployments, verifyCandidate } from './scripts/cloudflare-deployment.mjs';
+          import { listDeployments, listSettled, verifyCandidate } from './scripts/cloudflare-deployment.mjs';
           const journal = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/docs-mcp-deployment.json`, 'utf8'));
-          const verified = verifyCandidate(await listDeployments(process.env, 'docs-mcp'), journal);
+          const deployments = await listSettled(
+            process.env,
+            (listed) => listed[0]?.annotations?.['workers/message'] === journal.marker,
+            { list: (env) => listDeployments(env, 'docs-mcp') },
+          );
+          const verified = verifyCandidate(deployments, journal);
           if (verified.candidate.version !== journal.candidateVersion) {
             throw new Error('Production does not serve the uploaded Docs MCP version');
           }
