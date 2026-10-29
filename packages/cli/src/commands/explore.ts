@@ -103,7 +103,7 @@ const PAGINATION_KEY = "explore";
 
 const DATASETS = buildDatasetParser(
   ["errors", "spans", "tracemetrics", "logs", "replays"],
-  [...LEGACY_TRANSACTION_DATASETS],
+  Array.from(LEGACY_TRANSACTION_DATASETS),
 );
 
 // ---------------------------------------------------------------------------

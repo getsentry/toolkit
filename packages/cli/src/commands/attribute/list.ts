@@ -48,9 +48,9 @@ import {
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
-  ORG_ALL_TARGET_BRIEF,
 } from "../../lib/list-command.js";
 import {
   jsonTransformListResult,
@@ -107,7 +107,7 @@ export function compareAttributes(
 }
 
 /**
- * Build a `Tip:` line showing how to use a attribute keys in other commands.
+ * Build a `Tip:` line showing how to use attribute keys in other commands.
  *
  * @internal Exported for testing
  */
@@ -329,7 +329,7 @@ export const listCommand = buildListCommand("attribute", {
     const filterText = [name, query].filter(Boolean).join(" ") || undefined;
 
     // Sorted so each type keeps its position in the compound cursor
-    const requestTypes = [...(types ?? ATTRIBUTE_TYPES)].sort();
+    const requestTypes = (types ?? ATTRIBUTE_TYPES).toSorted();
     const contextKey = buildPaginationContextKey("attribute", scope, {
       dataset: flags.dataset,
       type: requestTypes.join(","),

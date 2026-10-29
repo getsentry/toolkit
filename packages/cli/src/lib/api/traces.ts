@@ -328,7 +328,7 @@ export type ListTraceItemAttributesOptions = {
  * Empty filters are omitted rather than sent as empty params, and the
  * next-page cursor is parsed from the Link header.
  *
- * ({@link getTraceItemDetail}) for the values on a specific item.
+ * Use {@link getTraceItemDetail} for the values on a specific item.
  *
  * @param orgSlug - Organization slug
  * @param options - Dataset plus optional project, type, substring, query, and time filters
