@@ -320,7 +320,7 @@ export function completeOrgSlugs(partial: string, suffix = ""): Completion[] {
   }
 
   const nameMap = new Map(orgs.map((o) => [o.slug, o.name]));
-  const matched = fuzzyMatch(partial, Array.from(nameMap.keys()), {
+  const matched = fuzzyMatch(partial, [...nameMap.keys()], {
     mode: "search",
   });
 
@@ -402,7 +402,7 @@ export function completeProjectSlugs(
   }
 
   const nameMap = new Map(projects.map((p) => [p.projectSlug, p.projectName]));
-  const matched = fuzzyMatch(projectPartial, Array.from(nameMap.keys()), {
+  const matched = fuzzyMatch(projectPartial, [...nameMap.keys()], {
     mode: "search",
   });
 

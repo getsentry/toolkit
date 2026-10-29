@@ -24,7 +24,8 @@ function maxLineWidth(banner: string): number {
     0,
     ...stripAnsi(banner)
       .split("\n")
-      .map((line) => Array.from(line).length),
+      // oxlint-disable-next-line typescript/no-misused-spread -- width is measured in code points
+      .map((line) => [...line].length),
   );
 }
 

@@ -118,7 +118,7 @@ async function resolveAllIssues(
   const orgs = new Set(resolved.map((r) => r.org as string));
   if (orgs.size > 1) {
     throw new ValidationError(
-      `Cannot merge issues across organizations (${Array.from(orgs).join(", ")}).\n\n` +
+      `Cannot merge issues across organizations (${[...orgs].join(", ")}).\n\n` +
         "All issues must belong to the same organization.",
     );
   }

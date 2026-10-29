@@ -365,14 +365,14 @@ describe("normalizeBody", () => {
     const src = new Uint8Array([1, 2, 3, 4, 5]);
     const buf = normalizeBody(src);
     expect(buf.length).toBe(5);
-    expect(Array.from(buf)).toEqual([1, 2, 3, 4, 5]);
+    expect([...buf]).toEqual([1, 2, 3, 4, 5]);
   });
 
   test("Uint8Array with non-zero byteOffset", () => {
     const backing = new Uint8Array([9, 9, 1, 2, 3, 9, 9]);
     const view = new Uint8Array(backing.buffer, 2, 3);
     const buf = normalizeBody(view);
-    expect(Array.from(buf)).toEqual([1, 2, 3]);
+    expect([...buf]).toEqual([1, 2, 3]);
   });
 
   test("empty string", () => {

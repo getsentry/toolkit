@@ -778,11 +778,11 @@ describe("rawApiRequest binary handling", () => {
     expect(result.status).toBe(200);
     expect(result.body).toBeInstanceOf(Uint8Array);
     const body = result.body as Uint8Array;
-    expect(Array.from(body.slice(0, 8))).toEqual([
+    expect([...body.subarray(0, 8)]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
     // Must NOT contain the UTF-8 replacement sequence EF BF BD
-    expect(Array.from(body.slice(0, 3))).not.toEqual([0xef, 0xbf, 0xbd]);
+    expect([...body.subarray(0, 3)]).not.toEqual([0xef, 0xbf, 0xbd]);
     expect(body).toEqual(pngBytes);
   });
 

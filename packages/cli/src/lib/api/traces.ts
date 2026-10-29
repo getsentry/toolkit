@@ -718,7 +718,7 @@ async function fetchSpansPage(
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
   const fields = options.extraFields?.length
-    ? SPAN_FIELDS.concat(options.extraFields)
+    ? [...SPAN_FIELDS, ...options.extraFields]
     : SPAN_FIELDS;
 
   let projectParam: string | undefined;
