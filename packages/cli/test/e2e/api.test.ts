@@ -27,6 +27,12 @@ let testConfigDir: string;
 let mockServer: MockServer;
 let ctx: E2EContext;
 const paginationRequests: URL[] = [];
+const preparedRequests: {
+  url: string;
+  method: string;
+  headers: Headers;
+  body: string;
+}[] = [];
 const nextCursor = "1:1:0";
 const prevCursor = "1:0:1";
 const alternateToken = "test-api-other-identity";
@@ -46,6 +52,22 @@ beforeAll(async () => {
   mockServer = createMockServer(
     [
       ...apiRoutes,
+      {
+        method: "POST",
+        path: "/api/0/api-prepared-request/",
+        response: async (req) => {
+          preparedRequests.push({
+            url: req.url,
+            method: req.method,
+            headers: req.headers,
+            body: await req.text(),
+          });
+          return {
+            status: 422,
+            body: { detail: "Unsupported request", meta: { field: "title" } },
+          };
+        },
+      },
       {
         method: "GET",
         path: "/api/0/api-pagination/",
@@ -118,6 +140,7 @@ afterAll(() => {
 
 beforeEach(async () => {
   paginationRequests.length = 0;
+  preparedRequests.length = 0;
   failNextPage = false;
   testConfigDir = await createTestConfigDir("e2e-api-");
   ctx = createE2EContext(testConfigDir, mockServer.url);
@@ -208,6 +231,81 @@ describe("sentry api", () => {
     expect(result.exitCode, result.stderr + result.stdout).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({ method: "GET" });
   });
+
+  test.each([
+    {
+      name: "JSON data",
+      input: '{"title":"Overview"}',
+      body: { title: "Overview" },
+      contentType: "application/json",
+      fromFile: false,
+      headers: [],
+    },
+    {
+      name: "raw file",
+      input: "raw payload",
+      body: "raw payload",
+      contentType: "text/plain;charset=UTF-8",
+      fromFile: true,
+      headers: [],
+    },
+    {
+      name: "explicit Content-Type",
+      input: '{"title":"Overview"}',
+      body: { title: "Overview" },
+      contentType: "application/custom",
+      fromFile: false,
+      headers: ["-H", "content-type: application/custom"],
+    },
+  ])(
+    "dispatches the URL, headers and body shown by the $name preview",
+    async ({ input, body, contentType, fromFile, headers }) => {
+      await ctx.setAuthToken(TEST_TOKEN);
+      let bodyFlags = ["--data", input];
+      if (fromFile) {
+        const file = `${testConfigDir}/request.txt`;
+        await writeFile(file, input);
+        bodyFlags = ["--input", file];
+      }
+      const args = [
+        "api",
+        "api-prepared-request/?field=id&field=title&query=a%20b",
+        "--method",
+        "POST",
+        ...bodyFlags,
+        "-H",
+        "X-Example: custom-value",
+        ...headers,
+        "--json",
+      ];
+
+      const preview = await ctx.run([...args, "--dry-run"]);
+      expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+      expect(preparedRequests).toHaveLength(0);
+      const request = JSON.parse(preview.stdout);
+      const previewHeaders = new Headers(request.headers);
+      expect(request.body).toEqual(body);
+      expect(previewHeaders.get("Content-Type")).toBe(contentType);
+      expect(previewHeaders.get("X-Example")).toBe("custom-value");
+      expect(previewHeaders.has("Authorization")).toBe(false);
+
+      const result = await ctx.run(args);
+      expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
+      expect(preparedRequests).toHaveLength(1);
+      const sent = preparedRequests[0];
+      expect(sent.url).toBe(request.url);
+      expect(sent.method).toBe(request.method);
+      expect(sent.body).toBe(input);
+      for (const [name, value] of previewHeaders) {
+        expect(sent.headers.get(name)).toBe(value);
+      }
+      expect(sent.headers.get("Authorization")).toBe(`Bearer ${TEST_TOKEN}`);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        status: 422,
+        body: { detail: "Unsupported request", meta: { field: "title" } },
+      });
+    },
+  );
 
   test("navigates next, prev and first while preserving filters and --fields", async () => {
     await ctx.setAuthToken(TEST_TOKEN);
@@ -403,6 +501,9 @@ describe("sentry api", () => {
 
       const resumed = await ctx.run([...args, "--cursor", cursor]);
       expect(resumed.exitCode, resumed.stderr + resumed.stdout).toBe(0);
+      expect(paginationRequests.map((request) => request.href)).toEqual([
+        url.href,
+      ]);
       const resumedPage = JSON.parse(resumed.stdout);
       expect(resumedPage.body).toEqual(cursorOrganizations.slice(3, 4));
       expect(resumedPage.pagination.nextCursor).toBe("2:2:0");
@@ -697,8 +798,9 @@ describe("sentry api", () => {
 
       expect(result.exitCode).toBe(0);
       // Verbose output goes to stderr via logger.debug()
-      // consola formats as: [debug] [api] > GET /api/0/organizations/
-      expect(result.stderr).toMatch(/> GET \/api\/0\/organizations\//);
+      expect(result.stderr).toContain(
+        `> GET ${mockServer.url}/api/0/organizations/`,
+      );
       expect(result.stderr).toMatch(/< HTTP 200 OK/);
       expect(result.stderr).toMatch(/< content-type:/i);
       // stdout should still contain the response body

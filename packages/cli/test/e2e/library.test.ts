@@ -210,8 +210,8 @@ describe("library mode (bundled)", () => {
     const { stdout } = await runNodeScriptOk(`
       const { createSentrySDK } = require('./dist/index.cjs');
       const requests = [];
-      globalThis.fetch = async (input) => {
-        requests.push(String(input));
+      globalThis.fetch = async (input, init) => {
+        requests.push(new Request(input, init).url);
         return Response.json(${JSON.stringify([organizationsFixture[1]])}, {
           statusText: 'OK',
           headers: {

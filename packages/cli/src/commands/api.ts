@@ -15,6 +15,8 @@ import {
   decodePageCursor,
   type PagePosition,
   parseLinkHeader,
+  type PreparedRawApiRequest,
+  prepareRawApiRequest,
   rawApiRequest,
 } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
@@ -39,7 +41,6 @@ import { imageBytesToKitty } from "../lib/kitty-image.js";
 import { LIST_CURSOR_FLAG } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
 import { buildCacheKey } from "../lib/response-cache.js";
-import { getDefaultSdkConfig, getSdkConfig } from "../lib/sentry-client.js";
 import {
   canRenderKitty,
   canRenderSixel,
@@ -1251,8 +1252,8 @@ function resolveRequestEndpoint(
 
 /** Pagination resolved for one GET, without mutating its saved history. */
 type ApiPagination = {
-  /** Relative endpoint with the resolved server cursor and page size. */
-  endpoint: string;
+  /** SDK-prepared request with the resolved server cursor and page size. */
+  prepared: PreparedRawApiRequest;
   /** Identity-scoped fingerprint of the caller's request, excluding cursor. */
   contextKey: string;
   /** Navigation operation to commit after a successful response. */
@@ -1264,31 +1265,26 @@ type ApiPagination = {
 };
 
 /**
- * Resolve shared navigation and custom cursors while retaining a single request.
+ * Resolve CLI navigation and custom cursors while retaining a single request.
  * Context uses the caller's query before cursor-derived page-size overrides, so
  * repeating the same arguments with `next` finds the same walk. Header/body
  * values participate in an opaque fingerprint and are never stored as plaintext.
  */
-async function resolveApiPagination(
+async function resolveApiNavigation(
   endpoint: string,
   cursorFlag: string | undefined,
   request: NonNullable<Parameters<typeof rawApiRequest>[1]>,
 ): Promise<ApiPagination> {
   const queryIndex = endpoint.indexOf("?");
-  const path = queryIndex === -1 ? endpoint : endpoint.slice(0, queryIndex);
   const query = new URLSearchParams(
     queryIndex === -1 ? "" : endpoint.slice(queryIndex + 1),
   );
   const inputCursor = query.getAll("cursor").at(-1);
-  query.delete("cursor");
-  const contextUrl = resolveRequestUrl(
-    `${path}?${query}`,
-    undefined,
-    request.baseUrl,
-  );
-  const effectiveHeaders = new Headers(
-    resolveEffectiveHeaders(request.headers, request.body),
-  );
+  const context = await prepareRawApiRequest(endpoint, request, {
+    cursor: null,
+  });
+  const contextUrl = context.request.url;
+  const effectiveHeaders = new Headers(context.request.headers);
   applyCustomHeaders(effectiveHeaders, contextUrl);
   effectiveHeaders.delete("authorization");
   effectiveHeaders.delete("sentry-trace");
@@ -1309,72 +1305,19 @@ async function resolveApiPagination(
   );
   const currentCursor = cursorFlag === undefined ? inputCursor : cursor;
   const position = decodePageCursor(currentCursor);
-  if (position.cursor !== undefined) {
-    query.set("cursor", position.cursor);
-  }
-  if (position.perPage !== undefined) {
-    query.set("per_page", String(position.perPage));
-  }
   return {
-    endpoint:
+    prepared:
       cursorFlag === undefined && inputCursor === undefined
-        ? endpoint
-        : `${path}${query.size > 0 ? `?${query}` : ""}`,
+        ? context
+        : await prepareRawApiRequest(endpoint, request, {
+            cursor: position.cursor ?? null,
+            per_page: position.perPage,
+          }),
     contextKey,
     direction,
     currentCursor,
     position,
   };
-}
-
-/**
- * Resolve the full URL that rawApiRequest would use for a request.
- *
- * Mirrors the URL construction in rawApiRequest:
- * `${baseUrl}/api/0/${endpoint}?${queryString}`
- * @internal Exported for testing
- */
-export function resolveRequestUrl(
-  endpoint: string,
-  params?: Record<string, string | string[]>,
-  baseUrl?: string,
-): string {
-  // Use the same SDK config selection as rawApiRequest to ensure
-  // trailing slashes are stripped and the URL matches what would be sent.
-  const { baseUrl: normalizedBaseUrl } = baseUrl
-    ? getSdkConfig(baseUrl)
-    : getDefaultSdkConfig();
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
-  const endpointWithParams = appendSearchParams(normalizedEndpoint, params);
-  return `${normalizedBaseUrl}/api/0/${endpointWithParams}`;
-}
-
-/**
- * Resolve effective request headers, mirroring rawApiRequest logic.
- *
- * Auto-adds Content-Type: application/json for non-string object bodies
- * when no Content-Type was explicitly provided.
- *
- * @internal Exported for testing
- */
-export function resolveEffectiveHeaders(
-  customHeaders: Record<string, string> | undefined,
-  body: unknown,
-): Record<string, string> {
-  // Mirror rawApiRequest exactly: auto-add Content-Type for any non-string,
-  // non-undefined body when no Content-Type was explicitly provided.
-  const isStringBody = typeof body === "string";
-  // oxlint-disable-next-line unicorn/no-useless-fallback-in-spread -- Retain the existing fallback while migrating lint tools.
-  const headers = { ...(customHeaders ?? {}) };
-  const hasContentType = Object.keys(headers).some(
-    (k) => k.toLowerCase() === "content-type",
-  );
-  if (!(isStringBody || hasContentType) && body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-  return headers;
 }
 
 /**
@@ -1522,10 +1465,10 @@ function recordApiErrorAttributes(
 /** Log outgoing request details in `> ` curl-verbose style. */
 function logRequest(
   method: string,
-  endpoint: string,
+  url: string,
   headers: Record<string, string> | undefined,
 ): void {
-  log.debug(`> ${method} /api/0/${endpoint}`);
+  log.debug(`> ${method} ${url}`);
   if (headers) {
     for (const [key, value] of Object.entries(headers)) {
       log.debug(`> ${key}: ${value}`);
@@ -1861,16 +1804,18 @@ export const apiCommand = buildCommand({
     };
     const navigation =
       flags.method === "GET"
-        ? await resolveApiPagination(composedEndpoint, flags.cursor, request)
+        ? await resolveApiNavigation(composedEndpoint, flags.cursor, request)
         : undefined;
-    const requestEndpoint = navigation?.endpoint ?? composedEndpoint;
+    const prepared =
+      navigation?.prepared ??
+      (await prepareRawApiRequest(composedEndpoint, request));
 
     // Dry-run mode: preview the request that would be sent
     if (flags["dry-run"]) {
       yield new CommandOutput({
-        method: flags.method,
-        url: resolveRequestUrl(requestEndpoint, undefined, requestBaseUrl),
-        headers: resolveEffectiveHeaders(headers, body),
+        method: prepared.request.method,
+        url: prepared.request.url,
+        headers: Object.fromEntries(prepared.request.headers),
         body: body ?? null,
       });
       return;
@@ -1879,12 +1824,12 @@ export const apiCommand = buildCommand({
     const verbose = flags.verbose && !flags.silent;
 
     if (verbose) {
-      logRequest(flags.method, requestEndpoint, headers);
+      logRequest(flags.method, prepared.request.url, headers);
     }
 
     // The shared authenticated fetch validates requestBaseUrl against the
     // token host and registered regional origins before adding credentials.
-    const response = await rawApiRequest(requestEndpoint, request);
+    const response = await rawApiRequest(prepared);
 
     const isError = isApiErrorStatus(response.status);
 

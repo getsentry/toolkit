@@ -9,6 +9,7 @@
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
   SentryApiError,
@@ -416,7 +417,7 @@ export { API_MAX_PER_PAGE };
 export {
   consumePage,
   type PagePosition,
-} from "@sentry/toolkit-core/pagination";
+} from "@sentry/toolkit-core/api-client/pagination";
 
 /** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
 export function decodePageCursor(raw: string | undefined): PagePosition {
@@ -850,8 +851,56 @@ export function isTextualContentType(contentType: string | null): boolean {
   return false;
 }
 
+/** Options for a raw request, retaining the CLI's transport and body policies. */
+type RawApiRequestOptions = ApiRequestOptions & {
+  /** Explicit caller headers, before authentication and proxy headers. */
+  headers?: Record<string, string>;
+  /** Caller-selected Sentry origin or instance prefix, checked at dispatch. */
+  baseUrl?: string;
+};
+
+/** A request snapshot and the CLI transport that will authenticate it. */
+export type PreparedRawApiRequest = {
+  /** SDK-prepared URL, headers, method and body; single-use when sent. */
+  request: Request;
+  /** Authenticated transport, including raw response buffering and host checks. */
+  fetch: ReturnType<typeof getSdkConfig>["fetch"];
+};
+
 /**
- * Make a raw API request that returns full response details.
+ * Prepare a raw request without fetching or refreshing credentials.
+ * Existing params retain append semantics; query overrides use the SDK's
+ * replacement semantics for decoded page cursors and page sizes.
+ */
+export async function prepareRawApiRequest(
+  endpoint: string,
+  options: RawApiRequestOptions = {},
+  query?: Record<string, unknown>,
+): Promise<PreparedRawApiRequest> {
+  const { method = "GET", body, params, headers, baseUrl } = options;
+  const config = baseUrl
+    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
+    : getDefaultSdkConfig({ bufferResponseBody: true });
+  const isStringBody = typeof body === "string";
+  const request = await createSentryClient(config).client.prepareRequest({
+    method,
+    url: buildSentryApiUrl("", appendSearchParams(endpoint, params)),
+    query,
+    body,
+    headers: isStringBody ? { "Content-Type": null, ...headers } : headers,
+    ...(isStringBody ? { bodySerializer: null } : {}),
+  });
+  // Raw requests honor an explicit Content-Type even without a body; the SDK
+  // otherwise removes it for bodyless operations and empty serialized bodies.
+  const contentType = new Headers(headers).get("content-type");
+  if (contentType !== null) {
+    request.headers.set("content-type", contentType);
+  }
+  return { request, fetch: config.fetch };
+}
+
+/**
+ * Send a prepared or endpoint-based raw request and return full response details.
  * Unlike apiRequest, this does not throw on non-2xx responses.
  * Used by the 'sentry api' command for direct API access.
  *
@@ -859,69 +908,26 @@ export function isTextualContentType(contentType: string | null): boolean {
  * ({@link isTextualContentType}). Non-textual bodies are returned as
  * `Uint8Array` so binary downloads stay byte-for-byte intact.
  *
- * @param endpoint - API endpoint path (e.g., "/organizations/")
- * @param options - Request options including method, body, params, custom headers, and optional trusted base URL
+ * @param endpoint - API endpoint path or the prepared request used for its preview
+ * @param options - Options used when preparing an endpoint-based request
  * @returns Response status, status text, headers, and parsed body
  * @throws {AuthError} On authentication failure
  * @throws {HostScopeError} Before credentials are attached to an untrusted origin
  */
 export async function rawApiRequest(
-  endpoint: string,
-  options: ApiRequestOptions & {
-    headers?: Record<string, string>;
-    /**
-     * Sentry instance or regional base URL. The authenticated fetch rejects
-     * origins outside the active token's trust scope before adding credentials.
-     */
-    baseUrl?: string;
-  } = {},
+  endpoint: string | PreparedRawApiRequest,
+  options: RawApiRequestOptions = {},
 ): Promise<{
   status: number;
   statusText: string;
   headers: Headers;
   body: unknown;
 }> {
-  const {
-    method = "GET",
-    body,
-    params,
-    headers: customHeaders = {},
-    baseUrl,
-  } = options;
-
-  // Both configs share createAuthenticatedFetch(), whose prepareHeaders()
-  // enforces isRequestOriginTrusted() before attaching Authorization.
-  const config = baseUrl
-    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true });
-
-  const endpointWithParams = appendSearchParams(endpoint, params);
-  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
-
-  // Build request headers and body.
-  // String bodies: no Content-Type unless the caller explicitly provides one.
-  // Object bodies: application/json (auto-stringified).
-  const isStringBody = typeof body === "string";
-  const hasContentType = Object.keys(customHeaders).some(
-    (k) => k.toLowerCase() === "content-type",
-  );
-
-  const headers: Record<string, string> = { ...customHeaders };
-  if (!(isStringBody || hasContentType) && body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  let requestBody: string | undefined;
-  if (body !== undefined) {
-    requestBody = isStringBody ? body : JSON.stringify(body);
-  }
-
-  const fetchFn = config.fetch;
-  const response = await fetchFn(url, {
-    method,
-    headers,
-    body: requestBody,
-  });
+  const prepared =
+    typeof endpoint === "string"
+      ? await prepareRawApiRequest(endpoint, options)
+      : endpoint;
+  const response = await prepared.fetch(prepared.request);
 
   const contentType = response.headers.get("content-type");
   let responseBody: unknown;
