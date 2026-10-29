@@ -296,8 +296,8 @@ call `command.loader()` keep passing raw strings.
 **Arity-dependent positionals:** when what an argument means depends on how
 many were given (`[<org>/<project>] <replay-id>`, `log list`'s optional
 trailing trace ID), declare the positional with `boundArguments` from
-`src/lib/positional-parse.ts` (see `replayArguments` in `replay/view.ts` and
-`log list`). It is an array positional whose `parse` sees every argument at
+`src/lib/positional-parse.ts` (see `replayArguments` in `replay/view.ts`,
+`log list`, and `trace view`). It is an array positional whose `parse` sees every argument at
 once and whose `resolve` binds like a target positional's: `func` takes one
 `BoundArguments<Parsed, Resolved>` (alias it per command and add the alias to
 the lint rule's type list), reads `target.parsed`, and awaits
@@ -308,7 +308,11 @@ parse error becomes Stricli's `ArgumentParseError`, which prints and exits
 command's help instead. The same purity rule applies: return a pasted URL's server
 (`baseUrl`) and any warnings from the parse, and apply them in `resolve`
 (`parseTraceTargetInput` and `parseDualModeInput` in `trace-target.ts` do
-this for trace targets).
+this for trace targets). Commands that recover a malformed ID (`trace view`,
+`span view`, `log view`) parse it unvalidated and validate or recover it in
+`resolve`, which can look the prefix up: `parseTraceArgumentsInput` and
+`resolveTraceArguments` do this for trace IDs. A missing ID or a bad target
+still fails the parse.
 
 Which argument is the ID and which is its target is decided by
 `grammar/id-arguments.pegjs`, not by counting arguments in TypeScript. The

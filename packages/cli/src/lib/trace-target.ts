@@ -240,10 +240,44 @@ function orgProjectToTraceTarget(
 }
 
 /**
- * Parse trace-target args, falling back to {@link recoverHexId} on an
- * invalid trace ID. Returns a {@link ParsedTraceTarget} with a validated
- * or recovered trace ID, or throws the original {@link ValidationError}
- * when recovery can't proceed.
+ * Trace arguments parsed like {@link parseTraceTargetInput}, but with the
+ * trace ID as typed: {@link resolveTraceArguments} validates it, or
+ * recovers a malformed one, when the command runs.
+ */
+export type TraceArgumentsInput = TraceTargetInput & {
+  /** The target argument as typed, for the recovery lookup */
+  readonly targetArg?: string;
+};
+
+/**
+ * Parse trace arguments without side effects and without validating the
+ * trace ID, so a malformed one can be recovered once the command runs.
+ *
+ * @throws {ContextError} When the trace ID is missing
+ * @throws {ValidationError} When the target is invalid
+ */
+export function parseTraceArgumentsInput(
+  args: readonly string[],
+  usageHint: string,
+  options: TraceArgumentsOptions = {},
+): TraceArgumentsInput {
+  const { id, ...rest } = parseIdArgument(args, ID_KINDS.trace, {
+    usageHint,
+    ...options,
+    validate: false,
+  });
+  return {
+    ...traceTargetInput({ ...rest, ids: [id] }),
+    targetArg: rest.target,
+  };
+}
+
+/**
+ * Apply what {@link parseTraceArgumentsInput} deferred and validate the
+ * trace ID, falling back to {@link recoverHexId} on an invalid one.
+ * Returns a {@link ParsedTraceTarget} with a validated or recovered trace
+ * ID, or throws the original {@link ValidationError} when recovery can't
+ * proceed.
  *
  * The recovery path runs the cheap classifications (sentinel, slug, etc.)
  * locally regardless of context. Fuzzy prefix lookup additionally requires
@@ -251,46 +285,18 @@ function orgProjectToTraceTarget(
  * NOT attempt DSN/config auto-detection during recovery (it's expensive
  * and the adapter returns empty without a project anyway).
  */
-export async function parseTraceTargetWithRecovery(
-  args: readonly string[],
-  usageHint: string,
-  options: TraceArgumentsOptions = {},
+export async function resolveTraceArguments(
+  input: TraceArgumentsInput,
 ): Promise<ParsedTraceTarget> {
+  const parsed = applyTraceTargetInput(input);
   try {
-    return parseTraceTarget(args, usageHint, options);
+    return { ...parsed, traceId: ID_KINDS.trace.validate(parsed.traceId) };
   } catch (err) {
     if (!(err instanceof ValidationError)) {
       throw err;
     }
-    const raw = rawIdArguments(args, { usageHint, ...options }, err);
-    const rawTraceId = raw.ids[0];
-    if (!rawTraceId) {
-      throw err;
-    }
-    const recovered = await recoverTraceId(rawTraceId, raw.target, err);
-    return applyTraceTargetInput(
-      traceTargetInput({ ...raw, ids: [recovered] }),
-    );
-  }
-}
-
-/**
- * The trace ID arguments as typed, to recover the ID from; `failure` when
- * even they do not parse (an invalid path, say).
- */
-function rawIdArguments(
-  args: readonly string[],
-  options: TraceArgumentsOptions & { readonly usageHint: string },
-  failure: ValidationError,
-): IdArguments {
-  try {
-    return parseIdArguments(args, ID_KINDS.trace, {
-      ...options,
-      validate: false,
-    });
-  } catch (error) {
-    log.debug("Trace arguments do not parse without validation", error);
-    throw failure;
+    const traceId = await recoverTraceId(parsed.traceId, input.targetArg, err);
+    return { ...parsed, traceId };
   }
 }
 

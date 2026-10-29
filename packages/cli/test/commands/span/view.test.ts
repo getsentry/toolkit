@@ -5,9 +5,10 @@
  * and output formatting in src/commands/span/view.ts.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  parsePositionalArgs,
+  parseSpanViewInput,
   viewCommand,
 } from "../../../src/commands/span/view.js";
 
@@ -46,6 +47,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { parseTraceArgumentsInput } from "../../../src/lib/trace-target.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 const VALID_SPAN_ID = "a1b2c3d4e5f67890";
@@ -92,7 +94,10 @@ describe("validateSpanId", () => {
   });
 });
 
-describe("parsePositionalArgs", () => {
+describe("parseSpanViewInput", () => {
+  /** The trace of `traceArg`, as `span view` parses it */
+  const trace = (traceArg: string) =>
+    parseTraceArgumentsInput([traceArg], "", { needsProject: true });
   const SLASH_FORM = `my-org/my-project/${VALID_TRACE_ID}`;
 
   test.each([
@@ -134,47 +139,48 @@ describe("parsePositionalArgs", () => {
       [VALID_SPAN_ID, VALID_SPAN_ID_2],
     ],
   ])("%j → trace %j, spans %j", (args, traceArg, rawSpanIds) => {
-    expect(parsePositionalArgs(args)).toEqual({ traceArg, rawSpanIds });
+    expect(parseSpanViewInput(args)).toEqual({
+      trace: trace(traceArg),
+      rawSpanIds,
+    });
   });
 
   test("keeps the case of IDs for the command to normalize", () => {
     expect(
-      parsePositionalArgs([
-        "AAAA1111BBBB2222CCCC3333DDDD4444/A1B2C3D4E5F67890",
-      ]),
+      parseSpanViewInput(["AAAA1111BBBB2222CCCC3333DDDD4444/A1B2C3D4E5F67890"]),
     ).toEqual({
-      traceArg: "AAAA1111BBBB2222CCCC3333DDDD4444",
+      trace: trace("AAAA1111BBBB2222CCCC3333DDDD4444"),
       rawSpanIds: ["A1B2C3D4E5F67890"],
     });
   });
 
   test("leaves malformed IDs raw, for recovery at the command layer", () => {
-    expect(parsePositionalArgs(["not-valid", VALID_SPAN_ID])).toEqual({
-      traceArg: "not-valid",
+    expect(parseSpanViewInput(["not-valid", VALID_SPAN_ID])).toEqual({
+      trace: trace("not-valid"),
       rawSpanIds: [VALID_SPAN_ID],
     });
-    expect(parsePositionalArgs([`not-a-hex-id/${VALID_SPAN_ID}`])).toEqual({
-      traceArg: "not-a-hex-id",
+    expect(parseSpanViewInput([`not-a-hex-id/${VALID_SPAN_ID}`])).toEqual({
+      trace: trace("not-a-hex-id"),
       rawSpanIds: [VALID_SPAN_ID],
     });
     expect(
-      parsePositionalArgs([`my-org/my-project/not-a-trace/${VALID_SPAN_ID}`]),
+      parseSpanViewInput([`my-org/my-project/not-a-trace/${VALID_SPAN_ID}`]),
     ).toEqual({
-      traceArg: "my-org/my-project/not-a-trace",
+      trace: trace("my-org/my-project/not-a-trace"),
       rawSpanIds: [VALID_SPAN_ID],
     });
-    expect(parsePositionalArgs([VALID_TRACE_ID, "not-a-span-id"])).toEqual({
-      traceArg: VALID_TRACE_ID,
+    expect(parseSpanViewInput([VALID_TRACE_ID, "not-a-span-id"])).toEqual({
+      trace: trace(VALID_TRACE_ID),
       rawSpanIds: ["not-a-span-id"],
     });
-    expect(
-      parsePositionalArgs([VALID_TRACE_ID, "abcd1234"]).rawSpanIds,
-    ).toEqual(["abcd1234"]);
+    expect(parseSpanViewInput([VALID_TRACE_ID, "abcd1234"]).rawSpanIds).toEqual(
+      ["abcd1234"],
+    );
   });
 
   test("org/project/spanId (missing trace ID) throws a trace-focused ContextError (CLI-1GP)", () => {
     try {
-      parsePositionalArgs([`my-org/my-project/${VALID_SPAN_ID}`]);
+      parseSpanViewInput([`my-org/my-project/${VALID_SPAN_ID}`]);
       expect.unreachable("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ContextError);
@@ -195,26 +201,26 @@ describe("parsePositionalArgs", () => {
       [[`  ${VALID_TRACE_ID}  `]],
       [[`${VALID_TRACE_ID}/bbbb2222cccc3333dddd4444eeee5555`]],
     ])("%j → ContextError", (args) => {
-      expect(() => parsePositionalArgs(args)).toThrow(ContextError);
+      expect(() => parseSpanViewInput(args)).toThrow(ContextError);
     });
 
     test("error message mentions trace ID and span ID", () => {
-      expect(() => parsePositionalArgs([])).toThrow("Trace ID");
+      expect(() => parseSpanViewInput([])).toThrow("Trace ID");
     });
 
     test("missing span IDs error suggests span list", () => {
-      expect(() => parsePositionalArgs([VALID_TRACE_ID])).toThrow("span list");
+      expect(() => parseSpanViewInput([VALID_TRACE_ID])).toThrow("span list");
     });
 
     test("throws ContextError for bare span ID without trace ID (CLI-SC)", () => {
-      expect(() => parsePositionalArgs(["a1b2c3d4e5f67890"])).toThrow(
+      expect(() => parseSpanViewInput(["a1b2c3d4e5f67890"])).toThrow(
         ContextError,
       );
     });
 
     test("bare span ID error identifies the input and suggests correct usage", () => {
       try {
-        parsePositionalArgs(["A1B2C3D4E5F67890"]);
+        parseSpanViewInput(["A1B2C3D4E5F67890"]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -227,7 +233,7 @@ describe("parsePositionalArgs", () => {
 
     test("bare span ID with dashes is still detected (CLI-SC)", () => {
       // Some tools format span IDs with dashes
-      expect(() => parsePositionalArgs(["a1b2-c3d4-e5f6-7890"])).toThrow(
+      expect(() => parseSpanViewInput(["a1b2-c3d4-e5f6-7890"])).toThrow(
         "looks like a span ID",
       );
     });
@@ -449,18 +455,21 @@ describe("viewCommand.func", () => {
     expect(parsed[0].ancestors).toEqual([]);
   });
 
-  test("throws ContextError for org-all target (org/ without project)", async () => {
+  test("fails to parse without span IDs, before resolving", async () => {
     const { context } = createContext();
 
-    // "my-org/" is parsed as org-all mode which is not supported for span view
-    await expect(
-      func.call(
+    const error = await func
+      .call(
         context,
         { spans: 0, fresh: false },
         `my-org/my-project/${VALID_TRACE_ID}`,
-        // No span IDs — but we need at least one
-      ),
-    ).rejects.toThrow(ContextError);
+      )
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ContextError,
+    );
+    expect(getDetailedTraceSpy).not.toHaveBeenCalled();
   });
 
   test("throws ResolutionError for multiple missing span IDs", async () => {

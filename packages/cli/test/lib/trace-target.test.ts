@@ -41,8 +41,9 @@ import {
   parseDualModeArgs,
   parseDualModeInput,
   parseTraceTarget,
+  parseTraceArgumentsInput,
   parseTraceTargetInput,
-  parseTraceTargetWithRecovery,
+  resolveTraceArguments,
   resolveTraceOrg,
   resolveTraceOrgOptionalProject,
   resolveTraceOrgProject,
@@ -446,8 +447,10 @@ describe("parsing without side effects", () => {
   });
 });
 
-describe("parseTraceTargetWithRecovery", () => {
+describe("trace arguments, recovering a malformed trace ID", () => {
   const HINT = "sentry trace view [<org>/[<project>/]]<trace-id>";
+  const resolve = (args: readonly string[]) =>
+    resolveTraceArguments(parseTraceArgumentsInput(args, HINT));
 
   beforeEach(() => {
     vi.spyOn(region, "resolveEffectiveOrg").mockImplementation(
@@ -459,10 +462,28 @@ describe("parseTraceTargetWithRecovery", () => {
     vi.mocked(region.resolveEffectiveOrg).mockRestore();
   });
 
+  test("parsing keeps the trace ID as typed", () => {
+    expect(parseTraceArgumentsInput(["acme/web", "nothex"], HINT)).toEqual({
+      parsed: {
+        type: "explicit",
+        org: "acme",
+        project: "web",
+        traceId: "nothex",
+      },
+      targetArg: "acme/web",
+      warnings: [],
+    });
+  });
+
+  test("resolving normalizes a valid trace ID", async () => {
+    await expect(resolve([VALID_TRACE_ID.toUpperCase()])).resolves.toEqual({
+      type: "auto-detect",
+      traceId: VALID_TRACE_ID,
+    });
+  });
+
   test("recovers a malformed trace ID after the org", async () => {
-    await expect(
-      parseTraceTargetWithRecovery([`acme/${VALID_TRACE_ID}xyz`], HINT),
-    ).resolves.toEqual({
+    await expect(resolve([`acme/${VALID_TRACE_ID}xyz`])).resolves.toEqual({
       type: "org-scoped",
       traceId: VALID_TRACE_ID,
       org: "acme",
@@ -473,18 +494,16 @@ describe("parseTraceTargetWithRecovery", () => {
     // Without a project there is nothing to look the prefix up in, so
     // recovery finds no match, rather than the trace ID being missing.
     const prefix = VALID_TRACE_ID.slice(0, 12);
-    await expect(
-      parseTraceTargetWithRecovery([`acme/${prefix}`], HINT),
-    ).rejects.toMatchObject({
+    await expect(resolve([`acme/${prefix}`])).rejects.toMatchObject({
       constructor: ResolutionError,
       resource: `Trace '${prefix}'`,
       headline: "not found",
     });
   });
 
-  test("<org>/<project> is still missing the trace ID", async () => {
-    await expect(
-      parseTraceTargetWithRecovery(["acme/web"], HINT),
-    ).rejects.toThrow(ContextError);
+  test("<org>/<project> is still missing the trace ID", () => {
+    expect(() => parseTraceArgumentsInput(["acme/web"], HINT)).toThrow(
+      ContextError,
+    );
   });
 });

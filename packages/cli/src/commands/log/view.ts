@@ -12,11 +12,13 @@ import type { SentryContext } from "../../context.js";
 import { getLogItemDetail, getLogs } from "../../lib/api-client.js";
 import {
   looksLikeIssueShortId,
-  parseOrgProjectArg,
+  type OrgProjectInput,
+  type ParsedOrgProject,
+  parseOrgProjectInput,
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -38,11 +40,16 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
   resolveLogProjectId,
   resolveOrgAndProject,
   resolveProjectBoundSlug,
 } from "../../lib/resolve-target.js";
 import { RETENTION_DAYS } from "../../lib/retention.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildLogsUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits } from "../../lib/utils.js";
@@ -150,14 +157,14 @@ export type ResolvedLogTarget = {
 /**
  * Resolve the target org/project from the parsed arg.
  *
- * @param parsed - Result of `parseOrgProjectArg`
+ * @param parsed - The parsed target argument
  * @param rawLogIds - Raw log IDs (used for usage hints; not yet validated)
  * @param cwd - Current working directory
  * @returns Resolved target, or null if resolution produced nothing
  * @throws {ContextError} If org-all mode is used (requires specific project)
  */
 async function resolveTarget(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   rawLogIds: string[],
   cwd: string,
 ): Promise<ResolvedLogTarget | null> {
@@ -198,6 +205,58 @@ async function resolveTarget(
       );
     }
   }
+}
+
+/** The arguments of `log view`: the log IDs as typed, and the target. */
+type LogViewInput = ReturnType<typeof parsePositionalArgs> & {
+  readonly target: OrgProjectInput;
+};
+
+/** The target of `log view`, and its log IDs, validated or recovered. */
+type ResolvedLogs = ResolvedLogTarget & { readonly logIds: string[] };
+
+/** The arguments of `log view`. */
+type LogViewArguments = BoundArguments<LogViewInput, ResolvedLogs>;
+
+/** Parse `log view` arguments, without side effects. */
+function parseLogViewInput(args: readonly string[]): LogViewInput {
+  const input = parsePositionalArgs(args);
+  return { ...input, target: parseOrgProjectInput(input.targetArg) };
+}
+
+/**
+ * Resolve `log view` arguments: find the org and project, then validate
+ * (or recover) the log IDs in that project.
+ */
+async function resolveLogViewInput(
+  input: LogViewInput,
+  context: SentryContext,
+): Promise<ResolvedLogs> {
+  if (input.target.baseUrl) {
+    applySentryUrlContext(input.target.baseUrl);
+  }
+  const cmdLog = logger.withTag("log.view");
+  for (const warning of input.warnings) {
+    cmdLog.warn(warning);
+  }
+  if (input.suggestion) {
+    cmdLog.warn(input.suggestion);
+  }
+  const target = await resolveTarget(
+    input.target.parsed,
+    input.rawLogIds,
+    context.cwd,
+  );
+  if (!target) {
+    throw new ContextError("Organization and project", USAGE_HINT);
+  }
+  // `log.warn` preserves emission order regardless of await order, and a
+  // throwing recovery (multi-match ResolutionError) exits via
+  // `Promise.all` with the first-thrown error.
+  const logIds = await Promise.all(
+    input.rawLogIds.map((raw) => validateAndRecoverLogId(raw, target)),
+  );
+  return { ...target, logIds };
 }
 
 /**
@@ -427,15 +486,14 @@ export const viewCommand = buildCommand({
         : data.logs,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/log-id",
-        brief:
-          "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/log-id",
+      brief:
+        "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseLogViewInput,
+      resolve: resolveLogViewInput,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -446,36 +504,10 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(this: SentryContext, flags: ViewFlags, args: LogViewArguments) {
     applyFreshFlag(flags);
-    const { cwd } = this;
     const cmdLog = logger.withTag("log.view");
-
-    // Parse positional args (raw — validation is deferred to after target
-    // resolution so we can run fuzzy recovery with org/project context).
-    const { rawLogIds, targetArg, warnings, suggestion } =
-      parsePositionalArgs(args);
-    for (const warning of warnings) {
-      cmdLog.warn(warning);
-    }
-    if (suggestion) {
-      cmdLog.warn(suggestion);
-    }
-    const parsed = parseOrgProjectArg(targetArg);
-
-    const target = await resolveTarget(parsed, rawLogIds, cwd);
-
-    if (!target) {
-      throw new ContextError("Organization and project", USAGE_HINT);
-    }
-
-    // Validate + recover each log ID in parallel. `log.warn` preserves
-    // emission order regardless of await order, and a throwing recovery
-    // (multi-match ResolutionError) exits via `Promise.all` with the
-    // first-thrown error — same UX as the old sequential loop.
-    const logIds = await Promise.all(
-      rawLogIds.map((raw) => validateAndRecoverLogId(raw, target)),
-    );
+    const { logIds, ...target } = await args.resolved;
 
     if (flags.web) {
       await handleWebOpen(target.org, logIds);

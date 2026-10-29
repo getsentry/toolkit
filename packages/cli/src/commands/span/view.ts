@@ -13,7 +13,7 @@ import {
 } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -41,8 +41,15 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import {
-  parseTraceTargetWithRecovery,
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
+  parseTraceArgumentsInput,
+  type ResolvedTraceOrgProject,
+  resolveTraceArguments,
   resolveTraceOrgProject,
+  type TraceArgumentsInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 
@@ -59,15 +66,23 @@ type ViewFlags = {
 const USAGE_HINT =
   "sentry span view [<org>/<project>/]<trace-id> <span-id> [<span-id>...]";
 
-/** The positional args of `span view`, parsed but not validated. */
-type SpanViewArgs = {
-  /** The trace: `[<org>/<project>/]<trace-id>`, validated (or recovered) later */
-  traceArg: string;
-  rawSpanIds: string[];
+/** The arguments of `span view`, parsed but with the IDs as typed. */
+export type SpanViewInput = {
+  /** The trace, validated (or recovered) when the arguments resolve */
+  readonly trace: TraceArgumentsInput;
+  readonly rawSpanIds: readonly string[];
 };
 
+/** The trace and the span IDs of `span view`, validated or recovered. */
+type ResolvedSpans = ResolvedTraceOrgProject & {
+  readonly spanIds: string[];
+};
+
+/** The arguments of `span view`. */
+type SpanViewArguments = BoundArguments<SpanViewInput, ResolvedSpans>;
+
 /**
- * Parse positional arguments for span view.
+ * Parse `span view` arguments, without side effects.
  *
  * Span IDs take the forms every ID-taking command does (see
  * `id-arguments.ts`), with the trace as their target:
@@ -75,13 +90,13 @@ type SpanViewArgs = {
  * `[<org>/<project>/]<trace-id>/<span-id>` in one argument (as `span list`
  * prints them), with more span IDs after it.
  *
- * IDs are returned raw: the command validates the trace with
- * {@link parseTraceTargetWithRecovery} and the spans once it knows the
- * trace, so malformed IDs can be recovered.
+ * IDs are kept as typed: {@link resolveSpanViewInput} validates the trace
+ * and then the spans once it knows the trace, so malformed IDs can be
+ * recovered.
  *
  * @throws {ContextError} If the trace or the span IDs are missing
  */
-export function parsePositionalArgs(rawArgs: readonly string[]): SpanViewArgs {
+export function parseSpanViewInput(rawArgs: readonly string[]): SpanViewInput {
   // A lone argument that does not end in a span ID is the trace
   const { target, ids } = parseIdArguments(rawArgs, ID_KINDS.span, {
     usageHint: USAGE_HINT,
@@ -114,23 +129,20 @@ export function parsePositionalArgs(rawArgs: readonly string[]): SpanViewArgs {
     ]);
   }
 
-  requireTraceId(target, first);
-  return { traceArg: target, rawSpanIds: [...ids] };
+  return { trace: parseTrace(target, first), rawSpanIds: ids };
 }
 
 /**
- * Throw a trace-focused error when the target of the span IDs has no trace
- * ID, as in `<org>/<project>/<span-id>` (CLI-1GP). A malformed trace ID is
- * left for {@link parseTraceTargetWithRecovery}.
+ * Parse the target of the span IDs as the trace, with a trace-focused error
+ * when it has no trace ID, as in `<org>/<project>/<span-id>` (CLI-1GP). A
+ * malformed trace ID is left for {@link resolveTraceArguments}.
  *
  * @throws {ContextError} When the trace ID is missing
  */
-function requireTraceId(traceArg: string, spanId: string): void {
+function parseTrace(traceArg: string, spanId: string): TraceArgumentsInput {
   try {
-    parseIdArguments([traceArg], ID_KINDS.trace, {
-      usageHint: USAGE_HINT,
+    return parseTraceArgumentsInput([traceArg], USAGE_HINT, {
       needsProject: true,
-      validate: false,
     });
   } catch (error) {
     if (!(error instanceof ContextError)) {
@@ -141,6 +153,32 @@ function requireTraceId(traceArg: string, spanId: string): void {
       `Provide the trace ID: sentry span view ${traceArg}/<trace-id> ${spanId}`,
     ]);
   }
+}
+
+/**
+ * Resolve `span view` arguments: validate (or recover) the trace ID, find
+ * the trace's org and project, then validate (or recover) the span IDs in
+ * that trace.
+ */
+async function resolveSpanViewInput(
+  input: SpanViewInput,
+  context: SentryContext,
+): Promise<ResolvedSpans> {
+  const traceTarget = await resolveTraceArguments(input.trace);
+  warnIfNormalized(traceTarget, "span.view");
+  const { traceId, org, project } = await resolveTraceOrgProject(
+    traceTarget,
+    context.cwd,
+    USAGE_HINT,
+  );
+  // Span IDs are unique only within a trace, so recovery scopes its fuzzy
+  // lookup via `ctx.traceId`.
+  const spanIds = await Promise.all(
+    input.rawSpanIds.map((raw) =>
+      validateAndRecoverSpanId(raw, { org, project, traceId }),
+    ),
+  );
+  return { traceId, org, project, spanIds };
 }
 
 /**
@@ -338,51 +376,28 @@ export const viewCommand = buildCommand({
     jsonTransform: jsonTransformSpanView,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "trace-id/span-id",
-        brief:
-          "[<org>/<project>/]<trace-id> <span-id> [<span-id>...] - Trace ID and one or more span IDs",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "trace-id/span-id",
+      brief:
+        "[<org>/<project>/]<trace-id> <span-id> [<span-id>...] - Trace ID and one or more span IDs",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseSpanViewInput,
+      resolve: resolveSpanViewInput,
+    }),
     flags: {
       ...spansFlag,
       fresh: FRESH_FLAG,
     },
     aliases: { ...FRESH_ALIASES },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: SpanViewArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
+    const { traceId, org, project, spanIds } = await target.resolved;
 
-    // Parse positional args; the trace ID goes through
-    // `parseTraceTargetWithRecovery` for async trace-ID recovery — same
-    // contract as `trace view`.
-    const { traceArg, rawSpanIds } = parsePositionalArgs(args);
-    const traceTarget = await parseTraceTargetWithRecovery(
-      [traceArg],
-      USAGE_HINT,
-      { needsProject: true },
-    );
-    warnIfNormalized(traceTarget, "span.view");
-
-    // Resolve org/project
-    const { traceId, org, project } = await resolveTraceOrgProject(
-      traceTarget,
-      cwd,
-      USAGE_HINT,
-    );
-
-    // Validate + recover span IDs now that trace context is available.
-    // Span IDs are unique only within a trace, so recovery scopes its
-    // fuzzy lookup via `ctx.traceId`.
-    const spanIds = await Promise.all(
-      rawSpanIds.map((raw) =>
-        validateAndRecoverSpanId(raw, { org, project, traceId }),
-      ),
-    );
     // Fetch trace data (single fetch for all span lookups)
     const spans = await getDetailedTrace(org, traceId);
 
