@@ -1528,6 +1528,89 @@ describe("transient 5xx retry", () => {
   });
 });
 
+describe("network failure retry", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  const connectionReset = () => {
+    const error = new Error("fetch failed");
+    error.cause = new Error("read ECONNRESET");
+    return error;
+  };
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("retries a GET after a network failure and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(connectionReset())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "1",
+            name: "Test User",
+            email: "t@example.com",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.getAuthenticatedUser();
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a POST after a network failure", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(connectionReset());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.createTeam({
+      organizationSlug: "my-org",
+      name: "My Team",
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow(/Connection reset/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a malformed token, which fails before fetch", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "bad\ntoken",
+    });
+
+    await expect(apiService.getAuthenticatedUser()).rejects.toThrow(
+      /Malformed authentication token/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("rate limit retry", () => {
   let originalFetch: typeof globalThis.fetch;
   const now = Date.UTC(2026, 0, 1, 12, 0, 0, 300);

@@ -321,6 +321,13 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
   maxTotalDelayMs: 3000,
 };
 
+/**
+ * Errors thrown because `fetch` itself failed (DNS, connection refused or
+ * reset, socket timeout), as opposed to configuration checks before the
+ * request. The shared policy retries these for idempotent requests only.
+ */
+const fetchFailures = new WeakSet<object>();
+
 const API_MAX_PER_PAGE = 100;
 const MAX_LIST_PAGES = 50;
 
@@ -771,12 +778,13 @@ export class SentryApiService {
 
   /**
    * Makes an authenticated request to the Sentry API, transparently retrying
-   * rate-limited (429) requests and 500/502/503/504 GET and HEAD requests
-   * under `REQUEST_RETRY_POLICY`.
+   * rate-limited (429) requests, and GET and HEAD requests that hit a
+   * 500/502/503/504 or a network failure, under `REQUEST_RETRY_POLICY`.
    *
    * A 429 waits for its `Retry-After` or `X-Sentry-Rate-Limit-Reset` delay;
-   * everything else uses jittered backoff. Writes that hit a 5xx, other 4xx
-   * errors, and network/configuration errors fail fast. Callers that opt
+   * everything else uses jittered backoff. Writes that hit a 5xx or a network
+   * failure, other 4xx errors, and configuration checks before the request
+   * fail fast. Callers that opt
    * a status into `allowStatuses` receive the raw response from `requestOnce`
    * and are never retried. Aborting `options.signal` ends any wait.
    *
@@ -799,13 +807,18 @@ export class SentryApiService {
       try {
         return await this.requestOnce(path, options, requestOptions);
       } catch (error) {
-        if (!(error instanceof ApiError) || error.status === undefined) {
+        const status = error instanceof ApiError ? error.status : undefined;
+        const networkFailure =
+          error instanceof Error &&
+          fetchFailures.has(error) &&
+          !options.signal?.aborted;
+        if (status === undefined && !networkFailure) {
           throw error;
         }
         const delayMs = nextRetryDelayMs({
           policy: REQUEST_RETRY_POLICY,
           method,
-          status: error.status,
+          status,
           serverDelayMs:
             error instanceof ApiRateLimitError ? error.retryAfterMs : undefined,
           attempt,
@@ -915,10 +928,16 @@ export class SentryApiService {
         errorCode === "ETIMEDOUT" ||
         errorMessage.includes("Connect Timeout Error")
       ) {
-        throw new ConfigurationError(friendlyMessage, { cause: error });
+        const configError = new ConfigurationError(friendlyMessage, {
+          cause: error,
+        });
+        fetchFailures.add(configError);
+        throw configError;
       }
 
-      throw new Error(friendlyMessage, { cause: error });
+      const networkError = new Error(friendlyMessage, { cause: error });
+      fetchFailures.add(networkError);
+      throw networkError;
     }
 
     // Handle error responses generically
