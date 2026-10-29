@@ -86,7 +86,7 @@
   "devDependencies": {
     "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
-    "typescript": "^5.9.3",
+    "typescript": "catalog:",
     "valibot": "^1.4.2",
     "vitest": "catalog:",
     "zod": "catalog:"
