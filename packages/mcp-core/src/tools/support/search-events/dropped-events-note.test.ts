@@ -59,6 +59,41 @@ describe("buildDroppedEventsNote", () => {
     expect(note).toContain("## Dropped Events");
     expect(note).toContain("40.0%");
     expect(note).toContain("find_dropped_events");
+    // A real project id scopes both the copy and the hint to the project.
+    expect(note).toContain("in this project");
+    expect(note).toContain("org, project, dataset, and time range");
+  });
+
+  it("says organization and drops project from the hint when no project is selected", async () => {
+    const apiService = stubApi({
+      meta: { dataset: "errors", start: 0, end: 0, interval: 3_600_000 },
+      droppedEvents: [bucket({ count: 400, tags: ["unintentional"] })],
+      acceptedEvents: [bucket({ outcome: "accepted", count: 600 })],
+    });
+    const note = await buildDroppedEventsNote({
+      ...base,
+      apiService,
+      projectId: undefined,
+    });
+    expect(note).toContain("in this organization");
+    expect(note).not.toContain("in this project");
+    expect(note).toContain("org, dataset, and time range");
+    expect(note).not.toContain("org, project, dataset");
+  });
+
+  it("treats the -1 all-projects sentinel as org-wide", async () => {
+    const apiService = stubApi({
+      meta: { dataset: "errors", start: 0, end: 0, interval: 3_600_000 },
+      droppedEvents: [bucket({ count: 400, tags: ["unintentional"] })],
+      acceptedEvents: [bucket({ outcome: "accepted", count: 600 })],
+    });
+    const note = await buildDroppedEventsNote({
+      ...base,
+      apiService,
+      projectId: "-1",
+    });
+    expect(note).toContain("in this organization");
+    expect(note).toContain("org, dataset, and time range");
   });
 
   it("stays silent below the materiality threshold", async () => {

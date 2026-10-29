@@ -124,24 +124,29 @@ export async function buildDroppedEventsNote({
 
   getActiveSpan()?.setAttribute("mcp.dropped_events.note_share", share);
 
+  const scopedToProject = projectId !== undefined && projectId !== "-1";
+
   const pct = (share * 100).toFixed(1);
   const lines = [
     "## Dropped Events",
     "",
     `⚠️ Sentry dropped **${totalDropped.toLocaleString()}** ${dataset} ` +
-      `(**${pct}%** of volume) in this project over this window, independent of ` +
-      "this search's filter. A dip or flatline in the chart above may be dropped " +
-      "data rather than an actual change.",
+      `(**${pct}%** of volume) in this ${scopedToProject ? "project" : "organization"} ` +
+      "over this window, independent of this search's filter. A dip or flatline in " +
+      "the chart above may be dropped data rather than an actual change.",
     `- **Dominant reasons**: ${dominantReasons.join(", ")}`,
   ];
   if (affectedBuckets.length > 0) {
     lines.push(`- **Affected buckets (UTC)**: ${affectedBuckets.join(", ")}`);
   }
   if (toolAvailable) {
+    const scopeHint = scopedToProject
+      ? "org, project, dataset, and time range"
+      : "org, dataset, and time range";
     lines.push(
       "",
-      `Call \`${DETAIL_TOOL}\` with the same org, project, dataset, and time ` +
-        "range for the full breakdown by outcome and reason.",
+      `Call \`${DETAIL_TOOL}\` with the same ${scopeHint} for the full ` +
+        "breakdown by outcome and reason.",
     );
   }
   return lines.join("\n");
