@@ -2,7 +2,7 @@
  * Positionals that name IDs and the org/project to look them up in, parsed
  * by `grammar/id-arguments.pegjs`.
  *
- * Every command that takes trace, span, replay, or log IDs shares one
+ * Every command that takes trace, span, replay, log, or event IDs shares one
  * syntax, whatever the kind of ID:
  *
  * - `<id>`: the org/project is auto-detected
@@ -79,6 +79,7 @@ function hexKind(
 /** The kinds of ID commands take. Commands use these instead of their own. */
 export const ID_KINDS = {
   trace: hexKind("Trace ID", (url) => url.traceId),
+  event: hexKind("Event ID", (url) => url.eventId),
   // Replays are looked up in an org, so a replay URL needs one
   replay: hexKind(
     "Replay ID",
