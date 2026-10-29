@@ -7,12 +7,11 @@
 import type { SentryContext } from "../../context.js";
 import { listReleaseDeploys } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import type { SentryDeploy } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release deploys [<org>/]<version>";
 
@@ -58,26 +57,16 @@ export const deploysCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
       ],
     },
   },
   async *func(
     this: SentryContext,
     _flags: { readonly json: boolean; readonly fields?: string[] },
-    target: string,
+    target: ReleaseTarget,
   ) {
-    const { cwd } = this;
-
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org } = await target.resolved;
 
     const deploys = await listReleaseDeploys(org, version);
     yield new CommandOutput(deploys);

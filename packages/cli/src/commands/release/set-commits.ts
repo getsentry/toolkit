@@ -12,7 +12,6 @@ import {
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -34,7 +33,7 @@ import {
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const log = logger.withTag("release.set-commits");
 
@@ -401,11 +400,7 @@ export const setCommitsCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
       ],
     },
     flags: {
@@ -467,15 +462,11 @@ export const setCommitsCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
     const { cwd } = this;
 
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org } = await target.resolved;
 
     // Clear mode: remove all commits regardless of other flags.
     // The server only clears commits when it receives an explicitly-empty
