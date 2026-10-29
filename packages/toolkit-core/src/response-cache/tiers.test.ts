@@ -34,6 +34,14 @@ describe("classifyUrl", () => {
     ).toBe("volatile");
   });
 
+  it("keeps project events volatile when adjacent events are collapsed", () => {
+    expect(
+      classifyUrl(
+        `${API}/projects/acme/backend/events/deadbeef/?collapse=adjacentEvents`,
+      ),
+    ).toBe("volatile");
+  });
+
   it("reuses full traces for at most 60 seconds, since spans can still arrive", () => {
     const url = `${API}/organizations/acme/trace/${TRACE_ID}/?limit=100`;
     expect(classifyUrl(url)).toBe("volatile");
