@@ -401,7 +401,7 @@ export const initCommand = buildCommand<
     positional: boundArguments({
       placeholder: "target/directory",
       brief:
-        "[<org>/<project>, <org>/, or <project>] [<directory> (default: current directory)]",
+        "Optional target (<org>/<project>, <org>/, or <project>) and directory (default: current directory)",
       parse: parseInitInput,
       resolve: resolveTarget,
     }),
