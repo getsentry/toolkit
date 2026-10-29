@@ -10,15 +10,15 @@
 
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
   createApiTransport,
   extractUrlPath,
   getValidatedResponseSource,
   type ResponseBodyMode,
   type TransportCache,
-} from "@sentry/toolkit-core/api-transport";
-import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
+} from "@sentry/toolkit-core/api-client/transport";
+import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
 import { formatAuthHeader, normalizeAuthToken } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";

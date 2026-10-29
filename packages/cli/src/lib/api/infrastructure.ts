@@ -20,7 +20,7 @@ import {
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
   paginate as paginateFrom,
-} from "@sentry/toolkit-core/pagination";
+} from "@sentry/toolkit-core/api-client/pagination";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";

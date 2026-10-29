@@ -35,7 +35,7 @@ import {
   type CacheStore,
   classifyUrl,
   FALLBACK_TTL_MS,
-} from "@sentry/toolkit-core/response-cache";
+} from "@sentry/toolkit-core/api-client/response-cache";
 import type { BodyEncoding } from "@sentry/toolkit-core/response-cache/codec";
 import pLimit from "p-limit";
 

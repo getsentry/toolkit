@@ -14,7 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CacheEntry } from "@sentry/toolkit-core/response-cache";
+import type { CacheEntry } from "@sentry/toolkit-core/api-client/response-cache";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   createFileStore,

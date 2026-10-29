@@ -16,8 +16,8 @@ import {
   parseRetryDelayMs,
   type RetryPolicy,
   sleep,
-} from "./api-retry.js";
-import { sentryBearerHeader, trimAuthToken } from "./auth-token.js";
+} from "./retry.js";
+import { sentryBearerHeader, trimAuthToken } from "../auth-token.js";
 import type { CacheLookup } from "./response-cache/policy.js";
 
 type FetchInput = Request | string | URL;

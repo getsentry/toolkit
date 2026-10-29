@@ -21,8 +21,8 @@ import {
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
-import { createApiTransport } from "@sentry/toolkit-core/api-transport";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
+import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
