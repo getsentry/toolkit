@@ -1,18 +1,25 @@
 /**
- * Dashboard positionals, parsed by `grammar/dashboard-arguments.pegjs`.
+ * Dashboard positionals.
  *
- * Dashboards are org-scoped and named by a numeric ID or a title, which may
- * hold spaces and slashes. That is a different syntax from the hex IDs of
- * `id-arguments.ts`, so dashboards have their own grammar, but follow the
- * same conventions: the result is a `targetArg` for `parseOrgProjectInput`,
- * and parsing has no side effects. A pasted URL's server comes back as
+ * A command that takes one dashboard parses it like any ID argument, with
+ * `parseIdArguments()` and `ID_KINDS.dashboard` (`id-arguments.ts`): a
+ * numeric ID, or a title, which is the kind's name. Titles may hold spaces
+ * and slashes, and after a target, the rest of the arguments are one title
+ * (`my-org My Dashboard`). This module adds what is particular to
+ * dashboards: the messages for a missing dashboard and for a pasted URL.
+ *
+ * `dashboard list` takes a target and a title filter instead, with its own
+ * reading of one argument (`<org>/<project>/<filter>`, and a bare word is a
+ * filter), so {@link parseDashboardListArgs} parses it here.
+ *
+ * Parsing has no side effects: a pasted URL's server comes back as
  * `baseUrl` and anything to tell the user as `warnings`, for the caller to
  * apply.
  */
 
-import { parse } from "../generated/dashboard-arguments-grammar.js";
 import { ValidationError } from "./errors.js";
-import { parseSentryUrl } from "./sentry-url-parser.js";
+import { ID_KINDS, parseIdArguments } from "./id-arguments.js";
+import { type ParsedSentryUrl, parseSentryUrl } from "./sentry-url-parser.js";
 
 /** Dashboard arguments, parsed. */
 export type DashboardArgs = {
@@ -24,23 +31,33 @@ export type DashboardArgs = {
   readonly baseUrl?: string;
   /** Warnings to log, such as for an ID taken from a URL */
   readonly warnings: readonly string[];
+  /**
+   * When the first argument was a bare word before a title (`My
+   * Dashboard`), the word and the whole input as one title: the word names
+   * an org only if there is one
+   */
+  readonly orgOrTitle?: { readonly org: string; readonly title: string };
 };
 
 /**
  * Parse the arguments of a command that takes one dashboard:
- * `[<org/project>] <id-or-title>`, `<org>/[<project>/]<id>`, or a Sentry
- * URL (see the grammar). After a target, the remaining arguments are one
- * title: `my-org/ My Dashboard` names "My Dashboard".
+ * `[<org/project>] <id-or-title...>`, `<org>/[<project>/]<id>`, or a Sentry
+ * URL (see `grammar/id-arguments.pegjs`). After a target, the remaining
+ * arguments are one title: `my-org/ My Dashboard` names "My Dashboard";
+ * after a numeric ID, they are extra.
  *
- * @param usageHint - Usage shown when arguments after a URL are ignored
+ * @param usageHint - Usage shown when arguments are ignored
  * @throws {ValidationError} When no dashboard is given
  */
 export function parseDashboardArgs(
   args: readonly string[],
   usageHint: string,
 ): DashboardArgs {
-  const syntax = parse(grammarInput(args), { list: false, sentryUrl });
-  const { ref, url } = syntax;
+  // Not optional, but a missing dashboard has its own messages below
+  const { target, ids, name, nameWithTarget, baseUrl, warnings } =
+    parseIdArguments(args, ID_KINDS.dashboard, { usageHint, optional: true });
+  const url = pastedUrl(args);
+  const ref = ids[0] ?? name;
   if (ref === undefined) {
     if (url?.org) {
       throw new ValidationError(
@@ -55,20 +72,16 @@ export function parseDashboardArgs(
       "dashboard",
     );
   }
-  const warnings: string[] = [];
-  if (url) {
-    warnings.push(urlWarning(url));
-  }
-  if (syntax.extra.length > 0) {
-    warnings.push(
-      `Extra arguments ignored: ${syntax.extra.join(" ")}. Expected: ${usageHint}`,
-    );
-  }
   return {
     dashboardRef: ref,
-    targetArg: syntax.target,
-    baseUrl: url?.baseUrl,
-    warnings,
+    // A URL with only an org is the target
+    targetArg: url && !url.dashboardId ? `${url.org}/` : target,
+    baseUrl: baseUrl ?? url?.baseUrl,
+    warnings: url ? [urlWarning(url), ...warnings] : warnings,
+    ...(nameWithTarget !== undefined &&
+      target !== undefined && {
+        orgOrTitle: { org: target.slice(0, -1), title: nameWithTarget },
+      }),
   };
 }
 
@@ -84,22 +97,38 @@ export type DashboardListArgs = {
   readonly warnings: readonly string[];
 };
 
+/** `<org>/<project>/<filter>`: the filter is everything after the second slash */
+const TARGET_AND_FILTER_RE = /^([^/]*\/[^/]*)\/(.+)$/s;
+
 /**
  * Parse `dashboard list` arguments: an optional target and title filter.
- * One argument without a slash is a filter (dashboards are org-scoped, so a
- * project search would only pick an org), and a filter may span several
- * arguments (see the grammar).
+ *
+ * - (none): the org is auto-detected, no filter
+ * - `<filter>`: one argument without a slash (dashboards are org-scoped, so
+ *   a project search would only pick an org)
+ * - `<org>/` or `<org>/<project>`: a target, no filter
+ * - `<org>/<project>/<filter>`: a target, then the filter
+ * - `<target> <filter...>`: the filter's words may be separate arguments,
+ *   and a bare `<org>` means `<org>/`
+ * - `<org-url> [<filter...>]`: a Sentry URL with only an org
  *
  * @throws {ValidationError} For a dashboard URL, suggesting `dashboard view`
  */
 export function parseDashboardListArgs(
   args: readonly (string | undefined)[],
 ): DashboardListArgs {
-  const syntax = parse(
-    grammarInput(args.filter((arg): arg is string => !!arg)),
-    { list: true, sentryUrl },
-  );
-  const { url } = syntax;
+  const given = args.filter((arg): arg is string => !!arg);
+  if (given.some((arg) => arg.includes("\0"))) {
+    throw new ValidationError(
+      "Arguments cannot contain NUL characters.",
+      "positional",
+    );
+  }
+  const [first, ...rest] = given;
+  if (first === undefined) {
+    return { warnings: [] };
+  }
+  const url = sentryUrlParts(first);
   if (url?.dashboardId) {
     const orgPrefix = url.org ? `${url.org}/ ` : "";
     const orgSuffix = url.org ? ` ${url.org}/` : "";
@@ -112,32 +141,43 @@ export function parseDashboardListArgs(
       "dashboard",
     );
   }
-  return {
-    targetArg: syntax.target,
-    titleFilter: syntax.filter,
-    baseUrl: url?.baseUrl,
-    warnings: url ? [urlWarning(url)] : [],
-  };
-}
-
-/**
- * The grammar's input: a NUL before each argument.
- *
- * @throws {ValidationError} When an argument holds a NUL
- */
-function grammarInput(args: readonly string[]): string {
-  if (args.some((arg) => arg.includes("\0"))) {
-    throw new ValidationError(
-      "Arguments cannot contain NUL characters.",
-      "positional",
-    );
+  if (url?.org) {
+    return {
+      targetArg: `${url.org}/`,
+      ...titleFilter(rest),
+      baseUrl: url.baseUrl,
+      warnings: [urlWarning(url)],
+    };
   }
-  return args.map((arg) => `\0${arg}`).join("");
+  if (rest.length > 0) {
+    return {
+      targetArg: first.includes("/") ? first : `${first}/`,
+      ...titleFilter(rest),
+      warnings: [],
+    };
+  }
+  const split = TARGET_AND_FILTER_RE.exec(first);
+  if (split?.[1] !== undefined && split[2] !== undefined) {
+    return { targetArg: split[1], titleFilter: split[2], warnings: [] };
+  }
+  return first.includes("/")
+    ? { targetArg: first, warnings: [] }
+    : { titleFilter: first, warnings: [] };
 }
 
-/** The parts of the Sentry URL `value` is, or `null` for anything else. */
-function sentryUrl(value: string) {
-  const url = parseSentryUrl(value);
+function titleFilter(words: readonly string[]): { titleFilter?: string } {
+  return words.length > 0 ? { titleFilter: words.join(" ") } : {};
+}
+
+/** The parts of a Sentry URL a dashboard argument cares about. */
+type DashboardUrl = {
+  readonly baseUrl: string;
+  readonly org?: string;
+  readonly dashboardId?: string;
+};
+
+function sentryUrlParts(value: string): DashboardUrl | null {
+  const url: ParsedSentryUrl | null = parseSentryUrl(value);
   return (
     url && {
       baseUrl: url.baseUrl,
@@ -147,10 +187,17 @@ function sentryUrl(value: string) {
   );
 }
 
-function urlWarning(url: {
-  readonly org?: string;
-  readonly dashboardId?: string;
-}): string {
+/**
+ * The Sentry URL the arguments start with, when it names a dashboard or an
+ * org: what the grammar took the dashboard or the target from.
+ */
+function pastedUrl(args: readonly string[]): DashboardUrl | null {
+  const first = args.find((arg) => arg.trim() !== "")?.trim();
+  const url = first === undefined ? null : sentryUrlParts(first);
+  return url?.dashboardId || url?.org ? url : null;
+}
+
+function urlWarning(url: DashboardUrl): string {
   if (url.dashboardId) {
     return (
       `Extracted dashboard ID ${url.dashboardId} from URL` +

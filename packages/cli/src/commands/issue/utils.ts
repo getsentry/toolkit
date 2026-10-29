@@ -635,6 +635,63 @@ async function resolveSelector(
 }
 
 /**
+ * How many issues a search fetches: enough to tell one match from several,
+ * and to list a few of them
+ */
+const SEARCH_CANDIDATES = 5;
+
+/**
+ * Resolve search text (an argument with spaces, which no identifier has) to
+ * the one issue it matches in the auto-detected org. The org's issue search
+ * takes free text, which matches issue titles and messages; it also looks up
+ * an event ID or short ID that is the whole query.
+ *
+ * @throws {ResolutionError} When no issue or several match, listing them and
+ *   pointing at `sentry issue list --query`
+ */
+async function resolveIssueSearch(
+  query: string,
+  cwd: string,
+  commandContext: IssueCommandContext,
+): Promise<StrictResolvedIssue> {
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
+  const resolved = await resolveOrg({ cwd });
+  if (!resolved) {
+    throw new ContextError("Organization", commandHint);
+  }
+  const { org } = resolved;
+  const { data: issues, nextCursor } = await listIssuesPaginated(org, "", {
+    query,
+    perPage: SEARCH_CANDIDATES,
+    collapse: ISSUE_DETAIL_COLLAPSE,
+  });
+  const [issue] = issues;
+  if (issue && issues.length === 1) {
+    return { org, issue };
+  }
+
+  const listCommand = `sentry issue list ${org}/ --query ${shellQuote(query)}`;
+  if (!issue) {
+    throw new ResolutionError(
+      `Search ${shellQuote(query)}`,
+      `matched no issues in '${org}'`,
+      listCommand,
+      ["Pass an issue ID or short ID instead, e.g. CLI-G or 123456789"],
+    );
+  }
+  const count = nextCursor ? `${issues.length}+` : String(issues.length);
+  throw new ResolutionError(
+    `Search ${shellQuote(query)}`,
+    `matched ${count} issues in '${org}'`,
+    listCommand,
+    issues.map(
+      (candidate) =>
+        `${appendCommandArguments(`${commandBase} ${command} ${org}/${candidate.shortId}`, trailingArgs)}  (${candidate.title})`,
+    ),
+  );
+}
+
+/**
  * Resolve a share URL to a full issue via two-step lookup:
  * 1. Call public share API to get numeric group ID
  * 2. Fetch full issue details via authenticated API
@@ -857,6 +914,7 @@ function issueArgumentOf(issueArg: string | IssueArgument): IssueArgument {
  * - project-search: "cli-G" → search for project across orgs
  * - suffix-only: "G" (requires DSN context)
  * - numeric: "123456789" (direct fetch, no org)
+ * - search: "login timeout" (the one issue the text matches)
  *
  * @param options - Resolution options
  * @returns Object with org slug and full issue
@@ -963,6 +1021,11 @@ export async function resolveIssue(
     case "share":
       // Share URL — resolve via public share API, then authenticated fetch
       result = await resolveShareIssue(parsed, cwd, commandHint);
+      break;
+
+    case "search":
+      // Text, not an identifier: the issue it alone matches
+      result = await resolveIssueSearch(parsed.query, cwd, commandContext);
       break;
 
     default: {

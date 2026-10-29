@@ -15,6 +15,20 @@
 // (`<target>/<id>`). The ID is always the last path segment, and slashes
 // pasted after it are ignored.
 //
+// A kind may also name an item without its ID (`options.names`), such as a
+// dashboard by its title. Then anything that is not an ID is a name rather
+// than a target or a malformed ID:
+//
+//   <name>                        one token that is no `[<target>/]<id>`,
+//                                 slashes and all
+//   <target> <name>               after a target; the name takes all the
+//                                 tokens left, joined with spaces
+//
+// A token after a target is an ID when the kind says it is one, or may be
+// one; the rest of the tokens are then IDs too. A kind whose IDs carry their
+// own org, project, and URL syntax (`options.wholeIds`, such as issue short
+// IDs) has its IDs as whole tokens, for the kind to take apart.
+//
 // `pnpm run generate:grammar` compiles it, with the types in
 // id-arguments.d.ts, into the gitignored src/generated/; the build,
 // typecheck, and test scripts run it.
@@ -26,7 +40,12 @@
 // the IDs, validates them, and parses the target like any org/project target.
 
 {
-  const { optional, isId, mayBeId, idUrl } = options;
+  const { optional, isId, mayBeId, idUrl, names, wholeIds } = options;
+
+  // Whether a token is, or may be, an ID rather than a name
+  function idLike(value) {
+    return isId(value) || mayBeId(value);
+  }
 
   // `[<org>/[<project>/]]` before an ID; the caller makes it a target
   function pathTarget(prefix) {
@@ -51,6 +70,7 @@ arguments
         ...(u.baseUrl && { baseUrl: u.baseUrl }),
       };
     }
+  / &{ return names; } @namedArguments
   // Any other URL is a target
   / sep t:url x:more { return { target: t, ids: x }; }
   // `<id> <org>/<project> [<id>...]`: the arguments are reversed. When IDs
@@ -83,6 +103,48 @@ arguments
   // `<target> [<id>...]`
   / sep t:token x:more { return { target: t, ids: x }; }
 
+// The arguments of a kind with names. A name is never a malformed ID: what
+// may be an ID is one.
+namedArguments
+  // An ID with its own syntax: the whole token, and whole tokens after it
+  = &{ return wholeIds; } sep i:token &{ return idLike(i); }
+    x:(sep t:token { return { text: t, id: t }; })*
+    { return { ids: [{ text: i, id: i }, ...x] }; }
+  // Any other URL is a target
+  / sep t:url n:afterTarget { return { target: t, ...n }; }
+  // `<id> <org>/<project> [<id>...]`: reversed; only a real ID can come
+  // first
+  / !{ return wholeIds; } sep i:segment &{ return isId(i); } sep !idPath
+    t:$([^/\0]* "/" [^\0]*) x:more
+    { return { target: t, ids: [{ text: i, id: i }, ...x], reversed: true }; }
+  // `[<org>/[<project>/]]<id> [<id>...]`, with slugs before the ID: a
+  // name may hold slashes too (`Latency/p95`, `Errors.v2/2026`)
+  / !{ return wholeIds; } sep p:slugPath x:more {
+      return {
+        ...pathTarget(p.target ?? ""),
+        ids: [{ text: p.text, id: p.id }, ...x],
+      };
+    }
+  // Anything else in one token is a name, slashes and all
+  / sep n:token end { return { ids: [], name: n }; }
+  // `<target> <id> [<id>...]` or `<target> <name>`; a bare word as the
+  // target may instead be the name's first word, which the caller can
+  // check once it knows what the word names
+  / sep t:token n:afterTarget {
+      return {
+        target: t,
+        ...n,
+        ...(n.name !== undefined && !t.includes("/") && { bareTarget: true }),
+      };
+    }
+
+// What follows a target: IDs, when the first token is or may be one, or a
+// name, which takes every token left.
+afterTarget
+  = end { return { ids: [] }; }
+  / &(sep i:token &{ return idLike(i); }) x:more { return { ids: x }; }
+  / x:(sep @token)+ { return { ids: [], name: x.join(" ") }; }
+
 // The IDs after the first token. Each may repeat the target:
 // `<target>/<id>`.
 more
@@ -94,6 +156,16 @@ idPath
   = t:$(!("/" idSegment argEnd) [^\0])* "/" i:idSegment argEnd
     { return { text: text(), target: t, id: i }; }
   / i:idSegment argEnd { return { text: text(), id: i }; }
+
+// `[<org>/[<project>/]]<id>` in one token, where the org and project are
+// slugs
+slugPath
+  = t:$(slug "/" slug) "/" i:idSegment argEnd
+    { return { text: text(), target: t, id: i }; }
+  / t:slug "/" i:idSegment argEnd { return { text: text(), target: t, id: i }; }
+  / i:idSegment argEnd { return { text: text(), id: i }; }
+
+slug = $[a-zA-Z0-9_-]+
 
 // An ID, and the slashes after it
 idSegment

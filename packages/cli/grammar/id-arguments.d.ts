@@ -22,6 +22,13 @@ export type IdArgumentsGrammarOptions = {
   mayBeId: (value: string) => boolean;
   /** The ID in a Sentry URL, or `null` for anything else. */
   idUrl: (value: string) => IdUrl | null;
+  /** Whether the kind names items without an ID, too */
+  names: boolean;
+  /**
+   * Whether an ID is a whole token, with its own syntax for the org,
+   * project, and URL. Only kinds with names use it.
+   */
+  wholeIds: boolean;
 };
 
 /** A token that names an ID, maybe after a target: `[<target>/]<id>`. */
@@ -45,6 +52,10 @@ export type IdArgumentsSyntax = {
   readonly baseUrl?: string;
   /** Whether the ID came before the target */
   readonly reversed?: boolean;
+  /** The name, when the tokens name no ID (kinds with names only) */
+  readonly name?: string;
+  /** Whether `target` is a bare word before `name`, maybe its first word */
+  readonly bareTarget?: boolean;
 };
 
 export declare class SyntaxError extends Error {

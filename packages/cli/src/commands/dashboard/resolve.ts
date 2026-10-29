@@ -9,6 +9,7 @@ import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
 import {
   API_MAX_PER_PAGE,
+  getOrganization,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
@@ -17,6 +18,7 @@ import {
   ResolutionError,
   ValidationError,
 } from "../../lib/errors.js";
+import { getCachedOrganizations, getOrgRegion } from "../../lib/db/regions.js";
 import { fuzzyMatch } from "../../lib/fuzzy.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgOnlyTarget } from "../../lib/resolve-target.js";
@@ -61,6 +63,35 @@ export function resolveOrgFromTarget(
   usageHint: string,
 ): Promise<string> {
   return resolveOrgOnlyTarget(parsed, cwd, "dashboard", usageHint);
+}
+
+/**
+ * Whether an org exists and is visible to the user: in the cached org list
+ * (or the region cache, which only orgs the API found are in), or else by
+ * fetching it.
+ *
+ * @returns `false` when the API cannot find the org or denies access to it
+ * @throws {ApiError} For any other failure, such as a server error
+ */
+export async function orgExists(orgSlug: string): Promise<boolean> {
+  if (
+    getCachedOrganizations().some((org) => org.slug === orgSlug) ||
+    getOrgRegion(orgSlug) !== undefined
+  ) {
+    return true;
+  }
+  try {
+    await getOrganization(orgSlug);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.status === 404 || error.status === 403)
+    ) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 /**

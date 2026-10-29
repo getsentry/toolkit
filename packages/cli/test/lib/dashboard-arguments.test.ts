@@ -1,6 +1,6 @@
 /**
- * Dashboard argument parsing tests (src/lib/dashboard-arguments.ts and
- * grammar/dashboard-arguments.pegjs).
+ * Dashboard argument parsing tests (src/lib/dashboard-arguments.ts, on
+ * grammar/id-arguments.pegjs).
  */
 
 import { describe, expect, test } from "vitest";
@@ -294,11 +294,6 @@ describe("parseDashboardArgs warnings and edge cases", () => {
   });
 
   test("after a target, an unquoted title's words form one title", () => {
-    expect(parseRef(["my-org", "My", "Dashboard"])).toEqual({
-      dashboardRef: "My Dashboard",
-      targetArg: "my-org/",
-      warnings: [],
-    });
     expect(parseRef(["my-org/", "Backend", "Performance"])).toEqual({
       dashboardRef: "Backend Performance",
       targetArg: "my-org/",
@@ -309,6 +304,51 @@ describe("parseDashboardArgs warnings and edge cases", () => {
       targetArg: "my-org/web",
       warnings: [],
     });
+  });
+
+  test("a title of three or more words", () => {
+    expect(parseRef(["my-org/", "API", "Latency", "by", "Region"])).toEqual({
+      dashboardRef: "API Latency by Region",
+      targetArg: "my-org/",
+      warnings: [],
+    });
+  });
+
+  test("a slash title followed by more words", () => {
+    expect(parseRef(["my-org/", "Latency/p95", "by", "Region"])).toEqual({
+      dashboardRef: "Latency/p95 by Region",
+      targetArg: "my-org/",
+      warnings: [],
+    });
+  });
+
+  test("a numeric ID after a target keeps the rest as extra", () => {
+    expect(parseRef(["my-org", "123", "extra"])).toEqual({
+      dashboardRef: "123",
+      targetArg: "my-org/",
+      warnings: [`Extra arguments ignored: extra. Expected: ${USAGE_HINT}`],
+    });
+  });
+
+  test("a bare first word may be the org or the title's first word", () => {
+    expect(parseRef(["my-org", "My", "Dashboard"])).toEqual({
+      dashboardRef: "My Dashboard",
+      targetArg: "my-org/",
+      warnings: [],
+      orgOrTitle: { org: "my-org", title: "my-org My Dashboard" },
+    });
+    expect(parseRef(["My", "Dashboard"])).toEqual({
+      dashboardRef: "Dashboard",
+      targetArg: "My/",
+      warnings: [],
+      orgOrTitle: { org: "My", title: "My Dashboard" },
+    });
+  });
+
+  test("an explicit org or a numeric ID is never a title's first word", () => {
+    expect(parseRef(["my-org/", "My", "Dashboard"]).orgOrTitle).toBeUndefined();
+    expect(parseRef(["my-org", "123"]).orgOrTitle).toBeUndefined();
+    expect(parseRef(["my-org/web", "Errors"]).orgOrTitle).toBeUndefined();
   });
 
   test("after an org URL, an unquoted title's words form one title", () => {
@@ -333,12 +373,23 @@ describe("parseDashboardArgs warnings and edge cases", () => {
     );
   });
 
-  test("an empty argument is still a dashboard reference", () => {
-    expect(parseRef([""])).toEqual({ dashboardRef: "", warnings: [] });
+  test("empty arguments are skipped", () => {
+    expect(() => parseRef([""])).toThrow("Dashboard ID or title is required");
     expect(parseRef(["my-org", ""])).toEqual({
-      dashboardRef: "",
-      targetArg: "my-org/",
+      dashboardRef: "my-org",
       warnings: [],
+    });
+  });
+
+  test("a numeric ID first keeps the rest as extra, or reads them reversed", () => {
+    expect(parseRef(["42", "extra"])).toEqual({
+      dashboardRef: "42",
+      warnings: [`Extra arguments ignored: extra. Expected: ${USAGE_HINT}`],
+    });
+    expect(parseRef(["42", "my-org/web"])).toEqual({
+      dashboardRef: "42",
+      targetArg: "my-org/web",
+      warnings: ["Arguments appear reversed. Interpreting as: my-org/web 42"],
     });
   });
 

@@ -248,21 +248,33 @@ target is known. The result is a `target` string for `parseOrgProjectInput`
 and the IDs. Add a kind to `ID_KINDS` rather than validating IDs in a command;
 the `sentry-cli/no-ad-hoc-id-arguments` lint rule rejects hand-written ID
 parsing (`parseSlashSeparatedArg`, `HEX_ID_RE`, ...) in commands and kinds
-defined outside `ID_KINDS`. Issue IDs keep their own syntax; `event view`,
-which also takes them, checks for an issue first (`parseEventViewInput`).
-Dashboards, named by numeric ID or title, have their own grammar
-(`grammar/dashboard-arguments.pegjs`); dashboard commands take
-`dashboardArguments` from `commands/dashboard/arguments.ts`.
+defined outside `ID_KINDS`. A kind without names gets a hint to search
+(`search`) when text is passed for an ID: `validate()` throws it, so it comes
+after any recovery.
+
+Some kinds name items without an ID (`IdKind.names`): a dashboard by its
+title (`ID_KINDS.dashboard`; unquoted words after a target are one title),
+an issue by search text (`ID_KINDS.issue`). Then what is not an ID
+comes back as `name`. A bare first word before a name comes back as
+`nameWithTarget` too: the parser does not decide whether it names an org, so
+dashboard commands check once they resolve (`resolveDashboardInput`), and
+fall back to the whole input as the title. Dashboard commands take
+`dashboardArguments` from `commands/dashboard/arguments.ts`; `dashboard list`
+reads a target and a title filter instead (`parseDashboardListArgs`).
+`event view` checks for an issue before an event ID, with
+`ID_KINDS.issue.distinctForm` (`parseEventViewInput`).
 `test/lib/argument-conventions.test.ts` feeds the same inputs to every
 command that takes IDs, issues, or releases, through the command's own
 positional; add a new command to its tables, and encode a legitimate
 difference (such as `needsProject`) in its row.
 
-**Issue positionals:** issue IDs, short IDs, selectors, and issue URLs are
-parsed by `parseIssueArgument` (`src/lib/issue-arguments.ts`), whose forms
-are defined by `grammar/issue-argument.pegjs`. A command that takes one
-issue declares `issuePositional({ command })` (or `issueParameter` inside a
-tuple) from `src/commands/issue/positional.ts`: `func` takes an
+**Issue positionals:** issue IDs, short IDs, selectors, issue URLs, and
+search text are parsed by `parseIssueArgument` (`src/lib/issue-arguments.ts`)
+with `ID_KINDS.issue`. An identifier is one whole token, which
+`src/lib/issue-identifier.ts` takes apart with `grammar/issue-argument.pegjs`;
+text with spaces is a search, which resolves to the one issue it matches.
+A command that takes one issue declares `issuePositional({ command })` (or
+`issueParameter` inside a tuple) from `src/commands/issue/positional.ts`: `func` takes an
 `IssueTarget` and awaits `target.resolved` for the org and issue. A command
 that resolves it another way (`resolveOrgAndIssueId`, or recovery hints that
 keep its other arguments) passes `requireIssueArgument(target.parsed, ...)`
