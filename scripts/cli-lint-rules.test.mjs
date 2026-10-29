@@ -225,6 +225,12 @@ tester.run("prefer-array-from", plugin.rules["prefer-array-from"], {
       output: "const copy = Array.from(values ?? fallback);",
       errors: 1,
     },
+    {
+      filename: source,
+      code: "const copy = [...(first, second)];",
+      output: "const copy = Array.from((first, second));",
+      errors: 1,
+    },
   ],
 });
 

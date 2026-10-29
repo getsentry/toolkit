@@ -432,11 +432,15 @@ const rules = {
           context.report({
             node,
             message: PREFER_ARRAY_FROM_MESSAGE,
-            fix: (fixer) =>
-              fixer.replaceText(
-                node,
-                `Array.from(${context.sourceCode.getText(element.argument)})`,
-              ),
+            fix(fixer) {
+              const value = context.sourceCode.getText(element.argument);
+              // `[...(a, b)]` must not become `Array.from(a, b)`.
+              const wrapped =
+                element.argument.type === "SequenceExpression"
+                  ? `(${value})`
+                  : value;
+              return fixer.replaceText(node, `Array.from(${wrapped})`);
+            },
           });
         },
       };
