@@ -106,6 +106,12 @@ from the API and replace the cached entry. The CLI exposes this as `--fresh`
 - **WHEN** an MCP read tool is called with `fresh: true`
 - **THEN** every API request made by that call bypasses cached entries
 
+#### Scenario: Fresh scope is host state
+
+- **WHEN** a host marks a scope fresh, such as one MCP tool call
+- **THEN** the host tracks the scope with its own request-scoped state, such as `AsyncLocalStorage`
+- **THEN** the shared client reads it only through an injected `fresh()` callback
+
 ### Requirement: Bounded storage
 
 Each storage backend SHALL enforce a byte budget over stored bytes. It SHALL

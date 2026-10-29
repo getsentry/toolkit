@@ -49,9 +49,11 @@ See proposal.md for motivation. Current state that shapes the approach:
 
 - One implementation of pagination, cache policy, and transport, used by
   the CLI, `sentry mcp`, and the hosted MCP.
-- Shared modules run unchanged in Node and Workers, and avoid
-  Node-only APIs where a web standard exists, so they can later move into
-  `@sentry/api` and run in the browser.
+- One Sentry API client, with endpoint wrappers, errors, and validation, in
+  place of the MCP's `SentryApiService` and the CLI's API modules. It lives
+  in `toolkit-core` first and in `@sentry/api` after step 2.
+- Shared modules run unchanged in Node, Workers, and browsers, using only
+  web-standard APIs, so the Sentry frontend can use the published client.
 - No CLI behavior change while its internals move, apart from the cache
   tier correction, which lands first as its own PR.
 
@@ -59,10 +61,12 @@ See proposal.md for motivation. Current state that shapes the approach:
 
 - Client-side caching in the Sentry frontend. Browser HTTP caching driven
   by server headers covers that (getsentry/sentry#128818).
-- Using `createSentrySDK()` from the MCP.
-- Moving code into `@sentry/api` in this change.
-- Replacing MCP Zod response validation with generated schemas everywhere.
-  That happens per domain where `@sentry/api/zod` covers the endpoint.
+- Using `createSentrySDK()`, or the CLI as an SDK in general, from the MCP,
+  and `sentry mcp` passing the CLI's fetch. Both are deferred to a later
+  phase after step 2 (task group 11).
+- Replacing every hand-written response schema with a generated one. The
+  shared client uses `@sentry/api/zod` where it covers the endpoint and
+  keeps hand-written Zod schemas elsewhere.
 
 ## Decisions
 
@@ -348,40 +352,99 @@ Compression saves memory and storage, not CPU. A cache hit costs
 decompression instead of JSON from the network, and on Workers the network
 wait is not billed CPU. Its job is to fit more entries into the budget.
 
-### `runMcpServer()` takes a transport
+### Two steps: consolidate in `toolkit-core`, then move into `@sentry/api`
 
-`McpServerOptions` gains `fetch?: typeof fetch`.
+Everything `SentryApiService`-like ends up in `@sentry/api`, so the CLI,
+both MCP servers, and the Sentry frontend share one client. Doing that
+directly would mean designing the shared API inside sentry-api-schema while
+the code that defines it still lives in toolkit, with a publish round trip
+for every fix. So:
 
-- `sentry mcp` passes the CLI's authenticated fetch, so local sessions get
-  CLI auth, refresh, retries, and the on-disk cache.
-- `mcp-cloudflare` builds an `api-transport` around the OAuth token and the
-  tiered store.
+1. **Step 1, in `toolkit-core` (task group 8).** Build the shared client in
+   `toolkit-core/src/api-client/`, with the file layout it will have inside
+   `@sentry/api`. Switch the MCP and the CLI onto it and delete the code it
+   replaces, in one PR rather than one per domain: two half-migrated layers
+   would cost more than one large review.
+2. **Step 2, into `@sentry/api` (task group 9).** Copy the modules into
+   getsentry/sentry-api-schema unchanged, publish a new `@sentry/api`,
+   switch toolkit's imports, and delete the toolkit-core copies.
 
-Inside `mcp-core`, `SentryApiService` sends all requests through the
-injected fetch, and `@sentry/api` operations receive the same fetch through
-their client options.
+Step 1 ships nothing a user can see, apart from changes called out in its
+PR. It makes step 2 a copy, not a redesign.
+
+### The shared client
+
+`toolkit-core/src/api-client/` holds:
+
+- **Core:** building URLs for a region, setting headers, reading responses,
+  and mapping error responses to errors. Requests go through the shared
+  transport, so there is one retry layer.
+- **Errors:** `ApiError` with the status and the server's detail, and the
+  rate-limit error with `retryAfterMs` from `Retry-After` or
+  `X-Sentry-Rate-Limit-Reset`. Hosts map them to their own presentation:
+  CLI exit codes and messages, MCP tool results.
+- **Validation:** Zod. `@sentry/api/zod` where it covers the endpoint,
+  hand-written schemas otherwise. The MCP already validates with Zod and
+  needs Zod for tool schemas. The CLI's valibot schemas for endpoints that
+  move are converted.
+- **Pagination, cache policy, retry policy, and transport:** the existing
+  `pagination`, `response-cache` policy, `api-retry`, and `api-transport`
+  modules, which move with it in step 2.
+- **Endpoints by domain:** organizations, projects, teams, issues, events,
+  explore, traces, logs, releases, replays, monitors, alerts, and so on, on
+  top of `@sentry/api` operations where they exist and the shared transport
+  otherwise. Where both products call the same endpoint, they call the same
+  wrapper.
+
+Hosts keep:
+
+- **CLI:** credential storage and refresh, the SQLite and filesystem cache
+  store, region lookup storage, telemetry spans, and mapping errors to exit
+  codes.
+- **MCP:** the session's access token, its Zod-to-tool output formatting, and
+  the request-scoped `fresh` flag.
+- **Browser:** session credentials, and no cache store, since browser HTTP
+  caching driven by server headers covers it.
+
+### Portable shared code, enforced
+
+The shared client imports only `@sentry/api` and the toolkit-core modules
+that move with it. It uses only web-standard APIs (`fetch`, `Request`,
+`Response`, `Headers`, `URL`, `AbortSignal`, `crypto.subtle`,
+`TextEncoder`), so it runs in Node, Workers, and browsers. It never imports
+`node:*` or uses `Buffer`, `fs`, `process`, or `AsyncLocalStorage`.
+
+Credentials, cache storage, the fresh-read scope, logging, and telemetry are
+interfaces. Each host passes its own implementation.
+
+Two checks keep it that way:
+
+- A lint rule on the shared modules bans `node:*` imports and Node globals.
+- A typecheck of the shared modules against the DOM library, with no Node
+  types, catches the rest, such as `NodeJS.Timeout` types.
+
+The cache codec uses `node:zlib`, which Node and Workers have and browsers do
+not. It is storage, so it stays a host-side module outside the guarded set
+and does not move in step 2.
 
 ### `fresh` is a shared read-tool input
 
 Read-only tools gain an optional `fresh: boolean`, defined once in the
-shared tool schema helpers. The tool handler sets a request-scoped bypass
-(`AsyncLocalStorage`), and the transport honors it. The tool count does not
+shared tool schema helpers. The MCP tool handler sets a request-scoped
+bypass with `AsyncLocalStorage`, and the shared transport reads it only
+through its `fresh()` callback. The flag is host state: shared code never
+touches `AsyncLocalStorage`, which browsers lack. The tool count does not
 change. Token cost is checked with `pnpm run measure-tokens`, and the
 description stays short.
 
-### Move MCP methods onto `@sentry/api` by domain
+### Endpoints move in one PR, not by domain
 
-The order is:
-
-1. organizations, projects, teams (already partial)
-2. issues and events
-3. explore, traces, logs
-4. releases and replays
-5. monitors, alerts, and uptime
-
-Endpoints that `@sentry/api` lacks call the shared transport directly and
-keep their Zod schemas. Each domain lands as its own PR. Endpoint behavior
-is checked against `~/src/sentry`, as `AGENTS.md` requires.
+The earlier plan moved MCP methods onto `@sentry/api` one domain per PR.
+Issues and events landed that way (#1713). The rest moves in the step 1
+consolidation PR instead, together with the CLI's modules, so neither
+product is left half on the old layer. Endpoints that `@sentry/api` lacks
+call the shared transport directly and keep their Zod schemas. Endpoint
+behavior is checked against `~/src/sentry`, as `AGENTS.md` requires.
 
 ### Version alignment first
 
@@ -416,11 +479,18 @@ bumps move both products together.
 - **Generated `@sentry/api` types disagree with responses.** Keep Zod
   validation at the MCP boundary. Pin and bump `@sentry/api` through the
   catalog.
-- **Snapshot and eval churn.** Each domain migration lands with its own
-  snapshot updates and an eval run.
+- **One large consolidation PR.** It is harder to review than per-domain
+  PRs. Both products' existing test suites run against the shared client,
+  and the PR body lists every intentional behavior change.
+- **Zod on the CLI's request path.** The CLI validates with valibot today and
+  loads Zod only for `sentry mcp`. Shared schemas bring Zod into every API
+  call. Check CLI startup time and bundle size in the consolidation PR.
+- **Node-only APIs creep into shared code.** The lint rule and the
+  browser-target typecheck fail CI.
 - **CLI-issued tokens lack MCP scopes.** The MCP and CLI use different OAuth
-  client IDs and scope lists today. Compare them before deprecating the
-  standalone login. If they differ, widen the CLI's requested scopes.
+  client IDs and scope lists today. When the deferred `sentry mcp` phase is
+  picked up, compare them before deprecating the standalone login. If they
+  differ, widen the CLI's requested scopes.
 
 ## Migration Plan
 
@@ -429,13 +499,17 @@ bumps move both products together.
 2. Land the pure `toolkit-core` modules (pagination, cache policy, codecs),
    with the CLI switched over and no behavior change.
 3. Land `api-transport` and the CLI switch-over.
-4. Land the MCP transport injection and `sentry mcp` passing the CLI fetch,
-   then the hosted memory store behind a flag (`MCP_RESPONSE_CACHE=memory`).
+4. Land the MCP on the shared transport (#1722), then the hosted memory
+   store behind a flag (`MCP_RESPONSE_CACHE=memory`).
 5. Enable the hosted memory cache. Add the R2 binding and its allowlist
    behind `MCP_RESPONSE_CACHE=tiered`, and enable it only after the server
    headers ship and the security sign-off.
-6. Run the domain-by-domain `@sentry/api` migration PRs.
-7. Deprecate the standalone MCP login.
+6. Step 1: land the consolidation PR, with the portability guard, the shared
+   client, and both products switched over.
+7. Step 2: copy the client into getsentry/sentry-api-schema, publish
+   `@sentry/api`, switch toolkit to it, and delete the toolkit-core copies.
+8. Later phase: `sentry mcp` on the CLI session, and deprecating the
+   standalone MCP login.
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
 `off` restores today's uncached behavior. Each CLI step is a refactor that
