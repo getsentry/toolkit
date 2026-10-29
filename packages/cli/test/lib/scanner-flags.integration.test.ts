@@ -94,7 +94,7 @@ describe("agent-conversation view required target", () => {
   test("rejects missing target at the parser before authentication", async () => {
     const { stderr, exitCode } = await runApp(["agent-conversation", "view"]);
     expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Expected argument");
+    expect(stderr).toContain("Conversation ID is required");
     expect(stderr).not.toMatch(/not authenticated|log in|authorization/i);
   });
 });

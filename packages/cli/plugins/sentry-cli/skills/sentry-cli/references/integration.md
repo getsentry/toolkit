@@ -60,7 +60,7 @@ sentry integration list my-org/githb
 sentry integration list --json
 ```
 
-### `sentry integration delete <org/integration-id>`
+### `sentry integration delete [<org>/]<integration-id>`
 
 Remove an installed integration
 
@@ -70,7 +70,7 @@ Remove an installed integration
 
 | Argument | Description |
 |----------|-------------|
-| `<org/integration-id>` | [&lt;org&gt;/]&lt;integration-id&gt; - Integration to remove |
+| `[<org>/]<integration-id>` | [&lt;org&gt;/]&lt;integration-id&gt; - Integration to remove |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`

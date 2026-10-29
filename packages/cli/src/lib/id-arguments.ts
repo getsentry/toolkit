@@ -2,8 +2,9 @@
  * Positionals that name IDs and the org/project to look them up in, parsed
  * by `grammar/id-arguments.pegjs`.
  *
- * Every command that takes trace, span, replay, log, event, dashboard, or
- * issue IDs shares one syntax, whatever the kind of ID:
+ * Every command that takes trace, span, replay, log, event, dashboard,
+ * issue, conversation, or integration IDs shares one syntax, whatever the
+ * kind of ID:
  *
  * - `<id>`: the org/project is auto-detected
  * - `<org>/<id>` and `<org>/<project>/<id>`, like a URL (`<project>/<id>`
@@ -41,6 +42,7 @@ import {
   validateSpanId,
 } from "./hex-id.js";
 import { looksLikeHexIdFragment } from "./hex-id-recovery.js";
+import { validateResourceId } from "./input-validation.js";
 import { isIssueIdentifier, parseIssueIdentifier } from "./issue-identifier.js";
 import { type ParsedSentryUrl, parseSentryUrl } from "./sentry-url-parser.js";
 import { isAllDigits, shellQuote } from "./utils.js";
@@ -126,6 +128,12 @@ function isIssueSearchText(value: string): boolean {
 
 const CONTROL_CHAR_RE = /\p{Cc}/u;
 const URL_RE = /^https?:\/\//i;
+
+/**
+ * An opaque ID: anything a slug may hold in a URL path, so no slash, `?`,
+ * `#`, `%`, whitespace, or control character
+ */
+const OPAQUE_ID_RE = /^[^/?#%\s\p{Cc}]+$/u;
 
 function hexKind(
   label: string,
@@ -237,6 +245,37 @@ export const ID_KINDS = {
     orgScoped: true,
   },
   issue: ISSUE_KIND,
+  // Agent conversation IDs are opaque (`gen_ai.conversation.id`), and
+  // looked up in an org. Anything after a target is one, for `validate` to
+  // reject when malformed.
+  conversation: {
+    label: "Conversation ID",
+    isId: (value) => OPAQUE_ID_RE.test(value),
+    mayBeId: () => true,
+    validate: (value) => {
+      validateResourceId(value, "conversation ID");
+      return value;
+    },
+    fromUrl: () => undefined,
+    orgScoped: true,
+  },
+  // Integrations are org-scoped and named by their numeric ID only
+  integration: {
+    label: "Integration ID",
+    isId: isAllDigits,
+    mayBeId: () => true,
+    validate: (value) => {
+      if (!isAllDigits(value)) {
+        throw new ValidationError(
+          `Invalid integration ID '${value}'. Use the numeric ID from 'sentry integration list'.`,
+          "integration-id",
+        );
+      }
+      return value;
+    },
+    fromUrl: () => undefined,
+    orgScoped: true,
+  },
 } as const satisfies Record<string, IdKind>;
 
 /** How a command takes its IDs. */
