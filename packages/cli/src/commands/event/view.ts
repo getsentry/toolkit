@@ -18,7 +18,6 @@ import {
   resolveEventInOrg,
 } from "../../lib/api-client.js";
 import {
-  looksLikeIssueShortId,
   type ParsedOrgProject,
   ProjectSpecificationType,
   parseOrgProjectInput,
@@ -77,7 +76,6 @@ import {
 import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import { isAllDigits } from "../../lib/utils.js";
 import { EventViewOutputSchema, type SentryEvent } from "../../types/index.js";
 
 type ViewFlags = {
@@ -378,21 +376,29 @@ function issueForms(tokens: readonly string[]): IssueInput | null {
     prefix === undefined || prefix.includes("/") ? prefix : `${prefix}/`;
 
   if (second === undefined) {
-    const issue = issueFromEventId(id, target);
-    if (issue || !(prefix && looksLikeIssueShortId(prefix))) {
-      return issue;
-    }
     // `<issue-short-id>/<event-id>`: the event of an issue. Short IDs are
-    // uppercase, and project slugs never are.
-    return {
-      eventId: ID_KINDS.event.validate(id),
-      targetArg: undefined,
-      issueShortId: prefix,
-    };
+    // uppercase, and project slugs never are. `<org>/<issue-short-id>`
+    // comes first, then this, even for an all-digit event ID, and then
+    // `<org>/<numeric-issue-id>`.
+    const afterShortId =
+      prefix !== undefined &&
+      issueForm(prefix) === "short-id" &&
+      issueForm(id) !== "short-id";
+    if (
+      afterShortId &&
+      (ID_KINDS.event.isId(id) || issueForm(id) !== "numeric")
+    ) {
+      return {
+        eventId: ID_KINDS.event.validate(id),
+        targetArg: undefined,
+        issueShortId: prefix,
+      };
+    }
+    return issueFromEventId(id, target);
   }
   // `[<target>/]<issue-short-id> <event-id>`: the event of an issue. A
   // second argument with a slash is a target: the arguments are reversed.
-  if (looksLikeIssueShortId(id) && !second.includes("/")) {
+  if (issueForm(id) === "short-id" && !second.includes("/")) {
     return {
       // Issue shortcuts skip the event ID's recovery
       eventId: ID_KINDS.event.validate(second),
@@ -411,13 +417,19 @@ function issueFromEventId(
   id: string,
   targetArg: string | undefined,
 ): IssueInput | null {
-  if (looksLikeIssueShortId(id)) {
-    return { eventId: LATEST_EVENT_SENTINEL, targetArg, issueShortId: id };
+  switch (issueForm(id)) {
+    case "short-id":
+      return { eventId: LATEST_EVENT_SENTINEL, targetArg, issueShortId: id };
+    case "numeric":
+      return { eventId: LATEST_EVENT_SENTINEL, targetArg, issueId: id };
+    default:
+      return null;
   }
-  if (isAllDigits(id)) {
-    return { eventId: LATEST_EVENT_SENTINEL, targetArg, issueId: id };
-  }
-  return null;
+}
+
+/** The issue ID forms `event view` tells apart from event IDs */
+function issueForm(value: string): "short-id" | "numeric" | null {
+  return ID_KINDS.issue.distinctForm(value);
 }
 
 /**
@@ -816,7 +828,7 @@ export async function fetchEventWithContext(
       ];
 
       // Nudge the user when the event ID looks like an issue short ID
-      if (looksLikeIssueShortId(eventId)) {
+      if (issueForm(eventId) === "short-id") {
         suggestions.unshift(
           `This looks like an issue short ID. Try: sentry issue view ${eventId}`,
         );

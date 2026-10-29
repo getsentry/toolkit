@@ -195,7 +195,7 @@ const COMPLETERS: Record<CompletionTarget, Completer> = {
   "org/project": (partial) => completeOrgSlashProject(partial),
   issue: entityCompleter("issue", completeOrgSlashProject),
   // Only the first word: in `<org/project> <id-or-title>`, the org of the
-  // second word is for `parseDashboardPositionalArgs` to decide, and this
+  // second word is for the dashboard grammar to decide, and this
   // fast path cannot load it
   dashboard: (partial, slot) =>
     slot.positionals.length > 0 ? [] : completeDashboards(partial),

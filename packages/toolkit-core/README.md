@@ -6,7 +6,7 @@ builds bundle this private workspace package into their artifacts.
 The shared code validates and formats upstream bearer tokens, assembles Sentry
 API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
 responses, advances retry intervals, decides when a Sentry API request may
-be retried and how long to wait (`api-retry`), recognizes Sentry hostnames and
+be retried and how long to wait (`api-client/retry`), recognizes Sentry hostnames and
 credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
 field expressions the way the Sentry frontend does, parses search queries with
 the Sentry frontend grammar, resolves Events endpoint sorts so the sort column
@@ -37,13 +37,32 @@ the one exception.
   rate-limit wait, and each host maps that to its own errors.
   `readJsonResponse` parses a successful body after checking its
   Content-Type.
+- `core` is the request core endpoint wrappers build on.
+  `createApiClientCore` takes the host's transport, per-request headers
+  (credentials, user agent, attribution), and logger. Its `request` sends
+  to `<origin>/api/0<path>`, turns network failures into readable errors
+  (`ConfigurationError` for an unreachable host), and throws the status's
+  `ApiError` for an error response unless the caller allows that status.
+  `requestJson` also parses the body, and `sdkClient` gives a `@sentry/api`
+  operation a client that sends one GET through `request`. `listPage` walks
+  a list endpoint's pages up to a limit and validates each page. The MCP's
+  `SentryApiService` sends every request through the core.
+- `endpoints/` holds the endpoint wrappers by domain, on `@sentry/api`
+  operations where they exist. Each takes an `ApiTarget` (the core and an
+  origin) and the host's schema, and returns that schema's output. The host
+  picks the origin, such as the control host for the current user.
+  `endpoints/organizations` has `getAuthenticatedUser`, `listOrganizations`,
+  and `getOrganization`.
+- `pagination`, `retry`, `transport`, and `response-cache` are described in
+  the sections below. The `node:zlib` body codec stays outside, at
+  `response-cache/codec`, since browsers lack it.
 
 ## API transport
 
-`api-transport` is the authenticated fetch both products send Sentry API
+`api-client/transport` is the authenticated fetch both products send Sentry API
 requests through. `createApiTransport` sets the Authorization header, refreshes
 the credential once after a 401 and replays the request (any method, since the
-endpoint never ran), times out each attempt, and retries through `api-retry`.
+endpoint never ran), times out each attempt, and retries through `api-client/retry`.
 Request bodies are replayed on each attempt, including stream bodies.
 With `validateRedirects`, it follows redirects by hand, sends the credential
 only to origins the host trusts, and records the final origin for
@@ -67,7 +86,7 @@ skips the cache, since entries are scoped to a credential. The MCP's
 
 ## Pagination
 
-`pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
+`api-client/pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
 the limit evenly over the fewest requests (at most 100 rows each), reuses the
 page size a page-number cursor encodes, and returns a cursor that resumes at
 the first row the caller has not received, even when the walk stopped inside
@@ -84,7 +103,7 @@ CLI's `paginate` and `fetchAllPages` in
 
 ## Response cache
 
-`response-cache` holds the cache policy for Sentry API GET responses.
+`api-client/response-cache` holds the cache policy for Sentry API GET responses.
 `classifyUrl` puts a URL in a fallback TTL tier for responses without HTTP
 caching headers: `volatile` (60 seconds) for issues, project event details,
 full traces, and log and span queries; `no-cache` for autofix and root-cause

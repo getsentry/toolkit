@@ -3,7 +3,6 @@ import {
   isAggregateFieldOrEquation,
 } from "@sentry/toolkit-core/events-fields";
 import {
-  createSentryClient,
   type GetOrganizationIssueEventData,
   getOrganizationIssue,
   getOrganizationIssueAutofixState,
@@ -15,14 +14,22 @@ import {
   listOrganizationIssues,
   listOrganizationProjects,
   listOrganizationTeams,
-  listOrganizations,
   listProjectEventAttachments,
   parseSentryLinkHeader,
 } from "@sentry/api";
-import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
-import { createApiTransport } from "@sentry/toolkit-core/api-transport";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
+import {
+  type ApiTarget,
+  createApiClientCore,
+  listPage,
+} from "@sentry/toolkit-core/api-client/core";
+import {
+  getAuthenticatedUser,
+  getOrganization,
+  listOrganizations,
+} from "@sentry/toolkit-core/api-client/endpoints/organizations";
+import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -211,11 +218,7 @@ import type {
   User,
   UserReportList,
 } from "./types";
-import {
-  type ErrorResponseBody,
-  readErrorResponse,
-  readJsonResponse,
-} from "@sentry/toolkit-core/api-client/response";
+import { readJsonResponse } from "@sentry/toolkit-core/api-client/response";
 
 // TODO: this is shared - so ideally, for safety, it uses @sentry/core, but currently
 // logger isnt exposed (or rather, it is, but its not the right logger)
@@ -247,18 +250,6 @@ type ExplorerUrlParams = ExplorerAggregateParams & {
   statsPeriod?: string;
   start?: string;
   end?: string;
-};
-
-/**
- * Mapping of common network error codes to user-friendly messages.
- * These help users understand and resolve connection issues.
- */
-const NETWORK_ERROR_MESSAGES: Record<string, string> = {
-  EAI_AGAIN: "DNS temporarily unavailable. Check your internet connection.",
-  ENOTFOUND: "Hostname not found. Verify the URL is correct.",
-  ECONNREFUSED: "Connection refused. Ensure the service is accessible.",
-  ETIMEDOUT: "Connection timed out. Check network connectivity.",
-  ECONNRESET: "Connection reset. Try again in a moment.",
 };
 
 function normalizeStatsPeriod(statsPeriod?: string): string | undefined {
@@ -316,7 +307,7 @@ type RequestOptions = {
 
 /**
  * Caps for automatic retries. Which statuses and methods are retried is the
- * shared rule in `@sentry/toolkit-core/api-retry`.
+ * shared rule in `@sentry/toolkit-core/api-client/retry`.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two
@@ -337,9 +328,6 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
  * before, it adds no timeout.
  */
 const transport = createApiTransport({ retry: REQUEST_RETRY_POLICY });
-
-const API_MAX_PER_PAGE = 100;
-const MAX_LIST_PAGES = 50;
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.
@@ -622,6 +610,14 @@ export class SentryApiService {
   protected host: string;
   protected protocol: SentryProtocol;
   protected apiPrefix: string;
+  private readonly core = createApiClientCore({
+    transport,
+    headers: () => this.requestHeaders(),
+    logger: {
+      warn: (message, extra) =>
+        logWarn(message, { loggerScope: ["api", "client"], extra }),
+    },
+  });
 
   /**
    * Creates a new Sentry API service instance.
@@ -786,80 +782,39 @@ export class SentryApiService {
     }
   }
 
-  /** Map a failed response's body to the matching `ApiError` subclass. */
-  private errorFromResponse(
-    response: Response,
-    body: ErrorResponseBody,
-    path: string,
-  ): ApiError {
-    const { retryAfterMs } = body;
-    const errorText = body.text ?? "";
-    const logExtra = {
-      status: response.status,
-      statusText: response.statusText,
-      host: this.host,
-      path,
-    };
-    const bodyPreview =
-      errorText.length > 256 ? `${errorText.slice(0, 253)}…` : errorText;
-
-    if (body.parseError !== undefined) {
-      if (body.isHtml) {
-        logWarn("Received HTML error page instead of JSON", {
-          loggerScope: ["api", "client"],
-          extra: { ...logExtra, parseErrorMessage: body.parseError },
-        });
-        // HTML response instead of JSON typically indicates a server configuration issue
-        return createApiError(
-          `Server error: Received HTML instead of JSON (${response.status} ${response.statusText}). This may indicate an invalid URL or server issue.`,
-          response.status,
-          errorText,
-          undefined,
-          retryAfterMs,
-        );
+  /** Headers for every request after `Content-Type`. */
+  private requestHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+    if (this.accessToken !== null) {
+      const authorization = sentryBearerHeader(this.accessToken);
+      if (authorization === null) {
+        throw new ConfigurationError("Malformed authentication token");
       }
-      logWarn("Failed to parse JSON error response", {
-        loggerScope: ["api", "client"],
-        extra: { ...logExtra, bodyPreview, parseErrorMessage: body.parseError },
-      });
-    } else if (body.json) {
-      if (body.detail !== undefined) {
-        return createApiError(
-          body.detail,
-          response.status,
-          body.detail,
-          body.json,
-          retryAfterMs,
-        );
-      }
-      logWarn("Failed to parse validated API error response", {
-        loggerScope: ["api", "client"],
-        extra: {
-          ...logExtra,
-          bodyPreview,
-          validationErrorMessage: "Error response has no string detail",
-        },
-      });
+      headers.Authorization = authorization;
     }
+    if (this.clientId) {
+      headers["X-Sentry-MCP-Client-Id"] = this.clientId;
+    }
+    if (this.clientName) {
+      headers["X-Sentry-MCP-Client-Name"] = this.clientName;
+    }
+    if (this.clientFamily) {
+      headers["X-Sentry-MCP-Client-Family"] = this.clientFamily;
+    }
+    if (this.utmSource) {
+      headers["X-Sentry-MCP-Utm-Source"] = this.utmSource;
+    }
+    return headers;
+  }
 
-    // Use the error factory to create the appropriate error type based on status
-    return createApiError(
-      `API request failed: ${response.statusText}\n${errorText}`,
-      response.status,
-      errorText,
-      undefined,
-      retryAfterMs,
-    );
+  private origin(host: string = this.host): string {
+    return `${this.protocol}://${host}`;
   }
 
   /**
-   * Makes an authenticated request to the Sentry API through the shared transport.
-   *
-   * Handles:
-   * - Bearer token authentication
-   * - Error response parsing and enhancement
-   * - Multi-region host overrides
-   * - Fetch availability validation
+   * Makes an authenticated request through the shared client core
+   * (`@sentry/toolkit-core/api-client/core`), which maps network failures
+   * and error responses to `ApiError` subclasses.
    *
    * Retries happen in the transport, never here, so they do not stack: a
    * rate-limited (429) request, or a GET that hits a 500/502/503/504 or a
@@ -880,111 +835,14 @@ export class SentryApiService {
     options: RequestInit = {},
     { host, allowStatuses }: { host?: string; allowStatuses?: number[] } = {},
   ): Promise<Response> {
-    const url = buildSentryApiUrl(
-      `${this.protocol}://${host ?? this.host}`,
-      path,
-    );
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "User-Agent": USER_AGENT,
-    };
-    if (this.accessToken !== null) {
-      const authorization = sentryBearerHeader(this.accessToken);
-      if (authorization === null) {
-        throw new ConfigurationError("Malformed authentication token");
-      }
-      headers.Authorization = authorization;
-    }
-    if (this.clientId) {
-      headers["X-Sentry-MCP-Client-Id"] = this.clientId;
-    }
-    if (this.clientName) {
-      headers["X-Sentry-MCP-Client-Name"] = this.clientName;
-    }
-    if (this.clientFamily) {
-      headers["X-Sentry-MCP-Client-Family"] = this.clientFamily;
-    }
-    if (this.utmSource) {
-      headers["X-Sentry-MCP-Utm-Source"] = this.utmSource;
-    }
-
-    // Check if fetch is available, otherwise provide a helpful error message
-    if (typeof globalThis.fetch === "undefined") {
-      throw new ConfigurationError(
-        "fetch is not available. Please use Node.js >= 18 or ensure fetch is available in your environment.",
-      );
-    }
-
-    // logger.info(logger.fmt`[sentryApi] ${options.method || "GET"} ${url}`);
-    let response: Response;
-    try {
-      response = await transport.request(url, {
-        ...options,
-        headers,
-      });
-    } catch (error) {
-      // An abort, including one during a retry wait, keeps the caller's reason.
-      if (options.signal?.aborted) {
-        throw error;
-      }
-      // Extract the root cause from the error chain
-      let rootCause = error;
-      while (rootCause instanceof Error && rootCause.cause) {
-        rootCause = rootCause.cause;
-      }
-
-      const errorMessage =
-        rootCause instanceof Error ? rootCause.message : String(rootCause);
-
-      let friendlyMessage = `Unable to connect to ${url}`;
-
-      // Check if we have a specific message for this error
-      const errorCode = Object.keys(NETWORK_ERROR_MESSAGES).find((code) =>
-        errorMessage.includes(code),
-      );
-
-      if (errorCode) {
-        friendlyMessage += ` - ${NETWORK_ERROR_MESSAGES[errorCode]}`;
-      } else {
-        friendlyMessage += ` - ${errorMessage}`;
-      }
-
-      // DNS resolution failures and connection timeouts to custom hosts are configuration issues
-      if (
-        errorCode === "ENOTFOUND" ||
-        errorCode === "EAI_AGAIN" ||
-        errorCode === "ECONNREFUSED" ||
-        errorCode === "ETIMEDOUT" ||
-        errorMessage.includes("Connect Timeout Error")
-      ) {
-        throw new ConfigurationError(friendlyMessage, { cause: error });
-      }
-
-      throw new Error(friendlyMessage, { cause: error });
-    }
-
-    // Handle error responses generically
-    if (!response.ok) {
-      if (allowStatuses?.includes(response.status)) {
-        return response;
-      }
-      throw this.errorFromResponse(
-        response,
-        await readErrorResponse(response),
-        path,
-      );
-    }
-
-    return response;
+    return await this.core.request(this.origin(host), path, options, {
+      allowStatuses,
+    });
   }
 
   /**
-   * Makes a request to the Sentry API and parses the JSON response.
-   *
-   * This is the primary method for API calls that expect JSON responses.
-   * It automatically validates Content-Type and provides helpful error messages
-   * for common issues like authentication failures or server errors.
+   * Makes a request to the Sentry API and parses the JSON response,
+   * checking its Content-Type.
    *
    * @param path API endpoint path (without /api/0 prefix)
    * @param options Fetch options
@@ -998,84 +856,21 @@ export class SentryApiService {
     options: RequestInit = {},
     requestOptions?: { host?: string },
   ): Promise<unknown> {
-    const response = await this.request(path, options, requestOptions);
-    return await readJsonResponse(response);
+    return await this.core.requestJson(
+      this.origin(requestOptions?.host),
+      path,
+      options,
+    );
   }
 
-  /** Let SDK operations build paths and queries while MCP owns transport and errors. */
+  /** Let SDK operations build paths and queries while the core owns transport and errors. */
   private sdkClient(expectedPath: string, host: string = this.host) {
-    const origin = new URL(`${this.protocol}://${host}`).origin;
-    return createSentryClient({
-      baseUrl: origin,
-      fetch: async (sdkRequest) => {
-        if (!(sdkRequest instanceof Request)) {
-          throw new ConfigurationError("Unexpected SDK request input");
-        }
-        const url = new URL(sdkRequest.url);
-        if (
-          url.origin !== origin ||
-          url.pathname !== "/api/0".concat(expectedPath) ||
-          sdkRequest.method !== "GET"
-        ) {
-          throw new ConfigurationError(
-            "Unexpected SDK request target or method",
-          );
-        }
-        const path = `${url.pathname.slice("/api/0".length)}${url.search}`;
-        const response = await this.request(
-          path,
-          { method: "GET", signal: sdkRequest.signal },
-          { host },
-        );
-        const contentType = response.headers.get("content-type");
-        if (!contentType?.includes("application/json")) {
-          await readJsonResponse(response);
-        }
-        return response;
-      },
-    }).client;
+    return this.core.sdkClient(this.origin(host), expectedPath);
   }
 
-  private async sdkListPage<T>(
-    fetchPage: (
-      perPage: number,
-      cursor: string | undefined,
-    ) => Promise<{ data: unknown; response: Response }>,
-    schema: z.ZodType<T[]>,
-    limit: number,
-    initialCursor?: string | null,
-  ): Promise<{ items: T[]; nextCursor: string | null }> {
-    if (
-      !Number.isSafeInteger(limit) ||
-      limit < 1 ||
-      limit > API_MAX_PER_PAGE * MAX_LIST_PAGES
-    ) {
-      throw new ApiValidationError(
-        `limit must be an integer between 1 and ${API_MAX_PER_PAGE * MAX_LIST_PAGES}`,
-      );
-    }
-    const items: T[] = [];
-    const seenCursors = new Set<string>();
-    let cursor = initialCursor ?? undefined;
-    for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
-      const perPage = Math.min(API_MAX_PER_PAGE, limit - items.length);
-      const { data, response } = await fetchPage(perPage, cursor);
-      const rows = schema.parse(data);
-      if (rows.length > perPage) {
-        throw new Error("API returned more items than requested");
-      }
-      items.push(...rows);
-      const nextCursor = getNextCursor(response.headers.get("link"));
-      if (items.length >= limit || !nextCursor) {
-        return { items, nextCursor };
-      }
-      if (seenCursors.has(nextCursor) || nextCursor === cursor) {
-        throw new Error("API returned a repeated pagination cursor");
-      }
-      seenCursors.add(nextCursor);
-      cursor = nextCursor;
-    }
-    throw new Error("API pagination exceeded its page limit");
+  /** The core and origin a shared endpoint wrapper sends to. */
+  private target(host?: string): ApiTarget {
+    return { core: this.core, origin: this.origin(host) };
   }
 
   /**
@@ -1659,24 +1454,16 @@ export class SentryApiService {
   /**
    * Retrieves the authenticated user's profile information.
    *
-   * @param opts Request options including host override
    * @returns User profile data
    * @throws {ApiError} If authentication fails or user not found
    */
-  async getAuthenticatedUser(opts?: RequestOptions): Promise<User> {
-    // User identity belongs to the deployment's control host.
-    let authHost: string | undefined;
-
-    if (this.isPublicSaas()) {
-      authHost = "sentry.io";
-    }
-    // Single-tenant and self-hosted deployments keep their configured host.
-
-    const body = await this.requestJSON("/auth/", undefined, {
-      ...opts,
-      host: authHost,
-    });
-    return UserSchema.parse(body);
+  async getAuthenticatedUser(): Promise<User> {
+    // User identity belongs to the deployment's control host. Single-tenant
+    // and self-hosted deployments keep their configured host.
+    return await getAuthenticatedUser(
+      this.target(this.isPublicSaas() ? "sentry.io" : undefined),
+      UserSchema,
+    );
   }
 
   /**
@@ -1706,20 +1493,10 @@ export class SentryApiService {
   }): Promise<{ organizations: OrganizationList; nextCursor: string | null }> {
     // Public SaaS lists across regions on sentry.io; single-tenant instances
     // keep organization discovery on their configured host.
-    const client = this.sdkClient(
-      "/organizations/",
-      this.isPublicSaas() ? "sentry.io" : this.host,
-    );
-    const { items, nextCursor } = await this.sdkListPage(
-      (perPage, cursor) =>
-        listOrganizations({
-          client,
-          query: { per_page: perPage, query: params?.query, cursor },
-          throwOnError: true,
-        }),
+    const { items, nextCursor } = await listOrganizations(
+      this.target(this.isPublicSaas() ? "sentry.io" : this.host),
+      params ?? {},
       OrganizationListSchema,
-      params?.limit ?? 25,
-      params?.cursor,
     );
     return {
       organizations: items,
@@ -1742,21 +1519,11 @@ export class SentryApiService {
     params?: { includeFeatureFlags?: boolean; detailed?: boolean },
     opts?: RequestOptions,
   ) {
-    const queryParams = new URLSearchParams();
-    if (params?.includeFeatureFlags) {
-      queryParams.set("include_feature_flags", "1");
-    }
-    if (params?.detailed === false) {
-      queryParams.set("detailed", "0");
-    }
-    const queryString = queryParams.toString();
-    const organizationPath = apiPath`/organizations/${organizationSlug}/`;
-    const body = await this.requestJSON(
-      `${organizationPath}${queryString ? `?${queryString}` : ""}`,
-      undefined,
-      opts,
+    return await getOrganization(
+      this.target(opts?.host),
+      { organizationSlug, ...params },
+      OrganizationSchema,
     );
-    return OrganizationSchema.parse(body);
   }
 
   /**
@@ -1777,7 +1544,7 @@ export class SentryApiService {
   ): Promise<{ teams: TeamList; nextCursor: string | null }> {
     const teamsPath = apiPath`/organizations/${organizationSlug}/teams/`;
     const client = this.sdkClient(teamsPath, opts?.host);
-    const { items, nextCursor } = await this.sdkListPage(
+    const { items, nextCursor } = await listPage(
       (perPage, cursor) =>
         listOrganizationTeams({
           client,
@@ -1844,7 +1611,7 @@ export class SentryApiService {
   ): Promise<{ projects: ProjectList; nextCursor: string | null }> {
     const projectsPath = apiPath`/organizations/${organizationSlug}/projects/`;
     const client = this.sdkClient(projectsPath, opts?.host);
-    const { items, nextCursor } = await this.sdkListPage(
+    const { items, nextCursor } = await listPage(
       (perPage, cursor) =>
         listOrganizationProjects({
           client,

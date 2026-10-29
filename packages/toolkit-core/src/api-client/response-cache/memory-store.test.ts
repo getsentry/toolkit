@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBodyCodec, type EncodedBody } from "./codec.js";
+import {
+  createBodyCodec,
+  type EncodedBody,
+} from "../../response-cache/codec.js";
 import { buildCacheKey } from "./keys.js";
 import { createMemoryStore, ENTRY_OVERHEAD_BYTES } from "./memory-store.js";
 import type { CacheEntry } from "./store.js";

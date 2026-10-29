@@ -12,10 +12,10 @@ import {
   ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
-  parseDashboardTarget,
   parseIssueTarget,
   parseOrgProjectTarget,
   parseOrgTarget,
+  withCompletionTarget,
 } from "../../src/lib/completion-target.js";
 import type {
   Command,
@@ -476,7 +476,15 @@ describe("extractCommandCompletions", () => {
       parameters: {
         positional: {
           kind: "tuple",
-          parameters: [{ placeholder: "target", parse: parseDashboardTarget }],
+          parameters: [
+            {
+              placeholder: "target",
+              parse: withCompletionTarget(
+                DASHBOARD_TARGET,
+                (input: string) => input,
+              ),
+            },
+          ],
         },
         flags: {
           web: { kind: "boolean" },

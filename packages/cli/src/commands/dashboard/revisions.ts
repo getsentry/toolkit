@@ -7,9 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { paginate } from "../../lib/api/infrastructure.js";
 import { listDashboardRevisionsPaginated } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDashboardTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -30,12 +28,8 @@ import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardRevision } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
-import {
-  withDashboardErrors,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+import { type DashboardArguments, dashboardArguments } from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
 
 const PAGINATION_KEY = "dashboard-revisions";
 
@@ -145,31 +139,22 @@ export const revisionsCommand = buildCommand({
     jsonTransform: jsonTransformRevisions,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseDashboardTarget,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/dashboard",
+      usageHint: "sentry dashboard revisions <org>/ <id>",
+    }),
     flags: {
       limit: buildListLimitFlag("revisions"),
       cursor: LIST_CURSOR_FLAG,
     },
     aliases: { n: "limit", c: "cursor" },
   },
-  async *func(this: SentryContext, flags: RevisionsFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard revisions <org>/ <id>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+  async *func(
+    this: SentryContext,
+    flags: RevisionsFlags,
+    target: DashboardArguments,
+  ) {
+    const { orgSlug, dashboardId } = await target.resolved;
 
     const contextKey = buildPaginationContextKey(
       "dashboard-revisions",

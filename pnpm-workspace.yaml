@@ -94,9 +94,9 @@ catalog:
   tsdown: ^0.12.9
   tsx: ^4.20.3
   tw-animate-css: ^1.3.4
-  typescript: ^5.8.3
+  typescript: ^5.9.3
   valibot: ^1.4.2
-  vite: ^6.4.4
+  vite: ^6.4.5
   vitest: ^4.1.11
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3

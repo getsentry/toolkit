@@ -22,8 +22,11 @@ const SPAN = "aaaa1111bbbb2222";
 const SPAN2 = "cccc3333dddd4444";
 const HINT = "sentry thing view [<org>/<project>/]<id>";
 
-/** An ID of each kind, and a second one */
-const EXAMPLES: Record<keyof typeof ID_KINDS, readonly [string, string]> = {
+/** Kinds without names: a token that is no ID is a target */
+type UnnamedKind = "trace" | "event" | "replay" | "log" | "span";
+
+/** An ID of each kind without names, and a second one */
+const EXAMPLES: Record<UnnamedKind, readonly [string, string]> = {
   trace: [HEX, HEX2],
   event: [HEX, HEX2],
   replay: [HEX, HEX2],
@@ -31,9 +34,8 @@ const EXAMPLES: Record<keyof typeof ID_KINDS, readonly [string, string]> = {
   span: [SPAN, SPAN2],
 };
 
-const KINDS = Object.entries(ID_KINDS).map(
-  ([name, kind]) =>
-    [name, kind, ...EXAMPLES[name as keyof typeof ID_KINDS]] as const,
+const KINDS = (Object.keys(EXAMPLES) as UnnamedKind[]).map(
+  (name) => [name, ID_KINDS[name] as IdKind, ...EXAMPLES[name]] as const,
 );
 
 function parse(
@@ -144,17 +146,45 @@ describe.each(KINDS)("%s IDs", (_name, kind, id, other) => {
   );
 
   test.each([
-    [["not-hex"], undefined],
-    [["acme/web/not-hex"], "acme/web"],
-    [["acme/web", "not-hex"], "acme/web"],
-    [["not-hex", "acme/web"], "acme/web"],
+    [["abc123"], undefined],
+    [["acme/web/abc123"], "acme/web"],
+    [["acme/web", "abc123"], "acme/web"],
+    [["abc123", "acme/web"], "acme/web"],
   ])("%j → invalid ID, or raw ID and target %j", (args, target) => {
     expect(() => parse(kind, args)).toThrow(ValidationError);
     expect(parse(kind, args, { validate: false })).toMatchObject({
       target,
-      ids: ["not-hex"],
+      ids: ["abc123"],
     });
   });
+
+  test.each([
+    [["login"]],
+    [["login error"]],
+    [["acme/web", "checkout"]],
+    [["acme/web/checkout"]],
+  ])("%j → not an ID, with a hint to search, if there is one", (args) => {
+    if (!kind.search) {
+      // `event list` lists an issue's events: there is no search to hint
+      expect(() => parse(kind, args)).toThrow(/^Invalid /);
+      return;
+    }
+    const label = kind.label.charAt(0).toLowerCase() + kind.label.slice(1);
+    const text = args.at(-1)?.split("/").at(-1) ?? "";
+    expect(() => parse(kind, args)).toThrow(
+      `Not a ${label}: "${text}". To search, try \`${kind.search?.command} --query '${text}'\`.`,
+    );
+    // Unvalidated, it stays raw for the command to recover, then validate
+    expect(parse(kind, args, { validate: false }).ids).toEqual([text]);
+    expect(() => kind.validate(text)).toThrow(/^Not a .* To search, try/);
+  });
+
+  test.each([["--h"], ["<trace-id>"], ["{traceId}"], ["abc-123"]])(
+    "%j is no search text: the ID's own error explains it",
+    (arg) => {
+      expect(() => parse(kind, [arg])).toThrow(/^Invalid /);
+    },
+  );
 
   test.each([
     [`acme/${id.slice(0, 12)}`, id.slice(0, 12)],
@@ -301,5 +331,109 @@ describe("tokens", () => {
         optional: true,
       }),
     ).toEqual({ target: HEX, ids: [SPAN], warnings: [] });
+  });
+});
+
+describe("kinds with names", () => {
+  const dashboard = ID_KINDS.dashboard;
+  const issue = ID_KINDS.issue;
+
+  test.each([
+    [["42"], { ids: ["42"] }],
+    [["acme/42"], { target: "acme/", ids: ["42"] }],
+    [["acme/web/42"], { target: "acme/web", ids: ["42"] }],
+    [["My Dashboard"], { ids: [], name: "My Dashboard" }],
+    // A name is never split at spaces, even before a number
+    [["Top 10"], { ids: [], name: "Top 10" }],
+    // Slashes stay in a name unless slugs come before an ID
+    [["Latency/p95"], { ids: [], name: "Latency/p95" }],
+    [["Errors.v2/123"], { ids: [], name: "Errors.v2/123" }],
+    [["acme/"], { ids: [], name: "acme/" }],
+  ])("%j → %j", (args, expected) => {
+    expect(parse(dashboard, args)).toEqual({ warnings: [], ...expected });
+  });
+
+  test("a name takes every argument after the target", () => {
+    expect(
+      parse(dashboard, ["acme/", "API", "Latency", "by", "Region"]),
+    ).toEqual({
+      target: "acme/",
+      ids: [],
+      name: "API Latency by Region",
+      warnings: [],
+    });
+    expect(
+      parse(dashboard, ["acme/web", "Latency/p95", "by", "Region"]),
+    ).toEqual({
+      target: "acme/web",
+      ids: [],
+      name: "Latency/p95 by Region",
+      warnings: [],
+    });
+  });
+
+  test("an ID after the target keeps the rest as extra", () => {
+    expect(parse(dashboard, ["acme/", "123", "extra"])).toEqual({
+      target: "acme/",
+      ids: ["123"],
+      warnings: [`Extra arguments ignored: extra. Expected: ${HINT}`],
+    });
+  });
+
+  test("a bare word before a name may be the name's first word", () => {
+    // An org-scoped kind reads the bare word as an org
+    expect(parse(dashboard, ["My", "Dashboard"])).toEqual({
+      target: "My/",
+      ids: [],
+      name: "Dashboard",
+      nameWithTarget: "My Dashboard",
+      warnings: [],
+    });
+    expect(parse(dashboard, ["acme/", "Dashboard"]).nameWithTarget).toBe(
+      undefined,
+    );
+  });
+
+  test("a URL with no ID is a target before a name", () => {
+    expect(
+      parse(dashboard, ["https://acme.sentry.io/", "Backend", "Performance"]),
+    ).toMatchObject({
+      target: "https://acme.sentry.io/",
+      ids: [],
+      name: "Backend Performance",
+    });
+  });
+
+  test("a URL with an ID names it", () => {
+    expect(parse(dashboard, ["https://acme.sentry.io/dashboard/7/"])).toEqual({
+      target: "acme/",
+      ids: ["7"],
+      baseUrl: "https://acme.sentry.io",
+      warnings: [],
+    });
+  });
+
+  test("an ID with its own syntax is a whole token", () => {
+    for (const id of ["acme/cli-G", "acme/cli/G", "cli#CLI-G", "@latest"]) {
+      expect(parse(issue, [id])).toEqual({ ids: [id], warnings: [] });
+    }
+  });
+
+  test("a name is what cannot be an ID", () => {
+    expect(parse(issue, ["login timeout"])).toEqual({
+      ids: [],
+      name: "login timeout",
+      warnings: [],
+    });
+    // No space: a malformed identifier, which the kind rejects
+    expect(parse(issue, ["acme/"], { validate: false })).toEqual({
+      ids: ["acme/"],
+      warnings: [],
+    });
+    expect(() => parse(issue, ["acme/"])).toThrow(ValidationError);
+  });
+
+  test("a kind with names has no search hint", () => {
+    expect("search" in dashboard || "search" in issue).toBe(false);
   });
 });

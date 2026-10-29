@@ -27,7 +27,7 @@ import {
 import { formatLogDetails } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import { ageInDaysFromUuidV7, validateHexId } from "../../lib/hex-id.js";
+import { ageInDaysFromUuidV7 } from "../../lib/hex-id.js";
 import {
   handleRecoveryResult,
   recoverHexId,
@@ -79,7 +79,7 @@ const USAGE_HINT = "sentry log view <org>/<project> <log-id> [<log-id>...]";
  * IDs after any of those, each maybe repeating the target. An argument may
  * hold several lines, one log ID each.
  *
- * Returns **raw** log IDs without running {@link validateHexId} — validation
+ * Returns **raw** log IDs without validating them — validation
  * is deferred to the main command so {@link recoverHexId} can use the
  * resolved org/project context for fuzzy prefix lookups.
  *
@@ -118,7 +118,7 @@ export function parsePositionalArgs(args: readonly string[]): {
 /**
  * Validate and attempt to recover one log ID against the resolved target.
  *
- * For each raw ID: run {@link validateHexId}; on {@link ValidationError},
+ * For each raw ID: run `ID_KINDS.log.validate`; on {@link ValidationError},
  * attempt {@link recoverHexId} with the resolved org/project. Successful
  * recovery returns a valid hex ID (and emits a `log.warn`).
  */
@@ -127,7 +127,7 @@ async function validateAndRecoverLogId(
   target: ResolvedLogTarget,
 ): Promise<string> {
   try {
-    return validateHexId(rawId, "log ID");
+    return ID_KINDS.log.validate(rawId);
   } catch (err) {
     if (!(err instanceof ValidationError)) {
       throw err;
