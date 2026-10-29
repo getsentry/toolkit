@@ -26,11 +26,13 @@
  * the raw input with {@link rawPositional}.
  *
  * {@link boundArguments} does the same for positionals whose meaning depends
- * on how many arguments were given, such as `[<org>/<project>] <id>`: it
- * parses all of them at once (in the scanner, through our Stricli patch's
- * `combine` hook) and hands `func` one {@link BoundArguments}.
+ * on how many arguments were given, such as `[<org>/<project>] <id>`. A
+ * Stricli parser sees one argument at a time, so `buildCommand` parses all
+ * of them at once before `func` runs and hands `func` one
+ * {@link BoundArguments}.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import {
   type CompletionTarget,
   withCompletionTarget,
@@ -42,14 +44,17 @@ const destructiveChecks = new WeakMap<object, () => void>();
 /** Parsers made by {@link boundPositional}. */
 const boundParsers = new WeakSet<object>();
 
-/** `combine` functions made by {@link boundArguments}. */
-const argumentCombiners = new WeakSet<object>();
+/**
+ * Parses every argument of a {@link boundArguments} positional at once, into
+ * a {@link BoundArguments}.
+ */
+type ArgumentsParser = (this: unknown, raw: readonly string[]) => object;
+
+/** Whole-argument parsers of {@link boundArguments} positionals. */
+const argumentParsers = new WeakMap<object, ArgumentsParser>();
 
 /** Leading arguments {@link skipLeadingArgument} left out, by bound value. */
 const skippedArguments = new WeakMap<object, string>();
-
-/** Parse errors of {@link boundArguments} values, thrown when `func` runs. */
-const deferredParseErrors = new WeakMap<object, unknown>();
 
 /**
  * Whether the user typed `help` (or a mistyped help flag) as an argument,
@@ -127,11 +132,10 @@ export type BoundArguments<T, R> = BoundPositional<T, R, readonly string[]>;
  * `[<org>/<project>] <id>`, or a trailing trace ID). `func` gets one
  * {@link BoundArguments} instead of `...args: string[]`.
  *
- * Each argument completes as `kind`. Stricli then hands every argument to
- * `parse` through the positional's `combine` hook (our Stricli patch), so a
- * parse error fails in the argument scanner like any other (exit 252). When
- * an argument is `help`, the error is thrown when `func` would run instead,
- * so `buildCommand` shows the command's help.
+ * Stricli only tags each argument for completion as `kind`. `buildCommand`
+ * then parses them all before `func` runs. A parse error becomes Stricli's
+ * {@link ArgumentParseError}, which fails like any other argument (exit 252),
+ * unless an argument is `help`: then it turns into the command's help.
  *
  * @param options.parse - Parses all the arguments, possibly none; may
  *   throw. Must have no side effects
@@ -155,40 +159,34 @@ export function boundArguments<T, R, C>(options: {
     readonly brief: string;
     readonly parse: (input: string) => string;
   };
-  readonly combine: (
-    this: C,
-    values: readonly string[],
-  ) => BoundArguments<T, R>;
 } {
-  const combine = function (this: C, values: readonly string[]) {
-    const raw = [...values];
-    let parsed: T;
-    try {
-      parsed = options.parse(raw);
-    } catch (error) {
-      if (!raw.some(isHelpArgument)) {
-        throw error;
-      }
-      const failed = new BoundPositional(raw, undefined as T, () =>
-        Promise.reject(error),
-      );
-      deferredParseErrors.set(failed, error);
-      return failed;
-    }
-    return new BoundPositional(raw, parsed, (value: T) =>
-      options.resolve(value, this, raw),
-    );
-  };
-  argumentCombiners.add(combine);
-  return {
+  const positional = {
     kind: "array",
     parameter: {
       placeholder: options.placeholder,
       brief: options.brief,
       parse: withCompletionTarget(options.kind, (input: string) => input),
     },
-    combine,
-  };
+  } as const;
+  argumentParsers.set(positional, function (this: unknown, values) {
+    const raw = [...values];
+    let parsed: T;
+    try {
+      parsed = options.parse(raw);
+    } catch (error) {
+      throw new ArgumentParseError(
+        options.placeholder as ConstructorParameters<
+          typeof ArgumentParseError
+        >[0],
+        raw.join(" "),
+        error,
+      );
+    }
+    return new BoundPositional(raw, parsed, (value: T) =>
+      options.resolve(value, this as C, raw),
+    );
+  });
+  return positional;
 }
 
 /**
@@ -201,28 +199,24 @@ export function skipLeadingArgument<P>(
   positional: P,
   skip: (arg: string) => boolean,
 ): P {
-  const def = positional as PositionalDef | undefined;
-  if (
-    !(
-      def?.kind === "array" &&
-      def.combine &&
-      argumentCombiners.has(def.combine)
-    )
-  ) {
+  const parseAll =
+    typeof positional === "object" && positional !== null
+      ? argumentParsers.get(positional as object)
+      : undefined;
+  if (!parseAll) {
     return positional;
   }
-  const combineAll = def.combine;
-  const combine = function (this: unknown, values: readonly string[]) {
+  const skipping = { ...(positional as object) } as P & object;
+  argumentParsers.set(skipping, function (this: unknown, values) {
     const [first, ...rest] = values;
     if (first === undefined || !skip(first)) {
-      return combineAll.call(this, values);
+      return parseAll.call(this, values);
     }
-    const bound = combineAll.call(this, rest) as object;
+    const bound = parseAll.call(this, rest);
     skippedArguments.set(bound, first);
     return bound;
-  };
-  argumentCombiners.add(combine);
-  return { ...positional, combine };
+  });
+  return skipping;
 }
 
 /** The argument {@link skipLeadingArgument} left out of `value`, if any. */
@@ -235,11 +229,7 @@ export function skippedArgument(value: unknown): string | undefined {
 /** A Stricli positional definition — the subset that carries the parsers. */
 type PositionalDef =
   | { kind: "tuple"; parameters: readonly { parse?: unknown }[] }
-  | {
-      kind: "array";
-      parameter: { parse?: unknown };
-      combine?: (this: unknown, values: readonly string[]) => unknown;
-    };
+  | { kind: "array"; parameter: { parse?: unknown } };
 
 /** The {@link boundPositional} parser at a positional index, if any. */
 function boundParserAt(
@@ -254,16 +244,19 @@ function boundParserAt(
 }
 
 /**
- * Give every {@link boundPositional} positional its value.
+ * Give every {@link boundPositional} positional its value, and parse the
+ * arguments of a {@link boundArguments} positional into one
+ * {@link BoundArguments}.
  *
- * Stricli already ran the parsers for typed input. This covers callers that
- * skip its scanner (the SDK invoke path, tests calling the loaded func),
- * which pass raw strings, and omitted optional positionals, which Stricli
- * leaves `undefined`. Other positionals are left as they are. Raw strings
- * for a {@link boundArguments} positional become one {@link BoundArguments}.
+ * Stricli already ran the {@link boundPositional} parsers for typed input.
+ * This covers callers that skip its scanner (the SDK invoke path, tests
+ * calling the loaded func), which pass raw strings, and omitted optional
+ * positionals, which Stricli leaves `undefined`. Other positionals are left
+ * as they are.
  *
  * @param context - Passed to each parser as `this`, as Stricli does
- * @throws The parser's error for an invalid raw string
+ * @throws The parser's error for an invalid raw string, or an
+ *   {@link ArgumentParseError} for {@link boundArguments}
  */
 export function applyBoundPositionals(
   args: readonly unknown[],
@@ -274,16 +267,13 @@ export function applyBoundPositionals(
   if (!def) {
     return [...args];
   }
-  if (
-    def.kind === "array" &&
-    def.combine &&
-    argumentCombiners.has(def.combine)
-  ) {
-    // Stricli's scanner already combined them into one bound value
+  const parseAll = argumentParsers.get(def);
+  if (parseAll) {
+    // Already parsed when a wrapper applies them again
     if (args.length === 1 && args[0] instanceof BoundPositional) {
       return [...args];
     }
-    return [def.combine.call(context, args as readonly string[])];
+    return [parseAll.call(context, args as readonly string[])];
   }
   const count =
     def.kind === "tuple"
@@ -309,18 +299,6 @@ export function checkDestructive(args: readonly unknown[]): void {
   for (const arg of args) {
     if (arg instanceof BoundPositional) {
       destructiveChecks.get(arg)?.();
-    }
-  }
-}
-
-/**
- * Throw the parse error {@link boundArguments} deferred because an argument
- * was `help`. Other values are ignored.
- */
-export function throwDeferredParseErrors(args: readonly unknown[]): void {
-  for (const arg of args) {
-    if (arg instanceof BoundPositional && deferredParseErrors.has(arg)) {
-      throw deferredParseErrors.get(arg);
     }
   }
 }

@@ -221,13 +221,6 @@ for (const [key, patchPath] of Object.entries(patches)) {
  * it's guarded by a `requiredMarker` (`matchTopLevelFlag`) that must be present
  * once patched. Its absence means global flags before a subcommand will crash.
  *
- * @stricli/core (array positional `combine`): an array positional may declare
- * `combine`, which reads the parsed arguments as a whole and returns the one
- * value the command gets, so a parse that depends on how many arguments were
- * given runs in the argument scanner (see `boundArguments` in
- * `src/lib/positional-parse.ts`). A pure insertion, guarded by the
- * `combinePositionalValues` marker.
- *
  * @stricli/core (`-v` version alias): the patch also drops Stricli's built-in
  * `-v`=version alias in `runApplication` so `-v` stays the Sentry CLI's
  * `--verbose` alias at every position; `--version` remains the version flag.
@@ -305,18 +298,6 @@ const CONTENT_ASSERTIONS: ReadonlyArray<{
     requiredMarker: "renderHelp",
     description:
       "@stricli/core CJS: pluggable `renderHelp` hook missing (`sentry --help --json` will fall back to text help instead of structured JSON)",
-  },
-  {
-    file: "@stricli/core/dist/index.js",
-    requiredMarker: "combinePositionalValues",
-    description:
-      "@stricli/core ESM: array positional `combine` hook missing (commands such as `log list` and `replay view` get no parsed arguments)",
-  },
-  {
-    file: "@stricli/core/dist/index.cjs",
-    requiredMarker: "combinePositionalValues",
-    description:
-      "@stricli/core CJS: array positional `combine` hook missing (commands such as `log list` and `replay view` get no parsed arguments)",
   },
 ];
 

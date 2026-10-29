@@ -277,9 +277,11 @@ trailing trace ID), declare the positional with `boundArguments` from
 once and whose `resolve` binds like a target positional's: `func` takes one
 `BoundArguments<Parsed, Resolved>` (alias it per command and add the alias to
 the lint rule's type list), reads `target.parsed`, and awaits
-`target.resolved`. Stricli runs the parse in its scanner through the
-`combine` hook our `@stricli/core` patch adds, so errors exit 252 like any
-other argument. The same purity rule applies: return a pasted URL's server
+`target.resolved`. A Stricli parser sees one argument at a time, so
+`buildCommand` runs the parse before `func` (and before the auth guard). A
+parse error becomes Stricli's `ArgumentParseError`, which prints and exits
+252 like a scanner error; next to a `help` argument it turns into the
+command's help instead. The same purity rule applies: return a pasted URL's server
 (`baseUrl`) and any warnings from the parse, and apply them in `resolve`
 (`parseTraceTargetInput` and `parseDualModeInput` in `trace-target.ts` do
 this for trace targets).

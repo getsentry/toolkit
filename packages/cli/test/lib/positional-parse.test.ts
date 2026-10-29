@@ -7,6 +7,7 @@
  */
 
 import {
+  ArgumentParseError,
   buildApplication,
   type CommandContext,
   ExitCode,
@@ -35,7 +36,6 @@ import {
   rawPositional,
   skipLeadingArgument,
   skippedArgument,
-  throwDeferredParseErrors,
 } from "../../src/lib/positional-parse.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
 import {
@@ -360,22 +360,6 @@ describe("boundArguments", () => {
     expect(stderr).toContain("Too many arguments");
   });
 
-  test("a parse error next to `help` fails when func would run instead", async () => {
-    idResolver.mockClear();
-    const { resolved, stderr, exitCode } = await runWithArguments([
-      "help",
-      "a",
-      "b",
-    ]);
-    expect(resolved).toEqual([]);
-    expect(idResolver).not.toHaveBeenCalled();
-    // Thrown by the command wrapper, where `help` recovery can catch it,
-    // rather than by Stricli's scanner
-    expect(stderr).not.toContain("Failed to parse");
-    expect(stderr).toContain("Too many arguments");
-    expect(exitCode).not.toBe(ExitCode.InvalidArgument);
-  });
-
   test("parses no arguments too", async () => {
     const { resolved, exitCode, stderr } = await runWithArguments([]);
     expect(resolved).toEqual([]);
@@ -399,14 +383,21 @@ describe("boundArguments", () => {
     expect(idResolver).not.toHaveBeenCalled();
     await expect(bound.resolved).resolves.toMatchObject({ cwd: "/work" });
 
-    // A value Stricli already combined is kept
+    // A value already parsed is kept
     expect(applyBoundPositionals([bound], idArguments, context)).toEqual([
       bound,
     ]);
   });
 
-  test("raw strings that fail to parse throw the parser's error", () => {
-    expect(() => applyBoundPositionals([], idArguments, {})).toThrow(
+  test("raw strings that fail to parse throw an argument parse error", () => {
+    let error: unknown;
+    try {
+      applyBoundPositionals([], idArguments, {});
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
       ContextError,
     );
   });
@@ -418,7 +409,7 @@ describe("boundArguments", () => {
 
   test("skipLeadingArgument leaves a matching first argument out before parsing", async () => {
     const skipping = skipLeadingArgument(idArguments, (arg) => arg === "view");
-    // Parsed in the scanner without "view", so the count still decides
+    // Parsed without "view", so the count still decides
     expect(
       (await runWithArguments(["view", "acme/web", "abc"], skipping)).resolved,
     ).toEqual([
@@ -430,16 +421,6 @@ describe("boundArguments", () => {
     expect((bound as IdArguments).parsed).toEqual({ id: "abc" });
     const [kept] = applyBoundPositionals(["abc"], skipping, {});
     expect(skippedArgument(kept)).toBeUndefined();
-  });
-
-  test("skipLeadingArgument keeps a parse error next to `help` deferred", () => {
-    const skipping = skipLeadingArgument(idArguments, (arg) => arg === "view");
-    const args = applyBoundPositionals(
-      ["view", "help", "a", "b"],
-      skipping,
-      {},
-    );
-    expect(() => throwDeferredParseErrors(args)).toThrow("Too many arguments");
   });
 
   test("each argument completes as the given kind", () => {

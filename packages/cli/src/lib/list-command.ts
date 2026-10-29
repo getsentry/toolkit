@@ -659,8 +659,9 @@ export function buildListCommand<
     mergedAliases.c = "cursor";
   }
 
-  // `boundArguments` positionals parse every argument in the scanner, so a
-  // subcommand name is left out there, before it changes what the rest mean
+  // `boundArguments` positionals parse every argument before this wrapper
+  // runs, so a subcommand name is left out of that parse, before it changes
+  // what the other arguments mean
   const positional = skipLeadingArgument(params.positional, (arg) =>
     isSubcommandName(arg, routeName),
   );

@@ -187,6 +187,34 @@ describe("help recovery on ValidationError", () => {
   });
 });
 
+describe("help recovery on argument parse errors", () => {
+  test("sentry replay view help → shows help instead of the parse error", async () => {
+    // `replay view`'s arguments parse together in the command wrapper; "help"
+    // fails as a replay ID there, where recovery can still catch it
+    const { stdout, stderr } = await runCommand(["replay", "view", "help"]);
+
+    expect(stdout).toContain("sentry replay view");
+    expect(stderr).toContain("sentry replay view --help");
+    expect(stderr).not.toContain("Failed to parse");
+  });
+
+  test("sentry replay view not-hex → argument parse error", async () => {
+    // Stricli writes argument errors to the real process's stderr
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      const { stdout } = await runCommand(["replay", "view", "not-hex"]);
+      expect(stdout).not.toContain("sentry replay view");
+      expect(stderrWrite.mock.calls.map(([s]) => String(s)).join("")).toContain(
+        'Failed to parse "not-hex" for replay-id-or-url',
+      );
+    } finally {
+      stderrWrite.mockRestore();
+    }
+  });
+});
+
 describe("help command unchanged", () => {
   test("sentry help still shows branded help", async () => {
     const { stdout, stderr } = await runCommand(["help"]);

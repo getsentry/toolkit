@@ -1,49 +1,8 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed4246fcb15cf 100644
+index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5ea209e29 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -406,6 +406,20 @@ var ArgumentParseError = class extends ArgumentScannerError {
-     this.exception = exception;
-   }
- };
-+async function combinePositionalValues(positional, values_p, inputs, context) {
-+  const values = await values_p;
-+  if (values.status === "rejected") {
-+    return values;
-+  }
-+  try {
-+    return { status: "fulfilled", value: [await positional.combine.call(context, values.value)] };
-+  } catch (exc) {
-+    return {
-+      status: "rejected",
-+      reasons: [new ArgumentParseError(getPlaceholder(positional.parameter), inputs.join(" "), exc)]
-+    };
-+  }
-+}
- function parseInput(externalFlagNameOrPlaceholder, parameter, input, context) {
-   try {
-     return parameter.parse.call(context, input);
-@@ -880,6 +894,19 @@ function buildArgumentScanner(parameters, config) {
-             return parseInput(placeholder, positional.parameter, input, context);
-           })
-         );
-+        // PATCH(getsentry/cli): optional `combine` for array positionals.
-+        // Some commands read their arguments as a whole: what each one means
-+        // depends on how many were given (e.g. `[<target>] <id>`), which a
-+        // per-element `parse` cannot see. When the array positional declares
-+        // `combine`, it receives the parsed elements (and the command context
-+        // as `this`) and returns the single value the command receives as its
-+        // only positional argument. A throw becomes an ArgumentParseError for
-+        // the joined inputs, like any other parse failure. The option is inert
-+        // when unset, so stock Stricli behavior is unchanged. If
-+        // `combinePositionalValues` is missing, the CLI's `check:patches` fails.
-+        if (typeof positional.combine === "function") {
-+          positionalValues_p = combinePositionalValues(positional, positionalValues_p, positionalInputs, context);
-+        }
-       } else {
-         positionalValues_p = allSettledOrElse(
-           positional.parameters.map(async (param, i) => {
-@@ -1277,6 +1304,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+@@ -1277,6 +1277,35 @@ var RouteMapSymbol = Symbol("RouteMap");
  var CommandSymbol = Symbol("Command");
  
  // src/routing/scanner.ts
@@ -79,7 +38,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
  function buildRouteScanner(root, config, startingPrefix) {
    const prefix = [...startingPrefix];
    const unprocessedInputs = [];
-@@ -1285,7 +1341,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1285,7 +1314,14 @@ function buildRouteScanner(root, config, startingPrefix) {
    let target;
    let rootLevel = true;
    let helpRequested = false;
@@ -94,7 +53,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
    return {
      next: (input) => {
        if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
-@@ -1293,6 +1356,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1293,6 +1329,14 @@ function buildRouteScanner(root, config, startingPrefix) {
          unprocessedInputs.push(input);
          return;
        }
@@ -109,7 +68,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1300,12 +1371,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1300,12 +1341,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -139,7 +98,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
          }
        }
        if (target) {
-@@ -1357,6 +1444,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1357,6 +1414,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -147,7 +106,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
          prefix,
          rootLevel,
          aliases
-@@ -1410,16 +1498,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1410,16 +1468,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -164,7 +123,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1445,7 +1523,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1445,7 +1493,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -202,7 +161,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1514,6 +1622,9 @@ function withDefaults(config) {
+@@ -1514,6 +1592,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -212,7 +171,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1529,7 +1640,10 @@ function withDefaults(config) {
+@@ -1529,7 +1610,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -224,7 +183,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1881,7 +1995,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1881,7 +1965,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -233,7 +192,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1920,7 +2034,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1920,7 +2004,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -242,7 +201,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2057,7 +2171,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2057,7 +2141,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);
@@ -252,7 +211,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..39cfc8dd597cbf3c3cd4ac1665bed424
    checkForInvalidVariadicSeparators(flags);
    let loader;
 diff --git a/dist/index.d.cts b/dist/index.d.cts
-index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..ff53a12a8477e79580d62145134c25f6e9da923e 100644
+index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
 --- a/dist/index.d.cts
 +++ b/dist/index.d.cts
 @@ -402,6 +402,25 @@ interface ScannerConfiguration {
@@ -310,22 +269,8 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..ff53a12a8477e79580d62145134c25f6
  }
  /**
   * Configuration for controlling the behavior of completion proposals.
-@@ -993,6 +1034,13 @@ interface PositionalParameterArray<T, CONTEXT extends CommandContext> {
-     readonly parameter: TypedPositionalParameter<T, CONTEXT>;
-     readonly minimum?: number;
-     readonly maximum?: number;
-+    /**
-+     * PATCH(getsentry/cli): reads the parsed arguments as a whole and returns
-+     * the single value the command receives as its only positional argument.
-+     * Use it when what each argument means depends on how many were given.
-+     * A throw fails like a parse error for the joined inputs.
-+     */
-+    readonly combine?: (this: CONTEXT, values: readonly T[]) => unknown;
- }
- type PositionalParametersForTuple<T, CONTEXT extends CommandContext> = {
-     readonly [K in keyof T]: TypedPositionalParameter<T[K], CONTEXT>;
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..ff53a12a8477e79580d62145134c25f6e9da923e 100644
+index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -402,6 +402,25 @@ interface ScannerConfiguration {
@@ -383,66 +328,11 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..ff53a12a8477e79580d62145134c25f6
  }
  /**
   * Configuration for controlling the behavior of completion proposals.
-@@ -993,6 +1034,13 @@ interface PositionalParameterArray<T, CONTEXT extends CommandContext> {
-     readonly parameter: TypedPositionalParameter<T, CONTEXT>;
-     readonly minimum?: number;
-     readonly maximum?: number;
-+    /**
-+     * PATCH(getsentry/cli): reads the parsed arguments as a whole and returns
-+     * the single value the command receives as its only positional argument.
-+     * Use it when what each argument means depends on how many were given.
-+     * A throw fails like a parse error for the joined inputs.
-+     */
-+    readonly combine?: (this: CONTEXT, values: readonly T[]) => unknown;
- }
- type PositionalParametersForTuple<T, CONTEXT extends CommandContext> = {
-     readonly [K in keyof T]: TypedPositionalParameter<T[K], CONTEXT>;
 diff --git a/dist/index.js b/dist/index.js
-index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be861ce3c4 100644
+index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d87c52de17 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -358,6 +358,20 @@ var ArgumentParseError = class extends ArgumentScannerError {
-     this.exception = exception;
-   }
- };
-+async function combinePositionalValues(positional, values_p, inputs, context) {
-+  const values = await values_p;
-+  if (values.status === "rejected") {
-+    return values;
-+  }
-+  try {
-+    return { status: "fulfilled", value: [await positional.combine.call(context, values.value)] };
-+  } catch (exc) {
-+    return {
-+      status: "rejected",
-+      reasons: [new ArgumentParseError(getPlaceholder(positional.parameter), inputs.join(" "), exc)]
-+    };
-+  }
-+}
- function parseInput(externalFlagNameOrPlaceholder, parameter, input, context) {
-   try {
-     return parameter.parse.call(context, input);
-@@ -832,6 +846,19 @@ function buildArgumentScanner(parameters, config) {
-             return parseInput(placeholder, positional.parameter, input, context);
-           })
-         );
-+        // PATCH(getsentry/cli): optional `combine` for array positionals.
-+        // Some commands read their arguments as a whole: what each one means
-+        // depends on how many were given (e.g. `[<target>] <id>`), which a
-+        // per-element `parse` cannot see. When the array positional declares
-+        // `combine`, it receives the parsed elements (and the command context
-+        // as `this`) and returns the single value the command receives as its
-+        // only positional argument. A throw becomes an ArgumentParseError for
-+        // the joined inputs, like any other parse failure. The option is inert
-+        // when unset, so stock Stricli behavior is unchanged. If
-+        // `combinePositionalValues` is missing, the CLI's `check:patches` fails.
-+        if (typeof positional.combine === "function") {
-+          positionalValues_p = combinePositionalValues(positional, positionalValues_p, positionalInputs, context);
-+        }
-       } else {
-         positionalValues_p = allSettledOrElse(
-           positional.parameters.map(async (param, i) => {
-@@ -1229,6 +1256,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+@@ -1229,6 +1229,35 @@ var RouteMapSymbol = Symbol("RouteMap");
  var CommandSymbol = Symbol("Command");
  
  // src/routing/scanner.ts
@@ -478,7 +368,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
  function buildRouteScanner(root, config, startingPrefix) {
    const prefix = [...startingPrefix];
    const unprocessedInputs = [];
-@@ -1237,7 +1293,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1237,7 +1266,14 @@ function buildRouteScanner(root, config, startingPrefix) {
    let target;
    let rootLevel = true;
    let helpRequested = false;
@@ -493,7 +383,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
    return {
      next: (input) => {
        if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
-@@ -1245,6 +1308,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1245,6 +1281,14 @@ function buildRouteScanner(root, config, startingPrefix) {
          unprocessedInputs.push(input);
          return;
        }
@@ -508,7 +398,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1252,12 +1323,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1252,12 +1293,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -538,7 +428,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
          }
        }
        if (target) {
-@@ -1309,6 +1396,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1309,6 +1366,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -546,7 +436,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
          prefix,
          rootLevel,
          aliases
-@@ -1362,16 +1450,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1362,16 +1420,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -563,7 +453,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1397,7 +1475,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1397,7 +1445,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -601,7 +491,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1466,6 +1574,9 @@ function withDefaults(config) {
+@@ -1466,6 +1544,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -611,7 +501,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1481,7 +1592,10 @@ function withDefaults(config) {
+@@ -1481,7 +1562,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -623,7 +513,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1833,7 +1947,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1833,7 +1917,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -632,7 +522,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1872,7 +1986,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1872,7 +1956,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -641,7 +531,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..b4b98087a21dd4566b100758fda1f2be
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2009,7 +2123,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2009,7 +2093,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);

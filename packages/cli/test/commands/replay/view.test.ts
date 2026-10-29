@@ -2,9 +2,11 @@
  * Replay View Command Tests
  */
 
+import type { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   parsePositionalArgs,
+  type ReplayArguments,
   replayArguments,
   viewCommand,
 } from "../../../src/commands/replay/view.js";
@@ -55,6 +57,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   );
 });
 
+import { applyBoundPositionals } from "../../../src/lib/positional-parse.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { ReplayDetails } from "../../../src/types/index.js";
@@ -414,12 +417,11 @@ describe("viewCommand.func", () => {
 describe("replayArguments", () => {
   const positional = replayArguments("view", "sentry replay view <id>");
   const context = { cwd: "/tmp" };
+  const parse = (raw: string[]) =>
+    applyBoundPositionals(raw, positional, context)[0] as ReplayArguments;
 
   test("parses the replay ID and target without resolving", () => {
-    const target = positional.combine.call(context, [
-      "test-org/cli",
-      REPLAY_ID,
-    ]);
+    const target = parse(["test-org/cli", REPLAY_ID]);
     expect(target.parsed).toEqual({
       replayId: REPLAY_ID,
       target: { type: "explicit", org: "test-org", project: "cli" },
@@ -429,13 +431,19 @@ describe("replayArguments", () => {
   });
 
   test("rejects an invalid replay ID when parsing", () => {
-    expect(() => positional.combine.call(context, ["not-hex"])).toThrow(
+    let error: unknown;
+    try {
+      parse(["not-hex"]);
+    } catch (caught) {
+      error = caught;
+    }
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
       ValidationError,
     );
   });
 
   test("applies a pasted URL's server when resolving, not when parsing", async () => {
-    const target = positional.combine.call(context, [
+    const target = parse([
       `https://sentry.example.com/organizations/acme/explore/replays/${REPLAY_ID}/`,
     ]);
     expect(target.parsed.baseUrl).toBe("https://sentry.example.com");
