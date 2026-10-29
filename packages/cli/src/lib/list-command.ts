@@ -44,7 +44,12 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
-import { applyBoundPositionals, rawPositional } from "./positional-parse.js";
+import {
+  applyBoundPositionals,
+  rawPositional,
+  skipLeadingArgument,
+  skippedArgument,
+} from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
@@ -533,19 +538,21 @@ export function interceptSubcommand(
   stderr: { write(s: string): void },
   routeName: string,
 ): string | undefined {
-  if (!target) {
+  if (!(target && isSubcommandName(target, routeName))) {
     return target;
   }
-  const trimmed = target.trim();
-  if (trimmed && getSubcommandsForRoute(routeName).has(trimmed)) {
-    stderr.write(
-      warning(
-        `Tip: "${trimmed}" is a subcommand. Running: sentry ${routeName} ${trimmed}\n`,
-      ),
-    );
-    return;
-  }
-  return target;
+  stderr.write(
+    warning(
+      `Tip: "${target.trim()}" is a subcommand. Running: sentry ${routeName} ${target.trim()}\n`,
+    ),
+  );
+  return;
+}
+
+/** Whether `arg` names a subcommand of `routeName` (see {@link interceptSubcommand}). */
+function isSubcommandName(arg: string, routeName: string): boolean {
+  const trimmed = arg.trim();
+  return trimmed !== "" && getSubcommandsForRoute(routeName).has(trimmed);
 }
 
 // ---------------------------------------------------------------------------
@@ -652,8 +659,14 @@ export function buildListCommand<
     mergedAliases.c = "cursor";
   }
 
+  // `boundArguments` positionals parse every argument in the scanner, so a
+  // subcommand name is left out there, before it changes what the rest mean
+  const positional = skipLeadingArgument(params.positional, (arg) =>
+    isSubcommandName(arg, routeName),
+  );
   const mergedParams = {
     ...params,
+    ...(positional ? { positional } : {}),
     flags: mergedFlags,
     aliases: mergedAliases,
   };
@@ -665,22 +678,22 @@ export function buildListCommand<
 
     // The first positional arg is always the target (org/project pattern),
     // either a raw string or a parsed value. Intercept it to handle plural
-    // alias confusion.
-    const raw = rawPositional(args[0]);
-    const rawTarget = Array.isArray(raw) ? raw[0] : raw;
-    let remaining = args;
-    if (typeof rawTarget === "string") {
-      // All list commands use SentryContext which has stderr at top level
-      const ctx = this as unknown as { stderr: { write(s: string): void } };
-      if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
-        // Bound arguments are parsed again without it
-        remaining = Array.isArray(raw)
-          ? raw.slice(1)
-          : [undefined, ...args.slice(1)];
-      }
+    // alias confusion. All list commands use SentryContext which has stderr
+    // at top level
+    const ctx = this as unknown as { stderr: { write(s: string): void } };
+    const skipped = skippedArgument(args[0]);
+    const rawTarget = rawPositional(args[0]);
+    if (skipped !== undefined) {
+      // The scanner already parsed the other arguments without it
+      interceptSubcommand(skipped, ctx.stderr, routeName);
+    } else if (
+      typeof rawTarget === "string" &&
+      interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined
+    ) {
+      args[0] = undefined;
     }
     // A dropped bound target becomes an omitted one (auto-detect)
-    const finalArgs = applyBoundPositionals(remaining, params.positional, this);
+    const finalArgs = applyBoundPositionals(args, positional, this);
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 

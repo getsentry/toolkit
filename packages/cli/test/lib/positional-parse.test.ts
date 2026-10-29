@@ -33,6 +33,9 @@ import {
   boundArguments,
   checkDestructive,
   rawPositional,
+  skipLeadingArgument,
+  skippedArgument,
+  throwDeferredParseErrors,
 } from "../../src/lib/positional-parse.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
 import {
@@ -289,7 +292,10 @@ type IdArguments = BoundArguments<
 >;
 
 /** Run `test cmd ...args` with {@link idArguments}, recording the result. */
-async function runWithArguments(args: string[]): Promise<{
+async function runWithArguments(
+  args: string[],
+  positional: typeof idArguments = idArguments,
+): Promise<{
   resolved: unknown[];
   stderr: string;
   exitCode: number | undefined;
@@ -302,7 +308,7 @@ async function runWithArguments(args: string[]): Promise<{
   >({
     docs: { brief: "Takes an ID" },
     auth: false,
-    parameters: { positional: idArguments },
+    parameters: { positional },
     // oxlint-disable-next-line require-yield -- test command only records the resolved arguments
     async *func(_flags, target) {
       resolved.push(await target.resolved);
@@ -408,6 +414,32 @@ describe("boundArguments", () => {
   test("rawPositional returns every argument", () => {
     const [bound] = applyBoundPositionals(["abc"], idArguments, {});
     expect(rawPositional(bound)).toEqual(["abc"]);
+  });
+
+  test("skipLeadingArgument leaves a matching first argument out before parsing", async () => {
+    const skipping = skipLeadingArgument(idArguments, (arg) => arg === "view");
+    // Parsed in the scanner without "view", so the count still decides
+    expect(
+      (await runWithArguments(["view", "acme/web", "abc"], skipping)).resolved,
+    ).toEqual([
+      { target: "acme/web", id: "abc", cwd: "/work", raw: ["acme/web", "abc"] },
+    ]);
+
+    const [bound] = applyBoundPositionals(["view", "abc"], skipping, {});
+    expect(skippedArgument(bound)).toBe("view");
+    expect((bound as IdArguments).parsed).toEqual({ id: "abc" });
+    const [kept] = applyBoundPositionals(["abc"], skipping, {});
+    expect(skippedArgument(kept)).toBeUndefined();
+  });
+
+  test("skipLeadingArgument keeps a parse error next to `help` deferred", () => {
+    const skipping = skipLeadingArgument(idArguments, (arg) => arg === "view");
+    const args = applyBoundPositionals(
+      ["view", "help", "a", "b"],
+      skipping,
+      {},
+    );
+    expect(() => throwDeferredParseErrors(args)).toThrow("Too many arguments");
   });
 
   test("each argument completes as the given kind", () => {

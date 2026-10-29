@@ -45,6 +45,9 @@ const boundParsers = new WeakSet<object>();
 /** `combine` functions made by {@link boundArguments}. */
 const argumentCombiners = new WeakSet<object>();
 
+/** Leading arguments {@link skipLeadingArgument} left out, by bound value. */
+const skippedArguments = new WeakMap<object, string>();
+
 /** Parse errors of {@link boundArguments} values, thrown when `func` runs. */
 const deferredParseErrors = new WeakMap<object, unknown>();
 
@@ -186,6 +189,47 @@ export function boundArguments<T, R, C>(options: {
     },
     combine,
   };
+}
+
+/**
+ * Wrap a {@link boundArguments} positional so a leading argument that
+ * `skip` matches is left out before the arguments are parsed;
+ * {@link skippedArgument} returns it. Other positionals are returned as
+ * they are.
+ */
+export function skipLeadingArgument<P>(
+  positional: P,
+  skip: (arg: string) => boolean,
+): P {
+  const def = positional as PositionalDef | undefined;
+  if (
+    !(
+      def?.kind === "array" &&
+      def.combine &&
+      argumentCombiners.has(def.combine)
+    )
+  ) {
+    return positional;
+  }
+  const combineAll = def.combine;
+  const combine = function (this: unknown, values: readonly string[]) {
+    const [first, ...rest] = values;
+    if (first === undefined || !skip(first)) {
+      return combineAll.call(this, values);
+    }
+    const bound = combineAll.call(this, rest) as object;
+    skippedArguments.set(bound, first);
+    return bound;
+  };
+  argumentCombiners.add(combine);
+  return { ...positional, combine };
+}
+
+/** The argument {@link skipLeadingArgument} left out of `value`, if any. */
+export function skippedArgument(value: unknown): string | undefined {
+  return value instanceof BoundPositional
+    ? skippedArguments.get(value)
+    : undefined;
 }
 
 /** A Stricli positional definition — the subset that carries the parsers. */
