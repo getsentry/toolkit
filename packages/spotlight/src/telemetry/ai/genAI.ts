@@ -249,14 +249,15 @@ function extractMetadata(span: Span, trace: AITrace) {
     const modelId =
       span.data[GEN_AI_REQUEST_MODEL_FIELD] ??
       span.data[GEN_AI_RESPONSE_MODEL_FIELD];
-    if (modelId !== undefined) {
+    if (modelId !== undefined && modelId !== null) {
       trace.metadata.modelId = stringifyValue(modelId);
     }
   }
 
   if (
     trace.metadata.modelProvider === undefined &&
-    span.data[GEN_AI_SYSTEM_FIELD] !== undefined
+    span.data[GEN_AI_SYSTEM_FIELD] !== undefined &&
+    span.data[GEN_AI_SYSTEM_FIELD] !== null
   ) {
     trace.metadata.modelProvider = stringifyValue(
       span.data[GEN_AI_SYSTEM_FIELD],

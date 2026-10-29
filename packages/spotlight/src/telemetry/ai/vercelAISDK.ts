@@ -100,7 +100,7 @@ function extractFieldFromSpan(
 ): unknown {
   const fields = AI_FIELD_MAPPINGS[fieldKey];
   for (const field of fields) {
-    if (data[field] !== undefined) {
+    if (data[field] !== undefined && data[field] !== null) {
       return data[field];
     }
   }

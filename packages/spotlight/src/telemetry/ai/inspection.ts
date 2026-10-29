@@ -39,6 +39,14 @@ export type AIInspection = {
   response?: unknown;
   tools: unknown[];
 };
+
+function hasMessages(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every((message) => typeof record(message).role === "string")
+  );
+}
+
 export function inspectAI(payload: unknown): AIInspection | undefined {
   if (!isAIInteraction(payload)) return;
   const data = readSpanData(payload);
@@ -79,13 +87,14 @@ export function inspectAI(payload: unknown): AIInspection | undefined {
     ["maxRetries", ["vercel.ai.settings.maxRetries"]],
     ["maxSteps", ["vercel.ai.settings.maxSteps"]],
   ];
-  const calls = parsed(
-    pick(
-      "gen_ai.response.tool_calls",
-      "vercel.ai.response.toolCalls",
-      "ai.response.toolCalls",
-    ),
-  );
+  const callKeys = [
+    "gen_ai.response.tool_calls",
+    "vercel.ai.response.toolCalls",
+    "ai.response.toolCalls",
+  ];
+  const calls =
+    callKeys.map((key) => parsed(data[key])).find(Array.isArray) ??
+    parsed(pick(...callKeys));
   const tools = Array.isArray(calls)
     ? [...calls]
     : calls === undefined
@@ -99,6 +108,25 @@ export function inspectAI(payload: unknown): AIInspection | undefined {
       arguments: parsed(pick("gen_ai.tool.input", "ai.toolCall.args")),
       result: parsed(pick("gen_ai.tool.output", "ai.toolCall.result")),
     });
+  const messageKeys = [
+    "gen_ai.request.messages",
+    "gen_ai.input.messages",
+    "vercel.ai.prompt.messages",
+    "vercel.ai.prompt",
+    "gen_ai.prompt",
+    "ai.prompt.messages",
+    "ai.prompt",
+  ];
+  const prompts = messageKeys.map((key) => parsed(data[key]));
+  // Validate the conversation shape without normalizing its content: inspection
+  // must retain image blocks, tool calls, and unknown captured fields.
+  const messages =
+    prompts.find(
+      (value) => hasMessages(value) || hasMessages(record(value).messages),
+    ) ?? parsed(pick(...messageKeys));
+  const wrappedSystem = prompts
+    .map((value) => record(value).system)
+    .find((value) => value !== undefined && value !== null);
   return {
     fields: Object.fromEntries(
       definitions.flatMap(([label, keys]) => {
@@ -111,19 +139,9 @@ export function inspectAI(payload: unknown): AIInspection | undefined {
         "gen_ai.system_instructions",
         "gen_ai.prompt.system",
         "ai.prompt.system",
-      ),
+      ) ?? wrappedSystem,
     ),
-    messages: parsed(
-      pick(
-        "gen_ai.request.messages",
-        "gen_ai.input.messages",
-        "vercel.ai.prompt.messages",
-        "vercel.ai.prompt",
-        "gen_ai.prompt",
-        "ai.prompt.messages",
-        "ai.prompt",
-      ),
-    ),
+    messages,
     response: parsed(
       pick(
         "gen_ai.response.text",

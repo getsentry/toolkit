@@ -56,6 +56,71 @@ const calls = [
   { toolCallId: "weather-call", toolName: "weather", args: { city: "Pune" } },
 ];
 
+test.each(["generic", "vercel"])(
+  "%s AI queries treat null root model and provider metadata as absent for child fallback",
+  async (provider) => {
+    const trace = await queryTrace([
+      span("root", {
+        ...(provider === "vercel"
+          ? {
+              "vercel.ai.operationId": "ai.generateText",
+              "vercel.ai.model.id": null,
+              "vercel.ai.model.provider": null,
+            }
+          : {}),
+        "gen_ai.request.model": null,
+        "gen_ai.response.model": null,
+        "gen_ai.system": null,
+      }),
+      span(
+        "child",
+        {
+          "gen_ai.response.model": "child-model",
+          "gen_ai.system": "child-provider",
+        },
+        "root",
+      ),
+    ]);
+    expect(trace?.metadata).toMatchObject({
+      modelId: "child-model",
+      modelProvider: "child-provider",
+    });
+  },
+);
+
+test.each(["generic", "vercel"])(
+  "%s AI queries omit null-only metadata and preserve same-span model aliases",
+  async (provider) => {
+    const data = {
+      ...(provider === "vercel"
+        ? {
+            "vercel.ai.operationId": "ai.generateText",
+            "vercel.ai.model.id": null,
+            "vercel.ai.model.provider": null,
+          }
+        : {}),
+      "gen_ai.request.model": null,
+      "gen_ai.response.model": null,
+      "gen_ai.system": null,
+    };
+    const missing = await queryTrace([span("root", data)]);
+    expect(missing?.metadata.modelId).toBeUndefined();
+    expect(missing?.metadata.modelProvider).toBeUndefined();
+
+    const fallback = await queryTrace([
+      span("root", {
+        ...data,
+        "gen_ai.response.model": "response-model",
+        "gen_ai.system": "response-provider",
+      }),
+    ]);
+    expect(fallback?.metadata).toMatchObject({
+      modelId: "response-model",
+      modelProvider: "response-provider",
+    });
+  },
+);
+
 test.each(["null", "{}", "not JSON"])(
   "Vercel AI queries preserve a same-span wrapper after malformed request messages: %s",
   async (invalid) => {
