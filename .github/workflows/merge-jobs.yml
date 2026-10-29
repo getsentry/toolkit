@@ -34,8 +34,7 @@ jobs:
       - name: Run tests
         run: pnpm test:ci
 
-      # @sentry/mcp-server is a deprecation shim for `sentry mcp`; delete this
-      # step with the package after its final publish.
+      # @sentry/mcp-server: the stdio proxy to the hosted MCP.
       - name: Package mcp-server
         working-directory: packages/mcp-server
         run: pnpm pack --pack-destination dist

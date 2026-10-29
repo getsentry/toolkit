@@ -1,7 +1,7 @@
 {
   "name": "@sentry/mcp-server",
   "version": "0.42.0",
-  "description": "Deprecated: use `sentry mcp` from the `sentry` package instead",
+  "description": "Sentry MCP over stdio: a small proxy to the hosted Sentry MCP (sentry.io)",
   "sentryCi": {
     "enabled": false
   },
@@ -29,16 +29,18 @@
     "url": "git+https://github.com/getsentry/toolkit.git"
   },
   "bin": {
-    "sentry-mcp": "./bin/sentry-mcp.js"
+    "sentry-mcp": "./dist/sentry-mcp.js"
   },
   "files": [
-    "bin/sentry-mcp.js",
-    "lib/shim.js"
+    "dist/sentry-mcp.js"
   ],
   "scripts": {
-    "test": "node --test lib/shim.test.js"
+    "build": "tsdown",
+    "prepack": "tsdown",
+    "test": "node --test lib/*.test.js"
   },
-  "dependencies": {
-    "sentry": "workspace:>=0.48.0-dev.0"
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
+    "tsdown": "catalog:"
   }
 }

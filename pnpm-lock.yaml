@@ -853,10 +853,13 @@ importers:
         version: 2.8.3
 
   packages/mcp-server:
-    dependencies:
-      sentry:
-        specifier: workspace:>=0.48.0-dev.0
-        version: link:../cli
+    devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.0
+        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.12.9(typescript@5.9.3)
 
   packages/mcp-server-evals:
     dependencies:

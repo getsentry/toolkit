@@ -45,7 +45,7 @@ While this repository is focused on acting as an MCP service, we also support a 
 
 **Note:** The AI-powered search tools (`search_errors`, `search_traces`, `search_logs`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
 
-The `stdio` transport is the `sentry mcp` command in the [`sentry` CLI](https://cli.sentry.dev). It uses your CLI login (`sentry auth login`). MCP client configurations written for the retired `@sentry/mcp-server` package keep working: `--access-token` and `SENTRY_ACCESS_TOKEN` still pass a static token, and every other flag is unchanged.
+The `stdio` transport is the `sentry mcp` command in the [`sentry` CLI](https://cli.sentry.dev). It uses your CLI login (`sentry auth login`). It accepts the flags of the original `@sentry/mcp-server` local server: `--access-token` and `SENTRY_ACCESS_TOKEN` still pass a static token, and every other flag is unchanged. On sentry.io, `npx -y @sentry/mcp-server --access-token=TOKEN` is a lighter option: a small proxy to the hosted MCP that does not download the CLI.
 
 To use a static token, create a User Auth Token in Sentry with the necessary scopes. As of writing this is:
 

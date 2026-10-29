@@ -4,7 +4,9 @@
  * The CLI hosts the MCP server, so `sentry` depends on `@sentry/mcp-core`,
  * which depends on `@sentry/toolkit-core`. The reverse edges would create a
  * package cycle, so they are rejected here, along with any other cycle between
- * workspace packages. See docs/architecture/overview.md.
+ * workspace packages. `@sentry/mcp-server` is a published stdio proxy built
+ * from the MCP SDK alone, so it must not pull in any of them. See
+ * docs/architecture/overview.md.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -22,6 +24,12 @@ const DEPENDENCY_FIELDS = [
 export const FORBIDDEN_DEPENDENCIES = {
   "@sentry/toolkit-core": ["sentry", "@sentry/mcp-core"],
   "@sentry/mcp-core": ["sentry", "@sentry/mcp-cloudflare"],
+  "@sentry/mcp-server": [
+    "sentry",
+    "@sentry/mcp-core",
+    "@sentry/mcp-cloudflare",
+    "@sentry/toolkit-core",
+  ],
 };
 
 /**

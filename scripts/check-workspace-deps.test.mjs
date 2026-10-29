@@ -17,7 +17,10 @@ const layered = [
     dependencies: { "@sentry/mcp-core": "workspace:*" },
   },
   { name: "@sentry/toolkit-core" },
-  { name: "@sentry/mcp-server", dependencies: { sentry: "workspace:*" } },
+  {
+    name: "@sentry/mcp-server",
+    dependencies: { "@modelcontextprotocol/sdk": "catalog:" },
+  },
 ];
 
 describe("check-workspace-deps", () => {
@@ -55,6 +58,23 @@ describe("check-workspace-deps", () => {
     ]);
     assert.deepEqual(findForbiddenPaths(graph), [
       ["@sentry/mcp-core", "helper", "sentry"],
+    ]);
+  });
+
+  it("rejects the mcp-server proxy depending on the CLI or MCP core", () => {
+    const graph = buildGraph([
+      ...layered.filter(({ name }) => name !== "@sentry/mcp-server"),
+      { name: "@sentry/mcp-server", dependencies: { sentry: "workspace:*" } },
+    ]);
+    assert.deepEqual(findForbiddenPaths(graph), [
+      ["@sentry/mcp-server", "sentry"],
+      ["@sentry/mcp-server", "sentry", "@sentry/mcp-core"],
+      [
+        "@sentry/mcp-server",
+        "sentry",
+        "@sentry/mcp-core",
+        "@sentry/toolkit-core",
+      ],
     ]);
   });
 

@@ -15,7 +15,7 @@ packages/
 ├── cli/                 # Sentry CLI, including the `sentry mcp` stdio server
 ├── toolkit-core/        # Shared CLI/MCP primitives
 ├── mcp-core/            # Core MCP implementation (private package)
-├── mcp-server/          # Deprecated shim that runs `sentry mcp`
+├── mcp-server/          # stdio proxy to the hosted MCP (@sentry/mcp-server)
 ├── mcp-cloudflare/      # Cloudflare Workers deployment
 ├── mcp-server-evals/    # Evaluation test suite
 ├── mcp-server-mocks/    # Shared mock data
@@ -65,11 +65,14 @@ The local stdio MCP server is the `sentry mcp` command in the Sentry CLI.
 - `src/lib/mcp/` parses server flags and environment variables, configures the
   embedded agent provider and telemetry, and starts mcp-core's stdio transport.
 
-### packages/mcp-server (deprecated)
+### packages/mcp-server
 
-A deprecation shim for one last `@sentry/mcp-server` release. Its `sentry-mcp`
-bin prints a notice and runs `sentry mcp` with the same arguments. Delete it after
-the final publish; see [stdio release](../releases/stdio.md).
+`@sentry/mcp-server` is a small stdio proxy for clients that only need Sentry's
+tools over stdio, without downloading the CLI. Its `sentry-mcp` bin forwards
+stdio to the hosted MCP's Streamable HTTP endpoint with the user's token as
+`Authorization: Sentry-Bearer <token>`. It bundles the MCP SDK and nothing
+else, and serves sentry.io only; for self-hosted Sentry it exits with an error that
+points to `sentry mcp`. See [stdio release](../releases/stdio.md).
 
 ### packages/mcp-cloudflare
 
@@ -135,7 +138,9 @@ Two checks enforce this in `pnpm run lint`:
   `packages/toolkit-core`.
 - `scripts/check-workspace-deps.mjs` (`pnpm run lint:deps`) reads every
   workspace `package.json` and fails on a dependency cycle or a forbidden edge,
-  such as mcp-core reaching `sentry` or toolkit-core reaching mcp-core.
+  such as mcp-core reaching `sentry` or toolkit-core reaching mcp-core. It
+  also keeps `@sentry/mcp-server` (the published stdio proxy) free of every
+  other workspace package, so its bundle holds only the MCP SDK.
 
 ## Key Architectural Decisions
 

@@ -263,7 +263,7 @@ function initMcpTelemetry(
       zodErrorsIntegration(),
       vercelAIIntegration({ recordInputs: true, recordOutputs: true }),
     ],
-    // The retired package fixed this at build time; keep the same value.
+    // The standalone local server fixed this at build time; keep the same value.
     environment: "stdio",
   });
 }
