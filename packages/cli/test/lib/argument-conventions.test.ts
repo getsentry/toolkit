@@ -11,6 +11,13 @@
 import { ArgumentParseError } from "@stricli/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { viewCommand as agentConversationViewCommand } from "../../src/commands/agent-conversation/view.js";
+import { listCommand as dashboardListCommand } from "../../src/commands/dashboard/list.js";
+import { restoreCommand as dashboardRestoreCommand } from "../../src/commands/dashboard/restore.js";
+import { revisionsCommand as dashboardRevisionsCommand } from "../../src/commands/dashboard/revisions.js";
+import { viewCommand as dashboardViewCommand } from "../../src/commands/dashboard/view.js";
+import { addCommand as widgetAddCommand } from "../../src/commands/dashboard/widget/add.js";
+import { deleteCommand as widgetDeleteCommand } from "../../src/commands/dashboard/widget/delete.js";
+import { editCommand as widgetEditCommand } from "../../src/commands/dashboard/widget/edit.js";
 import { listCommand as eventListCommand } from "../../src/commands/event/list.js";
 import { viewCommand as eventViewCommand } from "../../src/commands/event/view.js";
 import { resolveCommand as feedbackResolveCommand } from "../../src/commands/feedback/resolve.js";
@@ -484,6 +491,8 @@ const ISSUE_INPUTS = [
   "@latest",
   "my-org/@most_frequent",
   `${SERVER}/organizations/acme/issues/123456/`,
+  // Text with spaces cannot be an identifier: it is a search
+  "login timeout",
 ];
 
 /** The issue argument a command parsed, from its first positional. */
@@ -506,6 +515,12 @@ describe("issue arguments", () => {
     );
   });
 
+  test("text with spaces is a search", () => {
+    expect(parseIssue(reference, "login timeout").parsed).toMatchObject({
+      parsed: { type: "search", query: "login timeout" },
+    });
+  });
+
   test.each(ISSUE_COMMANDS)(
     "%s applies a pasted issue URL's server on resolve, not parse",
     async (_name, command) => {
@@ -520,6 +535,237 @@ describe("issue arguments", () => {
       expect(applyUrl).toHaveBeenCalledWith(SERVER);
     },
   );
+});
+
+/**
+ * Commands that take one dashboard, through `dashboardArguments` or alike:
+ * `[<org/project>] <dashboard-id-or-title>`.
+ */
+type DashboardCommand = {
+  readonly name: string;
+  readonly command: unknown;
+  /** Arguments every input gets after the dashboard, such as a widget title */
+  readonly trailing?: readonly string[];
+  /** How many arguments the dashboard may take, if fewer than any */
+  readonly maxArgs?: number;
+};
+
+/** The command the others must read dashboards like */
+const DASHBOARD_VIEW: DashboardCommand = {
+  name: "dashboard view",
+  command: dashboardViewCommand,
+};
+
+const DASHBOARD_COMMANDS: readonly DashboardCommand[] = [
+  DASHBOARD_VIEW,
+  { name: "dashboard restore", command: dashboardRestoreCommand },
+  { name: "dashboard revisions", command: dashboardRevisionsCommand },
+  { name: "dashboard widget edit", command: widgetEditCommand },
+  { name: "dashboard widget delete", command: widgetDeleteCommand },
+  // The last argument is the widget title, and there are at most three
+  {
+    name: "dashboard widget add",
+    command: widgetAddCommand,
+    trailing: ["My Widget"],
+    maxArgs: 2,
+  },
+];
+
+const DASHBOARD_URL = `${SERVER}/organizations/acme/dashboard/42/`;
+
+const DASHBOARD_INPUTS: readonly (readonly string[])[] = [
+  ["42"],
+  ["My Dashboard"],
+  ["my-org/42"],
+  ["my-org/web/42"],
+  ["my-org/", "42"],
+  ["my-org", "42"],
+  ["my-org/web", "42"],
+  ["my-org/", "My Dashboard"],
+  // A bare word before a title: an org, or the start of the title
+  ["My", "Dashboard"],
+  // After a target, the rest of the arguments are one title
+  ["my-org/", "My", "Dashboard"],
+  ["42", "my-org/"],
+  ["42", "43"],
+  [DASHBOARD_URL],
+  [`${SERVER}/organizations/acme/dashboards/`, "Errors"],
+];
+
+/** A parsed dashboard argument, without what is particular to a command. */
+function parseDashboard(
+  entry: DashboardCommand,
+  args: readonly string[],
+): Record<string, unknown> {
+  const [bound] = bind(entry.command, [...args, ...(entry.trailing ?? [])]);
+  expect(bound).toBeInstanceOf(BoundPositional);
+  const { title: _title, ...input } = (
+    bound as BoundPositional<Record<string, unknown>, unknown>
+  ).parsed;
+  return {
+    ...input,
+    // Warnings name the command's own usage
+    warnings: (input.warnings as readonly string[]).map((warning) =>
+      warning.replace(/ Expected: .*$/s, ""),
+    ),
+  };
+}
+
+describe("dashboard arguments", () => {
+  test.each(
+    DASHBOARD_INPUTS.flatMap((args) =>
+      DASHBOARD_COMMANDS.slice(1)
+        .filter((entry) => args.length <= (entry.maxArgs ?? args.length))
+        .map((entry) => [args.join(" "), entry.name, args, entry] as const),
+    ),
+  )(
+    "%s reads the same in %s as in dashboard view",
+    (_input, _name, args, entry) => {
+      expect(parseDashboard(entry, args)).toEqual(
+        parseDashboard(DASHBOARD_VIEW, args),
+      );
+    },
+  );
+
+  test.each([
+    [["42"], { ref: "42", target: { type: "auto-detect" } }],
+    [
+      ["My Dashboard"],
+      { ref: "My Dashboard", target: { type: "auto-detect" } },
+    ],
+    [["my-org/42"], { ref: "42", target: { type: "org-all", org: "my-org" } }],
+    [
+      ["my-org/web", "42"],
+      {
+        ref: "42",
+        target: { type: "explicit", org: "my-org", project: "web" },
+      },
+    ],
+    [
+      ["my-org/", "My", "Dashboard"],
+      { ref: "My Dashboard", target: { type: "org-all", org: "my-org" } },
+    ],
+    [
+      ["My", "Dashboard"],
+      {
+        ref: "Dashboard",
+        target: { type: "org-all", org: "My" },
+        orgOrTitle: { org: "My", title: "My Dashboard" },
+      },
+    ],
+  ])("dashboard view reads %j as %j", (args, expected) => {
+    expect(parseDashboard(DASHBOARD_VIEW, args)).toMatchObject(expected);
+  });
+
+  test("reversed arguments are swapped back, with a warning", () => {
+    expect(parseDashboard(DASHBOARD_VIEW, ["42", "my-org/"])).toEqual({
+      ref: "42",
+      target: { type: "org-all", org: "my-org" },
+      warnings: [expect.stringMatching(REVERSED)],
+    });
+  });
+
+  test("extra arguments after an ID are ignored, with a warning", () => {
+    expect(parseDashboard(DASHBOARD_VIEW, ["42", "43"])).toMatchObject({
+      ref: "42",
+      warnings: [expect.stringMatching(EXTRA)],
+    });
+  });
+
+  test.each(DASHBOARD_COMMANDS)(
+    "$name: a missing dashboard fails to parse, before the command runs",
+    (entry) => {
+      const error = parseError(entry.command, [...(entry.trailing ?? [])]);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+    },
+  );
+
+  test.each(DASHBOARD_COMMANDS)(
+    "$name: a pasted URL's server is applied on resolve, not parse",
+    async (entry) => {
+      const [bound] = bind(entry.command, [
+        DASHBOARD_URL,
+        ...(entry.trailing ?? []),
+      ]);
+      const parsed = (bound as BoundPositional<unknown, unknown>).parsed;
+      expect(parsed).toMatchObject({
+        ref: "42",
+        target: { type: "org-all", org: "acme" },
+        baseUrl: SERVER,
+      });
+      expect(applyUrl).not.toHaveBeenCalled();
+
+      await expect(
+        (bound as BoundPositional<unknown, unknown>).resolved,
+      ).rejects.toBeInstanceOf(UrlApplied);
+      expect(applyUrl).toHaveBeenCalledWith(SERVER);
+    },
+  );
+
+  test("widget add takes its last argument as the widget title", () => {
+    const [bound] = bind(widgetAddCommand, ["my-org/", "42", "My Widget"]);
+    expect((bound as BoundPositional<unknown, unknown>).parsed).toMatchObject({
+      ref: "42",
+      target: { type: "org-all", org: "my-org" },
+      title: "My Widget",
+    });
+  });
+
+  test("widget add with more than three arguments fails to parse", () => {
+    const error = parseError(widgetAddCommand, [
+      "my-org/",
+      "My",
+      "Dashboard",
+      "My Widget",
+    ]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+  });
+});
+
+/**
+ * `dashboard list` takes a target and a title filter, not a dashboard: a
+ * bare word is a filter, and so is what follows `<org>/<project>/`.
+ */
+describe("dashboard list arguments", () => {
+  function parseList(args: readonly string[]): unknown {
+    const [bound] = bind(dashboardListCommand, args);
+    expect(bound).toBeInstanceOf(BoundPositional);
+    return (bound as BoundPositional<unknown, unknown>).parsed;
+  }
+
+  test.each([
+    [[], { target: { type: "auto-detect" } }],
+    [["Errors"], { target: { type: "auto-detect" }, titleFilter: "Errors" }],
+    [["my-org/"], { target: { type: "org-all", org: "my-org" } }],
+    [
+      ["my-org/", "My", "Dashboard"],
+      {
+        target: { type: "org-all", org: "my-org" },
+        titleFilter: "My Dashboard",
+      },
+    ],
+    [
+      ["my-org", "Errors"],
+      { target: { type: "org-all", org: "my-org" }, titleFilter: "Errors" },
+    ],
+    [
+      ["my-org/web/Err*"],
+      {
+        target: { type: "explicit", org: "my-org", project: "web" },
+        titleFilter: "Err*",
+      },
+    ],
+  ])("reads %j as %j", (args, expected) => {
+    expect(parseList(args)).toMatchObject(expected);
+  });
+
+  test("a dashboard URL fails to parse, suggesting dashboard view", () => {
+    const error = parseError(dashboardListCommand, [DASHBOARD_URL]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect(String((error as ArgumentParseError).exception)).toContain(
+      "sentry dashboard view acme/ 42",
+    );
+  });
 });
 
 /** Commands that take a `[<org>/]<version>` release. */
