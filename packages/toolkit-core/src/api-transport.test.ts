@@ -331,6 +331,29 @@ describe("timeouts and fetch errors", () => {
       );
     });
 
+  it("rejects an in-flight request with the caller's abort reason", async () => {
+    // Like fetch, reject with the signal's reason once it aborts.
+    const fetch = vi.fn(
+      (_input: Request | string | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("tool call cancelled");
+
+    const pending = transport(fetch)
+      .request(ISSUES_URL, { signal: controller.signal })
+      .catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    controller.abort(reason);
+
+    expect(await pending).toBe(reason);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("throws the host timeout error for a POST without retrying", async () => {
     const fetch = vi.fn(hang);
 

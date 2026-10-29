@@ -1831,6 +1831,30 @@ describe("rate limit retry", () => {
     await expect(promise).rejects.toBe(reason);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the caller's abort reason for an in-flight request", async () => {
+    const fetchMock = vi.fn(
+      (_input: Request | string | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    );
+    globalThis.fetch = fetchMock;
+    const controller = new AbortController();
+    const reason = new Error("tool call cancelled");
+
+    const promise = rawRequest(apiService())("/auth/", {
+      signal: controller.signal,
+    });
+    promise.catch(() => {});
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort(reason);
+
+    await expect(promise).rejects.toBe(reason);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("request headers", () => {

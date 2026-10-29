@@ -318,9 +318,10 @@ export function createApiTransport<C extends TransportCredential>(
             timedOut = true;
             controller.abort();
           }, timeoutMs);
-    const onAbort = () => controller.abort();
+    // Forward the caller's reason, so an aborted fetch rejects with it.
+    const onAbort = () => controller.abort(signal?.reason);
     if (signal?.aborted) {
-      controller.abort();
+      onAbort();
     } else {
       signal?.addEventListener("abort", onAbort, { once: true });
     }
@@ -736,11 +737,12 @@ export function createApiTransport<C extends TransportCredential>(
   return { request };
 }
 
+/** Whether `error` is the caller's abort, with the default or its own reason. */
 function isAbort(error: unknown, signal: AbortSignal | null | undefined) {
   return (
-    error instanceof DOMException &&
-    error.name === "AbortError" &&
-    Boolean(signal?.aborted)
+    Boolean(signal?.aborted) &&
+    (error === signal?.reason ||
+      (error instanceof DOMException && error.name === "AbortError"))
   );
 }
 
