@@ -294,11 +294,12 @@ Retries are:
 Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
 
-The CLI's transport (`packages/cli/src/lib/sentry-client.ts`) follows the same
-shared rule. Only the caps differ (`RETRY_POLICY`): the hosted MCP keeps its
-total wait short so a Workers request isn't held open, while the CLI can wait
-longer. The CLI also applies its own per-request timeout, which counts as a
-network failure.
+The CLI sends its requests through the shared transport in
+`@sentry/toolkit-core/api-transport`, configured in
+`packages/cli/src/lib/sentry-client.ts`. It follows the same shared rule; only
+the caps differ (`RETRY_POLICY`): the hosted MCP keeps its total wait short so
+a Workers request isn't held open, while the CLI can wait longer. The CLI also
+applies its own per-request timeout, which counts as a network failure.
 
 ## Best Practices
 

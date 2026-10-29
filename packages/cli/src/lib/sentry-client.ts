@@ -8,21 +8,18 @@
  * and its parsing hooks are configured separately in sentry-sdk-client.ts.
  */
 
-import { setTimeout as sleepMs } from "node:timers/promises";
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
 import {
-  isIdempotentRequest,
-  nextRetryDelayMs,
-  parseRetryDelayMs,
-  type RetryPolicy,
-} from "@sentry/toolkit-core/api-retry";
+  createApiTransport,
+  extractUrlPath,
+  getValidatedResponseSource,
+  type ResponseBodyMode,
+  type TransportCache,
+} from "@sentry/toolkit-core/api-transport";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/response-cache";
-import {
-  formatAuthHeader,
-  normalizeAuthToken,
-  trimAuthToken,
-} from "./auth-header.js";
+import { formatAuthHeader, normalizeAuthToken } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
 import {
@@ -55,13 +52,12 @@ import { extractInputUrl } from "./fetch-input.js";
 import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
 import {
-  type CacheLookup,
   clearLastCacheHitAge,
   invalidateCachedResponsesMatching,
   lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
-import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
+import { normalizeOrigin } from "./sentry-urls.js";
 import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import {
@@ -109,12 +105,6 @@ const RETRY_POLICY: RetryPolicy = {
 /** Header to mark requests as retries, preventing infinite token refresh loops */
 const RETRY_MARKER_HEADER = "x-sentry-cli-retry";
 
-/** Stamped on thrown errors caused by our own per-request timeout. */
-const INTERNAL_TIMEOUT_MARKER = Symbol("sentry-cli:internal-timeout");
-const MAX_REDIRECTS = 20;
-const responseRequestOrigins = new WeakMap<Response, string>();
-const responseCredentialIdentities = new WeakMap<Response, string>();
-type ResponseBodyMode = "auto" | "buffer" | "stream";
 const sdkResponseBodyModes = new WeakMap<Request, ResponseBodyMode>();
 
 /**
@@ -134,69 +124,36 @@ export function registerSdkResponseBodyMode(
   });
 }
 
-function shouldBufferResponse(
-  response: Response,
-  mode: ResponseBodyMode,
-): boolean {
-  const contentType = response.headers.get("Content-Type");
-  // SSE reconnects and streaming parsers own consumption of their bodies.
-  if (
-    contentType?.split(";")[0]?.trim().toLowerCase() === "text/event-stream"
-  ) {
-    return false;
-  }
-  // The SDK's auto parser returns a stream when Content-Type is absent.
-  return (
-    response.ok && (mode === "buffer" || (mode === "auto" && !!contentType))
-  );
-}
-
 /** Provenance attached only after manually validated discovery requests. */
 export function getResponseRequestOrigin(
   response: Response,
 ): string | undefined {
-  return responseRequestOrigins.get(response);
+  return getValidatedResponseSource(response)?.origin;
 }
 
 export function getResponseCredentialIdentity(
   response: Response,
 ): string | undefined {
-  return responseCredentialIdentities.get(response);
-}
-
-/** Check if an error is a user-initiated abort */
-function isUserAbort(error: unknown, signal?: AbortSignal | null): boolean {
-  return (
-    error instanceof DOMException &&
-    error.name === "AbortError" &&
-    Boolean(signal?.aborted)
-  );
+  return getValidatedResponseSource(response)?.identity;
 }
 
 /**
- * Prepare request headers with auth token and default headers.
+ * Reject requests whose host the credential is not scoped to, then add the
+ * CLI's headers. The transport sets Authorization and User-Agent afterwards.
  *
- * Only sets Authorization and User-Agent. Content-Type is intentionally NOT
- * set here — callers are responsible for setting it based on their needs:
+ * Only sets tracing and custom headers. Content-Type is intentionally NOT set
+ * here — callers are responsible for setting it based on their needs:
  * - SDK functions set their own Content-Type
  * - apiRequestToRegion always sends JSON and sets it explicitly
  * - rawApiRequest may or may not want Content-Type (e.g., string bodies)
- *
- * When `init` is undefined (the SDK passes only a Request object), headers are
- * read from the Request object to preserve Content-Type and other headers set
- * by the SDK. Without this, fetch(Request, {headers}) would override the
- * Request's headers with our empty headers, stripping Content-Type and causing
- * HTTP 415 errors on Node.js (which strictly follows the spec).
- *
- * The returned Headers instance is intentionally shared and mutated across
- * retry attempts (e.g., handleUnauthorized updates the Authorization header
- * and sets the retry marker). Do not clone before passing to retry logic.
  */
 function prepareHeaders(
-  input: Request | string | URL,
-  init: RequestInit | undefined,
-  credential: CredentialContext,
-): Headers {
+  headers: Headers,
+  {
+    input,
+    credential,
+  }: { input: Request | string | URL; credential: CredentialContext },
+): void {
   // Host-scoping guard (defense in depth). Primary rejection happens at the
   // URL-arg / rc-shim entry points; this catches any code path that mutated
   // SENTRY_HOST/SENTRY_URL without going through those guards.
@@ -212,8 +169,7 @@ function prepareHeaders(
   // multiple Sentry instances. The claim is unsigned (see token-claims.ts);
   // fail-open on parse errors. Uses isHostTrustedForClaim so multi-region
   // fan-out via the control silo's region URLs still works.
-  const normalizedToken = normalizeAuthToken(credential.token);
-  const claimUrl = parseSntrysClaim(normalizedToken)?.url;
+  const claimUrl = parseSntrysClaim(normalizeAuthToken(credential.token))?.url;
   if (
     claimUrl &&
     !isHostTrustedForClaim(input, claimUrl, credential.identity)
@@ -223,17 +179,6 @@ function prepareHeaders(
       normalizeOrigin(input) ?? "<unknown host>",
       claimUrl,
     );
-  }
-
-  // When the SDK calls fetch(request) with no init, read headers from the Request
-  // object to preserve Content-Type. On Node.js, fetch(request, {headers}) replaces
-  // the Request's headers entirely per spec, so we must carry them forward explicitly.
-  const sourceHeaders =
-    init?.headers ?? (input instanceof Request ? input.headers : undefined);
-  const headers = new Headers(sourceHeaders);
-  headers.set("Authorization", formatAuthHeader(normalizedToken));
-  if (!headers.has("User-Agent")) {
-    headers.set("User-Agent", getUserAgent());
   }
 
   if (isManualHttpTracing()) {
@@ -253,63 +198,56 @@ function prepareHeaders(
     input,
     isRequestOriginTrustedForContext(input, credential),
   );
+}
 
-  return headers;
+/** Refresh ahead of expiry, once the token has used most of its lifetime. */
+async function prepareCredential(
+  credential: CredentialContext,
+): Promise<CredentialContext> {
+  const shouldRefresh = Boolean(
+    credential.refreshable &&
+    credential.expiresAt &&
+    getRemainingLifetimeRatio(
+      credential.expiresAt,
+      credential.issuedAt,
+      Date.now(),
+    ) <= REFRESH_THRESHOLD,
+  );
+  if (!shouldRefresh) {
+    return credential;
+  }
+  const refreshed = await refreshToken({ expectedCredential: credential });
+  return Object.freeze({ ...credential, token: refreshed.token });
 }
 
 /**
- * Handle 401 response by refreshing the token.
- * @returns true if the token was refreshed and request should be retried
+ * Refresh the token after a 401.
+ * @returns the refreshed credential, or undefined to return the 401
  */
-async function handleUnauthorized(
-  headers: Headers,
+async function refreshAfterUnauthorized(
   credential: CredentialContext,
-): Promise<boolean> {
-  if (headers.get(RETRY_MARKER_HEADER)) {
-    return false;
-  }
+): Promise<CredentialContext | undefined> {
   // refreshToken handles the token selection: it refreshes OAuth when OAuth is
   // the effective auth source, or returns the env token without refresh when
   // SENTRY_FORCE_ENV_TOKEN is set. If the token can't be refreshed (env token,
   // no refresh token), `refreshed` is false and the 401 propagates.
-  let newToken: string;
   try {
     const result = await refreshToken({
       force: true,
       expectedCredential: credential,
     });
-    if (!result.refreshed) {
-      return false;
-    }
-    newToken = result.token;
+    return result.refreshed
+      ? Object.freeze({ ...credential, token: result.token })
+      : undefined;
   } catch (error) {
+    // Invalid refreshed credentials must propagate as an auth error, rather
+    // than being swallowed by the best-effort refresh catch.
     if (error instanceof MalformedAuthTokenError) {
       throw error;
     }
     log.debug("Token refresh failed after 401", error);
-    return false;
-  }
-
-  // Invalid refreshed credentials must propagate as an auth error, rather
-  // than being swallowed by the best-effort refresh catch above.
-  headers.set("Authorization", formatAuthHeader(newToken));
-  headers.set(RETRY_MARKER_HEADER, "1");
-  return true;
-}
-
-/** Link an external abort signal to an AbortController */
-function linkAbortSignal(
-  signal: AbortSignal | undefined | null,
-  controller: AbortController,
-): void {
-  if (!signal) {
     return;
   }
-  if (signal.aborted) {
-    controller.abort();
-    return;
-  }
-  signal.addEventListener("abort", () => controller.abort(), { once: true });
 }
 
 /** Resolve the per-request timeout for a URL via {@link ENDPOINT_TIMEOUT_OVERRIDES}. */
@@ -323,114 +261,18 @@ function resolveTimeoutMs(fullUrl: string): number {
   return REQUEST_TIMEOUT_MS;
 }
 
-function isInternalTimeout(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as Record<PropertyKey, unknown>)[INTERNAL_TIMEOUT_MARKER] === true
-  );
-}
-
-type FetchWithTimeoutArgs = {
-  input: Request | string | URL;
-  init: RequestInit | undefined;
-  headers: Headers;
-  externalSignal: AbortSignal | undefined | null;
-  timeoutMs: number;
-  responseBodyMode: ResponseBodyMode;
-};
-
-/**
- * Execute a single fetch attempt with timeout. If the timeout fires, the
- * thrown error is tagged with {@link INTERNAL_TIMEOUT_MARKER} so the retry
- * loop can distinguish it from a user abort or network error.
- */
-async function fetchWithTimeout({
-  input,
-  init,
-  headers,
-  externalSignal,
-  timeoutMs,
-  responseBodyMode,
-}: FetchWithTimeoutArgs): Promise<Response> {
-  const controller = new AbortController();
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-  linkAbortSignal(externalSignal, controller);
-
-  try {
-    // Spread custom TLS options (CA certs for corporate proxies).
-    // On Bun, this passes `tls: { ca }` to fetch(); on Node, the
-    // extra property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
-    const customTls = getCustomTlsOptions();
-    if (customTls) {
-      warnIfSaasWithEnvCa(extractInputUrl(input));
-    }
-
-    const response = await fetch(input, {
-      ...init,
-      headers,
-      signal: controller.signal,
-      ...customTls,
-    });
-    if (shouldBufferResponse(response, responseBodyMode)) {
-      // Drain a clone within this attempt so body failures can retry without
-      // replacing the original Response or consuming the caller's body.
-      await response.clone().body?.pipeTo(new WritableStream());
-    }
-    return response;
-  } catch (error) {
-    if (timedOut) {
-      const tagged = (
-        error instanceof Error ? error : new Error(String(error))
-      ) as Error & { [INTERNAL_TIMEOUT_MARKER]?: true; timeoutMs?: number };
-      tagged[INTERNAL_TIMEOUT_MARKER] = true;
-      tagged.timeoutMs = timeoutMs;
-      throw tagged;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+/** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */
+async function fetchWithCustomTls(
+  input: Request | string | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  // On Bun, this passes `tls: { ca }` to fetch(); on Node, the extra
+  // property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
+  const customTls = getCustomTlsOptions();
+  if (customTls) {
+    warnIfSaasWithEnvCa(extractInputUrl(input));
   }
-}
-
-/** Result of a single fetch attempt - drives the retry loop */
-type AttemptResult =
-  | { action: "done"; response: Response }
-  | { action: "retry"; delayMs: number }
-  | { action: "throw"; error: unknown };
-
-/** Per-attempt retry inputs. */
-type AttemptRetryState = {
-  method: string;
-  /** Sentry marks the operation idempotent, or the caller opted in. */
-  idempotent: boolean;
-  /** Retries already made for this request, starting at 0. */
-  attempt: number;
-  /** Total time already spent waiting between attempts. */
-  waitedMs: number;
-  /** Request path, for error messages. */
-  urlPath: string;
-};
-
-/** Delay before retrying after `status` (undefined for a network error or timeout). */
-function retryDelayMs(
-  { method, idempotent, attempt, waitedMs }: AttemptRetryState,
-  status: number | undefined,
-  serverDelayMs: number | undefined,
-): number | undefined {
-  return nextRetryDelayMs({
-    policy: RETRY_POLICY,
-    method,
-    idempotent,
-    status,
-    serverDelayMs,
-    attempt,
-    waitedMs,
-  });
+  return await fetch(input, { ...init, ...customTls });
 }
 
 /** Best-effort `detail` from a Sentry error body. */
@@ -446,352 +288,110 @@ async function readErrorDetail(
   }
 }
 
-/**
- * Decide what to do with a successful HTTP response.
- *
- * A 401 refreshes the token and retries for any method: the server rejected
- * the request before processing it. Other transient statuses retry per the
- * shared policy in `@sentry/toolkit-core/api-retry`. A 429 that is not retried throws
- * {@link RateLimitError} so the user learns when to try again.
- */
-async function handleResponse(
-  response: Response,
-  headers: Headers,
-  credential: CredentialContext,
-  retryState: AttemptRetryState,
-): Promise<AttemptResult> {
-  if (response.status === 401 && retryState.attempt < RETRY_POLICY.maxRetries) {
-    const refreshed = await handleUnauthorized(headers, credential);
-    if (refreshed) {
-      await cancelResponseBody(response);
-      return { action: "retry", delayMs: 0 };
-    }
-    return { action: "done", response };
-  }
-
-  const serverDelayMs = parseRetryDelayMs(response.status, response.headers);
-  const delayMs = retryDelayMs(retryState, response.status, serverDelayMs);
-  if (delayMs !== undefined) {
-    await cancelResponseBody(response);
-    return { action: "retry", delayMs };
-  }
-  if (response.status === 429) {
-    return {
-      action: "throw",
-      error: new RateLimitError(
-        retryState.urlPath,
-        serverDelayMs,
-        await readErrorDetail(response),
-      ),
-    };
-  }
-  return { action: "done", response };
-}
-
-/**
- * Decide what to do with a fetch error. User aborts throw immediately; TLS
- * cert errors throw immediately with actionable guidance (retrying is
- * pointless). Network errors and internal timeouts retry only for retryable
- * methods with attempts left: a write may have reached the server, so
- * replaying it could apply it twice.
- */
-function handleFetchError(
-  error: unknown,
-  signal: AbortSignal | undefined | null,
-  retryState: AttemptRetryState,
-): AttemptResult {
-  if (error instanceof HostScopeError) {
-    return { action: "throw", error };
-  }
-  if (isUserAbort(error, signal)) {
-    return { action: "throw", error };
-  }
-
-  // TLS certificate errors are deterministic — don't retry
-  if (isTlsCertError(error)) {
-    return {
-      action: "throw",
-      error: new ApiError(
-        "TLS certificate error",
-        0,
-        buildTlsErrorDetail(error as Error),
-      ),
-    };
-  }
-
-  const delayMs = retryDelayMs(retryState, undefined, undefined);
-  if (isInternalTimeout(error) && delayMs === undefined) {
-    const timeoutMs =
-      (error as { timeoutMs?: number }).timeoutMs ?? REQUEST_TIMEOUT_MS;
-    const seconds = Math.round(timeoutMs / 1000);
-    return {
-      action: "throw",
-      error: new TimeoutError(
-        `Request timed out after ${seconds}s.`,
-        isIdempotentRequest(retryState.method, retryState.idempotent)
-          ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
-          : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
-      ),
-    };
-  }
-  if (delayMs === undefined) {
-    return { action: "throw", error };
-  }
-  return { action: "retry", delayMs };
-}
-
-/** Extract the URL pathname for logging and cache keys */
-function extractUrlPath(input: Request | string | URL): string {
-  const raw = extractInputUrl(input);
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    return new URL(raw).pathname;
-  } catch {
-    return raw;
-  }
-}
-
-/**
- * Look up a GET request in the response cache: a fresh hit, a stale entry
- * to revalidate, or undefined on miss.
- *
- * @param requestHeaders - Headers that were (or will be) sent with the request,
- *   needed for correct `Vary` handling in CachePolicy freshness checks.
- */
-async function tryCacheLookup(
-  method: string,
-  fullUrl: string,
-  requestHeaders: Record<string, string>,
-  identity: string,
-): Promise<CacheLookup | undefined> {
-  if (method !== "GET") {
-    return;
-  }
-  return await lookupCachedResponse(method, fullUrl, requestHeaders, identity);
-}
-
-/**
- * Store a successful GET response in the cache (fire-and-forget).
- * Clones the response so the original body stream is preserved for the caller.
- *
- * @param requestHeaders - Headers sent with the request, stored in CachePolicy
- *   for future `Vary`-aware freshness checks.
- */
-function cacheResponse(
-  request: {
-    method: string;
-    fullUrl: string;
-    requestHeaders: Record<string, string>;
-    identity: string;
-  },
-  response: Response,
-): void {
-  const { method, fullUrl, requestHeaders, identity } = request;
-  if (method !== "GET" || !response.ok) {
-    return;
-  }
-  // Cast needed: Bun extends Response with extra properties (toJSON, count, getAll)
-  // that .clone() doesn't carry over, but our cache only reads standard Response API
-  storeCachedResponse(
-    method,
-    fullUrl,
-    requestHeaders,
-    response.clone() as Response,
-    identity,
-  ).catch((error) => {
-    log.debug("Response cache write failed", error);
-  });
-}
-
-/**
- * Auto-invalidate cache entries that a successful non-GET mutation
- * made stale. Awaited so a subsequent read in the same command sees
- * fresh data. Prefix computation: {@link computeInvalidationPrefixes}.
- *
- * Never throws: a post-mutation housekeeping failure must not convert
- * a successful mutation into a caller-visible error. Defense-in-depth
- * for future regressions — the helpers we call are already no-throw
- * today.
- */
-async function invalidateAfterMutation(
-  method: string,
-  fullUrl: string,
-  response: Response,
-  identity: string,
-): Promise<void> {
-  if (method === "GET" || !response.ok) {
-    return;
-  }
-  try {
-    const prefixes = computeInvalidationPrefixes(fullUrl, getApiBaseUrl());
+/** The response cache, keyed by the CLI's identity fingerprint. */
+const responseCache: TransportCache = {
+  lookup: async ({ url, requestHeaders, identity }) =>
+    await lookupCachedResponse("GET", url, requestHeaders, identity),
+  store: async ({ url, requestHeaders, identity }, response) =>
+    await storeCachedResponse("GET", url, requestHeaders, response, identity),
+  /** Prefix computation: {@link computeInvalidationPrefixes}. */
+  invalidate: async (url, identity) => {
+    const prefixes = computeInvalidationPrefixes(url, getApiBaseUrl());
     await Promise.all(
       prefixes.map((prefix) =>
         invalidateCachedResponsesMatching(prefix, identity),
       ),
     );
-  } catch (error) {
-    log.debug("Post-mutation cache invalidation failed", error);
-  }
-}
-
-/** Cache metadata must not validate a candidate before OAuth refresh selects a token. */
-function authHeaders(token: string | undefined): Record<string, string> {
-  return token ? { authorization: `Bearer ${trimAuthToken(token)}` } : {};
-}
-
-type AttemptInputFactory = () => {
-  input: Request | string | URL;
-  init: RequestInit | undefined;
+  },
 };
 
-/**
- * Build an attempt factory that yields a fresh, body-readable
- * `(input, init)` pair per retry. `fetch` consumes a request body on
- * attempt 1; without this cloning every retry after a timeout / 5xx /
- * 401-refresh would throw `TypeError: Request body already used` (CLI-1D6).
- *
- * `Request` inputs clone per attempt. Bodies that `fetch` re-reads on
- * each call (string / ArrayBuffer / TypedArray / Blob / FormData /
- * URLSearchParams / none) pass through unchanged — this is the hot path
- * for every non-SDK call site, and importantly preserves the auto-
- * negotiated `Content-Type: multipart/form-data; boundary=...` header
- * that `fetch` derives from `FormData` bodies (sourcemap chunk upload).
- * A bare `ReadableStream` is the only single-use body shape, so it's
- * drained once to an `ArrayBuffer`.
- */
-async function buildAttemptFactory(
-  input: Request | string | URL,
-  init: RequestInit | undefined,
-): Promise<AttemptInputFactory> {
-  if (input instanceof Request) {
-    // Cast: Bun's `Request` has extras (toJSON/count/getAll) that `.clone()`
-    // drops from the DOM type — runtime shape is unaffected.
-    return () => ({ input: input.clone() as unknown as Request, init });
+/** Wrap a request in an `http.client` span when the CLI traces HTTP by hand. */
+async function withHttpSpan(
+  { method, path }: { method: string; path: string },
+  run: () => Promise<Response>,
+): Promise<Response> {
+  if (!isManualHttpTracing()) {
+    return await run();
   }
-
-  const body = init?.body;
-  if (body instanceof ReadableStream) {
-    const snapshot = await new Response(body).arrayBuffer();
-    return () => ({ input, init: { ...init, body: snapshot } });
-  }
-
-  return () => ({ input, init });
-}
-
-/**
- * Authenticate and execute a request with retry logic.
- *
- * Refreshes the auth token, then retries the request up to
- * `RETRY_POLICY.maxRetries` times on transient errors
- * (`@sentry/toolkit-core/api-retry` decides which and how long).
- */
-type RetryContext = {
-  input: Request | string | URL;
-  init: RequestInit | undefined;
-  method: string;
-  fullUrl: string;
-  credential: CredentialContext;
-  validatedRedirects: boolean;
-  responseBodyMode: ResponseBodyMode;
-  idempotent: boolean;
-  /** Validators for a stale cache entry, such as `If-None-Match`. */
-  conditionalHeaders?: Record<string, string>;
-};
-
-async function fetchWithRetry({
-  input,
-  init,
-  method,
-  fullUrl,
-  credential,
-  validatedRedirects,
-  responseBodyMode,
-  idempotent,
-  conditionalHeaders = {},
-}: RetryContext): Promise<Response> {
-  const shouldRefresh = Boolean(
-    credential.refreshable &&
-    credential.expiresAt &&
-    getRemainingLifetimeRatio(
-      credential.expiresAt,
-      credential.issuedAt,
-      Date.now(),
-    ) <= REFRESH_THRESHOLD,
+  return await withTracingSpan(
+    `${method} ${path}`,
+    "http.client",
+    async (span) => {
+      const response = await run();
+      span.setAttribute("http.response.status_code", response.status);
+      if (!response.ok) {
+        span.setStatus({ code: 2, message: `${response.status}` });
+      }
+      return response;
+    },
+    { "http.request.method": method, "url.path": path },
   );
-  const refreshed = shouldRefresh
-    ? await refreshToken({ expectedCredential: credential })
-    : { token: credential.token };
-  const effectiveCredential: CredentialContext = Object.freeze({
-    ...credential,
-    token: refreshed.token,
-  });
-  const headers = prepareHeaders(input, init, effectiveCredential);
-  for (const [name, value] of Object.entries(conditionalHeaders)) {
-    headers.set(name, value);
-  }
-  const attemptFactory = await buildAttemptFactory(input, init);
-  const timeoutMs = resolveTimeoutMs(fullUrl);
-  const operationIdempotent =
-    idempotent || isIdempotentOperation(method, fullUrl);
-  const urlPath = extractUrlPath(fullUrl);
-  let waitedMs = 0;
+}
 
-  for (let attempt = 0; attempt <= RETRY_POLICY.maxRetries; attempt++) {
-    const { input: attemptInput, init: attemptInit } = attemptFactory();
-    const result = await executeAttempt({
-      input: attemptInput,
-      init: attemptInit,
-      headers,
-      credential: effectiveCredential,
-      retryState: {
-        method,
-        idempotent: operationIdempotent,
-        attempt,
-        waitedMs,
-        urlPath,
+/**
+ * The CLI's transport options: stored credentials, host-scope checks, the
+ * response cache, and the CLI's error classes. Retries, timeouts, the 401
+ * refresh, and redirect validation are in `@sentry/toolkit-core/api-transport`.
+ */
+function createCliTransport(credential: CredentialContext | undefined) {
+  return createApiTransport<CredentialContext>({
+    credentials: {
+      current: async () => {
+        const current = credential ?? getCredentialContext();
+        if (!current) {
+          await refreshToken();
+          throw new Error(
+            "Authentication state was not available after refresh",
+          );
+        }
+        return current;
       },
-      timeoutMs,
-      validatedRedirects,
-      responseBodyMode,
-    });
-
-    if (result.action === "done") {
-      cacheResponse(
-        {
-          method,
-          fullUrl,
-          requestHeaders: { authorization: headers.get("Authorization") ?? "" },
-          identity: credential.identity,
-        },
-        result.response,
-      );
-      await invalidateAfterMutation(
-        method,
-        fullUrl,
-        result.response,
-        credential.identity,
-      );
-      return result.response;
-    }
-    if (result.action === "throw") {
-      throw result.error;
-    }
-
-    log.debug(
-      `${method} ${urlPath} → retry ${attempt + 1}/${RETRY_POLICY.maxRetries} after ${Math.round(result.delayMs)}ms`,
-    );
-    await sleepMs(result.delayMs);
-    waitedMs += result.delayMs;
-  }
-
-  // Unreachable: the last attempt always returns 'done' or 'throw'
-  throw new Error("Exhausted all retry attempts");
+      prepare: prepareCredential,
+      refresh: refreshAfterUnauthorized,
+      authorization: (current) => formatAuthHeader(current.token),
+    },
+    retry: RETRY_POLICY,
+    timeoutMs: resolveTimeoutMs,
+    fetch: fetchWithCustomTls,
+    userAgent: getUserAgent(),
+    prepareHeaders,
+    isIdempotent: isIdempotentOperation,
+    refreshedRequestHeader: RETRY_MARKER_HEADER,
+    origins: {
+      trusts: (url, current) => isRequestOriginTrustedForContext(url, current),
+      reject: (destination, current) =>
+        new HostScopeError("Redirect destination", destination, current.host),
+    },
+    errors: {
+      timeout: ({ timeoutMs, idempotent }) =>
+        new TimeoutError(
+          `Request timed out after ${Math.round(timeoutMs / 1000)}s.`,
+          idempotent
+            ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
+            : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
+        ),
+      // TLS certificate errors are deterministic — don't retry
+      fatal: (error) =>
+        isTlsCertError(error)
+          ? new ApiError(
+              "TLS certificate error",
+              0,
+              buildTlsErrorDetail(error as Error),
+            )
+          : undefined,
+      rateLimited: async (response, { path, retryAfterMs }) =>
+        new RateLimitError(path, retryAfterMs, await readErrorDetail(response)),
+    },
+    cache: responseCache,
+    logger: log,
+    span: withHttpSpan,
+  });
 }
 
 /**
  * Create a fetch function with authentication, timeout, retry, caching, and 401 refresh.
  *
- * This wraps the native fetch with:
+ * This wraps the native fetch with `@sentry/toolkit-core/api-transport`:
  * - **Response caching** for GET requests (checked before hitting the network)
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController
@@ -828,6 +428,7 @@ type AuthenticatedFetchOptions = {
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
+  const transport = createCliTransport(options.credential);
   const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
@@ -845,89 +446,17 @@ function createAuthenticatedFetch(
 
     const method =
       init?.method ?? (input instanceof Request ? input.method : "GET");
-    const urlPath = extractUrlPath(input);
-
-    const request = async (): Promise<Response> => {
-      const fullUrl = extractInputUrl(input);
-      const startTime = performance.now();
-
-      // Check cache before auth/retry for GET requests.
-      // Uses current token (no refresh) so lookups are fast but Vary-correct.
-      const credential = options.credential ?? getCredentialContext();
-      if (!credential) {
-        await refreshToken();
-        throw new Error("Authentication state was not available after refresh");
-      }
-      // A synthetic HTTP cache response has no validated final-origin or
-      // credential provenance. Discovery must obtain both from the network.
-      const lookup = options.validatedRedirects
-        ? undefined
-        : await tryCacheLookup(
-            method,
-            fullUrl,
-            authHeaders(credential.token),
-            credential.identity,
-          );
-      if (lookup?.kind === "hit") {
-        log.debug(
-          `${method} ${urlPath} → ${lookup.response.status} (cache hit, ${(performance.now() - startTime).toFixed(0)}ms)`,
-        );
-        return lookup.response;
-      }
-
-      const retryContext: RetryContext = {
-        input,
-        init,
-        method,
-        fullUrl,
-        credential,
-        validatedRedirects: options.validatedRedirects === true,
-        idempotent: options.idempotent === true,
-        responseBodyMode:
-          method.toUpperCase() !== "GET"
-            ? "stream"
-            : ((input instanceof Request
-                ? sdkResponseBodyModes.get(input)
-                : undefined) ??
-              (options.bufferResponseBody ? "buffer" : "stream")),
-      };
-      let response = await fetchWithRetry({
-        ...retryContext,
-        conditionalHeaders: lookup?.conditionalHeaders,
-      });
-      if (lookup?.kind === "stale" && response.status === 304) {
-        const revalidated = await lookup.revalidate(response);
-        if (revalidated) {
-          log.debug(
-            `${method} ${urlPath} → 304 (revalidated cache entry, ${(performance.now() - startTime).toFixed(0)}ms)`,
-          );
-          return revalidated;
-        }
-        // A 304 the entry cannot use has no body; fetch it unconditionally.
-        response = await fetchWithRetry(retryContext);
-      }
-      log.debug(
-        `${method} ${urlPath} → ${response.status} (${(performance.now() - startTime).toFixed(0)}ms)`,
-      );
-      return response;
-    };
-
-    if (!isManualHttpTracing()) {
-      return await request();
-    }
-    return await withTracingSpan(
-      `${method} ${urlPath}`,
-      "http.client",
-      async (span) => {
-        const response = await request();
-        span.setAttribute("http.response.status_code", response.status);
-        if (!response.ok) {
-          span.setStatus({ code: 2, message: `${response.status}` });
-        }
-        return response;
-      },
-      { "http.request.method": method, "url.path": urlPath },
-    );
+    return await transport.request(input, init, {
+      validateRedirects: options.validatedRedirects === true,
+      idempotent: options.idempotent === true,
+      responseBody:
+        method.toUpperCase() !== "GET"
+          ? "stream"
+          : ((input instanceof Request
+              ? sdkResponseBodyModes.get(input)
+              : undefined) ??
+            (options.bufferResponseBody ? "buffer" : "stream")),
+    });
   };
   // Every API response, fresh or cached, seeds shell completion, so no API
   // function has to remember to. Awaited so a command that exits right
@@ -937,245 +466,6 @@ function createAuthenticatedFetch(
       extractInputUrl(input),
       await authenticatedFetch(input, init),
     );
-}
-
-/**
- * Execute a single fetch attempt and classify the outcome.
- */
-type ExecuteAttemptArgs = {
-  input: Request | string | URL;
-  init: RequestInit | undefined;
-  headers: Headers;
-  credential: CredentialContext;
-  retryState: AttemptRetryState;
-  timeoutMs: number;
-  validatedRedirects: boolean;
-  responseBodyMode: ResponseBodyMode;
-};
-
-async function cancelResponseBody(response: Response): Promise<void> {
-  if (response.body && !response.bodyUsed) {
-    try {
-      await response.body.cancel();
-    } catch (error) {
-      log.debug("Failed to cancel unused response body", error);
-    }
-  }
-}
-
-function isRedirectStatus(status: number): boolean {
-  return (
-    status === 301 ||
-    status === 302 ||
-    status === 303 ||
-    status === 307 ||
-    status === 308
-  );
-}
-
-function redirectedMethod(method: string, status: number): string {
-  if (status === 303 && method !== "HEAD") {
-    return "GET";
-  }
-  if ((status === 301 || status === 302) && method === "POST") {
-    return "GET";
-  }
-  return method;
-}
-
-function redirectLoopKey(url: URL): string {
-  const key = new URL(url);
-  key.hash = "";
-  return key.href;
-}
-
-async function rejectRedirect(
-  response: Response,
-  destination: string,
-  credential: CredentialContext,
-): Promise<never> {
-  await cancelResponseBody(response);
-  throw new HostScopeError(
-    "Redirect destination",
-    destination,
-    credential.host,
-  );
-}
-
-async function validatedRedirectTarget({
-  response,
-  request,
-  credential,
-  visited,
-  hops,
-}: {
-  response: Response;
-  request: Request;
-  credential: CredentialContext;
-  visited: Set<string>;
-  hops: number;
-}): Promise<URL> {
-  const location = response.headers.get("location");
-  if (!location) {
-    return await rejectRedirect(response, "<unknown host>", credential);
-  }
-  if (hops >= MAX_REDIRECTS) {
-    return await rejectRedirect(response, "<too many redirects>", credential);
-  }
-  let next: URL;
-  try {
-    next = new URL(location, request.url);
-  } catch (error) {
-    log.debug(
-      "Rejected malformed redirect location",
-      error instanceof Error ? error.name : "unknown error",
-    );
-    return await rejectRedirect(response, "<invalid host>", credential);
-  }
-  if (!isRequestOriginTrustedForContext(next, credential)) {
-    return await rejectRedirect(
-      response,
-      normalizeOrigin(next) ?? "<unknown host>",
-      credential,
-    );
-  }
-  const key = redirectLoopKey(next);
-  if (visited.has(key)) {
-    return await rejectRedirect(response, "<redirect loop>", credential);
-  }
-  visited.add(key);
-  return next;
-}
-
-async function buildRedirectRequest(
-  request: Request,
-  requestHeaders: Headers,
-  next: URL,
-  status: number,
-): Promise<{ request: Request; headers: Headers }> {
-  const method = redirectedMethod(request.method.toUpperCase(), status);
-  const headers = new Headers(requestHeaders);
-  if (method !== request.method.toUpperCase()) {
-    headers.delete("content-length");
-    headers.delete("content-type");
-    headers.delete("transfer-encoding");
-  }
-  const body =
-    method === request.method.toUpperCase() && request.body
-      ? await request.clone().arrayBuffer()
-      : undefined;
-  return { request: new Request(next, { method, headers, body }), headers };
-}
-
-/** Manually validate every hop before forwarding the pinned bearer and headers. */
-async function fetchFollowingValidatedRedirects({
-  input,
-  init,
-  headers,
-  credential,
-  timeoutMs,
-  responseBodyMode,
-}: Omit<
-  ExecuteAttemptArgs,
-  "retryState" | "validatedRedirects"
->): Promise<Response> {
-  const original = new Request(input, init);
-  const visited = new Set([redirectLoopKey(new URL(original.url))]);
-
-  async function follow(
-    request: Request,
-    requestHeaders: Headers,
-    hops: number,
-  ): Promise<Response> {
-    if (!isRequestOriginTrustedForContext(request, credential)) {
-      throw new HostScopeError(
-        "Credentials",
-        normalizeOrigin(request) ?? "<unknown host>",
-        credential.host,
-      );
-    }
-    const response = await fetchWithTimeout({
-      input: request.clone() as unknown as Request,
-      init: { headers: requestHeaders, redirect: "manual" },
-      headers: requestHeaders,
-      externalSignal: init?.signal ?? original.signal,
-      timeoutMs,
-      responseBodyMode,
-    });
-    if (!isRedirectStatus(response.status)) {
-      const origin = normalizeHttpOrigin(request.url);
-      if (origin) {
-        responseRequestOrigins.set(response, origin);
-        responseCredentialIdentities.set(response, credential.identity);
-      }
-      return response;
-    }
-    const next = await validatedRedirectTarget({
-      response,
-      request,
-      credential,
-      visited,
-      hops,
-    });
-
-    try {
-      const redirected = await buildRedirectRequest(
-        request,
-        requestHeaders,
-        next,
-        response.status,
-      );
-      await cancelResponseBody(response);
-      return await follow(redirected.request, redirected.headers, hops + 1);
-    } finally {
-      await cancelResponseBody(response);
-    }
-  }
-
-  return await follow(original, new Headers(headers), 0);
-}
-
-async function executeAttempt({
-  input,
-  init,
-  headers,
-  credential,
-  retryState,
-  timeoutMs,
-  validatedRedirects,
-  responseBodyMode,
-}: ExecuteAttemptArgs): Promise<AttemptResult> {
-  const signal =
-    init?.signal !== undefined
-      ? init.signal
-      : input instanceof Request
-        ? input.signal
-        : undefined;
-  let response: Response;
-  try {
-    response = validatedRedirects
-      ? await fetchFollowingValidatedRedirects({
-          input,
-          init,
-          headers,
-          credential,
-          timeoutMs,
-          responseBodyMode,
-        })
-      : await fetchWithTimeout({
-          input,
-          init,
-          headers,
-          externalSignal: signal,
-          timeoutMs,
-          responseBodyMode,
-        });
-  } catch (error) {
-    return handleFetchError(error, signal, retryState);
-  }
-  // Outside the try: response handling errors must not be treated as fetch
-  // failures (and retried).
-  return await handleResponse(response, headers, credential, retryState);
 }
 
 /** Singleton authenticated fetch instance - reused across all requests */
