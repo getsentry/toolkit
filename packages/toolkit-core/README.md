@@ -12,8 +12,28 @@ field expressions the way the Sentry frontend does, parses search queries with
 the Sentry frontend grammar, resolves Events endpoint sorts so the sort column
 is always selected, and deduplicates in-flight region lookups. Each product
 retains its own credential storage, regional cache identity and persistence,
-host allowlists, routing, polling
-deadline, HTTP transport, response validation, and user-facing errors.
+host allowlists, routing, polling deadline, response validation, and
+user-facing errors.
+
+## API transport
+
+`api-transport` is the authenticated fetch both products send Sentry API
+requests through. `createApiTransport` sets the Authorization header, refreshes
+the credential once after a 401 and replays the request (any method, since the
+endpoint never ran), times out each attempt, and retries through `api-retry`.
+Request bodies are replayed on each attempt, including stream bodies.
+With `validateRedirects`, it follows redirects by hand, sends the credential
+only to origins the host trusts, and records the final origin for
+`getValidatedResponseSource`. With a cache, a GET is looked up first (a stale
+entry is revalidated with its `ETag`), a successful GET is stored, and a
+successful write invalidates what it made stale.
+
+The host passes in a `CredentialProvider` (the current credential, an optional
+refresh ahead of expiry, and the 401 refresh), header rules that may reject a
+request, a `TransportCache`, its error classes for timeouts, rate limits, and
+fatal fetch errors such as TLS failures, a logger, and a span hook. The CLI's
+`packages/cli/src/lib/sentry-client.ts` wires in its stored credentials,
+host-scope checks, disk cache, and telemetry.
 
 ## Pagination
 

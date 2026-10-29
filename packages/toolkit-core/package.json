@@ -15,6 +15,10 @@
       "types": "./src/api-retry.ts",
       "default": "./src/api-retry.ts"
     },
+    "./api-transport": {
+      "types": "./src/api-transport.ts",
+      "default": "./src/api-transport.ts"
+    },
     "./api-path-segment": {
       "types": "./src/api-path-segment.ts",
       "default": "./src/api-path-segment.ts"
