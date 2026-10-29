@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBodyCodec } from "./codec.js";
+import { createBodyCodec } from "../../response-cache/codec.js";
 import { createMemoryStore } from "./memory-store.js";
 import {
   type CacheLookup,

@@ -6,7 +6,7 @@ builds bundle this private workspace package into their artifacts.
 The shared code validates and formats upstream bearer tokens, assembles Sentry
 API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
 responses, advances retry intervals, decides when a Sentry API request may
-be retried and how long to wait (`api-retry`), recognizes Sentry hostnames and
+be retried and how long to wait (`api-client/retry`), recognizes Sentry hostnames and
 credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
 field expressions the way the Sentry frontend does, parses search queries with
 the Sentry frontend grammar, resolves Events endpoint sorts so the sort column
@@ -37,13 +37,16 @@ the one exception.
   rate-limit wait, and each host maps that to its own errors.
   `readJsonResponse` parses a successful body after checking its
   Content-Type.
+- `pagination`, `retry`, `transport`, and `response-cache` are described in
+  the sections below. The `node:zlib` body codec stays outside, at
+  `response-cache/codec`, since browsers lack it.
 
 ## API transport
 
-`api-transport` is the authenticated fetch both products send Sentry API
+`api-client/transport` is the authenticated fetch both products send Sentry API
 requests through. `createApiTransport` sets the Authorization header, refreshes
 the credential once after a 401 and replays the request (any method, since the
-endpoint never ran), times out each attempt, and retries through `api-retry`.
+endpoint never ran), times out each attempt, and retries through `api-client/retry`.
 Request bodies are replayed on each attempt, including stream bodies.
 With `validateRedirects`, it follows redirects by hand, sends the credential
 only to origins the host trusts, and records the final origin for
@@ -67,7 +70,7 @@ skips the cache, since entries are scoped to a credential. The MCP's
 
 ## Pagination
 
-`pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
+`api-client/pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
 the limit evenly over the fewest requests (at most 100 rows each), reuses the
 page size a page-number cursor encodes, and returns a cursor that resumes at
 the first row the caller has not received, even when the walk stopped inside
@@ -84,7 +87,7 @@ CLI's `paginate` and `fetchAllPages` in
 
 ## Response cache
 
-`response-cache` holds the cache policy for Sentry API GET responses.
+`api-client/response-cache` holds the cache policy for Sentry API GET responses.
 `classifyUrl` puts a URL in a fallback TTL tier for responses without HTTP
 caching headers: `volatile` (60 seconds) for issues, project event details,
 full traces, and log and span queries; `no-cache` for autofix and root-cause

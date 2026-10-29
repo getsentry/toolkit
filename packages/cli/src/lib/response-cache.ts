@@ -22,7 +22,7 @@ import {
   classifyUrl,
   lookupResponse,
   storeResponse,
-} from "@sentry/toolkit-core/response-cache";
+} from "@sentry/toolkit-core/api-client/response-cache";
 import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
 
 import { getIdentityFingerprint } from "./db/auth.js";

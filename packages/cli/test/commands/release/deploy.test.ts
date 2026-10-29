@@ -137,7 +137,7 @@ describe("release deploy", () => {
     const func = await deployCommand.loader();
 
     await expect(func.call(context, { json: false }, "1.0.0")).rejects.toThrow(
-      "Release version and environment",
+      "Environment is required",
     );
   });
 
@@ -146,7 +146,7 @@ describe("release deploy", () => {
     const func = await deployCommand.loader();
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
-      "Release version and environment",
+      "Release version is required",
     );
   });
 });

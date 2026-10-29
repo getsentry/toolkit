@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RetryPolicy } from "./api-retry.js";
+import type { RetryPolicy } from "./retry.js";
 import {
   ApiTimeoutError,
   type ApiTransportOptions,
@@ -7,14 +7,14 @@ import {
   getValidatedResponseSource,
   type TransportCache,
   type TransportCredential,
-} from "./api-transport.js";
+} from "./transport.js";
 import {
   buildCacheKey,
   createMemoryStore,
   lookupResponse,
   storeResponse,
 } from "./response-cache/index.js";
-import { createBodyCodec } from "./response-cache/codec.js";
+import { createBodyCodec } from "../response-cache/codec.js";
 
 const URL_BASE = "https://us.sentry.io/api/0";
 const ISSUES_URL = `${URL_BASE}/organizations/acme/issues/`;

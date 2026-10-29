@@ -253,6 +253,10 @@ which also takes them, checks for an issue first (`parseEventViewInput`).
 Dashboards, named by numeric ID or title, have their own grammar
 (`grammar/dashboard-arguments.pegjs`); dashboard commands take
 `dashboardArguments` from `commands/dashboard/arguments.ts`.
+`test/lib/argument-conventions.test.ts` feeds the same inputs to every
+command that takes IDs, issues, or releases, through the command's own
+positional; add a new command to its tables, and encode a legitimate
+difference (such as `needsProject`) in its row.
 
 **Issue positionals:** issue IDs, short IDs, selectors, and issue URLs are
 parsed by `parseIssueArgument` (`src/lib/issue-arguments.ts`), whose forms
@@ -287,7 +291,21 @@ project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
 with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
 itself, and an omitted target arrives as auto-detect. The
 `sentry-cli/require-target-resolution` lint rule fails a function that takes
-one of these types and never reads `.resolved`.
+one of these types and never reads `.resolved`. It also rejects, in commands,
+what leaves a target for `func` to parse: the completion-only parsers
+`parseOrgTarget` and `parseOrgProjectTarget`, `parseOrgProjectArg`, and the
+`resolve*FromArg` helpers. Commands not migrated yet are on
+`UNBOUND_TARGET_PARSING_ALLOWED` in `lint-rules/cli-oxlint-plugin.js`, each
+with its follow-up; the list is a ratchet, so a file that stops using them
+fails until its entry is removed. `AD_HOC_ID_PARSING_ALLOWED` does the same
+for ID positionals, including the completion-only `parseIssueTarget` and
+`parseDashboardTarget`.
+
+**Release positionals:** `[<org>/]<version>` uses
+`releaseParameter(USAGE_HINT, brief)` from `src/commands/release/parse.ts`
+inside a tuple positional. `func` takes a `ReleaseTarget` and gets
+`{ version, org, detectedFrom }` from `await target.resolved`; a blank version
+fails the parse.
 
 List commands take their target from `listTargetPositional()` in
 `src/lib/list-command.ts` (`LIST_TARGET_POSITIONAL`,
@@ -343,13 +361,16 @@ ID looks like, so the syntax cannot drift between commands. It accepts any
 input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 
 **Shell completion:** Target positionals that take an org, project, issue, or
-dashboard use a completion-aware parser from `src/lib/completion-target.ts`
-instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
-and project aliases; `parseOrgTarget` completes org slugs only;
-`parseIssueTarget` adds cached issue short IDs; `dashboardArguments`
-completes cached dashboards. `issueIdsPositional` already uses them. A
-parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
-parsers behind `listTargetPositional`, completes the same way. Shared value
+dashboard are tagged with a completion kind from `src/lib/completion-target.ts`
+(`ORG_PROJECT_TARGET` completes `org/`, `org/project`, and project aliases;
+`ORG_TARGET` org slugs only; `ISSUE_TARGET` adds cached issue short IDs;
+`DASHBOARD_TARGET` cached dashboards). The bound parsers above
+(`boundPositional(kind, …)`, `boundArguments({ kind, … })`) carry the kind, so
+the `target-positional.ts` parsers behind `listTargetPositional`,
+`issuePositional`, and `releaseParameter` complete the right values. The
+completion-only parsers (`parseOrgProjectTarget`, `parseOrgTarget`,
+`parseIssueTarget`) remain for the allow-listed
+commands that still parse in `func`; new commands use a bound parser. Shared value
 parsers are not tagged where they live; `PARSER_TARGETS` in
 `completion-target.ts` lists them instead, so every flag that parses with
 `sanitizeIssueQuery` completes issue search terms
