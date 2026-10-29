@@ -4,9 +4,13 @@ import {
 } from "@sentry/toolkit-core/events-fields";
 import {
   createSentryClient,
+  type GetOrganizationIssueEventData,
+  getOrganizationIssueEvent,
+  listOrganizationIssueEvents,
   listOrganizationProjects,
   listOrganizationTeams,
   listOrganizations,
+  listProjectEventAttachments,
   parseSentryLinkHeader,
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
@@ -4454,15 +4458,23 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Event> {
-    // `collapse=adjacentEvents` lets Sentry skip the next/previous-event
-    // lookups; no tool reads `nextEventID` or `previousEventID`. Servers
-    // without the option ignore unknown collapse values.
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/` +
-        "?collapse=adjacentEvents",
-      undefined,
-      opts,
-    );
+    // @sentry/api sends `collapse=adjacentEvents` by default, so Sentry skips
+    // the next/previous-event lookups; no tool reads `nextEventID` or
+    // `previousEventID`.
+    const { data: body }: { data: unknown } = await getOrganizationIssueEvent({
+      client: this.sdkClient(
+        apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/${eventId}/`,
+        opts?.host,
+      ),
+      path: {
+        organization_id_or_slug: organizationSlug,
+        issue_id: issueId,
+        // The generated type lists only the aliases, but Sentry also accepts
+        // a 32-character event ID here.
+        event_id: eventId as GetOrganizationIssueEventData["path"]["event_id"],
+      },
+      throwOnError: true,
+    });
 
     // Try to parse with known event schemas first
     const parseResult = EventSchema.safeParse(body);
@@ -4621,7 +4633,6 @@ export class SentryApiService {
       issueId,
       query,
       limit = 50,
-      sort,
       statsPeriod,
       start,
       end,
@@ -4631,41 +4642,29 @@ export class SentryApiService {
       issueId: string;
       query?: string;
       limit?: number;
-      sort?: string;
       statsPeriod?: string;
       start?: string;
       end?: string;
       full?: boolean;
     },
     opts?: RequestOptions,
-  ) {
-    const params = new URLSearchParams();
-
-    if (query) {
-      params.append("query", query);
-    }
-
-    params.append("per_page", String(limit));
-
-    if (sort) {
-      params.append("sort", sort);
-    }
-
-    if (statsPeriod) {
-      params.append("statsPeriod", statsPeriod);
-    } else if (start && end) {
-      params.append("start", start);
-      params.append("end", end);
-    }
-
-    if (full) {
-      params.append("full", "true");
-    }
-
-    const apiUrl =
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/` +
-      `?${params.toString()}`;
-    return await this.requestJSON(apiUrl, undefined, opts);
+  ): Promise<unknown> {
+    // Sentry always returns these newest first; the endpoint has no sort.
+    const { data } = await listOrganizationIssueEvents({
+      client: this.sdkClient(
+        apiPath`/organizations/${organizationSlug}/issues/${issueId}/events/`,
+        opts?.host,
+      ),
+      path: { organization_id_or_slug: organizationSlug, issue_id: issueId },
+      query: {
+        query: query || undefined,
+        per_page: limit,
+        ...(statsPeriod ? { statsPeriod } : start && end ? { start, end } : {}),
+        full: full || undefined,
+      },
+      throwOnError: true,
+    });
+    return data;
   }
 
   async listEventAttachments(
@@ -4680,12 +4679,19 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<EventAttachmentList> {
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/events/${eventId}/attachments/`,
-      undefined,
-      opts,
-    );
-    return EventAttachmentListSchema.parse(body);
+    const { data } = await listProjectEventAttachments({
+      client: this.sdkClient(
+        apiPath`/projects/${organizationSlug}/${projectSlug}/events/${eventId}/attachments/`,
+        opts?.host,
+      ),
+      path: {
+        organization_id_or_slug: organizationSlug,
+        project_id_or_slug: projectSlug,
+        event_id: eventId,
+      },
+      throwOnError: true,
+    });
+    return EventAttachmentListSchema.parse(data);
   }
 
   async getEventAttachment(
@@ -4723,13 +4729,10 @@ export class SentryApiService {
     contentType: string;
   }> {
     // Get the attachment metadata first
-    const attachmentsData = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/events/${eventId}/attachments/`,
-      undefined,
+    const attachments = await this.listEventAttachments(
+      { organizationSlug, projectSlug, eventId },
       opts,
     );
-
-    const attachments = EventAttachmentListSchema.parse(attachmentsData);
     const attachment = attachments.find((att) => att.id === attachmentId);
 
     if (!attachment) {
