@@ -37,6 +37,14 @@ the one exception.
   rate-limit wait, and each host maps that to its own errors.
   `readJsonResponse` parses a successful body after checking its
   Content-Type.
+- `core` is the request core endpoint wrappers build on.
+  `createApiClientCore` takes the host's transport, per-request headers
+  (credentials, user agent, attribution), and logger. Its `request` sends
+  to `<origin>/api/0<path>`, turns network failures into readable errors
+  (`ConfigurationError` for an unreachable host), and throws the status's
+  `ApiError` for an error response unless the caller allows that status.
+  `requestJson` also parses the body. The MCP's `SentryApiService` sends
+  every request through it.
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.
