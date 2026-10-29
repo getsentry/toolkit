@@ -21,6 +21,12 @@ discovery, installation, repository quality, and every selected project.
 Package-specific exceptions live in `package.json#sentryCi`; the standalone
 smoke-test suite remains in its own workflow.
 
+`CLI E2E (Node 24)` runs independently of the CLI project job. It builds the
+standalone CLI on Node 22, then builds the npm bundle and tests both on Node 24.
+Unit tests and coverage remain in the project job. The final `test` gate
+requires E2E to pass whenever the CLI is selected, and requires it to be skipped
+otherwise.
+
 ### deploy.yml
 
 Runs after a successful `Test` push run on `main`. Checks out the tested commit
