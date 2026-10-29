@@ -1,6 +1,6 @@
 /**
  * Bound target positionals (src/lib/positional-parse.ts,
- * src/lib/target-positional.ts).
+ * src/lib/target-positional.ts, the list targets in src/lib/list-command.ts).
  *
  * Runs a test command through Stricli's `run()` so the positional parser,
  * the command wrapper, and exit-code handling are exercised together.
@@ -19,6 +19,7 @@ import { buildCommand } from "../../src/lib/command.js";
 import {
   getCompletionTarget,
   ORG_PROJECT_TARGET,
+  ORG_TARGET,
 } from "../../src/lib/completion-target.js";
 import {
   ContextError,
@@ -27,6 +28,7 @@ import {
   HostScopeError,
   ValidationError,
 } from "../../src/lib/errors.js";
+import { LIST_TARGET_POSITIONAL } from "../../src/lib/list-command.js";
 import {
   applyBoundPositionals,
   type BoundArguments,
@@ -39,6 +41,8 @@ import {
 } from "../../src/lib/positional-parse.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
 import {
+  type ListCommandTarget,
+  listTarget,
   type OrgProjectTarget,
   orgProjectTarget,
 } from "../../src/lib/target-positional.js";
@@ -63,6 +67,39 @@ const echoResolver = vi.fn(
 const echoTarget = orgProjectTarget(echoResolver);
 
 type EchoTarget = OrgProjectTarget<Awaited<ReturnType<typeof echoResolver>>>;
+
+/** Run `test cmd ...args` through Stricli, as the CLI does. */
+async function runCommand(
+  command: ReturnType<typeof buildCommand>,
+  args: string[],
+): Promise<{ stderr: string; exitCode: number | undefined }> {
+  const app = buildApplication(
+    buildRouteMap({ routes: { cmd: command }, docs: { brief: "Test" } }),
+    { name: "test", determineExitCode: getExitCode },
+  );
+  let stderr = "";
+  const stdout = { write: () => true };
+  const context = {
+    cwd: "/work",
+    // Like buildContext: Stricli passes the command path to forCommand
+    forCommand({ prefix }: { prefix: readonly string[] }) {
+      return { ...this, commandPrefix: prefix };
+    },
+    process: {
+      stdout,
+      stderr: {
+        write: (s: string) => {
+          stderr += s;
+          return true;
+        },
+      },
+      exitCode: undefined,
+    },
+    stdout,
+  } as unknown as TestContext;
+  await run(app, ["cmd", ...args], context);
+  return { stderr, exitCode: context.process.exitCode };
+}
 
 /** Run `test cmd ...args`, recording what `target.resolved` yields. */
 async function runWithTarget(
@@ -101,32 +138,7 @@ async function runWithTarget(
       resolved.push(readResolved ? await target.resolved : target.parsed);
     },
   });
-  const app = buildApplication(
-    buildRouteMap({ routes: { cmd: command }, docs: { brief: "Test" } }),
-    { name: "test", determineExitCode: getExitCode },
-  );
-  let stderr = "";
-  const stdout = { write: () => true };
-  const context = {
-    cwd: "/work",
-    // Like buildContext: Stricli passes the command path to forCommand
-    forCommand({ prefix }: { prefix: readonly string[] }) {
-      return { ...this, commandPrefix: prefix };
-    },
-    process: {
-      stdout,
-      stderr: {
-        write: (s: string) => {
-          stderr += s;
-          return true;
-        },
-      },
-      exitCode: undefined,
-    },
-    stdout,
-  } as unknown as TestContext;
-  await run(app, ["cmd", ...args], context);
-  return { resolved, stderr, exitCode: context.process.exitCode };
+  return { resolved, ...(await runCommand(command, args)) };
 }
 
 describe("orgProjectTarget", () => {
@@ -241,6 +253,62 @@ describe("parsing and resolution", () => {
     const target = echoTarget.call(context, "acme/web");
     await expect(Promise.resolve(target)).resolves.toBe(target);
     expect(echoResolver).not.toHaveBeenCalled();
+  });
+});
+
+describe("listTarget", () => {
+  const context = { cwd: "/work" };
+  const namedTarget = listTarget(ORG_PROJECT_TARGET, { names: true });
+
+  test("parses what to list and the name filter", () => {
+    expect(namedTarget.call(context, "acme/web-*").parsed).toEqual({
+      parsed: { type: "org-all", org: "acme" },
+      filter: "web-*",
+    });
+    expect(namedTarget.call(context, undefined).parsed).toEqual({
+      parsed: { type: "auto-detect" },
+    });
+  });
+
+  test("resolves to the parsed target", async () => {
+    const target = namedTarget.call(context, "acme/web");
+    await expect(target.resolved).resolves.toBe(target.parsed);
+  });
+
+  test("applies a pasted URL's server when resolving, not when parsing", async () => {
+    // No account for this server: applying it throws HostScopeError
+    const target = namedTarget.call(
+      context,
+      "https://sentry.example.com/organizations/acme/",
+    );
+    expect(target.parsed).toEqual({ parsed: { type: "org-all", org: "acme" } });
+    await expect(target.resolved).rejects.toThrow(HostScopeError);
+  });
+
+  test("completes org slugs only for org-scoped resources", () => {
+    expect(getCompletionTarget(listTarget(ORG_TARGET))).toBe(ORG_TARGET);
+    expect(getCompletionTarget(namedTarget)).toBe(ORG_PROJECT_TARGET);
+  });
+
+  test("invalid input fails as an argument parse error", async () => {
+    const resolved: unknown[] = [];
+    const command = buildCommand<
+      Record<string, never>,
+      [ListCommandTarget],
+      TestContext
+    >({
+      docs: { brief: "Lists things" },
+      auth: false,
+      parameters: { positional: LIST_TARGET_POSITIONAL },
+      // oxlint-disable-next-line require-yield -- test command only records the resolved target
+      async *func(_flags, target) {
+        resolved.push(await target.resolved);
+      },
+    });
+    const { stderr, exitCode } = await runCommand(command, ["@latest"]);
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "@latest"');
   });
 });
 

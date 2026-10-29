@@ -276,6 +276,15 @@ itself, and an omitted target arrives as auto-detect. The
 `sentry-cli/require-target-resolution` lint rule fails a function that takes
 one of these types and never reads `.resolved`.
 
+List commands take their target from `listTargetPositional()` in
+`src/lib/list-command.ts` (`LIST_TARGET_POSITIONAL`,
+`LIST_ORG_TARGET_POSITIONAL`, or `listTargetPositional({ orgScoped, names,
+multi })` for org-only completion, name globs, and comma-separated projects).
+`dispatchOrgScopedList` resolves each target mode its own way, so `func`
+takes a `ListCommandTarget` and passes `const { parsed, filter } = await
+target.resolved` to it; resolving only applies a pasted URL's server. The
+lint rule covers `ListCommandTarget` too.
+
 Resolvers need no command name: they read it from `this.commandPrefix`, which
 Stricli's `forCommand` and the SDK invoker set (test mock contexts set it
 too). In a destructive command (`buildDeleteCommand`, or `buildCommand` with
@@ -325,12 +334,12 @@ dashboard use a completion-aware parser from `src/lib/completion-target.ts`
 instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
 and project aliases; `parseOrgTarget` completes org slugs only;
 `parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
-completes cached dashboards. `LIST_TARGET_POSITIONAL`,
-`LIST_ORG_TARGET_POSITIONAL`, and `issueIdPositional` already use them. A
+completes cached dashboards. `issueIdPositional` already uses them. A
 parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
-parsers, completes the same way. Shared value parsers are not tagged where
-they live; `PARSER_TARGETS` in `completion-target.ts` lists them instead, so
-every flag that parses with `sanitizeIssueQuery` completes issue search terms
+parsers behind `listTargetPositional`, completes the same way. Shared value
+parsers are not tagged where they live; `PARSER_TARGETS` in
+`completion-target.ts` lists them instead, so every flag that parses with
+`sanitizeIssueQuery` completes issue search terms
 (`is:unr` → `is:unresolved`) and every flag that parses with `parsePeriod`
 completes relative periods. Fixed values (search keys, period units) come
 from the modules that define them through `COMPLETION_VALUES`.
@@ -840,7 +849,7 @@ boundary.
 
 Two abstraction levels exist for list commands:
 
-1. **`src/lib/list-command.ts`** — `buildOrgListCommand` factory + shared Stricli parameter constants (`LIST_TARGET_POSITIONAL`, `LIST_JSON_FLAG`, `LIST_CURSOR_FLAG`, `buildListLimitFlag`). Use this for simple entity lists like `team list` and `repo list`.
+1. **`src/lib/list-command.ts`** — `buildOrgListCommand` factory + shared Stricli parameter constants (`LIST_TARGET_POSITIONAL` and `listTargetPositional`, `LIST_JSON_FLAG`, `LIST_CURSOR_FLAG`, `buildListLimitFlag`). Use this for simple entity lists like `team list` and `repo list`.
 
 2. **`src/lib/org-list.ts`** — `dispatchOrgScopedList` with `OrgListConfig` and a 4-mode handler map: `auto-detect`, `explicit`, `org-all`, `project-search`. Complex commands (`project list`, `issue list`) call `dispatchOrgScopedList` with an `overrides` map directly instead of using `buildOrgListCommand`.
 

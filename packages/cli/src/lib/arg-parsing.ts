@@ -624,7 +624,8 @@ export type ParsedOrgProject =
 
 /**
  * A list target that filters names (`<org>/web-*`, `web-*`), from the
- * target grammar when {@link parseListTarget} passes its `isNameFilter` hook.
+ * target grammar when {@link parseListTargetInput} passes its
+ * `isNameFilter` hook.
  */
 export type ParsedNameFilter = {
   type: "name-filter";
@@ -803,37 +804,61 @@ export type ListTarget = {
   readonly filter?: string;
 };
 
+/** Which target forms a list command accepts beyond `[<org>/][<project>]`. */
+export type ListTargetOptions = {
+  /** Read a glob as a name filter (`<org>/web-*`) */
+  readonly names?: boolean;
+  /** Accept comma-separated projects (`<org>/web,api`) */
+  readonly multi?: boolean;
+};
+
+/** A parsed list target and the server of a pasted Sentry URL. */
+export type ListTargetInput = {
+  readonly target: ListTarget;
+  /** Base URL of a pasted Sentry web URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+};
+
 /**
- * Parse the target of a list command that filters by name. A glob is a
- * filter rather than a project (no slug contains glob characters; the
- * grammar decides): `<org>/web-*` lists that organization's matches, and
- * `web-*` or `/web-*` the auto-detected ones. Every other form parses like
- * {@link parseOrgProjectArg}, which also applies a pasted URL's server.
+ * Parse the target of a list command, without side effects: the server of a
+ * pasted Sentry URL is returned as `baseUrl` instead of applied (see
+ * {@link parseOrgProjectInput}).
+ *
+ * With `names`, a glob is a filter rather than a project (no slug contains
+ * glob characters; the grammar decides): `<org>/web-*` lists that
+ * organization's matches, and `web-*` or `/web-*` the auto-detected ones.
+ * Every other form parses like {@link parseOrgProjectInput}.
  *
  * @example
- * parseListTarget("acme/web-*") // { parsed: { type: "org-all", org: "acme" }, filter: "web-*" }
- * parseListTarget("web-*")      // { parsed: { type: "auto-detect" }, filter: "web-*" }
- * parseListTarget("acme/web")   // { parsed: { type: "explicit", org: "acme", project: "web" } }
+ * parseListTargetInput("acme/web-*", { names: true }).target
+ * // { parsed: { type: "org-all", org: "acme" }, filter: "web-*" }
+ * parseListTargetInput("web-*", { names: true }).target
+ * // { parsed: { type: "auto-detect" }, filter: "web-*" }
+ * parseListTargetInput("acme/web").target
+ * // { parsed: { type: "explicit", org: "acme", project: "web" } }
  */
-export function parseListTarget(
+export function parseListTargetInput(
   arg: string | undefined,
-  options: { multi?: boolean } = {},
-): ListTarget {
+  options: ListTargetOptions = {},
+): ListTargetInput {
+  const hooks = targetHooks(options);
   const { parsed, baseUrl } = parseTargetInput(arg, (text) =>
-    parseTarget(text, { ...targetHooks(options), isNameFilter: isGlobFilter }),
+    options.names
+      ? parseTarget(text, { ...hooks, isNameFilter: isGlobFilter })
+      : parseTarget(text, hooks),
   );
-  if (baseUrl) {
-    applySentryUrlContext(baseUrl);
-  }
   if (parsed.type !== "name-filter") {
-    return { parsed };
+    return { target: { parsed }, baseUrl };
   }
   return {
-    parsed:
-      parsed.org === undefined
-        ? { type: "auto-detect" }
-        : { type: "org-all", org: parsed.org },
-    filter: parsed.filter,
+    target: {
+      parsed:
+        parsed.org === undefined
+          ? { type: "auto-detect" }
+          : { type: "org-all", org: parsed.org },
+      filter: parsed.filter,
+    },
+    baseUrl,
   };
 }
 
