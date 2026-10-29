@@ -2490,6 +2490,16 @@ describe("formatIssueOutput metric issue response notes", () => {
     `);
   });
 
+  it("groups an OR monitor query before adding the environment filter", () => {
+    expect(
+      responseNotes(
+        createLogsMonitorEvidence({
+          query: "severity:error OR severity:fatal",
+        }),
+      ),
+    ).toContain("query='(severity:error OR severity:fatal) environment:prod'");
+  });
+
   it("uses the dataset-specific search tool", () => {
     expect(
       responseNotes(

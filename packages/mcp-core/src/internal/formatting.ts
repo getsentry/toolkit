@@ -1982,8 +1982,14 @@ function buildMetricAlertResponseNotes({
   }
 
   const { toolName, label } = METRIC_ALERT_SEARCH_TOOLS[datasetKind];
+  // Sentry search binds implicit AND tighter than OR, so group an OR query
+  // before appending the environment filter.
+  const monitorQuery =
+    query.query && query.environment && /\bOR\b/.test(query.query)
+      ? `(${query.query})`
+      : query.query;
   const searchQuery = [
-    query.query,
+    monitorQuery,
     query.environment
       ? `environment:${formatSearchFilterValue(query.environment)}`
       : undefined,
