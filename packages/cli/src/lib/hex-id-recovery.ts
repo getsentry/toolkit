@@ -197,6 +197,27 @@ const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
 // ---------------------------------------------------------------------------
 
 /**
+ * Strip URL fragment prefixes (`span-`, `trace-`, ...) from a lowercased
+ * input. Repeatedly, so it is idempotent: a pathological double-prefixed
+ * input like `span-span-abc` would otherwise keep its inner prefix.
+ */
+function stripUrlFragmentPrefixes(lowered: string): string {
+  let cleaned = lowered;
+  let stripped = true;
+  while (stripped) {
+    stripped = false;
+    for (const prefix of URL_FRAGMENT_PREFIXES) {
+      if (cleaned.startsWith(prefix)) {
+        cleaned = cleaned.slice(prefix.length);
+        stripped = true;
+        break;
+      }
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Pre-normalize a raw input before further analysis. Pipeline:
  *
  * 1. Trim whitespace and lowercase.
@@ -216,24 +237,7 @@ export function preNormalize(input: string): {
   cleaned: string;
   sentinel?: string;
 } {
-  const lowered = input.trim().toLowerCase();
-
-  // Strip URL fragment prefixes repeatedly so the function is idempotent.
-  // A pathological double-prefixed input like `span-span-abc` would otherwise
-  // strip only the outer `span-` and leave the inner prefix in place, which
-  // breaks `preNormalize(preNormalize(x)) === preNormalize(x)`.
-  let cleaned = lowered;
-  let stripped = true;
-  while (stripped) {
-    stripped = false;
-    for (const prefix of URL_FRAGMENT_PREFIXES) {
-      if (cleaned.startsWith(prefix)) {
-        cleaned = cleaned.slice(prefix.length);
-        stripped = true;
-        break;
-      }
-    }
-  }
+  let cleaned = stripUrlFragmentPrefixes(input.trim().toLowerCase());
 
   // Sentinel check runs AFTER URL-prefix stripping so inputs like
   // `span-null` (shell variable leak through a URL-builder) surface as
@@ -351,7 +355,9 @@ export function looksLikeSlug(input: string): boolean {
  * project.
  */
 export function looksLikeHexIdFragment(input: string): boolean {
-  if (looksLikeSlug(input)) {
+  // A URL fragment prefix (`trace-<id>`) has a dash and letters, but does
+  // not make the input a slug
+  if (looksLikeSlug(stripUrlFragmentPrefixes(input.trim().toLowerCase()))) {
     return false;
   }
   const { cleaned, sentinel } = preNormalize(input);

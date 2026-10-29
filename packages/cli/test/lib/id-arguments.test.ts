@@ -154,6 +154,9 @@ describe.each(KINDS)("%s IDs", (_name, kind, id, other) => {
       `${id.slice(0, 8)}...${id.slice(-8)}`,
     ],
     [`acme/${id}xyz`, `${id}xyz`],
+    // A URL fragment prefix, as in `#span-<id>`
+    [`acme/trace-${id}`, `trace-${id}`],
+    [`acme/span-${id.slice(0, 12)}`, `span-${id.slice(0, 12)}`],
   ])("%j → invalid ID, or raw ID %j after the org", (arg, raw) => {
     expect(() => parse(kind, [arg])).toThrow(ValidationError);
     expect(parse(kind, [arg], { validate: false })).toEqual({

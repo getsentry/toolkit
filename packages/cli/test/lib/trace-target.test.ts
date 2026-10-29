@@ -490,6 +490,14 @@ describe("trace arguments, recovering a malformed trace ID", () => {
     });
   });
 
+  test("recovers a trace ID with a URL fragment prefix after the org", async () => {
+    await expect(resolve([`acme/trace-${VALID_TRACE_ID}`])).resolves.toEqual({
+      type: "org-scoped",
+      traceId: VALID_TRACE_ID,
+      org: "acme",
+    });
+  });
+
   test("a partial trace ID after the org reaches recovery", async () => {
     // Without a project there is nothing to look the prefix up in, so
     // recovery finds no match, rather than the trace ID being missing.
