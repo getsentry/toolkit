@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -45,11 +52,13 @@ describe("workspace CI selection", () => {
     const cli = matrix.include.find(({ name }) => name === "sentry");
     assert.equal(cli.prepare, "ci:prepare");
     assert.equal(cli.build, "");
+    assert.equal(cli.lint, "lint");
     assert.equal(cli.typecheck, "ci:typecheck");
-    assert.equal(cli.test, "ci:test:unit");
     assert.equal(cli.policy, "ci:policy");
+    assert.equal(cli.test, "");
     assert.equal(cli.e2e, "");
-    assert.equal(cli.coverage, "packages/cli/coverage/lcov.info");
+    assert.equal(cli.coverage, "");
+    assert.equal(cli.npmRuntime, "bundle");
     assert.equal(
       matrix.include.find(({ name }) => name === "@sentry/mcp-core").junit,
       "packages/mcp-core/tests.junit.xml",
@@ -176,9 +185,28 @@ describe("workspace CI selection", () => {
     assert.match(workflow, /if: matrix\.prepare != ''/);
     assert.match(workflow, /CHECK_SCRIPT: \$\{\{ matrix\.prepare \}\}/);
     assert.doesNotMatch(workflow, /matrix\.name == 'sentry-cli-docs'/);
-    assert.match(
-      workflow,
-      /needs:\s*\[\s*discover-projects,\s*install,\s*quality,\s*project,\s*npm-runtime,\s*cli-asset-catalog,\s*cli-e2e,?\s*\]/,
+    const gate = workflow.split("\n  test:\n")[1];
+    assert.ok(gate);
+    const dependencies = gate.match(/needs:\s*\[([^\]]+)\]/)?.[1];
+    assert.ok(dependencies);
+    assert.deepEqual(
+      new Set(
+        dependencies
+          .split(",")
+          .map((dependency) => dependency.trim())
+          .filter(Boolean),
+      ),
+      new Set([
+        "discover-projects",
+        "install",
+        "quality",
+        "project",
+        "npm-runtime",
+        "cli-asset-catalog",
+        "cli-unit",
+        "cli-e2e",
+        "cli-coverage",
+      ]),
     );
     assert.match(
       workflow,
@@ -211,18 +239,70 @@ describe("workspace CI selection", () => {
     assert.doesNotMatch(workflow.split("\njobs:", 1)[0], /paths(?:-ignore)?:/);
   });
 
-  it("runs CLI E2E independently after project discovery", () => {
+  it("runs three CLI unit shards and E2E independently after discovery", () => {
     const workflow = readFileSync(
       resolve(root, ".github/workflows/test.yml"),
       "utf8",
     );
-    const job = workflow.split("\n  cli-e2e:\n")[1]?.split(/\n  [\w-]+:\n/)[0];
-    assert.ok(job);
-    assert.match(job, /\n    needs: discover-projects\n/);
-    assert.match(
-      job,
-      /if: contains\(fromJSON\(needs\.discover-projects\.outputs\.matrix\)\.include\.\*\.name, 'sentry'\)/,
+    for (const name of ["cli-unit", "cli-e2e"]) {
+      const job = workflow
+        .split(`\n  ${name}:\n`)[1]
+        ?.split(/\n  [\w-]+:\n/)[0];
+      assert.ok(job, `${name} job exists`);
+      assert.match(job, /\n    needs: discover-projects\n/);
+      assert.match(
+        job,
+        /if: contains\(fromJSON\(needs\.discover-projects\.outputs\.matrix\)\.include\.\*\.name, 'sentry'\)/,
+      );
+      if (name === "cli-unit") {
+        assert.match(job, /fail-fast: false/);
+        assert.match(job, /shard: \[1, 2, 3\]/);
+        assert.match(job, /--outputFile\.blob="coverage\/shard-\$SHARD\.json"/);
+        assert.match(
+          job,
+          /path: packages\/cli\/coverage\/shard-\$\{\{ matrix\.shard \}\}\.json/,
+        );
+        assert.match(job, /if-no-files-found: error/);
+      }
+    }
+  });
+
+  it("rejects missing or empty shard reports before merging coverage", () => {
+    const workflow = readFileSync(
+      resolve(root, ".github/workflows/test.yml"),
+      "utf8",
     );
+    const script = workflow
+      .split("      - name: Require every shard report\n")[1]
+      ?.split("        run: |\n")[1]
+      ?.split("\n      - ")[0];
+    assert.ok(script);
+
+    const directory = mkdtempSync(join(tmpdir(), "ci-shard-reports-"));
+    try {
+      const reports = join(directory, "cli-unit-reports");
+      mkdirSync(reports);
+      for (const shard of [1, 2, 3]) {
+        writeFileSync(
+          join(reports, `shard-${shard}.json`),
+          JSON.stringify({ shard }),
+        );
+      }
+      const requireReports = () =>
+        spawnSync("bash", ["-euc", script], {
+          encoding: "utf8",
+          env: { ...process.env, RUNNER_TEMP: directory },
+        }).status;
+
+      assert.equal(requireReports(), 0, "all three shard reports are present");
+      const secondReport = join(reports, "shard-2.json");
+      rmSync(secondReport);
+      assert.equal(requireReports(), 1, "the middle shard report is missing");
+      writeFileSync(secondReport, "");
+      assert.equal(requireReports(), 1, "the middle shard report is empty");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("requires native asset-catalog success when selected and a skip otherwise", () => {
@@ -267,7 +347,9 @@ describe("workspace CI selection", () => {
           RUNTIME_RESULT: count === "0" ? "skipped" : "success",
           ASSET_CATALOG_RESULT: nativeResult,
           ASSET_CATALOG_SELECTED: String(selected),
+          CLI_UNIT_RESULT: selected ? "success" : "skipped",
           CLI_E2E_RESULT: selected ? "success" : "skipped",
+          CLI_COVERAGE_RESULT: selected ? "success" : "skipped",
         },
       });
       assert.equal(
@@ -278,41 +360,50 @@ describe("workspace CI selection", () => {
     }
   });
 
-  it("requires CLI E2E success when selected and a skip otherwise", () => {
+  it("requires every selected CLI test job and rejects unexpected skips", () => {
     const workflow = readFileSync(
       resolve(root, ".github/workflows/test.yml"),
       "utf8",
     );
     const gate = workflow.split("\n  test:\n")[1];
     assert.ok(gate);
-    assert.match(gate, /CLI_E2E_RESULT: \$\{\{ needs\.cli-e2e\.result \}\}/);
     const script = gate.split("        run: |\n")[1];
     assert.ok(script);
 
-    for (const selected of [true, false]) {
-      const expected = selected ? "success" : "skipped";
-      for (const status of ["success", "failure", "cancelled", "skipped"]) {
-        const result = spawnSync("bash", ["-euc", script], {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            DISCOVER_RESULT: "success",
-            INSTALL_RESULT: "success",
-            QUALITY_RESULT: "success",
-            PROJECT_COUNT: "1",
-            PROJECT_RESULT: "success",
-            RUNTIME_COUNT: selected ? "1" : "0",
-            RUNTIME_RESULT: expected,
-            ASSET_CATALOG_RESULT: expected,
-            ASSET_CATALOG_SELECTED: String(selected),
-            CLI_E2E_RESULT: status,
-          },
-        });
-        assert.equal(
-          result.status,
-          status === expected ? 0 : 1,
-          `selected=${selected}, e2e=${status}`,
-        );
+    for (const [variable, job] of [
+      ["CLI_UNIT_RESULT", "cli-unit"],
+      ["CLI_E2E_RESULT", "cli-e2e"],
+      ["CLI_COVERAGE_RESULT", "cli-coverage"],
+    ]) {
+      assert.ok(gate.includes(`${variable}: \${{ needs.${job}.result }}`));
+      for (const selected of [true, false]) {
+        const expected = selected ? "success" : "skipped";
+        for (const status of ["success", "failure", "cancelled", "skipped"]) {
+          const result = spawnSync("bash", ["-euc", script], {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              DISCOVER_RESULT: "success",
+              INSTALL_RESULT: "success",
+              QUALITY_RESULT: "success",
+              PROJECT_COUNT: "1",
+              PROJECT_RESULT: "success",
+              RUNTIME_COUNT: selected ? "1" : "0",
+              RUNTIME_RESULT: expected,
+              ASSET_CATALOG_RESULT: expected,
+              ASSET_CATALOG_SELECTED: String(selected),
+              CLI_UNIT_RESULT: expected,
+              CLI_E2E_RESULT: expected,
+              CLI_COVERAGE_RESULT: expected,
+              [variable]: status,
+            },
+          });
+          assert.equal(
+            result.status,
+            status === expected ? 0 : 1,
+            `selected=${selected}, ${job}=${status}`,
+          );
+        }
       }
     }
   });

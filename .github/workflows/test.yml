@@ -132,9 +132,6 @@ jobs:
           cache: pnpm
       - run: cp .env.example .env.local
       - run: pnpm install --frozen-lockfile
-      - name: Install zsh for CLI completion regression tests
-        if: matrix.name == 'sentry'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - name: Build project dependencies
         env:
           PROJECT_NAME: ${{ matrix.name }}
@@ -208,6 +205,85 @@ jobs:
         run: |
           git diff --exit-code
           [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+
+  cli-unit:
+    name: CLI unit tests (${{ matrix.shard }}/3)
+    needs: discover-projects
+    if: contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      BRAINTRUST_API_KEY: ci-test-key
+      GITHUB_TOKEN: ci-test-token
+      HONEYCOMB_API_KEY: ci-test-key
+      SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
+      SENTRY_OAUTH_CLIENT_SECRET: ci-test-secret
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .github/node-versions/22
+          cache: pnpm
+      - run: cp .env.example .env.local
+      - run: pnpm install --frozen-lockfile
+      - name: Install zsh for CLI completion regression tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
+      - name: Build project dependencies
+        run: pnpm --filter 'sentry^...' --if-present run build
+      - run: pnpm --filter sentry run ci:prepare
+      - name: Test CLI shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: pnpm --filter sentry run ci:test:unit --shard="$SHARD/3" --reporter=default --reporter=blob --outputFile.blob="coverage/shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cli-unit-coverage-${{ matrix.shard }}
+          path: packages/cli/coverage/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+      - name: Check generated files
+        run: |
+          git diff --exit-code
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+
+  cli-coverage:
+    name: CLI coverage
+    needs: [discover-projects, cli-unit]
+    if: contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .github/node-versions/22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: cli-unit-coverage-*
+          path: ${{ runner.temp }}/cli-unit-reports
+          merge-multiple: true
+      - name: Require every shard report
+        run: |
+          for shard in 1 2 3; do
+            test -s "$RUNNER_TEMP/cli-unit-reports/shard-$shard.json"
+          done
+      - name: Merge CLI coverage
+        run: pnpm --filter sentry exec vitest --merge-reports="$RUNNER_TEMP/cli-unit-reports" --coverage
+      - name: Verify coverage
+        run: test -s packages/cli/coverage/lcov.info
 
   cli-e2e:
     name: CLI E2E (Node 24)
@@ -322,6 +398,8 @@ jobs:
         project,
         npm-runtime,
         cli-asset-catalog,
+        cli-unit,
+        cli-coverage,
         cli-e2e,
       ]
     runs-on: ubuntu-latest
@@ -337,24 +415,28 @@ jobs:
           RUNTIME_COUNT: ${{ needs.discover-projects.outputs.runtime-count }}
           ASSET_CATALOG_RESULT: ${{ needs.cli-asset-catalog.result }}
           ASSET_CATALOG_SELECTED: ${{ contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry') }}
+          CLI_UNIT_RESULT: ${{ needs.cli-unit.result }}
+          CLI_COVERAGE_RESULT: ${{ needs.cli-coverage.result }}
           CLI_E2E_RESULT: ${{ needs.cli-e2e.result }}
         run: |
-          [[ "$DISCOVER_RESULT" == success ]]
-          [[ "$INSTALL_RESULT" == success ]]
-          [[ "$QUALITY_RESULT" == success ]]
+          test "$DISCOVER_RESULT" = success
+          test "$INSTALL_RESULT" = success
+          test "$QUALITY_RESULT" = success
           expected=success
           if [[ "$PROJECT_COUNT" == 0 ]]; then
             expected=skipped
           fi
-          [[ "$PROJECT_RESULT" == "$expected" ]]
+          test "$PROJECT_RESULT" = "$expected"
           expected=success
           if [[ "$RUNTIME_COUNT" == 0 ]]; then
             expected=skipped
           fi
-          [[ "$RUNTIME_RESULT" == "$expected" ]]
+          test "$RUNTIME_RESULT" = "$expected"
           expected=success
           if [[ "$ASSET_CATALOG_SELECTED" == false ]]; then
             expected=skipped
           fi
           test "$ASSET_CATALOG_RESULT" = "$expected"
+          test "$CLI_UNIT_RESULT" = "$expected"
+          test "$CLI_COVERAGE_RESULT" = "$expected"
           test "$CLI_E2E_RESULT" = "$expected"
