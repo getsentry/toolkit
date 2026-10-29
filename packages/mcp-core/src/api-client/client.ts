@@ -21,10 +21,7 @@ import {
 } from "@sentry/api";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
-import {
-  parseRetryDelayMs,
-  type RetryPolicy,
-} from "@sentry/toolkit-core/api-retry";
+import type { RetryPolicy } from "@sentry/toolkit-core/api-retry";
 import { createApiTransport } from "@sentry/toolkit-core/api-transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
@@ -74,7 +71,6 @@ import {
   AlertActionOptionSchema,
   AlertConditionOptionSchema,
   AlertRuleProjectScopeSchema,
-  ApiErrorSchema,
   AutofixRunSchema,
   AutofixRunStateSchema,
   ClientKeyListSchema,
@@ -215,7 +211,11 @@ import type {
   User,
   UserReportList,
 } from "./types";
-import { readJsonResponse } from "@sentry/toolkit-core/api-client/response";
+import {
+  type ErrorResponseBody,
+  readErrorResponse,
+  readJsonResponse,
+} from "@sentry/toolkit-core/api-client/response";
 
 // TODO: this is shared - so ideally, for safety, it uses @sentry/core, but currently
 // logger isnt exposed (or rather, it is, but its not the right logger)
@@ -786,6 +786,72 @@ export class SentryApiService {
     }
   }
 
+  /** Map a failed response's body to the matching `ApiError` subclass. */
+  private errorFromResponse(
+    response: Response,
+    body: ErrorResponseBody,
+    path: string,
+  ): ApiError {
+    const { retryAfterMs } = body;
+    const errorText = body.text ?? "";
+    const logExtra = {
+      status: response.status,
+      statusText: response.statusText,
+      host: this.host,
+      path,
+    };
+    const bodyPreview =
+      errorText.length > 256 ? `${errorText.slice(0, 253)}…` : errorText;
+
+    if (body.parseError !== undefined) {
+      if (body.isHtml) {
+        logWarn("Received HTML error page instead of JSON", {
+          loggerScope: ["api", "client"],
+          extra: { ...logExtra, parseErrorMessage: body.parseError },
+        });
+        // HTML response instead of JSON typically indicates a server configuration issue
+        return createApiError(
+          `Server error: Received HTML instead of JSON (${response.status} ${response.statusText}). This may indicate an invalid URL or server issue.`,
+          response.status,
+          errorText,
+          undefined,
+          retryAfterMs,
+        );
+      }
+      logWarn("Failed to parse JSON error response", {
+        loggerScope: ["api", "client"],
+        extra: { ...logExtra, bodyPreview, parseErrorMessage: body.parseError },
+      });
+    } else if (body.json) {
+      if (body.detail !== undefined) {
+        return createApiError(
+          body.detail,
+          response.status,
+          body.detail,
+          body.json,
+          retryAfterMs,
+        );
+      }
+      logWarn("Failed to parse validated API error response", {
+        loggerScope: ["api", "client"],
+        extra: {
+          ...logExtra,
+          bodyPreview,
+          validationErrorMessage: "Error response has no string detail",
+        },
+      });
+    }
+
+    // Use the error factory to create the appropriate error type based on status
+    return createApiError(
+      `API request failed: ${response.statusText}\n${errorText}`,
+      response.status,
+      errorText,
+      undefined,
+      retryAfterMs,
+    );
+  }
+
   /**
    * Makes an authenticated request to the Sentry API through the shared transport.
    *
@@ -903,89 +969,10 @@ export class SentryApiService {
       if (allowStatuses?.includes(response.status)) {
         return response;
       }
-      const retryAfterMs = parseRetryDelayMs(response.status, response.headers);
-      const errorText = await response.text();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(errorText);
-      } catch (error) {
-        // If we can't parse JSON, check if it's HTML (server error)
-        if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
-          logWarn("Received HTML error page instead of JSON", {
-            loggerScope: ["api", "client"],
-            extra: {
-              status: response.status,
-              statusText: response.statusText,
-              host: this.host,
-              path,
-              parseErrorMessage:
-                error instanceof Error ? error.message : String(error),
-            },
-          });
-          // HTML response instead of JSON typically indicates a server configuration issue
-          throw createApiError(
-            `Server error: Received HTML instead of JSON (${response.status} ${response.statusText}). This may indicate an invalid URL or server issue.`,
-            response.status,
-            errorText,
-            undefined,
-            retryAfterMs,
-          );
-        }
-        logWarn("Failed to parse JSON error response", {
-          loggerScope: ["api", "client"],
-          extra: {
-            status: response.status,
-            statusText: response.statusText,
-            host: this.host,
-            path,
-            bodyPreview:
-              errorText.length > 256
-                ? `${errorText.slice(0, 253)}…`
-                : errorText,
-            parseErrorMessage:
-              error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
-
-      if (parsed) {
-        const { data, success, error } = ApiErrorSchema.safeParse(parsed);
-
-        if (success) {
-          // Use the new error factory to create the appropriate error type
-          throw createApiError(
-            data.detail,
-            response.status,
-            data.detail,
-            parsed,
-            retryAfterMs,
-          );
-        }
-
-        logWarn("Failed to parse validated API error response", {
-          loggerScope: ["api", "client"],
-          extra: {
-            status: response.status,
-            statusText: response.statusText,
-            host: this.host,
-            path,
-            bodyPreview:
-              errorText.length > 256
-                ? `${errorText.slice(0, 253)}…`
-                : errorText,
-            validationErrorMessage:
-              error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
-
-      // Use the error factory to create the appropriate error type based on status
-      throw createApiError(
-        `API request failed: ${response.statusText}\n${errorText}`,
-        response.status,
-        errorText,
-        undefined,
-        retryAfterMs,
+      throw this.errorFromResponse(
+        response,
+        await readErrorResponse(response),
+        path,
       );
     }
 
