@@ -1,8 +1,8 @@
 # GitHub Actions
 
 Toolkit CI covers the CLI, MCP, and shared packages. The Cloudflare deployment
-workflows below serve the MCP Worker; CLI release and docs workflows are listed
-in the [CLI guide](../cli/README.md).
+workflows below serve the MCP and Docs MCP Workers; CLI release and docs
+workflows are listed in the [CLI guide](../cli/README.md).
 
 `pnpm build` builds the MCP workspace; `pnpm build:cli` builds the imported CLI
 and docs when `SENTRY_CLIENT_ID` is available.
@@ -41,6 +41,17 @@ list for up to 30 seconds. Recovery fails rather than passing when Wrangler
 staged a candidate that Cloudflare never lists. A leftover stage (one version
 at 100%, the candidate at 0%) counts as its 100% version, so the next
 deployment can replace it. Failure messages name the check that failed.
+
+### deploy-docs-mcp.yml
+
+Uses the same successful `Test` push gate, tested `main` revision, and protected
+`production` secrets to deploy the existing private `docs-mcp` Worker. It uploads
+without moving traffic, checks that production is unchanged, activates the exact
+version, and verifies its ID, ownership marker, and 100% traffic in Cloudflare.
+It preserves runtime variables and secrets and keeps public URLs disabled.
+Private service-binding functionality must be checked through a real consumer.
+Disconnect the old Init Workers Builds connection before merging this workflow
+for its first deployment. See the [Docs MCP cutover guide](../../apps/docs-mcp/README.md#deployment-ownership).
 
 ### recover-cloudflare-deployment.yml
 
@@ -134,11 +145,12 @@ confirm the restored version fails the job rather than guessing a recovery.
 ## Manual Deployment
 
 Manual dispatch cannot deploy a new revision. Use a reviewed change and its
-passing `Test` run to deploy. To restore an owned deployment after its runner
-has stopped, dispatch `Recover Cloudflare Deployment` from `main` with the
-failed deployment run ID and attempt. Verify the active Cloudflare version and
-live smoke-test result; if ownership has changed, investigate rather than
-retrying against mutable history. Never run bare `wrangler rollback`.
+passing `Test` run to deploy. For the main `sentry-mcp` Worker, restore an owned
+deployment after its runner has stopped by dispatching `Recover Cloudflare
+Deployment` from `main` with the failed deployment run ID and attempt. Verify
+the active Cloudflare version and live smoke-test result; if ownership has
+changed, investigate rather than retrying against mutable history. This recovery
+workflow does not target Docs MCP. Never run bare `wrangler rollback`.
 
 ## Cloudflare token migration
 

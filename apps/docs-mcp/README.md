@@ -78,29 +78,29 @@ the Worker bundle.
 
 ## Deployment ownership
 
-Importing this app does not change Cloudflare or enable a new deployment workflow.
-The existing Worker is connected to the source repository through Workers Builds.
-Toolkit's MCP deployment workflow targets `sentry-mcp`, not this app.
+The `Deploy Docs MCP` GitHub Actions workflow deploys the existing `docs-mcp`
+Worker after a successful `Test` push run for the current `main` commit. It uses
+the same `production` environment, `CLOUDFLARE_API_TOKEN`, and
+`CLOUDFLARE_ACCOUNT_ID` as the main MCP deployment, with a separate concurrency
+group. The token must permit writing to the existing `docs-mcp` Worker.
 
-When a production cutover is scheduled:
+The workflow captures the prior active version, uploads without autocreating a
+Worker, and activates the exact uploaded version at 100%. It preserves runtime
+variables and secrets, compatibility settings, and private access. The Actions
+summary records the source SHA, previous version, and verified active version.
+There is no public HTTP smoke test: verify functionality through a real consumer
+of the private service binding after deployment.
 
-1. Record the existing Worker's account, build settings, runtime secrets, and
-   active version. Keep the name `docs-mcp`, compatibility settings, private
-   access configuration, and `OPENROUTER_API_KEY` runtime secret.
-2. Disconnect the old repository under the existing Worker's **Settings →
-   Builds**. Ensure no old build remains in flight before enabling a new deploy.
-3. Connect that same Worker to `getsentry/toolkit`, with the repository root as
-   its root directory. Set build variables `NODE_VERSION=22.23.4`,
-   `PNPM_VERSION=11.8.0`, and `SKIP_DEPENDENCY_INSTALL=1`. Use
-   `pnpm install --frozen-lockfile && pnpm --filter docs-mcp run build` as the
-   build command and `pnpm --filter docs-mcp run deploy` as the deploy command.
-   Watch paths must cover this app, the root `package.json`, lockfile/workspace
-   configuration, and patches. Review preview settings so the private service
-   is not exposed publicly.
-4. Deploy the tested revision and verify its active version and service-binding
-   calls before removing the source repository's copy.
+Before merging the workflow for the first deployment, disconnect the source
+repository under the existing Worker's **Settings → Builds** and ensure no old
+build remains in flight. GitHub Actions does not disconnect Workers Builds;
+leaving it connected would allow Init to overwrite a Toolkit deployment. Do not
+connect the Worker to Toolkit's Workers Builds as well: Actions owns deployment.
+Record the prior active version and preserve the existing Worker, bindings, and
+`OPENROUTER_API_KEY`. Remove the source repository's copy only after verifying
+the Toolkit deployment and service-binding calls.
 
 The caller's `service: "docs-mcp"` binding still identifies the same Worker in
 the same account. No consumer URL change is required. Runtime secrets belong to
 the Worker and are separate from build secrets; never copy secret values into
-this repository. See [Cloudflare's repository-switch procedure](https://developers.cloudflare.com/workers/ci-cd/builds/#disconnecting-builds).
+this repository. See [Cloudflare's disconnect procedure](https://developers.cloudflare.com/workers/ci-cd/builds/#disconnecting-builds).
