@@ -10,10 +10,7 @@
  * apply.
  */
 
-import {
-  type DashboardUrl,
-  parse,
-} from "../generated/dashboard-arguments-grammar.js";
+import { parse } from "../generated/dashboard-arguments-grammar.js";
 import { ValidationError } from "./errors.js";
 import { parseSentryUrl } from "./sentry-url-parser.js";
 
@@ -137,7 +134,8 @@ function grammarInput(args: readonly string[]): string {
   return args.map((arg) => `\0${arg}`).join("");
 }
 
-function sentryUrl(value: string): DashboardUrl | null {
+/** The parts of the Sentry URL `value` is, or `null` for anything else. */
+function sentryUrl(value: string) {
   const url = parseSentryUrl(value);
   return (
     url && {
@@ -148,7 +146,10 @@ function sentryUrl(value: string): DashboardUrl | null {
   );
 }
 
-function urlWarning(url: DashboardUrl): string {
+function urlWarning(url: {
+  readonly org?: string;
+  readonly dashboardId?: string;
+}): string {
   if (url.dashboardId) {
     return (
       `Extracted dashboard ID ${url.dashboardId} from URL` +
