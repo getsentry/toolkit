@@ -1,5 +1,5 @@
-import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
-import { UserInputError } from "../errors";
+import { encodeApiPathSegment } from "../api-path-segment.js";
+import { UserInputError } from "./errors.js";
 
 /**
  * Builds an API request path, confining each interpolated value to one path segment.

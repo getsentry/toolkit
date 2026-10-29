@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { testEvents } from "../internal/test-fixtures";
 import { SentryApiService } from "./client";
-import { ApiValidationError } from "./errors";
+import { ApiValidationError } from "@sentry/toolkit-core/api-client/errors";
 
 const request = {
   organizationSlug: "test-org",

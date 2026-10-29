@@ -59,14 +59,14 @@ import {
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
 import { USER_AGENT } from "../version";
-import { apiPath } from "./api-path";
+import { apiPath } from "@sentry/toolkit-core/api-client/api-path";
 import {
   ApiError,
   ApiNotFoundError,
   ApiRateLimitError,
   ApiValidationError,
   createApiError,
-} from "./errors";
+} from "@sentry/toolkit-core/api-client/errors";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,

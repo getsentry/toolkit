@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { UserInputError } from "../errors";
-import { apiPath } from "./api-path";
+import { UserInputError } from "./errors.js";
+import { apiPath } from "./api-path.js";
 
 /**
  * Resolves a path the way `fetch` does. Dot-segment normalization happens during URL

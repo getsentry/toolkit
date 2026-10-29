@@ -1,7 +1,7 @@
 /** Resolve installed App forms; every link mutation uses the backend's canonical-URL guard. */
 import { z } from "zod";
 import type { SentryApiService } from "../../../api-client";
-import { ApiClientError } from "../../../api-client/errors";
+import { ApiClientError } from "@sentry/toolkit-core/api-client/errors";
 import { SentryAppExternalRequestOptionsSchema } from "../../../api-client/schema";
 import { UserInputError } from "../../../errors";
 
