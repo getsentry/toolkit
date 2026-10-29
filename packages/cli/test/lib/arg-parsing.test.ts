@@ -13,7 +13,7 @@ import {
   looksLikeIssueShortId,
   normalizeSlug,
   parseIssueArg,
-  parseListTarget,
+  parseListTargetInput,
   parseOrgProjectArg,
   parseSlashSeparatedArg,
   rejectIssueCommandTokenListTarget,
@@ -1350,7 +1350,7 @@ describe("detectSwappedTrialArgs", () => {
   });
 });
 
-describe("parseListTarget", () => {
+describe("parseListTargetInput", () => {
   test.each([
     [undefined, { parsed: { type: "auto-detect" } }],
     ["my-org/", { parsed: { type: "org-all", org: "my-org" } }],
@@ -1378,11 +1378,16 @@ describe("parseListTarget", () => {
       { parsed: { type: "org-all", org: "my-org" }, filter: "web-*" },
     ],
   ] as const)("%j → %j", (target, expected) => {
-    expect(parseListTarget(target, { multi: true })).toEqual(expected);
+    expect(
+      parseListTargetInput(target, { names: true, multi: true }).target,
+    ).toEqual(expected);
   });
 
   test("a project list is still a list", () => {
-    expect(parseListTarget("my-org/web,api", { multi: true }).parsed).toEqual({
+    expect(
+      parseListTargetInput("my-org/web,api", { names: true, multi: true })
+        .target.parsed,
+    ).toEqual({
       type: "explicit",
       org: "my-org",
       project: "web",
@@ -1391,11 +1396,30 @@ describe("parseListTarget", () => {
   });
 
   test("a glob after a second slash is not a filter", () => {
-    expect(parseListTarget("my-org/proj/x*").filter).toBeUndefined();
+    expect(
+      parseListTargetInput("my-org/proj/x*", { names: true }).target.filter,
+    ).toBeUndefined();
   });
 
   test("the org of a filter is validated like any org slug", () => {
-    expect(() => parseListTarget("@latest/web-*")).toThrow(ValidationError);
+    expect(() =>
+      parseListTargetInput("@latest/web-*", { names: true }),
+    ).toThrow(ValidationError);
+  });
+
+  test("without names, a glob names a project", () => {
+    expect(parseListTargetInput("my-org/web-*").target).toEqual({
+      parsed: { type: "explicit", org: "my-org", project: "web-*" },
+    });
+  });
+
+  test("returns a pasted URL's server instead of applying it", () => {
+    expect(
+      parseListTargetInput("https://sentry.example.com/organizations/acme/"),
+    ).toEqual({
+      target: { parsed: { type: "org-all", org: "acme" } },
+      baseUrl: "https://sentry.example.com",
+    });
   });
 
   test("targets of other commands never parse as filters", () => {

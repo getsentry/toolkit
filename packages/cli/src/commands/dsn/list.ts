@@ -10,7 +10,7 @@ import {
   listOrganizationDsns,
   listProjectDsns,
 } from "../../lib/api/projects.js";
-import { parseOrgProjectArg, validateLimit } from "../../lib/arg-parsing.js";
+import { validateLimit } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildMultiTargetContextKey,
@@ -52,6 +52,7 @@ import {
   resolveProjectBoundTargets,
   resolveTargetSlugs,
 } from "../../lib/resolve-target.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 
 const PAGINATION_KEY = "dsn-list";
 const USAGE_HINT = "sentry dsn list <org>/<project>";
@@ -349,10 +350,14 @@ export const listCommand = buildListCommand("dsn", {
     },
     aliases: { n: "limit" },
   },
-  async *func(this: SentryContext, flags: BaseListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: BaseListFlags,
+    target: ListCommandTarget,
+  ) {
     const result: ListResult<DsnListItem> = await dispatchOrgScopedList({
       config: listConfig,
-      parsed: parseOrgProjectArg(target),
+      parsed: (await target.resolved).parsed,
       cwd: this.cwd,
       flags,
       allowCursorInModes: ["auto-detect", "explicit", "project-search"],

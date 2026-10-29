@@ -9,6 +9,10 @@
  * parser or resolver itself. An omitted target arrives as auto-detect. See
  * `positional-parse.ts` for when parsing and resolution run.
  *
+ * List commands use {@link listTarget} instead: `dispatchOrgScopedList`
+ * resolves each target mode its own way, so `target.resolved` only applies a
+ * pasted URL's server and yields the parsed target.
+ *
  * Resolution gets the command path from `commandPrefix`, which Stricli's
  * `forCommand` (and the SDK invoker) set on the context, so usage hints need
  * no hand-written command name. Destructive commands (`destructive: true`,
@@ -16,8 +20,14 @@
  * `func` runs.
  */
 
-import { type ParsedOrgProject, parseOrgProjectInput } from "./arg-parsing.js";
-import { ORG_PROJECT_TARGET } from "./completion-target.js";
+import {
+  type ListTarget,
+  type ListTargetOptions,
+  type ParsedOrgProject,
+  parseListTargetInput,
+  parseOrgProjectInput,
+} from "./arg-parsing.js";
+import { ORG_PROJECT_TARGET, type ORG_TARGET } from "./completion-target.js";
 import { requireExplicitTarget } from "./mutate-command.js";
 import { type BoundPositional, boundPositional } from "./positional-parse.js";
 import {
@@ -113,3 +123,35 @@ export type ProjectBoundTarget = OrgProjectTarget<ResolvedProjectBoundTarget>;
 export const projectBoundTarget = orgProjectTarget((parsed, context) =>
   resolveProjectBoundTarget(parsed, context.cwd, context.commandName),
 );
+
+/**
+ * The target of a list command. `target.parsed` is what to list and the name
+ * filter, if any; `await target.resolved` yields the same once a pasted
+ * Sentry URL's server is applied. List commands hand it to
+ * `dispatchOrgScopedList`, which resolves each target mode its own way.
+ */
+export type ListCommandTarget = BoundPositional<ListTarget, ListTarget>;
+
+/**
+ * Positional parser for a list command's `[<org>/][<project>]` target.
+ *
+ * @param kind - What shell completion suggests: org slugs only for
+ *   org-scoped resources, else orgs, projects, and aliases
+ */
+export function listTarget(
+  kind: typeof ORG_TARGET | typeof ORG_PROJECT_TARGET,
+  options: ListTargetOptions = {},
+): (this: unknown, input?: string) => ListCommandTarget {
+  return boundPositional(
+    kind,
+    (raw) => parseListTargetInput(raw, options).target,
+    async (target, _context: unknown, raw) => {
+      // Parsing again is cheap and pure; it recovers the URL's server
+      const { baseUrl } = parseListTargetInput(raw, options);
+      if (baseUrl) {
+        applySentryUrlContext(baseUrl);
+      }
+      return target;
+    },
+  );
+}

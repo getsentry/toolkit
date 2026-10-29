@@ -61,6 +61,7 @@ function readsProperty(node, object, property) {
  * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
  */
 const BOUND_TARGET_TYPES = new Set([
+  "ListCommandTarget",
   "OrgOptionalTarget",
   "OrgProjectTarget",
   "ProjectBoundTarget",

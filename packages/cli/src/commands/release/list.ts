@@ -13,10 +13,7 @@ import {
   listReleasesPaginated,
   type ReleaseSortValue,
 } from "../../lib/api-client.js";
-import {
-  type ParsedOrgProject,
-  parseOrgProjectArg,
-} from "../../lib/arg-parsing.js";
+import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -45,6 +42,7 @@ import {
   toNumericId,
 } from "../../lib/resolve-target.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 import type { SentryRelease } from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
 
@@ -711,9 +709,13 @@ export const listCommand = buildListCommand("release", {
     },
     aliases: { ...LIST_BASE_ALIASES, s: "sort", e: "environment", t: "period" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
-    const parsed = parseOrgProjectArg(target);
+    const { parsed } = await target.resolved;
     // Flatten: -e prod,dev -e staging → ["prod", "dev", "staging"]
     const envFilter = flags.environment
       ? [...flags.environment]

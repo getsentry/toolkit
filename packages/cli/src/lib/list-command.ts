@@ -19,13 +19,13 @@ import type { SentryContext } from "../context.js";
 
 const _require = createRequire(import.meta.url);
 
-import { parseListTarget, parseOrgProjectArg } from "./arg-parsing.js";
+import type { ListTargetOptions } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
   numberParser,
 } from "./command.js";
-import { parseOrgProjectTarget, parseOrgTarget } from "./completion-target.js";
+import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
 import { logger } from "./logger.js";
 
@@ -51,6 +51,7 @@ import {
   skippedArgument,
 } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
+import { type ListCommandTarget, listTarget } from "./target-positional.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
 
@@ -84,8 +85,8 @@ export const ORG_ALL_TARGET_BRIEF =
 
 /**
  * {@link ORG_ALL_TARGET_BRIEF} for list commands that also match names
- * (see {@link parseListTarget}): a glob filters names, and a name that is
- * no project matches names instead.
+ * (see {@link parseListTargetInput}): a glob filters names, and a name that
+ * is no project matches names instead.
  */
 export const NAMED_LIST_TARGET_BRIEF =
   "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)";
@@ -94,63 +95,53 @@ export const NAMED_LIST_TARGET_BRIEF =
 export const PROJECT_TARGET_BRIEF = "<org>/<project> or <project> (search)";
 
 /**
- * Positional `org/project` parameter shared by all list commands.
+ * Positional `org/project` parameter of a list command, parsed with
+ * {@link listTarget}: `func` gets a `ListCommandTarget` and passes
+ * `(await target.resolved)` to `dispatchOrgScopedList`.
  *
  * Accepts `<org>/`, `<org>/<project>`, or bare `<project>` (search).
  * Marked optional so the command falls back to auto-detection when omitted.
+ *
+ * @param options.orgScoped - For org-scoped resources (teams, repos,
+ *   releases, …): shell completion suggests org slugs only
+ * @param options.names - A glob filters names, and a name that is no
+ *   project matches names instead
  */
-export const LIST_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      placeholder: "org/project",
-      brief: ORG_ALL_TARGET_BRIEF,
-      parse: parseOrgProjectTarget,
-      optional: true as const,
-    },
-  ],
-};
+export function listTargetPositional(
+  options: ListTargetOptions & { readonly orgScoped?: boolean } = {},
+) {
+  const { orgScoped, ...parseOptions } = options;
+  return {
+    kind: "tuple" as const,
+    parameters: [
+      {
+        placeholder: "org/project",
+        brief: parseOptions.names
+          ? NAMED_LIST_TARGET_BRIEF
+          : ORG_ALL_TARGET_BRIEF,
+        parse: listTarget(
+          orgScoped ? ORG_TARGET : ORG_PROJECT_TARGET,
+          parseOptions,
+        ),
+        optional: true as const,
+      },
+    ],
+  };
+}
 
-/**
- * {@link LIST_TARGET_POSITIONAL} for org-scoped resources (teams, repos,
- * releases, …): same syntax, but shell completion suggests org slugs only.
- */
-export const LIST_ORG_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      placeholder: "org/project",
-      brief: ORG_ALL_TARGET_BRIEF,
-      parse: parseOrgTarget,
-      optional: true as const,
-    },
-  ],
-};
+/** {@link listTargetPositional} for most list commands. */
+export const LIST_TARGET_POSITIONAL = listTargetPositional();
 
-/**
- * {@link LIST_TARGET_POSITIONAL} for list commands whose target also
- * matches names; parse it with {@link parseListTarget}.
- */
-export const NAMED_LIST_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    { ...LIST_TARGET_POSITIONAL.parameters[0], brief: NAMED_LIST_TARGET_BRIEF },
-  ],
-};
+/** {@link listTargetPositional} for org-scoped resources. */
+export const LIST_ORG_TARGET_POSITIONAL = listTargetPositional({
+  orgScoped: true,
+});
 
-/**
- * {@link LIST_ORG_TARGET_POSITIONAL} for org-scoped resources whose target
- * also matches names; parse it with {@link parseListTarget}.
- */
-export const NAMED_LIST_ORG_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      ...LIST_ORG_TARGET_POSITIONAL.parameters[0],
-      brief: NAMED_LIST_TARGET_BRIEF,
-    },
-  ],
-};
+/** {@link listTargetPositional} for org-scoped resources matched by name. */
+export const NAMED_LIST_ORG_TARGET_POSITIONAL = listTargetPositional({
+  orgScoped: true,
+  names: true,
+});
 
 /**
  * Short note for commands that accept a bare project name but do not support
@@ -756,7 +747,7 @@ function formatListHuman<TEntity, TWithOrg>(
  * encapsulated in the shared org-list framework. The resulting command has:
  * - An optional positional `target` argument
  * - `--limit` / `-n`, `--json`, `--fields`, `--cursor` / `-c` flags
- * - A `func` that calls `parseOrgProjectArg` then `dispatchOrgScopedList`
+ * - A `func` that passes the resolved target to `dispatchOrgScopedList`
  *
  * Rendering is handled automatically via `OutputConfig`:
  * - JSON mode produces paginated envelopes or flat arrays
@@ -797,12 +788,10 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
         readonly fresh: boolean;
         readonly fields?: string[];
       },
-      rawTarget?: string,
+      target: ListCommandTarget,
     ) {
       const { cwd } = this;
-      const { parsed, filter } = config.namesOf
-        ? parseListTarget(rawTarget)
-        : { parsed: parseOrgProjectArg(rawTarget), filter: undefined };
+      const { parsed, filter } = await target.resolved;
       const result = await dispatchOrgScopedList({
         config,
         cwd,
