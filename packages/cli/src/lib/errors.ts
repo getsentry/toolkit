@@ -23,6 +23,7 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   buildBillingUrl,
@@ -845,11 +846,17 @@ export function formatError(error: unknown): string {
  * Get process exit code for an error.
  *
  * @param error - Any thrown value
- * @returns Exit code (from CliError.exitCode or 1 for other errors)
+ * @returns Exit code (from CliError.exitCode, Stricli's `InvalidArgument`
+ *   for an argument error the command wrapper threw, or 1 for other errors)
  */
 export function getExitCode(error: unknown): number {
   if (error instanceof CliError) {
     return error.exitCode;
+  }
+  // `boundArguments` positionals parse in the command wrapper, after
+  // Stricli's scanner; their errors exit like the scanner's
+  if (error instanceof ArgumentScannerError) {
+    return ExitCode.InvalidArgument;
   }
   return 1;
 }

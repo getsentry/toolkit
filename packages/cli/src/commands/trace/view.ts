@@ -14,14 +14,10 @@ import {
   getProject,
   type TraceItemDetail,
 } from "../../lib/api-client.js";
-import {
-  detectSwappedViewArgs,
-  looksLikeIssueShortId,
-  spansFlag,
-} from "../../lib/arg-parsing.js";
+import { looksLikeIssueShortId, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -44,12 +40,18 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import { resolveOrg, toNumericId } from "../../lib/resolve-target.js";
 import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import {
-  parseTraceTargetWithRecovery,
+  parseTraceArgumentsInput,
+  resolveTraceArguments,
   resolveTraceOrgOptionalProject,
+  type TraceArgumentsInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 import type { TraceSpan } from "../../types/index.js";
@@ -87,68 +89,71 @@ function buildViewHint(
 }
 
 /**
- * Detect UX issues in raw positional args before trace-target parsing.
+ * The arguments of `trace view`, parsed: an issue short ID to find the
+ * trace of, or the trace ID in the forms every ID-taking command takes
+ * (see `id-arguments.ts`), as typed until it resolves.
+ */
+export type TraceViewInput =
+  | { readonly issueShortId: string }
+  | {
+      readonly trace: TraceArgumentsInput;
+      /** Suggestion when the first argument looks like an issue short ID */
+      readonly suggestion?: string;
+    };
+
+/**
+ * Parse `trace view` arguments, without side effects.
  *
- * - **Single-arg issue short ID**: first arg looks like `CAM-82X` with no
- *   second arg → sets `issueShortId` for auto-recovery (resolve issue → trace).
- * - **Swapped args**: user typed `<trace-id> <org>/<project>` instead of
- *   `<org>/<project> <trace-id>`. If detected, swaps them silently and warns.
- * - **Two-arg issue short ID**: first arg looks like `CAM-82X` with a second
- *   arg → suggests `sentry issue view` (ambiguous intent, no auto-recovery).
- *
- * Returns corrected args and optional warnings to emit.
+ * - **Single-arg issue short ID**: `CAM-82X` alone is looked up as an issue
+ *   (resolve issue → trace).
+ * - **Two-arg issue short ID**: `CAM-82X` with a second argument suggests
+ *   `sentry issue view` (ambiguous intent, no lookup).
  *
  * @internal Exported for testing
  */
-export function preProcessArgs(args: string[]): {
-  correctedArgs: string[];
-  warning?: string;
-  suggestion?: string;
-  /** Issue short ID detected for auto-recovery (single-arg only) */
-  issueShortId?: string;
-} {
-  if (args.length === 0) {
-    return { correctedArgs: args };
+export function parseTraceViewInput(args: readonly string[]): TraceViewInput {
+  const [first] = args;
+  const shortId = first !== undefined && looksLikeIssueShortId(first);
+  if (shortId && args.length === 1) {
+    return { issueShortId: first };
   }
+  return {
+    trace: parseTraceArgumentsInput(args, USAGE_HINT),
+    ...(shortId && { suggestion: `Did you mean: sentry issue view ${first}` }),
+  };
+}
 
-  const first = args[0];
-  if (!first) {
-    return { correctedArgs: args };
+/** The arguments of `trace view`. */
+type TraceViewArguments = BoundArguments<TraceViewInput, ResolvedTrace>;
+
+/**
+ * Resolve `trace view` arguments to the trace and the org (and project) to
+ * fetch it from, recovering a malformed trace ID.
+ */
+async function resolveTraceViewInput(
+  input: TraceViewInput,
+  context: SentryContext,
+): Promise<ResolvedTrace> {
+  if ("issueShortId" in input) {
+    return await resolveTraceFromIssue(input.issueShortId, context.cwd);
   }
-
-  // Single-arg issue short ID → auto-recover by resolving issue → trace
-  if (args.length === 1 && looksLikeIssueShortId(first)) {
-    return {
-      correctedArgs: args,
-      issueShortId: first,
-    };
+  if (input.suggestion) {
+    logger.withTag("trace.view").warn(input.suggestion);
   }
-
-  if (args.length < 2) {
-    return { correctedArgs: args };
-  }
-
-  const second = args[1];
-  if (!second) {
-    return { correctedArgs: args };
-  }
-
-  // Detect swapped args: user put ID first and target second
-  const swapWarning = detectSwappedViewArgs(first, second);
-  if (swapWarning) {
-    // Swap them: put target first, trace ID second
-    return {
-      correctedArgs: [second, first, ...args.slice(2)],
-      warning: swapWarning,
-    };
-  }
-
-  // Detect issue short ID passed as first arg (two-arg case — ambiguous)
-  const suggestion = looksLikeIssueShortId(first)
-    ? `Did you mean: sentry issue view ${first}`
-    : undefined;
-
-  return { correctedArgs: args, suggestion };
+  const parsed = await resolveTraceArguments(input.trace);
+  warnIfNormalized(parsed, "trace.view");
+  const target = await resolveTraceOrgOptionalProject(
+    parsed,
+    context.cwd,
+    USAGE_HINT,
+  );
+  return {
+    ...target,
+    projectFilter:
+      parsed.type === "explicit"
+        ? (target as { project?: string }).project
+        : undefined,
+  };
 }
 
 /**
@@ -492,15 +497,14 @@ export const viewCommand = buildCommand({
     jsonTransform: jsonTransformTraceView,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/trace-id",
-        brief:
-          "[<org>/<project>/]<trace-id> - Target (optional) and trace ID (required)",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/trace-id",
+      brief:
+        "[<org>/<project>/]<trace-id> - Target (optional) and trace ID (required)",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseTraceViewInput,
+      resolve: resolveTraceViewInput,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -517,44 +521,13 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: TraceViewArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-    const log = logger.withTag("trace.view");
-
-    // Pre-process: detect swapped args and issue short IDs
-    const { correctedArgs, warning, suggestion, issueShortId } =
-      preProcessArgs(args);
-    if (warning) {
-      log.warn(warning);
-    }
-    if (suggestion) {
-      log.warn(suggestion);
-    }
-
-    let resolved: ResolvedTrace;
-    if (issueShortId) {
-      resolved = await resolveTraceFromIssue(issueShortId, cwd);
-    } else {
-      const parsed = await parseTraceTargetWithRecovery(
-        correctedArgs,
-        USAGE_HINT,
-      );
-      warnIfNormalized(parsed, "trace.view");
-      const target = await resolveTraceOrgOptionalProject(
-        parsed,
-        cwd,
-        USAGE_HINT,
-      );
-      resolved = {
-        ...target,
-        projectFilter:
-          parsed.type === "explicit"
-            ? (target as { project?: string }).project
-            : undefined,
-      };
-    }
-    const { traceId, org, project, projectFilter } = resolved;
+    const { traceId, org, project, projectFilter } = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(buildTraceUrl(org, traceId), "trace");

@@ -1,5 +1,6 @@
 import {
   type ApplicationText,
+  ArgumentScannerError,
   buildApplication,
   text_en,
   UnexpectedPositionalError,
@@ -400,6 +401,12 @@ const customText: ApplicationText = {
     return base;
   },
   exceptionWhileRunningCommand: (exc: unknown, ansiColor: boolean): string => {
+    // `boundArguments` positionals parse in the command wrapper, after
+    // Stricli's scanner; their errors still read as argument errors
+    if (exc instanceof ArgumentScannerError) {
+      return customText.exceptionWhileParsingArguments(exc, ansiColor);
+    }
+
     // These errors are handled outside Stricli: OutputError has already been
     // rendered, while auth errors may trigger login and a single retry.
     if (escapesToOuterMiddleware(exc)) {

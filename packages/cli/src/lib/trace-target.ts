@@ -1,28 +1,32 @@
 /**
  * Shared Trace-Target Parsing & Resolution
  *
- * Provides a unified abstraction for commands that accept trace IDs
- * with optional org/project context. Trace IDs are globally unique,
- * so these formats are all supported:
+ * Trace commands take their trace ID like every ID-taking command (see
+ * `id-arguments.ts`): `<trace-id>`, `<org>/<trace-id>`,
+ * `<org>/<project>/<trace-id>`, `<target> <trace-id>`, or a trace URL.
+ * This module turns that into a {@link ParsedTraceTarget} and resolves it
+ * to the org (and project) the command's API needs.
  *
- * - `<trace-id>` — auto-detect org/project from DSN/config
- * - `<org>/<trace-id>` — org-scoped (for org-only APIs like trace-logs)
- * - `<org>/<project>/<trace-id>` — fully explicit
- *
- * Also handles two-arg forms:
- * - `<org>/<project> <trace-id>` — target as first arg, trace ID as second
- * - `<project> <trace-id>` — project-first bare target with org fallback
- *
- * Used by: span list, span view, trace view, trace logs.
+ * Used by: span list, span view, trace view, trace logs, log list.
  */
 
-import { normalizeSlug, parseOrgProjectArg } from "./arg-parsing.js";
+import {
+  type ParsedOrgProject,
+  parseOrgProjectArg,
+  parseOrgProjectInput,
+} from "./arg-parsing.js";
 import { ContextError, ValidationError } from "./errors.js";
 import {
   handleRecoveryResult,
   recoverHexId,
   resolveRecoveryOrg,
 } from "./hex-id-recovery.js";
+import {
+  ID_KINDS,
+  type IdArguments,
+  parseIdArgument,
+  parseIdArguments,
+} from "./id-arguments.js";
 import { logger } from "./logger.js";
 import {
   guideOrgProjectFailure,
@@ -32,9 +36,8 @@ import {
   resolveOrgOptionalTarget,
   resolveProjectBoundTarget,
 } from "./resolve-target.js";
-import { applySentryUrlContext, parseSentryUrl } from "./sentry-url-parser.js";
+import { applySentryUrlContext } from "./sentry-url-parser.js";
 import { setOrgProjectContext } from "./telemetry.js";
-import { isTraceId, validateTraceId } from "./trace-id.js";
 
 const log = logger.withTag("trace-target");
 
@@ -86,6 +89,30 @@ export type ParsedTraceTarget =
       traceId: string;
     };
 
+/**
+ * A {@link ParsedTraceTarget} parsed without side effects, plus what the
+ * caller applies when it runs: the server of a pasted Sentry URL (for
+ * `applySentryUrlContext`) and warnings to log.
+ */
+export type TraceTargetInput = {
+  readonly parsed: ParsedTraceTarget;
+  readonly baseUrl?: string;
+  readonly warnings: readonly string[];
+};
+
+/** Apply what parsing a trace target deferred, and return the target. */
+export function applyTraceTargetInput(
+  input: TraceTargetInput,
+): ParsedTraceTarget {
+  if (input.baseUrl) {
+    applySentryUrlContext(input.baseUrl);
+  }
+  for (const warning of input.warnings) {
+    log.warn(warning);
+  }
+  return input.parsed;
+}
+
 /** Resolved trace target with both org and project. */
 export type ResolvedTraceOrgProject = {
   traceId: string;
@@ -106,17 +133,10 @@ export type ResolvedTraceOrg = {
 /**
  * Parse trace-related positional arguments into a {@link ParsedTraceTarget}.
  *
- * **Single argument (slash-separated):**
- * - `<trace-id>` → auto-detect
- * - `<org>/<trace-id>` → org-scoped
- * - `<org>/<project>/<trace-id>` → explicit
- *
- * **Two arguments (space-separated):**
- * - `<org>/<project> <trace-id>` → explicit
- * - `<target> <trace-id>` → project-first bare target with org fallback
- *
- * Extra positional arguments beyond the first two are ignored with a
- * warning, matching the established pattern across CLI commands.
+ * Takes the forms every ID-taking command does (see `id-arguments.ts`):
+ * `<trace-id>`, `<org>/<trace-id>`, `<org>/<project>/<trace-id>`,
+ * `<target> <trace-id>`, `<trace-id> <target>`, or a trace URL. Extra
+ * arguments are ignored with a warning.
  *
  * @param args - Positional arguments from CLI
  * @param usageHint - Usage example for error messages
@@ -125,177 +145,62 @@ export type ResolvedTraceOrg = {
  * @throws {ValidationError} If the trace ID format is invalid
  */
 export function parseTraceTarget(
-  args: string[],
+  args: readonly string[],
   usageHint: string,
+  options: TraceArgumentsOptions = {},
 ): ParsedTraceTarget {
-  if (args.length === 0) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  const first = args[0];
-  if (first === undefined) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  // Sentry trace URLs (often copy-pasted with a trailing slash) carry the
-  // trace ID and org in the path; slash-splitting them yields an empty or
-  // bogus trace ID segment (CLI-13F).
-  const urlTarget = traceTargetFromUrl(first);
-  if (urlTarget) {
-    return urlTarget;
-  }
-
-  // Warn about extra positional args that will be ignored
-  if (args.length > 2) {
-    log.warn(
-      `Extra arguments ignored: ${args.slice(2).join(" ")}. Expected: ${usageHint}`,
-    );
-  }
-
-  if (args.length === 1) {
-    return parseSlashSeparatedTraceTarget(first, usageHint);
-  }
-
-  // Two+ args: first is target context, second is trace ID
-  const second = args[1];
-  if (second === undefined) {
-    return parseSlashSeparatedTraceTarget(first, usageHint);
-  }
-
-  const traceId = validateTraceId(second);
-  return targetArgToTraceTarget(first, traceId);
+  return applyTraceTargetInput(parseTraceTargetInput(args, usageHint, options));
 }
 
-/**
- * Build a trace target from a Sentry trace detail URL.
- *
- * Returns `null` when the input is not a Sentry URL or the URL has no trace
- * ID. Side effect: configures `SENTRY_URL` for self-hosted hosts via
- * {@link applySentryUrlContext} (throws `HostScopeError` for untrusted hosts).
- *
- * @internal Exported for testing
- */
-export function traceTargetFromUrl(input: string): ParsedTraceTarget | null {
-  const urlParsed = parseSentryUrl(input.trim());
-  if (!urlParsed?.traceId) {
-    return null;
-  }
-  applySentryUrlContext(urlParsed.baseUrl);
-  const traceId = validateTraceId(urlParsed.traceId);
-  if (urlParsed.org) {
-    return { type: "org-scoped", traceId, org: urlParsed.org };
-  }
-  return { type: "auto-detect", traceId };
-}
+/** How a trace command takes its trace ID. */
+export type TraceArgumentsOptions = {
+  /**
+   * Whether the command needs a project (`span list`, `span view`): then
+   * `<x>/<trace-id>` names project `<x>` instead of org `<x>`.
+   */
+  readonly needsProject?: boolean;
+};
 
 /**
- * Remove trailing `/` characters when the segment before them is a trace ID,
- * so `org/project/<trace-id>/` splits the same as `org/project/<trace-id>`.
- *
- * Inputs like `org/project/` are left untouched: the trailing slash there
- * means the trace ID was omitted, which must stay a "Trace ID is required"
- * error rather than being misread as `org/<trace-id=project>`.
- *
- * @internal Exported for testing
+ * Parse trace-related positional arguments like {@link parseTraceTarget},
+ * without side effects: the server of a pasted Sentry URL and the warnings
+ * are returned for the caller to apply.
  */
-export function stripTrailingSlashesAfterTraceId(input: string): string {
-  let end = input.length;
-  while (end > 0 && input[end - 1] === "/") {
-    end -= 1;
-  }
-  if (end === input.length) {
-    return input;
-  }
-  const stripped = input.slice(0, end);
-  const tail = stripped.slice(stripped.lastIndexOf("/") + 1);
-  return isTraceId(tail) ? stripped : input;
-}
-
-/**
- * Parse a single slash-separated argument into a trace target.
- *
- * - No slashes → auto-detect (bare trace ID)
- * - One slash → `<org>/<trace-id>` (org-scoped)
- * - Two+ slashes → split on last `/` → `<org>/<project>/<trace-id>` (explicit)
- *
- * @internal Exported for testing
- */
-export function parseSlashSeparatedTraceTarget(
-  rawInput: string,
+export function parseTraceTargetInput(
+  args: readonly string[],
   usageHint: string,
-): ParsedTraceTarget {
-  const input = stripTrailingSlashesAfterTraceId(rawInput);
-  const lastSlash = input.lastIndexOf("/");
+  options: TraceArgumentsOptions = {},
+): TraceTargetInput {
+  const { id, ...rest } = parseIdArgument(args, ID_KINDS.trace, {
+    usageHint,
+    ...options,
+  });
+  return traceTargetInput({ ...rest, ids: [id] });
+}
 
-  if (lastSlash === -1) {
-    // No slashes — bare trace ID
-    return { type: "auto-detect", traceId: validateTraceId(input) };
-  }
-
-  const prefix = input.slice(0, lastSlash);
-  const rawTraceId = input.slice(lastSlash + 1);
-
-  if (!rawTraceId) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  const traceId = validateTraceId(rawTraceId);
-
-  if (!prefix) {
-    // "/<trace-id>" — leading slash, treat as auto-detect
-    return { type: "auto-detect", traceId };
-  }
-
-  const innerSlash = prefix.indexOf("/");
-
-  if (innerSlash === -1) {
-    // "org/<trace-id>" — org-scoped
-    const ns = normalizeSlug(prefix);
-    return {
-      type: "org-scoped",
-      traceId,
-      org: ns.slug,
-      ...(ns.normalized && { normalized: true }),
-    };
-  }
-
-  // "org/project/<trace-id>" — explicit
-  const rawOrg = prefix.slice(0, innerSlash);
-  const rawProject = prefix.slice(innerSlash + 1);
-
-  if (!(rawOrg && rawProject)) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  const no = normalizeSlug(rawOrg);
-  const np = normalizeSlug(rawProject);
-  const normalized = no.normalized || np.normalized;
-
+/**
+ * Turn {@link IdArguments} with one trace ID into a trace target. The target
+ * parses like any org/project target.
+ */
+function traceTargetInput({
+  target,
+  ids,
+  baseUrl,
+  warnings,
+}: IdArguments): TraceTargetInput {
+  const traceId = ids[0] ?? "";
+  const input = parseOrgProjectInput(target);
   return {
-    type: "explicit",
-    traceId,
-    org: no.slug,
-    project: np.slug,
-    ...(normalized && { normalized: true }),
+    parsed: orgProjectToTraceTarget(input.parsed, traceId),
+    baseUrl: baseUrl ?? input.baseUrl,
+    warnings,
   };
 }
 
-/**
- * Convert a target argument + validated trace ID into a trace target.
- * Delegates org/project parsing to {@link parseOrgProjectArg}.
- *
- * Note: `parseOrgProjectArg` already emits slug normalization warnings
- * internally, so `normalized` is NOT propagated here to avoid double
- * warnings when callers also check via {@link warnIfNormalized}.
- *
- * @internal Exported for testing
- */
-export function targetArgToTraceTarget(
-  targetArg: string,
+function orgProjectToTraceTarget(
+  parsed: ParsedOrgProject,
   traceId: string,
 ): ParsedTraceTarget {
-  const parsed = parseOrgProjectArg(targetArg);
-
   switch (parsed.type) {
     case "explicit":
       return {
@@ -335,52 +240,44 @@ export function targetArgToTraceTarget(
 }
 
 /**
- * Extract the raw trace ID slot from a positional-arg invocation **without
- * validating** it. Returns `{ rawTraceId, targetArg? }` where:
- *
- * - Single arg → the part after the last `/` is the trace ID candidate,
- *   and anything before the last `/` is the target (org/project[/]).
- * - Two+ args → the second arg is the raw trace ID, the first is the target.
- *
- * Used by {@link parseTraceTargetWithRecovery} to peek at the raw input
- * before `parseTraceTarget` runs its strict validation. Returns null when
- * there isn't a usable trace ID slot (e.g., zero args).
+ * Trace arguments parsed like {@link parseTraceTargetInput}, but with the
+ * trace ID as typed: {@link resolveTraceArguments} validates it, or
+ * recovers a malformed one, when the command runs.
  */
-export function extractRawTraceId(
-  args: string[],
-): { rawTraceId: string; targetArg?: string } | null {
-  if (args.length === 0) {
-    return null;
-  }
-  if (args.length === 1) {
-    const rawFirst = args[0];
-    if (!rawFirst) {
-      return null;
-    }
-    const first = stripTrailingSlashesAfterTraceId(rawFirst);
-    const lastSlash = first.lastIndexOf("/");
-    if (lastSlash === -1) {
-      return { rawTraceId: first };
-    }
-    const rawTraceId = first.slice(lastSlash + 1);
-    const prefix = first.slice(0, lastSlash);
-    return rawTraceId
-      ? { rawTraceId, targetArg: prefix || undefined }
-      : { rawTraceId: "" };
-  }
-  const second = args[1];
-  const first = args[0];
-  if (second === undefined) {
-    return null;
-  }
-  return { rawTraceId: second, targetArg: first };
+export type TraceArgumentsInput = TraceTargetInput & {
+  /** The target argument as typed, for the recovery lookup */
+  readonly targetArg?: string;
+};
+
+/**
+ * Parse trace arguments without side effects and without validating the
+ * trace ID, so a malformed one can be recovered once the command runs.
+ *
+ * @throws {ContextError} When the trace ID is missing
+ * @throws {ValidationError} When the target is invalid
+ */
+export function parseTraceArgumentsInput(
+  args: readonly string[],
+  usageHint: string,
+  options: TraceArgumentsOptions = {},
+): TraceArgumentsInput {
+  const { id, ...rest } = parseIdArgument(args, ID_KINDS.trace, {
+    usageHint,
+    ...options,
+    validate: false,
+  });
+  return {
+    ...traceTargetInput({ ...rest, ids: [id] }),
+    targetArg: rest.target,
+  };
 }
 
 /**
- * Parse trace-target args, falling back to {@link recoverHexId} on an
- * invalid trace ID. Returns a {@link ParsedTraceTarget} with a validated
- * or recovered trace ID, or throws the original {@link ValidationError}
- * when recovery can't proceed.
+ * Apply what {@link parseTraceArgumentsInput} deferred and validate the
+ * trace ID, falling back to {@link recoverHexId} on an invalid one.
+ * Returns a {@link ParsedTraceTarget} with a validated or recovered trace
+ * ID, or throws the original {@link ValidationError} when recovery can't
+ * proceed.
  *
  * The recovery path runs the cheap classifications (sentinel, slug, etc.)
  * locally regardless of context. Fuzzy prefix lookup additionally requires
@@ -388,30 +285,39 @@ export function extractRawTraceId(
  * NOT attempt DSN/config auto-detection during recovery (it's expensive
  * and the adapter returns empty without a project anyway).
  */
-export async function parseTraceTargetWithRecovery(
-  args: string[],
-  usageHint: string,
+export async function resolveTraceArguments(
+  input: TraceArgumentsInput,
 ): Promise<ParsedTraceTarget> {
+  const parsed = applyTraceTargetInput(input);
   try {
-    return parseTraceTarget(args, usageHint);
+    return { ...parsed, traceId: ID_KINDS.trace.validate(parsed.traceId) };
   } catch (err) {
     if (!(err instanceof ValidationError)) {
       throw err;
     }
-    const raw = extractRawTraceId(args);
-    if (!raw?.rawTraceId) {
-      throw err;
-    }
-    const ctx = await recoveryContextFromTargetArg(raw.targetArg);
-    const result = await recoverHexId(raw.rawTraceId, "trace", ctx);
-    const recoveredTraceId = handleRecoveryResult(result, err, {
-      entityType: "trace",
-      canonicalCommand: `sentry trace view ${ctx.org || "<org>"}/${ctx.project ?? "<project>"}/<id>`,
-      logTag: "trace-target",
-    });
-    const newArgs = substituteTraceId(args, recoveredTraceId);
-    return parseTraceTarget(newArgs, usageHint);
+    const traceId = await recoverTraceId(parsed.traceId, input.targetArg, err);
+    return { ...parsed, traceId };
   }
+}
+
+/**
+ * Recover a malformed trace ID with {@link recoverHexId}, in the context of
+ * the target argument, if any.
+ *
+ * @throws The original `failure` when recovery finds nothing
+ */
+async function recoverTraceId(
+  rawTraceId: string,
+  targetArg: string | undefined,
+  failure: ValidationError,
+): Promise<string> {
+  const ctx = await recoveryContextFromTargetArg(targetArg);
+  const result = await recoverHexId(rawTraceId, "trace", ctx);
+  return handleRecoveryResult(result, failure, {
+    entityType: "trace",
+    canonicalCommand: `sentry trace view ${ctx.org || "<org>"}/${ctx.project ?? "<project>"}/<id>`,
+    logTag: "trace-target",
+  });
 }
 
 /**
@@ -442,26 +348,6 @@ async function recoveryContextFromTargetArg(
       project: undefined,
     }
   );
-}
-
-/**
- * Rebuild the positional args with the recovered trace ID in the correct
- * slot. Mirrors the logic in {@link extractRawTraceId}.
- */
-function substituteTraceId(args: string[], recoveredTraceId: string): string[] {
-  if (args.length === 1) {
-    const first = args[0];
-    if (!first) {
-      return [recoveredTraceId];
-    }
-    const lastSlash = first.lastIndexOf("/");
-    if (lastSlash === -1) {
-      return [recoveredTraceId];
-    }
-    const prefix = first.slice(0, lastSlash);
-    return [`${prefix}/${recoveredTraceId}`];
-  }
-  return [args[0] ?? "", recoveredTraceId, ...args.slice(2)];
 }
 
 /**
@@ -666,63 +552,49 @@ export type ParsedDualModeArgs =
 /**
  * Disambiguate positional arguments for dual-mode list commands.
  *
- * Detects trace mode by checking whether any argument segment looks like
- * a 32-char hex trace ID via {@link isTraceId}:
- *
- * - **No args**: project mode (auto-detect org/project)
- * - **Two+ args**: checks the last positional. If it's a trace ID → trace
- *   mode (space-separated form like `<project> <trace-id>`).
- * - **Single arg**: checks the tail segment (last part after `/`). If it
- *   looks like a trace ID → trace mode. Otherwise → project target.
- *
- * When trace mode is detected, delegates to {@link parseTraceTarget} for
- * full parsing and validation.
+ * Trace mode when the arguments name a trace ID in any of the forms
+ * {@link parseTraceTarget} takes; otherwise project mode, with the first
+ * argument as the target.
  *
  * @param args - Positional arguments from CLI
  * @param traceUsageHint - Usage hint for trace-mode error messages
  * @returns Parsed args with mode discrimination
  */
 export function parseDualModeArgs(
-  args: string[],
+  args: readonly string[],
   traceUsageHint: string,
+  options: TraceArgumentsOptions = {},
 ): ParsedDualModeArgs {
-  if (args.length === 0) {
-    return { mode: "project" };
-  }
+  const input = parseDualModeInput(args, traceUsageHint, options);
+  return input.mode === "trace"
+    ? { mode: "trace", parsed: applyTraceTargetInput(input.trace) }
+    : input;
+}
 
-  const first = args[0];
-  if (first === undefined) {
-    return { mode: "project" };
-  }
+/** {@link ParsedDualModeArgs} parsed without side effects. */
+export type DualModeInput =
+  | { mode: "project"; target?: string }
+  | { mode: "trace"; trace: TraceTargetInput };
 
-  // Two+ args: check if the last arg is a trace ID (space-separated form)
-  if (args.length >= 2) {
-    const last = args.at(-1);
-    if (last && isTraceId(last)) {
-      return {
-        mode: "trace",
-        parsed: parseTraceTarget(args, traceUsageHint),
-      };
-    }
+/**
+ * Disambiguate dual-mode arguments like {@link parseDualModeArgs}, without
+ * side effects: trace mode returns a {@link TraceTargetInput} for the caller
+ * to apply.
+ */
+export function parseDualModeInput(
+  args: readonly string[],
+  traceUsageHint: string,
+  options: TraceArgumentsOptions = {},
+): DualModeInput {
+  const input = parseIdArguments(args, ID_KINDS.trace, {
+    ...options,
+    usageHint: traceUsageHint,
+    optional: true,
+  });
+  if (input.ids.length > 0) {
+    return { mode: "trace", trace: traceTargetInput(input) };
   }
-
-  // Trace detail URL → trace mode (the URL itself carries the trace ID)
-  const urlTarget = traceTargetFromUrl(first);
-  if (urlTarget) {
-    return { mode: "trace", parsed: urlTarget };
-  }
-
-  // Single arg: check the tail segment (last part after "/", or entire arg)
-  const stripped = stripTrailingSlashesAfterTraceId(first);
-  const lastSlash = stripped.lastIndexOf("/");
-  const tail = lastSlash === -1 ? stripped : stripped.slice(lastSlash + 1);
-  if (isTraceId(tail)) {
-    return {
-      mode: "trace",
-      parsed: parseTraceTarget(args, traceUsageHint),
-    };
-  }
-
-  // Not a trace ID → treat as project target
-  return { mode: "project", target: first };
+  return input.target === undefined
+    ? { mode: "project" }
+    : { mode: "project", target: input.target };
 }

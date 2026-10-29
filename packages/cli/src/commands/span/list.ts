@@ -197,7 +197,7 @@ export function parseSort(value: string): SpanSortValue {
 export function parseSpanListArgs(
   args: string[],
 ): ReturnType<typeof parseDualModeArgs> {
-  return parseDualModeArgs(args, TRACE_USAGE_HINT);
+  return parseDualModeArgs(args, TRACE_USAGE_HINT, { needsProject: true });
 }
 
 // ---------------------------------------------------------------------------

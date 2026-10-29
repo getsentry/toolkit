@@ -124,6 +124,42 @@ tester.run("no-silent-catch", plugin.rules["no-silent-catch"], {
   ],
 });
 
+tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
+  valid: [
+    {
+      filename: commands,
+      code: "import { HEX_ID_RE } from './hex-id.js'; parseIdArguments(args, ID_KINDS.trace, options);",
+    },
+    {
+      // Issue and event IDs keep their own syntax
+      filename: "/repo/packages/cli/src/commands/event/view.ts",
+      code: "parseSlashSeparatedArg(arg, label, hint);",
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/id-arguments.ts",
+      code: "parseIdArguments(args, kind, options);",
+    },
+  ],
+  invalid: [
+    {
+      filename: commands,
+      code: "parseSlashSeparatedArg(arg, label, hint);",
+      errors: 1,
+    },
+    {
+      filename: commands,
+      code: "const swapped = detectSwappedViewArgs(first, second);",
+      errors: 1,
+    },
+    { filename: commands, code: "HEX_ID_RE.test(value);", errors: 1 },
+    {
+      filename: source,
+      code: "parseIdArguments(args, { label: 'Thing ID', isId }, options);",
+      errors: 1,
+    },
+  ],
+});
+
 tester.run("no-raw-metadata-queries", plugin.rules["no-raw-metadata-queries"], {
   valid: [
     {

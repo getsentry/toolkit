@@ -24,8 +24,15 @@
  * always gets a {@link BoundPositional}. Shared code that handles any
  * positional (plural alias interception, `help` recovery, telemetry) reads
  * the raw input with {@link rawPositional}.
+ *
+ * {@link boundArguments} does the same for positionals whose meaning depends
+ * on how many arguments were given, such as `[<org>/<project>] <id>`. A
+ * Stricli parser sees one argument at a time, so `buildCommand` parses all
+ * of them at once before `func` runs and hands `func` one
+ * {@link BoundArguments}.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import {
   type CompletionTarget,
   withCompletionTarget,
@@ -38,23 +45,42 @@ const destructiveChecks = new WeakMap<object, () => void>();
 const boundParsers = new WeakSet<object>();
 
 /**
+ * Parses every argument of a {@link boundArguments} positional at once, into
+ * a {@link BoundArguments}.
+ */
+type ArgumentsParser = (this: unknown, raw: readonly string[]) => object;
+
+/** Whole-argument parsers of {@link boundArguments} positionals. */
+const argumentParsers = new WeakMap<object, ArgumentsParser>();
+
+/** Leading arguments {@link skipLeadingArgument} left out, by bound value. */
+const skippedArguments = new WeakMap<object, string>();
+
+/**
+ * Whether the user typed `help` (or a mistyped help flag) as an argument,
+ * which `buildCommand` answers with the command's help.
+ */
+export function isHelpArgument(raw: unknown): boolean {
+  return raw === "help" || raw === "--h" || raw === "-help";
+}
+
+/**
  * A parsed positional value bound to its resolver, which runs once, on the
  * first `resolved` read.
  */
-export class BoundPositional<T, R> {
+export class BoundPositional<T, R, RAW = string | undefined> {
   #resolved: Promise<R> | undefined;
   readonly #resolve: (value: T) => Promise<R>;
 
-  /** What the user typed; `undefined` for an omitted positional. */
-  readonly raw: string | undefined;
+  /**
+   * What the user typed; `undefined` for an omitted positional, every
+   * argument for {@link boundArguments}.
+   */
+  readonly raw: RAW;
   /** The parsed value. */
   readonly parsed: T;
 
-  constructor(
-    raw: string | undefined,
-    parsed: T,
-    resolve: (value: T) => Promise<R>,
-  ) {
+  constructor(raw: RAW, parsed: T, resolve: (value: T) => Promise<R>) {
     this.raw = raw;
     this.parsed = parsed;
     this.#resolve = resolve;
@@ -97,6 +123,109 @@ export function boundPositional<T, R, C>(
   return parser;
 }
 
+/** Every argument of a {@link boundArguments} positional, parsed and bound. */
+export type BoundArguments<T, R> = BoundPositional<T, R, readonly string[]>;
+
+/**
+ * Build an array positional whose arguments parse as a whole, for syntaxes
+ * where what an argument means depends on how many were given (e.g.
+ * `[<org>/<project>] <id>`, or a trailing trace ID). `func` gets one
+ * {@link BoundArguments} instead of `...args: string[]`.
+ *
+ * Stricli only tags each argument for completion as `kind`. `buildCommand`
+ * then parses them all before `func` runs. A parse error becomes Stricli's
+ * {@link ArgumentParseError}, which fails like any other argument (exit 252),
+ * unless an argument is `help`: then it turns into the command's help.
+ *
+ * @param options.parse - Parses all the arguments, possibly none; may
+ *   throw. Must have no side effects
+ * @param options.resolve - Resolves the parsed value; gets the command
+ *   context and the raw arguments
+ */
+export function boundArguments<T, R, C>(options: {
+  readonly placeholder: string;
+  readonly brief: string;
+  readonly kind: CompletionTarget;
+  readonly parse: (raw: readonly string[]) => T;
+  readonly resolve: (
+    value: T,
+    context: C,
+    raw: readonly string[],
+  ) => Promise<R>;
+}): {
+  readonly kind: "array";
+  readonly parameter: {
+    readonly placeholder: string;
+    readonly brief: string;
+    readonly parse: (input: string) => string;
+  };
+} {
+  const positional = {
+    kind: "array",
+    parameter: {
+      placeholder: options.placeholder,
+      brief: options.brief,
+      parse: withCompletionTarget(options.kind, (input: string) => input),
+    },
+  } as const;
+  argumentParsers.set(positional, function (this: unknown, values) {
+    const raw = [...values];
+    let parsed: T;
+    try {
+      parsed = options.parse(raw);
+    } catch (error) {
+      throw new ArgumentParseError(
+        options.placeholder as ConstructorParameters<
+          typeof ArgumentParseError
+        >[0],
+        raw.join(" "),
+        error,
+      );
+    }
+    return new BoundPositional(raw, parsed, (value: T) =>
+      options.resolve(value, this as C, raw),
+    );
+  });
+  return positional;
+}
+
+/**
+ * Wrap a {@link boundArguments} positional so a leading argument that
+ * `skip` matches is left out before the arguments are parsed;
+ * {@link skippedArgument} returns it. Other positionals are returned as
+ * they are.
+ */
+export function skipLeadingArgument<P>(
+  positional: P,
+  skip: (arg: string) => boolean,
+): P {
+  const parseAll =
+    typeof positional === "object" && positional !== null
+      ? argumentParsers.get(positional as object)
+      : undefined;
+  if (!parseAll) {
+    return positional;
+  }
+  const skipping = { ...(positional as object) } as P & object;
+  argumentParsers.set(skipping, function (this: unknown, values) {
+    const [first, ...rest] = values;
+    if (first === undefined || !skip(first)) {
+      return parseAll.call(this, values);
+    }
+    const bound = parseAll.call(this, rest);
+    skippedArguments.set(bound, first);
+    return bound;
+  });
+  return skipping;
+}
+
+/** The argument {@link skipLeadingArgument} left out of `value`, if any. */
+export function skippedArgument(value: unknown): string | undefined {
+  return value instanceof BoundPositional
+    ? skippedArguments.get(value)
+    : undefined;
+}
+
 /** A Stricli positional definition — the subset that carries the parsers. */
 type PositionalDef =
   | { kind: "tuple"; parameters: readonly { parse?: unknown }[] }
@@ -115,15 +244,19 @@ function boundParserAt(
 }
 
 /**
- * Give every {@link boundPositional} positional its value.
+ * Give every {@link boundPositional} positional its value, and parse the
+ * arguments of a {@link boundArguments} positional into one
+ * {@link BoundArguments}.
  *
- * Stricli already ran the parsers for typed input. This covers callers that
- * skip its scanner (the SDK invoke path, tests calling the loaded func),
- * which pass raw strings, and omitted optional positionals, which Stricli
- * leaves `undefined`. Other positionals are left as they are.
+ * Stricli already ran the {@link boundPositional} parsers for typed input.
+ * This covers callers that skip its scanner (the SDK invoke path, tests
+ * calling the loaded func), which pass raw strings, and omitted optional
+ * positionals, which Stricli leaves `undefined`. Other positionals are left
+ * as they are.
  *
  * @param context - Passed to each parser as `this`, as Stricli does
- * @throws The parser's error for an invalid raw string
+ * @throws The parser's error for an invalid raw string, or an
+ *   {@link ArgumentParseError} for {@link boundArguments}
  */
 export function applyBoundPositionals(
   args: readonly unknown[],
@@ -133,6 +266,14 @@ export function applyBoundPositionals(
   const def = positional as PositionalDef | undefined;
   if (!def) {
     return [...args];
+  }
+  const parseAll = argumentParsers.get(def);
+  if (parseAll) {
+    // Already parsed when a wrapper applies them again
+    if (args.length === 1 && args[0] instanceof BoundPositional) {
+      return [...args];
+    }
+    return [parseAll.call(context, args as readonly string[])];
   }
   const count =
     def.kind === "tuple"
@@ -165,7 +306,8 @@ export function checkDestructive(args: readonly unknown[]): void {
 /**
  * What the user typed for a positional value.
  *
- * @returns `value.raw` for a {@link BoundPositional}, otherwise `value`
+ * @returns `value.raw` for a {@link BoundPositional} (every argument for
+ *   {@link BoundArguments}), otherwise `value`
  */
 export function rawPositional(value: unknown): unknown {
   return value instanceof BoundPositional ? value.raw : value;

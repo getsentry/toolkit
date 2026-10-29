@@ -56,11 +56,20 @@ function readsProperty(node, object, property) {
   );
 }
 
-/** Target positional types from `src/lib/target-positional.ts`. */
+/**
+ * Target positional types from `src/lib/target-positional.ts`, and
+ * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
+ */
 const BOUND_TARGET_TYPES = new Set([
   "OrgOptionalTarget",
   "OrgProjectTarget",
   "ProjectBoundTarget",
+  "BoundArguments",
+  "LogListArguments",
+  "LogViewArguments",
+  "ReplayArguments",
+  "SpanViewArguments",
+  "TraceViewArguments",
 ]);
 
 function boundTargetParams(fn) {
@@ -139,6 +148,35 @@ function regexSource(node) {
   )
     return staticText(node.arguments[0]);
   return "";
+}
+
+/**
+ * Helpers that parse ID positionals by hand. Commands parse IDs with
+ * `parseIdArguments()` (src/lib/id-arguments.ts), so every command takes
+ * the same forms.
+ */
+const AD_HOC_ID_PARSING = new Set([
+  "parseSlashSeparatedArg",
+  "detectSwappedViewArgs",
+  "HEX_ID_RE",
+  "SPAN_ID_RE",
+]);
+
+/**
+ * Commands still allowed to: `event view` also takes issue IDs, which are
+ * not hex IDs and have their own syntax.
+ */
+const AD_HOC_ID_PARSING_ALLOWED = ["/src/commands/event/view.ts"];
+
+const ID_ARGUMENT_PARSERS = new Set(["parseIdArguments", "parseIdArgument"]);
+
+/** Whether `node` is `ID_KINDS.<kind>`. */
+function isIdKind(node) {
+  return (
+    node?.type === "MemberExpression" &&
+    node.object.type === "Identifier" &&
+    node.object.name === "ID_KINDS"
+  );
 }
 
 const rules = {
@@ -306,6 +344,33 @@ const rules = {
         FunctionDeclaration: check,
         FunctionExpression: check,
         ArrowFunctionExpression: check,
+      };
+    },
+  ),
+  "no-ad-hoc-id-arguments": rule(
+    "Parse ID positionals with parseIdArguments() and an ID_KINDS kind.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.endsWith("/lib/id-arguments.ts"))
+        return {};
+      const commands =
+        file.includes("/src/commands/") &&
+        !AD_HOC_ID_PARSING_ALLOWED.some((allowed) => file.endsWith(allowed));
+      return {
+        Identifier(node) {
+          if (
+            commands &&
+            AD_HOC_ID_PARSING.has(node.name) &&
+            node.parent?.type !== "ImportSpecifier"
+          )
+            report(node);
+        },
+        CallExpression(node) {
+          if (
+            ID_ARGUMENT_PARSERS.has(node.callee.name) &&
+            !isIdKind(node.arguments[1])
+          )
+            report(node);
+        },
       };
     },
   ),

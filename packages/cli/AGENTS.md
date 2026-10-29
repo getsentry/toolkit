@@ -227,18 +227,42 @@ export const myRoute = buildRouteMap({
 
 ### Positional Arguments
 
-Use `parseSlashSeparatedArg` from `src/lib/arg-parsing.ts` for the standard `[<org>/<project>/]<id>` pattern. Required identifiers (trace IDs, span IDs) should be **positional args**, not flags.
+Required identifiers (trace IDs, span IDs) should be **positional args**, not
+flags. Every command that takes trace, span, replay, or log IDs parses them
+with `parseIdArguments` (or `parseIdArgument` for exactly one) from
+`src/lib/id-arguments.ts`, so they all take the same forms:
+
+- `<id>`, `<org>/<id>`, `<org>/<project>/<id>`, `<target> <id>`, a Sentry URL
+- `<id> <org>/<project>`, reversed, with a warning
+- more IDs after any of those (with `multiple`), each maybe repeating the
+  target; one argument may hold several lines, or IDs after a space
+- extra arguments are ignored with a warning; slashes pasted after an ID are
+  ignored
+
+The command passes its kind of ID from `ID_KINDS` (what the ID looks like,
+how to validate it, which part of a URL holds one) and how it takes IDs:
+`optional` when it can list a project's items instead (`log list`,
+`span list`), `needsProject` when `<x>/<id>` should name project `<x>`
+rather than org `<x>`, `validate: false` to recover malformed IDs once the
+target is known. The result is a `target` string for `parseOrgProjectInput`
+and the IDs. Add a kind to `ID_KINDS` rather than validating IDs in a command;
+the `sentry-cli/no-ad-hoc-id-arguments` lint rule rejects hand-written ID
+parsing (`parseSlashSeparatedArg`, `HEX_ID_RE`, ...) in commands and kinds
+defined outside `ID_KINDS`. Issue IDs (and `event view`, which takes them)
+keep their own syntax.
 
 ```typescript
-import { parseSlashSeparatedArg, parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
 
-// "my-org/my-project/abc123" → { id: "abc123", targetArg: "my-org/my-project" }
-const { id, targetArg } = parseSlashSeparatedArg(first, "Trace ID", USAGE_HINT);
-const parsed = parseOrgProjectArg(targetArg);
-// parsed.type: "auto-detect" | "explicit" | "project-search" | "org-all"
+// ["my-org/my-project/abc123..."] → { target: "my-org/my-project", id: "abc123...", warnings: [] }
+const { target, id, baseUrl, warnings } = parseIdArgument(args, ID_KINDS.replay, {
+  usageHint: USAGE_HINT,
+});
+const parsed = parseOrgProjectInput(target);
 ```
 
-Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
+Reference: `replay/view.ts`, `span/view.ts`, `log/view.ts`, and
+`trace-target.ts` for trace targets.
 
 **Target positionals:** A single `[<org>/][<project>]` positional uses a
 parser from `src/lib/target-positional.ts`, which binds the resolver:
@@ -267,9 +291,34 @@ runs on the first `resolved` read, inside `func` after the auth guard.
 `target.raw` is what the user typed; shared code that handles any positional
 uses `rawPositional(value)`. `buildCommand` runs these parsers on positionals
 that arrive as strings or are omitted, so the SDK invoke path and tests that
-call `command.loader()` keep passing raw strings. Positionals whose
-meaning depends on how many arguments were given, such as
-`[<org>/<project>/]<trace-id>`, keep parsing in `func`.
+call `command.loader()` keep passing raw strings.
+
+**Arity-dependent positionals:** when what an argument means depends on how
+many were given (`[<org>/<project>] <replay-id>`, `log list`'s optional
+trailing trace ID), declare the positional with `boundArguments` from
+`src/lib/positional-parse.ts` (see `replayArguments` in `replay/view.ts`,
+`log list`, and `trace view`). It is an array positional whose `parse` sees every argument at
+once and whose `resolve` binds like a target positional's: `func` takes one
+`BoundArguments<Parsed, Resolved>` (alias it per command and add the alias to
+the lint rule's type list), reads `target.parsed`, and awaits
+`target.resolved`. A Stricli parser sees one argument at a time, so
+`buildCommand` runs the parse before `func` (and before the auth guard). A
+parse error becomes Stricli's `ArgumentParseError`, which prints and exits
+252 like a scanner error; next to a `help` argument it turns into the
+command's help instead. The same purity rule applies: return a pasted URL's server
+(`baseUrl`) and any warnings from the parse, and apply them in `resolve`
+(`parseTraceTargetInput` and `parseDualModeInput` in `trace-target.ts` do
+this for trace targets). Commands that recover a malformed ID (`trace view`,
+`span view`, `log view`) parse it unvalidated and validate or recover it in
+`resolve`, which can look the prefix up: `parseTraceArgumentsInput` and
+`resolveTraceArguments` do this for trace IDs. A missing ID or a bad target
+still fails the parse.
+
+Which argument is the ID and which is its target is decided by
+`grammar/id-arguments.pegjs`, not by counting arguments in TypeScript. The
+grammar knows no kind of ID: the command's `ID_KINDS` entry tells it what an
+ID looks like, so the syntax cannot drift between commands. It accepts any
+input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 
 **Shell completion:** Target positionals that take an org, project, issue, or
 dashboard use a completion-aware parser from `src/lib/completion-target.ts`
