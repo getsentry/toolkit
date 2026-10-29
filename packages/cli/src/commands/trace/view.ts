@@ -14,11 +14,7 @@ import {
   getProject,
   type TraceItemDetail,
 } from "../../lib/api-client.js";
-import {
-  detectSwappedViewArgs,
-  looksLikeIssueShortId,
-  spansFlag,
-} from "../../lib/arg-parsing.js";
+import { looksLikeIssueShortId, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseOrgProjectTarget } from "../../lib/completion-target.js";
@@ -87,68 +83,29 @@ function buildViewHint(
 }
 
 /**
- * Detect UX issues in raw positional args before trace-target parsing.
+ * Detect issue short IDs in raw positional args before trace-target parsing.
+ * Reversed arguments (`<trace-id> <org>/<project>`) need nothing here: the
+ * trace target's parser takes them, like every ID-taking command.
  *
  * - **Single-arg issue short ID**: first arg looks like `CAM-82X` with no
  *   second arg → sets `issueShortId` for auto-recovery (resolve issue → trace).
- * - **Swapped args**: user typed `<trace-id> <org>/<project>` instead of
- *   `<org>/<project> <trace-id>`. If detected, swaps them silently and warns.
  * - **Two-arg issue short ID**: first arg looks like `CAM-82X` with a second
  *   arg → suggests `sentry issue view` (ambiguous intent, no auto-recovery).
- *
- * Returns corrected args and optional warnings to emit.
  *
  * @internal Exported for testing
  */
 export function preProcessArgs(args: string[]): {
-  correctedArgs: string[];
-  warning?: string;
   suggestion?: string;
   /** Issue short ID detected for auto-recovery (single-arg only) */
   issueShortId?: string;
 } {
-  if (args.length === 0) {
-    return { correctedArgs: args };
+  const [first] = args;
+  if (!(first && looksLikeIssueShortId(first))) {
+    return {};
   }
-
-  const first = args[0];
-  if (!first) {
-    return { correctedArgs: args };
-  }
-
-  // Single-arg issue short ID → auto-recover by resolving issue → trace
-  if (args.length === 1 && looksLikeIssueShortId(first)) {
-    return {
-      correctedArgs: args,
-      issueShortId: first,
-    };
-  }
-
-  if (args.length < 2) {
-    return { correctedArgs: args };
-  }
-
-  const second = args[1];
-  if (!second) {
-    return { correctedArgs: args };
-  }
-
-  // Detect swapped args: user put ID first and target second
-  const swapWarning = detectSwappedViewArgs(first, second);
-  if (swapWarning) {
-    // Swap them: put target first, trace ID second
-    return {
-      correctedArgs: [second, first, ...args.slice(2)],
-      warning: swapWarning,
-    };
-  }
-
-  // Detect issue short ID passed as first arg (two-arg case — ambiguous)
-  const suggestion = looksLikeIssueShortId(first)
-    ? `Did you mean: sentry issue view ${first}`
-    : undefined;
-
-  return { correctedArgs: args, suggestion };
+  return args.length === 1
+    ? { issueShortId: first }
+    : { suggestion: `Did you mean: sentry issue view ${first}` };
 }
 
 /**
@@ -522,12 +479,8 @@ export const viewCommand = buildCommand({
     const { cwd } = this;
     const log = logger.withTag("trace.view");
 
-    // Pre-process: detect swapped args and issue short IDs
-    const { correctedArgs, warning, suggestion, issueShortId } =
-      preProcessArgs(args);
-    if (warning) {
-      log.warn(warning);
-    }
+    // Pre-process: detect issue short IDs
+    const { suggestion, issueShortId } = preProcessArgs(args);
     if (suggestion) {
       log.warn(suggestion);
     }
@@ -536,10 +489,7 @@ export const viewCommand = buildCommand({
     if (issueShortId) {
       resolved = await resolveTraceFromIssue(issueShortId, cwd);
     } else {
-      const parsed = await parseTraceTargetWithRecovery(
-        correctedArgs,
-        USAGE_HINT,
-      );
+      const parsed = await parseTraceTargetWithRecovery(args, USAGE_HINT);
       warnIfNormalized(parsed, "trace.view");
       const target = await resolveTraceOrgOptionalProject(
         parsed,

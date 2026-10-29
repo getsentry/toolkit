@@ -8,9 +8,7 @@
  * editors and linters check in place. The generator copies it to
  * `src/generated/<name>-grammar.d.ts`. Relative module specifiers, found
  * with the TypeScript parser, are rebased so they resolve to the same
- * modules from there; nothing else in the file changes. The string literal
- * types of its `startRule` properties are the grammar's allowed start rules
- * (by default only the first rule).
+ * modules from there; nothing else in the file changes.
  *
  * The CLI generates its parsers at build time (`pnpm run generate:grammar`
  * in packages/cli).
@@ -83,32 +81,6 @@ function rebaseDeclarations(source, fileName) {
   return result;
 }
 
-/** The string literals a `startRule` property's type allows. */
-function startRules(source, fileName) {
-  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest);
-  const rules = new Set();
-  const addLiterals = (type) => {
-    if (ts.isUnionTypeNode(type)) {
-      type.types.forEach(addLiterals);
-    } else if (ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal)) {
-      rules.add(type.literal.text);
-    }
-  };
-  const visit = (node) => {
-    if (
-      ts.isPropertySignature(node) &&
-      node.type &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === "startRule"
-    ) {
-      addLiterals(node.type);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
-  return [...rules];
-}
-
 const grammars = (await readdir(grammarDir)).filter((file) =>
   file.endsWith(".pegjs"),
 );
@@ -122,14 +94,15 @@ for (const file of grammars) {
     throw new Error(`${declarationsPath} is missing`);
   }
 
-  const declarationsSource = await readFile(declarationsPath, "utf-8");
   const parserSource = peggy.generate(await readFile(grammarPath, "utf-8"), {
     output: "source",
     format: "es",
     grammarSource: relative(packageDir, grammarPath).split(sep).join("/"),
-    allowedStartRules: startRules(declarationsSource, declarationsPath),
   });
-  const declarations = rebaseDeclarations(declarationsSource, declarationsPath);
+  const declarations = rebaseDeclarations(
+    await readFile(declarationsPath, "utf-8"),
+    declarationsPath,
+  );
 
   const outputBase = join(outputDir, `${name}-grammar`);
   await writeFile(`${outputBase}.js`, `${HEADER}\n${parserSource}\n`);

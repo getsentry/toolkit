@@ -1,31 +1,48 @@
 // Types of the parser generated from id-arguments.pegjs. The generator
 // copies this file to src/generated/id-arguments-grammar.d.ts and rewrites
-// relative imports to resolve from there. It also compiles every `startRule`
-// listed here as a start rule.
+// relative imports to resolve from there.
 
-import type {
-  IdArguments,
-  TraceOrProjectArguments,
-} from "../src/lib/id-arguments.js";
-import type { ParsedSentryUrl } from "../src/lib/sentry-url-parser.js";
+/** An ID a Sentry URL carries, with the URL's org and server. */
+export type IdUrl = {
+  readonly id: string;
+  readonly org?: string;
+  readonly baseUrl?: string;
+};
 
 /**
- * Hooks the ID-arguments grammar calls to check IDs and to throw, so its
- * errors match the rest of the CLI. See `parseIdArguments()`.
+ * What the command parses: the grammar itself does not know any kind of ID.
+ * See `parseIdArguments()`.
  */
 export type IdArgumentsGrammarOptions = {
-  /** Usage shown when arguments are ignored or there are too many. */
-  usageHint: string;
-  /** Whether `value` is an ID. */
+  /** Whether the arguments may name no ID (then a lone token is a target). */
+  optional: boolean;
+  /** Whether `value` is an ID of the kind the command takes. */
   isId: (value: string) => boolean;
-  /** Normalize an ID; throw when `value` is not one. */
-  id: (value: string) => string;
-  /** Parse a Sentry web URL, or return `null` for anything else. */
-  sentryUrl: (value: string) => ParsedSentryUrl | null;
-  /** Throw for a missing ID. */
-  missing: (suggestions?: string[]) => never;
-  /** Throw a validation error. */
-  invalid: (message: string, field?: string) => never;
+  /** The ID in a Sentry URL, or `null` for anything else. */
+  idUrl: (value: string) => IdUrl | null;
+};
+
+/** A token that names an ID, maybe after a target: `[<target>/]<id>`. */
+export type IdToken = {
+  /** The token as typed */
+  readonly text: string;
+  /** What came before the ID's slash, if anything */
+  readonly target?: string;
+  /** The ID, not validated */
+  readonly id: string;
+};
+
+/** Which tokens are the target and which are IDs. */
+export type IdArgumentsSyntax = {
+  /** The target, as typed: a separate argument, a path prefix, or `<org>/` */
+  readonly target?: string;
+  /** Whether `target` came before the first ID in one path */
+  readonly path?: boolean;
+  readonly ids: readonly IdToken[];
+  /** Server of a pasted Sentry URL */
+  readonly baseUrl?: string;
+  /** Whether the ID came before the target */
+  readonly reversed?: boolean;
 };
 
 export declare class SyntaxError extends Error {
@@ -34,15 +51,8 @@ export declare class SyntaxError extends Error {
   location: unknown;
 }
 
-/** Parse NUL-prefixed arguments that end in an ID. */
+/** Parse NUL-prefixed tokens into a target and IDs. */
 export declare function parse(
   input: string,
-  options: IdArgumentsGrammarOptions & {
-    startRule: "trace" | "tracePath" | "replay";
-  },
-): IdArguments;
-/** Parse NUL-prefixed arguments that list a project's or a trace's items. */
-export declare function parse(
-  input: string,
-  options: IdArgumentsGrammarOptions & { startRule: "traceOrProject" },
-): TraceOrProjectArguments;
+  options: IdArgumentsGrammarOptions,
+): IdArgumentsSyntax;

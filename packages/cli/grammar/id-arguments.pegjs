@@ -1,181 +1,111 @@
-// Grammar for positionals that end in an ID, where what an argument means
-// depends on how many were given: `[<org>/[<project>/]]<id>` in one
-// argument, `<target> <id>` in two, or a Sentry URL.
+// Grammar for positionals that name IDs and the org/project to look them up
+// in. It knows nothing about what kind of ID it parses (trace, span, replay,
+// log...): the command says which, through the `isId` and `idUrl` hooks in
+// `options`, so every ID-taking command shares one syntax:
+//
+//   <id>                          the org/project is auto-detected
+//   <org>/<id>                    like a URL: the org, then the ID (the
+//                                 caller may read `<org>` as a project)
+//   <org>/<project>/<id>
+//   <target> <id>                 any org/project target, as everywhere else
+//   <id> <org>/<project>          reversed; the caller warns
+//   <id-url>                      a Sentry URL with the ID in it
+//
+// More IDs may follow any of these, each repeating the target or not
+// (`<target>/<id>`). The ID is always the last path segment, and slashes
+// pasted after it are ignored.
+//
 // `pnpm run generate:grammar` compiles it, with the types in
 // id-arguments.d.ts, into the gitignored src/generated/; the build,
 // typecheck, and test scripts run it.
 //
-// `parseIdArguments()` (src/lib/id-arguments.ts) parses every argument at
-// once: each one is trimmed and follows a NUL, which no command-line argument
-// contains. So no arguments is the empty input, and `[""]` is "\0". The
-// grammar decides which argument is the ID and which is its target. ID checks
-// and errors go through the `isId`, `id`, `sentryUrl`, `missing`, and
-// `invalid` hooks in `options`, so they match the rest of the CLI. The result
-// names the parts of the target (`IdArguments`); the caller turns them into
-// a trace or org/project target.
-//
-// Start rules:
-// - `trace`: trace view, trace logs, and span list in trace mode
-// - `tracePath`: one argument and no URL (the trace part of span view's)
-// - `traceOrProject`: log list and span list, which list a project's items
-//   or a trace's
-// - `replay`: replay view and replay download
+// `parseIdArguments()` (src/lib/id-arguments.ts) splits the arguments into
+// tokens first and puts a NUL, which no argument contains, before each one.
+// No token is empty. The grammar only decides which token is the target and
+// which are IDs; it accepts any input and never throws. The caller counts
+// the IDs, validates them, and parses the target like any org/project target.
 
 {
-  const { usageHint, isId, id, sentryUrl, missing, invalid } = options;
+  const { optional, isId, idUrl } = options;
 
-  const NO_SCOPE = { type: "none" };
-
-  // The parse is the same every time; a predicate and the action after it
-  // can both ask
-  const urls = new Map();
-  function url(value) {
-    if (!urls.has(value)) {
-      urls.set(value, sentryUrl(value));
+  // `[<org>/[<project>/]]` before an ID; the caller makes it a target
+  function pathTarget(prefix) {
+    if (prefix === "") {
+      return {};
     }
-    return urls.get(value);
-  }
-
-  function ignored(extra) {
-    return extra.length > 0
-      ? [`Extra arguments ignored: ${extra.join(" ")}. Expected: ${usageHint}`]
-      : [];
-  }
-
-  // `[<org>/[<project>/]]<id>`, as split by `idPath`. Without the ID, the ID
-  // is missing; with an empty `<org>` or `<project>`, the path is invalid.
-  function fromPath(path, warnings = []) {
-    if (path.id === "" && (path.root || path.org !== undefined)) {
-      missing();
-    }
-    const value = id(path.id);
-    if (path.org === undefined) {
-      return { id: value, scope: NO_SCOPE, warnings };
-    }
-    if (path.project === undefined) {
-      return { id: value, scope: { type: "org", org: path.org }, warnings };
-    }
-    if (path.org === "" || path.project === "") {
-      invalid(
-        `Invalid format: "${path.text}" needs an organization and a project before the ID.\n\nUsage: ${usageHint}`,
-        "positional",
-      );
-    }
-    const { org, project } = path;
-    return { id: value, scope: { type: "org-project", org, project }, warnings };
-  }
-
-  // `<target> <id>`; the caller parses the target
-  function fromTarget(target, value, warnings = []) {
-    return { id: id(value), scope: { type: "target", target }, warnings };
-  }
-
-  // A Sentry URL with the ID in it
-  function fromUrl(parsed, value) {
-    return {
-      id: id(value),
-      scope: parsed.org ? { type: "org", org: parsed.org } : NO_SCOPE,
-      baseUrl: parsed.baseUrl,
-      warnings: [],
-    };
-  }
-
-  function traceMode(trace) {
-    return { mode: "trace", trace };
+    return { target: prefix, path: true };
   }
 }
 
 // Peggy runs a rule's action as soon as that rule matches, even when the
-// enclosing alternative fails later and the parser backtracks. The rules
-// below the start rules therefore only capture text, and the hooks that
-// throw run in the action of the start rule alternative that wins.
+// enclosing alternative fails later and the parser backtracks. Every action
+// here only builds values, and the hooks are pure, so that is harmless.
 
-// `[<org>/[<project>/]]<trace-id>`, `<target> <trace-id>`, or a trace URL.
-// Arguments after those are ignored with a warning, or silently after a URL
-// (which may be followed by what the browser's address bar had around it).
-// A first argument that ends in a trace ID is never a target.
-trace
-  = u:traceUrl arg* { return fromUrl(u, u.traceId); }
-  / sep p:idPath x:arg* &{ return x.length === 0 || isId(p.id); }
-    { return fromPath(p, ignored(x)); }
-  / t:arg i:arg x:arg* { return fromTarget(t, i, ignored(x)); }
-  / end { missing(); }
-
-// `[<org>/[<project>/]]<trace-id>` in one argument
-tracePath
-  = sep p:idPath end { return fromPath(p); }
-
-// A trace's items when the arguments end in a trace ID or are a trace URL,
-// otherwise a project's (`target` is the first argument, if any).
-traceOrProject
-  = end { return { mode: "project" }; }
-  / u:traceUrl arg* { return traceMode(fromUrl(u, u.traceId)); }
-  // `[<org>/[<project>/]]<trace-id>`, before a trailing trace ID is read
-  // as the trace's
-  / sep p:idPath x:arg* &{ return isId(p.id); }
-    { return traceMode(fromPath(p, ignored(x))); }
-  // `<target> <trace-id>`
-  / t:arg x:(!lastArg @arg)* i:lastArg &{ return isId(i); }
-    { return traceMode(fromTarget(t, i, ignored(x))); }
-  / t:arg arg* { return { mode: "project", target: t }; }
-
-// `[<org>/[<project>/]]<replay-id>`, `<target> <replay-id>`, or a replay URL
-replay
-  = end { missing(); }
-  / a:arg|3..| {
-      invalid(
-        `Too many positional arguments (got ${a.length}, expected at most 2).\n\nUsage: ${usageHint}`,
-        "positional",
-      );
+arguments
+  = end { return { ids: [] }; }
+  // A Sentry URL with the ID in it
+  / sep u:urlWithId x:more {
+      return {
+        ...(u.org && { target: `${u.org}/` }),
+        ids: [{ text: u.id, id: u.id }, ...x],
+        ...(u.baseUrl && { baseUrl: u.baseUrl }),
+      };
     }
-  / sep end { missing(); }
-  / u:arg &{ return url(u) !== null; } arg? end {
-      const parsed = url(u);
-      if (!(parsed.replayId && parsed.org)) {
-        missing([
-          "Pass a replay URL: https://sentry.io/organizations/{org}/explore/replays/{replayId}/",
-        ]);
-      }
-      return fromUrl(parsed, parsed.replayId);
+  // Any other URL is a target
+  / sep t:url x:more { return { target: t, ids: x }; }
+  // `<id> <org>/<project>`: the arguments are reversed. When IDs are
+  // optional, only a real ID can come first.
+  / sep i:segment &{ return !optional || isId(i); } sep !idPath
+    t:$([^/\0]* "/" [^\0]*) end
+    { return { target: t, ids: [{ text: i, id: i }], reversed: true }; }
+  // `[<org>/[<project>/]]<id> [<id>...]`
+  / sep p:idPath x:more {
+      return {
+        ...pathTarget(p.target ?? ""),
+        ids: [{ text: p.text, id: p.id }, ...x],
+      };
     }
-  // `<org>/<project>` without the replay ID
-  / sep p:idPath end
-    &{ return p.org !== undefined && p.project === undefined && !isId(p.id); }
-    { missing(); }
-  / sep p:idPath end { return fromPath(p); }
-  / arg sep end { missing(); }
-  // `<replay-id> <org>/<project>`: the arguments are reversed
-  / sep i:$[^/\0]+ sep t:$([^/\0]* "/" [^\0]*) end {
-      return fromTarget(t, i, [
-        `Arguments appear reversed. Interpreting as: ${t} ${i}`,
-      ]);
+  // One token that does not end in an ID. Unless IDs are optional, it still
+  // names one, so it can be reported or recovered: the last segment after
+  // two slashes (`<org>/<project>/<id>`), or the whole token. With one slash,
+  // `<org>/<project>` is a target without an ID.
+  / sep !"/" t:$(segment "/" segment "/" [^\0]*) end &{ return !optional; } {
+      const slash = t.lastIndexOf("/");
+      return {
+        ...pathTarget(t.slice(0, slash)),
+        ids: [{ text: t, id: t.slice(slash + 1) }],
+      };
     }
-  / t:arg i:arg end { return fromTarget(t, i); }
+  / sep i:segment end &{ return !optional; } { return { ids: [{ text: i, id: i }] }; }
+  // `<target> [<id>...]`
+  / sep t:token x:more { return { target: t, ids: x }; }
 
-// A Sentry URL with a trace ID in it
-traceUrl
-  = u:arg &{ return Boolean(url(u)?.traceId); } { return url(u); }
+// The IDs after the first token. Each may repeat the target:
+// `<target>/<id>`.
+more
+  = (sep @(idPath / t:token { return { text: t, id: t }; }))*
 
-// `[<org>/[<project>/]]<id>` in one argument. The ID is the last segment,
-// even when slashes follow it (pasted from a URL); otherwise a trailing slash
-// leaves the ID out. `<org>` is everything before the first slash and
-// `<project>` the rest.
+// `[<target>/]<id>` in one token: the last segment is an ID, maybe with
+// slashes pasted after it.
 idPath
-  = i:idSegment argEnd { return { id: i }; }
-  / "/" i:idSegment argEnd { return { id: i, root: true }; }
-  / o:$[^/\0]+ "/" i:idSegment argEnd { return { id: i, org: o }; }
-  / o:$[^/\0]* "/" p:$(!("/" idSegment argEnd) [^\0])* "/" i:idSegment argEnd
-    { return { id: i, org: o, project: p, text: text() }; }
+  = t:$(!("/" idSegment argEnd) [^\0])* "/" i:idSegment argEnd
+    { return { text: text(), target: t, id: i }; }
+  / i:idSegment argEnd { return { text: text(), id: i }; }
 
-// A segment, and the slashes after it when it is an ID
+// An ID, and the slashes after it
 idSegment
-  = i:$[^/\0]* s:$"/"* &{ return s === "" || isId(i); } { return i; }
+  = i:segment "/"* &{ return isId(i); } { return i; }
 
-// One argument
-arg = sep @$[^\0]*
+// A Sentry URL carrying the ID
+urlWithId
+  = u:token &{ return idUrl(u) !== null; } { return idUrl(u); }
 
-// The last argument
-lastArg = @arg end
+url
+  = $("http" "s"? "://" [^\0]*)
+
+token = $[^\0]+
+
+segment = $[^/\0]+
 
 sep = "\0"
 

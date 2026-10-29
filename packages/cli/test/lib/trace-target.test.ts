@@ -1,8 +1,9 @@
 /**
  * Tests for shared trace-target parsing and resolution.
  *
- * Tests parseTraceTarget, parseSlashSeparatedTraceTarget,
- * and targetArgToTraceTarget from src/lib/trace-target.ts.
+ * Tests parseTraceTarget, the dual-mode parsers, and the resolvers from
+ * src/lib/trace-target.ts. The syntax itself is tested in
+ * id-arguments.test.ts.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -26,51 +27,41 @@ import {
   ValidationError,
 } from "../../src/lib/errors.js";
 import {
-  extractRawTraceId,
   parseDualModeArgs,
   parseDualModeInput,
-  parseSlashSeparatedTraceTarget,
   parseTraceTarget,
   parseTraceTargetInput,
   resolveTraceOrg,
   resolveTraceOrgOptionalProject,
   resolveTraceOrgProject,
-  stripTrailingSlashesAfterTraceId,
-  targetArgToTraceTarget,
 } from "../../src/lib/trace-target.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 
-describe("parseSlashSeparatedTraceTarget", () => {
+describe("parseTraceTarget with one argument", () => {
   const HINT = "sentry span list [<org>/<project>/]<trace-id>";
 
   test("bare trace ID → auto-detect", () => {
-    const result = parseSlashSeparatedTraceTarget(VALID_TRACE_ID, HINT);
+    const result = parseTraceTarget([VALID_TRACE_ID], HINT);
     expect(result.type).toBe("auto-detect");
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("normalizes uppercase trace ID", () => {
-    const result = parseSlashSeparatedTraceTarget(
-      "AAAA1111BBBB2222CCCC3333DDDD4444",
-      HINT,
-    );
+    const result = parseTraceTarget(["AAAA1111BBBB2222CCCC3333DDDD4444"], HINT);
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("strips UUID dashes from trace ID", () => {
-    const result = parseSlashSeparatedTraceTarget(
-      "aaaa1111-bbbb-2222-cccc-3333dddd4444",
+    const result = parseTraceTarget(
+      ["aaaa1111-bbbb-2222-cccc-3333dddd4444"],
       HINT,
     );
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("org/trace-id → org-scoped", () => {
-    const result = parseSlashSeparatedTraceTarget(
-      `my-org/${VALID_TRACE_ID}`,
-      HINT,
-    );
+    const result = parseTraceTarget([`my-org/${VALID_TRACE_ID}`], HINT);
     expect(result.type).toBe("org-scoped");
     expect(result.traceId).toBe(VALID_TRACE_ID);
     if (result.type === "org-scoped") {
@@ -79,8 +70,8 @@ describe("parseSlashSeparatedTraceTarget", () => {
   });
 
   test("org/project/trace-id → explicit", () => {
-    const result = parseSlashSeparatedTraceTarget(
-      `my-org/my-project/${VALID_TRACE_ID}`,
+    const result = parseTraceTarget(
+      [`my-org/my-project/${VALID_TRACE_ID}`],
       HINT,
     );
     expect(result.type).toBe("explicit");
@@ -94,8 +85,8 @@ describe("parseSlashSeparatedTraceTarget", () => {
   test("preserves underscores in slugs (see #770)", () => {
     // Sentry accepts underscores in project slugs, so they must flow
     // through the trace-target parser unchanged.
-    const result = parseSlashSeparatedTraceTarget(
-      `my_org/my_project/${VALID_TRACE_ID}`,
+    const result = parseTraceTarget(
+      [`my_org/my_project/${VALID_TRACE_ID}`],
       HINT,
     );
     expect(result.type).toBe("explicit");
@@ -107,27 +98,31 @@ describe("parseSlashSeparatedTraceTarget", () => {
   });
 
   test("trailing slash without trace ID throws", () => {
-    expect(() => parseSlashSeparatedTraceTarget("my-org/", HINT)).toThrow(
-      ContextError,
-    );
+    expect(() => parseTraceTarget(["my-org/"], HINT)).toThrow(ContextError);
   });
 
   test("invalid trace ID throws ValidationError", () => {
-    expect(() =>
-      parseSlashSeparatedTraceTarget("not-a-trace-id", HINT),
-    ).toThrow(ValidationError);
+    expect(() => parseTraceTarget(["not-a-trace-id"], HINT)).toThrow(
+      ValidationError,
+    );
   });
 });
 
-describe("targetArgToTraceTarget", () => {
+describe("parseTraceTarget with a target argument", () => {
   test("explicit target (org/project)", () => {
-    const result = targetArgToTraceTarget("my-org/my-project", VALID_TRACE_ID);
+    const result = parseTraceTarget(
+      ["my-org/my-project", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
     expect(result.type).toBe("explicit");
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
   test("org-all target (org/) → org-scoped", () => {
-    const result = targetArgToTraceTarget("my-org/", VALID_TRACE_ID);
+    const result = parseTraceTarget(
+      ["my-org/", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
     expect(result.type).toBe("org-scoped");
     if (result.type === "org-scoped") {
       expect(result.org).toBe("my-org");
@@ -135,7 +130,10 @@ describe("targetArgToTraceTarget", () => {
   });
 
   test("bare slug → project-search", () => {
-    const result = targetArgToTraceTarget("frontend", VALID_TRACE_ID);
+    const result = parseTraceTarget(
+      ["frontend", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
     expect(result.type).toBe("project-search");
     if (result.type === "project-search") {
       expect(result.projectSlug).toBe("frontend");
@@ -143,7 +141,10 @@ describe("targetArgToTraceTarget", () => {
   });
 
   test("preserves scoped display-name metadata", () => {
-    const result = targetArgToTraceTarget("my-org/My Project", VALID_TRACE_ID);
+    const result = parseTraceTarget(
+      ["my-org/My Project", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
     expect(result).toMatchObject({
       type: "project-search",
       org: "my-org",
@@ -153,7 +154,10 @@ describe("targetArgToTraceTarget", () => {
   });
 
   test("empty string → auto-detect", () => {
-    const result = targetArgToTraceTarget("", VALID_TRACE_ID);
+    const result = parseTraceTarget(
+      ["", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
     expect(result.type).toBe("auto-detect");
   });
 });
@@ -181,7 +185,10 @@ describe("trace target resolution", () => {
       ],
       orgs: [{ slug: "project-owner", name: "Project Owner" }],
     });
-    const parsed = targetArgToTraceTarget("frontend", VALID_TRACE_ID);
+    const parsed = parseTraceTarget(
+      ["frontend", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
 
     const resolved = await resolveTraceOrg(
       parsed,
@@ -194,7 +201,10 @@ describe("trace target resolution", () => {
 
   test("project-bound errors preserve the full trace usage hint", async () => {
     findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
-    const parsed = targetArgToTraceTarget("missing", VALID_TRACE_ID);
+    const parsed = parseTraceTarget(
+      ["missing", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
     const usageHint = "sentry span view [<org>/<project>/]<span-id>";
 
     try {
@@ -208,7 +218,10 @@ describe("trace target resolution", () => {
 
   test("org-capable errors preserve the full trace usage hint", async () => {
     findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
-    const parsed = targetArgToTraceTarget("missing", VALID_TRACE_ID);
+    const parsed = parseTraceTarget(
+      ["missing", VALID_TRACE_ID],
+      "sentry trace view <target> <trace-id>",
+    );
     const usageHint = "sentry trace view [<org>/<project>/]<trace-id>";
 
     try {
@@ -335,8 +348,8 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   });
 
   test("org/project/<trace-id>/ → explicit", () => {
-    const result = parseSlashSeparatedTraceTarget(
-      `my-org/my-project/${VALID_TRACE_ID}/`,
+    const result = parseTraceTarget(
+      [`my-org/my-project/${VALID_TRACE_ID}/`],
       HINT,
     );
     expect(result).toEqual({
@@ -348,28 +361,13 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   });
 
   test("<trace-id>/ → auto-detect", () => {
-    const result = parseSlashSeparatedTraceTarget(`${VALID_TRACE_ID}/`, HINT);
+    const result = parseTraceTarget([`${VALID_TRACE_ID}/`], HINT);
     expect(result).toEqual({ type: "auto-detect", traceId: VALID_TRACE_ID });
   });
 
   test("org/project/ still throws ContextError (trace ID omitted)", () => {
-    expect(() =>
-      parseSlashSeparatedTraceTarget("my-org/my-project/", HINT),
-    ).toThrow(ContextError);
-  });
-
-  test("stripTrailingSlashesAfterTraceId leaves non-trace tails alone", () => {
-    expect(stripTrailingSlashesAfterTraceId("my-org/my-project/")).toBe(
-      "my-org/my-project/",
-    );
-    expect(stripTrailingSlashesAfterTraceId(`org/${VALID_TRACE_ID}//`)).toBe(
-      `org/${VALID_TRACE_ID}`,
-    );
-  });
-
-  test("extractRawTraceId ignores a trailing slash after the trace ID", () => {
-    expect(extractRawTraceId([`my-org/my-project/${VALID_TRACE_ID}/`])).toEqual(
-      { rawTraceId: VALID_TRACE_ID, targetArg: "my-org/my-project" },
+    expect(() => parseTraceTarget(["my-org/my-project/"], HINT)).toThrow(
+      ContextError,
     );
   });
 

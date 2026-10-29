@@ -30,56 +30,29 @@ import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 
 describe("preProcessArgs", () => {
-  test("returns args unchanged for single arg", () => {
-    const result = preProcessArgs([VALID_TRACE_ID]);
-    expect(result.correctedArgs).toEqual([VALID_TRACE_ID]);
-    expect(result.warning).toBeUndefined();
-    expect(result.suggestion).toBeUndefined();
-  });
-
-  test("returns args unchanged for normal two-arg order", () => {
-    const result = preProcessArgs(["my-org/frontend", VALID_TRACE_ID]);
-    expect(result.correctedArgs).toEqual(["my-org/frontend", VALID_TRACE_ID]);
-    expect(result.warning).toBeUndefined();
-  });
-
-  test("detects swapped args and corrects order", () => {
-    // User put trace-id first, org/project second
-    const result = preProcessArgs([VALID_TRACE_ID, "my-org/frontend"]);
-    expect(result.correctedArgs).toEqual(["my-org/frontend", VALID_TRACE_ID]);
-    expect(result.warning).toContain("reversed");
+  test("leaves trace arguments alone", () => {
+    expect(preProcessArgs([VALID_TRACE_ID])).toEqual({});
+    expect(preProcessArgs(["my-org/frontend", VALID_TRACE_ID])).toEqual({});
+    // Reversed arguments are the trace target parser's
+    expect(preProcessArgs([VALID_TRACE_ID, "my-org/frontend"])).toEqual({});
+    expect(preProcessArgs([])).toEqual({});
   });
 
   test("detects issue short ID and suggests issue view (two args)", () => {
     const result = preProcessArgs(["CAM-82X", VALID_TRACE_ID]);
-    expect(result.correctedArgs).toEqual(["CAM-82X", VALID_TRACE_ID]);
     expect(result.suggestion).toContain("sentry issue view CAM-82X");
     expect(result.issueShortId).toBeUndefined();
   });
 
   test("detects single-arg issue short ID for auto-recovery", () => {
     const result = preProcessArgs(["CLI-G5"]);
-    expect(result.correctedArgs).toEqual(["CLI-G5"]);
     expect(result.issueShortId).toBe("CLI-G5");
     expect(result.suggestion).toBeUndefined();
-    expect(result.warning).toBeUndefined();
   });
 
   test("detects multi-segment issue short ID for auto-recovery", () => {
     const result = preProcessArgs(["SPOTLIGHT-ELECTRON-4D"]);
-    expect(result.correctedArgs).toEqual(["SPOTLIGHT-ELECTRON-4D"]);
     expect(result.issueShortId).toBe("SPOTLIGHT-ELECTRON-4D");
-  });
-
-  test("does not set issueShortId for single-arg trace ID", () => {
-    const result = preProcessArgs([VALID_TRACE_ID]);
-    expect(result.issueShortId).toBeUndefined();
-  });
-
-  test("returns empty args unchanged", () => {
-    const result = preProcessArgs([]);
-    expect(result.correctedArgs).toEqual([]);
-    expect(result.issueShortId).toBeUndefined();
   });
 });
 

@@ -186,10 +186,14 @@ describe("parseReplayArguments", () => {
     );
   });
 
-  test("throws ValidationError for extra positional args", () => {
-    expect(() =>
+  test("ignores extra positional args with a warning", () => {
+    expect(
       parseReplayArguments(["test-org/cli", REPLAY_ID, "extra-arg"]),
-    ).toThrow(ValidationError);
+    ).toMatchObject({
+      replayId: REPLAY_ID,
+      target: { type: "explicit", org: "test-org", project: "cli" },
+      warnings: [expect.stringContaining("Extra arguments ignored: extra-arg")],
+    });
   });
 });
 

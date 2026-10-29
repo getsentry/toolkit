@@ -19,11 +19,7 @@ import {
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
-import {
-  ApiError,
-  ResolutionError,
-  ValidationError,
-} from "../../lib/errors.js";
+import { ApiError, ResolutionError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
@@ -32,7 +28,7 @@ import {
   type ReplayViewData,
   replayHint,
 } from "../../lib/formatters/replay.js";
-import { type IdScope, parseIdArguments } from "../../lib/id-arguments.js";
+import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
@@ -73,13 +69,9 @@ const MAX_RELATED_TRACES = 2;
 const log = logger.withTag("replay.view");
 
 /**
- * Parse `replay view` and `replay download` arguments with the `replay` rule
- * of `grammar/id-arguments.pegjs`:
- * - `<replay-id>`
- * - `<org>/<replay-id>`
- * - `<org>/<project>/<replay-id>`
- * - `<target> <replay-id>` (or reversed, with a warning)
- * - `<replay-url>`
+ * Parse `replay view` and `replay download` arguments: a replay ID in the
+ * forms every ID-taking command takes (see `id-arguments.ts`), or a replay
+ * URL.
  *
  * `usageHint` lets sibling replay commands show their own usage in errors.
  * Has no side effects: a pasted URL's server is returned as `baseUrl`.
@@ -88,35 +80,18 @@ export function parseReplayArguments(
   args: readonly string[],
   usageHint = USAGE_HINT,
 ): ReplayArgumentsInput {
-  const { id, scope, baseUrl, warnings } = parseIdArguments(args, "replay", {
-    idLabel: "Replay ID",
-    usageHint,
-  });
-  const target = parseOrgProjectInput(replayTargetArg(scope));
+  const { target, id, baseUrl, warnings } = parseIdArgument(
+    args,
+    ID_KINDS.replay,
+    { usageHint },
+  );
+  const parsed = parseOrgProjectInput(target);
   return {
     replayId: id,
-    target: target.parsed,
-    baseUrl: baseUrl ?? target.baseUrl,
+    target: parsed.parsed,
+    baseUrl: baseUrl ?? parsed.baseUrl,
     warnings,
   };
-}
-
-/** The org/project target argument a replay's {@link IdScope} stands for. */
-function replayTargetArg(scope: IdScope): string | undefined {
-  switch (scope.type) {
-    case "none":
-      return;
-    case "org":
-      return `${scope.org}/`;
-    case "org-project":
-      return `${scope.org}/${scope.project}`;
-    case "target":
-      return scope.target;
-    default: {
-      const _exhaustive: never = scope;
-      throw new ValidationError(`Unexpected replay scope: ${_exhaustive}`);
-    }
-  }
 }
 
 /** Parsed `replay view` and `replay download` arguments. */
