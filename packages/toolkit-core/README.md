@@ -43,8 +43,16 @@ the one exception.
   to `<origin>/api/0<path>`, turns network failures into readable errors
   (`ConfigurationError` for an unreachable host), and throws the status's
   `ApiError` for an error response unless the caller allows that status.
-  `requestJson` also parses the body. The MCP's `SentryApiService` sends
-  every request through it.
+  `requestJson` also parses the body, and `sdkClient` gives a `@sentry/api`
+  operation a client that sends one GET through `request`. `listPage` walks
+  a list endpoint's pages up to a limit and validates each page. The MCP's
+  `SentryApiService` sends every request through the core.
+- `endpoints/` holds the endpoint wrappers by domain, on `@sentry/api`
+  operations where they exist. Each takes an `ApiTarget` (the core and an
+  origin) and the host's schema, and returns that schema's output. The host
+  picks the origin, such as the control host for the current user.
+  `endpoints/organizations` has `getAuthenticatedUser`, `listOrganizations`,
+  and `getOrganization`.
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.

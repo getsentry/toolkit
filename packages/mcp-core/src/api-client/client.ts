@@ -3,7 +3,6 @@ import {
   isAggregateFieldOrEquation,
 } from "@sentry/toolkit-core/events-fields";
 import {
-  createSentryClient,
   type GetOrganizationIssueEventData,
   getOrganizationIssue,
   getOrganizationIssueAutofixState,
@@ -15,13 +14,21 @@ import {
   listOrganizationIssues,
   listOrganizationProjects,
   listOrganizationTeams,
-  listOrganizations,
   listProjectEventAttachments,
   parseSentryLinkHeader,
 } from "@sentry/api";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
-import { createApiClientCore } from "@sentry/toolkit-core/api-client/core";
+import {
+  type ApiTarget,
+  createApiClientCore,
+  listPage,
+} from "@sentry/toolkit-core/api-client/core";
+import {
+  getAuthenticatedUser,
+  getOrganization,
+  listOrganizations,
+} from "@sentry/toolkit-core/api-client/endpoints/organizations";
 import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
@@ -321,9 +328,6 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
  * before, it adds no timeout.
  */
 const transport = createApiTransport({ retry: REQUEST_RETRY_POLICY });
-
-const API_MAX_PER_PAGE = 100;
-const MAX_LIST_PAGES = 50;
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.
@@ -859,80 +863,14 @@ export class SentryApiService {
     );
   }
 
-  /** Let SDK operations build paths and queries while MCP owns transport and errors. */
+  /** Let SDK operations build paths and queries while the core owns transport and errors. */
   private sdkClient(expectedPath: string, host: string = this.host) {
-    const origin = new URL(this.origin(host)).origin;
-    return createSentryClient({
-      baseUrl: origin,
-      fetch: async (sdkRequest) => {
-        if (!(sdkRequest instanceof Request)) {
-          throw new ConfigurationError("Unexpected SDK request input");
-        }
-        const url = new URL(sdkRequest.url);
-        if (
-          url.origin !== origin ||
-          url.pathname !== "/api/0".concat(expectedPath) ||
-          sdkRequest.method !== "GET"
-        ) {
-          throw new ConfigurationError(
-            "Unexpected SDK request target or method",
-          );
-        }
-        const path = `${url.pathname.slice("/api/0".length)}${url.search}`;
-        const response = await this.request(
-          path,
-          { method: "GET", signal: sdkRequest.signal },
-          { host },
-        );
-        const contentType = response.headers.get("content-type");
-        if (!contentType?.includes("application/json")) {
-          await readJsonResponse(response);
-        }
-        return response;
-      },
-    }).client;
+    return this.core.sdkClient(this.origin(host), expectedPath);
   }
 
-  private async sdkListPage<T>(
-    fetchPage: (
-      perPage: number,
-      cursor: string | undefined,
-    ) => Promise<{ data: unknown; response: Response }>,
-    schema: z.ZodType<T[]>,
-    limit: number,
-    initialCursor?: string | null,
-  ): Promise<{ items: T[]; nextCursor: string | null }> {
-    if (
-      !Number.isSafeInteger(limit) ||
-      limit < 1 ||
-      limit > API_MAX_PER_PAGE * MAX_LIST_PAGES
-    ) {
-      throw new ApiValidationError(
-        `limit must be an integer between 1 and ${API_MAX_PER_PAGE * MAX_LIST_PAGES}`,
-      );
-    }
-    const items: T[] = [];
-    const seenCursors = new Set<string>();
-    let cursor = initialCursor ?? undefined;
-    for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
-      const perPage = Math.min(API_MAX_PER_PAGE, limit - items.length);
-      const { data, response } = await fetchPage(perPage, cursor);
-      const rows = schema.parse(data);
-      if (rows.length > perPage) {
-        throw new Error("API returned more items than requested");
-      }
-      items.push(...rows);
-      const nextCursor = getNextCursor(response.headers.get("link"));
-      if (items.length >= limit || !nextCursor) {
-        return { items, nextCursor };
-      }
-      if (seenCursors.has(nextCursor) || nextCursor === cursor) {
-        throw new Error("API returned a repeated pagination cursor");
-      }
-      seenCursors.add(nextCursor);
-      cursor = nextCursor;
-    }
-    throw new Error("API pagination exceeded its page limit");
+  /** The core and origin a shared endpoint wrapper sends to. */
+  private target(host?: string): ApiTarget {
+    return { core: this.core, origin: this.origin(host) };
   }
 
   /**
@@ -1516,24 +1454,16 @@ export class SentryApiService {
   /**
    * Retrieves the authenticated user's profile information.
    *
-   * @param opts Request options including host override
    * @returns User profile data
    * @throws {ApiError} If authentication fails or user not found
    */
-  async getAuthenticatedUser(opts?: RequestOptions): Promise<User> {
-    // User identity belongs to the deployment's control host.
-    let authHost: string | undefined;
-
-    if (this.isPublicSaas()) {
-      authHost = "sentry.io";
-    }
-    // Single-tenant and self-hosted deployments keep their configured host.
-
-    const body = await this.requestJSON("/auth/", undefined, {
-      ...opts,
-      host: authHost,
-    });
-    return UserSchema.parse(body);
+  async getAuthenticatedUser(): Promise<User> {
+    // User identity belongs to the deployment's control host. Single-tenant
+    // and self-hosted deployments keep their configured host.
+    return await getAuthenticatedUser(
+      this.target(this.isPublicSaas() ? "sentry.io" : undefined),
+      UserSchema,
+    );
   }
 
   /**
@@ -1563,20 +1493,10 @@ export class SentryApiService {
   }): Promise<{ organizations: OrganizationList; nextCursor: string | null }> {
     // Public SaaS lists across regions on sentry.io; single-tenant instances
     // keep organization discovery on their configured host.
-    const client = this.sdkClient(
-      "/organizations/",
-      this.isPublicSaas() ? "sentry.io" : this.host,
-    );
-    const { items, nextCursor } = await this.sdkListPage(
-      (perPage, cursor) =>
-        listOrganizations({
-          client,
-          query: { per_page: perPage, query: params?.query, cursor },
-          throwOnError: true,
-        }),
+    const { items, nextCursor } = await listOrganizations(
+      this.target(this.isPublicSaas() ? "sentry.io" : this.host),
+      params ?? {},
       OrganizationListSchema,
-      params?.limit ?? 25,
-      params?.cursor,
     );
     return {
       organizations: items,
@@ -1599,21 +1519,11 @@ export class SentryApiService {
     params?: { includeFeatureFlags?: boolean; detailed?: boolean },
     opts?: RequestOptions,
   ) {
-    const queryParams = new URLSearchParams();
-    if (params?.includeFeatureFlags) {
-      queryParams.set("include_feature_flags", "1");
-    }
-    if (params?.detailed === false) {
-      queryParams.set("detailed", "0");
-    }
-    const queryString = queryParams.toString();
-    const organizationPath = apiPath`/organizations/${organizationSlug}/`;
-    const body = await this.requestJSON(
-      `${organizationPath}${queryString ? `?${queryString}` : ""}`,
-      undefined,
-      opts,
+    return await getOrganization(
+      this.target(opts?.host),
+      { organizationSlug, ...params },
+      OrganizationSchema,
     );
-    return OrganizationSchema.parse(body);
   }
 
   /**
@@ -1634,7 +1544,7 @@ export class SentryApiService {
   ): Promise<{ teams: TeamList; nextCursor: string | null }> {
     const teamsPath = apiPath`/organizations/${organizationSlug}/teams/`;
     const client = this.sdkClient(teamsPath, opts?.host);
-    const { items, nextCursor } = await this.sdkListPage(
+    const { items, nextCursor } = await listPage(
       (perPage, cursor) =>
         listOrganizationTeams({
           client,
@@ -1701,7 +1611,7 @@ export class SentryApiService {
   ): Promise<{ projects: ProjectList; nextCursor: string | null }> {
     const projectsPath = apiPath`/organizations/${organizationSlug}/projects/`;
     const client = this.sdkClient(projectsPath, opts?.host);
-    const { items, nextCursor } = await this.sdkListPage(
+    const { items, nextCursor } = await listPage(
       (perPage, cursor) =>
         listOrganizationProjects({
           client,
