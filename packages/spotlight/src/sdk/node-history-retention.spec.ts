@@ -5,6 +5,67 @@ function body(eventId: string): string {
   return `{}\n{"type":"event"}\n${JSON.stringify({ event_id: eventId, timestamp: 1 })}`;
 }
 
+test("a cancelled parsed delivery cannot clear a new generation's staged bytes", async () => {
+  let startOld!: () => void;
+  let startNew!: () => void;
+  let releaseOld!: () => void;
+  let releaseNew!: () => void;
+  const oldStarted = new Promise<void>((resolve) => {
+    startOld = resolve;
+  });
+  const newStarted = new Promise<void>((resolve) => {
+    startNew = resolve;
+  });
+  const oldGate = new Promise<void>((resolve) => {
+    releaseOld = resolve;
+  });
+  const newGate = new Promise<void>((resolve) => {
+    releaseNew = resolve;
+  });
+  const pipeline = createTelemetryPipeline({
+    enrichStacktrace: async (event) => {
+      if (event.event_id === "old") {
+        startOld();
+        await oldGate;
+      } else {
+        startNew();
+        await newGate;
+      }
+    },
+  });
+  const payload =
+    '{}\n{"type":"event"}\n{"event_id":"new","timestamp":1,"exception":{"values":[]}}';
+  try {
+    const old = pipeline.ingestEnvelope(
+      [
+        {},
+        [
+          [
+            { type: "event" },
+            { event_id: "old", timestamp: 1, exception: { values: [] } },
+          ],
+        ],
+      ],
+      { deliveryId: "reused" },
+    );
+    await oldStarted;
+    pipeline.reset();
+    const newest = pipeline.ingestPayload({
+      body: payload,
+      deliveryId: "reused",
+    });
+    await newStarted;
+    expect(await old).toMatchObject({ status: "ignored", reason: "reset" });
+    releaseNew();
+    expect(await newest).toMatchObject({ status: "processed" });
+    expect(pipeline.getDecodedPayload("reused")?.body.toString()).toBe(payload);
+  } finally {
+    releaseOld();
+    releaseNew();
+    pipeline.dispose();
+  }
+});
+
 test.each(["oversized", "within-budget"] as const)(
   "reusing an evicted delivery ID replaces decoded history: %s",
   async (scenario) => {

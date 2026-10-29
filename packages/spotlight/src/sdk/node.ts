@@ -296,7 +296,10 @@ export function createTelemetryPipeline(
       }
       return result;
     } finally {
-      if (stagedPayloads.get(envelopeId) === payload)
+      if (
+        generation === currentGeneration &&
+        stagedPayloads.get(envelopeId) === payload
+      )
         stagedPayloads.delete(envelopeId);
     }
   }
@@ -379,7 +382,8 @@ export function createTelemetryPipeline(
         telemetry.ingestEnvelope(prepared.envelope, prepared.options),
       );
     } finally {
-      stagedPayloads.delete(envelopeId);
+      if (epoch === generation && stagedPayloads.get(envelopeId) === null)
+        stagedPayloads.delete(envelopeId);
     }
   }
 
