@@ -29,9 +29,10 @@ export type DashboardArgs = {
 /**
  * Parse the arguments of a command that takes one dashboard:
  * `[<org/project>] <id-or-title>`, `<org>/[<project>/]<id>`, or a Sentry
- * URL (see the grammar).
+ * URL (see the grammar). After a target, the remaining arguments are one
+ * title: `my-org/ My Dashboard` names "My Dashboard".
  *
- * @param usageHint - Usage shown when arguments are ignored
+ * @param usageHint - Usage shown when arguments after a URL are ignored
  * @throws {ValidationError} When no dashboard is given
  */
 export function parseDashboardArgs(

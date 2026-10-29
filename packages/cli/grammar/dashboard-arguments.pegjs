@@ -4,14 +4,15 @@
 //   <id-or-title>                 the org is auto-detected
 //   <org>/<id>                    like a URL: the org, then a numeric ID
 //   <org>/<project>/<id>          the project only selects the org
-//   <target> <id-or-title>        any org/project target; a bare `<org>`
+//   <target> <id-or-title...>     any org/project target; a bare `<org>`
 //                                 means `<org>/`
 //   <dashboard-url>               a Sentry dashboard URL
-//   <org-url> <id-or-title>       a Sentry URL with only an org
+//   <org-url> <id-or-title...>    a Sentry URL with only an org
 //
 // A title may hold slashes: one argument is `<org>/[<project>/]<id>` only
-// when slugs come before a numeric ID, and a title otherwise. Arguments
-// after the dashboard are extra.
+// when slugs come before a numeric ID, and a title otherwise. After a
+// target, a title's words may be separate arguments (an unquoted title).
+// Arguments after a dashboard URL are extra.
 //
 // With `list` (`dashboard list`), they name the org and a title filter:
 //
@@ -45,6 +46,11 @@
   function filter(words) {
     return words.length > 0 ? { filter: words.join(" ") } : {};
   }
+
+  // An unquoted title arrives as one argument per word
+  function title(first, more) {
+    return [first, ...more].join(" ");
+  }
 }
 
 // Peggy runs a rule's action as soon as that rule matches, even when the
@@ -68,7 +74,7 @@ dashboardArguments
     }
   // A URL with only an org; the dashboard follows
   / sep u:orgUrl sep r:token x:rest {
-      return { ref: r, target: `${u.org}/`, url: u, extra: x };
+      return { ref: title(r, x), target: `${u.org}/`, url: u, extra: [] };
     }
   / sep u:orgUrl end { return { url: u, extra: [] }; }
   // `<org>/<project>/<id>` and `<org>/<id>`
@@ -78,9 +84,9 @@ dashboardArguments
   / sep o:slug "/" i:digits end { return { ref: i, target: `${o}/`, extra: [] }; }
   // Anything else in one argument is an ID or a title, slashes and all
   / sep r:token end { return { ref: r, extra: [] }; }
-  // `<target> <id-or-title>`
+  // `<target> <id-or-title...>`
   / sep t:token sep r:token x:rest {
-      return { ref: r, target: orgTarget(t), extra: x };
+      return { ref: title(r, x), target: orgTarget(t), extra: [] };
     }
 
 listArguments

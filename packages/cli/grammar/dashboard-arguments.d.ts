@@ -25,7 +25,7 @@ export type DashboardSyntax = {
   readonly target?: string;
   /** The URL the dashboard or org came from */
   readonly url?: DashboardUrl;
-  /** Arguments after the dashboard */
+  /** Arguments after a dashboard URL */
   readonly extra: readonly string[];
 };
 

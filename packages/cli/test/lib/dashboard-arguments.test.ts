@@ -293,11 +293,32 @@ describe("parseDashboardArgs warnings and edge cases", () => {
     });
   });
 
-  test("arguments after the dashboard are ignored with a warning", () => {
+  test("after a target, an unquoted title's words form one title", () => {
     expect(parseRef(["my-org", "My", "Dashboard"])).toEqual({
-      dashboardRef: "My",
+      dashboardRef: "My Dashboard",
       targetArg: "my-org/",
-      warnings: [`Extra arguments ignored: Dashboard. Expected: ${USAGE_HINT}`],
+      warnings: [],
+    });
+    expect(parseRef(["my-org/", "Backend", "Performance"])).toEqual({
+      dashboardRef: "Backend Performance",
+      targetArg: "my-org/",
+      warnings: [],
+    });
+    expect(parseRef(["my-org/web", "Errors", "/", "2026"])).toEqual({
+      dashboardRef: "Errors / 2026",
+      targetArg: "my-org/web",
+      warnings: [],
+    });
+  });
+
+  test("after an org URL, an unquoted title's words form one title", () => {
+    expect(
+      parseRef(["https://acme.sentry.io/", "Backend", "Performance"]),
+    ).toEqual({
+      dashboardRef: "Backend Performance",
+      targetArg: "acme/",
+      baseUrl: "https://acme.sentry.io",
+      warnings: ["Extracted org 'acme' from URL"],
     });
   });
 

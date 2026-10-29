@@ -205,6 +205,23 @@ describe("dashboard restore command", () => {
     );
   });
 
+  test("joins an unquoted title after a target", async () => {
+    const { context } = createMockContext();
+    const func = await restoreCommand.loader();
+    await func.call(
+      context,
+      defaultFlags({ json: true, revision: "3" }),
+      "my-org/",
+      "Backend",
+      "Performance",
+    );
+
+    expect(resolveDashboardIdSpy).toHaveBeenCalledWith(
+      "test-org",
+      "Backend Performance",
+    );
+  });
+
   test("takes the org and dashboard ID from a pasted dashboard URL", async () => {
     const { context } = createMockContext();
     const func = await restoreCommand.loader();
