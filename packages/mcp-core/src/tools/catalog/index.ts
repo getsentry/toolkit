@@ -70,6 +70,7 @@ import getAgentConversationDetails from "./get-agent-conversation-details";
 import searchAgentConversations from "./search-agent-conversations";
 import addIssueNote from "./add-issue-note";
 import onboardingStatusUpdate from "./onboarding-status-update";
+import searchAttributes from "./search-attributes";
 import type { ToolConfig } from "../types";
 
 const legacyGetAIConversationDetails = {
@@ -144,6 +145,7 @@ const catalogTools = {
   update_issue: updateIssue,
   link_issue: linkIssue,
   unlink_issue: unlinkIssue,
+  search_attributes: searchAttributes,
   search_errors: searchErrors,
   search_logs: searchLogs,
   search_traces: searchTraces,
