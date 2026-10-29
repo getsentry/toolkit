@@ -61,7 +61,7 @@ export type { ApiEndpoint } from "../src/lib/api-schema.js";
 
 import type { ApiEndpoint } from "../src/lib/api-schema.js";
 import type { IdempotentOperation } from "../src/lib/idempotent-operations.js";
-import { isRetryableMethod } from "../src/lib/retry-policy.js";
+import { isIdempotentRequest } from "@sentry/toolkit-core/api-retry";
 
 // ---------------------------------------------------------------------------
 // OpenAPI Types (minimal subset we need)
@@ -244,7 +244,7 @@ console.log(
 // Safe methods already retry, so only writes need listing; that keeps the
 // file the CLI loads on every request tiny.
 const idempotentOperations: IdempotentOperation[] = operations
-  .filter((op) => op.idempotent && !isRetryableMethod(op.method))
+  .filter((op) => op.idempotent && !isIdempotentRequest(op.method))
   .map((op) => ({ method: op.method, path: op.path }))
   .sort(
     (a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method),

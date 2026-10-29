@@ -289,6 +289,10 @@ Retries are:
 Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
 
+The CLI's transport (`packages/cli/src/lib/sentry-client.ts`) uses the same
+shared rule with its own caps (`RETRY_POLICY`). Unlike the MCP, it also
+retries network errors and timeouts for idempotent requests.
+
 ## Best Practices
 
 1. **Always use context helper** when in tools/prompts
