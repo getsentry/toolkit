@@ -88,12 +88,13 @@ Out of scope, tracked separately:
 
 - Server-side `Cache-Control` for event and trace-item detail responses
   (getsentry/sentry#128818, prototype in getsentry/sentry#128828).
-- A later phase, after step 2: `sentry mcp` passes the CLI's authenticated
-  fetch so local MCP sessions reuse the CLI login and on-disk cache, the
-  CLI's OAuth scopes are widened to cover MCP tools, and the CLI SDK's
-  portable operations move into the shared client so the CLI and MCP share
-  them without the MCP importing the CLI. `@sentry/mcp-server` is retired
-  in favor of `sentry mcp` in its own PR.
+- A later phase, after step 2: CLI commands split into host-specific input
+  resolution, portable operations, and renderers. The MCP tools move into
+  the CLI as a portable `sentry/mcp` entry that `sentry mcp` serves over
+  stdio and the hosted MCP bundles on Workers. `sentry mcp` passes the
+  CLI's authenticated fetch so local MCP sessions reuse the CLI login and
+  on-disk cache, and the CLI's OAuth scopes are widened to cover MCP tools.
+  The future of `@sentry/mcp-server` is decided in its own PR.
 
 ## Capabilities
 

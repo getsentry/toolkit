@@ -63,11 +63,12 @@ See proposal.md for motivation. Current state that shapes the approach:
 
 - Client-side caching in the Sentry frontend. Browser HTTP caching driven
   by server headers covers that (getsentry/sentry#128818).
-- Importing the CLI package from the MCP, including `createSentrySDK()`.
-  The MCP reaches the same operations through the shared client instead
-  (see "Dependencies point down"). Moving the CLI SDK's operations down and
-  injecting the CLI's host capabilities into `sentry mcp` are deferred to a
-  later phase after step 2 (task group 11).
+- Calling `createSentrySDK()` from the hosted MCP. It is Node-only. The
+  hosted MCP reaches the CLI's operations through the portable `sentry/mcp`
+  entry instead (see "MCP tools are a portable face of the CLI's
+  commands"), in a later phase after step 2 (task group 11).
+- Moving the hosted MCP off Cloudflare Workers, or making the CLI serve
+  more than one user.
 - Replacing every hand-written response schema with a generated one, or
   moving either product to the other's validation library.
 
@@ -437,28 +438,63 @@ The cache codec uses `node:zlib`, which Node and Workers have and browsers do
 not. It is storage, so it stays a host-side module outside the guarded set
 and does not move in step 2.
 
-### Dependencies point down; the MCP never imports the CLI
+### MCP tools are a portable face of the CLI's commands
 
-Package dependencies only point down:
+The hosted MCP stays on Cloudflare Workers, and the CLI stays a local,
+single-user tool. Neither changes. So the CLI owns the operations and the
+MCP tool definitions, and the part the hosted MCP needs is portable:
 
 ```
-cli → mcp-core → toolkit-core (→ @sentry/api)
-mcp-cloudflare → mcp-core
+sentry (cli)
+  commands/     Node: resolve inputs from the cwd, config, and DSN; render for the terminal
+  operations/   portable: one function per command; calls the shared client, returns typed data
+  mcp/          portable: MCP tool definitions over operations, with the agent renderer
+sentry mcp      stdio composition root: mcp/ plus the CLI's host capabilities
+mcp-cloudflare  bundles sentry's portable `sentry/mcp` entry; supplies OAuth, KV, and its cache
 ```
 
-`mcp-core` never imports `sentry`, not even type-only. `sentry mcp` is the
-composition root that builds an MCP server from `mcp-core` and the CLI's
-host pieces.
+Each command splits into three layers:
 
-"The MCP uses the CLI SDK underneath" is done by moving the CLI SDK's
-portable operations down into the shared client layer, not by importing
-the CLI. `createSentrySDK()`, the CLI commands, and the MCP tools then
-become thin faces over the same operations. This also keeps the hosted MCP
-working on Workers, since the CLI SDK is Node-only today (SQLite, the
-filesystem, and `process`).
+- **Resolve** is host-specific. The CLI fills organization, project, and
+  defaults from the cwd, its config, DSN detection, and SQLite. An MCP tool
+  fills them from tool parameters and session constraints.
+- **Operate** is portable. It takes resolved inputs and an `ApiTarget` from
+  the shared client, and returns the data the command yields today as
+  `CommandOutput<T>`.
+- **Render** has three modes: the command's `output.human` for the
+  terminal, JSON for `--json` and the SDK, and an agent renderer for MCP.
+  Commands already yield `CommandOutput<T>` and declare `output: { human }`
+  (`cli/src/lib/command.ts`), so the MCP renderer is a third output mode,
+  not a rewrite.
 
-Capabilities only the CLI host has are optional interfaces declared in
-`mcp-core` or `toolkit-core`:
+Commands are async generators, and some yield more than once. An MCP tool
+buffers the yields and returns one result, as `createSentrySDK()` already
+does when it collects multiple yields into an array
+(`cli/src/lib/sdk-invoke.ts`). Commands with unbounded streams, the
+follow and tail flags `sdk-invoke.ts` already detects, are not exposed as
+MCP tools, or only in a bounded form.
+
+`operations/` and `mcp/` get the same portability guard as the shared
+client: no `node:*` imports or Node globals, and a typecheck against the
+DOM library. The CLI package exposes them as a separate entry point,
+`sentry/mcp`, so `mcp-cloudflare` bundles them without command handlers,
+SQLite, or Ink. `createSentrySDK()` stays Node-only, and the hosted MCP does
+not call it.
+
+Package dependencies:
+
+```
+sentry → mcp-core → toolkit-core (→ @sentry/api)
+mcp-cloudflare → sentry/mcp (portable entry only), mcp-core
+```
+
+`mcp-core` keeps the MCP plumbing: tool registration, the stdio transport,
+scopes and constraints, and shared formatting helpers. It holds no Sentry
+operations and never imports `sentry`. As tools move to `sentry/mcp`, their
+`mcp-core` copies are deleted, and the MCP evals (`mcp-server-evals`) guard
+the agent output.
+
+Capabilities only the CLI host has stay optional interfaces:
 
 - the SQLite response cache store
 - the region cache
@@ -469,12 +505,11 @@ Capabilities only the CLI host has are optional interfaces declared in
 its own, such as the memory cache store, or omits them, and tools that
 need a missing capability say so or stay unavailable.
 
-Two checks enforce the direction, both added by the `@sentry/mcp-server`
-retirement PR: a lint rule that bans importing `sentry` from `mcp-core`
-and `mcp-cloudflare`, type-only imports included, and a check over the
-workspace package manifests that fails on a dependency cycle. That PR also
-moves the MCP registry entry (`server.json`) from `@sentry/mcp-server` to
-`sentry mcp`.
+Two checks enforce the direction. The `@sentry/mcp-server` retirement PR
+adds a lint rule that bans importing `sentry` from `mcp-core` and
+`mcp-cloudflare`, type-only imports included, and a manifest check that
+fails on a workspace dependency cycle. When tools move, the rule is relaxed
+to let `mcp-cloudflare` import `sentry/mcp` and nothing else from `sentry`.
 
 ### `fresh` is a shared read-tool input
 
@@ -573,11 +608,12 @@ bumps move both products together.
    the MCP switch, the CLI switch, and the merged shared wrappers.
 7. Step 2: copy the client into getsentry/sentry-api-schema, publish
    `@sentry/api`, switch toolkit to it, and delete the toolkit-core copies.
-8. Later phase: move the CLI SDK's portable operations into the shared
-   client, and have `sentry mcp` inject the CLI's host capabilities
-   (session, cache store, region cache, DSN detection, file uploads).
-   `@sentry/mcp-server` is retired separately, with the registry entry
-   moved to `sentry mcp`.
+8. Later phase: split CLI commands into resolve, operate, and render; move
+   the MCP tools into the CLI's portable `sentry/mcp` entry; and have
+   `sentry mcp` inject the CLI's host capabilities (session, cache store,
+   region cache, DSN detection, file uploads) while `mcp-cloudflare`
+   bundles the same entry. The registry entry moves to `sentry mcp` in the
+   `@sentry/mcp-server` retirement PR.
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
 `off` restores today's uncached behavior. Each CLI step is a refactor that
@@ -593,3 +629,8 @@ can be reverted on its own.
 - Whether the server should send `private, max-age` on more endpoints
   later, such as stable organization and project metadata. The CLI follows
   server headers automatically; R2 eligibility stays an explicit allowlist.
+- What `@sentry/mcp-server` becomes: retired in favor of `sentry mcp`, or a
+  zero-dependency stdio proxy to the hosted MCP. The hosted MCP accepts
+  `Authorization: Sentry-Bearer <token>`, so the proxy needs no OAuth flow,
+  but it serves only one Sentry host, so self-hosted users would use
+  `sentry mcp`.
