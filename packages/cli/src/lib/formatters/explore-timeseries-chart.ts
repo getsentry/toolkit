@@ -13,7 +13,7 @@ import {
   tmuxKittyPlacement,
 } from "../sixel.js";
 import { encodeImageToSixel } from "../sixel-image.js";
-import { rasterizeChart } from "./chart-core.js";
+import { renderChartWithLabels } from "./chart-presentation.js";
 import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
 import { formatCellValue } from "./meta-table.js";
 import { appendUnitSuffix } from "./numbers.js";
@@ -51,9 +51,6 @@ export function formatExploreTimeSeriesChart(
     !Number.isFinite(height) ||
     !Number.isFinite(meta.interval) ||
     meta.interval <= 0 ||
-    // The shared engine averages dense series. That is not valid for arbitrary
-    // Explore aggregates (for example percentiles and unique counts).
-    values.length > Math.floor(width / 2) ||
     values.some(
       (bucket, index) =>
         !Number.isFinite(bucket.timestamp) ||
@@ -74,7 +71,21 @@ export function formatExploreTimeSeriesChart(
     return;
   }
   const maximum = Math.max(...complete);
-  const image = rasterizeChart(
+  const maximumLabel = formatMaximum(maximum, series);
+  const firstLabel = `${formatUtcTimestamp(first.timestamp)} UTC`;
+  const lastLabel = `${formatUtcTimestamp(last.timestamp)} UTC`;
+  const gutterColumns = Math.max(5, maximumLabel.length + 1);
+  const plotWidth = width - gutterColumns * cell.cellWidth - 1;
+  // Keep the full value scale and UTC labels readable; a clipped date or unit
+  // is less useful than the table on narrow or unusually tall-cell terminals.
+  if (
+    plotWidth <
+      2 * Math.max(firstLabel.length, lastLabel.length) * cell.cellWidth ||
+    height < 5 * cell.cellHeight
+  ) {
+    return;
+  }
+  const image = renderChartWithLabels(
     {
       kind: "timeseries",
       series: [{ label: series.yAxis, values: plotted }],
@@ -82,7 +93,19 @@ export function formatExploreTimeSeriesChart(
       maxVal: maximum || 1,
       stacked: false,
     },
-    { width, height, minBarHeight: 1 },
+    {
+      width,
+      height,
+      ...cell,
+      gutterColumns,
+      maximumLabel,
+      firstLabel,
+      lastLabel,
+      minBarHeight: 1,
+      // Percentiles and unique counts cannot be averaged when axes reduce the
+      // plot width. Let the shared renderer decline graphics in that case.
+      allowDownsampling: false,
+    },
   );
   if (!image) {
     return;
@@ -95,7 +118,7 @@ export function formatExploreTimeSeriesChart(
     return;
   }
   const scale = renderMarkdown(
-    `Scale: 0 to ${escapeMarkdownInline(formatMaximum(maximum, series))}`,
+    `Scale: 0 to ${escapeMarkdownInline(maximumLabel)}`,
   );
   const range = renderMarkdown(
     `Bucket starts (UTC): ${formatUtcTimestamp(first.timestamp)} to ${formatUtcTimestamp(last.timestamp)}`,

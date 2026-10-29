@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
+import { formatLegendLabel } from "../../../src/lib/formatters/chart-presentation.js";
 import {
-  formatLegendLabel,
   formatTimestamp,
   renderDashboardAsSixel,
 } from "../../../src/lib/formatters/sixel-dashboard.js";
