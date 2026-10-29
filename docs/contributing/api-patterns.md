@@ -79,12 +79,12 @@ fail to resolve for legacy mixed-case project slugs; keep them for display.
 
 Organization discovery uses `/api/0/organizations/`; a limit over 100 follows
 bounded pages through Sentry's Link cursors. Organization, team, and project
-lists, issue events, and event attachment lists use `@sentry/api` operations
-to build GET paths and queries. The MCP
-client still owns the request transport, token handling, retries, error
-types, and Zod response validation. Public SaaS hosts use `sentry.io` to list
-organizations across regions. Single-tenant hosts under `*.my.sentry.io` and
-self-hosted instances keep their configured host for this request.
+lists and most issue and event reads use `@sentry/api` operations to build GET
+paths and queries. The MCP client still owns the request transport, token
+handling, retries, error types, and Zod response validation. Public SaaS
+hosts use `sentry.io` to list organizations across regions. Single-tenant
+hosts under `*.my.sentry.io` and self-hosted instances keep their configured
+host for this request.
 
 User identity (`/api/0/auth/`, used by `whoami`) follows the same control-host
 routing. Organization-scoped requests continue to use the configured host or

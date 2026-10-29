@@ -5,8 +5,14 @@ import {
 import {
   createSentryClient,
   type GetOrganizationIssueEventData,
+  getOrganizationIssue,
+  getOrganizationIssueAutofixState,
   getOrganizationIssueEvent,
+  getOrganizationIssueTag,
   listOrganizationIssueEvents,
+  listOrganizationIssueExternalIssues,
+  listOrganizationIssueIntegrations,
+  listOrganizationIssues,
   listOrganizationProjects,
   listOrganizationTeams,
   listOrganizations,
@@ -4094,28 +4100,25 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<IssueList> {
-    const sentryQuery: string[] = [];
-    if (query) {
-      sentryQuery.push(query);
-    }
-
-    const queryParams = new URLSearchParams();
-    queryParams.set("limit", String(limit));
-    if (sortBy) queryParams.set("sort", sortBy);
-    queryParams.set("statsPeriod", statsPeriod ?? DEFAULT_SEARCH_ISSUES_PERIOD);
-    queryParams.set("query", sentryQuery.join(" "));
-
-    if (projectId) {
-      queryParams.append("project", projectId);
-    }
-    queryParams.append("collapse", "unhandled");
-
-    const apiUrl =
-      apiPath`/organizations/${organizationSlug}/issues/` +
-      `?${queryParams.toString()}`;
-
-    const body = await this.requestJSON(apiUrl, undefined, opts);
-    return IssueListSchema.parse(body);
+    const { data } = await listOrganizationIssues({
+      client: this.sdkClient(
+        apiPath`/organizations/${organizationSlug}/issues/`,
+        opts?.host,
+      ),
+      path: { organization_id_or_slug: organizationSlug },
+      query: {
+        limit,
+        sort: sortBy,
+        statsPeriod: statsPeriod ?? DEFAULT_SEARCH_ISSUES_PERIOD,
+        // Always send `query`, even empty: Sentry applies `is:unresolved`
+        // only when the parameter is missing.
+        query: query ?? "",
+        project: projectId ? [projectId] : undefined,
+        collapse: ["unhandled"],
+      },
+      throwOnError: true,
+    });
+    return IssueListSchema.parse(data);
   }
 
   async getIssue(
@@ -4128,12 +4131,15 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Issue> {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/`,
-      undefined,
-      opts,
-    );
-    return IssueSchema.parse(body);
+    const { data } = await getOrganizationIssue({
+      client: this.sdkClient(
+        apiPath`/organizations/${organizationSlug}/issues/${issueId}/`,
+        opts?.host,
+      ),
+      path: { organization_id_or_slug: organizationSlug, issue_id: issueId },
+      throwOnError: true,
+    });
+    return IssueSchema.parse(data);
   }
 
   /**
@@ -4173,12 +4179,19 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<IssueTagValues> {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/tags/${tagKey}/`,
-      undefined,
-      opts,
-    );
-    return IssueTagValuesSchema.parse(body);
+    const { data } = await getOrganizationIssueTag({
+      client: this.sdkClient(
+        apiPath`/organizations/${organizationSlug}/issues/${issueId}/tags/${tagKey}/`,
+        opts?.host,
+      ),
+      path: {
+        organization_id_or_slug: organizationSlug,
+        issue_id: issueId,
+        key: tagKey,
+      },
+      throwOnError: true,
+    });
+    return IssueTagValuesSchema.parse(data);
   }
 
   /**
@@ -4200,10 +4213,23 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ExternalIssueList> {
-    return await this.listIssueLinkPages(
+    const client = this.sdkClient(
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/external-issues/`,
+      opts?.host,
+    );
+    // The endpoint has no per_page parameter; Sentry's default page is 100.
+    return await this.collectAllPages(
+      (cursor) =>
+        listOrganizationIssueExternalIssues({
+          client,
+          path: {
+            organization_id_or_slug: organizationSlug,
+            issue_id: issueId,
+          },
+          query: { cursor },
+          throwOnError: true,
+        }),
       ExternalIssueListSchema,
-      opts,
     );
   }
 
@@ -4212,9 +4238,7 @@ export class SentryApiService {
     schema: z.ZodType<T[]>,
     opts?: RequestOptions,
   ): Promise<T[]> {
-    const items: T[] = [];
-    let cursor: string | null = null;
-    do {
+    return await this.collectAllPages(async (cursor) => {
       const query = new URLSearchParams({ per_page: "100" });
       if (cursor) query.set("cursor", cursor);
       const response = await this.request(
@@ -4222,8 +4246,23 @@ export class SentryApiService {
         undefined,
         opts,
       );
-      items.push(...schema.parse(await this.parseJsonResponse(response)));
-      cursor = getNextCursor(response.headers.get("link"));
+      return { data: await this.parseJsonResponse(response), response };
+    }, schema);
+  }
+
+  /** Walks every page of a Link-paginated list. */
+  private async collectAllPages<T>(
+    fetchPage: (
+      cursor: string | undefined,
+    ) => Promise<{ data: unknown; response: Response }>,
+    schema: z.ZodType<T[]>,
+  ): Promise<T[]> {
+    const items: T[] = [];
+    let cursor: string | undefined;
+    do {
+      const { data, response } = await fetchPage(cursor);
+      items.push(...schema.parse(data));
+      cursor = getNextCursor(response.headers.get("link")) ?? undefined;
     } while (cursor);
     return items;
   }
@@ -4235,10 +4274,22 @@ export class SentryApiService {
     }: { organizationSlug: string; issueId: string },
     opts?: RequestOptions,
   ): Promise<IssueIntegrationList> {
-    return await this.listIssueLinkPages(
+    const client = this.sdkClient(
       apiPath`/organizations/${organizationSlug}/issues/${issueId}/integrations/`,
+      opts?.host,
+    );
+    return await this.collectAllPages(
+      (cursor) =>
+        listOrganizationIssueIntegrations({
+          client,
+          path: {
+            organization_id_or_slug: organizationSlug,
+            issue_id: issueId,
+          },
+          query: { per_page: 100, cursor },
+          throwOnError: true,
+        }),
       IssueIntegrationListSchema,
-      opts,
     );
   }
 
@@ -5471,12 +5522,15 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<AutofixRunState> {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/`,
-      undefined,
-      opts,
-    );
-    return AutofixRunStateSchema.parse(body);
+    const { data } = await getOrganizationIssueAutofixState({
+      client: this.sdkClient(
+        apiPath`/organizations/${organizationSlug}/issues/${issueId}/autofix/`,
+        opts?.host,
+      ),
+      path: { organization_id_or_slug: organizationSlug, issue_id: issueId },
+      throwOnError: true,
+    });
+    return AutofixRunStateSchema.parse(data);
   }
 
   // POST https://us.sentry.io/api/0/organizations/my-org/search-agent/start/
