@@ -10,11 +10,13 @@
  * for introspection and documentation generation.
  */
 
+import generatedCommandApi from "../generated/command-api.json";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   type CompletionTarget,
   getCompletionTarget,
 } from "./completion-target.js";
+import type { ApiReference, CommandApiReference } from "./api-schema.js";
 import {
   extractSchemaFields,
   type SchemaFieldInfo,
@@ -30,6 +32,7 @@ export type RouteMapEntry = {
   name: { original: string };
   target: RouteTarget;
   hidden: boolean;
+  aliases?: readonly string[];
 };
 
 /** A routing target is either a route map (group) or a command */
@@ -490,26 +493,33 @@ export function extractCommandCompletions(
   );
 }
 
-/** Matches the "sentry " prefix at the start of a command path. */
-const SENTRY_PREFIX_RE = /^sentry /;
-
 /** Maximum number of fuzzy suggestions to include in an UnresolvedPath. */
 const MAX_SUGGESTIONS = 3;
+const COMMAND_PATH_SEPARATOR = /\s+/;
+
+/** Find canonical public paths so hidden aliases cannot expose internal commands. */
+export function publicTargetPaths(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+  paths = new Map<RouteTarget, string[]>(),
+): Map<RouteTarget, string[]> {
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden || paths.has(entry.target)) {
+      continue;
+    }
+    const path = [...prefix, entry.name.original];
+    paths.set(entry.target, path);
+    if (isRouteMap(entry.target)) {
+      publicTargetPaths(entry.target, path, paths);
+    }
+  }
+  return paths;
+}
 
 /**
- * Resolve a command path through the route tree.
- *
- * Navigates the tree using the provided path segments:
- * - Single segment (e.g. ["issue"]) → returns the route group if it's a RouteMap,
- *   or the command if it's a standalone command
- * - Two segments (e.g. ["issue", "list"]) → returns the specific subcommand
- *
- * When a segment doesn't match, returns an {@link UnresolvedPath} with
- * fuzzy-matched suggestions from the available routes at that level.
- *
- * @param routeMap - Top-level Stricli route map
- * @param path - Command path segments (e.g. ["issue", "list"])
- * @returns Resolved command/group, unresolved with suggestions, or null for empty paths
+ * Resolve a full command path using the registered route names and aliases.
+ * Hidden aliases are accepted only when their target also has a public path.
+ * Results always use the canonical public spelling; no command is executed.
  */
 export function resolveCommandPath(
   routeMap: RouteMap,
@@ -519,85 +529,80 @@ export function resolveCommandPath(
     return null;
   }
 
-  const first = path[0];
-  const rest = path.slice(1);
+  const publicPaths = publicTargetPaths(routeMap);
+  let target: RouteTarget = routeMap;
+  let canonicalPath: string[] = [];
 
-  // length === 0 is handled above; this guard helps TS narrow the type
-  if (first === undefined) {
-    return null;
-  }
-
-  // Collect visible entries once — used for both exact match and fuzzy fallback
-  const visibleEntries = routeMap.getAllEntries().filter((e) => !e.hidden);
-  const entry = visibleEntries.find((e) => e.name.original === first);
-
-  if (!entry) {
-    const names = visibleEntries.map((e) => e.name.original);
-    return {
-      kind: "unresolved",
-      input: first,
-      suggestions: fuzzyMatch(first, names, { maxResults: MAX_SUGGESTIONS }),
-    };
-  }
-
-  const target = entry.target;
-
-  // No more path segments — return what we found
-  if (rest.length === 0) {
-    if (isRouteMap(target)) {
+  for (const segment of path) {
+    if (!isRouteMap(target)) {
+      return null;
+    }
+    const entries: RouteMapEntry[] = target
+      .getAllEntries()
+      .filter(
+        (candidate) => !candidate.hidden || publicPaths.has(candidate.target),
+      );
+    const entry: RouteMapEntry | undefined =
+      entries.find((candidate) => candidate.name.original === segment) ??
+      entries.find((candidate) => candidate.aliases?.includes(segment));
+    if (!entry) {
       return {
-        kind: "group",
-        info: {
-          name: entry.name.original,
-          brief: target.brief,
-          commands: extractRouteGroupCommands(target, entry.name.original),
-        },
+        kind: "unresolved",
+        input: segment,
+        suggestions: fuzzyMatch(
+          segment,
+          entries
+            .filter((candidate) => !candidate.hidden)
+            .map((candidate) => candidate.name.original),
+          { maxResults: MAX_SUGGESTIONS },
+        ),
       };
     }
-    if (isCommand(target)) {
-      return {
-        kind: "command",
-        info: buildCommandInfo(target, `sentry ${entry.name.original}`),
-      };
-    }
-    return null;
+    canonicalPath = entry.hidden
+      ? [...(publicPaths.get(entry.target) ?? [])]
+      : [...canonicalPath, entry.name.original];
+    target = entry.target;
   }
 
-  // More path segments — must be a route map to navigate deeper
-  if (!isRouteMap(target)) {
-    return null;
-  }
-
-  // Recurse into the sub-route map with remaining path segments
-  const subResult = resolveCommandPath(target, rest);
-  if (!subResult) {
-    return null;
-  }
-
-  // Prepend the parent route segment to all paths in the result
-  const parentPrefix = entry.name.original;
-  const prependPrefix = (p: string) =>
-    p.replace(SENTRY_PREFIX_RE, `sentry ${parentPrefix} `);
-
-  if (subResult.kind === "command") {
-    return {
-      kind: "command",
-      info: { ...subResult.info, path: prependPrefix(subResult.info.path) },
-    };
-  }
-  if (subResult.kind === "group") {
+  const name = canonicalPath.join(" ");
+  if (isRouteMap(target)) {
     return {
       kind: "group",
       info: {
-        ...subResult.info,
-        name: `${parentPrefix} ${subResult.info.name}`,
-        commands: subResult.info.commands.map((cmd) => ({
-          ...cmd,
-          path: prependPrefix(cmd.path),
-        })),
+        name,
+        brief: target.brief,
+        commands: extractRouteGroupCommands(target, name),
       },
     };
   }
+  if (isCommand(target)) {
+    return {
+      kind: "command",
+      info: buildCommandInfo(target, `sentry ${name}`),
+    };
+  }
+  return null;
+}
 
-  return subResult;
+/** Collect related APIs for one exact command path or all commands in a group. */
+export function getCommandApiReferences(
+  routeMap: RouteMap,
+  query: string,
+  apiByCommand: Readonly<
+    Record<string, readonly ApiReference[]>
+  > = generatedCommandApi,
+): CommandApiReference[] {
+  const path = query.trim().split(COMMAND_PATH_SEPARATOR).filter(Boolean);
+  const resolved = resolveCommandPath(routeMap, path);
+  if (!resolved || resolved.kind === "unresolved") {
+    return [];
+  }
+  const commands =
+    resolved.kind === "command" ? [resolved.info] : resolved.info.commands;
+  return commands.flatMap((command) =>
+    (apiByCommand[command.path] ?? []).map((reference) => ({
+      ...reference,
+      command: command.path,
+    })),
+  );
 }
