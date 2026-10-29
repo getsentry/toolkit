@@ -5,6 +5,7 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
@@ -2040,6 +2041,36 @@ describe("organization SDK list pages", () => {
       "repeated pagination cursor",
     );
     expect(requests).toBe(2);
+  });
+});
+
+describe("listIssues request", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("sends an empty query so Sentry does not apply is:unresolved", async () => {
+    let params = new URLSearchParams();
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/issues/",
+        ({ request }) => {
+          params = new URL(request.url).searchParams;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    await new SentryApiService({ accessToken: "test-token" }).listIssues({
+      organizationSlug: "test-org",
+      projectId: "123",
+      sortBy: "freq",
+    });
+
+    expect(params.get("query")).toBe("");
+    expect(params.get("limit")).toBe("10");
+    expect(params.get("sort")).toBe("freq");
+    expect(params.get("statsPeriod")).toBe(DEFAULT_SEARCH_ISSUES_PERIOD);
+    expect(params.getAll("project")).toEqual(["123"]);
+    expect(params.getAll("collapse")).toEqual(["unhandled"]);
   });
 });
 
