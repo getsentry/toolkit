@@ -55,8 +55,9 @@ The plan has two steps:
   routing.
 - The MCP's `SentryApiService` sends every request through the shared
   transport and drops its own retry loop.
-- **Step 1:** add a shared API client to `@sentry/toolkit-core`, in one PR
-  that also switches both products and deletes the code it replaces. It
+- **Step 1:** add a shared API client to `@sentry/toolkit-core`, in stacked
+  PRs by layer that also switch both products and delete the code they
+  replace. It
   covers endpoint wrappers by domain on top of `@sentry/api` operations,
   the error types (`ApiError`, rate limits, `retryAfterMs`), response
   validation through the Standard Schema interface (the MCP keeps Zod and

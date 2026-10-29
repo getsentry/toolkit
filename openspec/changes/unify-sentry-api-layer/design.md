@@ -366,8 +366,7 @@ for every fix. So:
 1. **Step 1, in `toolkit-core` (task group 8).** Build the shared client in
    `toolkit-core/src/api-client/`, with the file layout it will have inside
    `@sentry/api`. Switch the MCP and the CLI onto it and delete the code it
-   replaces, in one PR rather than one per domain: two half-migrated layers
-   would cost more than one large review.
+   replaces, in stacked PRs by layer rather than by domain (see below).
 2. **Step 2, into `@sentry/api` (task group 9).** Copy the modules into
    getsentry/sentry-api-schema unchanged, publish a new `@sentry/api`,
    switch toolkit's imports, and delete the toolkit-core copies.
@@ -487,12 +486,22 @@ touches `AsyncLocalStorage`, which browsers lack. The tool count does not
 change. Token cost is checked with `pnpm run measure-tokens`, and the
 description stays short.
 
-### Endpoints move in one PR, not by domain
+### Endpoints move in stacked PRs by layer, not by domain
 
 The earlier plan moved MCP methods onto `@sentry/api` one domain per PR.
-Issues and events landed that way (#1713). The rest moves in the step 1
-consolidation PR instead, together with the CLI's modules, so neither
-product is left half on the old layer. Endpoints that `@sentry/api` lacks
+Issues and events landed that way (#1713). The rest moves in a stack of
+step 1 PRs split by layer instead:
+
+1. The foundation: errors, `apiPath`, validation, and response reading
+   (#1732).
+2. Pagination, cache policy, retry, and transport moved under
+   `api-client/`.
+3. Endpoint wrappers by domain, with the MCP switched onto them.
+4. The CLI host seam, with the CLI switched.
+5. One wrapper for each endpoint both products call.
+
+Each PR switches every caller of the layer it moves, so neither product is
+left half on the old layer for that layer. Endpoints that `@sentry/api` lacks
 call the shared transport directly, and hosts keep their own schemas for
 them. Endpoint
 behavior is checked against `~/src/sentry`, as `AGENTS.md` requires.
@@ -530,9 +539,10 @@ bumps move both products together.
 - **Generated `@sentry/api` types disagree with responses.** Keep Zod
   validation at the MCP boundary. Pin and bump `@sentry/api` through the
   catalog.
-- **One large consolidation PR.** It is harder to review than per-domain
-  PRs. Both products' existing test suites run against the shared client,
-  and the PR body lists every intentional behavior change.
+- **A long stack of PRs.** Each PR waits on the one below it and needs a
+  rebase when that one merges. Splitting by layer keeps each PR coherent,
+  both products' test suites run against every PR, and each PR body lists
+  its intentional behavior changes.
 - **Two validation libraries.** The MCP's Zod schemas and the CLI's valibot
   schemas for the same endpoint can drift apart. Standard Schema keeps the
   shared client out of that choice, so neither product pays for the other's
@@ -558,8 +568,9 @@ bumps move both products together.
 5. Enable the hosted memory cache. Add the R2 binding and its allowlist
    behind `MCP_RESPONSE_CACHE=tiered`, and enable it only after the server
    headers ship and the security sign-off.
-6. Step 1: land the consolidation PR, with the portability guard, the shared
-   client, and both products switched over.
+6. Step 1: land the stacked PRs by layer: the foundation with the
+   portability guard, the transport-layer move, the endpoint wrappers with
+   the MCP switch, the CLI switch, and the merged shared wrappers.
 7. Step 2: copy the client into getsentry/sentry-api-schema, publish
    `@sentry/api`, switch toolkit to it, and delete the toolkit-core copies.
 8. Later phase: move the CLI SDK's portable operations into the shared
