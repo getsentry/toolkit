@@ -61,6 +61,11 @@ export type McpServerOptions = {
   onUpstreamUnauthorized?: (
     setAccessToken: (token: string) => void,
   ) => void | Promise<void>;
+  /**
+   * Authenticated fetch for every Sentry API request the tools make. The host
+   * owns retries, caching, and auth refresh; the MCP does not retry on top.
+   */
+  fetch?: typeof fetch;
   /** Command name used in usage output. */
   packageName?: string;
   /** Environment used for server configuration. */
@@ -427,6 +432,7 @@ export async function runMcpServer(
     openaiBaseUrl: cfg.openaiBaseUrl,
     experimentalMode: cli.experimental,
     transport: "stdio" as const,
+    fetch: options.fetch,
     // Let the host refresh its credential on an upstream 401 and write it back
     // so subsequent tool calls use the new token. Tool handlers read
     // `context.accessToken` fresh per call, so mutating it here is enough.

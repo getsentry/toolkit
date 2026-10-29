@@ -406,6 +406,17 @@ describe("headers", () => {
       "user-agent": "test-agent",
     });
   });
+
+  it("leaves Authorization to the request without credentials", async () => {
+    const { fetch, sent } = scriptedFetch([Response.json({})]);
+    const api = createApiTransport({ retry: policy, fetch });
+
+    await api.request(ISSUES_URL, {
+      headers: { Authorization: "Bearer from-request" },
+    });
+
+    expect(sent[0]?.headers.get("Authorization")).toBe("Bearer from-request");
+  });
 });
 
 describe("validated redirects", () => {
@@ -565,6 +576,24 @@ describe("cache", () => {
 
     expect(await (await api.request(ISSUES_URL)).json()).toEqual({ v: 2 });
     expect(sent).toHaveLength(2);
+  });
+
+  it("is not consulted without credentials", async () => {
+    const lookup = vi.fn();
+    const store = vi.fn();
+    const { fetch, sent } = scriptedFetch([Response.json({})]);
+    const api = createApiTransport({
+      retry: policy,
+      fetch,
+      cache: { lookup, store, invalidate: vi.fn() },
+    });
+
+    await (await api.request(ISSUES_URL)).json();
+    await (await api.request(ISSUES_URL)).json();
+
+    expect(sent).toHaveLength(2);
+    expect(lookup).not.toHaveBeenCalled();
+    expect(store).not.toHaveBeenCalled();
   });
 
   it("revalidates a stale entry with its ETag", async () => {

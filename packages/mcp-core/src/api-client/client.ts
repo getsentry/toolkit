@@ -22,11 +22,10 @@ import {
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import {
-  nextRetryDelayMs,
   parseRetryDelayMs,
   type RetryPolicy,
-  sleep,
 } from "@sentry/toolkit-core/api-retry";
+import { createApiTransport } from "@sentry/toolkit-core/api-transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -332,11 +331,13 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
 };
 
 /**
- * Errors thrown because `fetch` itself failed (DNS, connection refused or
- * reset, socket timeout), as opposed to configuration checks before the
- * request. The shared policy retries these for idempotent requests only.
+ * Requests without a host-supplied fetch go through the shared transport.
+ * `SentryApiService` sets its own headers, including Authorization, so the
+ * transport only retries; as before, it adds no timeout.
  */
-const fetchFailures = new WeakSet<object>();
+const defaultTransport = createApiTransport({ retry: REQUEST_RETRY_POLICY });
+const defaultFetch: typeof fetch = (input, init) =>
+  defaultTransport.request(input, init);
 
 const API_MAX_PER_PAGE = 100;
 const MAX_LIST_PAGES = 50;
@@ -622,6 +623,7 @@ export class SentryApiService {
   protected host: string;
   protected protocol: SentryProtocol;
   protected apiPrefix: string;
+  private fetch: typeof fetch;
 
   /**
    * Creates a new Sentry API service instance.
@@ -635,6 +637,9 @@ export class SentryApiService {
    * @param config.clientName DCR-registered OAuth client name
    * @param config.clientFamily Bucketed client family (e.g. "claude-code", "cursor")
    * @param config.utmSource Sanitized MCP request attribution source
+   * @param config.fetch Fetch every request goes through. A host passes its
+   *   authenticated transport, which retries on its own; by default requests
+   *   use the shared transport with `REQUEST_RETRY_POLICY`.
    */
   constructor({
     accessToken = null,
@@ -644,6 +649,7 @@ export class SentryApiService {
     clientName = null,
     clientFamily = null,
     utmSource = null,
+    fetch = defaultFetch,
   }: {
     accessToken?: string | null;
     host?: string;
@@ -652,7 +658,9 @@ export class SentryApiService {
     clientName?: string | null;
     clientFamily?: string | null;
     utmSource?: string | null;
+    fetch?: typeof globalThis.fetch;
   }) {
+    this.fetch = fetch;
     this.accessToken = accessToken;
     this.clientId = clientId;
     this.clientName = clientName;
@@ -787,16 +795,20 @@ export class SentryApiService {
   }
 
   /**
-   * Makes an authenticated request to the Sentry API, transparently retrying
-   * rate-limited (429) requests, and GET and HEAD requests that hit a
-   * 500/502/503/504 or a network failure, under `REQUEST_RETRY_POLICY`.
+   * Makes an authenticated request to the Sentry API through `this.fetch`.
    *
-   * A 429 waits for its `Retry-After` or `X-Sentry-Rate-Limit-Reset` delay;
-   * everything else uses jittered backoff. Writes that hit a 5xx or a network
-   * failure, other 4xx errors, and configuration checks before the request
-   * fail fast. Callers that opt
-   * a status into `allowStatuses` receive the raw response from `requestOnce`
-   * and are never retried. Aborting `options.signal` ends any wait.
+   * Handles:
+   * - Bearer token authentication
+   * - Error response parsing and enhancement
+   * - Multi-region host overrides
+   * - Fetch availability validation
+   *
+   * Retries happen in the transport, never here, so they do not stack: a
+   * rate-limited (429) request, or a GET that hits a 500/502/503/504 or a
+   * network failure, is retried under `REQUEST_RETRY_POLICY` (or the host's
+   * policy), and the final failure is thrown here, with
+   * `ApiRateLimitError.retryAfterMs` from its headers.
+   * Callers that opt a status into `allowStatuses` receive the raw response.
    *
    * @param path API endpoint path (without /api/0 prefix)
    * @param options Fetch options
@@ -806,60 +818,6 @@ export class SentryApiService {
    * @throws {Error} Network or parsing errors
    */
   private async request(
-    path: string,
-    options: RequestInit = {},
-    requestOptions: { host?: string; allowStatuses?: number[] } = {},
-  ): Promise<Response> {
-    const method = options.method ?? "GET";
-    let waitedMs = 0;
-
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await this.requestOnce(path, options, requestOptions);
-      } catch (error) {
-        const status = error instanceof ApiError ? error.status : undefined;
-        const networkFailure =
-          error instanceof Error &&
-          fetchFailures.has(error) &&
-          !options.signal?.aborted;
-        if (status === undefined && !networkFailure) {
-          throw error;
-        }
-        const delayMs = nextRetryDelayMs({
-          policy: REQUEST_RETRY_POLICY,
-          method,
-          status,
-          serverDelayMs:
-            error instanceof ApiRateLimitError ? error.retryAfterMs : undefined,
-          attempt,
-          waitedMs,
-        });
-        if (delayMs === undefined) {
-          throw error;
-        }
-        await sleep(delayMs, options.signal);
-        waitedMs += delayMs;
-      }
-    }
-  }
-
-  /**
-   * Internal method for making authenticated requests to Sentry API.
-   *
-   * Handles:
-   * - Bearer token authentication
-   * - Error response parsing and enhancement
-   * - Multi-region host overrides
-   * - Fetch availability validation
-   *
-   * @param path API endpoint path (without /api/0 prefix)
-   * @param options Fetch options
-   * @param requestOptions Additional request configuration
-   * @returns Promise resolving to Response object
-   * @throws {ApiError} Enhanced API errors with user-friendly messages
-   * @throws {Error} Network or parsing errors
-   */
-  private async requestOnce(
     path: string,
     options: RequestInit = {},
     { host, allowStatuses }: { host?: string; allowStatuses?: number[] } = {},
@@ -893,8 +851,11 @@ export class SentryApiService {
       headers["X-Sentry-MCP-Utm-Source"] = this.utmSource;
     }
 
-    // Check if fetch is available, otherwise provide a helpful error message
-    if (typeof globalThis.fetch === "undefined") {
+    // The default transport needs a global fetch; say so plainly without one.
+    if (
+      this.fetch === defaultFetch &&
+      typeof globalThis.fetch === "undefined"
+    ) {
       throw new ConfigurationError(
         "fetch is not available. Please use Node.js >= 18 or ensure fetch is available in your environment.",
       );
@@ -903,11 +864,15 @@ export class SentryApiService {
     // logger.info(logger.fmt`[sentryApi] ${options.method || "GET"} ${url}`);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.fetch(url, {
         ...options,
         headers,
       });
     } catch (error) {
+      // An abort, including one during a retry wait, keeps the caller's reason.
+      if (options.signal?.aborted) {
+        throw error;
+      }
       // Extract the root cause from the error chain
       let rootCause = error;
       while (rootCause instanceof Error && rootCause.cause) {
@@ -938,16 +903,10 @@ export class SentryApiService {
         errorCode === "ETIMEDOUT" ||
         errorMessage.includes("Connect Timeout Error")
       ) {
-        const configError = new ConfigurationError(friendlyMessage, {
-          cause: error,
-        });
-        fetchFailures.add(configError);
-        throw configError;
+        throw new ConfigurationError(friendlyMessage, { cause: error });
       }
 
-      const networkError = new Error(friendlyMessage, { cause: error });
-      fetchFailures.add(networkError);
-      throw networkError;
+      throw new Error(friendlyMessage, { cause: error });
     }
 
     // Handle error responses generically

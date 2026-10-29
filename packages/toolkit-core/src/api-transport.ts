@@ -64,10 +64,15 @@ type TransportLogger = {
 };
 
 export type ApiTransportOptions<C extends TransportCredential> = {
-  credentials: CredentialProvider<C>;
+  /**
+   * Without credentials the transport leaves Authorization to the request,
+   * does not refresh, and does not cache, since entries are scoped to the
+   * credential's identity.
+   */
+  credentials?: CredentialProvider<C>;
   retry: RetryPolicy;
-  /** Per-attempt timeout, or a function of the request URL. */
-  timeoutMs: number | ((url: string) => number);
+  /** Per-attempt timeout, or a function of the request URL. Default: none. */
+  timeoutMs?: number | ((url: string) => number);
   /** Underlying fetch, read on each call. Defaults to `globalThis.fetch`. */
   fetch?: (input: FetchInput, init?: RequestInit) => Promise<Response>;
   /** Sent when the request sets no `User-Agent`. */
@@ -164,6 +169,9 @@ export class ApiTimeoutError extends Error {
 
 const MAX_REDIRECTS = 20;
 
+/** Stands in for the credential when the host sets Authorization itself. */
+const ANONYMOUS: TransportCredential = { token: "", identity: "" };
+
 /** Where a response fetched with `validateRedirects` came from. */
 export type ValidatedResponseSource = { origin: string; identity: string };
 
@@ -202,8 +210,10 @@ class Rejection {
   constructor(readonly error: unknown) {}
 }
 
-/** One attempt: a response, or a thrown error and whether our timeout caused it. */
-type Outcome = { response: Response } | { failed: unknown; timedOut: boolean };
+/** One attempt: a response, or a thrown error and our timeout if it caused it. */
+type Outcome =
+  | { response: Response }
+  | { failed: unknown; timedOutAfterMs?: number };
 
 type AttemptResult =
   | { action: "done"; response: Response }
@@ -226,12 +236,16 @@ type Send<C> = {
 export function createApiTransport<C extends TransportCredential>(
   config: ApiTransportOptions<C>,
 ): ApiTransport {
-  const { credentials, retry, cache, logger } = config;
+  const { credentials, retry, logger } = config;
+  const cache = credentials && config.cache;
 
   const baseFetch = (input: FetchInput, init?: RequestInit) =>
     (config.fetch ?? globalThis.fetch)(input, init);
 
-  function authorization(credential: C): string {
+  function authorization(credential: C): string | undefined {
+    if (!credentials) {
+      return;
+    }
     if (credentials.authorization) {
       return credentials.authorization(credential);
     }
@@ -242,10 +256,10 @@ export function createApiTransport<C extends TransportCredential>(
     return header;
   }
 
-  function timeoutFor(url: string): number {
-    return typeof config.timeoutMs === "number"
-      ? config.timeoutMs
-      : config.timeoutMs(url);
+  function timeoutFor(url: string): number | undefined {
+    return typeof config.timeoutMs === "function"
+      ? config.timeoutMs(url)
+      : config.timeoutMs;
   }
 
   /**
@@ -263,7 +277,7 @@ export function createApiTransport<C extends TransportCredential>(
       init?.headers ?? (input instanceof Request ? input.headers : undefined),
     );
     config.prepareHeaders?.(headers, { input, credential });
-    headers.set("Authorization", authorization(credential));
+    setAuthorization(headers, authorization(credential));
     if (config.userAgent && !headers.has("User-Agent")) {
       headers.set("User-Agent", config.userAgent);
     }
@@ -292,15 +306,18 @@ export function createApiTransport<C extends TransportCredential>(
     input: FetchInput,
     init: RequestInit,
     signal: AbortSignal | null | undefined,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     mode: ResponseBodyMode,
   ): Promise<Outcome> {
     const controller = new AbortController();
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeoutMs);
+    const timer =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+          }, timeoutMs);
     const onAbort = () => controller.abort();
     if (signal?.aborted) {
       controller.abort();
@@ -318,7 +335,7 @@ export function createApiTransport<C extends TransportCredential>(
       return { response };
     } catch (error) {
       if (timedOut) {
-        return { failed: error, timedOut: true };
+        return { failed: error, timedOutAfterMs: timeoutMs };
       }
       throw error;
     } finally {
@@ -386,7 +403,7 @@ export function createApiTransport<C extends TransportCredential>(
     init: RequestInit | undefined,
     headers: Headers,
     credential: C,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     mode: ResponseBodyMode,
   ): Promise<Outcome> {
     const original = new Request(input, init);
@@ -438,7 +455,7 @@ export function createApiTransport<C extends TransportCredential>(
   /** Send with refresh, timeouts, and retries; the cache is handled by the caller. */
   async function send(sendArgs: Send<C>): Promise<Response> {
     const { input, init, method, url, path, options } = sendArgs;
-    let credential = credentials.prepare
+    let credential = credentials?.prepare
       ? await credentials.prepare(sendArgs.credential)
       : sendArgs.credential;
     const headers = buildHeaders(input, init, credential);
@@ -483,7 +500,7 @@ export function createApiTransport<C extends TransportCredential>(
     ): Promise<AttemptResult> {
       if (response.status === 401 && attempt < retry.maxRetries) {
         const next =
-          refreshed || !credentials.refresh
+          refreshed || !credentials?.refresh
             ? undefined
             : await credentials.refresh(credential);
         if (!next) {
@@ -491,7 +508,7 @@ export function createApiTransport<C extends TransportCredential>(
         }
         refreshed = true;
         credential = next;
-        headers.set("Authorization", authorization(next));
+        setAuthorization(headers, authorization(next));
         if (config.refreshedRequestHeader) {
           headers.set(config.refreshedRequestHeader, "1");
         }
@@ -521,7 +538,7 @@ export function createApiTransport<C extends TransportCredential>(
     }
 
     function onFailure(
-      { failed, timedOut }: Extract<Outcome, { failed: unknown }>,
+      { failed, timedOutAfterMs }: Extract<Outcome, { failed: unknown }>,
       attempt: number,
     ): AttemptResult {
       if (failed instanceof Rejection) {
@@ -538,7 +555,7 @@ export function createApiTransport<C extends TransportCredential>(
       if (delayMs !== undefined) {
         return { action: "retry", delayMs };
       }
-      if (!timedOut) {
+      if (timedOutAfterMs === undefined) {
         return { action: "throw", error: failed };
       }
       // Whether the endpoint may have run, for the host's error wording.
@@ -546,8 +563,10 @@ export function createApiTransport<C extends TransportCredential>(
       return {
         action: "throw",
         error:
-          config.errors?.timeout?.({ timeoutMs, idempotent: replayable }) ??
-          new ApiTimeoutError(timeoutMs, replayable),
+          config.errors?.timeout?.({
+            timeoutMs: timedOutAfterMs,
+            idempotent: replayable,
+          }) ?? new ApiTimeoutError(timedOutAfterMs, replayable),
       };
     }
 
@@ -572,7 +591,7 @@ export function createApiTransport<C extends TransportCredential>(
               mode,
             );
       } catch (error) {
-        outcome = { failed: error, timedOut: false };
+        outcome = { failed: error };
       }
       // Outside the try: handling a response is not a fetch failure.
       const result =
@@ -665,7 +684,9 @@ export function createApiTransport<C extends TransportCredential>(
     const run = async (): Promise<Response> => {
       const startTime = performance.now();
       const elapsed = () => (performance.now() - startTime).toFixed(0);
-      const credential = await credentials.current();
+      const credential = credentials
+        ? await credentials.current()
+        : (ANONYMOUS as C);
       // A cached response has no validated origin, so discovery always
       // goes to the network.
       const lookup =
@@ -756,6 +777,12 @@ async function replayableInput(
     return () => ({ input, init: { ...init, body: snapshot } });
   }
   return () => ({ input, init });
+}
+
+function setAuthorization(headers: Headers, value: string | undefined): void {
+  if (value !== undefined) {
+    headers.set("Authorization", value);
+  }
 }
 
 /** The origin of a credential-free HTTP(S) URL, or undefined. */

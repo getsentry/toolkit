@@ -1312,7 +1312,6 @@ describe("network error handling", () => {
       /Unable to connect to .* - Network request failed/,
     );
   });
-
   it("should preserve the original error in the cause chain", async () => {
     const originalError = new Error("getaddrinfo EAI_AGAIN");
     const fetchError = new Error("fetch failed");
@@ -1503,7 +1502,7 @@ describe("transient 5xx retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry a 5xx that the caller opted into via allowStatuses", async () => {
+  it("returns an allowed 5xx as-is once the transport stops retrying", async () => {
     const fetchMock = vi.fn().mockResolvedValue(serviceUnavailable());
     globalThis.fetch = fetchMock;
 
@@ -1513,8 +1512,8 @@ describe("transient 5xx retry", () => {
     });
 
     // getEventAttachment passes allowStatuses so the caller can inspect the raw
-    // response; such requests must be returned as-is, never retried.
-    const response = await (
+    // response. Retries happen in the transport, before the status is checked.
+    const pending = (
       apiService as unknown as {
         request: (
           path: string,
@@ -1523,9 +1522,10 @@ describe("transient 5xx retry", () => {
         ) => Promise<Response>;
       }
     ).request("/auth/", undefined, { allowStatuses: [503] });
+    await vi.runAllTimersAsync();
 
-    expect(response.status).toBe(503);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await pending).status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -1780,6 +1780,41 @@ describe("rate limit retry", () => {
     }
   });
 
+  it("sends a still-limited GET at most maxRetries + 1 times", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async () => rateLimited(nowSeconds + 1));
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toBeInstanceOf(ApiRateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry on top of a host-supplied fetch", async () => {
+    const hostFetch = vi
+      .fn()
+      .mockImplementation(async () => rateLimited(nowSeconds + 1));
+    globalThis.fetch = vi.fn();
+
+    const promise = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+      fetch: hostFetch,
+    }).getAuthenticatedUser();
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    const error = await promise.catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiRateLimitError);
+    expect((error as ApiRateLimitError).retryAfterMs).toBe(700);
+    expect(hostFetch).toHaveBeenCalledOnce();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("stops waiting when the request is aborted", async () => {
     const fetchMock = vi.fn().mockResolvedValue(rateLimited(nowSeconds + 1));
     globalThis.fetch = fetchMock;
@@ -1837,12 +1872,18 @@ describe("request headers", () => {
 
     const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
-    expect(requestInit.headers["X-Sentry-MCP-Client-Id"]).toBe("abc123");
-    expect(requestInit.headers["X-Sentry-MCP-Client-Name"]).toBe("Claude Code");
-    expect(requestInit.headers["X-Sentry-MCP-Client-Family"]).toBe(
-      "claude-code",
+    expect(new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id")).toBe(
+      "abc123",
     );
-    expect(requestInit.headers["X-Sentry-MCP-Utm-Source"]).toBe("plugin");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Name"),
+    ).toBe("Claude Code");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Family"),
+    ).toBe("claude-code");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Utm-Source"),
+    ).toBe("plugin");
   });
 
   it("should not send MCP client headers when clientId and clientName are not set", async () => {
@@ -1869,10 +1910,18 @@ describe("request headers", () => {
 
     const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
-    expect(requestInit.headers["X-Sentry-MCP-Client-Id"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Client-Name"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Client-Family"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Utm-Source"]).toBeUndefined();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Name"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Family"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Utm-Source"),
+    ).toBeNull();
   });
 });
 
@@ -2526,6 +2575,7 @@ describe("API query builders", () => {
       // Mock the API response
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2565,6 +2615,7 @@ describe("API query builders", () => {
       // Mock the API response
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2602,6 +2653,7 @@ describe("API query builders", () => {
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2640,6 +2692,7 @@ describe("API query builders", () => {
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2678,6 +2731,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -2773,6 +2827,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3200,6 +3255,7 @@ describe("API query builders", () => {
     it("should call the repos endpoint without query", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3236,6 +3292,7 @@ describe("API query builders", () => {
         .fn()
         .mockResolvedValueOnce({
           ok: true,
+          status: 200,
           headers: new Headers({
             "content-type": "application/json",
             link: '<https://sentry.io/api/0/organizations/test-org/repos/?cursor=cursor-2>; rel="next"; results="true"; cursor="cursor-2"',
@@ -3252,6 +3309,7 @@ describe("API query builders", () => {
         })
         .mockResolvedValueOnce({
           ok: true,
+          status: 200,
           headers: new Headers({
             "content-type": "application/json",
           }),
@@ -3283,6 +3341,7 @@ describe("API query builders", () => {
     it("should include query parameter when provided", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3312,6 +3371,7 @@ describe("API query builders", () => {
     it("should return empty array when no repos exist", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3329,6 +3389,7 @@ describe("API query builders", () => {
     it("should accept repos with null externalSlug and externalId", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3373,6 +3434,7 @@ describe("API query builders", () => {
     it("should POST to the code mappings bulk endpoint", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3423,6 +3485,7 @@ describe("API query builders", () => {
     it("should handle updated mappings response", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3481,6 +3544,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) => {
               if (key === "content-type") {
@@ -3526,6 +3590,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3552,6 +3617,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3578,6 +3644,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
