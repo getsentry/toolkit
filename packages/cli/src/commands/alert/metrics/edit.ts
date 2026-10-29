@@ -13,7 +13,7 @@ import { buildCommand, numberParser } from "../../../lib/command.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import {
   METRIC_ALERT_DATASET_BRIEF,
   parseMetricTriggers,
@@ -29,7 +29,8 @@ import {
   validateMetricDataset,
   validateMetricTimeWindow,
 } from "../mutation-utils.js";
-import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 import { metricAlertStatusLabel } from "./status.js";
 
 const USAGE_HINT =
@@ -207,11 +208,7 @@ export const editCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        metricRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
     flags: {
@@ -291,15 +288,15 @@ export const editCommand = buildCommand({
       p: "project",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
     validateMetricEditFlags(flags);
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics edit",
-    );
+    const { ref, target } = await ruleArg.resolved;
+    const org = await resolveOrgOnlyTarget(target, cwd, "alert metrics edit");
     const orgSlugs = [org];
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,

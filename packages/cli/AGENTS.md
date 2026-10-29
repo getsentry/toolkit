@@ -319,6 +319,13 @@ inside a tuple positional. `func` takes a `ReleaseTarget` and gets
 `{ version, org, detectedFrom }` from `await target.resolved`; a blank version
 fails the parse.
 
+**Alert rule positionals:** `<org>/<project>/<rule-id-or-name>` (issue
+alerts) and `<org>/<rule-id-or-name>` (metric alerts) use
+`issueRuleParameter` / `metricRuleParameter` from the alert `rule-resolve.ts`
+files inside a tuple positional. Rule names may contain spaces, so they keep
+their own syntax instead of `ID_KINDS`. `func` takes an `AlertRuleArgument`
+and gets `{ ref, target }` from `await rule.resolved`.
+
 List commands take their target from `listTargetPositional()` in
 `src/lib/list-command.ts` (`LIST_TARGET_POSITIONAL`,
 `LIST_ORG_TARGET_POSITIONAL`, or `listTargetPositional({ orgScoped, names,

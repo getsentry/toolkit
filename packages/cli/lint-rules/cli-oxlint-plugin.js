@@ -66,6 +66,7 @@ const BOUND_TARGET_TYPES = new Set([
   "OrgProjectTarget",
   "ProjectBoundTarget",
   "ReleaseTarget",
+  "AlertRuleArgument",
   "BoundArguments",
   "DashboardArguments",
   "DashboardListArguments",
@@ -205,17 +206,6 @@ const UNBOUND_TARGET_PARSING = new Set([
 /** Commands still allowed to, each with its follow-up; a ratchet too. */
 const UNBOUND_TARGET_PARSING_ALLOWED = new Map([
   // Follow-ups (#1564):
-  // `[<org>/[<project>/]]<rule>`, resolving to every matching project
-  ["/src/commands/alert/issues/create.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/delete.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/edit.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/view.ts", "#1564: alert rule target"],
-  // `[<org>/]<rule>`, org-scoped
-  ["/src/commands/alert/metrics/create.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/delete.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/edit.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/list.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/view.ts", "#1564: alert rule target"],
   // `[<org>/]<id>` with a non-hex ID, like `releaseParameter`
   ["/src/commands/agent-conversation/view.ts", "#1564: org-scoped ID"],
   ["/src/commands/integration/delete.ts", "#1564: org-scoped ID"],
