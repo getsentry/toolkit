@@ -248,6 +248,14 @@ describe("parseEventViewInput", () => {
       expect(result.targetArg).toBe("my-org/frontend");
     });
 
+    test("reads an all-digit event ID after <short-id>/ as the issue's event", () => {
+      const eventId = "12345678901234567890123456789012";
+      const result = parseEventViewInput([`CAM-82X/${eventId}`]);
+      expect(result.eventId).toBe(eventId);
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.issueId).toBeUndefined();
+    });
+
     test("rejects an incomplete event ID after <short-id>/", () => {
       // Not project `CAM-82X` with a partial event ID to recover
       expect(() => parseEventViewInput(["CAM-82X/95fd7f5a"])).toThrow(
