@@ -17,7 +17,7 @@ function item(type: string, payload: unknown) {
   return entry;
 }
 
-test("logs display their message, severity, and structured attributes", async () => {
+test("logs display their message, severity, and structured attributes", () => {
   render(
     <EventDetail
       item={item("log", {
@@ -35,7 +35,7 @@ test("logs display their message, severity, and structured attributes", async ()
   expect(screen.getByRole("button", { name: "Copy Message" })).toBeDefined();
 });
 
-test("raw-only SDK payloads default to JSON and reset on a different item", async () => {
+test("raw-only SDK payloads default to JSON and reset on a different item", () => {
   const { rerender } = render(
     <EventDetail item={item("log", { body: "first" })} />,
   );
@@ -61,7 +61,7 @@ test("raw-only SDK payloads default to JSON and reset on a different item", asyn
   ).toBe("true");
 });
 
-test("arrow navigation wraps between detail tabs and moves keyboard focus", async () => {
+test("arrow navigation wraps between detail tabs and moves keyboard focus", () => {
   render(<EventDetail item={item("log", { body: "navigation" })} />);
   const overview = screen.getByRole("tab", { name: "Overview" });
   fireEvent.keyDown(overview, { key: "ArrowLeft" });
@@ -73,7 +73,7 @@ test("arrow navigation wraps between detail tabs and moves keyboard focus", asyn
   expect(document.activeElement).toBe(overview);
 });
 
-test("raw envelopes retain their recognizable heading and open directly in JSON", async () => {
+test("raw envelopes retain their recognizable heading and open directly in JSON", () => {
   const envelope = {
     id: "envelope:1",
     type: "envelope",
@@ -91,7 +91,7 @@ test("raw envelopes retain their recognizable heading and open directly in JSON"
   );
 });
 
-test("malformed and nested log attributes remain readable inert text", async () => {
+test("malformed and nested log attributes remain readable inert text", () => {
   render(
     <EventDetail
       item={item("log", {
@@ -116,7 +116,7 @@ test("malformed and nested log attributes remain readable inert text", async () 
   expect(attributes.querySelector("script")).toBeNull();
 });
 
-test("requests show a compact copyable summary with captured method and URL", async () => {
+test("requests show a compact copyable summary with captured method and URL", () => {
   const copied: string[] = [];
   vi.stubGlobal("navigator", {
     clipboard: {
@@ -155,7 +155,7 @@ test("requests show a compact copyable summary with captured method and URL", as
   expect(copied).toEqual(["201"]);
 });
 
-test("span summaries use captured typed URL attributes without inventing request fields", async () => {
+test("span summaries use captured typed URL attributes without inventing request fields", () => {
   render(
     <EventDetail
       item={item("span", {
@@ -204,7 +204,7 @@ test("repeated parent updates keep one request summary and its waterfall", async
   ).toBeDefined();
 });
 
-test("captured context suppresses the empty-details message", async () => {
+test("captured context suppresses the empty-details message", () => {
   render(
     <EventDetail
       item={item("event", {

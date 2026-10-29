@@ -5,7 +5,6 @@ import { createLogsSlice } from "../store/slices/logsSlice.ts";
 import { createProfilesSlice } from "../store/slices/profilesSlice.ts";
 import { createSDKsSlice } from "../store/slices/sdksSlice.ts";
 import { createSharedSlice } from "../store/slices/sharedSlice.ts";
-import { createSubscriptionsSlice } from "../store/slices/subscriptionsSlice.ts";
 import { createTracesSlice } from "../store/slices/tracesSlice.ts";
 import type { SentryStore } from "../store/types.ts";
 
@@ -20,7 +19,6 @@ export function createEngine(options: EngineOptions = {}) {
     ...createEventsSlice(options, runtime)(...args),
     ...createTracesSlice(...args),
     ...createProfilesSlice(...args),
-    ...createSubscriptionsSlice(...args),
     ...createEnvelopesSlice(runtime)(...args),
     ...createSDKsSlice(...args),
     ...createLogsSlice(...args),

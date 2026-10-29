@@ -1,4 +1,4 @@
-import type { AILibraryHandler, AITrace, Span, Trace } from "../types.ts";
+import type { AILibraryHandler, AITrace, Span } from "../types.ts";
 import { genAIHandler } from "./genAI.ts";
 import { vercelAISDKHandler } from "./vercelAISDK.ts";
 
@@ -49,14 +49,4 @@ export function createAITraceFromSpan(span: Span): AITrace | null {
   }
 
   return handler.processTrace(span);
-}
-
-export function hasAISpans(trace: Trace): boolean {
-  if (!trace.spanTree) {
-    return false;
-  }
-
-  // TODO: We may want to cache/optimize this `extractAllAIRootSpans` helper
-  const aiRootSpans = extractAllAIRootSpans(trace.spanTree);
-  return aiRootSpans.length > 0;
 }

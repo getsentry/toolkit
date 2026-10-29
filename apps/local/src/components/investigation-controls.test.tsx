@@ -32,7 +32,7 @@ const events = decodeEnvelope(
   ]),
   "logs",
 );
-test("log filters combine severity and logger and sort timestamps without changing captured data", async () => {
+test("log filters combine severity and logger and sort timestamps without changing captured data", () => {
   expect(
     filterEvents(events, {
       ...defaultEventFilters,

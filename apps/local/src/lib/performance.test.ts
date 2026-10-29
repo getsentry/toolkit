@@ -39,7 +39,7 @@ test("query analysis groups embedded and standalone executions without counting 
     span: { id: "q1" },
   });
 });
-test("Web Vitals retain per-visit units and classify thresholds instead of inventing missing measurements", async () => {
+test("Web Vitals retain per-visit units and classify thresholds instead of inventing missing measurements", () => {
   const [page] = webVitalPages([
     decode("transaction", {
       transaction: "/orders",
@@ -56,7 +56,7 @@ test("Web Vitals retain per-visit units and classify thresholds instead of inven
   });
   expect(page?.visits[0]?.metrics.inp).toBeUndefined();
 });
-test("profiles build root-first trees, inclusive/self samples, and interval times per thread", async () => {
+test("profiles build root-first trees, inclusive/self samples, and interval times per thread", () => {
   const payload = {
     profile: {
       frames: [{ function: "main" }, { function: "query" }],
@@ -81,7 +81,7 @@ test("profiles build root-first trees, inclusive/self samples, and interval time
   });
   expect(profile.threads).toHaveLength(2);
 });
-test("continuous chunks and missing samples remain honest", async () => {
+test("continuous chunks and missing samples remain honest", () => {
   const chunk = parseProfile(
     decode("profile_chunk", {
       profile: {

@@ -33,29 +33,3 @@ export function parseBrowserFromUserAgent(userAgent: string): string {
   const match = userAgent.match(/^([^/\s(]+)/);
   return match ? match[1] : "unknown";
 }
-
-/**
- * Builds a client identifier from browser info and optional hostname
- * Format: clientName/version (metadata)
- * Example: "ui/Chrome/131 (example.com)"
- */
-export function buildClientIdentifier(
-  clientName: string,
-  userAgent?: string,
-  hostname?: string,
-): string {
-  let clientId = clientName;
-
-  if (userAgent) {
-    const browserInfo = parseBrowserFromUserAgent(userAgent);
-    if (browserInfo !== "unknown") {
-      clientId = `${clientName}/${browserInfo}`;
-    }
-  }
-
-  if (hostname && hostname !== "localhost") {
-    clientId += ` (${hostname})`;
-  }
-
-  return clientId;
-}

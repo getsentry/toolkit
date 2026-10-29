@@ -215,7 +215,7 @@ describe("buildTraceGroups", () => {
     expect(trace?.roots[0]?.children).toHaveLength(70000);
   });
 
-  test("uses a transaction ID as the trace fallback used by routing", async () => {
+  test("uses a transaction ID as the trace fallback used by routing", () => {
     expect(
       traceIdForItem(
         item({

@@ -6,19 +6,7 @@ export const createSharedSlice =
   (
     runtime: ProcessingRuntime,
   ): StateCreator<SentryStore, [], [], SharedSliceActions> =>
-  (set, get) => ({
-    getEventById: (id: string) => get().eventsById.get(id),
-    getTraceById: (id: string) => get().tracesById.get(id),
-    getEventsByTrace: (traceId: string, spanId?: string | null) =>
-      get()
-        .getEvents()
-        .filter((event) => {
-          const trace = event.contexts?.trace;
-          return (
-            trace?.trace_id === traceId &&
-            (spanId === undefined || trace.span_id === spanId)
-          );
-        }),
+  (set) => ({
     resetData: () => {
       runtime.generation += 1;
       set({

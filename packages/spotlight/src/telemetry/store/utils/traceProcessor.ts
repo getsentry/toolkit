@@ -1,5 +1,4 @@
 import { graftProfileSpans } from "../../data/profiles.ts";
-import { log } from "../../logger.ts";
 import type { SentryTransactionEvent, Span, Trace } from "../../types.ts";
 import { compareSpans, groupSpans } from "../../utils/traces.ts";
 import type { SentryProfileWithTraceMeta } from "../types.ts";
@@ -201,11 +200,6 @@ export function updateTraceMetadata(trace: Trace): void {
   } else if (roots.length > 1) {
     trace.rootTransactionName = "(multiple root transactions)";
   } else if (trace.transactions.length > 0) {
-    // Orphan trace: no root transaction, but has child transactions
-    log(
-      `[Telemetry] Orphan trace detected (trace_id: ${trace.trace_id}). ` +
-        `Using first transaction "${trace.transactions[0].transaction}" as fallback.`,
-    );
     // use the first transcation for orphan traces
     trace.rootTransaction = trace.transactions[0];
     trace.rootTransactionName =

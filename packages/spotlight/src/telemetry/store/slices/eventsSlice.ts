@@ -180,14 +180,6 @@ export const createEventsSlice =
           set({ eventsById: newEventIds });
           if (runtime.generation !== generation) return;
 
-          // Notify event subscribers
-          for (const [type, callback] of get().subscribers.values()) {
-            if (type === "event") {
-              (callback as (event: SentryEvent) => void)(event);
-              if (runtime.generation !== generation) return;
-            }
-          }
-
           const traceCtx = event.contexts?.trace;
           if (traceCtx?.trace_id) {
             const { tracesById, profilesByTraceId, profileChunksByProfilerId } =

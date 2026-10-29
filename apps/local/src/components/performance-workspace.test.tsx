@@ -47,7 +47,7 @@ test("resource groups sort and open the selected execution in its trace", async 
   fireEvent.click(screen.getByRole("button", { name: /Page.*two.*100.0 ms/ }));
   expect(onSelect).toHaveBeenCalledWith("t", "two");
 });
-test("Web Vitals metric switching displays captured INP without fabricating missing visits", async () => {
+test("Web Vitals metric switching displays captured INP without fabricating missing visits", () => {
   render(
     <WebVitalsWorkspace
       items={[
@@ -67,7 +67,7 @@ test("Web Vitals metric switching displays captured INP without fabricating miss
     screen.getByRole("img", { name: "INP: 350 ms, Needs improvement" }),
   ).toBeDefined();
 });
-test("profile chart supports zoom, visualization switching and independent thread samples", async () => {
+test("profile chart supports zoom, visualization switching and independent thread samples", () => {
   const profile = item("profile", {
     profile: {
       frames: [{ function: "mainWork" }, { function: "workerWork" }],

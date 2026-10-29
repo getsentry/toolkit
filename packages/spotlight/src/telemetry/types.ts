@@ -201,13 +201,6 @@ export type SentryProfileWithTraceMeta = SentryProcessedProfile & {
   active_thread_id: string;
 };
 
-export type AggregateCallData = {
-  name: string;
-  totalTime: number;
-  samples: number;
-  traceIds: Set<TraceId>;
-};
-
 export type SentryDeviceInfo = {
   architecture: string;
   is_emulator?: boolean;
@@ -403,21 +396,6 @@ export type SentryEventWithPerformanceData = Omit<
       unit: string;
     };
   };
-};
-
-export type MetricScoreProps = {
-  fcpScore: number;
-  lcpScore: number;
-  clsScore: number;
-  fidScore: number;
-  ttfbScore: number;
-};
-export type MetricWeightsProps = {
-  fcp: number;
-  lcp: number;
-  cls: number;
-  fid: number;
-  ttfb: number;
 };
 
 export type AIToolCall = {

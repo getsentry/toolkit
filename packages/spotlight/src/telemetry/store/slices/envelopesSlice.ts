@@ -187,21 +187,12 @@ export const createEnvelopesSlice =
     }
     return {
       envelopes: new Map(),
-      // Compatibility path used by the UI: synchronous processing except optional enrichment.
-      pushEnvelope: (envelope) => {
-        const { count, pending } = process(envelope);
-        for (const task of pending) void task.catch(() => {});
-        return count;
-      },
       ingestEnvelope: async (envelope) => {
         const { count, pending } = process(envelope);
         const results = await Promise.allSettled(pending);
         const failure = results.find((result) => result.status === "rejected");
         if (failure?.status === "rejected") throw failure.reason;
         return count;
-      },
-      getEnvelopeById: (id: string) => {
-        return get().envelopes.get(id);
       },
       getEnvelopes: () => Array.from(get().envelopes.values()),
     };

@@ -1,4 +1,3 @@
-import { log } from "../logger.ts";
 import type { SentryProfileWithTraceMeta } from "../store/types.ts";
 import type { Span, Trace } from "../types.ts";
 import { getFunctionNameFromFrame } from "../utils/profileUtils.ts";
@@ -299,7 +298,6 @@ function graftProfileSpansIntoTree(
   spanTree: Span[] = trace.spanTree,
   parent: Span | Trace = trace,
 ) {
-  log(`Grafting profile spans into trace ${trace.trace_id}`);
   const levels: { spanTree: Span[]; parent: Span | Trace; index: number }[] = [
     { spanTree, parent, index: -1 },
   ];
