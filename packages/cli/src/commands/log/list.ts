@@ -391,7 +391,7 @@ async function* generateFollowLogs<T extends LogLike>(
     // Initial fetch
     const initialLogs = await config.fetch("1m");
     if (initialLogs.length > 0) {
-      yield [...initialLogs].reverse();
+      yield Array.from(initialLogs).reverse();
     }
     lastTimestamp = maxTimestamp(initialLogs) ?? lastTimestamp;
     config.onInitialLogs?.(initialLogs);
@@ -405,7 +405,7 @@ async function* generateFollowLogs<T extends LogLike>(
 
       const newLogs = await fetchPoll(config, lastTimestamp);
       if (newLogs && newLogs.length > 0) {
-        yield [...newLogs].reverse();
+        yield Array.from(newLogs).reverse();
         lastTimestamp = maxTimestamp(newLogs) ?? lastTimestamp;
       }
     }

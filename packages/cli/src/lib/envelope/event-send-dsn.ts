@@ -44,7 +44,7 @@ export function peelEventSendTarget(files: readonly string[]): {
 } {
   const first = files[0];
   if (!first) {
-    return { target: undefined, files: [...files] };
+    return { target: undefined, files: Array.from(files) };
   }
   if (looksLikeDsn(first)) {
     return {
@@ -53,7 +53,7 @@ export function peelEventSendTarget(files: readonly string[]): {
     };
   }
   if (looksLikeFileArgument(first)) {
-    return { target: undefined, files: [...files] };
+    return { target: undefined, files: Array.from(files) };
   }
   return {
     target: { kind: "project", target: first },
@@ -132,14 +132,14 @@ async function dsnFromProjectTarget(
     "event send",
   );
   const keys = await getProjectKeys(org, project, { status: "active" });
-  const activeDsns = [
-    ...new Set(
+  const activeDsns = Array.from(
+    new Set(
       keys
         .filter((key) => key.isActive)
         .map((key) => key.dsn.public)
         .filter(Boolean),
     ),
-  ];
+  );
   if (activeDsns.length > 1) {
     throw new ConfigError(
       `Project ${org}/${project} has multiple active DSNs. Pass the desired DSN as the first argument.`,

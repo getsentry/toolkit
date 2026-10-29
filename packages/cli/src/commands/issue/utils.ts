@@ -97,7 +97,7 @@ export const issueIdsPositional = {
  * @returns Normalized issue identifiers
  */
 export function collectIssueArgs(args: readonly string[]): string[] {
-  return [...new Set(args.flatMap(splitNewlineArg))];
+  return Array.from(new Set(args.flatMap(splitNewlineArg)));
 }
 
 /**

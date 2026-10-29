@@ -1166,7 +1166,7 @@ export const serverCommand = buildCommand({
       printLocalViewerHint(url, flags.format === "json");
       await openLocalUiIfRequested(flags.open, url);
       if (activeFilters.size > 0) {
-        logger.info(`Filtering: ${[...activeFilters].join(", ")}`);
+        logger.info(`Filtering: ${Array.from(activeFilters).join(", ")}`);
       }
       logger.info("Press Ctrl-C to stop.");
 
@@ -1243,7 +1243,7 @@ export const serverCommand = buildCommand({
       `  Or run: ${bold(`sentry local run -p ${boundPort} -- <your-command>`)}`,
     );
     if (activeFilters.size > 0) {
-      logger.info(`  Filtering: ${[...activeFilters].join(", ")}`);
+      logger.info(`  Filtering: ${Array.from(activeFilters).join(", ")}`);
     }
     if (useJson) {
       logger.info("  Output: JSON (NDJSON)");

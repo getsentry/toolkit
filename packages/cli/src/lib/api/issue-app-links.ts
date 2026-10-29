@@ -485,7 +485,9 @@ async function resolveFields(
       );
       throw new ValidationError(
         missing.size
-          ? `Missing app link fields: ${[...missing].map((name) => `--field ${name}=VALUE`).join(", ")}`
+          ? `Missing app link fields: ${Array.from(missing)
+              .map((name) => `--field ${name}=VALUE`)
+              .join(", ")}`
           : "App link fields have circular dependencies",
         "field",
       );

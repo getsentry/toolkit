@@ -57,7 +57,7 @@ describe("collectImages", () => {
     const images = await collectImages(root);
     const byKey = new Map(images.map((i) => [i.relativePath, i]));
 
-    expect([...byKey.keys()].sort()).toEqual(["a.png", "sub/b.png"]);
+    expect(Array.from(byKey.keys()).sort()).toEqual(["a.png", "sub/b.png"]);
     const a = byKey.get("a.png");
     expect(a?.width).toBe(4);
     expect(a?.height).toBe(3);

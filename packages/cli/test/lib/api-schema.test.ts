@@ -48,7 +48,7 @@ describe("getAllResources", () => {
     expect(resources.length).toBeGreaterThan(10);
 
     // Verify sorted
-    const sorted = [...resources].sort();
+    const sorted = Array.from(resources).sort();
     expect(resources).toEqual(sorted);
 
     // Verify unique
@@ -262,7 +262,7 @@ describe("getResourceSummaries", () => {
 
   test("methods are sorted and unique", () => {
     for (const summary of getResourceSummaries()) {
-      const sorted = [...summary.methods].sort();
+      const sorted = Array.from(summary.methods).sort();
       expect(summary.methods).toEqual(sorted);
       expect(new Set(summary.methods).size).toBe(summary.methods.length);
     }

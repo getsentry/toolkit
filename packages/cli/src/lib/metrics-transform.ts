@@ -49,7 +49,7 @@ export function resolveMetricField(
   if (!VALID_AGGS.has(agg)) {
     throw new ResolutionError(
       `Aggregation '${agg}'`,
-      `not recognized. Valid aggregations: ${[...VALID_AGGS].join(", ")}`,
+      `not recognized. Valid aggregations: ${Array.from(VALID_AGGS).join(", ")}`,
       `sentry explore my-org/ -m ${metricName} --agg sum --dataset metrics`,
     );
   }

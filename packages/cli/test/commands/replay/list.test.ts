@@ -145,7 +145,7 @@ describe("listCommand.func", () => {
 
     expect(listReplaysSpy).toHaveBeenCalledWith("test-org", {
       environment: undefined,
-      fields: [...REPLAY_LIST_FIELDS],
+      fields: Array.from(REPLAY_LIST_FIELDS),
       limit: 25,
       projectSlugs: ["cli"],
       query: undefined,
@@ -232,7 +232,7 @@ describe("listCommand.func", () => {
 
     expect(listReplaysSpy).toHaveBeenCalledWith("test-org", {
       environment: ["production", "canary", "staging"],
-      fields: [...REPLAY_LIST_FIELDS],
+      fields: Array.from(REPLAY_LIST_FIELDS),
       limit: 25,
       projectSlugs: ["cli"],
       query: undefined,

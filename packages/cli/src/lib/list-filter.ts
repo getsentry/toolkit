@@ -32,7 +32,7 @@ export function filterByName<T>(
 ): T[] {
   const needle = filter?.trim().toLowerCase();
   if (!needle) {
-    return [...items];
+    return Array.from(items);
   }
   if (isGlobFilter(needle)) {
     // Names aren't paths: `bash` lets `*` match `/` too, so `*-sdk` matches
@@ -42,7 +42,9 @@ export function filterByName<T>(
       namesOf(item).some((name) => matches(name.toLowerCase())),
     );
   }
-  const candidates = [...new Set(items.flatMap((item) => namesOf(item)))];
+  const candidates = Array.from(
+    new Set(items.flatMap((item) => namesOf(item))),
+  );
   const rankOf = new Map(
     fuzzyMatch(needle, candidates, { mode: "search" }).map((name, rank) => [
       name,

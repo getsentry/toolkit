@@ -96,6 +96,6 @@ describe("resolveDirectorySourcemaps", () => {
     const results = await resolveDirectorySourcemaps(dir);
     const names = results.map((r) => r.jsPath);
     // Byte-wise sort, matching resolveDirectorySourcemaps' path ordering.
-    expect(names).toEqual([...names].sort());
+    expect(names).toEqual(Array.from(names).sort());
   });
 });

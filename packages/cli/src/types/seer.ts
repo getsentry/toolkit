@@ -643,5 +643,5 @@ export function extractExaminedFiles(causes: RootCause[]): string[] {
       }
     }
   }
-  return [...files];
+  return Array.from(files);
 }

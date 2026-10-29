@@ -670,7 +670,7 @@ function buildDetectorDataSource(
     dataset: native.dataset,
     query: typeof body.query === "string" ? body.query : "",
     queryType: native.queryType,
-    eventTypes: [...native.eventTypes],
+    eventTypes: Array.from(native.eventTypes),
     timeWindow: timeWindowMinutes * 60,
   };
   if (typeof body.environment === "string" && body.environment !== "") {

@@ -468,7 +468,7 @@ describe("applyCustomHeaders", () => {
     applyCustomHeaders(headers, "https://sentry.io/api/0/");
 
     // Only the original header
-    const keys = [...headers.keys()];
+    const keys = Array.from(headers.keys());
     expect(keys).toEqual(["accept"]);
   });
 

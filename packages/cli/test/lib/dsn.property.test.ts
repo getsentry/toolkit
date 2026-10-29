@@ -324,7 +324,7 @@ describe("property: createDsnFingerprint", () => {
         if (detected.length < 2) return;
 
         const fp1 = createDsnFingerprint(detected);
-        const fp2 = createDsnFingerprint([...detected].reverse());
+        const fp2 = createDsnFingerprint(Array.from(detected).reverse());
         expect(fp1).toBe(fp2);
       }),
       { numRuns: DEFAULT_NUM_RUNS },

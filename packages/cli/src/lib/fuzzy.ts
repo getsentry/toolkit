@@ -111,7 +111,7 @@ export function fuzzyMatch(
   opts?: FuzzyMatchOptions,
 ): string[] {
   if (partial === "") {
-    const sorted = [...candidates].sort();
+    const sorted = Array.from(candidates).sort();
     return opts?.maxResults ? sorted.slice(0, opts.maxResults) : sorted;
   }
 

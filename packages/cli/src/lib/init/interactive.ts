@@ -78,7 +78,7 @@ function normalizeFeatureSelection(features: string[]): string[] {
   ) {
     normalized.add("performanceMonitoring");
   }
-  return sortFeatureOptions([...normalized]);
+  return sortFeatureOptions(Array.from(normalized));
 }
 
 function buildFeatureReviewDetails(features: string[]): PromptDetail[] {

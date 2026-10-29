@@ -463,9 +463,8 @@ export class ContextError extends CliError {
   ) {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
-    const resolvedAlternatives = alternatives ?? [
-      ...DEFAULT_CONTEXT_ALTERNATIVES,
-    ];
+    const resolvedAlternatives =
+      alternatives ?? Array.from(DEFAULT_CONTEXT_ALTERNATIVES);
 
     // Include full formatted message so it's shown even when caught by external handlers
     super(

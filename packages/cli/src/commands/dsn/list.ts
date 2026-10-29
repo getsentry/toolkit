@@ -240,7 +240,7 @@ async function listForResolvedProjects<
       }),
   );
   const { pages, failures } = collectProjectResults(results, activeTargets);
-  const allItems = [...pages.values()].flatMap((page) => page.items);
+  const allItems = Array.from(pages.values()).flatMap((page) => page.items);
   const items = trimWithGroupGuarantee(allItems, flags.limit, targetKey);
   const trimmed = items.length < allItems.length;
   const cursors = sortedKeys.map((key) => {

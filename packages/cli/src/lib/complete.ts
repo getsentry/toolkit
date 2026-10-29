@@ -531,7 +531,7 @@ function matchCachedEntities(
     }
   }
   const rank = new Map(
-    fuzzyMatch(partial, [...candidates], { mode: "search" }).map(
+    fuzzyMatch(partial, Array.from(candidates), { mode: "search" }).map(
       (candidate, index) => [candidate, index],
     ),
   );

@@ -220,7 +220,7 @@ export function pickDefaultTeam(
 ): SentryTeam | undefined {
   const adminTeams = teams.filter(canCreateProjectInTeam);
   const pool = adminTeams.length > 0 ? adminTeams : teams;
-  return [...pool].sort(
+  return Array.from(pool).sort(
     (left, right) =>
       teamCreatedAt(left) - teamCreatedAt(right) ||
       left.slug.localeCompare(right.slug),

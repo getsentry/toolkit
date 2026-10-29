@@ -156,7 +156,7 @@ function translateFlags(raw: string): string {
     }
   }
   // Deterministic, RegExp-accepted order.
-  return [...seen]
+  return Array.from(seen)
     .filter((f) => VALID_JS_FLAGS.includes(f))
     .sort()
     .join("");
@@ -208,7 +208,7 @@ export function compilePattern(
   if (opts.multiline) {
     flags.add("m");
   }
-  const flagString = [...flags].sort().join("");
+  const flagString = Array.from(flags).sort().join("");
   try {
     return new RegExp(cleaned, flagString);
   } catch (error) {

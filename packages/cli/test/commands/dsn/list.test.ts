@@ -128,11 +128,11 @@ function mockProjectApi(
   return mockFetch(async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
-    const organizations = [
-      ...new Map(
+    const organizations = Array.from(
+      new Map(
         projects.map((item) => [item.organization.slug, item.organization]),
       ).values(),
-    ].map((org) => ({
+    ).map((org) => ({
       ...org,
       name: org.slug,
       links: { regionUrl: "https://us.sentry.io" },

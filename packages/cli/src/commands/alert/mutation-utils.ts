@@ -260,7 +260,7 @@ export function validateMetricTimeWindow(timeWindow: number): void {
     return;
   }
   throw new ValidationError(
-    `timeWindow must be one of: ${[...METRIC_TIME_WINDOWS].join(", ")} minutes.`,
+    `timeWindow must be one of: ${Array.from(METRIC_TIME_WINDOWS).join(", ")} minutes.`,
     "timeWindow",
   );
 }

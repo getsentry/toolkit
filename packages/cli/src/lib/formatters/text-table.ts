@@ -289,7 +289,7 @@ function fitProportional(
   const shrinkable = baseWidths.map((w, i) => w - (floorWidths[i] ?? 0));
   const totalShrinkable = shrinkable.reduce((s, v) => s + v, 0);
   if (totalShrinkable <= 0) {
-    return [...floorWidths];
+    return Array.from(floorWidths);
   }
 
   return allocateShrink({
@@ -340,7 +340,7 @@ function fitBalanced(
   const shrinkable = baseWidths.map((w, i) => w - (floorWidths[i] ?? 0));
   const totalShrinkable = shrinkable.reduce((s, v) => s + v, 0);
   if (totalShrinkable <= 0) {
-    return [...floorWidths];
+    return Array.from(floorWidths);
   }
 
   return allocateShrink({
@@ -380,7 +380,7 @@ function allocateShrink(params: ShrinkParams): number[] {
   const totalWeight = weights.reduce((s, v) => s + v, 0);
 
   if (totalWeight <= 0) {
-    return [...floorWidths];
+    return Array.from(floorWidths);
   }
 
   // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.

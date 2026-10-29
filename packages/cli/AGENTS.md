@@ -757,6 +757,10 @@ import type { SentryContext } from "../../context.js";
 import { getAuthToken } from "../../lib/db/auth.js";
 ```
 
+### Copying Iterables
+
+Use `Array.from(value)` to turn a `Set`, `Map` view, iterator, or array into a new array. Keep spread for building arrays from several parts, such as `[...a, ...b]` or `[...items, tail]`. The `sentry-cli/prefer-array-from` lint rule flags `[...value]` and fixes it with `pnpm run lint:fix`.
+
 ### Target Resolution
 
 `parseOrgProjectArg()` owns target syntax: a value without `/` is a

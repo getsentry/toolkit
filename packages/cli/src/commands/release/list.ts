@@ -716,7 +716,7 @@ export const listCommand = buildListCommand("release", {
     const parsed = parseOrgProjectArg(target);
     // Flatten: -e prod,dev -e staging → ["prod", "dev", "staging"]
     const envFilter = flags.environment
-      ? [...flags.environment]
+      ? Array.from(flags.environment)
           .flatMap((v) => v.split(","))
           .map((s) => s.trim())
           .filter(Boolean)

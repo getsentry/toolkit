@@ -357,7 +357,9 @@ describe("serverKey", () => {
       expect(set.size).toBe(1);
       expect(set.has(undefined)).toBe(false);
     }
-    expect(new Set(keys.flatMap((set) => [...set])).size).toBe(groups.length);
+    expect(new Set(keys.flatMap((set) => Array.from(set))).size).toBe(
+      groups.length,
+    );
     expect(isSameServer("https://us.sentry.io", "https://sentry.io")).toBe(
       true,
     );

@@ -109,7 +109,7 @@ export function summarize(samples: readonly number[]): BenchStats {
   if (samples.length === 0) {
     return { runs: 0, min: 0, max: 0, mean: 0, stddev: 0, p50: 0, p95: 0 };
   }
-  const sorted = [...samples].sort((a, b) => a - b);
+  const sorted = Array.from(samples).sort((a, b) => a - b);
   const n = sorted.length;
   const min = sorted[0] as number;
   const max = sorted[n - 1] as number;
@@ -287,7 +287,7 @@ export function compareReports(
   }
 
   const rows: ComparisonRow[] = [];
-  for (const key of [...keys].sort()) {
+  for (const key of Array.from(keys).sort()) {
     const b = index.get(`b:${key}`);
     const c = index.get(`c:${key}`);
     const [fixture, operation] = key.split("||");

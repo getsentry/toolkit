@@ -42,7 +42,7 @@ export function parseReplayEnvironmentFilter(
   values: readonly string[] | undefined,
 ): string[] | undefined {
   const parsed = values
-    ? [...values]
+    ? Array.from(values)
         .flatMap((value) => value.split(","))
         .map((value) => value.trim())
         .filter(Boolean)
@@ -173,9 +173,9 @@ export function isSupportedReplayField(field: string): boolean {
 
 /** List the replay fields the CLI can render in replay search outputs. */
 export function listSupportedReplayFields(): string[] {
-  return [
-    ...new Set([...REPLAY_API_FIELDS, ...Object.keys(DERIVED_REPLAY_FIELDS)]),
-  ].sort();
+  return Array.from(
+    new Set([...REPLAY_API_FIELDS, ...Object.keys(DERIVED_REPLAY_FIELDS)]),
+  ).sort();
 }
 
 /**
@@ -189,7 +189,7 @@ export function getReplayRequestFields(fields: string[]): string[] {
     roots.add(getDerivedReplayField(field)?.root ?? replayFieldRoot(field));
   }
 
-  return [...roots];
+  return Array.from(roots);
 }
 
 /** Read a dotted path such as `user.geo.city` from a replay row. */

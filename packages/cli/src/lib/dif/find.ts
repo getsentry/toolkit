@@ -181,7 +181,7 @@ async function tryProguard(
     return;
   }
   // Only worth hashing when a ProGuard-shaped id is still sought.
-  if (![...state.remaining].some(isProguardId)) {
+  if (!Array.from(state.remaining).some(isProguardId)) {
     return;
   }
   let uuid: string;
@@ -333,7 +333,7 @@ export async function findDebugFiles(opts: FindOptions): Promise<FindResult> {
 
   // Breakpad-only matches are reported but still counted as missing.
   const missingIds = new Set([...state.remaining, ...state.breakpadFound]);
-  const missing: MissingId[] = [...missingIds].map((id) => ({
+  const missing: MissingId[] = Array.from(missingIds).map((id) => ({
     id,
     hint: idHint(id),
   }));

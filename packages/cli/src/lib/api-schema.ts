@@ -144,7 +144,7 @@ export function findEndpointsByIdentifier(identifier: string): ApiEndpoint[] {
 /** Get all unique resource names, sorted alphabetically */
 export function getAllResources(): string[] {
   const resources = new Set(schema.map((e) => e.resource));
-  return [...resources].sort();
+  return Array.from(resources).sort();
 }
 
 /** Get all endpoints for a given resource name (case-insensitive) */
@@ -331,11 +331,11 @@ export function getResourceSummaries(): ResourceSummary[] {
     }
   }
 
-  return [...map.entries()]
+  return Array.from(map.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, info]) => ({
       name,
       endpointCount: info.endpointCount,
-      methods: [...info.methods].sort(),
+      methods: Array.from(info.methods).sort(),
     }));
 }

@@ -121,7 +121,7 @@ function buildPlatformError(nameArg: string, platform?: string): string {
     }
   }
 
-  const platformTable = renderPlatformGrid([...COMMON_PLATFORMS]);
+  const platformTable = renderPlatformGrid(Array.from(COMMON_PLATFORMS));
 
   return (
     `${heading}\n` +
@@ -483,7 +483,7 @@ function parseProjectSpecs(rawSpecs: readonly string[]): {
   );
   if (orgs.size > 1) {
     throw new ValidationError(
-      `Cannot create projects across multiple organizations (${[...orgs].join(", ")}).\n\n` +
+      `Cannot create projects across multiple organizations (${Array.from(orgs).join(", ")}).\n\n` +
         "All names must belong to the same org.",
       "organization",
     );

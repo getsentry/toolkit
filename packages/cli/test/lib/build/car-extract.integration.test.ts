@@ -115,7 +115,7 @@ function assertParsedAssets(
     );
     if (imagePath.endsWith(".png")) {
       const image = Buffer.from(entries[imagePath] ?? []);
-      expect([...image.subarray(0, 8)]).toEqual([
+      expect(Array.from(image.subarray(0, 8))).toEqual([
         137, 80, 78, 71, 13, 10, 26, 10,
       ]);
       expect(image.readUInt32BE(16)).toBe(asset?.width);
@@ -167,7 +167,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
       const bytes = await readFile(path);
       expect(bytes.length).toBeGreaterThan(8);
       if (extension === "png") {
-        expect([...bytes.subarray(0, 8)]).toEqual([
+        expect(Array.from(bytes.subarray(0, 8))).toEqual([
           137, 80, 78, 71, 13, 10, 26, 10,
         ]);
       }

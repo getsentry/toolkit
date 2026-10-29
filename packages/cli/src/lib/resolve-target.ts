@@ -1195,7 +1195,7 @@ function combineProjectNotFoundErrors(
   const [first, ...others] = misses.map(
     ({ error }) => new Set(error.suggestions),
   );
-  const shared = [...(first ?? [])].filter((suggestion) =>
+  const shared = Array.from(first ?? []).filter((suggestion) =>
     others.every((suggestions) => suggestions.has(suggestion)),
   );
   const specific = misses.flatMap(({ slug, error }) =>
@@ -1517,10 +1517,12 @@ export async function resolveAllTargets(
           );
         } else {
           span.setAttribute("resolve.method", "inference");
-          const uniqueOrgs = [...new Set(result.targets.map((t) => t.org))];
-          const uniqueProjects = [
-            ...new Set(result.targets.map((t) => t.project)),
-          ];
+          const uniqueOrgs = Array.from(
+            new Set(result.targets.map((t) => t.org)),
+          );
+          const uniqueProjects = Array.from(
+            new Set(result.targets.map((t) => t.project)),
+          );
           setOrgProjectContext(uniqueOrgs, uniqueProjects);
         }
         return result;
@@ -1557,7 +1559,7 @@ async function resolveDetectedDsns(
       uniqueDsnMap.set(dedupeKey, dsn);
     }
   }
-  const uniqueDsns = [...uniqueDsnMap.values()];
+  const uniqueDsns = Array.from(uniqueDsnMap.values());
 
   log.debug(
     `Resolving ${uniqueDsns.length} unique DSN targets (${detection.all.length} total detected)`,
@@ -1599,8 +1601,8 @@ async function resolveDetectedDsns(
     targets.length > 1 ? formatMultipleProjectsFooter(targets) : undefined;
 
   // Set telemetry context for all resolved targets
-  const uniqueOrgs = [...new Set(targets.map((t) => t.org))];
-  const uniqueProjects = [...new Set(targets.map((t) => t.project))];
+  const uniqueOrgs = Array.from(new Set(targets.map((t) => t.org)));
+  const uniqueProjects = Array.from(new Set(targets.map((t) => t.project)));
   setOrgProjectContext(uniqueOrgs, uniqueProjects);
 
   return {
@@ -2336,9 +2338,9 @@ export async function resolveOrgsForListing(
   if (targetsResult.ok) {
     const { targets, footer, skippedSelfHosted } = targetsResult.value;
     if (targets.length > 0) {
-      const uniqueOrgs = [
-        ...new Set(targets.map((t: ResolvedTarget) => t.org)),
-      ];
+      const uniqueOrgs = Array.from(
+        new Set(targets.map((t: ResolvedTarget) => t.org)),
+      );
       setOrgProjectContext(uniqueOrgs, []);
       return { orgs: uniqueOrgs, footer, skippedSelfHosted };
     }
@@ -2728,8 +2730,8 @@ export async function resolveProjectBoundTargets(
         projectDisplay: m.name,
       }));
 
-      const uniqueOrgs = [...new Set(targets.map((t) => t.org))];
-      const uniqueProjects = [...new Set(targets.map((t) => t.project))];
+      const uniqueOrgs = Array.from(new Set(targets.map((t) => t.org)));
+      const uniqueProjects = Array.from(new Set(targets.map((t) => t.project)));
       setOrgProjectContext(uniqueOrgs, uniqueProjects);
 
       return {

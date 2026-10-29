@@ -110,7 +110,7 @@ export function createLocalSessionStore({
     if (byId) {
       return byId;
     }
-    const matches = [...sessions.values()].filter(
+    const matches = Array.from(sessions.values()).filter(
       (session) => session.label === reference,
     );
     if (matches.length === 0) {
@@ -219,13 +219,13 @@ export function createLocalSessionStore({
       };
     },
     list() {
-      return [...sessions.values()]
+      return Array.from(sessions.values())
         .map(toPublicSession)
         .sort((left, right) => right.lastActivityAt - left.lastActivityAt);
     },
     pruneExpired() {
       const timestamp = now();
-      const expired = [...sessions.values()]
+      const expired = Array.from(sessions.values())
         .filter(
           (session) =>
             session.state === "retained" &&

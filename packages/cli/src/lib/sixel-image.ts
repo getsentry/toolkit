@@ -381,7 +381,7 @@ function selectSplitTarget(
 
 /** Split a box in two at the median of the given channel. */
 function splitBox(box: ColorBox, channel: number): [ColorBox, ColorBox] {
-  const sorted = [...box.colors].sort(
+  const sorted = Array.from(box.colors).sort(
     (a, b) => (a[channel] as number) - (b[channel] as number),
   );
   const mid = Math.floor(sorted.length / 2);
@@ -515,7 +515,7 @@ function colorsInBand(plane: IndexedPlane, y0: number): number[] {
       }
     }
   }
-  return [...seen];
+  return Array.from(seen);
 }
 
 /**

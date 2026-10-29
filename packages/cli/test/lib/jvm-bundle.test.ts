@@ -246,7 +246,7 @@ describe("buildJvmBundle", () => {
 
     expect(result.fileCount).toBe(1);
     // URL should be package-relative, not main/java/...
-    const urls = [...result.files.keys()];
+    const urls = Array.from(result.files.keys());
     expect(urls[0]).toBe("~/com/example/App.jvm");
   });
 
@@ -288,7 +288,7 @@ describe("buildJvmBundle", () => {
     });
 
     expect(result.fileCount).toBe(1);
-    expect([...result.files.keys()][0]).toBe("~/com/example/Linked.jvm");
+    expect(Array.from(result.files.keys())[0]).toBe("~/com/example/Linked.jvm");
   });
 
   test("follows symlinked directories", async () => {
@@ -309,7 +309,7 @@ describe("buildJvmBundle", () => {
     });
 
     expect(result.fileCount).toBe(1);
-    expect([...result.files.keys()][0]).toBe("~/com/example/Shared.jvm");
+    expect(Array.from(result.files.keys())[0]).toBe("~/com/example/Shared.jvm");
   });
 
   test("does not loop on symlink cycles", async () => {
@@ -328,6 +328,6 @@ describe("buildJvmBundle", () => {
 
     // The single real file is collected exactly once despite the cycle.
     expect(result.fileCount).toBe(1);
-    expect([...result.files.keys()][0]).toBe("~/com/example/App.jvm");
+    expect(Array.from(result.files.keys())[0]).toBe("~/com/example/App.jvm");
   });
 });

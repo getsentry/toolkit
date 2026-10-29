@@ -497,7 +497,7 @@ describe("property: buildProjectAliasMap", () => {
           const results = pairs.map(([org, proj]) => makeResult(org, proj));
           const { aliasMap } = buildProjectAliasMap(results);
 
-          const aliases = [...aliasMap.values()];
+          const aliases = Array.from(aliasMap.values());
           expect(new Set(aliases).size).toBe(aliases.length);
         },
       ),

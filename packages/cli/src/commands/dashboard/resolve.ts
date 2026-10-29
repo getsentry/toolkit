@@ -573,7 +573,7 @@ function warnUnknownAggregateFields(
         `Aggregate field "${inner}" in "${agg}" is not a known aggregatable span field. ` +
           "Span attributes (custom tags) cannot be used with numeric aggregates — " +
           "use them in --where or --group-by instead. " +
-          `Known numeric fields: ${[...KNOWN_SPAN_AGGREGATE_FIELDS].join(", ")}`,
+          `Known numeric fields: ${Array.from(KNOWN_SPAN_AGGREGATE_FIELDS).join(", ")}`,
       );
     }
   }

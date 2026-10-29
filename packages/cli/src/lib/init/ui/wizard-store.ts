@@ -438,7 +438,7 @@ export class WizardStore {
         byPath.set(path, { path, status: "reading" });
       }
     }
-    this.update({ filesRead: [...byPath.values()] });
+    this.update({ filesRead: Array.from(byPath.values()) });
   }
 
   /**
@@ -496,7 +496,7 @@ export class WizardStore {
     for (const path of paths) {
       byPath.set(path, { path, status: "analyzed" });
     }
-    this.update({ filesRead: [...byPath.values()] });
+    this.update({ filesRead: Array.from(byPath.values()) });
   }
 
   appendStatus(message: string): void {
@@ -689,7 +689,7 @@ function applyStepStatus(
   if (status === "skipped" && current.status !== "pending") {
     return steps;
   }
-  const updated = [...steps];
+  const updated = Array.from(steps);
   updated[targetIndex] = { ...current, status };
   return updated;
 }

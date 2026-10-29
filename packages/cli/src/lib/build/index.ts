@@ -489,7 +489,7 @@ async function addParsedAssetCatalogs(
         files.set(`${prefix}/${file.name}`, file.sourcePath);
       }
     }
-    for (const [name, sourcePath] of [...files].sort(([a], [b]) =>
+    for (const [name, sourcePath] of Array.from(files).sort(([a], [b]) =>
       a < b ? -1 : a > b ? 1 : 0,
     )) {
       await zip.addFile(name, sourcePath);

@@ -365,7 +365,9 @@ async function getLogsBatch(
   const logsById = new Map(
     response.data.map((log) => [log["sentry.item_id"], log]),
   );
-  const missingIds = [...new Set(batchIds)].filter((id) => !logsById.has(id));
+  const missingIds = Array.from(new Set(batchIds)).filter(
+    (id) => !logsById.has(id),
+  );
   if (missingIds.length === 0) {
     return response.data;
   }
@@ -376,7 +378,7 @@ async function getLogsBatch(
   for (const log of retry.data) {
     logsById.set(log["sentry.item_id"], log);
   }
-  return [...logsById.values()];
+  return Array.from(logsById.values());
 }
 
 /** Options for {@link getLogs}. */

@@ -77,7 +77,7 @@ function computeCommonPrefix(paths: string[]): string {
   if (paths.length === 0) {
     return "";
   }
-  const sorted = [...paths].sort();
+  const sorted = Array.from(paths).sort();
   const first = sorted[0];
   const last = sorted.at(-1);
   if (!(first && last)) {

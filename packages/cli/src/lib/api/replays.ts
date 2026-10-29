@@ -199,7 +199,7 @@ async function fetchReplayPage(
         field:
           options.fields && options.fields.length > 0
             ? options.fields
-            : [...REPLAY_LIST_FIELDS],
+            : Array.from(REPLAY_LIST_FIELDS),
         per_page: perPage,
         project: options.project,
         projectSlug: options.projectSlugs,

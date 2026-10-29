@@ -777,7 +777,7 @@ function httpStatus(err: unknown): number | undefined {
 }
 
 function runStateRecoveryBackoffMs(): number[] {
-  const delays = [...RUN_STATE_RECOVERY_INITIAL_BACKOFF_MS];
+  const delays = Array.from(RUN_STATE_RECOVERY_INITIAL_BACKOFF_MS);
   let totalWaitMs = delays.reduce((total, delayMs) => total + delayMs, 0);
   while (totalWaitMs < RUN_STATE_RECOVERY_MAX_WAIT_MS) {
     const delayMs = Math.min(
@@ -1460,7 +1460,7 @@ function activeStepIdsFor(result: WorkflowRunResult, stepId: string): string[] {
   if (ids.size === 0 && stepId !== "unknown") {
     ids.add(stepId);
   }
-  return [...ids];
+  return Array.from(ids);
 }
 
 function extractSuspendPayloadFromStep(

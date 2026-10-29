@@ -427,7 +427,7 @@ function formatAttrGroup(
   if (entries.length === 0) {
     return [];
   }
-  const sorted = [...entries].sort(([a], [b]) => a.localeCompare(b));
+  const sorted = Array.from(entries).sort(([a], [b]) => a.localeCompare(b));
   const keyWidth = Math.max(...sorted.map(([k]) => sanitize(k).length));
   const lines = [`${ATTR_INDENT}${muted(title)}`];
   for (const [key, value] of sorted) {
@@ -832,7 +832,7 @@ function buildJsonAttributes(payload: Record<string, unknown>): {
   const merged = collectAllAttributes(payload);
   const user: Record<string, string> = {};
   const sdk: Record<string, string> = {};
-  for (const [key, value] of [...merged].sort(([a], [b]) =>
+  for (const [key, value] of Array.from(merged).sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
     const target = isSdkAttribute(key) ? sdk : user;

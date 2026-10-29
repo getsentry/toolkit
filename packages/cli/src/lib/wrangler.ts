@@ -398,7 +398,7 @@ function injectIntoShellArgs(
       shellExecutable === "cmd" || shellExecutable === "cmd.exe",
     );
     if (injected) {
-      const augmented = [...args];
+      const augmented = Array.from(args);
       augmented[index] = injected;
       return { args: augmented, injected: true };
     }
@@ -413,7 +413,7 @@ function injectIntoPackageScript(
   invocation: PackageScriptInvocation,
   script: string,
 ): WranglerCommandAugmentation {
-  const unchanged = { args: [...args], injected: false };
+  const unchanged = { args: Array.from(args), injected: false };
   const packageWrangler = findShellWranglerCommand(script);
   if (!packageWrangler || SHELL_SPOTLIGHT_VAR_RE.test(script)) {
     return unchanged;
@@ -465,7 +465,7 @@ export async function injectWranglerSpotlightBinding(
   spotlightUrl: string,
   cwd: string,
 ): Promise<WranglerCommandAugmentation> {
-  const unchanged = { args: [...args], injected: false };
+  const unchanged = { args: Array.from(args), injected: false };
   const packageInvocation = packageScriptInvocation(args);
   const packageScript = packageInvocation
     ? await readPackageScript(cwd, packageInvocation.name)

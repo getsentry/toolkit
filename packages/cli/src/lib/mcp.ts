@@ -32,7 +32,7 @@ export function prepareMcpServerArgs(
   sentryUrl = getConfiguredSentryUrl(),
 ): string[] {
   if (!sentryUrl || hasSentryTargetArg(args)) {
-    return [...args];
+    return Array.from(args);
   }
 
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- invalid URLs are passed through to the MCP parser for its normal validation error.

@@ -382,7 +382,7 @@ describe("listCommand.func — standard mode", () => {
 
   test("outputs JSON in newest-first order by default", async () => {
     // API returns newest first: item003, item002, item001
-    const newestFirst = [...sampleLogs].reverse();
+    const newestFirst = Array.from(sampleLogs).reverse();
     listLogsSpy.mockResolvedValue(newestFirst);
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
@@ -634,7 +634,7 @@ describe("listCommand.func — trace mode", () => {
   });
 
   test("outputs JSON in newest-first order by default (trace mode)", async () => {
-    const newestFirst = [...sampleTraceLogs].reverse();
+    const newestFirst = Array.from(sampleTraceLogs).reverse();
     listTraceLogsSpy.mockResolvedValue(newestFirst);
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 

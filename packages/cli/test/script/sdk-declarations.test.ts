@@ -22,7 +22,7 @@ describe("SDK entry-point declarations", () => {
     const declarations = buildCoreDeclarations(source);
 
     const options = extractSentryOptions(source);
-    const optionNames = [...options.matchAll(/^ {2}(\w+)\??:/gm)].map(
+    const optionNames = Array.from(options.matchAll(/^ {2}(\w+)\??:/gm)).map(
       (match) => match[1],
     );
 

@@ -141,6 +141,9 @@ function regexSource(node) {
   return "";
 }
 
+const PREFER_ARRAY_FROM_MESSAGE =
+  "Use Array.from(value) instead of [...value] to copy an iterable.";
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -409,6 +412,36 @@ const rules = {
           }
         : {},
   ),
+  "prefer-array-from": {
+    meta: {
+      type: "suggestion",
+      docs: { description: PREFER_ARRAY_FROM_MESSAGE },
+      fixable: "code",
+      schema: [],
+    },
+    create(context) {
+      const filename = context.filename.replaceAll("\\", "/");
+      if (!filename.includes("/packages/cli/")) return {};
+      return {
+        // Only a lone spread is a pure conversion; `[...a, ...b]` and
+        // `[...a, b]` build new arrays and stay as they are.
+        ArrayExpression(node) {
+          const [element] = node.elements;
+          if (node.elements.length !== 1 || element?.type !== "SpreadElement")
+            return;
+          context.report({
+            node,
+            message: PREFER_ARRAY_FROM_MESSAGE,
+            fix: (fixer) =>
+              fixer.replaceText(
+                node,
+                `Array.from(${context.sourceCode.getText(element.argument)})`,
+              ),
+          });
+        },
+      };
+    },
+  },
   "no-skipped-tests": rule(
     "Do not leave disabled tests in the suite.",
     (_context, file, report) =>

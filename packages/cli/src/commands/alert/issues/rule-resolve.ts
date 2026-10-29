@@ -155,7 +155,7 @@ export async function resolveIssueAlertRule(
     );
   }
 
-  const uniqueNames = [...new Set(allRuleNames)];
+  const uniqueNames = Array.from(new Set(allRuleNames));
   const similar = fuzzyMatch(ref, uniqueNames, { maxResults: 5 });
   if (similar.length > 0) {
     const lines = similar.map((n) => `  ${n}`).join("\n");
