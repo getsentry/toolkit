@@ -454,6 +454,44 @@ describe("readReply", () => {
     });
   });
 
+  test("keeps waiting through a quiet read for the passthrough sentinel", () => {
+    // tmux answers at once; the outer terminal's replies come after a gap
+    // longer than one read timeout.
+    const chunks = [
+      `${ESC}[?1;2;4c`,
+      "",
+      `${ESC}_Gi=4271;OK${ESC}\\${ESC}[?62;22c`,
+    ];
+    const reply = readReply(-1, 2, (buf) => {
+      const chunk = chunks.shift() ?? "";
+      return buf.write(chunk, "latin1");
+    });
+    expect(parseSixelCaps(reply)).toMatchObject({
+      supported: true,
+      kitty: true,
+    });
+    expect(chunks).toHaveLength(0);
+  });
+
+  test("gives up on the passthrough sentinel after repeated quiet reads", () => {
+    let reads = 0;
+    const reply = readReply(-1, 2, (buf) => {
+      reads += 1;
+      return reads === 1 ? buf.write(`${ESC}[?1;2;4c`, "latin1") : 0;
+    });
+    expect(reply).toBe(`${ESC}[?1;2;4c`);
+    expect(reads).toBe(5);
+  });
+
+  test("stops at the first quiet read when no sentinel is pending", () => {
+    let reads = 0;
+    readReply(-1, 1, (buf) => {
+      reads += 1;
+      return reads === 1 ? buf.write(`${ESC}[6;20;10t`, "latin1") : 0;
+    });
+    expect(reads).toBe(2);
+  });
+
   test("returns an empty string at EOF with no reply", () => {
     withReplyFile("", (fd) => {
       expect(readReply(fd)).toBe("");

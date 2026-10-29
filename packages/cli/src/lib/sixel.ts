@@ -156,6 +156,12 @@ const DA1_RE = /\x1b\[\?([0-9;]*)c/;
 // oxlint-disable-next-line no-control-regex -- parsing terminal escapes
 const CELL_SIZE_RE = /\x1b\[6;(\d+);(\d+)t/;
 
+/**
+ * Timed-out reads (~300ms each) tolerated while waiting for the outer
+ * terminal's replies through tmux passthrough; see {@link readReply}.
+ */
+const MAX_PASSTHROUGH_QUIET_READS = 4;
+
 /** Every Primary DA reply in a buffer (tmux can produce two; see probe). */
 // oxlint-disable-next-line no-control-regex -- parsing terminal escapes
 const DA1_GLOBAL_RE = /\x1b\[\?[0-9;]*c/g;
@@ -346,22 +352,42 @@ export function optedOut(): boolean {
  * Matching the full DA pattern (not merely any `c`) avoids stopping early on a
  * stray `c` — e.g. a keypress on `/dev/tty` during the probe. Exported for tests.
  *
+ * Inside tmux with passthrough, tmux's own DA reply arrives at once but the
+ * outer terminal's replies need a second round-trip, which can take longer
+ * than one read timeout (e.g. over SSH). So once a DA reply has arrived and
+ * more are expected, up to {@link MAX_PASSTHROUGH_QUIET_READS} timed-out reads
+ * are tolerated before giving up.
+ *
  * @param sentinels - Number of DA replies to wait for (2 inside tmux with
  *   passthrough: tmux's own, then the outer terminal's).
+ * @param read - Reads into the buffer and returns the byte count; defaults to
+ *   a blocking `readSync` on `fd`. Injectable for tests.
  * @internal
  */
-export function readReply(fd: number, sentinels = 1): string {
+export function readReply(
+  fd: number,
+  sentinels = 1,
+  read: (buf: Buffer) => number = (buf) =>
+    readSync(fd, buf, 0, buf.length, null),
+): string {
   const buf = Buffer.alloc(256);
   let data = "";
+  let quietReads = 0;
   for (let i = 0; i < 16; i++) {
     let n = 0;
     try {
-      n = readSync(fd, buf, 0, buf.length, null);
+      n = read(buf);
     } catch {
       break;
     }
+    const received = data.match(DA1_GLOBAL_RE)?.length ?? 0;
     if (n <= 0) {
-      break;
+      quietReads += 1;
+      const awaitingPassthrough = received > 0 && received < sentinels;
+      if (!awaitingPassthrough || quietReads >= MAX_PASSTHROUGH_QUIET_READS) {
+        break;
+      }
+      continue;
     }
     data += buf.toString("latin1", 0, n);
     // Stop only once every complete Primary DA (sentinel) reply has arrived.
