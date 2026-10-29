@@ -25,7 +25,7 @@ toolkit/
 │   ├── cli/                 # Sentry CLI (see packages/cli/AGENTS.md)
 │   ├── toolkit-core/        # Shared CLI/MCP primitives
 │   ├── mcp-core/            # Core MCP implementation (private)
-│   ├── mcp-server/          # Deprecated shim that runs `sentry mcp` (delete after final publish)
+│   ├── mcp-server/          # `sentry mcp` bundled as @sentry/mcp-server
 │   ├── mcp-cloudflare/      # Web app + OAuth
 │   ├── mcp-server-evals/    # AI evaluation tests
 │   ├── mcp-server-mocks/    # MSW mocks
@@ -98,7 +98,7 @@ toolkit/
 
 **MCP releases:**
 
-- docs/releases/stdio.md — `sentry mcp` release, registry, and the `@sentry/mcp-server` shim
+- docs/releases/stdio.md — `sentry mcp` release, registry, and the `@sentry/mcp-server` bundle
 - docs/releases/cloudflare.md — Cloudflare deployment
 
 ## Commands

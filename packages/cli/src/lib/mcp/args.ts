@@ -1,9 +1,9 @@
 /**
- * Argument and environment parsing for `sentry mcp`.
+ * Argument and environment parsing for `sentry mcp` and `@sentry/mcp-server`.
  *
- * Accepts the same flags and environment variables as the retired
- * `@sentry/mcp-server` package, so existing MCP client configurations keep
- * working when they switch to `sentry mcp`. Flags win over environment values.
+ * Both accept the flags and environment variables that `@sentry/mcp-server`
+ * has always taken, so existing MCP client configurations keep working. Flags win
+ * over environment values.
  */
 
 import { parseArgs } from "node:util";

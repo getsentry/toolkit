@@ -6,8 +6,8 @@ How the local stdio MCP server ships.
 
 The stdio MCP server is the `sentry mcp` command in the `sentry` npm package
 (`packages/cli`). It ships with every CLI release (the `packages/cli` Craft
-workspace in `.craft.yml`); there is no separate MCP package to version or
-publish.
+workspace in `.craft.yml`). The same server also ships on its own as
+`@sentry/mcp-server` (see below).
 
 `sentry mcp` bundles `@sentry/mcp-core` (tools, server, and the stdio
 transport) and uses the CLI's own authentication:
@@ -15,27 +15,30 @@ transport) and uses the CLI's own authentication:
 - `sentry auth login` session (refreshed automatically, including after an
   upstream 401)
 - `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`, as for every CLI command
-- `--access-token` / `SENTRY_ACCESS_TOKEN`: a static token for `sentry mcp`
-  only, kept for configurations written for the retired `@sentry/mcp-server`
-  package. It is never refreshed, and org auth tokens (`sntrys_`) are still
+- `--access-token` / `SENTRY_ACCESS_TOKEN`: a static token for the MCP server
+  only. It is never refreshed, and org auth tokens (`sntrys_`) are still
   scoped to the host they were issued for.
 
-## Retired `@sentry/mcp-server` package
+## `@sentry/mcp-server` package
 
-`packages/mcp-server` is a deprecation shim kept for one last release. Its
-`sentry-mcp` bin prints a one-line stderr notice and runs `sentry mcp` with the
-same arguments (`auth login|logout|status` map to `sentry auth ...`). It depends
-on `sentry` (`>=0.48.0`, the first release with full flag parity), so publish
-it only after that CLI release is on npm.
+`packages/mcp-server` publishes the same server as a single file with no
+runtime dependencies. `packages/cli/script/bundle-mcp-server.ts` bundles
+`packages/cli/src/mcp-server.ts` into `dist/sentry-mcp.cjs`:
 
-Remaining maintainer steps:
+- Same flags, environment variables, tools, and self-hosted support as
+  `sentry mcp`, and the same CLI session and credential store.
+- `sentry-mcp auth login` runs the CLI's device flow with plain-text output.
+  Other `auth` subcommands point to `npx -y sentry auth ...`.
+- CLI-only code stays out: commands, the markdown renderer, agent skills,
+  completions, terminal images, the Ink UI, and debug-file processing. The
+  SQLite WASM fallback is left out too, so the package needs Node.js 22.15+.
+  The bundle script fails if any of these reach the output or the file grows
+  past its size budget.
 
-1. Release `@sentry/mcp-server` once more through the `packages/mcp-server`
-   Craft workspace (`release/mcp` branches).
-2. Deprecate it on npm with `npm deprecate @sentry/mcp-server "<message>"`,
-   pointing users at `npx -y sentry mcp`.
-3. Delete `packages/mcp-server`, its Craft workspace, and the pack step in
-   `.github/workflows/merge-jobs.yml`.
+`pnpm --filter @sentry/mcp-server run bundle` builds it and `run test:bundle`
+smoke-tests the result. The `packages/mcp-server` Craft workspace releases it
+from `release/mcp` branches; `.github/workflows/merge-jobs.yml` bundles, tests,
+and packs it.
 
 ## MCP Registry
 
@@ -92,4 +95,5 @@ pnpm -w run cli --transport stdio "who am I?"
 - Command entry: `packages/cli/src/lib/mcp.ts`
 - Host (flags, env, telemetry): `packages/cli/src/lib/mcp/`
 - stdio transport: `packages/mcp-core/src/transports/stdio.ts`
-- Deprecation shim: `packages/mcp-server/`
+- `@sentry/mcp-server` entry: `packages/cli/src/mcp-server.ts`
+- `@sentry/mcp-server` bundle: `packages/cli/script/bundle-mcp-server.ts`

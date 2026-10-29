@@ -14,58 +14,8 @@ import { redactCredentialText } from "./lib/credential-redaction.js";
 import { getEnv } from "./lib/env.js";
 import { CliError, formatError } from "./lib/errors.js";
 import { buildTopLevelFlags } from "./lib/global-flags.js";
+import { preloadProjectContext } from "./lib/project-context.js";
 import { initTimezone } from "./lib/timezone.js";
-
-/**
- * Preload project context: walk up from `cwd` once, finding both the
- * project root (for DSN detection) and `.sentryclirc` config (for
- * org/project defaults and env shim). Caches both results so later calls
- * to `findProjectRoot` and `loadSentryCliRc` are cache hits.
- */
-async function preloadProjectContext(cwd: string): Promise<void> {
-  // Snapshot env-token host BEFORE anything mutates env.SENTRY_HOST/URL
-  // (the .sentryclirc shim or the default-URL fallback below). Pins the
-  // env-token's trust scope to the user's shell, not a repo-local file.
-  // Dynamic import: env-token-host chains into db/auth → telemetry → @sentry/node
-  const { captureEnvTokenHost } = await import("./lib/env-token-host.js");
-  captureEnvTokenHost();
-
-  // Dynamic import keeps the heavy DSN/DB modules out of the completion fast-path
-  const [{ findProjectRoot }, { setCachedProjectRoot }] = await Promise.all([
-    import("./lib/dsn/project-root.js"),
-    import("./lib/db/project-root-cache.js"),
-  ]);
-
-  const result = await findProjectRoot(cwd);
-  await setCachedProjectRoot(cwd, {
-    projectRoot: result.projectRoot,
-    reason: result.reason,
-  });
-
-  // Apply .sentryclirc env shim (token + URL). The URL trust check is
-  // deferred to buildCommand's wrapper where commands can opt out via
-  // skipRcUrlCheck (used by auth login/logout).
-  // Dynamic import: sentryclirc chains into db/index → sqlite, logger → consola
-  const { applySentryCliRcEnvShim } = await import("./lib/sentryclirc.js");
-  await applySentryCliRcEnvShim(cwd);
-
-  // Apply persistent URL default (lower priority than env vars and .sentryclirc).
-  const env = getEnv();
-  if (!(env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim())) {
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    try {
-      const { getDefaultUrl } = await import("./lib/db/defaults.js");
-      const url = getDefaultUrl();
-      if (url) {
-        env.SENTRY_URL = url;
-        const { markPersistedDefaultUrl } = await import("./lib/constants.js");
-        markPersistedDefaultUrl(url);
-      }
-    } catch {
-      // DB not available — skip
-    }
-  }
-}
 
 /**
  * Fast-path: shell completion.
@@ -283,28 +233,8 @@ export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
     return false;
   }
 
-  const [{ startMcpServer }, { getExitCode }] = await Promise.all([
-    import("./lib/mcp.js"),
-    import("./lib/errors.js"),
-  ]);
-
-  try {
-    await startMcpServer(mcpArgs);
-  } catch (mcpError) {
-    process.stderr.write(`Error: ${formatError(mcpError)}\n`);
-    process.exitCode = getExitCode(mcpError);
-    // MCP setup errors are terminal, unlike a running stdio server. Clean up
-    // network resources only on this error path so successful servers retain
-    // their dispatcher and are not force-exited on macOS.
-    const [{ scheduleForceExit }, { closeGlobalDispatcher }] =
-      await Promise.all([
-        import("./lib/force-exit.js"),
-        import("./lib/close-dispatcher.js"),
-      ]);
-    scheduleForceExit();
-    await closeGlobalDispatcher();
-  }
-
+  const { runMcpServer } = await import("./lib/mcp/run.js");
+  await runMcpServer(mcpArgs);
   return true;
 }
 

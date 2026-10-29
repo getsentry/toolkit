@@ -15,7 +15,7 @@ packages/
 ├── cli/                 # Sentry CLI, including the `sentry mcp` stdio server
 ├── toolkit-core/        # Shared CLI/MCP primitives
 ├── mcp-core/            # Core MCP implementation (private package)
-├── mcp-server/          # Deprecated shim that runs `sentry mcp`
+├── mcp-server/          # `sentry mcp` bundled as @sentry/mcp-server
 ├── mcp-cloudflare/      # Cloudflare Workers deployment
 ├── mcp-server-evals/    # Evaluation test suite
 ├── mcp-server-mocks/    # Shared mock data
@@ -65,11 +65,11 @@ The local stdio MCP server is the `sentry mcp` command in the Sentry CLI.
 - `src/lib/mcp/` parses server flags and environment variables, configures the
   embedded agent provider and telemetry, and starts mcp-core's stdio transport.
 
-### packages/mcp-server (deprecated)
+### packages/mcp-server
 
-A deprecation shim for one last `@sentry/mcp-server` release. Its `sentry-mcp`
-bin prints a notice and runs `sentry mcp` with the same arguments. Delete it after
-the final publish; see [stdio release](../releases/stdio.md).
+Publishes `sentry mcp` as `@sentry/mcp-server`: a single bundled file with no
+runtime dependencies, built from the CLI's `src/mcp-server.ts` without the rest
+of the CLI. See [stdio release](../releases/stdio.md).
 
 ### packages/mcp-cloudflare
 

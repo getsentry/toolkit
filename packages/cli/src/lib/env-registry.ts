@@ -69,7 +69,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_ACCESS_TOKEN",
     description:
-      "Static auth token for `sentry mcp`, kept for MCP client configurations written for the retired `@sentry/mcp-server` package (the env form of its `--access-token` flag). It replaces the CLI session for the MCP server only and is never refreshed. Other commands ignore it.",
+      "Static auth token for `sentry mcp` and `@sentry/mcp-server` (the env form of the `--access-token` flag). It replaces the CLI session for the MCP server only and is never refreshed. Other commands ignore it.",
     example: "sntryu_YOUR_TOKEN_HERE",
   },
   // -- Targeting --

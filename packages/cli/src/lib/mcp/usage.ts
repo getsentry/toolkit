@@ -1,15 +1,32 @@
-/** Help text for `sentry mcp --help`. */
+/** Help and version text for `sentry mcp` and `sentry-mcp`. */
 
 import type { Skill } from "@sentry/mcp-core/skills";
+import { CLI_VERSION } from "../constants.js";
 
-const COMMAND = "sentry mcp";
+/** Set by `script/bundle-mcp-server.ts` to the `@sentry/mcp-server` version. */
+declare const SENTRY_MCP_SERVER_VERSION: string | undefined;
 
-/** Build the `sentry mcp --help` text. */
+/** Whether this code runs as the standalone `@sentry/mcp-server` bundle. */
+const IS_MCP_SERVER_PACKAGE = typeof SENTRY_MCP_SERVER_VERSION !== "undefined";
+
+const COMMAND = IS_MCP_SERVER_PACKAGE ? "sentry-mcp" : "sentry mcp";
+const LOGIN_COMMAND = IS_MCP_SERVER_PACKAGE
+  ? "sentry-mcp auth login"
+  : "sentry auth login";
+
+/** Build the `--version` output. */
+export function buildMcpVersion(): string {
+  return IS_MCP_SERVER_PACKAGE
+    ? `${COMMAND} ${SENTRY_MCP_SERVER_VERSION}`
+    : `${COMMAND} ${CLI_VERSION}`;
+}
+
+/** Build the `--help` text. */
 export function buildMcpUsage(allSkills: ReadonlyArray<Skill>): string {
   return `Usage: ${COMMAND} [--access-token=<token>] [--host=<host>] [--insecure-http]
 
 Authentication:
-  Uses the active Sentry CLI session by default. Authenticate with \`sentry auth login\`.
+  Uses the active Sentry CLI session by default. Authenticate with \`${LOGIN_COMMAND}\`.
   --access-token <token>  Use this Sentry auth token instead of the CLI session
                           (never refreshed; org auth tokens must match the selected host)
 

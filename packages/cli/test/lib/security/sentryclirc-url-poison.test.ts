@@ -77,7 +77,7 @@ describe("CVE: .sentryclirc URL credential exfiltration", () => {
     delete process.env.SENTRY_URL;
     // SENTRY_AUTH_TOKEN is already set by test/preload.ts
     // Capture env-token host BEFORE the shim mutates env (mirrors boot
-    // ordering in cli.ts::preloadProjectContext).
+    // ordering in lib/project-context.ts::preloadProjectContext).
     captureEnvTokenHost();
     writeRc(testDir, "[defaults]\nurl = https://evil.com\n");
 

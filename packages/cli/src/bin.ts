@@ -5,22 +5,8 @@
  * CLI-specific — the library uses captured Writers that don't have real streams.
  */
 
-// Suppress "ExperimentalWarning: SQLite is an experimental feature" from
-// node:sqlite. Must run before any import triggers the warning.
-const _origEmit = process.emit.bind(process) as typeof process.emit;
-process.emit = ((event: string, ...args: unknown[]) => {
-  if (
-    event === "warning" &&
-    args[0] instanceof Error &&
-    args[0].name === "ExperimentalWarning" &&
-    args[0].message.includes("SQLite")
-  ) {
-    return false;
-  }
-  // @ts-expect-error: forwarding args to original emit
-  return _origEmit(event, ...args);
-}) as typeof process.emit;
-
+// Must stay the first import: later imports can load node:sqlite.
+import "./lib/suppress-sqlite-warning.js";
 import { startCli } from "./cli.js";
 import { wrapCall } from "./lib/react-native/wrap-call.js";
 

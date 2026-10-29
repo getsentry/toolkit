@@ -10,9 +10,8 @@ credentials, so `sentry auth login`, `sentry auth logout`, and
 
 In order of precedence:
 
-1. **Static token** — `--access-token` flag, then `SENTRY_ACCESS_TOKEN`. Kept
-   for MCP client configurations written for the retired `@sentry/mcp-server`
-   package. The token is used as given for the life of the server and is never
+1. **Static token** — `--access-token` flag, then `SENTRY_ACCESS_TOKEN`. The
+   token is used as given for the life of the server and is never
    refreshed. Org auth tokens (`sntrys_`) record the Sentry URL they were
    issued for; `sentry mcp` refuses to send one to a different host
    (`HostScopeError`). `SENTRY_ACCESS_TOKEN` only affects `sentry mcp`; other
@@ -41,8 +40,9 @@ The standalone package's device code flow, bundled client ID, and token cache
 read the old cache. Users who relied on it run `sentry auth login` once, or keep
 passing `--access-token` / `SENTRY_ACCESS_TOKEN`.
 
-The final `@sentry/mcp-server` release is a shim that maps
-`sentry-mcp auth login|logout|status` to `sentry auth login|logout|status`.
+`@sentry/mcp-server` now bundles this same server and shares the CLI's
+credential store. `sentry-mcp auth login` runs the CLI's device flow; use
+`npx -y sentry auth logout|status` for the rest.
 
 ## Key Files
 

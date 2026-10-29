@@ -34,8 +34,15 @@ jobs:
       - name: Run tests
         run: pnpm test:ci
 
-      # @sentry/mcp-server is a deprecation shim for `sentry mcp`; delete this
-      # step with the package after its final publish.
+      # @sentry/mcp-server bundles the CLI's `sentry mcp` server into one file.
+      - name: Bundle mcp-server
+        env:
+          SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
+        run: pnpm --filter @sentry/mcp-server run bundle
+
+      - name: Test mcp-server bundle
+        run: pnpm --filter @sentry/mcp-server run test:bundle
+
       - name: Package mcp-server
         working-directory: packages/mcp-server
         run: pnpm pack --pack-destination dist

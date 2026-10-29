@@ -29,10 +29,9 @@ import {
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
-import { CLI_VERSION } from "../constants.js";
 import { mergeMcpArgs, parseMcpArgv, parseMcpEnv } from "./args.js";
 import { finalizeMcpConfig, type McpServerConfig } from "./config.js";
-import { buildMcpUsage } from "./usage.js";
+import { buildMcpUsage, buildMcpVersion } from "./usage.js";
 
 /** What a `sentry mcp` invocation asks for. */
 export type McpInvocation =
@@ -62,7 +61,7 @@ export function parseMcpInvocation(
     return { kind: "output", text: buildMcpUsage(ALL_SKILLS) };
   }
   if (cli.version) {
-    return { kind: "output", text: `sentry mcp ${CLI_VERSION}` };
+    return { kind: "output", text: buildMcpVersion() };
   }
   return {
     kind: "serve",

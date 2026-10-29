@@ -1,14 +1,18 @@
 {
   "name": "@sentry/mcp-server",
   "version": "0.42.0",
-  "description": "Deprecated: use `sentry mcp` from the `sentry` package instead",
+  "description": "Sentry MCP server over stdio: the CLI's `sentry mcp` server, bundled without the rest of the CLI",
   "sentryCi": {
-    "enabled": false
+    "build": "bundle",
+    "test": "test:bundle",
+    "dependencies": [
+      "sentry"
+    ]
   },
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.15"
   },
   "publishConfig": {
     "access": "public"
@@ -29,16 +33,13 @@
     "url": "git+https://github.com/getsentry/toolkit.git"
   },
   "bin": {
-    "sentry-mcp": "./bin/sentry-mcp.js"
+    "sentry-mcp": "./dist/sentry-mcp.cjs"
   },
   "files": [
-    "bin/sentry-mcp.js",
-    "lib/shim.js"
+    "dist/sentry-mcp.cjs"
   ],
   "scripts": {
-    "test": "node --test lib/shim.test.js"
-  },
-  "dependencies": {
-    "sentry": "workspace:>=0.48.0-dev.0"
+    "bundle": "pnpm --filter sentry run bundle:mcp-server",
+    "test:bundle": "node --test test/bundle.test.mjs"
   }
 }
