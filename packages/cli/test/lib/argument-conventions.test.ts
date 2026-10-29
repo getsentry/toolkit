@@ -888,11 +888,14 @@ describe.each(ORG_COMMANDS)("%s", (name, command, before) => {
     expect(orgOf(bindOrg(name, command, before))).toEqual({});
   });
 
-  test.each(["my-org", "my-org/"])("%s names the org", (org) => {
-    expect(orgOf(bindOrg(name, command, [...before, org]))).toEqual({
-      org: "my-org",
-    });
-  });
+  test.each(["my-org", "my-org/", "my-org\nappended notes"])(
+    "%j names the org",
+    (org) => {
+      expect(orgOf(bindOrg(name, command, [...before, org]))).toEqual({
+        org: "my-org",
+      });
+    },
+  );
 
   test("a project fails to parse: only an org is taken", () => {
     expect(() => bindOrg(name, command, [...before, "my-org/web"])).toThrow(
