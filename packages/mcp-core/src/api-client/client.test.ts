@@ -1312,6 +1312,7 @@ describe("network error handling", () => {
       /Unable to connect to .* - Network request failed/,
     );
   });
+
   it("should preserve the original error in the cause chain", async () => {
     const originalError = new Error("getaddrinfo EAI_AGAIN");
     const fetchError = new Error("fetch failed");
@@ -1792,27 +1793,6 @@ describe("rate limit retry", () => {
 
     await expect(promise).rejects.toBeInstanceOf(ApiRateLimitError);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-  });
-
-  it("does not retry on top of a host-supplied fetch", async () => {
-    const hostFetch = vi
-      .fn()
-      .mockImplementation(async () => rateLimited(nowSeconds + 1));
-    globalThis.fetch = vi.fn();
-
-    const promise = new SentryApiService({
-      host: "sentry.io",
-      accessToken: "test-token",
-      fetch: hostFetch,
-    }).getAuthenticatedUser();
-    promise.catch(() => {});
-    await vi.runAllTimersAsync();
-
-    const error = await promise.catch((caught: unknown) => caught);
-    expect(error).toBeInstanceOf(ApiRateLimitError);
-    expect((error as ApiRateLimitError).retryAfterMs).toBe(700);
-    expect(hostFetch).toHaveBeenCalledOnce();
-    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("stops waiting when the request is aborted", async () => {

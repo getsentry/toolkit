@@ -75,9 +75,4 @@ export type ServerContext = {
    * errors are swallowed.
    */
   onUpstreamUnauthorized?: () => void | Promise<void>;
-  /**
-   * Host transport every Sentry API request goes through, including
-   * `@sentry/api` operations. It owns retries, so the MCP adds none.
-   */
-  fetch?: typeof fetch;
 };

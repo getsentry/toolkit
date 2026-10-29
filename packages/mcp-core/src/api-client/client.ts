@@ -331,13 +331,11 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
 };
 
 /**
- * Requests without a host-supplied fetch go through the shared transport.
- * `SentryApiService` sets its own headers, including Authorization, so the
- * transport only retries; as before, it adds no timeout.
+ * Every request goes through the shared transport. `SentryApiService` sets its
+ * own headers, including Authorization, so the transport only retries; as
+ * before, it adds no timeout.
  */
-const defaultTransport = createApiTransport({ retry: REQUEST_RETRY_POLICY });
-const defaultFetch: typeof fetch = (input, init) =>
-  defaultTransport.request(input, init);
+const transport = createApiTransport({ retry: REQUEST_RETRY_POLICY });
 
 const API_MAX_PER_PAGE = 100;
 const MAX_LIST_PAGES = 50;
@@ -623,7 +621,6 @@ export class SentryApiService {
   protected host: string;
   protected protocol: SentryProtocol;
   protected apiPrefix: string;
-  private fetch: typeof fetch;
 
   /**
    * Creates a new Sentry API service instance.
@@ -637,9 +634,6 @@ export class SentryApiService {
    * @param config.clientName DCR-registered OAuth client name
    * @param config.clientFamily Bucketed client family (e.g. "claude-code", "cursor")
    * @param config.utmSource Sanitized MCP request attribution source
-   * @param config.fetch Fetch every request goes through. A host passes its
-   *   authenticated transport, which retries on its own; by default requests
-   *   use the shared transport with `REQUEST_RETRY_POLICY`.
    */
   constructor({
     accessToken = null,
@@ -649,7 +643,6 @@ export class SentryApiService {
     clientName = null,
     clientFamily = null,
     utmSource = null,
-    fetch = defaultFetch,
   }: {
     accessToken?: string | null;
     host?: string;
@@ -658,9 +651,7 @@ export class SentryApiService {
     clientName?: string | null;
     clientFamily?: string | null;
     utmSource?: string | null;
-    fetch?: typeof globalThis.fetch;
   }) {
-    this.fetch = fetch;
     this.accessToken = accessToken;
     this.clientId = clientId;
     this.clientName = clientName;
@@ -795,7 +786,7 @@ export class SentryApiService {
   }
 
   /**
-   * Makes an authenticated request to the Sentry API through `this.fetch`.
+   * Makes an authenticated request to the Sentry API through the shared transport.
    *
    * Handles:
    * - Bearer token authentication
@@ -805,8 +796,8 @@ export class SentryApiService {
    *
    * Retries happen in the transport, never here, so they do not stack: a
    * rate-limited (429) request, or a GET that hits a 500/502/503/504 or a
-   * network failure, is retried under `REQUEST_RETRY_POLICY` (or the host's
-   * policy), and the final failure is thrown here, with
+   * network failure, is retried under `REQUEST_RETRY_POLICY`, and the final
+   * failure is thrown here, with
    * `ApiRateLimitError.retryAfterMs` from its headers.
    * Callers that opt a status into `allowStatuses` receive the raw response.
    *
@@ -851,11 +842,8 @@ export class SentryApiService {
       headers["X-Sentry-MCP-Utm-Source"] = this.utmSource;
     }
 
-    // The default transport needs a global fetch; say so plainly without one.
-    if (
-      this.fetch === defaultFetch &&
-      typeof globalThis.fetch === "undefined"
-    ) {
+    // Check if fetch is available, otherwise provide a helpful error message
+    if (typeof globalThis.fetch === "undefined") {
       throw new ConfigurationError(
         "fetch is not available. Please use Node.js >= 18 or ensure fetch is available in your environment.",
       );
@@ -864,7 +852,7 @@ export class SentryApiService {
     // logger.info(logger.fmt`[sentryApi] ${options.method || "GET"} ${url}`);
     let response: Response;
     try {
-      response = await this.fetch(url, {
+      response = await transport.request(url, {
         ...options,
         headers,
       });

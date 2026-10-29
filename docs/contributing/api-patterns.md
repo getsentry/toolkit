@@ -261,12 +261,10 @@ See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 ### Automatic Retries
 
 `SentryApiService` sends every request, including `@sentry/api` operations,
-through a fetch that retries failed requests using the shared policy in
-`@sentry/toolkit-core/api-retry`. By default that is the shared transport in
-`@sentry/toolkit-core/api-transport`; a host can pass its own authenticated
-fetch instead (`fetch` in `runMcpServer` options or `ServerContext`), which
-then owns the retries. `SentryApiService` never retries on top, so a request is
-retried by one layer only. This page describes the
+through the shared transport in `@sentry/toolkit-core/api-transport`, which
+retries failed requests using the shared policy in
+`@sentry/toolkit-core/api-retry`. `SentryApiService` never retries on top, so
+a request is retried by one layer only. This page describes the
 behavior; the values live only in code, so read them there instead of copying
 them here:
 
