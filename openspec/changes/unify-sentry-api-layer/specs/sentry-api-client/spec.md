@@ -21,12 +21,33 @@ shared client covers.
 
 - **WHEN** the CLI and an MCP tool fetch the same resource
 - **THEN** both call the same shared endpoint wrapper
-- **THEN** both get the same validated result type and the same error classes
+- **THEN** both get the same error classes, and each gets the result type of the schema it passed
+
+### Requirement: Library-agnostic validation
+
+The shared client SHALL validate responses through the Standard Schema
+interface with a schema the host supplies. It SHALL NOT depend on Zod,
+valibot, or another validation library at runtime.
+
+#### Scenario: MCP with Zod
+
+- **WHEN** the MCP calls a shared wrapper with a Zod schema
+- **THEN** the response is validated with it and the result has the schema's output type
+
+#### Scenario: CLI with valibot
+
+- **WHEN** the CLI calls the same wrapper with a valibot schema
+- **THEN** the response is validated with it and Zod is not loaded
+
+#### Scenario: Invalid response
+
+- **WHEN** a response fails the host's schema
+- **THEN** the shared client throws its validation error with the schema's issues
 
 #### Scenario: Endpoint without a generated operation
 
 - **WHEN** `@sentry/api` has no generated operation for an endpoint
-- **THEN** the shared wrapper calls it through the shared transport and validates the response with its own schema
+- **THEN** the shared wrapper calls it through the shared transport and validates the response with the host's schema
 
 ### Requirement: Portable shared code
 

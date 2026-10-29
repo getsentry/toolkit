@@ -59,7 +59,8 @@ The plan has two steps:
   that also switches both products and deletes the code it replaces. It
   covers endpoint wrappers by domain on top of `@sentry/api` operations,
   the error types (`ApiError`, rate limits, `retryAfterMs`), response
-  validation (`@sentry/api/zod` where it covers the endpoint), pagination,
+  validation through the Standard Schema interface (the MCP keeps Zod and
+  the CLI keeps valibot; shared code depends on neither), pagination,
   the cache policy, the retry policy, and the transport.
 - **Portability rule:** the shared client imports only `@sentry/api` and
   toolkit-core modules that move with it, and uses only web-standard APIs,

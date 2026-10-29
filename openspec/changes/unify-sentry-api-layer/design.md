@@ -64,9 +64,8 @@ See proposal.md for motivation. Current state that shapes the approach:
 - Using `createSentrySDK()`, or the CLI as an SDK in general, from the MCP,
   and `sentry mcp` passing the CLI's fetch. Both are deferred to a later
   phase after step 2 (task group 11).
-- Replacing every hand-written response schema with a generated one. The
-  shared client uses `@sentry/api/zod` where it covers the endpoint and
-  keeps hand-written Zod schemas elsewhere.
+- Replacing every hand-written response schema with a generated one, or
+  moving either product to the other's validation library.
 
 ## Decisions
 
@@ -383,10 +382,18 @@ PR. It makes step 2 a copy, not a redesign.
   rate-limit error with `retryAfterMs` from `Retry-After` or
   `X-Sentry-Rate-Limit-Reset`. Hosts map them to their own presentation:
   CLI exit codes and messages, MCP tool results.
-- **Validation:** Zod. `@sentry/api/zod` where it covers the endpoint,
-  hand-written schemas otherwise. The MCP already validates with Zod and
-  needs Zod for tool schemas. The CLI's valibot schemas for endpoints that
-  move are converted.
+- **Validation:** library-agnostic, through the
+  [Standard Schema](https://standardschema.dev) interface
+  (`@standard-schema/spec`), which Zod and valibot both implement. Shared
+  code depends only on that interface's types, vendored or type-only, and
+  never on Zod or valibot at runtime. Each wrapper validates with a schema
+  the host passes in, so the host's schema decides the result type: the
+  MCP keeps Zod (`@sentry/api/zod` where it covers the endpoint), which
+  suits long-running servers and is the more widespread library, and the
+  CLI keeps valibot (`@sentry/api/valibot`), which suits short-lived
+  processes where startup and bundle size matter. Validation failures
+  surface as one shared error type with the issues from the Standard
+  Schema result.
 - **Pagination, cache policy, retry policy, and transport:** the existing
   `pagination`, `response-cache` policy, `api-retry`, and `api-transport`
   modules, which move with it in step 2.
@@ -443,7 +450,8 @@ The earlier plan moved MCP methods onto `@sentry/api` one domain per PR.
 Issues and events landed that way (#1713). The rest moves in the step 1
 consolidation PR instead, together with the CLI's modules, so neither
 product is left half on the old layer. Endpoints that `@sentry/api` lacks
-call the shared transport directly and keep their Zod schemas. Endpoint
+call the shared transport directly, and hosts keep their own schemas for
+them. Endpoint
 behavior is checked against `~/src/sentry`, as `AGENTS.md` requires.
 
 ### Version alignment first
@@ -482,9 +490,12 @@ bumps move both products together.
 - **One large consolidation PR.** It is harder to review than per-domain
   PRs. Both products' existing test suites run against the shared client,
   and the PR body lists every intentional behavior change.
-- **Zod on the CLI's request path.** The CLI validates with valibot today and
-  loads Zod only for `sentry mcp`. Shared schemas bring Zod into every API
-  call. Check CLI startup time and bundle size in the consolidation PR.
+- **Two validation libraries.** The MCP's Zod schemas and the CLI's valibot
+  schemas for the same endpoint can drift apart. Standard Schema keeps the
+  shared client out of that choice, so neither product pays for the other's
+  library, and the CLI keeps valibot off Zod's startup cost. Where
+  `@sentry/api` generates both (`./zod` and `./valibot`), hosts use the
+  generated schemas, which come from one OpenAPI source.
 - **Node-only APIs creep into shared code.** The lint rule and the
   browser-target typecheck fail CI.
 - **CLI-issued tokens lack MCP scopes.** The MCP and CLI use different OAuth
