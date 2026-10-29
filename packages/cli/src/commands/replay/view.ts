@@ -13,17 +13,14 @@ import {
   resolveReplay,
 } from "../../lib/api-client.js";
 import {
-  detectSwappedViewArgs,
   type ParsedOrgProject,
   parseOrgProjectInput,
-  parseSlashSeparatedArg,
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ApiError,
-  ContextError,
   ResolutionError,
   ValidationError,
 } from "../../lib/errors.js";
@@ -35,7 +32,7 @@ import {
   type ReplayViewData,
   replayHint,
 } from "../../lib/formatters/replay.js";
-import { tryNormalizeHexId, validateHexId } from "../../lib/hex-id.js";
+import { type IdScope, parseIdArguments } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
@@ -50,10 +47,7 @@ import {
   type ResolvedOrgOptionalTarget,
   resolveOrgOptionalTarget,
 } from "../../lib/resolve-target.js";
-import {
-  applySentryUrlContext,
-  parseSentryUrl,
-} from "../../lib/sentry-url-parser.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildReplayUrl } from "../../lib/sentry-web-urls.js";
 import type {
   ReplayActivityEvent,
@@ -70,14 +64,6 @@ type ViewFlags = {
   readonly fields?: string[];
 };
 
-type ParsedPositionalArgs = {
-  replayId: string;
-  targetArg: string | undefined;
-  warning?: string;
-  /** Server of a pasted replay URL, for `applySentryUrlContext` */
-  baseUrl?: string;
-};
-
 const USAGE_HINT =
   "sentry replay view [<org>/<project>/]<replay-id> | <replay-url>";
 const MAX_ACTIVITY_EVENTS = 6;
@@ -87,110 +73,50 @@ const MAX_RELATED_TRACES = 2;
 const log = logger.withTag("replay.view");
 
 /**
- * Parse a single positional argument as a replay target.
- *
- * Handles bare replay IDs, `<org>/<replay-id>`, `<org>/<project>/<replay-id>`,
- * and Sentry replay URLs. The single-slash case (`org/id`) needs special
- * handling because 32-char hex replay IDs look valid to the generic
- * `parseSlashSeparatedArg` which would misinterpret the org as a project.
- */
-function parseSingleArg(arg: string, usageHint: string): ParsedPositionalArgs {
-  const trimmed = arg.trim();
-  if (!trimmed) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
-
-  // Handle <org>/<replay-id> shorthand — must check before parseSlashSeparatedArg
-  // because replay IDs are 32-char hex strings that look valid to the generic
-  // slash parser's ID extraction, but with only one slash the "project" segment
-  // would be wrongly treated as the ID.
-  const slashIdx = trimmed.indexOf("/");
-  if (slashIdx !== -1 && trimmed.indexOf("/", slashIdx + 1) === -1) {
-    const org = trimmed.slice(0, slashIdx);
-    const replaySegment = trimmed.slice(slashIdx + 1);
-    const normalizedReplayId =
-      replaySegment && tryNormalizeHexId(replaySegment);
-    if (!normalizedReplayId) {
-      throw new ContextError("Replay ID", usageHint, []);
-    }
-    return { replayId: normalizedReplayId, targetArg: `${org}/` };
-  }
-
-  const { id: replayId, targetArg } = parseSlashSeparatedArg(
-    trimmed,
-    "Replay ID",
-    usageHint,
-  );
-  return { replayId, targetArg };
-}
-
-/**
- * Parse replay view positional arguments.
- *
- * Supports:
+ * Parse `replay view` and `replay download` arguments with the `replay` rule
+ * of `grammar/id-arguments.pegjs`:
  * - `<replay-id>`
  * - `<org>/<replay-id>`
  * - `<org>/<project>/<replay-id>`
- * - `<target> <replay-id>`
+ * - `<target> <replay-id>` (or reversed, with a warning)
  * - `<replay-url>`
  *
  * `usageHint` lets sibling replay commands show their own usage in errors.
  * Has no side effects: a pasted URL's server is returned as `baseUrl`.
  */
-export function parsePositionalArgs(
+export function parseReplayArguments(
   args: readonly string[],
   usageHint = USAGE_HINT,
-): ParsedPositionalArgs {
-  if (args.length === 0) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
-  if (args.length > 2) {
-    throw new ValidationError(
-      `Too many positional arguments (got ${args.length}, expected at most 2).\n\nUsage: ${usageHint}`,
-      "positional",
-    );
-  }
+): ReplayArgumentsInput {
+  const { id, scope, baseUrl, warnings } = parseIdArguments(args, "replay", {
+    idLabel: "Replay ID",
+    usageHint,
+  });
+  const target = parseOrgProjectInput(replayTargetArg(scope));
+  return {
+    replayId: id,
+    target: target.parsed,
+    baseUrl: baseUrl ?? target.baseUrl,
+    warnings,
+  };
+}
 
-  const first = args[0];
-  if (!first) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
-
-  const urlParsed = parseSentryUrl(first);
-  if (urlParsed) {
-    if (urlParsed.replayId && urlParsed.org) {
-      return {
-        replayId: urlParsed.replayId,
-        targetArg: `${urlParsed.org}/`,
-        baseUrl: urlParsed.baseUrl,
-      };
+/** The org/project target argument a replay's {@link IdScope} stands for. */
+function replayTargetArg(scope: IdScope): string | undefined {
+  switch (scope.type) {
+    case "none":
+      return;
+    case "org":
+      return `${scope.org}/`;
+    case "org-project":
+      return `${scope.org}/${scope.project}`;
+    case "target":
+      return scope.target;
+    default: {
+      const _exhaustive: never = scope;
+      throw new ValidationError(`Unexpected replay scope: ${_exhaustive}`);
     }
-    throw new ContextError("Replay ID", usageHint, [
-      "Pass a replay URL: https://sentry.io/organizations/{org}/explore/replays/{replayId}/",
-    ]);
   }
-
-  if (args.length === 1) {
-    return parseSingleArg(first, usageHint);
-  }
-
-  const second = args[1];
-  if (!second) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
-
-  const warning =
-    args.length === 2 ? detectSwappedViewArgs(first, second) : null;
-  if (warning) {
-    const normalizedReplayId = tryNormalizeHexId(first) ?? first;
-    return {
-      replayId: normalizedReplayId,
-      targetArg: second,
-      warning,
-    };
-  }
-
-  return { replayId: second, targetArg: first };
 }
 
 /** Parsed `replay view` and `replay download` arguments. */
@@ -199,7 +125,8 @@ export type ReplayArgumentsInput = {
   readonly target: ParsedOrgProject;
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
   readonly baseUrl?: string;
-  readonly warning?: string;
+  /** Warnings to log, such as for reversed arguments */
+  readonly warnings: readonly string[];
 };
 
 /** A replay ID and the org (and optional project) to look it up in. */
@@ -226,19 +153,7 @@ export function replayArguments(
     placeholder: "replay-id-or-url",
     brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
     kind: ORG_PROJECT_TARGET,
-    parse: (raw): ReplayArgumentsInput => {
-      const { replayId, targetArg, warning, baseUrl } = parsePositionalArgs(
-        raw,
-        usageHint,
-      );
-      const target = parseOrgProjectInput(targetArg);
-      return {
-        replayId: validateHexId(replayId, "replay ID"),
-        target: target.parsed,
-        baseUrl: baseUrl ?? target.baseUrl,
-        warning,
-      };
-    },
+    parse: (raw) => parseReplayArguments(raw, usageHint),
     resolve: async (
       input,
       context: SentryContext,
@@ -246,8 +161,8 @@ export function replayArguments(
       if (input.baseUrl) {
         applySentryUrlContext(input.baseUrl);
       }
-      if (input.warning) {
-        commandLog.warn(input.warning);
+      for (const warning of input.warnings) {
+        commandLog.warn(warning);
       }
       const resolved = await resolveOrgOptionalTarget(
         input.target,

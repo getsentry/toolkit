@@ -37,7 +37,6 @@ import {
   resolveTraceOrgProject,
   stripTrailingSlashesAfterTraceId,
   targetArgToTraceTarget,
-  traceTargetFromUrl,
 } from "../../src/lib/trace-target.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
@@ -329,9 +328,10 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
     expect(result.traceId).toBe(VALID_TRACE_ID);
   });
 
-  test("traceTargetFromUrl returns null for non-URL input", () => {
-    expect(traceTargetFromUrl(VALID_TRACE_ID)).toBeNull();
-    expect(traceTargetFromUrl(`my-org/${VALID_TRACE_ID}`)).toBeNull();
+  test("a Sentry URL without a trace ID is not a trace URL", () => {
+    expect(() =>
+      parseTraceTarget(["https://sentry.io/organizations/my-org/"], HINT),
+    ).toThrow(ContextError);
   });
 
   test("org/project/<trace-id>/ → explicit", () => {

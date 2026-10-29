@@ -5,7 +5,7 @@
 import type { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  parsePositionalArgs,
+  parseReplayArguments,
   type ReplayArguments,
   replayArguments,
   viewCommand,
@@ -84,63 +84,104 @@ function sampleReplay(overrides: Partial<ReplayDetails> = {}): ReplayDetails {
   };
 }
 
-describe("parsePositionalArgs", () => {
+describe("parseReplayArguments", () => {
+  const ORG_ALL = { type: "org-all", org: "test-org" };
+  const EXPLICIT = { type: "explicit", org: "test-org", project: "cli" };
+
   test("parses replay ID only", () => {
-    const result = parsePositionalArgs([REPLAY_ID]);
+    const result = parseReplayArguments([REPLAY_ID]);
     expect(result.replayId).toBe(REPLAY_ID);
-    expect(result.targetArg).toBeUndefined();
+    expect(result.target).toEqual({ type: "auto-detect" });
   });
 
   test("parses org/replay-id shorthand", () => {
-    const result = parsePositionalArgs([`test-org/${REPLAY_ID}`]);
+    const result = parseReplayArguments([`test-org/${REPLAY_ID}`]);
     expect(result.replayId).toBe(REPLAY_ID);
-    expect(result.targetArg).toBe("test-org/");
+    expect(result.target).toEqual(ORG_ALL);
   });
 
   test("normalizes dashed org/replay-id shorthand", () => {
-    const result = parsePositionalArgs([
+    const result = parseReplayArguments([
       "test-org/346789a7-03f6-4543-84f1-de473b8b9fcc",
     ]);
     expect(result.replayId).toBe(REPLAY_ID);
-    expect(result.targetArg).toBe("test-org/");
+    expect(result.target).toEqual(ORG_ALL);
   });
 
   test("parses org/project/replay-id form", () => {
-    const result = parsePositionalArgs([`test-org/cli/${REPLAY_ID}`]);
+    const result = parseReplayArguments([`test-org/cli/${REPLAY_ID}`]);
     expect(result.replayId).toBe(REPLAY_ID);
-    expect(result.targetArg).toBe("test-org/cli");
+    expect(result.target).toEqual(EXPLICIT);
+  });
+
+  test("ignores a slash pasted after the replay ID", () => {
+    const result = parseReplayArguments([`test-org/cli/${REPLAY_ID}/`]);
+    expect(result.replayId).toBe(REPLAY_ID);
+    expect(result.target).toEqual(EXPLICIT);
+  });
+
+  test("parses target and replay ID as two arguments", () => {
+    const result = parseReplayArguments(["test-org/cli", REPLAY_ID]);
+    expect(result.replayId).toBe(REPLAY_ID);
+    expect(result.target).toEqual(EXPLICIT);
+    expect(result.warnings).toEqual([]);
   });
 
   test("parses replay URL", () => {
-    const result = parsePositionalArgs([
+    const result = parseReplayArguments([
       `https://sentry.io/organizations/test-org/explore/replays/${REPLAY_ID}/`,
     ]);
     expect(result.replayId).toBe(REPLAY_ID);
-    expect(result.targetArg).toBe("test-org/");
+    expect(result.target).toEqual(ORG_ALL);
+    expect(result.baseUrl).toBe("https://sentry.io");
   });
 
   test("parses legacy replay URL", () => {
-    const result = parsePositionalArgs([
+    const result = parseReplayArguments([
       `https://test-org.sentry.io/replays/${REPLAY_ID}/`,
     ]);
     expect(result.replayId).toBe(REPLAY_ID);
-    expect(result.targetArg).toBe("test-org/");
+    expect(result.target).toEqual(ORG_ALL);
+  });
+
+  test("throws ContextError for a Sentry URL without a replay ID", () => {
+    expect(() =>
+      parseReplayArguments(["https://sentry.io/organizations/test-org/"]),
+    ).toThrow(ContextError);
   });
 
   test("detects swapped args", () => {
-    const result = parsePositionalArgs([REPLAY_ID, "test-org/cli"]);
+    const result = parseReplayArguments([REPLAY_ID, "test-org/cli"]);
     expect(result.replayId).toBe(REPLAY_ID);
-    expect(result.targetArg).toBe("test-org/cli");
-    expect(result.warning).toContain("reversed");
+    expect(result.target).toEqual(EXPLICIT);
+    expect(result.warnings).toEqual([
+      `Arguments appear reversed. Interpreting as: test-org/cli ${REPLAY_ID}`,
+    ]);
+  });
+
+  test("throws ContextError without arguments", () => {
+    expect(() => parseReplayArguments([])).toThrow(ContextError);
+    expect(() => parseReplayArguments([" "])).toThrow(ContextError);
+    expect(() => parseReplayArguments(["test-org/cli", ""])).toThrow(
+      ContextError,
+    );
   });
 
   test("throws ContextError for org/project with no replay ID", () => {
-    expect(() => parsePositionalArgs(["test-org/cli"])).toThrow(ContextError);
+    expect(() => parseReplayArguments(["test-org/cli"])).toThrow(ContextError);
+    expect(() => parseReplayArguments(["test-org/cli/"])).toThrow(ContextError);
+  });
+
+  test("throws ValidationError for an invalid replay ID", () => {
+    expect(() => parseReplayArguments(["not-hex"])).toThrow(ValidationError);
+    expect(() => parseReplayArguments(["test-org/cli", "not-hex"])).toThrow(
+      ValidationError,
+    );
   });
 
   test("throws ValidationError for extra positional args", () => {
     expect(() =>
-      parsePositionalArgs(["test-org/cli", REPLAY_ID, "extra-arg"]),
+      parseReplayArguments(["test-org/cli", REPLAY_ID, "extra-arg"]),
     ).toThrow(ValidationError);
   });
 });
@@ -426,7 +467,7 @@ describe("replayArguments", () => {
       replayId: REPLAY_ID,
       target: { type: "explicit", org: "test-org", project: "cli" },
       baseUrl: undefined,
-      warning: undefined,
+      warnings: [],
     });
   });
 

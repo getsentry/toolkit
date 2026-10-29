@@ -17,7 +17,6 @@
  */
 
 import {
-  normalizeSlug,
   type ParsedOrgProject,
   parseOrgProjectArg,
   parseOrgProjectInput,
@@ -28,6 +27,11 @@ import {
   recoverHexId,
   resolveRecoveryOrg,
 } from "./hex-id-recovery.js";
+import {
+  type IdArguments,
+  parseIdArguments,
+  parseTraceOrProjectArguments,
+} from "./id-arguments.js";
 import { logger } from "./logger.js";
 import {
   guideOrgProjectFailure,
@@ -37,9 +41,9 @@ import {
   resolveOrgOptionalTarget,
   resolveProjectBoundTarget,
 } from "./resolve-target.js";
-import { applySentryUrlContext, parseSentryUrl } from "./sentry-url-parser.js";
+import { applySentryUrlContext } from "./sentry-url-parser.js";
 import { setOrgProjectContext } from "./telemetry.js";
-import { isTraceId, validateTraceId } from "./trace-id.js";
+import { isTraceId } from "./trace-id.js";
 
 const log = logger.withTag("trace-target");
 
@@ -144,8 +148,10 @@ export type ResolvedTraceOrg = {
  * - `<org>/<project> <trace-id>` → explicit
  * - `<target> <trace-id>` → project-first bare target with org fallback
  *
- * Extra positional arguments beyond the first two are ignored with a
- * warning, matching the established pattern across CLI commands.
+ * A Sentry trace URL works too. Extra positional arguments beyond the first
+ * two are ignored with a warning, matching the established pattern across
+ * CLI commands. The `trace` rule of `grammar/id-arguments.pegjs` defines the
+ * forms.
  *
  * @param args - Positional arguments from CLI
  * @param usageHint - Usage example for error messages
@@ -169,78 +175,51 @@ export function parseTraceTargetInput(
   args: readonly string[],
   usageHint: string,
 ): TraceTargetInput {
-  if (args.length === 0) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  const first = args[0];
-  if (first === undefined) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  // Sentry trace URLs (often copy-pasted with a trailing slash) carry the
-  // trace ID and org in the path; slash-splitting them yields an empty or
-  // bogus trace ID segment (CLI-13F).
-  const urlTarget = traceTargetFromUrlInput(first);
-  if (urlTarget) {
-    return { ...urlTarget, warnings: [] };
-  }
-
-  // Warn about extra positional args that will be ignored
-  const warnings =
-    args.length > 2
-      ? [
-          `Extra arguments ignored: ${args.slice(2).join(" ")}. Expected: ${usageHint}`,
-        ]
-      : [];
-
-  // Two+ args: first is target context, second is trace ID
-  const second = args[1];
-  if (second === undefined) {
-    return {
-      parsed: parseSlashSeparatedTraceTarget(first, usageHint),
-      warnings,
-    };
-  }
-
-  const traceId = validateTraceId(second);
-  return { ...targetArgToTraceTargetInput(first, traceId), warnings };
+  return traceTargetInput(
+    parseIdArguments(args, "trace", { idLabel: "Trace ID", usageHint }),
+  );
 }
 
 /**
- * Build a trace target from a Sentry trace detail URL.
- *
- * Returns `null` when the input is not a Sentry URL or the URL has no trace
- * ID. Side effect: configures `SENTRY_URL` for self-hosted hosts via
- * {@link applySentryUrlContext} (throws `HostScopeError` for untrusted hosts).
- *
- * @internal Exported for testing
+ * Turn the grammar's {@link IdArguments} into a trace target. A separate
+ * target argument parses like any org/project target.
  */
-export function traceTargetFromUrl(input: string): ParsedTraceTarget | null {
-  const urlTarget = traceTargetFromUrlInput(input);
-  if (!urlTarget) {
-    return null;
+function traceTargetInput({
+  id: traceId,
+  scope,
+  baseUrl,
+  warnings,
+}: IdArguments): TraceTargetInput {
+  switch (scope.type) {
+    case "none":
+      return { parsed: { type: "auto-detect", traceId }, baseUrl, warnings };
+    case "org":
+      return {
+        parsed: { type: "org-scoped", traceId, org: scope.org },
+        baseUrl,
+        warnings,
+      };
+    case "org-project":
+      return {
+        parsed: {
+          type: "explicit",
+          traceId,
+          org: scope.org,
+          project: scope.project,
+        },
+        baseUrl,
+        warnings,
+      };
+    case "target":
+      return {
+        ...targetArgToTraceTargetInput(scope.target, traceId),
+        warnings,
+      };
+    default: {
+      const _exhaustive: never = scope;
+      throw new ValidationError(`Unexpected trace scope: ${_exhaustive}`);
+    }
   }
-  applySentryUrlContext(urlTarget.baseUrl);
-  return urlTarget.parsed;
-}
-
-/**
- * {@link traceTargetFromUrl} without side effects: returns the URL's server
- * instead of applying it.
- */
-function traceTargetFromUrlInput(
-  input: string,
-): { parsed: ParsedTraceTarget; baseUrl: string } | null {
-  const urlParsed = parseSentryUrl(input.trim());
-  if (!urlParsed?.traceId) {
-    return null;
-  }
-  const traceId = validateTraceId(urlParsed.traceId);
-  const parsed: ParsedTraceTarget = urlParsed.org
-    ? { type: "org-scoped", traceId, org: urlParsed.org }
-    : { type: "auto-detect", traceId };
-  return { parsed, baseUrl: urlParsed.baseUrl };
 }
 
 /**
@@ -273,66 +252,20 @@ export function stripTrailingSlashesAfterTraceId(input: string): string {
  * - One slash → `<org>/<trace-id>` (org-scoped)
  * - Two+ slashes → split on last `/` → `<org>/<project>/<trace-id>` (explicit)
  *
+ * The `tracePath` rule of `grammar/id-arguments.pegjs` defines the forms.
+ *
  * @internal Exported for testing
  */
 export function parseSlashSeparatedTraceTarget(
   rawInput: string,
   usageHint: string,
 ): ParsedTraceTarget {
-  const input = stripTrailingSlashesAfterTraceId(rawInput);
-  const lastSlash = input.lastIndexOf("/");
-
-  if (lastSlash === -1) {
-    // No slashes — bare trace ID
-    return { type: "auto-detect", traceId: validateTraceId(input) };
-  }
-
-  const prefix = input.slice(0, lastSlash);
-  const rawTraceId = input.slice(lastSlash + 1);
-
-  if (!rawTraceId) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  const traceId = validateTraceId(rawTraceId);
-
-  if (!prefix) {
-    // "/<trace-id>" — leading slash, treat as auto-detect
-    return { type: "auto-detect", traceId };
-  }
-
-  const innerSlash = prefix.indexOf("/");
-
-  if (innerSlash === -1) {
-    // "org/<trace-id>" — org-scoped
-    const ns = normalizeSlug(prefix);
-    return {
-      type: "org-scoped",
-      traceId,
-      org: ns.slug,
-      ...(ns.normalized && { normalized: true }),
-    };
-  }
-
-  // "org/project/<trace-id>" — explicit
-  const rawOrg = prefix.slice(0, innerSlash);
-  const rawProject = prefix.slice(innerSlash + 1);
-
-  if (!(rawOrg && rawProject)) {
-    throw new ContextError("Trace ID", usageHint, []);
-  }
-
-  const no = normalizeSlug(rawOrg);
-  const np = normalizeSlug(rawProject);
-  const normalized = no.normalized || np.normalized;
-
-  return {
-    type: "explicit",
-    traceId,
-    org: no.slug,
-    project: np.slug,
-    ...(normalized && { normalized: true }),
-  };
+  return traceTargetInput(
+    parseIdArguments([rawInput], "tracePath", {
+      idLabel: "Trace ID",
+      usageHint,
+    }),
+  ).parsed;
 }
 
 /**
@@ -742,17 +675,11 @@ export type ParsedDualModeArgs =
 /**
  * Disambiguate positional arguments for dual-mode list commands.
  *
- * Detects trace mode by checking whether any argument segment looks like
- * a 32-char hex trace ID via {@link isTraceId}:
- *
- * - **No args**: project mode (auto-detect org/project)
- * - **Two+ args**: checks the last positional. If it's a trace ID → trace
- *   mode (space-separated form like `<project> <trace-id>`).
- * - **Single arg**: checks the tail segment (last part after `/`). If it
- *   looks like a trace ID → trace mode. Otherwise → project target.
- *
- * When trace mode is detected, delegates to {@link parseTraceTarget} for
- * full parsing and validation.
+ * Trace mode when the arguments are a trace URL, end in a trace ID
+ * (`<target> <trace-id>`), or start with `[<org>/[<project>/]]<trace-id>`;
+ * arguments the trace target does not use are ignored with a warning.
+ * Otherwise project mode, with the first argument as the target. The
+ * `traceOrProject` rule of `grammar/id-arguments.pegjs` defines the forms.
  *
  * @param args - Positional arguments from CLI
  * @param traceUsageHint - Usage hint for trace-mode error messages
@@ -782,43 +709,8 @@ export function parseDualModeInput(
   args: readonly string[],
   traceUsageHint: string,
 ): DualModeInput {
-  if (args.length === 0) {
-    return { mode: "project" };
-  }
-
-  const first = args[0];
-  if (first === undefined) {
-    return { mode: "project" };
-  }
-
-  // Two+ args: check if the last arg is a trace ID (space-separated form)
-  if (args.length >= 2) {
-    const last = args.at(-1);
-    if (last && isTraceId(last)) {
-      return {
-        mode: "trace",
-        trace: parseTraceTargetInput(args, traceUsageHint),
-      };
-    }
-  }
-
-  // Trace detail URL → trace mode (the URL itself carries the trace ID)
-  const urlTarget = traceTargetFromUrlInput(first);
-  if (urlTarget) {
-    return { mode: "trace", trace: { ...urlTarget, warnings: [] } };
-  }
-
-  // Single arg: check the tail segment (last part after "/", or entire arg)
-  const stripped = stripTrailingSlashesAfterTraceId(first);
-  const lastSlash = stripped.lastIndexOf("/");
-  const tail = lastSlash === -1 ? stripped : stripped.slice(lastSlash + 1);
-  if (isTraceId(tail)) {
-    return {
-      mode: "trace",
-      trace: parseTraceTargetInput(args, traceUsageHint),
-    };
-  }
-
-  // Not a trace ID → treat as project target
-  return { mode: "project", target: first };
+  const input = parseTraceOrProjectArguments(args, traceUsageHint);
+  return input.mode === "trace"
+    ? { mode: "trace", trace: traceTargetInput(input.trace) }
+    : input;
 }

@@ -286,6 +286,14 @@ command's help instead. The same purity rule applies: return a pasted URL's serv
 (`parseTraceTargetInput` and `parseDualModeInput` in `trace-target.ts` do
 this for trace targets).
 
+Which argument is the ID and which is its target is decided by
+`grammar/id-arguments.pegjs` (through `parseIdArguments` in
+`src/lib/id-arguments.ts`), not by counting arguments in TypeScript. Add a
+start rule there for a new `[<org>/[<project>/]]<id>` shape and list it in
+the `startRule` types of `grammar/id-arguments.d.ts`; the generator compiles
+every rule listed there as a start rule. Errors go through the grammar's
+hooks, never Peggy's own syntax errors.
+
 **Shell completion:** Target positionals that take an org, project, issue, or
 dashboard use a completion-aware parser from `src/lib/completion-target.ts`
 instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
