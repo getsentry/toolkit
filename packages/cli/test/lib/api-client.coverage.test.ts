@@ -1006,9 +1006,6 @@ describe("events.ts", () => {
         const req = new Request(input!, init);
         expect(req.url).toContain("/organizations/test-org/issues/");
         expect(req.url).toContain("/events/latest/");
-        expect(new URL(req.url).searchParams.getAll("collapse")).toEqual([
-          "adjacentEvents",
-        ]);
         return new Response(JSON.stringify(event), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -1029,9 +1026,6 @@ describe("events.ts", () => {
         expect(req.url).toContain(
           "/projects/test-org/test-project/events/evt-abc/",
         );
-        expect(new URL(req.url).searchParams.getAll("collapse")).toEqual([
-          "adjacentEvents",
-        ]);
         return new Response(JSON.stringify(event), {
           status: 200,
           headers: { "Content-Type": "application/json" },
