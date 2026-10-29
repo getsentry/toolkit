@@ -2,7 +2,6 @@
   "name": "sentry",
   "version": "0.48.0-dev.0",
   "description": "Sentry CLI - A command-line interface for using Sentry built by robots and humans for robots and humans",
-  "mcpName": "io.github.getsentry/sentry-mcp",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/getsentry/toolkit.git"

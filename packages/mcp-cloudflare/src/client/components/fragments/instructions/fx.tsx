@@ -42,7 +42,7 @@ export function FxInstructions({ transport }: FxInstructionsProps) {
   }
 
   // Stdio transport
-  const mcpStdioSnippet = `npx -y ${NPM_PACKAGE_NAME}@latest mcp`;
+  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
   return (
     <>
       <ol>
@@ -65,7 +65,7 @@ export function FxInstructions({ transport }: FxInstructionsProps) {
                 mcp: {
                   sentry: {
                     type: "stdio",
-                    command: ["npx", "-y", `${NPM_PACKAGE_NAME}@latest`, "mcp"],
+                    command: ["npx", `${NPM_PACKAGE_NAME}@latest`],
                     environment: {
                       SENTRY_ACCESS_TOKEN: "sentry-user-token",
                       OPENAI_API_KEY: "your-openai-key",

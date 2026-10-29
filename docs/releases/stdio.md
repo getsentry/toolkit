@@ -4,10 +4,13 @@ How the local stdio MCP server ships.
 
 ## Overview
 
-The stdio MCP server is the `sentry mcp` command in the `sentry` npm package
-(`packages/cli`). It ships with every CLI release (the `packages/cli` Craft
-workspace in `.craft.yml`). The same server also ships on its own as
-`@sentry/mcp-server` (see below).
+The stdio MCP server is implemented in the CLI (`packages/cli`) and ships two
+ways:
+
+- `@sentry/mcp-server`, the recommended install: the server bundled into one
+  file (see below), released from the `packages/mcp-server` Craft workspace.
+- `sentry mcp`, the same server as a CLI command, released with every CLI
+  version (the `packages/cli` Craft workspace).
 
 `sentry mcp` bundles `@sentry/mcp-core` (tools, server, and the stdio
 transport) and uses the CLI's own authentication:
@@ -38,24 +41,25 @@ runtime dependencies. `packages/cli/script/bundle-mcp-server.ts` bundles
 `pnpm --filter @sentry/mcp-server run bundle` builds it and `run test:bundle`
 smoke-tests the result. The `packages/mcp-server` Craft workspace releases it
 from `release/mcp` branches; `.github/workflows/merge-jobs.yml` bundles, tests,
-and packs it.
+and packs it. Each release bundles the CLI source at that commit, so it does
+not wait for a CLI release.
 
 ## MCP Registry
 
-The **Publish MCP Registry** workflow publishes `server.json` on stable CLI
-releases (`cli@X.Y.Z` tags) using GitHub Actions OIDC; no registry secret is
-needed. It reads the manifest from `main` and sets both versions from the
-release, so there is no extra version bump to maintain. The listing points at
-the `sentry` npm package with `mcp` as a package argument, plus the hosted
+The **Publish MCP Registry** workflow publishes `server.json` on stable
+`@sentry/mcp-server` releases (not `cli@` tags) using GitHub Actions OIDC; no
+registry secret is needed. It reads the manifest from `main` and sets both
+versions from the release, so there is no extra version bump to maintain. The
+listing points at the `@sentry/mcp-server` npm package, plus the hosted
 endpoint. npm verifies ownership through `mcpName` in
-`packages/cli/package.json`.
+`packages/mcp-server/package.json`.
 
 Craft publishes GitHub before npm. The workflow waits for the npm package before
 publishing the listing. Check this Actions run separately from the Craft release.
 To retry or publish an existing release:
 
 ```bash
-gh workflow run mcp-registry.yml --repo getsentry/toolkit --ref main -f version=0.48.0
+gh workflow run mcp-registry.yml --repo getsentry/toolkit --ref main -f version=0.42.0
 ```
 
 An identical active listing is safe to rerun. Different metadata for an existing
@@ -71,14 +75,16 @@ Users run the server through npx in their MCP client configuration:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["-y", "sentry@latest", "mcp"]
+      "args": ["@sentry/mcp-server@latest"]
     }
   }
 }
 ```
 
-Without a `sentry auth login` session, add `"env": { "SENTRY_ACCESS_TOKEN":
-"sntryu_..." }`. Pin a version with `sentry@0.48.0`.
+Sign in once with `npx @sentry/mcp-server@latest auth login` (or
+`sentry auth login`), or add `"env": { "SENTRY_ACCESS_TOKEN": "sntryu_..." }`.
+Pin a version with `@sentry/mcp-server@0.42.0`. `npx sentry@latest mcp` runs the
+same server.
 
 ## Testing Before a Release
 

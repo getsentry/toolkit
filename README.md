@@ -45,7 +45,7 @@ While this repository is focused on acting as an MCP service, we also support a 
 
 **Note:** The AI-powered search tools (`search_errors`, `search_traces`, `search_logs`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
 
-The `stdio` transport is the `sentry mcp` command in the [`sentry` CLI](https://cli.sentry.dev). It uses your CLI login (`sentry auth login`), or a static token from `--access-token` / `SENTRY_ACCESS_TOKEN`. The same server is also published on its own as `@sentry/mcp-server` (`npx -y @sentry/mcp-server`): one bundled file without the rest of the CLI, with the same flags and self-hosted support.
+The `stdio` transport ships as [`@sentry/mcp-server`](https://www.npmjs.com/package/@sentry/mcp-server): the `sentry mcp` server from the [`sentry` CLI](https://cli.sentry.dev), bundled into one file without the rest of the CLI. It uses your Sentry CLI login (`npx @sentry/mcp-server@latest auth login`, or `sentry auth login` if you have the CLI), or a static token from `--access-token` / `SENTRY_ACCESS_TOKEN`. `npx sentry@latest mcp` runs the same server with the same flags.
 
 To use a static token, create a User Auth Token in Sentry with the necessary scopes. As of writing this is:
 
@@ -61,8 +61,9 @@ event:write
 Launch the transport:
 
 ```shell
-npx -y sentry@latest mcp                                 # uses `sentry auth login`
-npx -y sentry@latest mcp --access-token=sentry-user-token
+npx @sentry/mcp-server@latest auth login                      # once, to sign in
+npx @sentry/mcp-server@latest                                 # uses that login
+npx @sentry/mcp-server@latest --access-token=sentry-user-token
 ```
 
 Need to connect to a self-hosted deployment? Add <code>--host</code> (hostname
@@ -75,20 +76,20 @@ default skill set whenever `--host` points at a non-`sentry.io` host. If your
 self-hosted deployment does run Seer, opt back in explicitly:
 
 ```shell
-npx -y sentry@latest mcp --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
+npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
 ```
 
 You can also disable any other skill to prevent unsupported tools from being
 exposed:
 
 ```shell
-npx -y sentry@latest mcp --access-token=TOKEN --host=sentry.example.com --disable-skills=project-management
+npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --disable-skills=project-management
 ```
 
 For self-hosted instances without TLS:
 
 ```shell
-npx -y sentry@latest mcp --access-token=TOKEN --host=sentry.internal:9000 --insecure-http
+npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.internal:9000 --insecure-http
 ```
 
 #### Remote with an Explicit Sentry Token
@@ -121,7 +122,7 @@ tools with `?skills=inspect,triage` or `?disable-skills=seer`.
 #### Environment Variables
 
 ```shell
-SENTRY_ACCESS_TOKEN=         # Optional with `sentry auth login`: static Sentry auth token
+SENTRY_ACCESS_TOKEN=         # Optional after `auth login`: static Sentry auth token
 
 # LLM Provider Configuration (required for AI-powered search tools)
 EMBEDDED_AGENT_PROVIDER=     # Required when multiple provider keys are set: 'openai', 'azure-openai', 'anthropic', or 'openrouter'
@@ -146,7 +147,7 @@ MCP_DISABLE_SKILLS=          # Disable specific skills (comma-separated, e.g. 'p
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["-y", "sentry@latest", "mcp"],
+      "args": ["@sentry/mcp-server@latest"],
       "env": {
         "SENTRY_ACCESS_TOKEN": "your-token",
         "EMBEDDED_AGENT_PROVIDER": "openai",
@@ -169,7 +170,7 @@ self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["-y", "sentry@latest", "mcp"],
+      "args": ["@sentry/mcp-server@latest"],
       "env": {
         "SENTRY_ACCESS_TOKEN": "your-token",
         "SENTRY_HOST": "sentry.example.com",

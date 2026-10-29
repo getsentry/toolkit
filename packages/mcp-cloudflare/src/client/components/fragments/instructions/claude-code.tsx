@@ -44,7 +44,7 @@ export function ClaudeCodeInstructions({
   }
 
   // Stdio transport
-  const mcpStdioSnippet = `npx -y ${NPM_PACKAGE_NAME}@latest mcp`;
+  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
   return (
     <>
       <ol>

@@ -4,7 +4,7 @@ Complete playbook for building, running, and testing the stdio MCP server.
 
 ## Overview
 
-The stdio transport runs the MCP server as a subprocess that communicates via stdin/stdout pipes. This is the standard way IDEs and local tools integrate with MCP servers. The stdio server is the `sentry mcp` command in the Sentry CLI (`packages/cli`); it bundles `@sentry/mcp-core`.
+The stdio transport runs the MCP server as a subprocess that communicates via stdin/stdout pipes. This is the standard way IDEs and local tools integrate with MCP servers. The stdio server is implemented in the Sentry CLI (`packages/cli`) on top of `@sentry/mcp-core`. It is published as `@sentry/mcp-server` and is also available as `sentry mcp`.
 
 **When to use stdio:**
 
@@ -64,13 +64,13 @@ pnpm --silent --dir packages/cli run cli mcp --access-token=YOUR_TOKEN
 ### 3. Run the Published Package
 
 ```bash
-npx -y sentry@latest mcp
-npx -y sentry@latest mcp --access-token=YOUR_TOKEN
+npx @sentry/mcp-server@latest
+npx @sentry/mcp-server@latest --access-token=YOUR_TOKEN
 ```
 
-To test a local npm bundle, build it with `pnpm --filter sentry run bundle`
-(unset `SENTRY_AUTH_TOKEN` first so the build does not upload sourcemaps), then
-run `node packages/cli/dist/bin.cjs mcp`.
+To test a local `@sentry/mcp-server` bundle, build it with
+`pnpm --filter @sentry/mcp-server run bundle`, then run
+`node packages/mcp-server/dist/sentry-mcp.cjs`.
 
 ## Testing with MCP Inspector
 
@@ -116,9 +116,7 @@ This opens the MCP Inspector at `http://localhost:6274`
 {
   "command": "npx",
   "args": [
-    "-y",
-    "sentry@latest",
-    "mcp",
+    "@sentry/mcp-server@latest",
     "--access-token=YOUR_TOKEN",
     "--host=sentry.example.com"
   ]
@@ -131,9 +129,7 @@ This opens the MCP Inspector at `http://localhost:6274`
 {
   "command": "npx",
   "args": [
-    "-y",
-    "sentry@latest",
-    "mcp",
+    "@sentry/mcp-server@latest",
     "--access-token=YOUR_TOKEN",
     "--host=sentry.internal:9000",
     "--insecure-http"
@@ -278,7 +274,7 @@ Create or edit `.cursor/config.json`:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["-y", "sentry@latest", "mcp", "--access-token=YOUR_TOKEN"]
+      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
     }
   }
 }
@@ -299,7 +295,7 @@ Update config:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["-y", "sentry@latest", "mcp"],
+      "args": ["@sentry/mcp-server@latest"],
       "env": {
         "SENTRY_ACCESS_TOKEN": "${SENTRY_ACCESS_TOKEN}"
       }
@@ -331,7 +327,7 @@ Add to `.vscode/settings.json`:
   "mcp.servers": {
     "sentry": {
       "command": "npx",
-      "args": ["-y", "sentry@latest", "mcp", "--access-token=YOUR_TOKEN"]
+      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
     }
   }
 }

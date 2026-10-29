@@ -65,7 +65,7 @@ export function OpenCodeInstructions({ transport }: OpenCodeInstructionsProps) {
   } as const;
   const coreConfig = {
     command: "npx",
-    args: ["-y", "sentry@latest", "mcp"],
+    args: ["@sentry/mcp-server@latest"],
     env: defaultEnv,
   };
 

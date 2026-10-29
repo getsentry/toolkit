@@ -98,7 +98,7 @@ toolkit/
 
 **MCP releases:**
 
-- docs/releases/stdio.md — `sentry mcp` release, registry, and the `@sentry/mcp-server` bundle
+- docs/releases/stdio.md — `@sentry/mcp-server` and `sentry mcp` releases, and the MCP registry
 - docs/releases/cloudflare.md — Cloudflare deployment
 
 ## Commands
