@@ -528,3 +528,73 @@ test("copies cross-realm payload bytes before deferring them behind retention co
     buffer.dispose();
   }
 });
+
+test.each([
+  {
+    contentType: "application/json",
+    status: "ignored",
+    reason: "unsupported_content_type",
+  },
+  { encoding: "unsupported", status: "invalid", reason: undefined },
+])(
+  "permanent $status rejects do not consume admission capacity",
+  async ({ status, reason, ...metadata }) => {
+    const buffer = createLocalTelemetryBuffer();
+    try {
+      const rejects = Array.from({ length: 100 }, () =>
+        buffer.ingestPayload({ body: event("rejected"), ...metadata }),
+      );
+      // A retention control must not turn already-rejected requests into pending admissions either.
+      const control = buffer.withWriteBarrier(async () => {});
+      const fresh = buffer.ingestPayload({ body: event("fresh") });
+      for (const receipt of await Promise.all(rejects)) {
+        expect(receipt).toMatchObject({
+          status,
+          ...(reason ? { reason } : {}),
+        });
+      }
+      await control;
+      expect(await fresh).toMatchObject({ status: "processed" });
+      expect(buffer.read({ all: true })).toHaveLength(1);
+    } finally {
+      buffer.dispose();
+    }
+  },
+);
+
+test.each([0, 32])(
+  "retention controls bound deferred admissions with %i pipeline writes",
+  async (active) => {
+    const buffer = createLocalTelemetryBuffer();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      const running = Array.from({ length: active }, (_, index) =>
+        buffer.ingestPayload({ body: event(`running-${index}`) }),
+      );
+      const control = buffer.withWriteBarrier(() => gate);
+      const admitted = Array.from({ length: 64 - active }, (_, index) =>
+        buffer.ingestPayload({ body: event(`deferred-${index}`) }),
+      );
+      expect(
+        await buffer.ingestPayload({ body: event("overflow") }),
+      ).toMatchObject({
+        status: "ignored",
+        reason: "queue_full",
+      });
+      release();
+      await control;
+      expect(
+        (await Promise.all([...running, ...admitted])).every(
+          (result) => result.status === "processed",
+        ),
+      ).toBe(true);
+      expect(buffer.read({ all: true })).toHaveLength(64);
+    } finally {
+      release();
+      buffer.dispose();
+    }
+  },
+);

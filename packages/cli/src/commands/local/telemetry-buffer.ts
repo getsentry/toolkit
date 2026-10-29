@@ -97,6 +97,7 @@ export function createLocalTelemetryBuffer(
   let controls = 0;
   let barrier: Promise<void> = Promise.resolve();
   const writes = new Set<Promise<IngestResult>>();
+  const deferredWrites = new Set<Promise<IngestResult>>();
   function ignored(reason: IgnoreReason): IngestResult {
     return {
       status: "ignored",
@@ -118,6 +119,7 @@ export function createLocalTelemetryBuffer(
     // Pending controls remain ordered; ingress from the previous generation is cancelled.
     generation++;
     writes.clear();
+    deferredWrites.clear();
     pipeline.reset();
   }
   const stream = (id: string) => {
@@ -172,29 +174,34 @@ export function createLocalTelemetryBuffer(
     pipeline,
     ingestPayload(payload) {
       if (disposed) return Promise.resolve(ignored("disposed"));
-      if (writes.size >= maxPending)
+      const deferred = controls > 0;
+      // The pipeline counts admitted work; only writes held behind controls need extra slots.
+      if (
+        deferred &&
+        pipeline.getStats().pending + deferredWrites.size >= maxPending
+      )
         return Promise.resolve(ignored("queue_full"));
       const epoch = generation;
       // A control operation blocks new admissions until its policy check and update commit.
       // Copy deferred inputs now, matching standalone SDK ingestion semantics.
-      const captured =
-        controls > 0
-          ? {
-              ...payload,
-              body: types.isUint8Array(payload.body)
-                ? Buffer.from(payload.body)
-                : payload.body,
-            }
-          : payload;
-      const operation =
-        controls === 0
-          ? pipeline.ingestPayload(captured)
-          : barrier.then(() => {
-              if (disposed) return ignored("disposed");
-              if (epoch !== generation) return ignored("reset");
-              return pipeline.ingestPayload(captured);
-            });
+      const captured = deferred
+        ? {
+            ...payload,
+            body: types.isUint8Array(payload.body)
+              ? Buffer.from(payload.body)
+              : payload.body,
+          }
+        : payload;
+      const operation = !deferred
+        ? pipeline.ingestPayload(captured)
+        : barrier.then(() => {
+            deferredWrites.delete(operation);
+            if (disposed) return ignored("disposed");
+            if (epoch !== generation) return ignored("reset");
+            return pipeline.ingestPayload(captured);
+          });
       writes.add(operation);
+      if (deferred) deferredWrites.add(operation);
       const release = () => {
         writes.delete(operation);
       };
