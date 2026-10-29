@@ -42,7 +42,7 @@ import type { ProjectCreatedResult } from "../../../src/lib/formatters/human.js"
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { slugify } from "../../../src/lib/utils.js";
 import type { SentryProject, SentryTeam } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { parseFailure, useTestConfigDir } from "../../helpers.js";
 
 const sampleTeam: SentryTeam = {
   id: "1",
@@ -221,7 +221,7 @@ describe("project create", () => {
 
       const err = await func
         .call(context, { json: false }, ...args)
-        .catch((error: Error) => error);
+        .catch(parseFailure);
 
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain("must use <name>:<platform> syntax");
@@ -522,7 +522,7 @@ describe("project create", () => {
 
     const err = await func
       .call(context, { json: false }, "my-app:javascript-node")
-      .catch((e: Error) => e);
+      .catch(parseFailure);
     expect(err).toBeInstanceOf(ValidationError);
     expect((err as ValidationError).exitCode).toBe(EXIT.VALIDATION);
     expect(err.message).toContain("Invalid platform 'javascript-node'");
@@ -718,9 +718,10 @@ describe("project create", () => {
     const func = await createCommand.loader();
 
     // Missing name after slash
-    await expect(
-      func.call(context, { json: false }, "acme-corp/:node"),
-    ).rejects.toThrow(ContextError);
+    const err = await func
+      .call(context, { json: false }, "acme-corp/:node")
+      .catch(parseFailure);
+    expect(err).toBeInstanceOf(ContextError);
   });
 
   test("shows platform in human output", async () => {
@@ -774,9 +775,7 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await createCommand.loader();
 
-    const err = await func
-      .call(context, { json: false })
-      .catch((e: Error) => e);
+    const err = await func.call(context, { json: false }).catch(parseFailure);
     expect(err).toBeInstanceOf(ContextError);
     expect(err.message).toContain("Project specification is required");
     expect(err.message).toContain(
@@ -792,7 +791,7 @@ describe("project create", () => {
 
       const err = await func
         .call(context, { json: false }, `${name}:node`)
-        .catch((error: Error) => error);
+        .catch(parseFailure);
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain("Project name cannot be empty");
     },
@@ -806,7 +805,7 @@ describe("project create", () => {
 
       const err = await func
         .call(context, { json: false }, projectArg)
-        .catch((e: Error) => e);
+        .catch(parseFailure);
       expect(err).toBeInstanceOf(ValidationError);
       expect((err as ValidationError).exitCode).toBe(EXIT.VALIDATION);
       expect(err.message).toContain("Platform is required");
@@ -825,7 +824,7 @@ describe("project create", () => {
 
     const err = await func
       .call(context, { json: false }, "web", "api", "node")
-      .catch((error: Error) => error);
+      .catch(parseFailure);
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("must use <name>:<platform> syntax");
     expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
@@ -930,7 +929,7 @@ describe("project create", () => {
     // python.django.rest → python-django-rest (not a valid platform)
     const err = await func
       .call(context, { json: false }, "my-app:python.django.rest")
-      .catch((e: Error) => e);
+      .catch(parseFailure);
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Invalid platform 'python-django-rest'");
   });
@@ -1038,7 +1037,7 @@ describe("project create", () => {
     const func = await createCommand.loader();
     const err = await func
       .call(context, { json: false }, "proj1:node", "proj2:not-a-platform")
-      .catch((e: Error) => e);
+      .catch(parseFailure);
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Invalid platform 'not-a-platform'");
     expect(err.message).toContain("sentry project create proj2:<platform>");
@@ -1051,7 +1050,7 @@ describe("project create", () => {
       const func = await createCommand.loader();
       const err = await func
         .call(context, { json: false }, ...args)
-        .catch((error: Error) => error);
+        .catch(parseFailure);
 
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain(
@@ -1155,7 +1154,7 @@ describe("project create", () => {
         { json: false, "dry-run": true },
         "my-app:invalid-platform",
       )
-      .catch((e: Error) => e);
+      .catch(parseFailure);
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Invalid platform");
   });
