@@ -279,6 +279,10 @@ A command that takes one issue declares `issuePositional({ command })` (or
 that resolves it another way (`resolveOrgAndIssueId`, or recovery hints that
 keep its other arguments) passes `requireIssueArgument(target.parsed, ...)`
 instead of the raw string.
+A command that takes several issues (`issue view`, `issue explain`,
+`issue merge`) declares `issuesPositional(...)`: every whitespace-separated
+word is an issue (no search text), parsed before `func` runs, and `func`
+resolves each `IssueArgument` from `await issues.resolved` itself.
 
 ```typescript
 import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";

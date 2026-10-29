@@ -165,10 +165,10 @@ tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
       errors: 1,
     },
     {
-      // A ratchet: an allow-listed file that stopped parsing IDs by hand
+      // No command is exempt, not even those taking several issues
       filename: "/repo/packages/cli/src/commands/issue/merge.ts",
-      code: "const issues = issuePositional(USAGE_HINT);",
-      errors: [{ message: /Remove this file from the allow-list \(#1564/ }],
+      code: "const issue = { placeholder: 'issue', parse: parseIssueTarget };",
+      errors: 1,
     },
     {
       filename: source,
@@ -206,6 +206,11 @@ tester.run(
       {
         filename: commands,
         code: "async function* run(flags, target: ReleaseTarget) { return target.parsed; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "async function* run(flags, issues: IssuesArguments) { return issues.parsed; }",
         errors: 1,
       },
       {
