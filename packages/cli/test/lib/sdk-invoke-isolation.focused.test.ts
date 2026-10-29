@@ -42,7 +42,7 @@ vi.mock("../../src/lib/telemetry.js", () => ({
     callback: (span: undefined) => Promise<T>,
   ): Promise<T> => await callback(undefined),
 }));
-vi.mock("@sentry/node-core/light", () => ({ getClient: () => null }));
+vi.mock("@sentry/node", () => ({ getClient: () => null }));
 
 import { getCustomHeaders } from "../../src/lib/custom-headers.js";
 import { getEnv } from "../../src/lib/env.js";

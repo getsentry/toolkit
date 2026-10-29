@@ -49,6 +49,13 @@ const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
   listForOrg: (org) => listRepositories(org),
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),
+  // `getsentry/sentry-python` also matches as `sentry-python`, so a typo
+  // in the short name is still close enough to match fuzzily.
+  namesOf: (repo) => {
+    const short = repo.name.slice(repo.name.lastIndexOf("/") + 1);
+    return short && short !== repo.name ? [repo.name, short] : [repo.name];
+  },
+  searchesNames: true,
   displayTable: (repos: RepositoryWithOrg[]) =>
     formatTable(repos, REPO_COLUMNS),
   schema: SentryRepositorySchema,
@@ -58,6 +65,7 @@ const docs: OrgListCommandDocs = {
   brief: "List repositories",
   fullDescription:
     "List repositories connected to an organization.\n\n" +
+    "`<org>/<name>` lists repositories whose name (with or without its owner) matches `<name>`, a glob (`<org>/getsentry/*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry repos` → `sentry repo list`",
   examples: [
     {
@@ -71,6 +79,15 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry repo list my-org/ -c next",
+    },
+    {
+      description: "Only repositories whose name matches a glob",
+      command: "sentry repo list 'my-org/getsentry/*'",
+    },
+    {
+      description:
+        "Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)",
+      command: "sentry repo list my-org/sentry-pyhton",
     },
     { description: "Output as JSON", command: "sentry repo list --json" },
   ],

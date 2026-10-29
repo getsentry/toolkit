@@ -270,6 +270,8 @@ describe("uploadBuild", () => {
     expect(body.build_configuration).toBe("Release");
     expect(body.release_notes).toBe("notes");
     expect(body.install_groups).toEqual(["qa", "beta"]);
+    // Opted into transport retries: the poll loop re-sends the same body anyway.
+    expect(call?.[2]?.idempotent).toBe(true);
     // No missing chunks on the first (and only) response.
     expect(uploadMissingChunksMock).not.toHaveBeenCalled();
   });

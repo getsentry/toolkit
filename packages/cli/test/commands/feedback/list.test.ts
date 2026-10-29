@@ -311,3 +311,21 @@ describe("feedback list", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });
+
+describe("feedback list: query flag parse", () => {
+  const parseQuery = (
+    listCommand.parameters.flags!.query as { parse: (v: string) => string }
+  ).parse;
+
+  test("rewrites is: OR for the issues endpoint", () => {
+    expect(parseQuery("is:regressed OR is:escalating")).toBe(
+      "substatus:[regressed,escalating]",
+    );
+  });
+
+  test("rejects is: OR across parent statuses", () => {
+    expect(() => parseQuery("is:new OR is:archived_forever")).toThrow(
+      ValidationError,
+    );
+  });
+});

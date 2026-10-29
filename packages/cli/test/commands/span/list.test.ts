@@ -287,6 +287,31 @@ describe("listCommand.func (trace mode)", () => {
     );
   });
 
+  test("requests discovered typed attribute keys intact through --fields", async () => {
+    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    const { context } = createContext();
+
+    await func.call(
+      context,
+      {
+        limit: 25,
+        sort: "date",
+        period: parsePeriod("7d"),
+        fresh: false,
+        fields: "id,tags[cart.total,number],tags[items[*],array]",
+      },
+      VALID_TRACE_ID,
+    );
+
+    expect(listSpansSpy).toHaveBeenCalledWith(
+      "test-org",
+      "test-project",
+      expect.objectContaining({
+        extraFields: ["tags[cart.total,number]", "tags[items[*],array]"],
+      }),
+    );
+  });
+
   test("converts a search-query parse 400 to a ValidationError when --query is set (trace mode)", async () => {
     listSpansSpy.mockRejectedValue(
       new ApiError("bad", 400, "Error parsing search query: bad op filter"),
@@ -464,6 +489,68 @@ describe("listCommand.func (trace mode)", () => {
         statsPeriod: "24h",
       }),
     );
+  });
+
+  test("trace mode omits the Trace ID column", async () => {
+    listSpansSpy.mockResolvedValue({
+      data: [
+        {
+          id: "a1b2c3d4e5f67890",
+          timestamp: "2024-01-15T10:30:00+00:00",
+          project: "test-project",
+          trace: VALID_TRACE_ID,
+        },
+      ],
+      nextCursor: undefined,
+    });
+
+    const { context, getStdout } = createContext();
+
+    await func.call(
+      context,
+      {
+        limit: 25,
+        sort: "date",
+        period: parsePeriod("7d"),
+        fresh: false,
+      },
+      VALID_TRACE_ID,
+    );
+
+    const output = getStdout();
+    expect(output).toContain(`Spans in trace`);
+    expect(output).not.toContain("Trace ID");
+  });
+
+  test("trace mode JSON includes trace_id on each span", async () => {
+    listSpansSpy.mockResolvedValue({
+      data: [
+        {
+          id: "a1b2c3d4e5f67890",
+          timestamp: "2024-01-15T10:30:00+00:00",
+          project: "test-project",
+          trace: VALID_TRACE_ID,
+        },
+      ],
+      nextCursor: undefined,
+    });
+
+    const { context, getStdout } = createContext();
+
+    await func.call(
+      context,
+      {
+        limit: 25,
+        sort: "date",
+        period: parsePeriod("7d"),
+        json: true,
+        fresh: false,
+      },
+      VALID_TRACE_ID,
+    );
+
+    const parsed = JSON.parse(getStdout());
+    expect(parsed.data[0].trace_id).toBe(VALID_TRACE_ID);
   });
 
   test("trace mode passes allProjects: true to listSpans", async () => {
@@ -754,6 +841,11 @@ describe("listCommand.func (project mode)", () => {
     expect(output).toContain("Spans in my-org/my-project:");
     // Should NOT contain "Spans in trace"
     expect(output).not.toContain("Spans in trace");
+    // Project mode shows the trace ID per row, right after the span ID
+    expect(output).toContain(VALID_TRACE_ID);
+    expect(output.indexOf("Trace ID")).toBeGreaterThan(
+      output.indexOf("Span ID"),
+    );
   });
 
   test("JSON output has correct envelope in project mode", async () => {
@@ -784,6 +876,7 @@ describe("listCommand.func (project mode)", () => {
     expect(parsed.hasMore).toBe(true);
     expect(parsed.nextCursor).toBe("1735689600:0:1");
     expect(Array.isArray(parsed.data)).toBe(true);
+    expect(parsed.data[0].trace_id).toBe(VALID_TRACE_ID);
   });
 
   test("shows 'No spans matched' when empty in project mode", async () => {
@@ -858,6 +951,7 @@ describe("listCommand.func (project mode)", () => {
     expect(output).toContain("-c next");
     expect(output).toContain("sentry span list my-org/my-project");
     // Should NOT contain a trace ID in the next-page hint
-    expect(output).not.toContain(VALID_TRACE_ID);
+    const hintLine = output.split("\n").find((l) => l.includes("-c next"));
+    expect(hintLine).not.toContain(VALID_TRACE_ID);
   });
 });

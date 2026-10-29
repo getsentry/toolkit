@@ -119,6 +119,12 @@ sentry release create 1.0.0 --finalize
 # Create a release for specific projects
 sentry release create 1.0.0 --project proj-a,proj-b
 
+# Typical CI release: create, associate commits, finalize, and record a deploy
+sentry release create my-org/1.0.0 --project my-project
+sentry release set-commits my-org/1.0.0 --auto
+sentry release finalize my-org/1.0.0
+sentry release deploy my-org/1.0.0 production
+
 # Create a release from a proposed version
 sentry release create "$(sentry release propose-version --json | jq -r .version)"
 

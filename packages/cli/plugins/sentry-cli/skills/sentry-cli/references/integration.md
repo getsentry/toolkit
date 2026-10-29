@@ -19,7 +19,7 @@ List installed integrations
 
 | Argument | Description |
 |----------|-------------|
-| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of integrations to list - (default: "25")`
@@ -49,6 +49,12 @@ sentry integration list my-org/
 
 # Fetch the next page
 sentry integration list my-org/ -c next
+
+# Only integrations whose name or provider matches a glob
+sentry integration list 'my-org/git*'
+
+# Integrations named like 'GitHub' (fuzzy when nothing matches exactly)
+sentry integration list my-org/githb
 
 # Output as JSON
 sentry integration list --json

@@ -92,6 +92,7 @@ const KNOWN_SPAN_FIELDS = new Set([
   "trace",
   // Output aliases (from spanListItemToFlatSpan)
   "span_id",
+  "trace_id",
   "parent_span_id",
   "op",
   "duration_ms",
@@ -305,7 +306,13 @@ function formatSpanListHuman(data: SpanListData): string {
   } else {
     parts.push(`Spans in ${data.org}/${data.project}:\n\n`);
   }
-  parts.push(formatSpanTable(data.flatSpans, data.extraAttributes));
+  // If trace mode is active, the trace ID is already in the header
+  // so skip rendering the trace ID column
+  parts.push(
+    formatSpanTable(data.flatSpans, data.extraAttributes, {
+      showTraceId: !data.traceId,
+    }),
+  );
   return parts.join("\n");
 }
 

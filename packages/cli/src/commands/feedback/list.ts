@@ -37,7 +37,7 @@ import {
   type ResolvedOrgOptionalTarget,
   toNumericId,
 } from "../../lib/resolve-target.js";
-import { sanitizeQuery } from "../../lib/search-query.js";
+import { sanitizeIssueQuery } from "../../lib/search-query.js";
 import {
   type OrgOptionalTarget,
   orgOptionalTarget,
@@ -212,7 +212,7 @@ export const listCommand = buildListCommand("feedback", {
       },
       query: {
         kind: "parsed",
-        parse: sanitizeQuery,
+        parse: sanitizeIssueQuery,
         brief: "Search query (Sentry issue search syntax)",
         optional: true,
       },

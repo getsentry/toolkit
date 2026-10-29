@@ -14,6 +14,7 @@ import {
   EventSchema,
   FlamegraphSchema,
   IssueSchema,
+  IssueActivitySchema,
   IssueTagValuesSchema,
   ProfileChunkResponseSchema,
   ProfileChunkSampleSchema,
@@ -27,6 +28,28 @@ import {
   TransactionProfileSampleSchema,
   TransactionProfileSchema,
 } from "./schema";
+
+describe("IssueActivitySchema", () => {
+  it("types source metadata and the separate comment reference", () => {
+    const activity = {
+      id: "activity-1",
+      commentId: "comment-1",
+      source: "mcp:claude",
+    };
+    expect(IssueActivitySchema.parse(activity)).toEqual(activity);
+    expect(
+      IssueActivitySchema.safeParse({ ...activity, source: 123 }).success,
+    ).toBe(false);
+  });
+
+  it("accepts missing or null metadata from older and system activity", () => {
+    expect(IssueActivitySchema.parse({ id: "activity-1" })).toEqual({
+      id: "activity-1",
+    });
+    const activity = { id: "activity-1", commentId: null, source: null };
+    expect(IssueActivitySchema.parse(activity)).toEqual(activity);
+  });
+});
 
 describe("IssueSchema", () => {
   it("should parse a standard error issue", () => {

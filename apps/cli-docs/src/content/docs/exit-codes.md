@@ -35,6 +35,7 @@ react to failure categories without parsing stderr.
 | 23 | Not Found | A user-provided identifier could not be resolved |
 | 30 | API Error | Sentry API returned an error response |
 | 31 | Timeout | Operation exceeded its time limit |
+| 32 | Rate Limited | Sentry API rate limit hit and the CLI could not wait it out — wait for the time in the error message, then retry with fewer parallel requests |
 | 40 | Seer Not Enabled | Seer is not enabled for the organization |
 | 41 | Seer No Budget | Seer requires a paid plan |
 | 42 | AI Disabled | AI features disabled by organization admin |

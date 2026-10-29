@@ -10,7 +10,7 @@
  * `LoggingUI` (CI / npm fallback).
  */
 
-import { setTag } from "@sentry/node-core/light";
+import { setTag } from "@sentry/node";
 import { WizardError } from "../errors.js";
 import {
   abortIfCancelled,

@@ -337,7 +337,7 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 
 ### Common Mistakes
 
-- **Wrong issue ID format**: Use `PROJECT-123` (short ID), not the numeric ID `123456789`. The short ID includes the project prefix.
+- **Wrong issue ID format**: Use the full short ID (`PROJECT-123`) or the numeric issue ID from a Sentry URL (`123456789`). A bare suffix without its project prefix, such as `123`, is read as a numeric issue ID, not as a short ID.
 - **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` to add an account. With several stored accounts, commands pick the one that knows the target organization or server automatically; use `sentry auth switch` only to change the default.
 - **Missing `--json` for piping**: Human-readable output includes formatting. Use `--json` when parsing output programmatically.
 - **Specifying org/project when not needed**: Auto-detection resolves org/project from `.sentryclirc` config files, DSNs, env vars, and directory names. Let it work first — only add `<org>/<project>` if the CLI says it can't detect the target or detects the wrong one.
@@ -432,6 +432,7 @@ Manage Sentry issues
 
 - `sentry issue list [<org/project>]` — List issues in a project
 - `sentry issue events <issue>` — List events for a specific issue
+- `sentry issue tags <issue> <key>` — Show the top values of an issue tag
 - `sentry issue explain <issue...>` — Analyze one or more issues using Seer AI
 - `sentry issue plan <issue>` — Generate a solution plan using Seer AI
 - `sentry issue view <issue...>` — View details of one or more issues
@@ -478,6 +479,14 @@ Manage Sentry alert rules
 - `sentry alert metrics edit <org/rule-id-or-name>` — Edit a metric alert rule
 
 → Full flags and examples: `references/alert.md`
+
+### Attribute
+
+Explore span, log, and metric attributes
+
+- `sentry attribute list [<target>] [<filter>]` — List attribute keys for spans, logs, or metrics
+
+→ Full flags and examples: `references/attribute.md`
 
 ### Build
 

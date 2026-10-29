@@ -13,6 +13,7 @@
  * - repositories: repository listing
  * - integrations: installed integration listing and removal
  * - issues: issue listing, lookup, status updates
+ * - issue-tags: issue tag distributions
  * - events: event retrieval and resolution
  * - replays: replay listing and detail lookup
  * - traces: trace details and transactions
@@ -62,8 +63,16 @@ export {
   type ResolvedEvent,
   resolveEventInOrg,
 } from "./api/events.js";
-export type { MetricMeta } from "./api/explore.js";
-export { queryEvents, queryMetricsMeta } from "./api/explore.js";
+export type {
+  EventsTimeSeriesResponse,
+  ExploreTimeSeriesQueryOptions,
+  MetricMeta,
+} from "./api/explore.js";
+export {
+  queryEvents,
+  queryEventsTimeSeries,
+  queryMetricsMeta,
+} from "./api/explore.js";
 export {
   buildFeedbackQuery,
   type FeedbackPage,
@@ -86,6 +95,7 @@ export {
   parseLinkHeader,
   rawApiRequest,
 } from "./api/infrastructure.js";
+export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
   getIssue,
@@ -145,6 +155,7 @@ export {
   type ProjectSearchResult,
   type ProjectWithOrg,
   resolveOrgDisplayName,
+  searchProjects,
   tryGetPrimaryDsn,
 } from "./api/projects.js";
 export {
@@ -202,7 +213,12 @@ export {
 } from "./api/teams.js";
 export type {
   FetchMultiSpanDetailsOptions,
+  ListTraceItemAttributesOptions,
   TraceItemAttribute,
+  TraceItemAttributeContext,
+  TraceItemAttributeDataset,
+  TraceItemAttributeDefinition,
+  TraceItemAttributeValueType,
   TraceItemDetail,
 } from "./api/traces.js";
 export {
@@ -212,6 +228,7 @@ export {
   getSpanDetails,
   getTraceMeta,
   listSpans,
+  listTraceItemAttributes,
   listTransactions,
   normalizeTraceSpan,
   REDUNDANT_DETAIL_ATTRS,

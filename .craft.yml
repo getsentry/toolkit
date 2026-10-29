@@ -6,6 +6,12 @@ workspaces:
       # The CLI release also ships the documentation workspace.
       includePaths:
         - apps/cli-docs
+      aiSummary:
+        llm:
+          model: gpt-5.6-luna-utility
+        levels: [release, category, scope]
+        minItems: 0
+        style: Keep it concise and friendly for developers; avoid hype.
     versioning:
       policy: auto
     preReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --pre'

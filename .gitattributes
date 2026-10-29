@@ -1,0 +1,2 @@
+# SDK envelope item lengths count raw bytes. Preserve fixture bytes on every OS.
+apps/local/fixtures/*.txt -text

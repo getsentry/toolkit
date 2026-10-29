@@ -17,12 +17,12 @@ import {
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
-  formatActor,
   formatDate,
   formatId,
   formatUnknown,
   readString,
 } from "./support/api-formatting";
+import { formatActivityAuthor } from "./support/activity-formatting";
 
 function getActivityText(
   activity: IssueActivity | IssueComment,
@@ -41,7 +41,7 @@ function getActivityText(
 }
 
 function formatActivity(activity: IssueActivity | IssueComment): string {
-  const actor = activity.user ? formatActor(activity.user) : "system";
+  const actor = formatActivityAuthor(activity);
   const date = formatDate(activity.dateCreated) ?? "unknown time";
   const text = getActivityText(activity);
   const details =
@@ -50,7 +50,12 @@ function formatActivity(activity: IssueActivity | IssueComment): string {
     Object.keys(activity.data).length > 0
       ? `\n  - Data: ${formatUnknown(activity.data)}`
       : "";
-  return `- ${date}: ${activity.type ?? "activity"} by ${actor} (${formatId(activity.id)})${text ? `\n  - ${text}` : ""}${details}`;
+  const commentId = activity.commentId;
+  const commentDetails =
+    commentId != null && String(commentId) !== String(activity.id)
+      ? `\n  - Comment ID: ${formatId(commentId)}`
+      : "";
+  return `- ${date}: ${activity.type ?? "activity"} by ${actor} (${formatId(activity.id)})${commentDetails}${text ? `\n  - ${text}` : ""}${details}`;
 }
 
 export default defineTool({

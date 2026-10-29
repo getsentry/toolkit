@@ -1227,6 +1227,18 @@ describe("issue list: cursor flag parse validation", () => {
   });
 });
 
+describe("issue list: query flag parse", () => {
+  const parseQuery = (
+    listCommand.parameters.flags!.query as { parse: (v: string) => string }
+  ).parse;
+
+  test("rewrites is: OR into a status in-list for the issues endpoint", () => {
+    expect(parseQuery("is:unresolved OR is:resolved")).toBe(
+      "status:[unresolved,resolved]",
+    );
+  });
+});
+
 describe("issue list: Phase 2 budget redistribution", () => {
   // Phase 2 triggers when: totalFetched < limit AND some targets hit their
   // quota but have more (nextCursor). The surplus budget redistributes.

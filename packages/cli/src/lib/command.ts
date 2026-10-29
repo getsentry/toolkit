@@ -38,6 +38,7 @@ import {
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
 import { appendCacheHint } from "./cache-hint.js";
+import { type CommandExample, exampleSteps } from "./command-example.js";
 import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { AuthError, CliError, OutputError } from "./errors.js";
@@ -99,12 +100,6 @@ type BaseArgs = readonly unknown[];
  */
 type StricliBuilderArgs<CONTEXT extends CommandContext> =
   import("@stricli/core").CommandBuilderArguments<BaseFlags, BaseArgs, CONTEXT>;
-
-/** A runnable example stored with its command for generated documentation. */
-export type CommandExample = {
-  readonly description: string;
-  readonly command: string;
-};
 
 /**
  * Native Stricli documentation plus canonical examples for generated docs.
@@ -459,7 +454,14 @@ function prepareNativeDocs(
     return nativeDocs;
   }
   const rendered = examples
-    .map(({ description, command }) => `  ${command} # ${description}`)
+    .map((example) => {
+      const steps = exampleSteps(example);
+      return steps.length === 1
+        ? `  ${steps[0]} # ${example.description}`
+        : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(
+            "\n",
+          );
+    })
     .join("\n");
   return {
     ...nativeDocs,

@@ -177,6 +177,15 @@ self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
 }
 ```
 
+### Rate Limits
+
+Tool calls are subject to the Sentry API's rate limits. The MCP server retries
+rate-limited requests, and transient Sentry server errors on read requests,
+after a short wait. When a limit lasts longer, the tool returns a **Rate
+Limited** message that says when to try again. Agents hit the per-second
+limits most often by running many Sentry tool calls in parallel, so run them
+one at a time if you see this message.
+
 ### MCP Inspector
 
 MCP includes an [Inspector](https://modelcontextprotocol.io/docs/tools/inspector), to easily test the service:

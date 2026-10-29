@@ -3,6 +3,7 @@ import { mswServer } from "@sentry/mcp-server-mocks";
 import { APICallError, generateText } from "ai";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiValidationError } from "../../api-client";
 import { UserInputError } from "../../errors";
 import { runSearchEvents } from "../support/search-events/search";
 import searchEvents from "./search-events";
@@ -3889,6 +3890,127 @@ describe("search_events", () => {
     ).rejects.toThrow(/Search validation failed:/);
 
     expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+
+  describe("field recovery hints", () => {
+    const context = {
+      constraints: {
+        organizationSlug: null,
+        regionUrl: null,
+        projectSlug: null,
+      },
+      accessToken: "test-token",
+      userId: "1",
+    };
+    const baseParams = {
+      organizationSlug: "test-org",
+      regionUrl: null,
+      projectSlug: null,
+      period: "24h",
+      limit: 10,
+      includeExplanation: false,
+    };
+
+    beforeEach(() => {
+      process.env.OPENAI_API_KEY = "";
+    });
+
+    it("explains a rejected log timestamp aggregate", async () => {
+      const error =
+        "timestamp is invalid for parameter 1 in max. Its a string type field, but it must be one of these types: {'number'}";
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () =>
+            HttpResponse.json({
+              ...validEventsValidationResponse,
+              valid: false,
+              field: [
+                { name: "max(timestamp)", valid: false, attrType: null, error },
+              ],
+            }),
+        ),
+      );
+
+      const result = searchEvents.handler(
+        {
+          ...baseParams,
+          dataset: "logs",
+          query: "severity:error",
+          fields: ["severity", "max(timestamp)"],
+          sort: "-max(timestamp)",
+        },
+        context,
+      );
+
+      await expect(result).rejects.toThrow(UserInputError);
+      await expect(result).rejects.toThrow(error);
+      await expect(result).rejects.toThrow(
+        "Use `min(timestamp_precise)` or `max(timestamp_precise)`",
+      );
+    });
+
+    it.each([
+      {
+        detail: "first_seen is not a valid function",
+        fields: ["issue", "count()", "first_seen()"],
+        sort: "-count()",
+        hint: "Use `min(timestamp)` for the first occurrence",
+      },
+      {
+        detail: "Cannot sort by a field that is not selected.",
+        fields: ["issue", "count()"],
+        sort: "issue",
+        hint: "Sort by an aggregate such as `-count()`, or by `issue.id`.",
+      },
+    ])("explains the errors API rejection: $detail", async (testCase) => {
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ detail: testCase.detail }, { status: 400 }),
+        ),
+      );
+
+      const result = searchEvents.handler(
+        {
+          ...baseParams,
+          dataset: "errors",
+          query: "level:error",
+          fields: testCase.fields,
+          sort: testCase.sort,
+        },
+        context,
+      );
+
+      await expect(result).rejects.toThrow(UserInputError);
+      await expect(result).rejects.toThrow(
+        `API error (400): ${testCase.detail}`,
+      );
+      await expect(result).rejects.toThrow(testCase.hint);
+    });
+
+    it("keeps the API error when the request did not send the rejected expression", async () => {
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json(
+            { detail: "first_seen is not a valid function" },
+            { status: 400 },
+          ),
+        ),
+      );
+
+      const result = searchEvents.handler(
+        {
+          ...baseParams,
+          dataset: "errors",
+          query: "level:error",
+          fields: ["issue", "count()"],
+          sort: "-count()",
+        },
+        context,
+      );
+
+      await expect(result).rejects.toThrow(ApiValidationError);
+    });
   });
 
   it("keeps the caller's dataset when lockDataset is set", async () => {
