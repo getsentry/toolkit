@@ -66,6 +66,8 @@ const BOUND_TARGET_TYPES = new Set([
   "OrgProjectTarget",
   "ProjectBoundTarget",
   "BoundArguments",
+  "DashboardArguments",
+  "DashboardListArguments",
   "LogListArguments",
   "LogViewArguments",
   "ReplayArguments",
@@ -73,6 +75,7 @@ const BOUND_TARGET_TYPES = new Set([
   "SpanViewArguments",
   "TraceLogsArguments",
   "TraceViewArguments",
+  "WidgetAddArguments",
 ]);
 
 function boundTargetParams(fn) {

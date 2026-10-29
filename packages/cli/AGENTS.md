@@ -249,7 +249,9 @@ and the IDs. Add a kind to `ID_KINDS` rather than validating IDs in a command;
 the `sentry-cli/no-ad-hoc-id-arguments` lint rule rejects hand-written ID
 parsing (`parseSlashSeparatedArg`, `HEX_ID_RE`, ...) in commands and kinds
 defined outside `ID_KINDS`. Issue IDs (and `event view`, which takes them)
-keep their own syntax.
+keep their own syntax. Dashboards, named by numeric ID or title, have their
+own grammar (`grammar/dashboard-arguments.pegjs`); dashboard commands take
+`dashboardArguments` from `commands/dashboard/arguments.ts`.
 
 **Issue positionals:** issue IDs, short IDs, selectors, and issue URLs are
 parsed by `parseIssueArgument` (`src/lib/issue-arguments.ts`), whose forms
@@ -343,7 +345,7 @@ input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 dashboard use a completion-aware parser from `src/lib/completion-target.ts`
 instead of `String`: `parseOrgProjectTarget` completes `org/`, `org/project`,
 and project aliases; `parseOrgTarget` completes org slugs only;
-`parseIssueTarget` adds cached issue short IDs; `parseDashboardTarget`
+`parseIssueTarget` adds cached issue short IDs; `dashboardArguments`
 completes cached dashboards. `issueIdsPositional` already uses them. A
 parser tagged with `withCompletionTarget`, such as the `target-positional.ts`
 parsers behind `listTargetPositional`, completes the same way. Shared value

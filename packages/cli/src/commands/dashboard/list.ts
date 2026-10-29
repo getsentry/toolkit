@@ -12,9 +12,7 @@ import {
   API_MAX_PER_PAGE,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -39,10 +37,10 @@ import {
 import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
-  withDashboardErrors,
-  parseDashboardListArgs,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+  type DashboardListArguments,
+  dashboardListArguments,
+} from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "dashboard-list";
@@ -418,14 +416,7 @@ export const listCommand = buildListCommand("dashboard", {
     jsonTransform: jsonTransformDashboardList,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/title-filter",
-        brief: "[<org/project>] [<name-glob>]",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: dashboardListArguments("sentry dashboard list <org>/"),
     flags: {
       web: {
         kind: "boolean",
@@ -436,16 +427,13 @@ export const listCommand = buildListCommand("dashboard", {
     },
     aliases: { w: "web", n: "limit" },
   },
-  async *func(this: SentryContext, flags: ListFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { targetArg, titleFilter } = parseDashboardListArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard list <org>/",
-    );
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: DashboardListArguments,
+  ) {
+    const { titleFilter } = target.parsed;
+    const orgSlug = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(buildDashboardsListUrl(orgSlug), "dashboards");

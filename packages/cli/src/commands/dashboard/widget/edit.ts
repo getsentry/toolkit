@@ -6,9 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { parseDashboardTarget } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetEdited } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -27,13 +25,11 @@ import {
   validateWidgetLayout,
   type WidgetLayoutFlags,
 } from "../../../types/dashboard.js";
+import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import {
   applyGroupLimitAutoDefault,
   withDashboardErrors,
   normalizeDataset,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
   resolveWidgetIndex,
   validateSortReferencesAggregate,
   validateWidgetEnums,
@@ -226,14 +222,11 @@ export const editCommand = buildCommand({
     human: formatWidgetEdited,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseDashboardTarget,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/project/dashboard",
+      usageHint:
+        "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
+    }),
     flags: {
       index: {
         kind: "parsed",
@@ -337,9 +330,11 @@ export const editCommand = buildCommand({
       y: "row",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, ...args: string[]) {
-    const { cwd } = this;
-
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    target: DashboardArguments,
+  ) {
     if (flags.index === undefined && !flags.title) {
       throw new ValidationError(
         "Specify --index or --title to identify the widget to edit.\n\n" +
@@ -363,14 +358,7 @@ export const editCommand = buildCommand({
 
     validateWidgetEnums(normalizedFlags.display, normalizedFlags.dataset);
 
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+    const { orgSlug, dashboardId } = await target.resolved;
 
     // GET current dashboard → find widget → merge changes → PUT
     const current = await withDashboardErrors(

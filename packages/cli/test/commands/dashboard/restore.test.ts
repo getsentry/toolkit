@@ -5,6 +5,7 @@
  * Uses spyOn pattern to mock API client, resolve, and polling modules.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolve from "../../../src/commands/dashboard/resolve.js";
@@ -13,6 +14,7 @@ import { restoreCommand } from "../../../src/commands/dashboard/restore.js";
 import * as apiClient from "../../../src/lib/api-client.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
+import { ValidationError } from "../../../src/lib/errors.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
 
 // ---------------------------------------------------------------------------
@@ -201,6 +203,41 @@ describe("dashboard restore command", () => {
       "test-org",
       "My Dashboard Title",
     );
+  });
+
+  test("takes the org and dashboard ID from a pasted dashboard URL", async () => {
+    const { context } = createMockContext();
+    const func = await restoreCommand.loader();
+    await func.call(
+      context,
+      defaultFlags({ json: true, revision: "3" }),
+      "https://my-org.sentry.io/dashboard/4326879/",
+    );
+
+    expect(resolveOrgFromTargetSpy).toHaveBeenCalledWith(
+      { type: "org-all", org: "my-org" },
+      "/tmp",
+      expect.any(String),
+    );
+    expect(resolveDashboardIdSpy).toHaveBeenCalledWith("test-org", "4326879");
+  });
+
+  test("fails to parse a missing dashboard before any request", async () => {
+    const { context } = createMockContext();
+    const func = await restoreCommand.loader();
+
+    const error = await func
+      .call(context, defaultFlags({ revision: "3" }))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    const { exception } = error as ArgumentParseError;
+    expect(exception).toBeInstanceOf(ValidationError);
+    expect((exception as ValidationError).message).toContain(
+      "Dashboard ID or title is required",
+    );
+    expect(resolveOrgFromTargetSpy).not.toHaveBeenCalled();
+    expect(restoreDashboardRevisionSpy).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------

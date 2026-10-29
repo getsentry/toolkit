@@ -8,9 +8,9 @@
  * `__complete` fast path cannot boot Stricli to walk the route tree, and
  * `src/lib/complete.ts` maps each kind to its completer.
  *
- * {@link parseOrgTarget}, {@link parseOrgProjectTarget},
- * {@link parseIssueTarget}, and {@link parseDashboardTarget} return their
- * input unchanged and only mark the kind. Parsers that also parse the value,
+ * {@link parseOrgTarget}, {@link parseOrgProjectTarget}, and
+ * {@link parseIssueTarget} return their input unchanged and only mark the
+ * kind. Parsers that also parse the value,
  * such as those in `target-positional.ts`, use the same tag.
  */
 
@@ -80,12 +80,6 @@ export const parseOrgProjectTarget = withCompletionTarget(
 /** Parser for positionals that name an issue (short ID, `org/ID`, ...). */
 export const parseIssueTarget = withCompletionTarget(
   ISSUE_TARGET,
-  (input: string): string => input,
-);
-
-/** Parser for `[<org/project>] <dashboard-id-or-title>` positionals. */
-export const parseDashboardTarget = withCompletionTarget(
-  DASHBOARD_TARGET,
   (input: string): string => input,
 );
 

@@ -6,9 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDashboardTarget } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -16,12 +14,8 @@ import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
-import {
-  withDashboardErrors,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+import { type DashboardArguments, dashboardArguments } from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
 
 type RestoreFlags = {
   readonly revision: string;
@@ -82,14 +76,10 @@ export const restoreCommand = buildCommand({
     human: formatRestoreHuman,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseDashboardTarget,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/dashboard",
+      usageHint: "sentry dashboard restore <org>/ <id> --revision <rev>",
+    }),
     flags: {
       revision: {
         kind: "parsed",
@@ -108,17 +98,12 @@ export const restoreCommand = buildCommand({
     },
     aliases: { r: "revision" },
   },
-  async *func(this: SentryContext, flags: RestoreFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard restore <org>/ <id> --revision <rev>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+  async *func(
+    this: SentryContext,
+    flags: RestoreFlags,
+    target: DashboardArguments,
+  ) {
+    const { orgSlug, dashboardId } = await target.resolved;
 
     const dashboard = await withDashboardErrors(
       {
