@@ -339,3 +339,69 @@ describe("profile graft thread selection", () => {
     ).toEqual(["main", "worker"]);
   });
 });
+
+describe("profile graft missing parents", () => {
+  it.each([undefined, 20])(
+    "grafts each orphan-child gap once with outer work ending at %s",
+    (rootEnd) => {
+      const target = trace();
+      if (rootEnd !== undefined) {
+        target.spans.set("root", {
+          span_id: "root",
+          start_timestamp: 0,
+          timestamp: rootEnd,
+        });
+      }
+      target.spans.set("first", {
+        span_id: "first",
+        parent_span_id: "missing",
+        start_timestamp: 0,
+        timestamp: 5,
+      });
+      target.spans.set("second", {
+        span_id: "second",
+        parent_span_id: "missing",
+        start_timestamp: 10,
+        timestamp: 15,
+      });
+      const source = profile({
+        samples: [0, 5, 10, 15].map((start_timestamp) => ({
+          thread_id: "main",
+          stack_id: 0,
+          start_timestamp,
+        })),
+      });
+      const intervals = () =>
+        Array.from(target.spans.values())
+          .filter(
+            (span) => span.tags?.source === "profile" && span.op === "main",
+          )
+          .map((span) => [span.start_timestamp, span.timestamp])
+          .sort((a, b) => a[0] - b[0]);
+
+      graftProfileSpans(target, source);
+
+      // Real leaves, the gap between them, and any outer tail each own their samples.
+      const expected = [
+        [0, 5],
+        [5, 10],
+        [10, 15],
+      ];
+      if (rootEnd !== undefined) expected.push([15, 20]);
+      expect(intervals()).toEqual(expected);
+      expect(target.spans.get("missing")).toMatchObject({
+        start_timestamp: 0,
+        timestamp: 15,
+        children: [
+          { span_id: "first", parent_span_id: "missing" },
+          { tags: { source: "profile" }, start_timestamp: 5, timestamp: 10 },
+          { span_id: "second", parent_span_id: "missing" },
+        ],
+      });
+      const ids = Array.from(target.spans.keys());
+      graftProfileSpans(target, source);
+      expect(intervals()).toEqual(expected);
+      expect(Array.from(target.spans.keys())).toEqual(ids);
+    },
+  );
+});

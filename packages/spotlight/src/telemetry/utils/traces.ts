@@ -17,6 +17,15 @@ export function groupSpans(spans: Map<string, Span>): Span[] {
     if (parent) {
       parent.children ??= [];
       parent.children.push(span);
+      if (parent.op === "orphan") {
+        // Missing-parent wrappers must cover every child so profile gaps are
+        // assigned either inside the wrapper or after it, never both.
+        parent.start_timestamp = Math.min(
+          parent.start_timestamp,
+          span.start_timestamp,
+        );
+        parent.timestamp = Math.max(parent.timestamp, span.timestamp);
+      }
     } else if (span.parent_span_id && span.parent_span_id !== span.span_id) {
       const parentParent = sortedSpans.find((s) => !s.parent_span_id);
       parent = {
