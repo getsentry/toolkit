@@ -106,6 +106,12 @@ export type ApiTransportOptions<C extends TransportCredential> = {
     ): Promise<Error | undefined>;
   };
   cache?: TransportCache;
+  /**
+   * Whether the current scope skips cache reads, such as a tool call with
+   * `fresh: true`. Hosts back it with request-scoped state like
+   * `AsyncLocalStorage`. The response is still stored, replacing the entry.
+   */
+  fresh?(): boolean;
   logger?: TransportLogger;
   /** Wrap each request, including cache lookups, in a host span. */
   span?(
@@ -663,7 +669,10 @@ export function createApiTransport<C extends TransportCredential>(
       // A cached response has no validated origin, so discovery always
       // goes to the network.
       const lookup =
-        cache && method === "GET" && !options.validateRedirects
+        cache &&
+        method === "GET" &&
+        !options.validateRedirects &&
+        !config.fresh?.()
           ? await cache.lookup({
               url,
               // Before a refresh picks the token, so validate nothing yet.

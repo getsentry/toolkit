@@ -536,6 +536,37 @@ describe("cache", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("skips the cache in a fresh scope and replaces the entry", async () => {
+    const cache = memoryCache();
+    const { fetch, sent } = scriptedFetch([
+      Response.json({ v: 1 }),
+      Response.json({ v: 2 }),
+    ]);
+    let fresh = false;
+    const api = transport(fetch, { cache, fresh: () => fresh });
+    const stored = async (v: number) =>
+      await vi.waitFor(async () => {
+        const lookup = await cache.lookup({
+          url: ISSUES_URL,
+          requestHeaders: { authorization: "Bearer token-a" },
+          identity: "id-a",
+        });
+        expect(
+          lookup?.kind === "hit" ? await lookup.response.json() : undefined,
+        ).toEqual({ v });
+      });
+
+    await api.request(ISSUES_URL);
+    await stored(1);
+    fresh = true;
+    expect(await (await api.request(ISSUES_URL)).json()).toEqual({ v: 2 });
+    await stored(2);
+    fresh = false;
+
+    expect(await (await api.request(ISSUES_URL)).json()).toEqual({ v: 2 });
+    expect(sent).toHaveLength(2);
+  });
+
   it("revalidates a stale entry with its ETag", async () => {
     const response = await transport(
       scriptedFetch([new Response(null, { status: 304 })]).fetch,
