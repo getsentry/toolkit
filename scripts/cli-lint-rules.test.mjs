@@ -131,11 +131,6 @@ tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
       code: "import { HEX_ID_RE } from './hex-id.js'; parseIdArguments(args, ID_KINDS.trace, options);",
     },
     {
-      // Issue and event IDs keep their own syntax
-      filename: "/repo/packages/cli/src/commands/event/view.ts",
-      code: "parseSlashSeparatedArg(arg, label, hint);",
-    },
-    {
       filename: "/repo/packages/cli/src/lib/id-arguments.ts",
       code: "parseIdArguments(args, kind, options);",
     },
@@ -143,6 +138,12 @@ tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
   invalid: [
     {
       filename: commands,
+      code: "parseSlashSeparatedArg(arg, label, hint);",
+      errors: 1,
+    },
+    {
+      // No command is exempt, not even `event view`, which also takes issues
+      filename: "/repo/packages/cli/src/commands/event/view.ts",
       code: "parseSlashSeparatedArg(arg, label, hint);",
       errors: 1,
     },
