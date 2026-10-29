@@ -518,7 +518,7 @@ export const schemaCommand = buildCommand({
         brief:
           "API concept, CLI command path, exact operation ID, or METHOD /path",
         parse: String,
-        placeholder: "resource",
+        placeholder: "query",
       },
     },
   },

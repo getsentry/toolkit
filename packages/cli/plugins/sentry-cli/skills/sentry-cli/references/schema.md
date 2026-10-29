@@ -11,7 +11,7 @@ requires:
 
 Browse the Sentry API schema
 
-### `sentry schema <resource...>`
+### `sentry schema <query...>`
 
 Browse the Sentry API schema
 
@@ -19,7 +19,7 @@ Browse the Sentry API schema
 
 | Argument | Description |
 |----------|-------------|
-| `<resource...>` | API concept, CLI command path, exact operation ID, or METHOD /path |
+| `<query...>` | API concept, CLI command path, exact operation ID, or METHOD /path |
 
 **Flags:**
 - `--all - Show all endpoints in a flat list`

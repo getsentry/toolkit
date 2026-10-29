@@ -5,6 +5,9 @@ explain their matches and show related CLI commands discovered from command
 implementations. A related API does not necessarily reproduce the command's filters,
 pagination, or transformations.
 
+Use `sentry help <command>` for CLI flags and usage examples. Schema describes
+API operations and parameters for constructing requests with `sentry api`.
+
 Use an exact operation ID, SDK function name, or HTTP method and path for a
 precise lookup. Concept searches return all matching candidates; deprecated
 operations are marked and sorted after active ones. No endpoint is chosen just
