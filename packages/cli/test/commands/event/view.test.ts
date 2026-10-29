@@ -240,6 +240,21 @@ describe("parseEventViewInput", () => {
       expect(result.targetArg).toBe("my-org/frontend");
     });
 
+    test("reads an event ID after org/project/<short-id> as the issue's event", () => {
+      const eventId = "7388f6a62b7d436ab77bb5365f97a1ac";
+      const result = parseEventViewInput(["my-org/frontend/CAM-82X", eventId]);
+      expect(result.eventId).toBe(eventId);
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.targetArg).toBe("my-org/frontend");
+    });
+
+    test("rejects an incomplete event ID after <short-id>/", () => {
+      // Not project `CAM-82X` with a partial event ID to recover
+      expect(() => parseEventViewInput(["CAM-82X/95fd7f5a"])).toThrow(
+        ValidationError,
+      );
+    });
+
     test("rejects an incomplete event ID instead of selecting latest", () => {
       expect(() => parseEventViewInput(["CAM-82X", "95fd7f5a"])).toThrow(
         ValidationError,

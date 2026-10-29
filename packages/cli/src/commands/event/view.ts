@@ -275,10 +275,11 @@ type IssueInput = Omit<EventViewInput, "target" | "warnings" | "baseUrl">;
  * project `<x>`.
  *
  * Before those, `event view` takes an issue instead of, or with, an event:
- * - `[<org>/]<issue-short-id>` or `[<org>/]<numeric-issue-id>`: the issue's
- *   latest event; also as the ID after a target
- * - `[<org>/]<issue-short-id> <event-id>` and `<issue-short-id>/<event-id>`:
- *   an event of the issue, whose project it is looked up in
+ * - `[<org>/[<project>/]]<issue-short-id>` or `...<numeric-issue-id>`: the
+ *   issue's latest event; also as the ID after a target
+ * - `[<org>/[<project>/]]<issue-short-id> <event-id>` and
+ *   `<issue-short-id>/<event-id>`: an event of the issue, whose project it is
+ *   looked up in
  * - an issue URL without an event: the issue's latest event
  *
  * @throws {ContextError} When the event ID is missing, or is `latest`
@@ -368,32 +369,34 @@ function issueFromUrl(url: ParsedSentryUrl): IssueInput | null {
  */
 function issueForms(tokens: readonly string[]): IssueInput | null {
   const [first = "", second] = tokens;
-  const slash = first.indexOf("/");
-  // `[<org>/]<x>`: what follows the org, and the target it names
-  const [id, org] =
-    slash === -1 || first.includes("/", slash + 1)
-      ? [first, undefined]
-      : [first.slice(slash + 1), `${first.slice(0, slash)}/`];
+  // `[<org>/[<project>/]]<x>`: the last segment, and the target before it
+  // (`<org>/` names an org, `<org>/<project>` a project)
+  const slash = first.lastIndexOf("/");
+  const id = first.slice(slash + 1);
+  const prefix = slash === -1 ? undefined : first.slice(0, slash);
+  const target =
+    prefix === undefined || prefix.includes("/") ? prefix : `${prefix}/`;
 
   if (second === undefined) {
-    // `<issue-short-id>/<event-id>`: the event of an issue
-    const shortId = org?.slice(0, -1) ?? "";
-    if (looksLikeIssueShortId(shortId) && ID_KINDS.event.isId(id)) {
-      return {
-        eventId: ID_KINDS.event.validate(id),
-        targetArg: undefined,
-        issueShortId: shortId,
-      };
+    const issue = issueFromEventId(id, target);
+    if (issue || !(prefix && looksLikeIssueShortId(prefix))) {
+      return issue;
     }
-    return issueFromEventId(id, org);
+    // `<issue-short-id>/<event-id>`: the event of an issue. Short IDs are
+    // uppercase, and project slugs never are.
+    return {
+      eventId: ID_KINDS.event.validate(id),
+      targetArg: undefined,
+      issueShortId: prefix,
+    };
   }
-  // `[<org>/]<issue-short-id> <event-id>`: the event of an issue. A second
-  // argument with a slash is a target: the arguments are reversed.
+  // `[<target>/]<issue-short-id> <event-id>`: the event of an issue. A
+  // second argument with a slash is a target: the arguments are reversed.
   if (looksLikeIssueShortId(id) && !second.includes("/")) {
     return {
       // Issue shortcuts skip the event ID's recovery
       eventId: ID_KINDS.event.validate(second),
-      targetArg: org,
+      targetArg: target,
       issueShortId: id,
     };
   }
