@@ -14,6 +14,7 @@ import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { numberParser } from "../../../lib/command.js";
+import { parseDashboardTarget } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -97,7 +98,7 @@ export const deleteCommand = buildDeleteCommand(
         parameter: {
           placeholder: "org/project/dashboard",
           brief: "[<org/project>] <dashboard-id-or-title>",
-          parse: String,
+          parse: parseDashboardTarget,
         },
       },
       flags: {

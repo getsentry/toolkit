@@ -175,6 +175,7 @@
     "@modelcontextprotocol/server": "catalog:",
     "@sentry/api": "catalog:",
     "@sentry/core": "catalog:",
+    "@sentry/search-syntax": "catalog:",
     "@sentry/toolkit-core": "workspace:*",
     "ai": "catalog:",
     "dotenv": "catalog:",

@@ -119,7 +119,6 @@ async function callRegisteredTool(
 const DEFAULT_DIRECT_TOOL_NAMES = [
   "analyze_issue_with_seer",
   "execute_sentry_tool",
-  "find_dropped_events",
   "find_organizations",
   "find_projects",
   "get_sentry_resource",

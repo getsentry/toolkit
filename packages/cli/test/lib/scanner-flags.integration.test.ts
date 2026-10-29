@@ -21,7 +21,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { ExitCode, run } from "@stricli/core";
 import { describe, expect, test, vi } from "vitest";
 import { app } from "../../src/app.js";
@@ -336,12 +336,12 @@ describe("arguments that fail to parse", () => {
   });
 
   test("is reported to Sentry for UX research", async () => {
-    const messageSpy = vi.spyOn(Sentry, "captureMessage");
+    const messageSpy = vi.spyOn(Sentry, "captureEvent");
     try {
       await runApp(["issue", "list", "--period", "bogus"]);
       expect(messageSpy).toHaveBeenCalledWith(
-        "invalid_argument",
         expect.objectContaining({
+          message: "invalid_argument",
           contexts: {
             invalid_argument: expect.objectContaining({
               cause_class: "ValidationError",

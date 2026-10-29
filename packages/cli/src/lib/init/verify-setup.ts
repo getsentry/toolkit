@@ -14,11 +14,7 @@
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import {
-  addBreadcrumb,
-  captureException,
-  setTag,
-} from "@sentry/node-core/light";
+import { addBreadcrumb, captureException, setTag } from "@sentry/node";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { BUFFER_SIZE, shutdownServer } from "../../commands/local/run.js";
 import { buildApp, tryListen } from "../../commands/local/server.js";

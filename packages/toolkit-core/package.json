@@ -15,6 +15,10 @@
       "types": "./src/api-retry.ts",
       "default": "./src/api-retry.ts"
     },
+    "./api-transport": {
+      "types": "./src/api-transport.ts",
+      "default": "./src/api-transport.ts"
+    },
     "./api-path-segment": {
       "types": "./src/api-path-segment.ts",
       "default": "./src/api-path-segment.ts"
@@ -43,6 +47,10 @@
       "types": "./src/oauth-poll.ts",
       "default": "./src/oauth-poll.ts"
     },
+    "./pagination": {
+      "types": "./src/pagination.ts",
+      "default": "./src/pagination.ts"
+    },
     "./region-cache": {
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
@@ -51,13 +59,17 @@
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"
     },
+    "./response-cache": {
+      "types": "./src/response-cache/index.ts",
+      "default": "./src/response-cache/index.ts"
+    },
+    "./response-cache/codec": {
+      "types": "./src/response-cache/codec.ts",
+      "default": "./src/response-cache/codec.ts"
+    },
     "./search-query": {
       "types": "./src/search-query.ts",
       "default": "./src/search-query.ts"
-    },
-    "./search-syntax": {
-      "types": "./src/search-syntax.ts",
-      "default": "./src/search-syntax.ts"
     },
     "./sentry-host": {
       "types": "./src/sentry-host.ts",
@@ -73,7 +85,13 @@
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "tsc": "tsc --noEmit"
   },
+  "dependencies": {
+    "@sentry/search-syntax": "catalog:",
+    "http-cache-semantics": "^4.2.0"
+  },
   "devDependencies": {
+    "@types/http-cache-semantics": "^4.2.0",
+    "fast-check": "^4.8.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

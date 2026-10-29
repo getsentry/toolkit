@@ -50,21 +50,34 @@ const RETRYABLE_STATUSES: ReadonlyMap<number, "any" | "idempotent"> = new Map([
 /** The response `Date` header truncates server time to whole seconds. */
 const DATE_RESOLUTION_MS = 1000;
 
-/** Whether `RETRYABLE_STATUSES` lets this failed request be sent again. */
-function isRetryable(
+/**
+ * Whether a request may be replayed after the endpoint may have run: a
+ * transient 5xx, a network error, or a timeout. True for GET, HEAD, and
+ * OPTIONS, or when the caller marks the request `idempotent`.
+ */
+export function isIdempotentRequest(
   method: string,
-  status: number,
   idempotent = false,
 ): boolean {
-  const replays = RETRYABLE_STATUSES.get(status);
+  return idempotent || IDEMPOTENT_METHODS.has(method.toUpperCase());
+}
+
+/**
+ * Whether `RETRYABLE_STATUSES` lets this failed request be sent again. With
+ * no status (a network error or timeout), the endpoint may have run, so only
+ * idempotent requests replay.
+ */
+function isRetryable(
+  method: string,
+  status: number | undefined,
+  idempotent = false,
+): boolean {
+  const replays =
+    status === undefined ? "idempotent" : RETRYABLE_STATUSES.get(status);
   if (replays === undefined) {
     return false;
   }
-  return (
-    replays === "any" ||
-    idempotent ||
-    IDEMPOTENT_METHODS.has(method.toUpperCase())
-  );
+  return replays === "any" || isIdempotentRequest(method, idempotent);
 }
 
 /**
@@ -118,7 +131,8 @@ export function nextRetryDelayMs({
   policy: RetryPolicy;
   method: string;
   idempotent?: boolean;
-  status: number;
+  /** Failed response status, or undefined for a network error or timeout. */
+  status: number | undefined;
   /** From `parseRetryDelayMs` for the failed response. */
   serverDelayMs: number | undefined;
   /** Retries already made for this request, starting at 0. */

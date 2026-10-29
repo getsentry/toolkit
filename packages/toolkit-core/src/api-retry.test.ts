@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  isIdempotentRequest,
   nextRetryDelayMs,
   parseRetryDelayMs,
   type RetryPolicy,
@@ -232,10 +233,40 @@ describe("nextRetryDelayMs", () => {
     }
   });
 
+  it("retries a network error or timeout only for idempotent requests", () => {
+    expect(nextRetryDelayMs({ ...base, status: undefined })).toBe(125);
+    expect(
+      nextRetryDelayMs({ ...base, method: "POST", status: undefined }),
+    ).toBeUndefined();
+    expect(
+      nextRetryDelayMs({
+        ...base,
+        method: "POST",
+        status: undefined,
+        idempotent: true,
+      }),
+    ).toBe(125);
+  });
+
   it("does not retry deterministic 5xx codes or other 4xx", () => {
     for (const status of [400, 404, 501, 505]) {
       expect(nextRetryDelayMs({ ...base, status })).toBeUndefined();
     }
+  });
+});
+
+describe("isIdempotentRequest", () => {
+  it("replays only GET, HEAD, and OPTIONS by default", () => {
+    for (const method of ["GET", "head", "OPTIONS"]) {
+      expect(isIdempotentRequest(method)).toBe(true);
+    }
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      expect(isIdempotentRequest(method)).toBe(false);
+    }
+  });
+
+  it("replays any method when the caller opts in", () => {
+    expect(isIdempotentRequest("POST", true)).toBe(true);
   });
 });
 

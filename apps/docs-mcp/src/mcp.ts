@@ -167,7 +167,7 @@ export function createMcpServer(
     description:
       "Given the libraries/frameworks in the user's codebase, returns the canonical Sentry feature slugs available for that platform. " +
       "Pass library slugs like 'nextjs', 'django', 'go', 'react', 'ruby', 'flutter', etc. " +
-      "Backed by an LLM agent that inspects docs.sentry.io; results are cached for 1h by libs-hash.",
+      "Runs an LLM agent on each call to inspect docs.sentry.io.",
     errorPrefix: "Failed to list features",
     inputSchema: {
       libs: z

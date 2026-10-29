@@ -246,6 +246,22 @@ describe("clearAuth: integration with per-account caches", () => {
     // their `issue view` fallback routing.
     expect(getCachedIssueOrg("12345")).toBeUndefined();
   });
+
+  test("clearAuth drops remembered completion entities", async () => {
+    const { cacheCompletionEntities, getCachedCompletionEntities } =
+      await import("../../../src/lib/db/completion-cache.js");
+
+    setAuthToken("test-token");
+    cacheCompletionEntities("issue", "previous-account-org", [
+      { value: "CLI-1", label: "Private issue title" },
+    ]);
+
+    await clearAuth();
+
+    expect(
+      getCachedCompletionEntities("issue", ["previous-account-org"]),
+    ).toEqual([]);
+  });
 });
 
 describe("getIdentityFingerprint", () => {

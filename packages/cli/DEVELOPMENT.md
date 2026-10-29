@@ -111,9 +111,11 @@ The generator reads `@sentry/api/operations` directly, without fetching a schema
 or parsing the SDK bundle. The SDK owns operation metadata; the CLI preserves
 its resource grouping and JSON output format when projecting the catalog.
 
-`pnpm run generate:command-api` follows command implementations and their
-helpers to generate API relationships from SDK calls and recognized raw request
-paths. Keep dataset and filter values in the requests themselves; do not add a
+`pnpm run generate:command-api` uses `@sentry/api/source-analysis` to follow command
+implementations and their helpers, generating API relationships from SDK calls
+and recognized raw request paths. The CLI supplies its command builders, request
+wrappers, and query context; it also reuses this analysis for DELETE checks.
+Keep dataset and filter values in the requests themselves; do not add a
 parallel list of operation names or command vocabulary. Build diagnostics report
 raw or unpublished calls that the generated catalog cannot identify, so the
 relationships describe discovered usage rather than exhaustive coverage.

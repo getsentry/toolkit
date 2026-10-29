@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { addBreadcrumb } from "@sentry/node-core/light";
+import { addBreadcrumb } from "@sentry/node";
 import { whichSync } from "../../which.js";
 import { DEFAULT_COMMAND_TIMEOUT_MS } from "../constants.js";
 import type { RunCommandsPayload, ToolResult } from "../types.js";

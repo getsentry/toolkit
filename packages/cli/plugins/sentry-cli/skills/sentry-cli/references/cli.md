@@ -232,7 +232,7 @@ Update the Sentry CLI to the latest version
 
 | Argument | Description |
 |----------|-------------|
-| `[<version>]` | Specific version (e.g. 0.5.0), or "nightly"/"stable" to switch channel; omit to update within current channel |
+| `[<version>]` | Specific version (e.g. 0.5.0), "nightly"/"stable" to switch channel, or "undo" to return to the previous version; omit to update within current channel |
 
 **Flags:**
 - `--check - Check for updates without installing`
@@ -258,6 +258,9 @@ sentry cli upgrade stable
 
 # Install a specific stable version
 sentry cli upgrade 0.5.0
+
+# Return to the version before the last upgrade
+sentry cli upgrade undo
 
 # Force re-download even if up to date
 sentry cli upgrade --force

@@ -320,7 +320,7 @@ type OpEntry = {
 
 async function buildOps(): Promise<OpEntry[]> {
   // Lazy-import production code so unit tests can import the helpers/fixtures
-  // without loading all of @sentry/node-core.
+  // without loading all of @sentry/node.
   const { detectDsn, detectAllDsns } =
     await import("../src/lib/dsn/detector.js");
   const { findProjectRoot } = await import("../src/lib/dsn/project-root.js");

@@ -79,11 +79,12 @@ fail to resolve for legacy mixed-case project slugs; keep them for display.
 
 Organization discovery uses `/api/0/organizations/`; a limit over 100 follows
 bounded pages through Sentry's Link cursors. Organization, team, and project
-lists use `@sentry/api` operations to build GET paths and queries. The MCP
-client still owns the request transport, token handling, retries, error
-types, and Zod response validation. Public SaaS hosts use `sentry.io` to list
-organizations across regions. Single-tenant hosts under `*.my.sentry.io` and
-self-hosted instances keep their configured host for this request.
+lists and most issue and event reads use `@sentry/api` operations to build GET
+paths and queries. The MCP client still owns the request transport, token
+handling, retries, error types, and Zod response validation. Public SaaS
+hosts use `sentry.io` to list organizations across regions. Single-tenant
+hosts under `*.my.sentry.io` and self-hosted instances keep their configured
+host for this request.
 
 User identity (`/api/0/auth/`, used by `whoami`) follows the same control-host
 routing. Organization-scoped requests continue to use the configured host or
@@ -280,7 +281,11 @@ Retries are:
   out than the single-wait cap fails at once with an `ApiRateLimitError` whose
   `retryAfterMs` and user message say when to retry.
 - **Abortable** — aborting the request's `signal` ends the wait.
-- **Fail-fast otherwise** — network and configuration errors are not retried.
+- **Network failures retry for idempotent requests** — when `fetch` itself
+  fails (DNS, connection refused or reset, socket timeout), only GET, HEAD,
+  and OPTIONS retry, since a write may already have reached Sentry.
+- **Fail-fast otherwise** — configuration errors (such as a malformed token)
+  are not retried.
   A rate-limited tool call returns a **Rate Limited** message with the retry
   time, not an input error.
 - **Bypassed by `allowStatuses`** — a status the caller opts into is returned
@@ -288,6 +293,13 @@ Retries are:
 
 Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
+
+The CLI sends its requests through the shared transport in
+`@sentry/toolkit-core/api-transport`, configured in
+`packages/cli/src/lib/sentry-client.ts`. It follows the same shared rule; only
+the caps differ (`RETRY_POLICY`): the hosted MCP keeps its total wait short so
+a Workers request isn't held open, while the CLI can wait longer. The CLI also
+applies its own per-request timeout, which counts as a network failure.
 
 ## Best Practices
 

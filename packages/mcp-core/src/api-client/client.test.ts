@@ -5,6 +5,7 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
@@ -1528,6 +1529,89 @@ describe("transient 5xx retry", () => {
   });
 });
 
+describe("network failure retry", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  const connectionReset = () => {
+    const error = new Error("fetch failed");
+    error.cause = new Error("read ECONNRESET");
+    return error;
+  };
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("retries a GET after a network failure and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(connectionReset())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "1",
+            name: "Test User",
+            email: "t@example.com",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.getAuthenticatedUser();
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a POST after a network failure", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(connectionReset());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.createTeam({
+      organizationSlug: "my-org",
+      name: "My Team",
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow(/Connection reset/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a malformed token, which fails before fetch", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "bad\ntoken",
+    });
+
+    await expect(apiService.getAuthenticatedUser()).rejects.toThrow(
+      /Malformed authentication token/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("rate limit retry", () => {
   let originalFetch: typeof globalThis.fetch;
   const now = Date.UTC(2026, 0, 1, 12, 0, 0, 300);
@@ -2040,6 +2124,36 @@ describe("organization SDK list pages", () => {
       "repeated pagination cursor",
     );
     expect(requests).toBe(2);
+  });
+});
+
+describe("listIssues request", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("sends an empty query so Sentry does not apply is:unresolved", async () => {
+    let params = new URLSearchParams();
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/issues/",
+        ({ request }) => {
+          params = new URL(request.url).searchParams;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    await new SentryApiService({ accessToken: "test-token" }).listIssues({
+      organizationSlug: "test-org",
+      projectId: "123",
+      sortBy: "freq",
+    });
+
+    expect(params.get("query")).toBe("");
+    expect(params.get("limit")).toBe("10");
+    expect(params.get("sort")).toBe("freq");
+    expect(params.get("statsPeriod")).toBe(DEFAULT_SEARCH_ISSUES_PERIOD);
+    expect(params.getAll("project")).toEqual(["123"]);
+    expect(params.getAll("collapse")).toEqual(["unhandled"]);
   });
 });
 

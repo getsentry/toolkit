@@ -132,6 +132,14 @@ describe("buildCategoricalChartModel", () => {
 });
 
 describe("rasterizeChart", () => {
+  test("declines dense nullable buckets instead of averaging across gaps", () => {
+    const model = buildChartModel(makeTimeseries())!;
+    model.series[0]!.values = [10, null, 20, 30, 40, 50, 60, 70, 80];
+    model.buckets = 9;
+
+    expect(rasterizeChart(model, { width: 16, height: 8 })).toBeUndefined();
+  });
+
   test("returns a canvas at the requested resolution", () => {
     const model = buildChartModel(makeTimeseries());
     const img = rasterizeChart(model!, { width: 64, height: 32 });

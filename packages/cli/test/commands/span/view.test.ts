@@ -241,6 +241,69 @@ describe("parsePositionalArgs", () => {
     });
   });
 
+  describe("whitespace-separated single-arg format (CLI-1BD)", () => {
+    test("splits '<trace-id> <span-id>' passed as one argument", () => {
+      const result = parsePositionalArgs([
+        `${VALID_TRACE_ID} ${VALID_SPAN_ID}`,
+      ]);
+      expect(result.kind).toBe("deferred");
+      if (result.kind !== "deferred") throw new Error("unreachable");
+      expect(result.rawTraceArg).toBe(VALID_TRACE_ID);
+      expect(result.rawSpanIds).toEqual([VALID_SPAN_ID]);
+    });
+
+    test("splits 'org/project/<trace-id> <span-id>' passed as one argument", () => {
+      const slashForm = `my-org/my-project/${VALID_TRACE_ID}`;
+      const result = parsePositionalArgs([`${slashForm} ${VALID_SPAN_ID}`]);
+      expect(result.kind).toBe("deferred");
+      if (result.kind !== "deferred") throw new Error("unreachable");
+      expect(result.rawTraceArg).toBe(slashForm);
+      expect(result.rawSpanIds).toEqual([VALID_SPAN_ID]);
+    });
+
+    test("splits newline-separated span IDs after the trace ID", () => {
+      const result = parsePositionalArgs([
+        `${VALID_TRACE_ID}\n${VALID_SPAN_ID}\n${VALID_SPAN_ID_2}\n`,
+      ]);
+      expect(result.kind).toBe("deferred");
+      if (result.kind !== "deferred") throw new Error("unreachable");
+      expect(result.rawTraceArg).toBe(VALID_TRACE_ID);
+      expect(result.rawSpanIds).toEqual([VALID_SPAN_ID, VALID_SPAN_ID_2]);
+    });
+
+    test("handles '<trace-id>/<span-id>' followed by newline-separated span IDs", () => {
+      const result = parsePositionalArgs([
+        `${VALID_TRACE_ID}/${VALID_SPAN_ID}\n${VALID_SPAN_ID_2}`,
+      ]);
+      expect(result.kind).toBe("resolved");
+      if (result.kind !== "resolved") throw new Error("unreachable");
+      expect(result.traceTarget.traceId).toBe(VALID_TRACE_ID);
+      expect(result.rawSpanIds).toEqual([VALID_SPAN_ID, VALID_SPAN_ID_2]);
+    });
+
+    test("handles 'org/project/<trace-id>/<span-id>' plus extra span ID args", () => {
+      const result = parsePositionalArgs([
+        `my-org/my-project/${VALID_TRACE_ID}/${VALID_SPAN_ID}`,
+        VALID_SPAN_ID_2,
+      ]);
+      expect(result.kind).toBe("resolved");
+      if (result.kind !== "resolved") throw new Error("unreachable");
+      expect(result.traceTarget.type).toBe("explicit");
+      expect(result.traceTarget.traceId).toBe(VALID_TRACE_ID);
+      expect(result.rawSpanIds).toEqual([VALID_SPAN_ID, VALID_SPAN_ID_2]);
+    });
+
+    test("still throws 'Span ID' ContextError when only a trace ID is given", () => {
+      expect(() => parsePositionalArgs([`  ${VALID_TRACE_ID}  `])).toThrow(
+        ContextError,
+      );
+    });
+
+    test("whitespace-only argument is treated as no arguments", () => {
+      expect(() => parsePositionalArgs(["   \n "])).toThrow(ContextError);
+    });
+  });
+
   describe("error cases", () => {
     test("throws ContextError for empty args", () => {
       expect(() => parsePositionalArgs([])).toThrow(ContextError);

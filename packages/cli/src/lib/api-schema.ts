@@ -6,6 +6,7 @@
  * `script/generate-api-schema.ts` from Sentry's OpenAPI specification.
  */
 
+import type { ApiOperation } from "@sentry/api/operations";
 import endpoints from "../generated/api-schema.json";
 import { fuzzyMatch } from "./fuzzy.js";
 
@@ -53,7 +54,7 @@ export type ApiEndpoint = {
   /** SDK function name from @sentry/api (empty string if unmapped) */
   fn: string;
   /** HTTP method (GET, POST, PUT, DELETE, PATCH) */
-  method: string;
+  method: ApiOperation["method"];
   /** URL path template with {param} placeholders */
   path: string;
   /** Human-readable description of the endpoint */

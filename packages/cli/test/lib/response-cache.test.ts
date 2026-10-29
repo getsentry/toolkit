@@ -5,8 +5,9 @@
  * Uses isolated temp directories per test to avoid interference.
  */
 
-import { readdir } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import CachePolicy from "http-cache-semantics";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import {
@@ -15,7 +16,6 @@ import {
   disableResponseCache,
   getCachedResponse,
   invalidateCachedResponsesMatching,
-  normalizeUrl,
   resetCacheState,
   storeCachedResponse,
 } from "../../src/lib/response-cache.js";
@@ -337,62 +337,18 @@ describe("cache bypass", () => {
 });
 
 // ---------------------------------------------------------------------------
-// normalizeUrl
-// ---------------------------------------------------------------------------
-
-describe("normalizeUrl", () => {
-  test("sorts query params alphabetically", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.io/api/0/issues/?b=2&a=1",
-    );
-    expect(result).toBe("GET|https://sentry.io/api/0/issues/?a=1&b=2");
-  });
-
-  test("uppercases the method", () => {
-    const result = normalizeUrl("get", "https://sentry.io/api/0/issues/");
-    expect(result).toMatch(/^GET\|/);
-  });
-
-  test("throws on invalid URLs", () => {
-    expect(() => normalizeUrl("GET", "not-a-valid-url")).toThrow();
-  });
-
-  test("handles self-hosted URLs with unusual schemes", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.mycompany.internal/api/0/issues/",
-    );
-    expect(result).toBe("GET|https://sentry.mycompany.internal/api/0/issues/");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildCacheKey
+// buildCacheKey — key derivation is tested in toolkit-core; this covers the
+// CLI wrapper's default identity, taken from the active login
 // ---------------------------------------------------------------------------
 
 describe("buildCacheKey", () => {
-  test("produces a 64-char hex string", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test("is deterministic", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toBe(buildCacheKey("GET", TEST_URL));
-  });
-
-  test("different methods produce different keys", () => {
-    expect(buildCacheKey("GET", TEST_URL)).not.toBe(
-      buildCacheKey("POST", TEST_URL),
-    );
-  });
-
-  test("different identities produce different keys for the same URL", () => {
+  test("different identities produce different keys for the same URL", async () => {
     // Switching accounts must route reads/writes through a different
     // namespace so users never see each other's cached data.
     setAuthToken("alice_access", 3600, "alice_refresh");
-    const aliceKey = buildCacheKey("GET", TEST_URL);
+    const aliceKey = await buildCacheKey("GET", TEST_URL);
     setAuthToken("bob_access", 3600, "bob_refresh");
-    const bobKey = buildCacheKey("GET", TEST_URL);
+    const bobKey = await buildCacheKey("GET", TEST_URL);
     expect(aliceKey).not.toBe(bobKey);
   });
 });
@@ -529,7 +485,7 @@ describe("file structure", () => {
     const cacheDir = join(getConfigDir(), "cache", "responses");
     const files = await readdir(cacheDir);
     expect(files.length).toBe(1);
-    expect(files[0]).toMatch(/^[0-9a-f]{64}\.json$/);
+    expect(files[0]).toMatch(/^[0-9a-f]{64}\.v2\.json$/);
   });
 
   test("atomic write leaves no temp file behind on success", async () => {
@@ -679,5 +635,97 @@ describe("invalidateCachedResponsesMatching with query params", () => {
         {},
       ),
     ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Compressed entries and entries from older CLI versions
+// ---------------------------------------------------------------------------
+
+describe("entry format", () => {
+  const cacheDir = () => join(getConfigDir(), "cache", "responses");
+
+  test("stores a compressed body and serves it byte for byte", async () => {
+    // Whitespace and key order survive, which re-serialized JSON would lose.
+    const text = `{ "issues": ${JSON.stringify(
+      Array.from({ length: 100 }, (_, i) => ({
+        id: String(i),
+        status: "unresolved",
+      })),
+    )} }`;
+    await storeCachedResponse(
+      TEST_METHOD,
+      TEST_URL,
+      {},
+      new Response(text, { headers: { "content-type": "application/json" } }),
+    );
+
+    const [file] = await readdir(cacheDir());
+    const raw = await readFile(join(cacheDir(), file!), "utf-8");
+    const stored = JSON.parse(raw) as { body: { encoding: string } };
+    expect(["zstd", "br"]).toContain(stored.body.encoding);
+    expect(raw.length).toBeLessThan(text.length);
+
+    const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
+    expect(await cached!.text()).toBe(text);
+  });
+
+  test("does not cache a body that is not JSON", async () => {
+    await storeCachedResponse(
+      TEST_METHOD,
+      TEST_URL,
+      {},
+      new Response("<html>maintenance</html>", { status: 200 }),
+    );
+
+    expect(await getCachedResponse(TEST_METHOD, TEST_URL, {})).toBeUndefined();
+  });
+
+  /** Write an entry the way CLI versions before compression did. */
+  async function writeLegacyEntry(url: string, body: unknown): Promise<string> {
+    const key = await buildCacheKey(TEST_METHOD, url);
+    const policy = new CachePolicy(
+      { url, method: "GET", headers: {} },
+      { status: 200, headers: { "content-type": "application/json" } },
+      { shared: false },
+    );
+    const now = Date.now();
+    await mkdir(cacheDir(), { recursive: true });
+    const path = join(cacheDir(), `${key}.json`);
+    await writeFile(
+      path,
+      JSON.stringify({
+        policy: policy.toObject(),
+        body,
+        status: 200,
+        headers: { link: '<https://us.sentry.io/next>; rel="next"' },
+        url,
+        identity: undefined,
+        createdAt: now,
+        expiresAt: now + 60_000,
+      }),
+    );
+    return path;
+  }
+
+  test("serves an entry written by an older CLI version", async () => {
+    await writeLegacyEntry(TEST_URL, TEST_BODY);
+
+    const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
+
+    expect(await cached!.json()).toEqual(TEST_BODY);
+    expect(cached!.headers.get("link")).toContain('rel="next"');
+  });
+
+  test("replaces an older CLI version's entry when storing", async () => {
+    const legacyPath = await writeLegacyEntry(TEST_URL, { stale: true });
+    const fresh = { stale: false };
+
+    await storeCachedResponse(TEST_METHOD, TEST_URL, {}, mockResponse(fresh));
+
+    const files = await readdir(cacheDir());
+    expect(files).not.toContain(legacyPath.split("/").at(-1));
+    const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
+    expect(await cached!.json()).toEqual(fresh);
   });
 });

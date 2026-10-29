@@ -45,7 +45,7 @@
     "@vitejs/plugin-react": "catalog:",
     "tailwindcss": "catalog:",
     "urlpattern-polyfill": "^10.1.0",
-    "undici": "^7.24.4",
+    "undici": "^7.30.1",
     "vite": "catalog:",
     "vitest": "catalog:",
     "miniflare": "catalog:",

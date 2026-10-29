@@ -13,6 +13,7 @@
  * - repositories: repository listing
  * - integrations: installed integration listing and removal
  * - issues: issue listing, lookup, status updates
+ * - issue-tags: issue tag distributions
  * - events: event retrieval and resolution
  * - replays: replay listing and detail lookup
  * - traces: trace details and transactions
@@ -94,6 +95,7 @@ export {
   parseLinkHeader,
   rawApiRequest,
 } from "./api/infrastructure.js";
+export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
   getIssue,
@@ -211,7 +213,12 @@ export {
 } from "./api/teams.js";
 export type {
   FetchMultiSpanDetailsOptions,
+  ListTraceItemAttributesOptions,
   TraceItemAttribute,
+  TraceItemAttributeContext,
+  TraceItemAttributeDataset,
+  TraceItemAttributeDefinition,
+  TraceItemAttributeValueType,
   TraceItemDetail,
 } from "./api/traces.js";
 export {
@@ -221,6 +228,7 @@ export {
   getSpanDetails,
   getTraceMeta,
   listSpans,
+  listTraceItemAttributes,
   listTransactions,
   normalizeTraceSpan,
   REDUNDANT_DETAIL_ATTRS,

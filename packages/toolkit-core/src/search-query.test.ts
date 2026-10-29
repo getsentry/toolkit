@@ -3,11 +3,17 @@
  *
  * The general AND/OR rules are covered through the CLI wrapper in
  * `packages/cli/test/lib/search-query*.test.ts`. These tests cover what
- * `issueSearch: true` adds: `is:` OR groups and paren unwrapping.
+ * `issueSearch: true` adds: `is:` OR groups and paren unwrapping, and
+ * the completion of the last term of an issue search query.
  */
 
 import { describe, expect, it } from "vitest";
-import { rewriteSearchQuery, SearchQueryError } from "./search-query.js";
+import {
+  completeSearchQuery,
+  ISSUE_IS_VALUES,
+  rewriteSearchQuery,
+  SearchQueryError,
+} from "./search-query.js";
 
 function rewriteIssues(query: string): string {
   return rewriteSearchQuery(query, { issueSearch: true }).query;
@@ -169,5 +175,35 @@ describe("rewriteSearchQuery: parentheses in issue search", () => {
 
   it("keeps parentheses outside issue search", () => {
     expect(rewriteSearchQuery("(is:unresolved)").query).toBe("(is:unresolved)");
+  });
+});
+
+describe("completeSearchQuery", () => {
+  const values = { is: ISSUE_IS_VALUES, level: ["error", "warning"] };
+  const complete = (query: string) => completeSearchQuery(query, values);
+
+  it("completes known values, keeping earlier terms and negation", () => {
+    expect(complete("is:unr")).toEqual(["is:unresolved"]);
+    expect(complete("level:error !is:reg")).toEqual([
+      "level:error !is:regressed",
+    ]);
+    expect(complete("is:")).toContain("is:archived_until_escalating");
+    expect(complete("level:WA")).toEqual(["level:warning"]);
+  });
+
+  it("completes known keys for a bare word or a new term", () => {
+    expect(complete("le")).toEqual(["level:"]);
+    expect(complete("foo !i")).toEqual(["foo !is:"]);
+    expect(complete("is:unresolved ")).toEqual([
+      "is:unresolved is:",
+      "is:unresolved level:",
+    ]);
+  });
+
+  it("suggests nothing for values it cannot know", () => {
+    expect(complete("release:1.")).toEqual([]);
+    expect(complete("constructor:")).toEqual([]);
+    expect(complete('is:"unr')).toEqual([]);
+    expect(complete('"timeout er')).toEqual([]);
   });
 });

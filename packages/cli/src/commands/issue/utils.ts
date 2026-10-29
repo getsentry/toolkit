@@ -27,7 +27,7 @@ import {
   parseIssueArg,
   splitNewlineArg,
 } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { parseIssueTarget } from "../../lib/completion-target.js";
 import {
   clearCachedIssueOrg,
   getCachedIssueOrg,
@@ -57,7 +57,7 @@ import {
 import { parseSentryUrl } from "../../lib/sentry-url-parser.js";
 import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import { isAllDigits } from "../../lib/utils.js";
+import { isAllDigits, shellQuote } from "../../lib/utils.js";
 import type { SentryIssue } from "../../types/index.js";
 import { type AutofixState, isTerminalStatus } from "../../types/seer.js";
 
@@ -71,7 +71,7 @@ export const issueIdPositional = {
       placeholder: "issue",
       brief:
         "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix",
-      parse: parseOrgProjectTarget,
+      parse: parseIssueTarget,
     },
   ],
 } as const;
@@ -82,7 +82,7 @@ export const issueIdsPositional = {
   parameter: {
     placeholder: "issue",
     brief: "One or more issue IDs",
-    parse: parseOrgProjectTarget,
+    parse: parseIssueTarget,
   },
 } as const;
 
@@ -159,11 +159,33 @@ export async function mapIssueArgsConcurrently<T>(
  * @param command - The issue subcommand (e.g., "view", "explain")
  * @param issueId - The user-provided issue ID
  * @param base - Base command prefix (default: "sentry issue")
+ * @param trailingArgs - Additional arguments preserved and shell-quoted for retries
  */
 export function buildCommandHint(
   command: string,
   issueId: string,
   base = "sentry issue",
+  trailingArgs: readonly string[] = [],
+): string {
+  return appendCommandArguments(
+    buildIssueTargetHint(command, issueId, base),
+    trailingArgs,
+  );
+}
+
+/** Preserve command-specific positionals and flags in issue recovery hints. */
+function appendCommandArguments(
+  command: string,
+  trailingArgs: readonly string[],
+): string {
+  return [command, ...trailingArgs.map(shellQuote)].join(" ");
+}
+
+/** Build the issue target portion without command-specific trailing arguments. */
+function buildIssueTargetHint(
+  command: string,
+  issueId: string,
+  base: string,
 ): string {
   // URLs are self-contained — no enrichment needed
   if (issueId.startsWith("http://") || issueId.startsWith("https://")) {
@@ -241,6 +263,8 @@ type IssueCommandContext = {
   command: string;
   /** Command domain used for recovery suggestions. */
   commandBase: string;
+  /** Remaining positional arguments and flags to preserve in retry commands. */
+  trailingArgs: readonly string[];
 };
 
 /**
@@ -285,7 +309,7 @@ async function resolveProjectSearchFallback(
   suffix: string,
   commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
-  const { command, commandBase, commandHint } = commandContext;
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
   const { projects } = await findProjectsBySlug(projectSlug.toLowerCase());
 
   if (projects.length === 0) {
@@ -297,7 +321,7 @@ async function resolveProjectSearchFallback(
       [
         "No issue with this short ID found in any accessible organization",
         "Check the project prefix and suffix, or use a numeric issue ID",
-        `Specify the org: ${commandBase} ${command} <org>/${fullShortId}`,
+        `Specify the org: ${appendCommandArguments(`${commandBase} ${command} <org>/${fullShortId}`, trailingArgs)}`,
       ],
     );
   }
@@ -310,7 +334,7 @@ async function resolveProjectSearchFallback(
       commandHint,
       [
         `Found in: ${orgList}`,
-        `Specify the org: ${commandBase} ${command} <org>/${projectSlug}-${suffix}`,
+        `Specify the org: ${appendCommandArguments(`${commandBase} ${command} <org>/${projectSlug}-${suffix}`, trailingArgs)}`,
       ],
     );
   }
@@ -395,7 +419,7 @@ async function resolveProjectSearch(
   cwd: string,
   commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
-  const { command, commandBase, commandHint } = commandContext;
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
   // 1. Try alias cache first (fast, local lookup)
   const aliasResult = await tryResolveFromAlias(
     projectSlug.toLowerCase(),
@@ -473,7 +497,7 @@ async function resolveProjectSearch(
       commandHint,
       [
         `Found in: ${orgList}`,
-        `Specify the org: ${commandBase} ${command} <org>/${projectSlug}-${suffix}`,
+        `Specify the org: ${appendCommandArguments(`${commandBase} ${command} <org>/${projectSlug}-${suffix}`, trailingArgs)}`,
       ],
     );
   }
@@ -531,14 +555,14 @@ function resolveExplicitOrgSuffix(
   suffix: string,
   commandContext: IssueCommandContext,
 ): never {
-  const { command, commandBase, commandHint } = commandContext;
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
   throw new ResolutionError(
     `Issue suffix '${suffix}'`,
     "could not be resolved without project context",
     commandHint,
     [
       `The format '${org}/${suffix}' requires a project to build the full issue ID.`,
-      `Use: ${commandBase} ${command} ${org}/<project>-${suffix}`,
+      `Use: ${appendCommandArguments(`${commandBase} ${command} ${org}/<project>-${suffix}`, trailingArgs)}`,
     ],
   );
 }
@@ -664,6 +688,8 @@ export type ResolveIssueOptions = {
   command: string;
   /** Base command prefix for error hints (default: "sentry issue") */
   commandBase?: string;
+  /** Remaining positional arguments and flags to preserve in retry commands. */
+  trailingArgs?: readonly string[];
 };
 
 /**
@@ -758,9 +784,9 @@ async function fetchIssueByNumericId(
 async function resolveNumericIssue(
   id: string,
   cwd: string,
-  command: string,
-  commandBase = "sentry issue",
+  commandContext: IssueCommandContext,
 ): Promise<ResolvedIssueResult> {
+  const { command, commandBase, trailingArgs } = commandContext;
   const resolvedOrg = await resolveOrg({ cwd });
   // Prefer explicit context over the cache — `resolveOrg()` already factors
   // in env vars and config defaults that may point at a different org.
@@ -809,10 +835,13 @@ async function resolveNumericIssue(
       // suggesting the old slug in the hint would mislead the user. Only
       // explicit `resolvedOrg` is worth preserving.
       const orgHint = resolvedOrg?.org ?? "<org>";
-      const hint = `${commandBase} ${command} ${orgHint}/${id}`;
+      const hint = appendCommandArguments(
+        `${commandBase} ${command} ${orgHint}/${id}`,
+        trailingArgs,
+      );
       throw new ResolutionError(`Issue ${id}`, "not found", hint, [
         `No issue with numeric ID ${id} found — you may not have access, or it may have been deleted.`,
-        `If this is a short ID suffix, try: ${commandBase} ${command} <project>-${id}`,
+        `If this is a short ID suffix, try: ${appendCommandArguments(`${commandBase} ${command} <project>-${id}`, trailingArgs)}`,
       ]);
     }
     throw err;
@@ -839,21 +868,27 @@ async function resolveNumericIssue(
 export async function resolveIssue(
   options: ResolveIssueOptions,
 ): Promise<ResolvedIssueResult> {
-  const { issueArg, cwd, command, commandBase } = options;
+  const { issueArg, cwd, command, commandBase, trailingArgs = [] } = options;
   const effectiveCommandBase = commandBase ?? "sentry issue";
   const parsed = parseIssueArg(issueArg);
-  const commandHint = buildCommandHint(command, issueArg, effectiveCommandBase);
+  const commandHint = buildCommandHint(
+    command,
+    issueArg,
+    effectiveCommandBase,
+    trailingArgs,
+  );
   const commandContext: IssueCommandContext = {
     command,
     commandBase: effectiveCommandBase,
     commandHint,
+    trailingArgs,
   };
 
   let result: ResolvedIssueResult;
 
   switch (parsed.type) {
     case "numeric":
-      result = await resolveNumericIssue(parsed.id, cwd, command, commandBase);
+      result = await resolveNumericIssue(parsed.id, cwd, commandContext);
       break;
 
     case "explicit": {
@@ -883,7 +918,7 @@ export async function resolveIssue(
             commandHint,
             [
               `No issue with numeric ID ${parsed.numericId} found in org '${org}' — you may not have access, or it may have been deleted.`,
-              `If this is a short ID suffix, try: ${effectiveCommandBase} ${command} <project>-${parsed.numericId}`,
+              `If this is a short ID suffix, try: ${appendCommandArguments(`${effectiveCommandBase} ${command} <project>-${parsed.numericId}`, trailingArgs)}`,
             ],
           );
         }
@@ -963,7 +998,12 @@ export async function resolveOrgAndIssueId(
 ): Promise<{ org: string; issueId: string; projectId?: string }> {
   const result = await resolveIssue(options);
   if (!result.org) {
-    const commandHint = buildCommandHint(options.command, options.issueArg);
+    const commandHint = buildCommandHint(
+      options.command,
+      options.issueArg,
+      options.commandBase,
+      options.trailingArgs,
+    );
     throw new ContextError("Organization", commandHint);
   }
   return {

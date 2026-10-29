@@ -1,7 +1,7 @@
 /**
  * Unit tests for handleFinalResult in wizard-runner.ts.
  *
- * Kept as a mocked sibling file because vi.mock() on @sentry/node-core/light
+ * Kept as a mocked sibling file because vi.mock() on @sentry/node
  * would pollute the module graph for other wizard-runner tests that may not
  * want Sentry calls mocked.
  */
@@ -20,7 +20,7 @@ const { tags } = vi.hoisted(() => ({
   tags: {} as Record<string, unknown>,
 }));
 
-vi.mock("@sentry/node-core/light", () => ({
+vi.mock("@sentry/node", () => ({
   addBreadcrumb: () => null,
   captureException: () => null,
   getTraceData: () => ({}),

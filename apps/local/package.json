@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:integration": "vitest run src/App.integration.test.tsx",
+    "test": "pnpm --filter sentry exec node script/ensure-generated.mjs schema && vitest run",
+    "test:integration": "pnpm run test src/App.integration.test.tsx",
     "typecheck": "tsc -b",
     "sample": "tsx scripts/replay.ts"
   },

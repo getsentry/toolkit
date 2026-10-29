@@ -27,6 +27,7 @@ const events = {
     },
   ],
   deprecated: false,
+  idempotent: true,
 } as const satisfies ApiOperation;
 
 describe("SDK catalog projection", () => {

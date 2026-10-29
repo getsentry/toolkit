@@ -10,7 +10,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
-import { captureException } from "@sentry/node-core/light";
+import { captureException } from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
