@@ -13,6 +13,63 @@ const event = (id: string) =>
   `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"hello"}`;
 
 describe("shared telemetry receiver", () => {
+  test.each([
+    "stream",
+    "envelope",
+    "envelope-slash",
+    "scoped-ingest",
+    "scoped-stream",
+  ])(
+    "%s rejects unsupported media types without acknowledging or retaining their body",
+    async (route) => {
+      const plane = createLocalControlPlane({ controlToken: "media-type" });
+      const session = plane.sessionStore.create({
+        label: "media-type",
+        cwd: "/test",
+      });
+      const scoped = route.startsWith("scoped-");
+      const buffer = scoped
+        ? plane.sessionStore.getBuffer(session.id)
+        : createLocalTelemetryBuffer();
+      const app = scoped ? plane.app : buildApp(buffer);
+      const capabilities = plane.sessionStore.getCapabilities(session.id);
+      const paths: Record<string, string> = {
+        stream: "/stream",
+        envelope: "/api/42/envelope",
+        "envelope-slash": "/api/42/envelope/",
+        "scoped-ingest": `/_local/v1/sessions/${session.id}/ingest/${capabilities.ingest}`,
+        "scoped-stream": `/_local/v1/sessions/${session.id}/stream?cap=${capabilities.ingest}`,
+      };
+      try {
+        for (const contentType of [
+          "application/json",
+          "application/json; charset=utf-8",
+          "application/octet-stream",
+        ]) {
+          const response = await app.request(paths[route], {
+            method: "POST",
+            headers: { "Content-Type": contentType },
+            body: event("rejected"),
+          });
+          expect(response.status).toBe(415);
+          expect(response.headers.get("Retry-After")).toBeNull();
+          expect(buffer.read({ all: true })).toEqual([]);
+          expect(buffer.pipeline.getEnvelopes()).toEqual([]);
+        }
+        const accepted = await app.request(paths[route], {
+          method: "POST",
+          headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+          body: event("accepted"),
+        });
+        expect(accepted.status).toBe(204);
+        expect(buffer.read({ all: true })).toHaveLength(1);
+      } finally {
+        buffer.dispose();
+        if (!scoped) plane.sessionStore.getBuffer(session.id).dispose();
+      }
+    },
+  );
+
   test("accepts streamed span v2 through the shared pipeline", async () => {
     const buffer = createLocalTelemetryBuffer();
     try {

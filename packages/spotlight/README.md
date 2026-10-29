@@ -81,7 +81,7 @@ An optional `enrichStacktrace(event, { signal })` hook receives a copied event. 
 
 ### Read APIs and JSON
 
-Accept a `TelemetryReader` from `/sdk/core` in consumers that only query telemetry. Both factories implement it. `createTelemetryReader(getSnapshot)` also constructs a reader over an existing snapshot source. Singular getters such as `getTrace(id)` and `getEvent(id)` return `undefined` when absent; collection getters return readonly arrays. All processed timestamps and durations use milliseconds; time bounds are inclusive Unix milliseconds.
+Accept a `TelemetryReader` from `@sentry/spotlight` in consumers that only query telemetry. Both factories implement it. `createTelemetryReader(getSnapshot)` also constructs a reader over an existing snapshot source. Singular getters such as `getTrace(id)` and `getEvent(id)` return `undefined` when absent; collection getters return readonly arrays. All processed timestamps and durations use milliseconds; time bounds are inclusive Unix milliseconds.
 
 ```ts
 const queries = reader.getDatabaseQuerySummaries({

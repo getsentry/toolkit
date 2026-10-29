@@ -1,8 +1,15 @@
 import { stringifyValue } from "../utils/stringifyValue.ts";
 import { finiteNumber } from "../utils/finiteNumber.ts";
 import { getAllSpansInTree } from "../store/helpers.ts";
-import type { AILibraryHandler, AIToolCall, AITrace, Span } from "../types.ts";
+import type {
+  AILibraryHandler,
+  AIPrompt,
+  AIToolCall,
+  AITrace,
+  Span,
+} from "../types.ts";
 import { extractFinishReason } from "./finishReason.ts";
+import { parsed, record } from "../internal/wireValues.ts";
 
 // https://ai-sdk.dev/docs/ai-sdk-core/telemetry
 const AI_SPAN_OP_PREFIX = "gen_ai.";
@@ -316,7 +323,7 @@ function normalizeMessageContent(content: unknown): string {
     return content
       .filter(
         (block): block is { type: string; text: string } =>
-          block.type === "text" && typeof block.text === "string",
+          block?.type === "text" && typeof block.text === "string",
       )
       .map((block) => block.text)
       .join("");
@@ -324,14 +331,31 @@ function normalizeMessageContent(content: unknown): string {
   return "";
 }
 
+function normalizePromptMessages(value: unknown): AIPrompt["messages"] {
+  const messages = parsed(value);
+  if (!Array.isArray(messages)) return undefined;
+  const normalized: NonNullable<AIPrompt["messages"]> = [];
+  for (const value of messages) {
+    const message = record(value);
+    if (typeof message.role !== "string") return undefined;
+    normalized.push({
+      ...message,
+      role: message.role,
+      content: normalizeMessageContent(message.content),
+    });
+  }
+  return normalized;
+}
+
 function parseSpanData(spans: Span[], trace: AITrace) {
+  const promptState = { hasRequestMessages: false };
   const responseState = { finishReasonFromText: false };
   for (const span of spans) {
     if (!span.data) continue;
 
     extractAIMetadata(span, trace);
     extractTelemetryMetadata(span, trace);
-    extractPromptData(span, trace);
+    extractPromptData(span, trace, promptState);
     extractResponseData(span, trace, responseState);
     extractToolCallData(span, trace);
   }
@@ -386,49 +410,43 @@ function extractTelemetryMetadata(span: Span, trace: AITrace) {
   }
 }
 
-function extractPromptData(span: Span, trace: AITrace) {
-  if (!span.data) return;
+function extractPromptData(
+  span: Span,
+  trace: AITrace,
+  state: { hasRequestMessages: boolean },
+) {
+  if (!span.data || state.hasRequestMessages) return;
 
+  const requestMessages = span.data[AI_PROMPT_MESSAGES_FIELD];
   const promptField = extractFieldFromSpan(span.data, "PROMPT");
-  if (promptField && !trace.prompt) {
-    try {
-      const parsed = JSON.parse(stringifyValue(promptField));
-      // Normalize message content from v2 array format to string
-      if (parsed.messages && Array.isArray(parsed.messages)) {
-        parsed.messages = parsed.messages.map(
-          (msg: { role: string; content: unknown }) => ({
-            ...msg,
-            content: normalizeMessageContent(msg.content),
-          }),
-        );
-      }
-      trace.prompt = parsed;
-    } catch {
-      trace.prompt = {
-        messages: [{ role: "unknown", content: stringifyValue(promptField) }],
-      };
-    }
+  const promptValue = parsed(promptField);
+  const prompt = record(promptValue);
+  const system =
+    typeof prompt.system === "string" ? prompt.system : trace.prompt?.system;
+  const structured = normalizePromptMessages(requestMessages);
+  if (structured !== undefined) {
+    trace.prompt = { messages: structured, system };
+    state.hasRequestMessages = true;
+    return;
   }
+  if (trace.prompt) return;
 
-  const promptMessages = span.data[AI_PROMPT_MESSAGES_FIELD];
-  if (promptMessages && !trace.prompt) {
-    try {
-      const messages = JSON.parse(stringifyValue(promptMessages));
-      // Normalize message content from v2 array format to string
-      const normalizedMessages = messages.map(
-        (msg: { role: string; content: unknown }) => ({
-          ...msg,
-          content: normalizeMessageContent(msg.content),
-        }),
-      );
-      trace.prompt = { messages: normalizedMessages };
-    } catch {
+  const fallback = normalizePromptMessages(prompt.messages);
+  if (fallback !== undefined) {
+    trace.prompt = { messages: fallback, system };
+  } else if (typeof prompt.prompt === "string") {
+    trace.prompt = {
+      messages: [{ role: "user", content: prompt.prompt }],
+      system,
+    };
+  } else if (system !== undefined) {
+    trace.prompt = { system };
+  } else {
+    const raw = requestMessages ?? promptValue;
+    if (raw !== undefined && raw !== null)
       trace.prompt = {
-        messages: [
-          { role: "unknown", content: stringifyValue(promptMessages) },
-        ],
+        messages: [{ role: "unknown", content: stringifyValue(raw) }],
       };
-    }
   }
 }
 

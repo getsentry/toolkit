@@ -162,11 +162,7 @@ export function getSpansFromProfile(
     if (sampleTs < startTs || sampleTs > endTs) {
       continue;
     }
-    const timestamp = nextSampleTimestamps[sampleIdx] ?? endTs;
-
-    if (timestamp > endTs) {
-      continue;
-    }
+    const timestamp = Math.min(nextSampleTimestamps[sampleIdx] ?? endTs, endTs);
     const commonAttributes = {
       start_timestamp: sampleTs,
       timestamp,

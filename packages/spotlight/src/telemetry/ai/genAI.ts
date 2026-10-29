@@ -354,10 +354,11 @@ function extractResponseData(
   const toolCalls = span.data[GEN_AI_RESPONSE_TOOL_CALLS_FIELD];
   if (toolCalls) {
     try {
-      trace.response.toolCalls =
-        typeof toolCalls === "string"
-          ? JSON.parse(toolCalls)
-          : (toolCalls as AIToolCall[]);
+      const parsed: unknown =
+        typeof toolCalls === "string" ? JSON.parse(toolCalls) : toolCalls;
+      if (Array.isArray(parsed)) {
+        trace.response.toolCalls = parsed;
+      }
     } catch {
       // ignore unparseable tool call payloads
     }

@@ -52,8 +52,15 @@ export function localEnvelopeContentType(value?: string): string {
 }
 
 /** Convert SDK cancellation/admission outcomes into transport retry responses. */
-export function localIngestStatus(receipt: IngestResult): 204 | 400 | 503 {
+export function localIngestStatus(
+  receipt: IngestResult,
+): 204 | 400 | 415 | 503 {
   if (receipt.status === "invalid") return 400;
+  if (
+    receipt.status === "ignored" &&
+    receipt.reason === "unsupported_content_type"
+  )
+    return 415;
   if (
     receipt.status === "ignored" &&
     ["queue_full", "disposed", "reset", "aborted"].includes(receipt.reason)

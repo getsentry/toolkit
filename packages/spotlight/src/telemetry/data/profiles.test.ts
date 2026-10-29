@@ -252,13 +252,14 @@ describe("profile graft thread selection", () => {
     expect(target.spans.get(spans[3].span_id)).toBe(spans[3]);
   });
 
-  it("keeps gap bounds when a same-thread next sample falls beyond the gap", () => {
+  it("clips an in-gap sample when its same-thread next sample falls beyond the gap", () => {
     const spans = getSpansFromProfile(
       trace(),
       profile({
         samples: [
           { thread_id: "main", stack_id: 0, start_timestamp: 0 },
           { thread_id: "main", stack_id: 0, start_timestamp: 4 },
+          { thread_id: "worker", stack_id: 0, start_timestamp: 6 },
           { thread_id: "main", stack_id: 0, start_timestamp: 12 },
         ],
       }),
@@ -267,7 +268,9 @@ describe("profile graft thread selection", () => {
       8,
       new Set(),
     );
-    expect(spans).toEqual([]);
+    expect(spans).toMatchObject([
+      { op: "main", start_timestamp: 4, timestamp: 8 },
+    ]);
   });
 
   it.each(["previous", "next", "parent"])(
