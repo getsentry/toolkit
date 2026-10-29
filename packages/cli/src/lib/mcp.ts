@@ -147,8 +147,13 @@ export function resolveStaticMcpAccessToken(
   return token;
 }
 
-/** Start the local stdio server without introducing a second auth flow. */
-export async function startMcpServer(args: string[]): Promise<void> {
+/**
+ * Start the local stdio server without introducing a second auth flow.
+ *
+ * Resolves `true` once the server is running, or `false` when the invocation
+ * only printed output (`--help`, `--version`) and the process can exit.
+ */
+export async function startMcpServer(args: string[]): Promise<boolean> {
   if (args[0] === "auth") {
     throw new ValidationError(
       "Use `sentry auth` to manage credentials for `sentry mcp`.",
@@ -160,7 +165,7 @@ export async function startMcpServer(args: string[]): Promise<void> {
   const invocation = parseMcpInvocation(prepareMcpServerArgs(args), env);
   if (invocation.kind === "output") {
     process.stdout.write(`${invocation.text}\n`);
-    return;
+    return false;
   }
 
   const { config } = invocation;
@@ -170,7 +175,7 @@ export async function startMcpServer(args: string[]): Promise<void> {
       accessToken: resolveStaticMcpAccessToken({ ...config, accessToken }),
       env,
     });
-    return;
+    return true;
   }
 
   serveMcpStdio(config, {
@@ -180,4 +185,5 @@ export async function startMcpServer(args: string[]): Promise<void> {
     refreshAccessToken: () => resolveCliMcpAccessToken(config, { force: true }),
     env,
   });
+  return true;
 }

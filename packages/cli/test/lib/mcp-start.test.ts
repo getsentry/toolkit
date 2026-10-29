@@ -46,7 +46,7 @@ afterEach(async () => {
 
 async function start(args: string[]): Promise<Served> {
   const { startMcpServer } = await import("../../src/lib/mcp.js");
-  await startMcpServer(args);
+  await expect(startMcpServer(args)).resolves.toBe(true);
   expect(served.calls).toHaveLength(1);
   const [call] = served.calls;
   if (!call) {
@@ -185,7 +185,7 @@ describe("startMcpServer output flags", () => {
         .mockImplementation(() => true);
       const { startMcpServer } = await import("../../src/lib/mcp.js");
 
-      await startMcpServer([flag]);
+      await expect(startMcpServer([flag])).resolves.toBe(false);
 
       expect(served.calls).toHaveLength(0);
       expect(write).toHaveBeenCalledWith(

@@ -25,12 +25,18 @@ async function main(args: string[]): Promise<void> {
   }
 
   if (args[0] === "auth") {
-    const { runMcpServerAuth } = await import("./lib/mcp/auth.js");
+    const [{ runMcpServerAuth }, { releaseProcessResources }] =
+      await Promise.all([
+        import("./lib/mcp/auth.js"),
+        import("./lib/mcp/run.js"),
+      ]);
     try {
       await runMcpServerAuth(args.slice(1));
     } catch (err) {
       process.stderr.write(`Error: ${formatError(err)}\n`);
       process.exitCode = getExitCode(err);
+    } finally {
+      await releaseProcessResources();
     }
     return;
   }

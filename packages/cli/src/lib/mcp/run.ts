@@ -7,21 +7,31 @@
 import { formatError, getExitCode } from "../errors.js";
 import { startMcpServer } from "../mcp.js";
 
+/**
+ * Release network resources after a finite MCP invocation, mirroring the
+ * teardown `runCli` applies to every other drained command. Never call this
+ * while a stdio server is running: it would close the server's dispatcher and
+ * arm a force-exit on macOS.
+ */
+export async function releaseProcessResources(): Promise<void> {
+  const [{ scheduleForceExit }, { closeGlobalDispatcher }] = await Promise.all([
+    import("../force-exit.js"),
+    import("../close-dispatcher.js"),
+  ]);
+  scheduleForceExit();
+  await closeGlobalDispatcher();
+}
+
 export async function runMcpServer(args: string[]): Promise<void> {
   try {
-    await startMcpServer(args);
+    if (await startMcpServer(args)) {
+      return;
+    }
   } catch (mcpError) {
     process.stderr.write(`Error: ${formatError(mcpError)}\n`);
     process.exitCode = getExitCode(mcpError);
-    // MCP setup errors are terminal, unlike a running stdio server. Clean up
-    // network resources only on this error path so successful servers retain
-    // their dispatcher and are not force-exited on macOS.
-    const [{ scheduleForceExit }, { closeGlobalDispatcher }] =
-      await Promise.all([
-        import("../force-exit.js"),
-        import("../close-dispatcher.js"),
-      ]);
-    scheduleForceExit();
-    await closeGlobalDispatcher();
   }
+  // Setup errors and `--help`/`--version` are terminal, unlike a running
+  // stdio server.
+  await releaseProcessResources();
 }

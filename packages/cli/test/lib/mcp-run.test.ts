@@ -36,7 +36,7 @@ describe("runMcpCommand", () => {
   });
 
   test("keeps a running server alive on success", async () => {
-    startMcpServer.mockResolvedValue(undefined);
+    startMcpServer.mockResolvedValue(true);
     const { runMcpCommand } = await import("../../src/cli.js");
 
     await expect(runMcpCommand(["mcp"])).resolves.toBe(true);
@@ -46,6 +46,18 @@ describe("runMcpCommand", () => {
     // destroyed — those would kill the server right after it starts.
     expect(scheduleForceExit).not.toHaveBeenCalled();
     expect(closeGlobalDispatcher).not.toHaveBeenCalled();
+  });
+
+  test("cleans up after an invocation that only prints output", async () => {
+    startMcpServer.mockResolvedValue(false);
+    const { runMcpCommand } = await import("../../src/cli.js");
+
+    await expect(runMcpCommand(["mcp", "--help"])).resolves.toBe(true);
+
+    // `--help` and `--version` finish like any other drained command, so they
+    // need the same teardown `runCli` gives every other command.
+    expect(scheduleForceExit).toHaveBeenCalledTimes(1);
+    expect(closeGlobalDispatcher).toHaveBeenCalledTimes(1);
   });
 
   test("cleans up network resources when setup fails", async () => {
