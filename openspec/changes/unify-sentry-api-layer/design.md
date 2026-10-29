@@ -9,8 +9,9 @@ See proposal.md for motivation. Current state that shapes the approach:
   `cli/src/lib/mcp.ts` already passes credentials into `runMcpServer()`
   through `resolveAccessToken` and `onUpstreamUnauthorized`. Shared code
   must therefore live below both products, in `toolkit-core`.
-  `@sentry/mcp-server` is being retired in favor of `sentry mcp`, after
-  which the CLI depends on `mcp-core` directly.
+  The stdio server is moving into the CLI as `sentry mcp`, after which the
+  CLI depends on `mcp-core` directly and `@sentry/mcp-server` becomes a
+  stdio proxy to the hosted MCP with no toolkit dependencies.
 - **CLI request stack.**
   - `sentry-client.ts` handles auth, refresh on 401, timeouts, GET retries,
     redirect validation, and custom headers.
@@ -505,11 +506,28 @@ Capabilities only the CLI host has stay optional interfaces:
 its own, such as the memory cache store, or omits them, and tools that
 need a missing capability say so or stay unavailable.
 
-Two checks enforce the direction. The `@sentry/mcp-server` retirement PR
+Two checks enforce the direction. The PR that moves the stdio server into
+`sentry mcp` (#1731)
 adds a lint rule that bans importing `sentry` from `mcp-core` and
 `mcp-cloudflare`, type-only imports included, and a manifest check that
 fails on a workspace dependency cycle. When tools move, the rule is relaxed
 to let `mcp-cloudflare` import `sentry/mcp` and nothing else from `sentry`.
+
+### `@sentry/mcp-server` stays as a stdio proxy
+
+`@sentry/mcp-server` is kept, not retired. It becomes a small stdio proxy
+to the hosted MCP with no toolkit dependencies, only the MCP SDK. The CLI
+has grown large, and a client that only needs Sentry's tools over stdio
+should not have to download it.
+
+- It forwards stdio to the hosted MCP's Streamable HTTP endpoint and sends
+  the user's token as `Authorization: Sentry-Bearer <token>`, which the
+  hosted MCP already accepts, so it needs no OAuth flow of its own.
+- The hosted MCP serves one Sentry host. For any other host, such as
+  self-hosted Sentry, the proxy exits with an error that points to
+  `npx sentry mcp`, which runs the tools locally against any host.
+- `sentry mcp` stays the full local server and owns the MCP registry entry
+  (`server.json`).
 
 ### `fresh` is a shared read-tool input
 
@@ -612,8 +630,9 @@ bumps move both products together.
    the MCP tools into the CLI's portable `sentry/mcp` entry; and have
    `sentry mcp` inject the CLI's host capabilities (session, cache store,
    region cache, DSN detection, file uploads) while `mcp-cloudflare`
-   bundles the same entry. The registry entry moves to `sentry mcp` in the
-   `@sentry/mcp-server` retirement PR.
+   bundles the same entry. The registry entry moves to `sentry mcp` in
+   #1731, and `@sentry/mcp-server` becomes a stdio proxy to the hosted MCP
+   (see "`@sentry/mcp-server` stays as a stdio proxy").
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
 `off` restores today's uncached behavior. Each CLI step is a refactor that
@@ -629,8 +648,3 @@ can be reverted on its own.
 - Whether the server should send `private, max-age` on more endpoints
   later, such as stable organization and project metadata. The CLI follows
   server headers automatically; R2 eligibility stays an explicit allowlist.
-- What `@sentry/mcp-server` becomes: retired in favor of `sentry mcp`, or a
-  zero-dependency stdio proxy to the hosted MCP. The hosted MCP accepts
-  `Authorization: Sentry-Bearer <token>`, so the proxy needs no OAuth flow,
-  but it serves only one Sentry host, so self-hosted users would use
-  `sentry mcp`.
