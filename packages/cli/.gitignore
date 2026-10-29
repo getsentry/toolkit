@@ -38,4 +38,4 @@ test/skill-eval/results.json
 src/generated/
 src/sdk.generated.ts
 src/sdk.generated.d.cts
-!src/generated/banner-sixel.ts
+!src/generated/banner-image.ts

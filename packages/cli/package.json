@@ -71,7 +71,7 @@
     "test:init-eval": "vitest run test/init-eval --testTimeout 600000",
     "generate:sdk": "pnpm tsx script/generate-sdk.ts",
     "generate:skill": "pnpm tsx script/generate-skill.ts",
-    "generate:banner": "pnpm tsx script/generate-banner-sixel.ts",
+    "generate:banner": "pnpm tsx script/generate-banner-image.ts",
     "generate:docs": "node script/ensure-generated.mjs schema && pnpm run generate:grammar && pnpm run generate:command-api && pnpm run generate:banner && pnpm run generate:completions && pnpm run generate:command-docs && pnpm run generate:docs-sections && pnpm run generate:skill",
     "generate:grammar": "node ../../scripts/generate-parsers.mjs .",
     "generate:completions": "pnpm tsx script/generate-completion-targets.ts",

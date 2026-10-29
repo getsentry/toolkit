@@ -2,7 +2,7 @@
  * Terminal Graphics Support
  *
  * Detects whether the current terminal can render kitty or sixel graphics and,
- * if so, returns the baked banner (see {@link BANNER_SIXEL}) in the best
+ * if so, returns the baked banner (see {@link BANNER_IMAGE}) in the best
  * available format. Everything degrades gracefully to the block-art banner in
  * `banner.ts`.
  *
@@ -25,7 +25,7 @@
 
 import { execFileSync, execSync } from "node:child_process";
 import { closeSync, openSync, readSync, writeSync } from "node:fs";
-import { BANNER_SIXEL } from "../generated/banner-sixel.js";
+import { BANNER_IMAGE } from "../generated/banner-image.js";
 import { getOnOffPreference } from "./db/defaults.js";
 import { getEnv } from "./env.js";
 import { isPlainOutput, isTruthyEnv } from "./formatters/plain-detect.js";
@@ -35,6 +35,7 @@ import {
   wrapTmuxPassthrough,
 } from "./kitty-image.js";
 import { logger } from "./logger.js";
+import { decodeImage, encodeImageToSixel } from "./sixel-image.js";
 
 const log = logger.withTag("graphics");
 
@@ -556,16 +557,28 @@ export function tmuxKittyPlacement(
  * their cell size get {@link DEFAULT_CELL_WIDTH}.
  */
 function kittyBanner(columns: number): string | undefined {
-  const size = { width: BANNER_SIXEL.width, height: BANNER_SIXEL.height };
+  const size = { width: BANNER_IMAGE.width, height: BANNER_IMAGE.height };
   const tmux = tmuxKittyPlacement(columns);
   if (tmux) {
-    return kittyImageSequence("f=100", BANNER_SIXEL.png, size, tmux);
+    return kittyImageSequence("f=100", BANNER_IMAGE.png, size, tmux);
   }
   const cell = graphicsCellSize("kitty");
-  if (!cell || BANNER_SIXEL.width > columns * cell.cellWidth) {
+  if (!cell || BANNER_IMAGE.width > columns * cell.cellWidth) {
     return;
   }
-  return kittyImageSequence("f=100", BANNER_SIXEL.png, size);
+  return kittyImageSequence("f=100", BANNER_IMAGE.png, size);
+}
+
+/** Sixel encoding of the banner, computed on first use. */
+let cachedSixelBanner: string | undefined;
+
+/** The baked banner PNG encoded as a sixel escape sequence. */
+function sixelBanner(): string | undefined {
+  if (cachedSixelBanner === undefined) {
+    const image = decodeImage(Buffer.from(BANNER_IMAGE.png, "base64"), "png");
+    cachedSixelBanner = image && encodeImageToSixel(image, image.width, true);
+  }
+  return cachedSixelBanner;
 }
 
 /**
@@ -591,8 +604,8 @@ export function graphicsBanner(
     return kittyBanner(columns);
   }
   if (format === "sixel") {
-    return sixelFits(detectSixelCaps(), columns, BANNER_SIXEL.width)
-      ? BANNER_SIXEL.data
+    return sixelFits(detectSixelCaps(), columns, BANNER_IMAGE.width)
+      ? sixelBanner()
       : undefined;
   }
   return;
@@ -612,5 +625,5 @@ export function graphicsBannerExtraRows(): number {
   const { cellHeight } = detectSixelCaps();
   const rowHeight =
     cellHeight && cellHeight > 0 ? cellHeight : DEFAULT_CELL_HEIGHT;
-  return Math.ceil(BANNER_SIXEL.height / rowHeight) - 1;
+  return Math.ceil(BANNER_IMAGE.height / rowHeight) - 1;
 }

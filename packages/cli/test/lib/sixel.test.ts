@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert as fcAssert, integer, property, uniqueArray } from "fast-check";
 import { afterEach, describe, expect, test } from "vitest";
-import { BANNER_SIXEL } from "../../src/generated/banner-sixel.js";
+import { BANNER_IMAGE } from "../../src/generated/banner-image.js";
 import {
   __resetSixelCache,
   applyTmuxCaps,
@@ -36,6 +36,7 @@ import {
   terminalPixelWidth,
   tmuxKittyPlacement,
 } from "../../src/lib/sixel.js";
+import { decodeImage, encodeImageToSixel } from "../../src/lib/sixel-image.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 const ESC = "\x1b";
@@ -215,23 +216,33 @@ describe("graphicsBanner", () => {
   });
 });
 
-describe("BANNER_SIXEL (generated)", () => {
-  test("is a well-formed sixel payload with positive dimensions", () => {
-    expect(BANNER_SIXEL.width).toBeGreaterThan(0);
-    expect(BANNER_SIXEL.height).toBeGreaterThan(0);
-    // DCS sixel introducer ... String Terminator.
-    expect(BANNER_SIXEL.data.startsWith(`${ESC}P`)).toBe(true);
-    expect(BANNER_SIXEL.data.endsWith(`${ESC}\\`)).toBe(true);
-    // Transparent background: P2 = 1 in the DCS parameters.
-    expect(BANNER_SIXEL.data.startsWith(`${ESC}P0;1;0q`)).toBe(true);
-  });
-
-  test("includes a PNG of the same size for kitty terminals", () => {
-    const png = Buffer.from(BANNER_SIXEL.png, "base64");
+describe("BANNER_IMAGE (generated)", () => {
+  test("is a PNG with positive dimensions", () => {
+    expect(BANNER_IMAGE.width).toBeGreaterThan(0);
+    expect(BANNER_IMAGE.height).toBeGreaterThan(0);
+    const png = Buffer.from(BANNER_IMAGE.png, "base64");
     // PNG signature, then the IHDR width/height (big-endian at bytes 16..23).
     expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
-    expect(png.readUInt32BE(16)).toBe(BANNER_SIXEL.width);
-    expect(png.readUInt32BE(20)).toBe(BANNER_SIXEL.height);
+    expect(png.readUInt32BE(16)).toBe(BANNER_IMAGE.width);
+    expect(png.readUInt32BE(20)).toBe(BANNER_IMAGE.height);
+  });
+
+  test("encodes to a transparent native-size sixel with its gradient colors", () => {
+    const image = decodeImage(Buffer.from(BANNER_IMAGE.png, "base64"), "png");
+    expect(image).toBeDefined();
+    const sixel = image && encodeImageToSixel(image, image.width, true);
+    // Transparent background: P2 = 1, then raster attributes at native size.
+    expect(
+      sixel?.startsWith(
+        `${ESC}P0;1;0q"1;1;${BANNER_IMAGE.width};${BANNER_IMAGE.height}`,
+      ),
+    ).toBe(true);
+    expect(sixel?.endsWith(`${ESC}\\`)).toBe(true);
+    // The banner is painted from 24 gradient bands, so the palette keeps
+    // those exact colors instead of filling all 128 slots.
+    const paletteEntries = sixel?.match(/#\d+;2;/g) ?? [];
+    expect(paletteEntries.length).toBeGreaterThan(0);
+    expect(paletteEntries.length).toBeLessThanOrEqual(24);
   });
 });
 
