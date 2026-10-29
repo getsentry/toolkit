@@ -14,7 +14,6 @@ import {
 } from "../sixel.js";
 import { encodeImageToSixel } from "../sixel-image.js";
 import { renderChartWithLabels } from "./chart-presentation.js";
-import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
 import { formatCellValue } from "./meta-table.js";
 import { appendUnitSuffix } from "./numbers.js";
 import { isPlainOutput } from "./plain-detect.js";
@@ -110,20 +109,11 @@ export function formatExploreTimeSeriesChart(
   if (!image) {
     return;
   }
-  const output =
-    format === "kitty"
+  return (
+    (format === "kitty"
       ? encodeImageToKitty(image, width, true, tmuxKittyPlacement(columns))
-      : encodeImageToSixel(image, width, true);
-  if (!output) {
-    return;
-  }
-  const scale = renderMarkdown(
-    `Scale: 0 to ${escapeMarkdownInline(maximumLabel)}`,
+      : encodeImageToSixel(image, width, true)) || undefined
   );
-  const range = renderMarkdown(
-    `Bucket starts (UTC): ${formatUtcTimestamp(first.timestamp)} to ${formatUtcTimestamp(last.timestamp)}`,
-  );
-  return `${scale}\n\n${output}\n${range}`;
 }
 
 function formatMaximum(value: number, series: TimeSeries): string {

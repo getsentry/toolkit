@@ -31,8 +31,10 @@ its own chart with a value axis, UTC time labels, and a colored aggregate legend
 using the same presentation as dashboard charts. Null and incomplete buckets leave
 gaps; a table below the chart retains their timestamps, original values, and
 completeness reasons. Complete buckets have at least a baseline tick, including
-zero values. Sampling, scan coverage, and ingestion warnings remain visible.
-All times are UTC.
+zero values. The interval and sampling or scan warnings appear in a compact
+caption below each chart. The full aggregate expression is included there when
+the legend abbreviates it. Ingestion details follow the results. All times are UTC;
+the query range in the header is distinct from the bucket-start labels on the axes.
 
 Other terminals use tables, as do series with strings, negative values, irregular
 bucket spacing, too many buckets to draw individually, or too little room for

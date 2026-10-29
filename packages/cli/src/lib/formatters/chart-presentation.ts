@@ -208,10 +208,7 @@ function drawLegend(
       break;
     }
     const availableColumns = maxColumns - column - 2;
-    const label = truncateLegendLabel(
-      formatLegendLabel(series.label),
-      Math.min(18, availableColumns),
-    );
+    const { text: label } = formatLegendLabel(series.label, availableColumns);
     const requiredColumns = Math.min(maxColumns, label.length + 2);
     if (column + requiredColumns > maxColumns) {
       break;
@@ -235,20 +232,38 @@ function drawLegend(
   }
 }
 
-/** Turn raw aggregate expressions into concise, readable legend labels. */
-export function formatLegendLabel(label: string): string {
+/** A fitted legend label and whether a caption must retain its full expression. */
+export type ChartLegendLabel = {
+  /** Text drawn next to the series color key. */
+  text: string;
+  /** True when arguments, expression terms, or clipped characters are omitted. */
+  abbreviated: boolean;
+};
+
+/** Compact and fit a legend label, tracking information lost beyond punctuation. */
+export function formatLegendLabel(
+  label: string,
+  availableColumns = 18,
+): ChartLegendLabel {
+  let text = label;
+  let abbreviated = false;
   const aggregate = AGGREGATE_LABEL_RE.exec(label);
   if (aggregate) {
     const operation = aggregate[1] ?? label;
     const arguments_ =
       aggregate[2]?.split(",").map((argument) => argument.trim()) ?? [];
     const metric = arguments_[0] === "value" ? arguments_[1] : arguments_[0];
-    return metric ? `${operation} ${metric}` : operation;
+    text = metric ? `${operation} ${metric}` : operation;
+    abbreviated =
+      aggregate[0] !== label ||
+      arguments_.length > 1 ||
+      arguments_[0] === "value";
+  } else if (label.startsWith("equation|")) {
+    text = "equation";
+    abbreviated = true;
   }
-  if (label.startsWith("equation|")) {
-    return "equation";
-  }
-  return label;
+  const fitted = truncateLegendLabel(text, Math.min(18, availableColumns));
+  return { text: fitted, abbreviated: abbreviated || fitted !== text };
 }
 
 /** Clip a legend label without leaving a partial aggregate expression. */

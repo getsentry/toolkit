@@ -109,14 +109,23 @@ describe("dashboard chart rendering", () => {
   });
 
   test("uses compact aggregate names in the graphics legend", () => {
-    expect(formatLegendLabel("p50(span.duration)")).toBe("p50 span.duration");
-    expect(formatLegendLabel("p95(value,web.vital,distribution,none)")).toBe(
-      "p95 web.vital",
+    expect(formatLegendLabel("p50(span.duration)")).toEqual({
+      text: "p50 span.duration",
+      abbreviated: false,
+    });
+    expect(formatLegendLabel("p95(value,web.vital,distribution,none)")).toEqual(
+      {
+        text: "p95 web.vital",
+        abbreviated: true,
+      },
     );
     expect(
       formatLegendLabel("p95(value,backend.duration,distribution,none)"),
-    ).toBe("p95 backend.duration");
-    expect(formatLegendLabel("GET /api/projects")).toBe("GET /api/projects");
+    ).toEqual({ text: "p95 backend.dur...", abbreviated: true });
+    expect(formatLegendLabel("GET /api/projects")).toEqual({
+      text: "GET /api/projects",
+      abbreviated: false,
+    });
   });
 
   test("centers the no-data state inside a chart widget", () => {
