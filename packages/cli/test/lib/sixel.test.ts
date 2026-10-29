@@ -21,16 +21,20 @@ import { afterEach, describe, expect, test } from "vitest";
 import { BANNER_SIXEL } from "../../src/generated/banner-sixel.js";
 import {
   __resetSixelCache,
+  applyTmuxCaps,
   detectSixelCaps,
+  graphicsBanner,
   graphicsCellSize,
   optedOut,
   parseSixelCaps,
+  parseTmuxInfo,
+  probeQueries,
   readReply,
   selectGraphicsFormat,
   selectGraphicsFormatFromAvailability,
-  sixelBanner,
   sixelFits,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../../src/lib/sixel.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
@@ -176,11 +180,12 @@ describe("graphicsCellSize", () => {
   });
 });
 
-describe("sixelBanner", () => {
+describe("graphicsBanner", () => {
   test("returns undefined in a non-interactive (test) environment", () => {
     // Under vitest stdin/stdout are not TTYs, so the probe opts out and no
-    // sixel is emitted — the caller falls back to block art.
-    expect(sixelBanner(200)).toBeUndefined();
+    // image is emitted — the caller falls back to block art.
+    expect(graphicsBanner(200)).toBeUndefined();
+    expect(tmuxKittyPlacement(200)).toBeUndefined();
   });
 
   test("suppresses the image when opted out even with a TTY", () => {
@@ -196,7 +201,7 @@ describe("sixelBanner", () => {
       process.stdin.isTTY = true;
       process.env.SENTRY_NO_SIXEL = "1";
       __resetSixelCache();
-      expect(sixelBanner(200)).toBeUndefined();
+      expect(graphicsBanner(200)).toBeUndefined();
     } finally {
       process.stdout.isTTY = saved.stdout;
       process.stdin.isTTY = saved.stdin;
@@ -219,6 +224,104 @@ describe("BANNER_SIXEL (generated)", () => {
     expect(BANNER_SIXEL.data.endsWith(`${ESC}\\`)).toBe(true);
     // Transparent background: P2 = 1 in the DCS parameters.
     expect(BANNER_SIXEL.data.startsWith(`${ESC}P0;1;0q`)).toBe(true);
+  });
+
+  test("includes a PNG of the same size for kitty terminals", () => {
+    const png = Buffer.from(BANNER_SIXEL.png, "base64");
+    // PNG signature, then the IHDR width/height (big-endian at bytes 16..23).
+    expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
+    expect(png.readUInt32BE(16)).toBe(BANNER_SIXEL.width);
+    expect(png.readUInt32BE(20)).toBe(BANNER_SIXEL.height);
+  });
+});
+
+describe("parseTmuxInfo", () => {
+  test("reads allow-passthrough and the attached terminal's features", () => {
+    expect(parseTmuxInfo("on bpaste,clipboard,sixel,title\n")).toEqual({
+      passthrough: true,
+      outerSixel: true,
+    });
+    expect(parseTmuxInfo("all bpaste,title")).toEqual({
+      passthrough: true,
+      outerSixel: false,
+    });
+    expect(parseTmuxInfo("off sixel")).toEqual({
+      passthrough: false,
+      outerSixel: true,
+    });
+  });
+
+  test("treats tmux without allow-passthrough (pre-3.3) as disabled", () => {
+    expect(parseTmuxInfo(" bpaste,title")).toEqual({
+      passthrough: false,
+      outerSixel: false,
+    });
+  });
+});
+
+describe("probeQueries", () => {
+  test("outside tmux, sends the kitty query directly with DA1 last", () => {
+    const { query, sentinels } = probeQueries(undefined);
+    expect(query.startsWith(`${ESC}[16t${ESC}_G`)).toBe(true);
+    expect(query.endsWith(`${ESC}[c`)).toBe(true);
+    expect(sentinels).toBe(1);
+  });
+
+  test("inside tmux without passthrough, never sends the kitty query", () => {
+    // tmux would turn the bare APC into the pane title.
+    const { query, sentinels } = probeQueries({
+      passthrough: false,
+      outerSixel: false,
+    });
+    expect(query).toBe(`${ESC}[16t${ESC}[c`);
+    expect(sentinels).toBe(1);
+  });
+
+  test("inside tmux with passthrough, wraps the kitty query and a second DA1", () => {
+    const { query, sentinels } = probeQueries({
+      passthrough: true,
+      outerSixel: false,
+    });
+    const passthrough = query.slice(`${ESC}[16t${ESC}[c`.length);
+    expect(passthrough.startsWith(`${ESC}Ptmux;${ESC}${ESC}_G`)).toBe(true);
+    expect(passthrough.endsWith(`${ESC}${ESC}[c${ESC}\\`)).toBe(true);
+    expect(sentinels).toBe(2);
+  });
+});
+
+describe("applyTmuxCaps", () => {
+  const tmuxSixelDa = `${ESC}[6;20;10t${ESC}[?1;2;4c`;
+
+  test("ignores tmux's own sixel claim when the outer terminal lacks sixel", () => {
+    // e.g. Homebrew tmux (built with sixel) running inside Ghostty.
+    const caps = parseSixelCaps(tmuxSixelDa);
+    expect(caps.supported).toBe(true);
+    expect(
+      applyTmuxCaps(caps, { passthrough: false, outerSixel: false }),
+    ).toEqual({ supported: false });
+  });
+
+  test("keeps sixel when the outer terminal supports it", () => {
+    const caps = parseSixelCaps(tmuxSixelDa);
+    expect(
+      applyTmuxCaps(caps, { passthrough: false, outerSixel: true }),
+    ).toMatchObject({ supported: true, cellWidth: 10, cellHeight: 20 });
+  });
+
+  test("marks kitty found through passthrough as needing tmux placement", () => {
+    const reply = `${tmuxSixelDa}${ESC}_Gi=4271;OK${ESC}\\${ESC}[?62;22c`;
+    expect(
+      applyTmuxCaps(parseSixelCaps(reply), {
+        passthrough: true,
+        outerSixel: false,
+      }),
+    ).toEqual({
+      supported: false,
+      kitty: true,
+      tmux: true,
+      cellWidth: 10,
+      cellHeight: 20,
+    });
   });
 });
 
@@ -341,6 +444,13 @@ describe("readReply", () => {
         cellHeight: 20,
         cellWidth: 10,
       });
+    });
+  });
+
+  test("waits for every requested DA sentinel (tmux passthrough)", () => {
+    const reply = `${ESC}[?1;2;4c${ESC}_Gi=4271;OK${ESC}\\${ESC}[?62;22c`;
+    withReplyFile(reply, (fd) => {
+      expect(readReply(fd, 2)).toBe(reply);
     });
   });
 
