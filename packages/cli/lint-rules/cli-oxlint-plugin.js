@@ -69,7 +69,9 @@ const BOUND_TARGET_TYPES = new Set([
   "LogListArguments",
   "LogViewArguments",
   "ReplayArguments",
+  "SpanListArguments",
   "SpanViewArguments",
+  "TraceLogsArguments",
   "TraceViewArguments",
 ]);
 
