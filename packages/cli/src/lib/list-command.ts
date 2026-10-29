@@ -666,16 +666,21 @@ export function buildListCommand<
     // The first positional arg is always the target (org/project pattern),
     // either a raw string or a parsed value. Intercept it to handle plural
     // alias confusion.
-    const rawTarget = rawPositional(args[0]);
+    const raw = rawPositional(args[0]);
+    const rawTarget = Array.isArray(raw) ? raw[0] : raw;
+    let remaining = args;
     if (typeof rawTarget === "string") {
       // All list commands use SentryContext which has stderr at top level
       const ctx = this as unknown as { stderr: { write(s: string): void } };
       if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
-        args[0] = undefined;
+        // Bound arguments are parsed again without it
+        remaining = Array.isArray(raw)
+          ? raw.slice(1)
+          : [undefined, ...args.slice(1)];
       }
     }
     // A dropped bound target becomes an omitted one (auto-detect)
-    const finalArgs = applyBoundPositionals(args, params.positional, this);
+    const finalArgs = applyBoundPositionals(remaining, params.positional, this);
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 

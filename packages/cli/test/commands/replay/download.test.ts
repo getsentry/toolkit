@@ -112,7 +112,7 @@ describe("replay download", () => {
     vi.clearAllMocks();
     tmpDir = await mkdtemp(join(tmpdir(), "replay-dl-"));
     resolveTargetSpy = vi
-      .spyOn(resolveTarget, "resolveOrgOptionalFromArg")
+      .spyOn(resolveTarget, "resolveOrgOptionalTarget")
       .mockResolvedValue({ org: "test-org" });
     resolveReplaySpy = vi
       .spyOn(apiClient, "resolveReplay")
@@ -189,7 +189,7 @@ describe("replay download", () => {
     );
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      "url-org/",
+      { type: "org-all", org: "url-org" },
       tmpDir,
       "replay download",
     );

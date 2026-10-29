@@ -27,6 +27,10 @@ import {
   ValidationError,
 } from "../../src/lib/errors.js";
 import {
+  applyBoundPositionals,
+  type BoundArguments,
+  BoundPositional,
+  boundArguments,
   checkDestructive,
   rawPositional,
 } from "../../src/lib/positional-parse.js";
@@ -245,5 +249,170 @@ describe("rawPositional", () => {
     expect(rawPositional(echoTarget.call(context, undefined))).toBeUndefined();
     expect(rawPositional("plain")).toBe("plain");
     expect(rawPositional(undefined)).toBeUndefined();
+  });
+});
+
+/** `[<target>] <id>`: what the first argument means depends on the count. */
+function parseIdArguments(raw: readonly string[]): {
+  target?: string;
+  id: string;
+} {
+  if (raw.length === 0) {
+    throw new ContextError("ID", "test cmd [<target>] <id>", []);
+  }
+  if (raw.length > 2) {
+    throw new ValidationError("Too many arguments");
+  }
+  const [first = "", second] = raw;
+  return second === undefined ? { id: first } : { target: first, id: second };
+}
+
+const idResolver = vi.fn(
+  async (
+    parsed: ReturnType<typeof parseIdArguments>,
+    { cwd }: { cwd: string },
+    raw: readonly string[],
+  ) => ({ ...parsed, cwd, raw: [...raw] }),
+);
+
+const idArguments = boundArguments({
+  placeholder: "target-or-id",
+  brief: "[<target>] <id>",
+  kind: ORG_PROJECT_TARGET,
+  parse: parseIdArguments,
+  resolve: idResolver,
+});
+
+type IdArguments = BoundArguments<
+  ReturnType<typeof parseIdArguments>,
+  Awaited<ReturnType<typeof idResolver>>
+>;
+
+/** Run `test cmd ...args` with {@link idArguments}, recording the result. */
+async function runWithArguments(args: string[]): Promise<{
+  resolved: unknown[];
+  stderr: string;
+  exitCode: number | undefined;
+}> {
+  const resolved: unknown[] = [];
+  const command = buildCommand<
+    Record<string, never>,
+    [IdArguments],
+    TestContext
+  >({
+    docs: { brief: "Takes an ID" },
+    auth: false,
+    parameters: { positional: idArguments },
+    // oxlint-disable-next-line require-yield -- test command only records the resolved arguments
+    async *func(_flags, target) {
+      resolved.push(await target.resolved);
+    },
+  });
+  const app = buildApplication(
+    buildRouteMap({ routes: { cmd: command }, docs: { brief: "Test" } }),
+    { name: "test", determineExitCode: getExitCode },
+  );
+  let stderr = "";
+  const stdout = { write: () => true };
+  const context = {
+    cwd: "/work",
+    process: {
+      stdout,
+      stderr: {
+        write: (s: string) => {
+          stderr += s;
+          return true;
+        },
+      },
+      exitCode: undefined,
+    },
+    stdout,
+  } as unknown as TestContext;
+  await run(app, ["cmd", ...args], context);
+  return { resolved, stderr, exitCode: context.process.exitCode };
+}
+
+describe("boundArguments", () => {
+  test("parses every argument at once, so the count decides what each means", async () => {
+    expect((await runWithArguments(["abc"])).resolved).toEqual([
+      { id: "abc", cwd: "/work", raw: ["abc"] },
+    ]);
+    expect((await runWithArguments(["acme/web", "abc"])).resolved).toEqual([
+      { target: "acme/web", id: "abc", cwd: "/work", raw: ["acme/web", "abc"] },
+    ]);
+  });
+
+  test("a parse error fails as an argument parse error", async () => {
+    const { resolved, stderr, exitCode } = await runWithArguments([
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "a b c" for target-or-id');
+    expect(stderr).toContain("Too many arguments");
+  });
+
+  test("a parse error next to `help` fails when func would run instead", async () => {
+    idResolver.mockClear();
+    const { resolved, stderr, exitCode } = await runWithArguments([
+      "help",
+      "a",
+      "b",
+    ]);
+    expect(resolved).toEqual([]);
+    expect(idResolver).not.toHaveBeenCalled();
+    // Thrown by the command wrapper, where `help` recovery can catch it,
+    // rather than by Stricli's scanner
+    expect(stderr).not.toContain("Failed to parse");
+    expect(stderr).toContain("Too many arguments");
+    expect(exitCode).not.toBe(ExitCode.InvalidArgument);
+  });
+
+  test("parses no arguments too", async () => {
+    const { resolved, exitCode, stderr } = await runWithArguments([]);
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain("ID is required");
+  });
+
+  test("raw strings (SDK invoke, tests) become one bound value", async () => {
+    idResolver.mockClear();
+    const context = { cwd: "/work" };
+    const [value, ...rest] = applyBoundPositionals(
+      ["acme/web", "abc"],
+      idArguments,
+      context,
+    );
+    expect(rest).toEqual([]);
+    expect(value).toBeInstanceOf(BoundPositional);
+    const bound = value as IdArguments;
+    expect(bound.raw).toEqual(["acme/web", "abc"]);
+    expect(bound.parsed).toEqual({ target: "acme/web", id: "abc" });
+    expect(idResolver).not.toHaveBeenCalled();
+    await expect(bound.resolved).resolves.toMatchObject({ cwd: "/work" });
+
+    // A value Stricli already combined is kept
+    expect(applyBoundPositionals([bound], idArguments, context)).toEqual([
+      bound,
+    ]);
+  });
+
+  test("raw strings that fail to parse throw the parser's error", () => {
+    expect(() => applyBoundPositionals([], idArguments, {})).toThrow(
+      ContextError,
+    );
+  });
+
+  test("rawPositional returns every argument", () => {
+    const [bound] = applyBoundPositionals(["abc"], idArguments, {});
+    expect(rawPositional(bound)).toEqual(["abc"]);
+  });
+
+  test("each argument completes as the given kind", () => {
+    expect(getCompletionTarget(idArguments.parameter.parse)).toBe(
+      ORG_PROJECT_TARGET,
+    );
   });
 });

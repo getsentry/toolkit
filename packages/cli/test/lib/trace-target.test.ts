@@ -28,8 +28,10 @@ import {
 import {
   extractRawTraceId,
   parseDualModeArgs,
+  parseDualModeInput,
   parseSlashSeparatedTraceTarget,
   parseTraceTarget,
+  parseTraceTargetInput,
   resolveTraceOrg,
   resolveTraceOrgOptionalProject,
   resolveTraceOrgProject,
@@ -385,5 +387,51 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   test("parseDualModeArgs treats org/<trace-id>/ as trace mode", () => {
     const result = parseDualModeArgs([`my-org/${VALID_TRACE_ID}/`], HINT);
     expect(result.mode).toBe("trace");
+  });
+});
+
+describe("parsing without side effects", () => {
+  const HINT = "sentry log list [<org>/[<project>/]]<trace-id>";
+  const SELF_HOSTED_URL = `https://sentry.example.com/organizations/acme/traces/${VALID_TRACE_ID}/`;
+  let savedUrl: string | undefined;
+
+  beforeEach(() => {
+    savedUrl = process.env.SENTRY_URL;
+  });
+
+  afterEach(() => {
+    if (savedUrl === undefined) {
+      delete process.env.SENTRY_URL;
+    } else {
+      process.env.SENTRY_URL = savedUrl;
+    }
+  });
+
+  test("a pasted URL's server is returned, not applied", () => {
+    // Applying a server with no account throws HostScopeError
+    expect(parseTraceTargetInput([SELF_HOSTED_URL], HINT)).toEqual({
+      parsed: { type: "org-scoped", traceId: VALID_TRACE_ID, org: "acme" },
+      baseUrl: "https://sentry.example.com",
+      warnings: [],
+    });
+    expect(parseDualModeInput([SELF_HOSTED_URL], HINT)).toMatchObject({
+      mode: "trace",
+      trace: { baseUrl: "https://sentry.example.com" },
+    });
+    expect(process.env.SENTRY_URL).toBe(savedUrl);
+  });
+
+  test("ignored extra arguments are returned as a warning", () => {
+    expect(
+      parseTraceTargetInput(["acme/web", VALID_TRACE_ID, "extra"], HINT),
+    ).toEqual({
+      parsed: {
+        type: "explicit",
+        traceId: VALID_TRACE_ID,
+        org: "acme",
+        project: "web",
+      },
+      warnings: [`Extra arguments ignored: extra. Expected: ${HINT}`],
+    });
   });
 });

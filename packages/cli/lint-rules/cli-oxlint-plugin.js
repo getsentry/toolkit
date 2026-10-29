@@ -56,11 +56,17 @@ function readsProperty(node, object, property) {
   );
 }
 
-/** Target positional types from `src/lib/target-positional.ts`. */
+/**
+ * Target positional types from `src/lib/target-positional.ts`, and
+ * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
+ */
 const BOUND_TARGET_TYPES = new Set([
   "OrgOptionalTarget",
   "OrgProjectTarget",
   "ProjectBoundTarget",
+  "BoundArguments",
+  "LogListArguments",
+  "ReplayArguments",
 ]);
 
 function boundTargetParams(fn) {

@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   parsePositionalArgs,
+  replayArguments,
   viewCommand,
 } from "../../../src/commands/replay/view.js";
 
@@ -38,6 +39,7 @@ import * as browser from "../../../src/lib/browser.js";
 import {
   ApiError,
   ContextError,
+  HostScopeError,
   ResolutionError,
   ValidationError,
 } from "../../../src/lib/errors.js";
@@ -197,7 +199,7 @@ describe("viewCommand.func", () => {
           },
         ],
       });
-    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
     openInBrowserSpy = vi.spyOn(browser, "openInBrowser").mockResolvedValue();
   });
 
@@ -406,5 +408,38 @@ describe("viewCommand.func", () => {
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     expect(output).toContain("5s");
+  });
+});
+
+describe("replayArguments", () => {
+  const positional = replayArguments("view", "sentry replay view <id>");
+  const context = { cwd: "/tmp" };
+
+  test("parses the replay ID and target without resolving", () => {
+    const target = positional.combine.call(context, [
+      "test-org/cli",
+      REPLAY_ID,
+    ]);
+    expect(target.parsed).toEqual({
+      replayId: REPLAY_ID,
+      target: { type: "explicit", org: "test-org", project: "cli" },
+      baseUrl: undefined,
+      warning: undefined,
+    });
+  });
+
+  test("rejects an invalid replay ID when parsing", () => {
+    expect(() => positional.combine.call(context, ["not-hex"])).toThrow(
+      ValidationError,
+    );
+  });
+
+  test("applies a pasted URL's server when resolving, not when parsing", async () => {
+    const target = positional.combine.call(context, [
+      `https://sentry.example.com/organizations/acme/explore/replays/${REPLAY_ID}/`,
+    ]);
+    expect(target.parsed.baseUrl).toBe("https://sentry.example.com");
+    // No account for this server: applying it throws HostScopeError
+    await expect(target.resolved).rejects.toThrow(HostScopeError);
   });
 });

@@ -16,7 +16,12 @@
  * Used by: span list, span view, trace view, trace logs.
  */
 
-import { normalizeSlug, parseOrgProjectArg } from "./arg-parsing.js";
+import {
+  normalizeSlug,
+  type ParsedOrgProject,
+  parseOrgProjectArg,
+  parseOrgProjectInput,
+} from "./arg-parsing.js";
 import { ContextError, ValidationError } from "./errors.js";
 import {
   handleRecoveryResult,
@@ -86,6 +91,30 @@ export type ParsedTraceTarget =
       traceId: string;
     };
 
+/**
+ * A {@link ParsedTraceTarget} parsed without side effects, plus what the
+ * caller applies when it runs: the server of a pasted Sentry URL (for
+ * `applySentryUrlContext`) and warnings to log.
+ */
+export type TraceTargetInput = {
+  readonly parsed: ParsedTraceTarget;
+  readonly baseUrl?: string;
+  readonly warnings: readonly string[];
+};
+
+/** Apply what parsing a trace target deferred, and return the target. */
+export function applyTraceTargetInput(
+  input: TraceTargetInput,
+): ParsedTraceTarget {
+  if (input.baseUrl) {
+    applySentryUrlContext(input.baseUrl);
+  }
+  for (const warning of input.warnings) {
+    log.warn(warning);
+  }
+  return input.parsed;
+}
+
 /** Resolved trace target with both org and project. */
 export type ResolvedTraceOrgProject = {
   traceId: string;
@@ -128,6 +157,18 @@ export function parseTraceTarget(
   args: string[],
   usageHint: string,
 ): ParsedTraceTarget {
+  return applyTraceTargetInput(parseTraceTargetInput(args, usageHint));
+}
+
+/**
+ * Parse trace-related positional arguments like {@link parseTraceTarget},
+ * without side effects: the server of a pasted Sentry URL and the warnings
+ * are returned for the caller to apply.
+ */
+export function parseTraceTargetInput(
+  args: readonly string[],
+  usageHint: string,
+): TraceTargetInput {
   if (args.length === 0) {
     throw new ContextError("Trace ID", usageHint, []);
   }
@@ -140,30 +181,30 @@ export function parseTraceTarget(
   // Sentry trace URLs (often copy-pasted with a trailing slash) carry the
   // trace ID and org in the path; slash-splitting them yields an empty or
   // bogus trace ID segment (CLI-13F).
-  const urlTarget = traceTargetFromUrl(first);
+  const urlTarget = traceTargetFromUrlInput(first);
   if (urlTarget) {
-    return urlTarget;
+    return { ...urlTarget, warnings: [] };
   }
 
   // Warn about extra positional args that will be ignored
-  if (args.length > 2) {
-    log.warn(
-      `Extra arguments ignored: ${args.slice(2).join(" ")}. Expected: ${usageHint}`,
-    );
-  }
-
-  if (args.length === 1) {
-    return parseSlashSeparatedTraceTarget(first, usageHint);
-  }
+  const warnings =
+    args.length > 2
+      ? [
+          `Extra arguments ignored: ${args.slice(2).join(" ")}. Expected: ${usageHint}`,
+        ]
+      : [];
 
   // Two+ args: first is target context, second is trace ID
   const second = args[1];
   if (second === undefined) {
-    return parseSlashSeparatedTraceTarget(first, usageHint);
+    return {
+      parsed: parseSlashSeparatedTraceTarget(first, usageHint),
+      warnings,
+    };
   }
 
   const traceId = validateTraceId(second);
-  return targetArgToTraceTarget(first, traceId);
+  return { ...targetArgToTraceTargetInput(first, traceId), warnings };
 }
 
 /**
@@ -176,16 +217,30 @@ export function parseTraceTarget(
  * @internal Exported for testing
  */
 export function traceTargetFromUrl(input: string): ParsedTraceTarget | null {
+  const urlTarget = traceTargetFromUrlInput(input);
+  if (!urlTarget) {
+    return null;
+  }
+  applySentryUrlContext(urlTarget.baseUrl);
+  return urlTarget.parsed;
+}
+
+/**
+ * {@link traceTargetFromUrl} without side effects: returns the URL's server
+ * instead of applying it.
+ */
+function traceTargetFromUrlInput(
+  input: string,
+): { parsed: ParsedTraceTarget; baseUrl: string } | null {
   const urlParsed = parseSentryUrl(input.trim());
   if (!urlParsed?.traceId) {
     return null;
   }
-  applySentryUrlContext(urlParsed.baseUrl);
   const traceId = validateTraceId(urlParsed.traceId);
-  if (urlParsed.org) {
-    return { type: "org-scoped", traceId, org: urlParsed.org };
-  }
-  return { type: "auto-detect", traceId };
+  const parsed: ParsedTraceTarget = urlParsed.org
+    ? { type: "org-scoped", traceId, org: urlParsed.org }
+    : { type: "auto-detect", traceId };
+  return { parsed, baseUrl: urlParsed.baseUrl };
 }
 
 /**
@@ -294,8 +349,29 @@ export function targetArgToTraceTarget(
   targetArg: string,
   traceId: string,
 ): ParsedTraceTarget {
-  const parsed = parseOrgProjectArg(targetArg);
+  const { parsed, baseUrl } = targetArgToTraceTargetInput(targetArg, traceId);
+  if (baseUrl) {
+    applySentryUrlContext(baseUrl);
+  }
+  return parsed;
+}
 
+/**
+ * {@link targetArgToTraceTarget} without side effects: returns the server of
+ * a pasted Sentry URL instead of applying it.
+ */
+function targetArgToTraceTargetInput(
+  targetArg: string,
+  traceId: string,
+): { parsed: ParsedTraceTarget; baseUrl?: string } {
+  const { parsed, baseUrl } = parseOrgProjectInput(targetArg);
+  return { parsed: orgProjectToTraceTarget(parsed, traceId), baseUrl };
+}
+
+function orgProjectToTraceTarget(
+  parsed: ParsedOrgProject,
+  traceId: string,
+): ParsedTraceTarget {
   switch (parsed.type) {
     case "explicit":
       return {
@@ -686,6 +762,26 @@ export function parseDualModeArgs(
   args: string[],
   traceUsageHint: string,
 ): ParsedDualModeArgs {
+  const input = parseDualModeInput(args, traceUsageHint);
+  return input.mode === "trace"
+    ? { mode: "trace", parsed: applyTraceTargetInput(input.trace) }
+    : input;
+}
+
+/** {@link ParsedDualModeArgs} parsed without side effects. */
+export type DualModeInput =
+  | { mode: "project"; target?: string }
+  | { mode: "trace"; trace: TraceTargetInput };
+
+/**
+ * Disambiguate dual-mode arguments like {@link parseDualModeArgs}, without
+ * side effects: trace mode returns a {@link TraceTargetInput} for the caller
+ * to apply.
+ */
+export function parseDualModeInput(
+  args: readonly string[],
+  traceUsageHint: string,
+): DualModeInput {
   if (args.length === 0) {
     return { mode: "project" };
   }
@@ -701,15 +797,15 @@ export function parseDualModeArgs(
     if (last && isTraceId(last)) {
       return {
         mode: "trace",
-        parsed: parseTraceTarget(args, traceUsageHint),
+        trace: parseTraceTargetInput(args, traceUsageHint),
       };
     }
   }
 
   // Trace detail URL → trace mode (the URL itself carries the trace ID)
-  const urlTarget = traceTargetFromUrl(first);
+  const urlTarget = traceTargetFromUrlInput(first);
   if (urlTarget) {
-    return { mode: "trace", parsed: urlTarget };
+    return { mode: "trace", trace: { ...urlTarget, warnings: [] } };
   }
 
   // Single arg: check the tail segment (last part after "/", or entire arg)
@@ -719,7 +815,7 @@ export function parseDualModeArgs(
   if (isTraceId(tail)) {
     return {
       mode: "trace",
-      parsed: parseTraceTarget(args, traceUsageHint),
+      trace: parseTraceTargetInput(args, traceUsageHint),
     };
   }
 

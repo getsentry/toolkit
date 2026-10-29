@@ -69,7 +69,9 @@ import {
 import {
   applyBoundPositionals,
   checkDestructive,
+  isHelpArgument,
   rawPositional,
+  throwDeferredParseErrors,
 } from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
 import { applyTipsPreference } from "./tips.js";
@@ -695,13 +697,7 @@ export function buildCommand<
     if (!(err instanceof CliError) || err instanceof OutputError) {
       return false;
     }
-    if (
-      args.length === 0 ||
-      !args.some((a) => {
-        const raw = rawPositional(a);
-        return raw === "help" || raw === "--h" || raw === "-help";
-      })
-    ) {
+    if (!args.flatMap(rawPositional).some(isHelpArgument)) {
       return false;
     }
     if (!ctx.commandPrefix || ctx.directInvoke) {
@@ -757,7 +753,7 @@ export function buildCommand<
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
-      setArgsContext(args.map(rawPositional));
+      setArgsContext(args.flatMap(rawPositional));
     }
 
     // Environment-based JSON mode (used by library entry point)
@@ -832,6 +828,10 @@ export function buildCommand<
         const { assertRcUrlTrusted } = await import("./sentryclirc.js");
         await assertRcUrlTrusted(this.cwd as string);
       }
+
+      // An argument that failed to parse next to a `help` argument fails
+      // here, where it can turn into the command's help
+      throwDeferredParseErrors(args);
 
       // Bound target positionals of destructive commands refuse to
       // auto-detect, whether `func` reads `parsed` or `resolved`

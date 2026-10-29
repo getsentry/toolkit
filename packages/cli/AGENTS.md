@@ -267,9 +267,22 @@ runs on the first `resolved` read, inside `func` after the auth guard.
 `target.raw` is what the user typed; shared code that handles any positional
 uses `rawPositional(value)`. `buildCommand` runs these parsers on positionals
 that arrive as strings or are omitted, so the SDK invoke path and tests that
-call `command.loader()` keep passing raw strings. Positionals whose
-meaning depends on how many arguments were given, such as
-`[<org>/<project>/]<trace-id>`, keep parsing in `func`.
+call `command.loader()` keep passing raw strings.
+
+**Arity-dependent positionals:** when what an argument means depends on how
+many were given (`[<org>/<project>] <replay-id>`, `log list`'s optional
+trailing trace ID), declare the positional with `boundArguments` from
+`src/lib/positional-parse.ts` (see `replayArguments` in `replay/view.ts` and
+`log list`). It is an array positional whose `parse` sees every argument at
+once and whose `resolve` binds like a target positional's: `func` takes one
+`BoundArguments<Parsed, Resolved>` (alias it per command and add the alias to
+the lint rule's type list), reads `target.parsed`, and awaits
+`target.resolved`. Stricli runs the parse in its scanner through the
+`combine` hook our `@stricli/core` patch adds, so errors exit 252 like any
+other argument. The same purity rule applies: return a pasted URL's server
+(`baseUrl`) and any warnings from the parse, and apply them in `resolve`
+(`parseTraceTargetInput` and `parseDualModeInput` in `trace-target.ts` do
+this for trace targets).
 
 **Shell completion:** Target positionals that take an org, project, issue, or
 dashboard use a completion-aware parser from `src/lib/completion-target.ts`
