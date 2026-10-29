@@ -295,6 +295,8 @@ export function graftProfileSpans(
   if (start < end) {
     graftProfileSpansIntoTree(trace, profile, trace.spanTree, {
       ...trace,
+      // The trace's span_id identifies a transaction, not a parent of its roots.
+      span_id: undefined,
       start_timestamp: start,
       timestamp: end,
     });

@@ -1,6 +1,91 @@
 import { expect, test } from "vitest";
 import { createTelemetryStore, serializeTrace } from "../sdk/core.ts";
 
+test.each([false, true])(
+  "profile fillers between independent roots retain top-level parent links (multiple threads: %s)",
+  async (multipleThreads) => {
+    const store = createTelemetryStore();
+    try {
+      const transaction = [
+        { type: "transaction" },
+        {
+          event_id: "transaction",
+          type: "transaction",
+          start_timestamp: 1,
+          timestamp: 1.4,
+          contexts: {
+            trace: {
+              trace_id: "trace",
+              span_id: "root",
+              data: { "thread.id": "main" },
+            },
+            profile: { profiler_id: "profiler" },
+          },
+        },
+      ];
+      const late = [
+        { type: "span" },
+        {
+          trace_id: "trace",
+          span_id: "late",
+          start_timestamp: 1.7,
+          timestamp: 1.8,
+          data: { "thread.id": "worker" },
+        },
+      ];
+      const profile = [
+        { type: "profile_chunk" },
+        {
+          event_id: "chunk",
+          type: "profile_chunk",
+          version: "2",
+          profiler_id: "profiler",
+          chunk_id: "chunk",
+          platform: "javascript",
+          profile: {
+            frames: [{ module: "app", function: "gap" }],
+            stacks: [[0]],
+            samples: [1.5, 1.52, 1.56, 1.6].map((timestamp, index) => ({
+              timestamp,
+              stack_id: 0,
+              thread_id: multipleThreads && index % 2 ? "worker" : "main",
+            })),
+          },
+        },
+      ];
+      for (const items of [[transaction, profile], [late]]) {
+        await store.ingestEnvelope([
+          { sdk: { name: "sentry.javascript.node", version: "10.63.0" } },
+          items,
+        ]);
+      }
+      const trace = serializeTrace(store.getTrace("trace")!);
+      const spans = new Map(trace.spans);
+      const roots = new Set(trace.spanTree);
+      expect(trace.spanTree[0]).toBe("root");
+      expect(trace.spanTree.at(-1)).toBe("late");
+      expect(trace.spanTree.length).toBeGreaterThan(2);
+      expect(spans.get("root")?.childSpanIds).toEqual([]);
+      for (const [id, span] of spans) {
+        if (roots.has(id)) {
+          expect(
+            span.parent_span_id,
+            `top-level ${id} has no parent`,
+          ).toBeUndefined();
+        } else {
+          const parent = spans.get(span.parent_span_id as string);
+          expect(parent?.childSpanIds, `parent contains ${id}`).toContain(id);
+        }
+        for (const childId of span.childSpanIds) {
+          expect(spans.get(childId)?.parent_span_id).toBe(id);
+        }
+      }
+    } finally {
+      store.dispose();
+    }
+  },
+);
+
 test.each([
   {
     name: "appended thread children",
