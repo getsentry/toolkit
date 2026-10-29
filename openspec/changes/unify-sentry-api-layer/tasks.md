@@ -49,7 +49,7 @@
 ## 8. Move MCP endpoints onto `@sentry/api`
 
 - [ ] 8.1 Organizations, projects, and teams. Verify the MCP tests and snapshots for the affected tools.
-- [ ] 8.2 Issues and events. Verify the MCP tests and snapshots for the affected tools.
+- [x] 8.2 Issues and events. Verify the MCP tests and snapshots for the affected tools. Shipped in #1713; issue notes, activity, user reports, event committers, writes, and the attachment download stay on the shared transport until 6.1 or until `@sentry/api` gains operations.
 - [ ] 8.3 Explore, traces, and logs. Verify the MCP tests, snapshots, and a search-events eval run.
 - [ ] 8.4 Releases and replays. Verify the MCP tests and snapshots for the affected tools.
 - [ ] 8.5 Monitors, alerts, and uptime, keeping the shared-transport fallback for the endpoints `@sentry/api` lacks. Verify the MCP tests and snapshots.
