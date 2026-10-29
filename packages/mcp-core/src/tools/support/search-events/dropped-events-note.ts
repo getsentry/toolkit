@@ -128,7 +128,7 @@ export async function buildDroppedEventsNote({
   const lines = [
     "## Dropped Events",
     "",
-    `⚠️ Sentry dropped **${totalDropped.toLocaleString()}** ${dataset} events ` +
+    `⚠️ Sentry dropped **${totalDropped.toLocaleString()}** ${dataset} ` +
       `(**${pct}%** of volume) in this project over this window, independent of ` +
       "this search's filter. A dip or flatline in the chart above may be dropped " +
       "data rather than an actual change.",
