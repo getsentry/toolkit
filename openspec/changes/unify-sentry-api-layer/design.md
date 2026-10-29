@@ -11,7 +11,7 @@ See proposal.md for motivation. Current state that shapes the approach:
   must therefore live below both products, in `toolkit-core`.
   The stdio server is moving into the CLI as `sentry mcp`, after which the
   CLI depends on `mcp-core` directly and `@sentry/mcp-server` becomes a
-  stdio proxy to the hosted MCP with no toolkit dependencies.
+  dependency-free bundle of that same server, built from CLI source.
 - **CLI request stack.**
   - `sentry-client.ts` handles auth, refresh on 401, timeouts, GET retries,
     redirect validation, and custom headers.
@@ -513,21 +513,32 @@ adds a lint rule that bans importing `sentry` from `mcp-core` and
 fails on a workspace dependency cycle. When tools move, the rule is relaxed
 to let `mcp-cloudflare` import `sentry/mcp` and nothing else from `sentry`.
 
-### `@sentry/mcp-server` stays as a stdio proxy
+### `@sentry/mcp-server` is a slim bundle of `sentry mcp`
 
-`@sentry/mcp-server` is kept, not retired. It becomes a small stdio proxy
-to the hosted MCP with no toolkit dependencies, only the MCP SDK. The CLI
-has grown large, and a client that only needs Sentry's tools over stdio
-should not have to download it.
+`@sentry/mcp-server` is kept, not retired. The CLI has grown large, and a
+client that only needs Sentry's tools over stdio should not have to
+download it. The package ships the same server as `sentry mcp`, bundled
+from CLI source into one file with no runtime dependencies (#1731):
 
-- It forwards stdio to the hosted MCP's Streamable HTTP endpoint and sends
-  the user's token as `Authorization: Sentry-Bearer <token>`, which the
-  hosted MCP already accepts, so it needs no OAuth flow of its own.
-- The hosted MCP serves one Sentry host. For any other host, such as
-  self-hosted Sentry, the proxy exits with an error that points to
-  `npx sentry mcp`, which runs the tools locally against any host.
-- `sentry mcp` stays the full local server and owns the MCP registry entry
+- One implementation serves both, so the package keeps the same flags,
+  tools, CLI session, and self-hosted support as `sentry mcp`.
+- The bundle leaves out what does not serve the MCP server: CLI commands,
+  the markdown renderer, agent skills, completions, terminal images, the
+  Ink UI, debug-file processing, and the SQLite WASM fallback. Without the
+  fallback, the package requires Node.js 22.15 or later. The bundle script
+  fails if any of these reach the output or the file grows past its size
+  budget.
+- `sentry-mcp auth login` runs the CLI's device flow with plain-text
+  output. Other account management stays in `sentry auth`, which reads the
+  same session.
+- When the tools move into the CLI's `sentry/mcp` entry, the bundle picks
+  them up from the same source with no package change.
+- `sentry mcp` stays the canonical server and owns the MCP registry entry
   (`server.json`).
+
+A stdio proxy to the hosted MCP was considered and rejected (#1743): it
+cannot reach self-hosted Sentry, and it would be a second implementation
+to keep in step.
 
 ### `fresh` is a shared read-tool input
 
@@ -631,8 +642,8 @@ bumps move both products together.
    `sentry mcp` inject the CLI's host capabilities (session, cache store,
    region cache, DSN detection, file uploads) while `mcp-cloudflare`
    bundles the same entry. The registry entry moves to `sentry mcp` in
-   #1731, and `@sentry/mcp-server` becomes a stdio proxy to the hosted MCP
-   (see "`@sentry/mcp-server` stays as a stdio proxy").
+   #1731, and `@sentry/mcp-server` becomes a slim bundle of `sentry mcp`
+   (see "`@sentry/mcp-server` is a slim bundle of `sentry mcp`").
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
 `off` restores today's uncached behavior. Each CLI step is a refactor that
