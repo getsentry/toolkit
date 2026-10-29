@@ -4,6 +4,8 @@
  * fetches pages, validates rows, logs, and maps failures to its own errors.
  */
 
+import { consumePage as consumeSdkPage, paginateUpTo } from "@sentry/api";
+
 /**
  * Sentry API's maximum items per page. Some endpoints silently cap larger
  * `per_page` values; others (org project list) return 400.
@@ -156,22 +158,16 @@ export function consumePage<T>(
   position: PagePosition,
   limit = Number.POSITIVE_INFINITY,
 ): Page<T[]> {
-  const unseen = page.data.slice(position.skip);
-  if (unseen.length > limit) {
-    return {
-      ...page,
-      data: unseen.slice(0, limit),
-      nextCursor: encodePageCursor(position.cursor, position.skip + limit),
-    };
-  }
+  const consumed = consumeSdkPage(
+    { data: page.data, nextCursor: page.nextCursor || undefined },
+    { cursor: position.cursor, offset: position.skip },
+    limit,
+  );
   return {
     ...page,
-    data: unseen,
-    nextCursor: page.nextCursor
-      ? encodePageCursor(
-          page.nextCursor,
-          Math.max(0, position.skip - page.data.length),
-        )
+    data: consumed.data,
+    nextCursor: consumed.position
+      ? encodePageCursor(consumed.position.cursor, consumed.position.offset)
       : undefined,
   };
 }
@@ -258,37 +254,36 @@ export async function paginate<T>(
   ) => Promise<Page<T[]>>,
 ): Promise<PaginateResult<T>> {
   const { limit, maxPages, warn = () => {} } = options;
-  let position = decodePageCursor(options.cursor, warn);
-  // Cursors without a page size accept any, so fetch the skipped rows too.
+  const position = decodePageCursor(options.cursor, warn);
+  // Keep the CLI's page sizing and legacy bookmarks while the SDK owns traversal.
   const perPage = position.perPage ?? pageSizeForLimit(limit + position.skip);
-  const rows: T[] = [];
-
-  for (let page = 0; page < maxPages; page += 1) {
-    const serverPage = await fetchPage(perPage, position.cursor);
-    const result = consumePage(serverPage, position, limit - rows.length);
-    rows.push(...result.data);
-    if (!result.nextCursor) {
-      return { data: rows, stoppedAtPageCap: false };
-    }
-    if (rows.length === limit) {
-      return {
-        data: rows,
-        nextCursor: result.nextCursor,
-        stoppedAtPageCap: false,
-      };
-    }
-    // Opaque server cursors cannot encode a skip; keep it in memory while walking.
-    position = {
-      ...position,
-      cursor: serverPage.nextCursor,
-      skip: Math.max(0, position.skip - serverPage.data.length),
-    };
-  }
-
+  const result = await paginateUpTo(
+    async (cursor) => {
+      const page = await fetchPage(perPage, cursor);
+      return { data: page.data, nextCursor: page.nextCursor || undefined };
+    },
+    {
+      limit,
+      maxPages,
+      resume: {
+        cursor: position.cursor,
+        offset: position.skip,
+        requestBudget: limit + position.skip,
+      },
+    },
+    "paginate",
+  );
   return {
-    data: rows,
-    nextCursor: encodePageCursor(position.cursor, position.skip),
-    stoppedAtPageCap: rows.length < limit,
+    data: result.data,
+    ...(result.continuation
+      ? {
+          nextCursor: encodePageCursor(
+            result.continuation.cursor,
+            result.continuation.offset,
+          ),
+        }
+      : {}),
+    stoppedAtPageCap: result.stopReason === "maxPages",
   };
 }
 
