@@ -24,6 +24,7 @@
  */
 
 import {
+  firstNonBlankLine,
   type ListTarget,
   type ListTargetOptions,
   type ParsedOrgProject,
@@ -152,7 +153,8 @@ export function parseOrgInput(
   raw: string | undefined,
   usageHint?: string,
 ): OrgInput {
-  const text = raw?.trim();
+  // Like other targets, only the first non-blank line counts (CLI-1RA)
+  const text = raw ? firstNonBlankLine(raw) : "";
   if (!text) {
     return {};
   }
