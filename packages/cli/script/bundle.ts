@@ -169,7 +169,7 @@ const sentrySourcemapPlugin: Plugin = {
  * `formatters/json` loads its generated parser only when --fields is parsed.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.
