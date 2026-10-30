@@ -21,6 +21,11 @@ discovery, installation, repository quality, and every selected project.
 Package-specific exceptions live in `package.json#sentryCi`; the standalone
 smoke-test suite remains in its own workflow.
 
+`test.yml` and `cli-build.yml` read their exact Node 20, 22, and 24 versions
+from `.github/node-versions/`. The npm runtime job calls the self-contained
+`sentryCi.npmRuntime` build command once, then validates the same package on
+all three Node versions.
+
 `CLI E2E (Node 24)` runs independently of the CLI project job. It builds the
 standalone CLI on Node 22, then builds the npm bundle and tests both on Node 24.
 Dependencies and generated sources are prepared once per job. The CLI project
