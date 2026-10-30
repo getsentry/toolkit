@@ -78,6 +78,9 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^4.6.0
       version: 4.6.0
+    '@vitest/coverage-v8':
+      specifier: ^5.0.5
+      version: 5.0.5
     agents:
       specifier: 0.20.1
       version: 0.20.1
@@ -448,7 +451,7 @@ importers:
         specifier: ^8.3.3
         version: 8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0)
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.9.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/cli:
@@ -523,7 +526,7 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       binpatch:
         specifier: ^0.4.2
@@ -625,7 +628,7 @@ importers:
         specifier: ^1.4.2
         version: 1.4.2(typescript@5.9.3)
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.20.3)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.20.3)(typescript@5.9.3))(vite@8.3.3(@types/node@22.20.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
       wrap-ansi:
         specifier: ^10.0.0
