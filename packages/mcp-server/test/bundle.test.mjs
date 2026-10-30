@@ -50,6 +50,20 @@ test("--help names the standalone command", () => {
   assert.match(result.stdout, /`npx -y @sentry\/mcp-server auth login`/);
 });
 
+test("a client closing stdout early is a clean exit, not a crash", async () => {
+  const child = spawn(process.execPath, [bin, "--help"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env,
+  });
+  child.stdout.destroy();
+  const chunks = [];
+  child.stderr.on("data", (chunk) => chunks.push(chunk));
+  const code = await new Promise((resolve) => child.on("exit", resolve));
+  const stderr = Buffer.concat(chunks).toString();
+  assert.equal(code, 0, stderr);
+  assert.doesNotMatch(stderr, /EPIPE/);
+});
+
 test("without credentials, points to its own auth login", () => {
   const result = run([]);
   assert.notEqual(result.status, 0);

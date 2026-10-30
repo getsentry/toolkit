@@ -267,8 +267,15 @@ function initMcpTelemetry(
   });
 }
 
-/** Exit on fatal errors without recursing when stderr is already closed. */
-function installProcessHandlers(): (error: unknown, label: string) => void {
+/**
+ * Exit on fatal errors without recursing when stderr is already closed.
+ *
+ * @internal Exported for testing
+ */
+export function installProcessHandlers(): (
+  error: unknown,
+  label: string,
+) => void {
   let exiting = false;
   function exitAfterError(error: unknown, label: string): void {
     if (exiting) {
@@ -297,6 +304,12 @@ function installProcessHandlers(): (error: unknown, label: string) => void {
   }
 
   async function shutdown(signal: string): Promise<void> {
+    // A fatal error is already flushing and will exit 1; a signal in that
+    // window must not turn the crash into a successful exit.
+    if (exiting) {
+      return;
+    }
+    exiting = true;
     console.error(`${signal} received, shutting down...`);
     await flush(SENTRY_FLUSH_TIMEOUT_MS);
     process.exit(0);

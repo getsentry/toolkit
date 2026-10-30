@@ -11,6 +11,11 @@ import "./lib/suppress-sqlite-warning.js";
 import { redactCredentialText } from "./lib/credential-redaction.js";
 import { CliError, formatError, getExitCode } from "./lib/errors.js";
 import { preloadProjectContext } from "./lib/project-context.js";
+import { installStreamErrorHandlers } from "./lib/stream-errors.js";
+
+// Same as `bin.ts`: an MCP client closing its pipes is a normal disconnect,
+// not a crash, including during setup before the server's own handlers exist.
+installStreamErrorHandlers();
 
 async function main(args: string[]): Promise<void> {
   try {
