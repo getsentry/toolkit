@@ -137,7 +137,33 @@ type CompleterContext = {
 };
 
 /** What the word being completed is, and the positionals typed before it. */
-type CompletionSlot = CompleterContext & { kind: CompletionTarget | null };
+type CompletionSlot = CompleterContext & {
+  kind: CompletionTarget | null;
+  /** The flags the word can name if it starts with `-`. */
+  flagNames: Completion[];
+};
+
+/** A flag's spelling without the value given with `=` (`--period=7d`). */
+const FLAG_VALUE_RE = /=.*$/s;
+
+/**
+ * The command's visible flags and their aliases, with their briefs, except
+ * those already in `words`. Variadic flags may be given again.
+ */
+function remainingFlagNames(
+  command: CommandCompletions[string],
+  words: readonly string[],
+): Completion[] {
+  const given = new Set(words.map((word) => word.replace(FLAG_VALUE_RE, "")));
+  return Object.entries(command.flagNames ?? {}).flatMap(
+    ([name, { brief, aliases = [], variadic }]) => {
+      const spellings = [name, ...aliases];
+      return !variadic && spellings.some((spelling) => given.has(spelling))
+        ? []
+        : spellings.map((value) => ({ value, description: brief }));
+    },
+  );
+}
 
 /**
  * Find the argument the word being completed fills.
@@ -148,7 +174,9 @@ type CompletionSlot = CompleterContext & { kind: CompletionTarget | null };
  * `--period=7d` is a single word. Other `-`-prefixed words are flags, and
  * like Stricli's scanner, a flag ends the one before it instead of becoming
  * its value: an `inferEmpty` flag such as `--time-series` then takes an
- * empty value, and any other flag would be a usage error anyway.
+ * empty value, and any other flag would be a usage error anyway. For the
+ * same reason, a word starting with `-` names a flag even after one that
+ * takes a value.
  *
  * @returns The slot, or `undefined` when the words name no command with
  *   completion metadata
@@ -170,11 +198,13 @@ function findSlot(words: string[]): CompletionSlot | undefined {
         positionals.push(word);
       }
     }
+    const flagNames = remainingFlagNames(command, words.slice(length));
     if (flag !== undefined) {
       return {
         kind: command.flags[flag] ?? null,
         positionals,
         choices: command.choices?.[flag],
+        flagNames,
       };
     }
     // A variadic positional is a single parameter that every word fills.
@@ -185,7 +215,12 @@ function findSlot(words: string[]): CompletionSlot | undefined {
       command.variadic && positionals.length > 0
         ? undefined
         : command.choices?.[index];
-    return { kind: command.positionals[index] ?? null, positionals, choices };
+    return {
+      kind: command.positionals[index] ?? null,
+      positionals,
+      choices,
+      flagNames,
+    };
   }
   return;
 }
@@ -393,9 +428,10 @@ function completePeriods(partial: string): Completion[] {
  * Determine what completions to provide based on the command context.
  *
  * Finds the argument the partial fills (a positional or a flag value) and
- * runs the completer for the kind its parser declares. Words that name a
- * nested route group (`alert issues`) complete its subcommands instead;
- * the shell scripts embed the first two levels themselves.
+ * runs the completer for the kind its parser declares. A partial starting
+ * with `-` completes the command's flag names instead. Words that name a
+ * nested route group (`alert issues`) complete its subcommands; the shell
+ * scripts embed the first two levels themselves.
  *
  * @param precedingWords - Words before the partial (determines context)
  * @param partial - The current partial word being completed
@@ -409,6 +445,9 @@ export async function getCompletions(
     return precedingWords.length >= 2
       ? completeSubcommands(precedingWords.join(" "), partial)
       : [];
+  }
+  if (partial.startsWith("-")) {
+    return slot.flagNames.filter(({ value }) => value.startsWith(partial));
   }
   return slot.kind ? await COMPLETERS[slot.kind](partial, slot) : [];
 }
