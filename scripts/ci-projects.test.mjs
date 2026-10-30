@@ -288,13 +288,38 @@ describe("workspace CI selection", () => {
           JSON.stringify({ shard }),
         );
       }
-      const requireReports = () =>
+      const requireReports = (count = "3") =>
         spawnSync("bash", ["-euc", script], {
           encoding: "utf8",
-          env: { ...process.env, RUNNER_TEMP: directory },
+          env: { ...process.env, RUNNER_TEMP: directory, SHARD_COUNT: count },
         }).status;
 
       assert.equal(requireReports(), 0, "all three shard reports are present");
+      assert.equal(
+        requireReports("2"),
+        0,
+        "a smaller matrix needs fewer reports",
+      );
+      assert.equal(
+        requireReports("4"),
+        1,
+        "a larger matrix needs another report",
+      );
+      writeFileSync(
+        join(reports, "shard-4.json"),
+        JSON.stringify({ shard: 4 }),
+      );
+      assert.equal(
+        requireReports("4"),
+        0,
+        "all four shard reports are present",
+      );
+      assert.notEqual(requireReports(""), 0, "the shard count is required");
+      assert.notEqual(
+        requireReports("0"),
+        0,
+        "the shard count must be positive",
+      );
       const secondReport = join(reports, "shard-2.json");
       rmSync(secondReport);
       assert.equal(requireReports(), 1, "the middle shard report is missing");

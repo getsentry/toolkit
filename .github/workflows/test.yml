@@ -207,21 +207,23 @@ jobs:
           [[ -z "$(git status --porcelain --untracked-files=all)" ]]
 
   cli-unit:
-    name: CLI unit tests (${{ matrix.shard }}/3)
+    name: CLI unit tests (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: discover-projects
     if: contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      shard-count: ${{ strategy.job-total }}
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .github/node-versions/22
           cache: pnpm
@@ -234,8 +236,9 @@ jobs:
       - name: Test CLI shard
         env:
           SHARD: ${{ matrix.shard }}
-        run: pnpm --filter sentry run ci:test:unit --shard="$SHARD/3" --reporter=default --reporter=blob --outputFile.blob="coverage/shard-$SHARD.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+          SHARD_COUNT: ${{ strategy.job-total }}
+        run: pnpm --filter sentry run ci:test:unit --shard="$SHARD/$SHARD_COUNT" --reporter=default --reporter=blob --outputFile.blob="coverage/shard-$SHARD.json"
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-unit-coverage-${{ matrix.shard }}
           path: packages/cli/coverage/shard-${{ matrix.shard }}.json
@@ -254,23 +257,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .github/node-versions/22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: cli-unit-coverage-*
           path: ${{ runner.temp }}/cli-unit-reports
           merge-multiple: true
       - name: Require every shard report
+        env:
+          SHARD_COUNT: ${{ needs.cli-unit.outputs.shard-count }}
         run: |
-          for shard in 1 2 3; do
+          test "$SHARD_COUNT" -gt 0
+          for ((shard = 1; shard <= SHARD_COUNT; shard++)); do
             test -s "$RUNNER_TEMP/cli-unit-reports/shard-$shard.json"
           done
       - name: Merge CLI coverage

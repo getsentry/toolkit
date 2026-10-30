@@ -29,16 +29,16 @@ all three Node versions.
 When the CLI is selected, its lint, typecheck, and policy checks run in the
 project job. Unit tests run on Node 22 in three parallel shards, with the same
 test directories and coverage as `pnpm --filter sentry test:unit`. Each shard
-uploads a Vitest blob report; `CLI coverage` requires all three reports before
-merging them into `packages/cli/coverage/lcov.info`.
+uploads a Vitest blob report; `CLI coverage` requires a report from every shard
+before merging them into `packages/cli/coverage/lcov.info`.
 
 `CLI E2E (Node 24)` runs independently of the unit tests and project checks. It
 builds the standalone CLI on Node 22 and the npm bundle on Node 24, then tests
 both on Node 24. The project, unit-test, and E2E jobs each build their workspace
-dependencies and run `ci:prepare` once before using the prepared sources. The regular development
-commands still generate their prerequisites. The final `test` gate requires
-the unit shards, coverage merge, and E2E job whenever the CLI is selected, and
-requires them to be skipped otherwise.
+dependencies and run `ci:prepare` once before using the prepared sources. Public
+build and test commands still prepare their own inputs for local use. The final
+`test` gate requires the unit shards, coverage merge, and E2E job whenever the
+CLI is selected, and requires them to be skipped otherwise.
 
 ### deploy.yml
 
