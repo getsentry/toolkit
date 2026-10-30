@@ -265,7 +265,7 @@ jobs:
         with:
           node-version-file: .github/node-versions/22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter sentry install --frozen-lockfile --ignore-scripts
       - uses: actions/download-artifact@v8
         with:
           pattern: cli-unit-coverage-*

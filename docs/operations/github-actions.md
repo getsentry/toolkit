@@ -31,6 +31,8 @@ project job. Unit tests run on Node 22 in three parallel shards, with the same
 test directories and coverage as `pnpm --filter sentry test:unit`. Each shard
 uploads a Vitest blob report; `CLI coverage` requires a report from every shard
 before merging them into `packages/cli/coverage/lcov.info`.
+The merge job installs the CLI dependency set without install scripts; it does
+not build packages or rerun tests.
 
 `CLI E2E (Node 24)` runs independently of the unit tests and project checks. It
 builds the standalone CLI on Node 22 and the npm bundle on Node 24, then tests
