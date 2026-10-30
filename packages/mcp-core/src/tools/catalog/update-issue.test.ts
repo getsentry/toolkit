@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { issueFixture, mswServer } from "@sentry/mcp-server-mocks";
+import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { logIssue } from "../../telem/logging";
 import { prepareToolParams } from "../catalog-runtime/availability.js";
 import updateIssue from "./update-issue.js";
+
+vi.mock("../../telem/logging", () => ({
+  logIssue: vi.fn(),
+}));
 
 type MockIssue = typeof issueFixture;
 
@@ -23,6 +28,7 @@ function createIssue(overrides: Partial<MockIssue> = {}): MockIssue {
 
 afterEach(() => {
   mswServer.resetHandlers();
+  vi.clearAllMocks();
 });
 
 describe("update_issue", () => {
@@ -1023,6 +1029,56 @@ describe("update_issue", () => {
     expect(result).toContain("**Status**: unresolved → **resolved**");
     // Comment failure should be reported gracefully, not thrown
     expect(result).toContain("**Comment not posted**");
+  });
+
+  it("does not call logIssue when comment posting fails with a 403 permission error", async () => {
+    const currentIssue = createIssue({
+      status: "unresolved",
+      statusDetails: {},
+    });
+    const updatedIssue = createIssue({
+      status: "resolved",
+      statusDetails: {},
+    });
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(currentIssue),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(updatedIssue),
+      ),
+      http.post(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/notes/",
+        () =>
+          HttpResponse.json(
+            { detail: "You do not have permission to perform this action." },
+            { status: 403 },
+          ),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+        reason: "Resolving because fix deployed",
+      },
+      serverContext,
+    );
+
+    // Update succeeded — output should show it
+    expect(result).toContain("**Status**: unresolved → **resolved**");
+    // Comment failure should be reported gracefully, not thrown
+    expect(result).toContain("**Comment not posted**");
+    // Expected 403 permission errors must NOT be logged as Sentry issues
+    expect(logIssue).not.toHaveBeenCalled();
   });
 
   it("strips null bytes from reason before posting as a comment", () => {
