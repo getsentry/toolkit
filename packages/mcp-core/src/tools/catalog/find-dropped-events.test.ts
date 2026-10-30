@@ -33,6 +33,7 @@ const DROPPED_EVENTS_RESPONSE = {
       start: 1_700_000_000_000,
       end: 1_700_003_600_000,
       count: 400,
+      tags: ["unintentional"],
     },
   ],
   acceptedEvents: [
@@ -44,6 +45,7 @@ const DROPPED_EVENTS_RESPONSE = {
       start: 1_700_000_000_000,
       end: 1_700_003_600_000,
       count: 1000,
+      tags: [],
     },
   ],
 };
@@ -89,6 +91,7 @@ describe("find_dropped_events", () => {
             "outcome": "accepted",
             "reason": "accepted",
             "start": 1700000000000,
+            "tags": [],
           },
         ],
         "dataset": "spans",
@@ -100,6 +103,9 @@ describe("find_dropped_events", () => {
             "outcome": "rate_limited",
             "reason": "key_quota",
             "start": 1700000000000,
+            "tags": [
+              "unintentional",
+            ],
           },
         ],
         "interval": 3600000,

@@ -9,7 +9,11 @@ export default function SetupGuide({
   id,
   title,
   children,
-}: { id: string; title: string; children: React.ReactNode }) {
+}: {
+  id: string;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <AccordionItem value={id}>
       <AccordionTrigger>{title}</AccordionTrigger>

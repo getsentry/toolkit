@@ -7,7 +7,7 @@
  * Designed for minimal startup time — no Stricli boot, no telemetry,
  * no auth check, no API calls. Opens the SQLite cache directly for ~1ms
  * reads. All data comes from caches already populated by normal CLI
- * usage (org_regions, project_cache, project_aliases).
+ * usage (org_regions, project_cache, project_aliases, completion_cache).
  *
  * Protocol:
  *   Input:  `sentry __complete <word1> <word2> ... <partial>`
@@ -15,13 +15,25 @@
  *   Exit:   0 on success (even if no completions)
  */
 
+import generatedTargets from "../generated/completion-targets.json";
+import type {
+  CompletionTarget,
+  CompletionValues,
+} from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getCredentialContext } from "./db/auth.js";
+import {
+  type CachedCompletionEntity,
+  type CompletionEntityKind,
+  getCachedCompletionEntities,
+} from "./db/completion-cache.js";
 import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
 import { getProjectAliases } from "./db/project-aliases.js";
 import { getCachedProjectsForOrg } from "./db/project-cache.js";
 import { getCachedOrganizations } from "./db/regions.js";
+import { ValidationError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
+import type { CommandCompletions } from "./introspect.js";
 import { COMMON_PLATFORMS, VALID_PLATFORMS } from "./platforms.js";
 
 const WHITESPACE_RE = /\s/;
@@ -55,7 +67,7 @@ type Completion = {
  *
  * @param args - The words after `__complete` (COMP_WORDS[1:] from the shell)
  */
-export function handleComplete(args: string[]): void {
+export async function handleComplete(args: string[]): Promise<void> {
   const startMs = performance.now();
 
   // The last word is the partial being completed (may be empty)
@@ -66,7 +78,7 @@ export function handleComplete(args: string[]): void {
   let completions: Completion[];
 
   try {
-    completions = getCompletions(precedingWords, partial);
+    completions = await getCompletions(precedingWords, partial);
   } catch {
     // Graceful degradation — if DB fails, return no completions
     completions = [];
@@ -95,109 +107,152 @@ export function handleComplete(args: string[]): void {
 }
 
 /**
- * Commands that accept org/project positional args.
+ * Command path → completion kind of each positional and value-taking flag,
+ * and the fixed values completers offer, from
+ * `src/generated/completion-targets.json`.
  *
- * Hardcoded for fast-path performance — cannot derive from the route map
- * at runtime because `app.ts` imports `@sentry/node-core`. A property test in
- * `completions.property.test.ts` verifies this set stays in sync.
- *
- * @internal Exported for testing only.
+ * Generated from the parsers the commands declare (see
+ * `completion-target.ts`) by `script/generate-completion-targets.ts`
+ * because this fast path cannot boot Stricli to walk the route tree, nor
+ * load the modules those values come from.
  */
-export const ORG_PROJECT_COMMANDS = new Set([
-  "dsn list",
-  "issue list",
-  "issue events",
-  "issue view",
-  "issue explain",
-  "issue plan",
-  "issue resolve",
-  "issue link",
-  "issue unlink",
-  "issue unresolve",
-  "issue archive",
-  "issue merge",
-  "feedback list",
-  "feedback view",
-  "project list",
-  "project view",
-  "project delete",
-  "replay list",
-  "replay view",
-  "trace list",
-  "trace view",
-  "trace logs",
-  "span list",
-  "span view",
-  "event view",
-  "event list",
-  "log list",
-  "log view",
-  "dashboard list",
-  "dashboard view",
-  "dashboard create",
-  "dashboard revisions",
-  "dashboard restore",
-]);
+const GENERATED = generatedTargets as {
+  commands: CommandCompletions;
+  values: CompletionValues;
+};
+
+/** What the word being completed is, and the positionals typed before it. */
+type CompletionSlot = {
+  kind: CompletionTarget | null;
+  /** Positionals before the word being completed, flags removed. */
+  positionals: string[];
+};
 
 /**
- * Commands that accept only an org slug (no project).
+ * Find the argument the word being completed fills.
  *
- * @internal Exported for testing only.
+ * Commands are leaves of the route tree, so at most one prefix of the
+ * preceding words names a command; the rest are positionals and flags. A
+ * value-taking flag written as `--period 7d` consumes the next word;
+ * `--period=7d` is a single word. Other `-`-prefixed words are flags, and
+ * like Stricli's scanner, a flag ends the one before it instead of becoming
+ * its value: an `inferEmpty` flag such as `--time-series` then takes an
+ * empty value, and any other flag would be a usage error anyway.
+ *
+ * @returns The slot, or `undefined` when the words name no command with
+ *   completion metadata
  */
-export const ORG_ONLY_COMMANDS = new Set([
-  "agent-conversation list",
-  "agent-conversation view",
-  "org view",
-  "release list",
-  "release view",
-  "release create",
-  "release finalize",
-  "release delete",
-  "release archive",
-  "release restore",
-  "release deploy",
-  "release deploys",
-  "release set-commits",
-  "team list",
-  "repo list",
-  "monitor list",
-  "trial list",
-  "trial start",
-]);
+function findSlot(words: string[]): CompletionSlot | undefined {
+  for (let length = 1; length <= words.length; length++) {
+    const command = GENERATED.commands[words.slice(0, length).join(" ")];
+    if (!command) {
+      continue;
+    }
+    const positionals: string[] = [];
+    let flag: string | undefined;
+    for (const word of words.slice(length)) {
+      if (word.startsWith("-")) {
+        flag = word in command.flags ? word : undefined;
+      } else if (flag !== undefined) {
+        flag = undefined;
+      } else {
+        positionals.push(word);
+      }
+    }
+    if (flag !== undefined) {
+      return { kind: command.flags[flag] ?? null, positionals };
+    }
+    // A variadic positional is a single parameter that every word fills
+    const index = command.variadic ? 0 : positionals.length;
+    return { kind: command.positionals[index] ?? null, positionals };
+  }
+  return;
+}
+
+/**
+ * Suggests values for one completion kind. Completers that need a parser
+ * import it when called, so other completions never load it.
+ */
+type Completer = (
+  partial: string,
+  slot: CompletionSlot,
+) => Completion[] | Promise<Completion[]>;
+
+/**
+ * `org/` prefixes and `org/<id>` dashboards. Always qualified: dashboard IDs
+ * are sequential integers, so a bare ID would be read in whichever org is
+ * auto-detected, not the one it was seen in.
+ */
+const completeDashboards = entityCompleter(
+  "dashboard",
+  (partial) => (partial.includes("/") ? [] : completeOrgSlugs(partial, "/")),
+  { qualify: true },
+);
+
+/** The completer of every kind a parser can declare. */
+const COMPLETERS: Record<CompletionTarget, Completer> = {
+  org: (partial) => completeOrgSlugs(partial),
+  "org/project": (partial) => completeOrgSlashProject(partial),
+  issue: entityCompleter("issue", completeOrgSlashProject),
+  // Only the first word: in `<org/project> <id-or-title>`, the org of the
+  // second word is for the dashboard grammar to decide, and this
+  // fast path cannot load it
+  dashboard: (partial, slot) =>
+    slot.positionals.length > 0 ? [] : completeDashboards(partial),
+  "issue-query": async (partial) => {
+    const { completeSearchQuery } =
+      await import("@sentry/toolkit-core/search-query");
+    return completeSearchQuery(partial, GENERATED.values.issueSearch).map(
+      (value) => ({ value }),
+    );
+  },
+  period: (partial) => completePeriods(partial),
+};
+
+const DIGITS_RE = /^\d+$/;
+
+/**
+ * Complete a relative `--period` value: the presets starting with the
+ * partial, or, for a bare number, that number with every unit
+ * `parsePeriod` accepts (`3` → `3m`, `3h`, `3d`, …).
+ */
+function completePeriods(partial: string): Completion[] {
+  const { periodPresets, periodUnits } = GENERATED.values;
+  if (DIGITS_RE.test(partial)) {
+    return periodUnits.map((unit) => ({ value: `${partial}${unit}` }));
+  }
+  return Object.entries(periodPresets)
+    .filter(([period]) => period.startsWith(partial))
+    .map(([value, description]) => ({ value, description }));
+}
 
 /**
  * Determine what completions to provide based on the command context.
  *
- * Walks the preceding words to identify the command path, then decides
- * whether to complete org slugs, project slugs, or aliases.
+ * Finds the argument the partial fills (a positional or a flag value) and
+ * runs the completer for the kind its parser declares.
  *
  * @param precedingWords - Words before the partial (determines context)
  * @param partial - The current partial word being completed
  */
-export function getCompletions(
+export async function getCompletions(
   precedingWords: string[],
   partial: string,
-): Completion[] {
+): Promise<Completion[]> {
   // Build the command path from preceding words (e.g., "issue list")
   const cmdPath =
     precedingWords.length >= 2
       ? `${precedingWords[0]} ${precedingWords[1]}`
       : "";
 
+  // `project create` takes `name:platform` specs, not an existing target,
+  // so it keeps a dedicated completer instead of a generated target kind.
   if (cmdPath === "project create") {
     return completeProjectCreateSpec(partial);
   }
 
-  if (ORG_PROJECT_COMMANDS.has(cmdPath)) {
-    return completeOrgSlashProject(partial);
-  }
-
-  if (ORG_ONLY_COMMANDS.has(cmdPath)) {
-    return completeOrgSlugs(partial);
-  }
-
-  // Not a known command path — no dynamic completions
-  return [];
+  const slot = findSlot(precedingWords);
+  return slot?.kind ? await COMPLETERS[slot.kind](partial, slot) : [];
 }
 
 /**
@@ -265,7 +320,7 @@ export function completeOrgSlugs(partial: string, suffix = ""): Completion[] {
   }
 
   const nameMap = new Map(orgs.map((o) => [o.slug, o.name]));
-  const matched = fuzzyMatch(partial, Array.from(nameMap.keys()), {
+  const matched = fuzzyMatch(partial, [...nameMap.keys()], {
     mode: "search",
   });
 
@@ -347,7 +402,7 @@ export function completeProjectSlugs(
   }
 
   const nameMap = new Map(projects.map((p) => [p.projectSlug, p.projectName]));
-  const matched = fuzzyMatch(projectPartial, Array.from(nameMap.keys()), {
+  const matched = fuzzyMatch(projectPartial, [...nameMap.keys()], {
     mode: "search",
   });
 
@@ -400,4 +455,138 @@ export function completeAliases(partial: string): Completion[] {
       description: entry ? `${entry.orgSlug}/${entry.projectSlug}` : undefined,
     };
   });
+}
+
+/** Most cached-entity suggestions returned for one completion. */
+const MAX_ENTITY_COMPLETIONS = 50;
+
+/**
+ * Where a partial target points: the cached org it names, if one has been
+ * typed, and the rest of the partial after `org/`.
+ */
+type TargetScope = { org: string | undefined; rest: string };
+
+/**
+ * Read the org of a partial target with the parser the commands use
+ * (`parseOrgProjectInput`), so completion and execution agree on what
+ * names an org. The parser is loaded on demand, so completions that do
+ * not need it do not pay for it.
+ *
+ * @returns The scope, or `undefined` when the partial cannot become a valid
+ *   target: the parser rejects it, it is a URL, or it names an org that is
+ *   not cached
+ */
+async function parseTargetScope(
+  partial: string,
+): Promise<TargetScope | undefined> {
+  const { parseOrgProjectInput } = await import("./arg-parsing.js");
+  let input: ReturnType<typeof parseOrgProjectInput>;
+  try {
+    input = parseOrgProjectInput(partial);
+  } catch (error) {
+    // Partial input that can never become a valid target (e.g. `a/b/c`)
+    if (error instanceof ValidationError) {
+      return;
+    }
+    throw error;
+  }
+  if (input.baseUrl) {
+    return;
+  }
+  const { parsed } = input;
+  const named = parsed.type === "auto-detect" ? undefined : parsed.org;
+  if (named === undefined) {
+    // A bare word or `/word` has no org; only the bare word can still get one
+    return partial.includes("/")
+      ? undefined
+      : { org: undefined, rest: partial };
+  }
+  const org = fuzzyResolveOrg(named);
+  return org
+    ? { org, rest: partial.slice(partial.indexOf("/") + 1) }
+    : undefined;
+}
+
+/**
+ * Cached entities of `orgs` matching `partial`, best match first.
+ *
+ * The partial is matched against both the value and its label (issue or
+ * dashboard title), so typing part of a title finds its ID. An empty
+ * partial returns the most recently seen entities first.
+ */
+function matchCachedEntities(
+  kind: CompletionEntityKind,
+  partial: string,
+  orgs: readonly string[],
+): CachedCompletionEntity[] {
+  const entities = getCachedCompletionEntities(kind, orgs);
+  if (partial === "" || entities.length === 0) {
+    return entities.slice(0, MAX_ENTITY_COMPLETIONS);
+  }
+  const candidates = new Set<string>();
+  for (const { value, label } of entities) {
+    candidates.add(value);
+    if (label) {
+      candidates.add(label);
+    }
+  }
+  const rank = new Map(
+    fuzzyMatch(partial, [...candidates], { mode: "search" }).map(
+      (candidate, index) => [candidate, index],
+    ),
+  );
+  const score = ({ value, label }: CachedCompletionEntity) =>
+    Math.min(
+      rank.get(value) ?? Number.POSITIVE_INFINITY,
+      (label ? rank.get(label) : undefined) ?? Number.POSITIVE_INFINITY,
+    );
+  return entities
+    .map((entity) => ({ entity, score: score(entity) }))
+    .filter((ranked) => Number.isFinite(ranked.score))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, MAX_ENTITY_COMPLETIONS)
+    .map(({ entity }) => entity);
+}
+
+/**
+ * Build the completer of an entity kind remembered in `completion_cache`.
+ *
+ * The org part of the argument is read by {@link parseTargetScope}, so
+ * every entity kind follows the same rules: the target suggestions for the
+ * partial (`org/`, the org's projects, …), then the entities of the org
+ * typed, or of every org when none is. Entities are written `org/<value>`
+ * after `org/`, when more than one org is known, and with `qualify`, so
+ * the value names its org.
+ *
+ * @param kind - Entity type to complete
+ * @param target - Completes the target part of the argument (`org/`,
+ *   `org/project`, …), offered next to the entities
+ * @param options.qualify - Always write `org/<value>`, for values that do
+ *   not identify their org on their own
+ */
+function entityCompleter(
+  kind: CompletionEntityKind,
+  target: (partial: string) => Completion[],
+  options: { qualify?: boolean } = {},
+): (partial: string) => Promise<Completion[]> {
+  return async (partial) => {
+    const scope = await parseTargetScope(partial);
+    if (!scope) {
+      return [];
+    }
+    const orgs = scope.org
+      ? [scope.org]
+      : getCompletionOrganizations().map((org) => org.slug);
+    const qualified =
+      options.qualify || scope.org !== undefined || orgs.length > 1;
+    return [
+      ...target(partial),
+      ...matchCachedEntities(kind, scope.rest, orgs).map(
+        ({ orgSlug, value, label }) => ({
+          value: qualified ? `${orgSlug}/${value}` : value,
+          description: label,
+        }),
+      ),
+    ];
+  };
 }

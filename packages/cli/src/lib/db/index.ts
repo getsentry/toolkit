@@ -27,6 +27,9 @@ const LEGACY_CONFIG_DIR_NAME = ".sentry";
 /** Sub-directory used under the XDG config base directory. */
 const XDG_CONFIG_SUBDIR = "sentry";
 
+/** Default config directory as shown to users (help text, docs). */
+export const DEFAULT_CONFIG_DIR_DISPLAY = `~/.config/${XDG_CONFIG_SUBDIR}`;
+
 const DB_FILENAME = "cli.db";
 
 /** 7-day TTL for cache entries (milliseconds) */
@@ -40,6 +43,11 @@ let db: Database | null = null;
 /** Raw database without tracing (used for repair operations) */
 let rawDb: Database | null = null;
 let dbOpenedPath: string | null = null;
+/**
+ * Set once {@link detachDatabase} hands `cli.db` to another CLI version.
+ * Later reads in this process use a throwaway in-memory database instead.
+ */
+let detached = false;
 
 /**
  * Whether the process-exit close handler has been registered.
@@ -169,7 +177,7 @@ function setDbPermissions(): void {
 
 /** Get or initialize the database connection. */
 export function getDatabase(): Database {
-  const dbPath = getDbPath();
+  const dbPath = detached ? ":memory:" : getDbPath();
 
   // Auto-invalidate if config directory changed (for tests)
   if (db && dbOpenedPath !== dbPath) {
@@ -183,7 +191,9 @@ export function getDatabase(): Database {
     return db;
   }
 
-  ensureConfigDir();
+  if (!detached) {
+    ensureConfigDir();
+  }
 
   rawDb = new Database(dbPath);
 
@@ -204,13 +214,17 @@ export function getDatabase(): Database {
     rawDb.exec("PRAGMA foreign_keys = ON");
     rawDb.exec("PRAGMA synchronous = NORMAL");
 
-    setDbPermissions();
+    if (!detached) {
+      setDbPermissions();
+    }
     initSchema(rawDb);
     runMigrations(rawDb);
-    migrateFromJson(rawDb);
+    if (!detached) {
+      migrateFromJson(rawDb);
+    }
 
     // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node-core (~85ms).
+    // Lazy-require telemetry to avoid top-level import of @sentry/node (~100ms).
     // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
     if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
       db = rawDb;
@@ -240,6 +254,19 @@ export function closeDatabase(): void {
     rawDb = null;
     dbOpenedPath = null;
   }
+  detached = false;
+}
+
+/**
+ * Close `cli.db` for good in this process, so another CLI version can own it.
+ *
+ * Used when `sentry cli upgrade undo` swaps in an older version's database:
+ * reopening it here would migrate it to this version's schema. Later reads
+ * get a fresh in-memory database, so their writes are dropped.
+ */
+export function detachDatabase(): void {
+  closeDatabase();
+  detached = true;
 }
 
 /**
@@ -276,6 +303,9 @@ function cleanupExpiredCaches(): void {
     .run(expiryTime);
   database
     .query("DELETE FROM project_aliases WHERE last_accessed < ?")
+    .run(expiryTime);
+  database
+    .query("DELETE FROM completion_cache WHERE last_seen < ?")
     .run(expiryTime);
   // project_root_cache uses ttl_expires_at instead of last_accessed
   database

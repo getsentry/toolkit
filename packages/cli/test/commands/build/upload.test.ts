@@ -7,11 +7,12 @@
  * resolution are spied so no network is touched.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "@stricli/core";
-import { strToU8, zipSync } from "fflate";
+import { strToU8, unzipSync, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { app } from "../../../src/app.js";
 import { uploadCommand } from "../../../src/commands/build/upload.js";
@@ -248,6 +249,116 @@ describe("build upload", () => {
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
     expect(harness.exitCode).toBe(1);
+  });
+
+  test("parses repeatable --dsym flags and uploads their files inside the XCArchive", async () => {
+    const ipa = join(tmpDir, "MyApp.ipa");
+    await writeFile(
+      ipa,
+      zipSync({ "Payload/MyApp.app/Info.plist": strToU8("plist") }),
+    );
+    const dsym = join(tmpDir, "MyApp.app.dSYM");
+    await mkdir(join(dsym, "Contents"), { recursive: true });
+    await writeFile(join(dsym, "Contents", "symbols"), "app symbols");
+    const zipPath = join(tmpDir, "framework.zip");
+    await writeFile(
+      zipPath,
+      zipSync({
+        "Framework.dSYM/Contents/symbols": strToU8("framework symbols"),
+      }),
+    );
+    const uploads: { path: string; entries: Record<string, Uint8Array> }[] = [];
+    uploadSpy.mockImplementation(
+      async ({ contentPath }: { contentPath: string }) => {
+        uploads.push({
+          path: contentPath,
+          entries: unzipSync(await readFile(contentPath)),
+        });
+        return "https://sentry.io/artifact/1";
+      },
+    );
+
+    const { exitCode, stderr } = await runViaApp([
+      ipa,
+      "--dsym",
+      `${dsym}/`,
+      "--dsym",
+      zipPath,
+    ]);
+
+    expect(exitCode ?? 0).toBe(0);
+    expect(stderr).toBe("");
+    expect(uploads).toHaveLength(1);
+    expect(
+      uploads[0]?.entries[
+        "archive.xcarchive/dSYMs/MyApp.app.dSYM/Contents/symbols"
+      ],
+    ).toEqual(strToU8("app symbols"));
+    expect(
+      uploads[0]?.entries[
+        "archive.xcarchive/dSYMs/Framework.dSYM/Contents/symbols"
+      ],
+    ).toEqual(strToU8("framework symbols"));
+    expect(existsSync(uploads[0]!.path)).toBe(false);
+  });
+
+  test.each(["apk", "aab", "xcarchive"])(
+    "rejects --dsym with a %s build before upload",
+    async (format) => {
+      const path =
+        format === "xcarchive" ? await writeXcarchive() : await writeApk();
+      if (format === "aab") {
+        await writeFile(
+          path,
+          zipSync({
+            "BundleConfig.pb": strToU8("cfg"),
+            "base/manifest/AndroidManifest.xml": strToU8("xml"),
+          }),
+        );
+      }
+      const harness = createContext();
+      const func = await uploadCommand.loader();
+      await func.call(harness.context, { dsym: ["unused.dSYM"] }, path);
+      expect(uploadSpy).not.toHaveBeenCalled();
+      expect(harness.exitCode).toBe(1);
+      expect(harness.output()).toContain("--dsym can only be used with an IPA");
+    },
+  );
+
+  test("rejects --dsym with multiple builds before resolving or uploading", async () => {
+    const func = await uploadCommand.loader();
+    await expect(
+      func.call(
+        createContext().context,
+        { dsym: ["unused.dSYM"] },
+        "one.ipa",
+        "two.ipa",
+      ),
+    ).rejects.toThrow(/single IPA/);
+    expect(resolveTarget.resolveOrgAndProject).not.toHaveBeenCalled();
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
+  test("does not upload an IPA when a dSYM ZIP contains traversal", async () => {
+    const ipa = join(tmpDir, "MyApp.ipa");
+    await writeFile(
+      ipa,
+      zipSync({ "Payload/MyApp.app/Info.plist": strToU8("plist") }),
+    );
+    const zipPath = join(tmpDir, "unsafe.zip");
+    await writeFile(
+      zipPath,
+      zipSync({
+        "MyApp.dSYM/symbols": strToU8("symbols"),
+        "../escape": strToU8("unsafe"),
+      }),
+    );
+    const harness = createContext();
+    const func = await uploadCommand.loader();
+    await func.call(harness.context, { dsym: [zipPath] }, ipa);
+    expect(uploadSpy).not.toHaveBeenCalled();
+    expect(harness.exitCode).toBe(1);
+    expect(harness.output()).toContain("Invalid or unsafe dSYM ZIP");
   });
 
   // Regression guard: --install-group must be OPTIONAL. Declared variadic

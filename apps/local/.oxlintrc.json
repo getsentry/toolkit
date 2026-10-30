@@ -3,6 +3,7 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
+    "typescript/return-await": ["error", "always"],
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
   }
 }

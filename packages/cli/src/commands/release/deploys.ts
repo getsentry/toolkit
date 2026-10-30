@@ -11,7 +11,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import type { SentryDeploy } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release deploys [<org>/]<version>";
 
@@ -34,12 +34,21 @@ function formatDeployList(deploys: SentryDeploy[]): string {
 export const deploysCommand = buildCommand({
   docs: {
     brief: "List deploys for a release",
-    fullDescription:
-      "List all deploys recorded for a specific release.\n\n" +
-      "Examples:\n" +
-      "  sentry release deploys 1.0.0\n" +
-      "  sentry release deploys my-org/1.0.0\n" +
-      "  sentry release deploys 1.0.0 --json",
+    fullDescription: "List all deploys recorded for a specific release.",
+    examples: [
+      {
+        description: "List deploys for a release",
+        command: "sentry release deploys 1.0.0",
+      },
+      {
+        description: "List deploys for a release in an explicit organization",
+        command: "sentry release deploys my-org/1.0.0",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry release deploys 1.0.0 --json",
+      },
+    ],
   },
   output: {
     human: formatDeployList,
@@ -48,26 +57,16 @@ export const deploysCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: String,
-        },
+        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
       ],
     },
   },
   async *func(
     this: SentryContext,
     _flags: { readonly json: boolean; readonly fields?: string[] },
-    target: string,
+    target: ReleaseTarget,
   ) {
-    const { cwd } = this;
-
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org } = await target.resolved;
 
     const deploys = await listReleaseDeploys(org, version);
     yield new CommandOutput(deploys);

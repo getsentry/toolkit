@@ -74,7 +74,7 @@ describe("legacy auth migration", () => {
       // Opening the DB must remain possible so login/logout can recover.
       const db = getDatabase();
       expect(getAuthConfig()).toBeUndefined();
-      expect(db.query("SELECT * FROM auth").get()).toBeNull();
+      expect(db.query("SELECT * FROM accounts").get()).toBeNull();
       expect(getDefaultOrganization()).toBe("synthetic-org");
       expect(getDefaultProject()).toBe("synthetic-project");
       expect(

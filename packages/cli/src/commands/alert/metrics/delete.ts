@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteMetricAlertRule } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
 import {
@@ -15,8 +14,9 @@ import {
   isConfirmationBypassed,
   requireExplicitTarget,
 } from "../../../lib/mutate-command.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
-import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 
 const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
 
@@ -47,10 +47,17 @@ export const deleteCommand = buildDeleteCommand({
     brief: "Delete a metric alert rule",
     fullDescription:
       "Permanently remove a metric alert rule from an organization. " +
-      "Type org/rule-id to confirm, or use --yes / --force, or --dry-run.\n\n" +
-      "Examples:\n" +
-      "  sentry alert metrics delete my-org/12345\n" +
-      "  sentry alert metrics delete my-org/'P95 alert' --yes",
+      "Type org/rule-id to confirm, or use --yes / --force, or --dry-run.",
+    examples: [
+      {
+        description: "Delete a metric alert rule (prompts for confirmation)",
+        command: "sentry alert metrics delete my-org/12345",
+      },
+      {
+        description: "Delete a rule selected by name without prompting",
+        command: "sentry alert metrics delete my-org/'P95 alert' --yes",
+      },
+    ],
   },
   output: {
     human: formatDeleted,
@@ -63,27 +70,19 @@ export const deleteCommand = buildDeleteCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        metricRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    requireExplicitTarget(
-      parseOrgProjectArg(targetArg),
-      "Metric alert target",
-      USAGE_HINT,
-    );
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics delete",
-    );
+    const { ref, target } = await ruleArg.resolved;
+    requireExplicitTarget(target, "Metric alert target", USAGE_HINT);
+    const org = await resolveOrgOnlyTarget(target, cwd, "alert metrics delete");
     const orgSlugs = [org];
 
     const { orgSlug, rule } = await resolveMetricAlertRule(

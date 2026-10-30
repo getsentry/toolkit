@@ -15,7 +15,7 @@ export function resolveClientFamily(
   if (ua.startsWith("cursor/")) return "cursor";
   if (ua.startsWith("copilot/")) return "copilot";
   if (ua.startsWith("opencode/")) return "opencode";
-  if (ua.startsWith("claude-user")) return "claude-desktop";
+  if (ua.startsWith("claude-user")) return "claude";
   if (ua.includes("codex")) return "codex";
 
   if (ua.startsWith("reactornetty/")) return "reactor-netty";
@@ -35,8 +35,7 @@ export function resolveClientFamily(
 }
 
 // Resolver for DCR-registered `client_name` values. Order matters:
-// check "claude code" before "claude" so Claude Code doesn't bucket as
-// Claude Desktop.
+// "claude code" must match before "claude".
 export function resolveClientFamilyFromName(
   name: string | null | undefined,
 ): string {
@@ -51,7 +50,7 @@ export function resolveClientFamilyFromName(
   if (n.includes("copilot")) return "copilot";
   if (n.includes("codex")) return "codex";
   if (n.includes("opencode")) return "opencode";
-  if (n.includes("claude")) return "claude-desktop";
+  if (n.includes("claude")) return "claude";
 
   return "other";
 }

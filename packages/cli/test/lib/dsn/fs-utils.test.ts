@@ -11,7 +11,7 @@ const { captureException } = vi.hoisted(() => ({
   captureException: vi.fn(),
 }));
 
-vi.mock("@sentry/node-core/light", () => ({
+vi.mock("@sentry/node", () => ({
   captureException,
   startSpan: (_opts: unknown, fn: () => unknown) => fn(),
 }));
@@ -83,6 +83,17 @@ describe("handleFileError", () => {
         operation: "scandir",
         path: "/mnt/cloud-storage",
       });
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    test("ENOTCONN — scandir on a disconnected network or FUSE mount", () => {
+      handleFileError(
+        errnoError("ENOTCONN", "ENOTCONN: socket is not connected, scandir"),
+        {
+          operation: "scan.walk.readdir",
+          path: "/mnt/remote",
+        },
+      );
       expect(captureException).not.toHaveBeenCalled();
     });
 

@@ -14,13 +14,10 @@ import {
   getProject,
   type TraceItemDetail,
 } from "../../lib/api-client.js";
-import {
-  detectSwappedViewArgs,
-  looksLikeIssueShortId,
-  spansFlag,
-} from "../../lib/arg-parsing.js";
+import { looksLikeIssueShortId, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -31,20 +28,30 @@ import {
   formatSimpleSpanTree,
   formatTraceSummary,
 } from "../../lib/formatters/index.js";
-import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import {
+  parseTraceFields,
+  projectTraceFields,
+  type TraceFieldSelection,
+} from "../../lib/formatters/trace.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import { resolveOrg, toNumericId } from "../../lib/resolve-target.js";
 import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import {
-  parseTraceTargetWithRecovery,
+  parseTraceArgumentsInput,
+  resolveTraceArguments,
   resolveTraceOrgOptionalProject,
+  type TraceArgumentsInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 import type { TraceSpan } from "../../types/index.js";
@@ -82,108 +89,71 @@ function buildViewHint(
 }
 
 /**
- * Standard field names in trace view output (summary keys + "spans").
- *
- * When `--fields` includes names beyond these, the extras are forwarded
- * to the API as `additional_attributes` so the server populates them on
- * each span.
+ * The arguments of `trace view`, parsed: an issue short ID to find the
+ * trace of, or the trace ID in the forms every ID-taking command takes
+ * (see `id-arguments.ts`), as typed until it resolves.
  */
-const STANDARD_TRACE_VIEW_FIELDS = new Set([
-  "traceId",
-  "duration",
-  "spanCount",
-  "projects",
-  "rootTransaction",
-  "rootOp",
-  "startTimestamp",
-  "spans",
-  "spanTreeLines",
-]);
+export type TraceViewInput =
+  | { readonly issueShortId: string }
+  | {
+      readonly trace: TraceArgumentsInput;
+      /** Suggestion when the first argument looks like an issue short ID */
+      readonly suggestion?: string;
+    };
 
 /**
- * Extract non-standard field names from `--fields` to pass as
- * `additional_attributes` to the trace detail API.
+ * Parse `trace view` arguments, without side effects.
  *
- * Standard fields (summary keys, "spans") are filtered out because
- * they are already present in the response. Only extra names that
- * correspond to span attributes need to be requested from the API.
- *
- * @param fields - Parsed `--fields` value (may be undefined)
- * @returns Attribute names to request, or undefined when none are needed
- */
-export function extractAdditionalAttributes(
-  fields: string[] | undefined,
-): string[] | undefined {
-  if (!fields || fields.length === 0) {
-    return;
-  }
-  const extra = fields.filter((f) => !STANDARD_TRACE_VIEW_FIELDS.has(f));
-  return extra.length > 0 ? extra : undefined;
-}
-
-/**
- * Detect UX issues in raw positional args before trace-target parsing.
- *
- * - **Single-arg issue short ID**: first arg looks like `CAM-82X` with no
- *   second arg → sets `issueShortId` for auto-recovery (resolve issue → trace).
- * - **Swapped args**: user typed `<trace-id> <org>/<project>` instead of
- *   `<org>/<project> <trace-id>`. If detected, swaps them silently and warns.
- * - **Two-arg issue short ID**: first arg looks like `CAM-82X` with a second
- *   arg → suggests `sentry issue view` (ambiguous intent, no auto-recovery).
- *
- * Returns corrected args and optional warnings to emit.
+ * - **Single-arg issue short ID**: `CAM-82X` alone is looked up as an issue
+ *   (resolve issue → trace).
+ * - **Two-arg issue short ID**: `CAM-82X` with a second argument suggests
+ *   `sentry issue view` (ambiguous intent, no lookup).
  *
  * @internal Exported for testing
  */
-export function preProcessArgs(args: string[]): {
-  correctedArgs: string[];
-  warning?: string;
-  suggestion?: string;
-  /** Issue short ID detected for auto-recovery (single-arg only) */
-  issueShortId?: string;
-} {
-  if (args.length === 0) {
-    return { correctedArgs: args };
+export function parseTraceViewInput(args: readonly string[]): TraceViewInput {
+  const [first] = args;
+  const shortId = first !== undefined && looksLikeIssueShortId(first);
+  if (shortId && args.length === 1) {
+    return { issueShortId: first };
   }
+  return {
+    trace: parseTraceArgumentsInput(args, USAGE_HINT),
+    ...(shortId && { suggestion: `Did you mean: sentry issue view ${first}` }),
+  };
+}
 
-  const first = args[0];
-  if (!first) {
-    return { correctedArgs: args };
+/** The arguments of `trace view`. */
+type TraceViewArguments = BoundArguments<TraceViewInput, ResolvedTrace>;
+
+/**
+ * Resolve `trace view` arguments to the trace and the org (and project) to
+ * fetch it from, recovering a malformed trace ID.
+ */
+async function resolveTraceViewInput(
+  input: TraceViewInput,
+  context: SentryContext,
+): Promise<ResolvedTrace> {
+  if ("issueShortId" in input) {
+    return await resolveTraceFromIssue(input.issueShortId, context.cwd);
   }
-
-  // Single-arg issue short ID → auto-recover by resolving issue → trace
-  if (args.length === 1 && looksLikeIssueShortId(first)) {
-    return {
-      correctedArgs: args,
-      issueShortId: first,
-    };
+  if (input.suggestion) {
+    logger.withTag("trace.view").warn(input.suggestion);
   }
-
-  if (args.length < 2) {
-    return { correctedArgs: args };
-  }
-
-  const second = args[1];
-  if (!second) {
-    return { correctedArgs: args };
-  }
-
-  // Detect swapped args: user put ID first and target second
-  const swapWarning = detectSwappedViewArgs(first, second);
-  if (swapWarning) {
-    // Swap them: put target first, trace ID second
-    return {
-      correctedArgs: [second, first, ...args.slice(2)],
-      warning: swapWarning,
-    };
-  }
-
-  // Detect issue short ID passed as first arg (two-arg case — ambiguous)
-  const suggestion = looksLikeIssueShortId(first)
-    ? `Did you mean: sentry issue view ${first}`
-    : undefined;
-
-  return { correctedArgs: args, suggestion };
+  const parsed = await resolveTraceArguments(input.trace);
+  warnIfNormalized(parsed, "trace.view");
+  const target = await resolveTraceOrgOptionalProject(
+    parsed,
+    context.cwd,
+    USAGE_HINT,
+  );
+  return {
+    ...target,
+    projectFilter:
+      parsed.type === "explicit"
+        ? (target as { project?: string }).project
+        : undefined,
+  };
 }
 
 /**
@@ -197,6 +167,8 @@ export type TraceViewData = {
   spanTreeLines?: string[];
   /** Per-span attribute details from trace-items endpoint (when --full or --json) */
   details?: Map<string, TraceItemDetail>;
+  /** Shared interpretation used by the request and JSON projection. */
+  fieldSelection?: TraceFieldSelection;
 };
 
 /**
@@ -233,7 +205,7 @@ const PROGRESS_THRESHOLD = 20;
 export function flattenSpanTree(spans: TraceSpan[]): TraceSpan[] {
   const result: TraceSpan[] = [];
   // Reverse so the first child is popped first (depth-first order)
-  const stack = Array.from(spans).reverse();
+  const stack = [...spans].reverse();
   let span = stack.pop();
   while (span) {
     result.push(span);
@@ -354,7 +326,8 @@ function filterSpanMeasurements(span: TraceSpan): TraceSpan {
  *
  * Flattens the summary as the primary object so that `--fields traceId,duration`
  * works directly on summary properties. The raw `spans` array is preserved as
- * a nested key, accessible via `--fields spans`.
+ * a nested key, accessible via `--fields spans`. Bare attribute selectors
+ * retain span IDs and children so their values remain attributable.
  *
  * Without this transform, `--fields traceId` would return `{}` because
  * the raw yield shape is `{ summary, spans }` and `traceId` lives inside `summary`.
@@ -373,11 +346,9 @@ function jsonTransformTraceView(
       ? mergeSpanDetails(cleaned, details)
       : cleaned;
   });
-  const result: Record<string, unknown> = { ...summary, spans: cleanedSpans };
-  if (fields && fields.length > 0) {
-    return filterFields(result, fields);
-  }
-  return result;
+  const result = { ...summary, spans: cleanedSpans };
+  const selection = data.fieldSelection ?? parseTraceFields(fields);
+  return selection ? projectTraceFields(result, selection) : result;
 }
 
 /** Resolved trace target: org, project (optional), and trace ID */
@@ -469,26 +440,71 @@ export const viewCommand = buildCommand({
     brief: "View details of a specific trace",
     fullDescription:
       "View detailed information about a distributed trace by its ID.\n\n" +
-      "Target specification:\n" +
-      "  sentry trace view <trace-id>                       # auto-detect from DSN or config\n" +
-      "  sentry trace view <org>/<project>/<trace-id>       # explicit org and project\n" +
-      "  sentry trace view <project> <trace-id>             # find project across all orgs\n\n" +
       "The trace ID is the 32-character hexadecimal identifier.",
+    examples: [
+      {
+        description: "View trace details with the span tree",
+        command: "sentry trace view abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Show the full trace across all projects",
+        command: "sentry trace view my-org/abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter the span tree to one project",
+        command:
+          "sentry trace view my-org/cli-server/abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Recover the trace from an issue short ID",
+        command: "sentry trace view PROJ-123",
+      },
+      {
+        description: "Open the trace in the browser",
+        command: "sentry trace view abc123def456abc123def456abc12345 -w",
+      },
+      {
+        description: "Find a project across organizations",
+        command:
+          "sentry trace view cli-server abc123def456abc123def456abc12345",
+      },
+      {
+        description:
+          "Select the trace ID and an attribute across the whole span tree",
+        command:
+          "sentry trace view abc123def456abc123def456abc12345 --json --fields traceId,http.method",
+      },
+      {
+        description: "Keep full spans while requesting an additional attribute",
+        command:
+          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans,http.method",
+      },
+      {
+        description: "Select IDs and detail attributes from root spans only",
+        command:
+          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans.span_id,spans.data.http.method",
+      },
+      {
+        description:
+          "Select an additional attribute from immediate child spans",
+        command:
+          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans.children.additional_attributes.http.method",
+      },
+    ],
   },
   output: {
     human: formatTraceView,
     jsonTransform: jsonTransformTraceView,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/trace-id",
-        brief:
-          "[<org>/<project>/]<trace-id> - Target (optional) and trace ID (required)",
-        parse: String,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/trace-id",
+      brief:
+        "[<org>/<project>/]<trace-id> - Target (optional) and trace ID (required)",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseTraceViewInput,
+      resolve: resolveTraceViewInput,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -505,53 +521,23 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: TraceViewArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-    const log = logger.withTag("trace.view");
-
-    // Pre-process: detect swapped args and issue short IDs
-    const { correctedArgs, warning, suggestion, issueShortId } =
-      preProcessArgs(args);
-    if (warning) {
-      log.warn(warning);
-    }
-    if (suggestion) {
-      log.warn(suggestion);
-    }
-
-    let resolved: ResolvedTrace;
-    if (issueShortId) {
-      resolved = await resolveTraceFromIssue(issueShortId, cwd);
-    } else {
-      const parsed = await parseTraceTargetWithRecovery(
-        correctedArgs,
-        USAGE_HINT,
-      );
-      warnIfNormalized(parsed, "trace.view");
-      const target = await resolveTraceOrgOptionalProject(
-        parsed,
-        cwd,
-        USAGE_HINT,
-      );
-      resolved = {
-        ...target,
-        projectFilter:
-          parsed.type === "explicit"
-            ? (target as { project?: string }).project
-            : undefined,
-      };
-    }
-    const { traceId, org, project, projectFilter } = resolved;
+    const { traceId, org, project, projectFilter } = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(buildTraceUrl(org, traceId), "trace");
       return;
     }
 
-    // Forward non-standard --fields as additional_attributes so the
-    // trace API populates them on each span for JSON consumers.
-    const additionalAttributes = extractAdditionalAttributes(flags.fields);
+    const fieldSelection = parseTraceFields(flags.fields);
+    const additionalAttributes = fieldSelection?.additionalAttributes.length
+      ? fieldSelection.additionalAttributes
+      : undefined;
 
     // Resolve numeric project ID for API-level filtering
     let numericProjectId: number | undefined;
@@ -602,6 +588,7 @@ export const viewCommand = buildCommand({
       spans,
       spanTreeLines,
       details: spanDetails,
+      fieldSelection,
     });
     return { hint: buildViewHint(traceId, org, projectFilter, summary) };
   },

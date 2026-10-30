@@ -8,7 +8,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { compare as semverCompare } from "semver";
 import type { UpgradeSource } from "./binary.js";
 import { CLI_VERSION } from "./constants.js";
@@ -277,7 +277,7 @@ function checkForUpdateInBackgroundImpl(): void {
 
   const channel = getReleaseChannel();
 
-  Sentry.startSpanManual(
+  void Sentry.startSpanManual(
     {
       name: "version-check",
       op: "version.check",

@@ -3,29 +3,20 @@
  *
  * Browse and search the Sentry API schema. Shows available resources,
  * operations, and endpoint details from the generated API index.
- *
- * Usage:
- *   sentry schema                      → list all resources
- *   sentry schema --all                → flat list of all endpoints
- *   sentry schema --search <query>     → search endpoints by keyword
- *   sentry schema <resource>           → show endpoints for a resource
- *   sentry schema <resource> <op>      → show detailed endpoint info
- *   sentry schema <operation-id>       → show details by exact operation ID
- *   sentry schema "GET /api/0/..."     → show details for one endpoint
- *   sentry schema monitor*             → glob search for resources
  */
 
 import type { SentryContext } from "../context.js";
 import {
   type ApiEndpoint,
+  type CommandApiReference,
   findEndpointsByIdentifier,
   findEndpointsByPath,
   getAllEndpoints,
-  getEndpoint,
   getEndpointsByResource,
   getResourceSummaries,
   parseEndpointQuery,
   type ResourceSummary,
+  type SchemaEndpoint,
   searchEndpoints,
 } from "../lib/api-schema.js";
 import { buildCommand } from "../lib/command.js";
@@ -39,6 +30,8 @@ import {
 } from "../lib/formatters/markdown.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { fuzzyMatch } from "../lib/fuzzy.js";
+import { getCommandApiReferences, type RouteMap } from "../lib/introspect.js";
+import { filterByName, isGlobFilter } from "../lib/list-filter.js";
 
 // ---------------------------------------------------------------------------
 // Output data types
@@ -47,7 +40,7 @@ import { fuzzyMatch } from "../lib/fuzzy.js";
 /** Discriminated union of all possible schema command outputs */
 type SchemaResult =
   | { kind: "resources"; resources: ResourceSummary[] }
-  | { kind: "endpoints"; endpoints: readonly ApiEndpoint[] }
+  | { kind: "endpoints"; endpoints: readonly SchemaEndpoint[] }
   | { kind: "endpoint"; endpoint: ApiEndpoint };
 
 // ---------------------------------------------------------------------------
@@ -95,7 +88,7 @@ function formatResourceList(resources: ResourceSummary[]): string {
 }
 
 /** Format a flat list of endpoints */
-function formatEndpointList(endpoints: readonly ApiEndpoint[]): string {
+function formatEndpointList(endpoints: readonly SchemaEndpoint[]): string {
   if (endpoints.length === 0) {
     return muted("No endpoints found.");
   }
@@ -108,9 +101,22 @@ function formatEndpointList(endpoints: readonly ApiEndpoint[]): string {
       const colored = formatMethod(e.method);
       const padded = `${colored}${" ".repeat(maxMethod + padding - e.method.length)}`;
       const path = e.path;
-      const label = muted(e.operationId || e.fn);
+      const label = muted(e.summary || e.operationId || e.fn);
       const deprecated = e.deprecated ? yellow(" [deprecated]") : "";
-      return `${padded}${path}  ${label}${deprecated}`;
+      const evidence = e.match
+        ? renderMarkdown(
+            [
+              ...e.match.reasons
+                .slice(0, 2)
+                .map((reason) => `- Matches: ${reason}`),
+              ...e.match.relatedCommands.map(
+                ({ command, note }) =>
+                  `- Used by: \`${command}\`${note ? ` — ${note}` : ""}`,
+              ),
+            ].join("\n"),
+          )
+        : "";
+      return `${padded}${path}  ${label}${deprecated}${evidence ? `\n${evidence}` : ""}`;
     })
     .join("\n");
 }
@@ -118,6 +124,9 @@ function formatEndpointList(endpoints: readonly ApiEndpoint[]): string {
 /** Format a single endpoint in detail using mdKvTable + renderMarkdown */
 function formatEndpointDetail(endpoint: ApiEndpoint): string {
   const kvRows: [string, string][] = [
+    ...(endpoint.summary
+      ? [["Summary", endpoint.summary] as [string, string]]
+      : []),
     ["Resource", endpoint.resource],
     ["Operation", endpoint.operationId],
     ...(endpoint.fn
@@ -134,7 +143,15 @@ function formatEndpointDetail(endpoint: ApiEndpoint): string {
   }
 
   if (endpoint.queryParams.length > 0) {
-    kvRows.push(["Query Params", endpoint.queryParams.join(", ")]);
+    const parameters = endpoint.queryParameters?.map(
+      (parameter) =>
+        `${parameter.name}${parameter.required ? " (required)" : ""}` +
+        (parameter.enum?.length ? `: ${parameter.enum.join(", ")}` : ""),
+    );
+    kvRows.push([
+      "Query Params",
+      (parameters ?? endpoint.queryParams).join("; "),
+    ]);
   }
 
   const heading = `## ${endpoint.method} \`${endpoint.path}\``;
@@ -226,15 +243,6 @@ function noResourceMatchError(resource: string): ResolutionError {
   );
 }
 
-/** Join leftover positionals so `--search GET /api/0/...` (unquoted) still parses. */
-function resolveSearchQuery(search: string, args: string[]): string {
-  if (args.length === 0) {
-    return search;
-  }
-  const combined = [search, ...args].join(" ");
-  return parseEndpointQuery(combined).path ? combined : search;
-}
-
 function queryLabel(resource: string, operation?: string): string {
   return operation ? `${resource} ${operation}` : resource;
 }
@@ -324,8 +332,13 @@ function resolvePathLookup(
 }
 
 /** Resolve one exact SDK function name or OpenAPI operation ID. */
-function resolveIdentifierLookup(identifier: string): SchemaResult | undefined {
-  const matches = findEndpointsByIdentifier(identifier);
+function resolveIdentifierLookup(
+  identifier: string,
+  method?: string,
+): SchemaResult | undefined {
+  const matches = findEndpointsByIdentifier(identifier).filter(
+    (endpoint) => !method || endpoint.method === method,
+  );
   const [single] = matches;
   if (matches.length === 1 && single) {
     return { kind: "endpoint", endpoint: single };
@@ -334,6 +347,25 @@ function resolveIdentifierLookup(identifier: string): SchemaResult | undefined {
     return { kind: "endpoints", endpoints: matches };
   }
   return;
+}
+
+const QUERY_WORD_SEPARATOR = /\s+/;
+
+/** Explicit resource globs retain their resource-only behavior. */
+function resolveGlobQuery(resource: string): SchemaResult {
+  const matched = filterByName(getResourceSummaries(), resource, (entry) => [
+    entry.name,
+  ]);
+  if (matched.length === 0) {
+    throw new ResolutionError(
+      `Pattern "${resource}"`,
+      "matched no resources",
+      "sentry schema",
+      ["sentry schema --all    List every endpoint in a flat table"],
+    );
+  }
+  const endpoints = matched.flatMap((r) => getEndpointsByResource(r.name));
+  return { kind: "endpoints", endpoints };
 }
 
 /**
@@ -346,66 +378,52 @@ function resolveIdentifierLookup(identifier: string): SchemaResult | undefined {
 export function resolveResourceQuery(
   resource: string,
   operation?: string,
+  references: readonly CommandApiReference[] = [],
 ): SchemaResult {
+  const query = queryLabel(resource, operation);
   const pathQuery = resolvePathQuery(resource, operation);
   if (pathQuery) {
     return resolvePathLookup(pathQuery, resource, operation);
   }
 
-  // Glob-style search: if the resource arg contains * or ?, match resources
-  if (resource.includes("*") || resource.includes("?")) {
-    // Convert glob pattern to regex: * → .*, ? → ., escape other special chars
-    const escaped = resource
-      .toLowerCase()
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*/g, ".*")
-      .replace(/\?/g, ".");
-    const pattern = new RegExp(`^${escaped}$`);
-    const allResources = getResourceSummaries();
-    const matched = allResources.filter((r) =>
-      pattern.test(r.name.toLowerCase()),
+  const parsed = parseEndpointQuery(query);
+  const identifierResult = resolveIdentifierLookup(parsed.text, parsed.method);
+  if (identifierResult) {
+    return identifierResult;
+  }
+
+  // Globs remain an explicit resource filter, separate from concept discovery.
+  if (!(operation || query.includes(" ")) && isGlobFilter(resource)) {
+    return resolveGlobQuery(resource);
+  }
+
+  const [resourceName, ...operationWords] = parsed.text
+    .trim()
+    .split(QUERY_WORD_SEPARATOR);
+  const resourceEndpoints = getEndpointsByResource(resourceName ?? "").filter(
+    (endpoint) => !parsed.method || endpoint.method === parsed.method,
+  );
+  const operationQuery = operationWords.join(" ");
+  if (operationQuery) {
+    const exact = findEndpointsByIdentifier(operationQuery).filter((endpoint) =>
+      resourceEndpoints.includes(endpoint),
     );
-    if (matched.length === 0) {
-      throw new ResolutionError(
-        `Pattern "${resource}"`,
-        "matched no resources",
-        "sentry schema",
-        ["sentry schema --all    List every endpoint in a flat table"],
-      );
+    if (exact.length === 1 && exact[0]) {
+      return { kind: "endpoint", endpoint: exact[0] };
     }
-    const endpoints = matched.flatMap((r) => getEndpointsByResource(r.name));
-    return { kind: "endpoints", endpoints };
   }
 
-  // Resource + operation: show single endpoint detail
-  if (operation) {
-    const endpoint = getEndpoint(resource, operation);
-    if (endpoint) {
-      return { kind: "endpoint", endpoint };
-    }
-    // Resource exists but the operation didn't match: show its endpoints so
-    // the user can pick a valid operation. This is scoped to the resource,
-    // not the full list, so it isn't misleading.
-    const resourceEndpoints = getEndpointsByResource(resource);
-    if (resourceEndpoints.length > 0) {
-      throw new OutputError({
-        kind: "endpoints",
-        endpoints: resourceEndpoints,
-      } satisfies SchemaResult);
-    }
-    throw noResourceMatchError(resource);
+  const matches = searchEndpoints(query, undefined, references);
+  if (matches.length > 0) {
+    return { kind: "endpoints", endpoints: matches };
   }
-
-  // Resource only: show all endpoints for that resource
-  const endpoints = getEndpointsByResource(resource);
-  if (endpoints.length === 0) {
-    const identifierResult = resolveIdentifierLookup(resource);
-    if (identifierResult) {
-      return identifierResult;
-    }
-    throw noResourceMatchError(resource);
+  if (operationQuery && resourceEndpoints.length > 0) {
+    throw new OutputError({
+      kind: "endpoints",
+      endpoints: resourceEndpoints,
+    } satisfies SchemaResult);
   }
-  return { kind: "endpoints", endpoints };
+  throw noResourceMatchError(query);
 }
 
 // ---------------------------------------------------------------------------
@@ -423,15 +441,57 @@ export const schemaCommand = buildCommand({
     brief: "Browse the Sentry API schema",
     fullDescription:
       "Browse and search the Sentry API schema. Shows available resources, " +
-      "operations, and endpoint details. Use with --json for machine-readable output.\n\n" +
-      "Examples:\n" +
-      "  sentry schema                      List all API resources\n" +
-      "  sentry schema issues                Show endpoints for a resource\n" +
-      "  sentry schema issues list            Show details for one endpoint\n" +
-      "  sentry schema listOrganizationEvents Show details by operation ID\n" +
-      '  sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"\n' +
-      "  sentry schema --all                 Flat list of all endpoints\n" +
-      "  sentry schema --search monitor      Search endpoints by keyword",
+      "operations, and endpoint details. Search by API concepts or CLI command paths; " +
+      "discovery results explain matches and related commands. Use with --json for machine-readable output.",
+    examples: [
+      { description: "List all API resources", command: "sentry schema" },
+      {
+        description: "Browse issue endpoints",
+        command: "sentry schema issues",
+      },
+      {
+        description: "Find list operations (there may be multiple candidates)",
+        command: "sentry schema issues list",
+      },
+      {
+        description: "Find APIs used by log listing",
+        command: "sentry schema log list",
+      },
+      {
+        description:
+          "Find APIs used by trace listing, including command aliases",
+        command: "sentry schema trace ls",
+      },
+      {
+        description: "Find APIs used by a command group",
+        command: "sentry schema alert metrics",
+      },
+      {
+        description: "Find APIs used by a nested command",
+        command: "sentry schema alert metrics view",
+      },
+      {
+        description: "Look up an endpoint by its exact operation ID",
+        command: "sentry schema listOrganizationEvents",
+      },
+      {
+        description: "Look up an endpoint by HTTP method and path",
+        command:
+          'sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"',
+      },
+      {
+        description: "Search for monitoring-related endpoints",
+        command: "sentry schema --search monitor",
+      },
+      {
+        description: "Browse resources matching a glob",
+        command: "sentry schema 'monitor*'",
+      },
+      {
+        description: "Flat list of every endpoint",
+        command: "sentry schema --all",
+      },
+    ],
   },
   output: {
     human: formatSchemaHuman,
@@ -455,20 +515,41 @@ export const schemaCommand = buildCommand({
     positional: {
       kind: "array",
       parameter: {
-        brief: "Resource, exact operation ID, or METHOD /path",
+        brief:
+          "API concept, CLI command path, exact operation ID, or METHOD /path",
         parse: String,
-        placeholder: "resource",
+        placeholder: "query",
       },
     },
   },
-  // Stricli requires AsyncGenerator but schema queries are synchronous (in-memory JSON)
   async *func(this: SentryContext, flags: SchemaFlags, ...args: string[]) {
-    const [resource, operation] = args;
+    const query = flags.search
+      ? [flags.search, ...args].join(" ")
+      : args.join(" ");
 
-    // --search takes priority
+    // --search takes priority over --all.
+    if (flags.all && !flags.search) {
+      return yield new CommandOutput<SchemaResult>({
+        kind: "endpoints",
+        endpoints: getAllEndpoints(),
+      });
+    }
+
+    if (!query) {
+      return yield new CommandOutput<SchemaResult>({
+        kind: "resources",
+        resources: getResourceSummaries(),
+      });
+    }
+
+    const { routes } = await import("../app.js");
+    const references = getCommandApiReferences(
+      routes as unknown as RouteMap,
+      parseEndpointQuery(query).text,
+    );
+
     if (flags.search) {
-      const query = resolveSearchQuery(flags.search, args);
-      const results = searchEndpoints(query);
+      const results = searchEndpoints(query, undefined, references);
       if (results.length === 0) {
         throw new OutputError({
           kind: "endpoints",
@@ -481,24 +562,8 @@ export const schemaCommand = buildCommand({
       });
     }
 
-    // --all: flat endpoint list
-    if (flags.all) {
-      return yield new CommandOutput<SchemaResult>({
-        kind: "endpoints",
-        endpoints: getAllEndpoints(),
-      });
-    }
-
-    // No positional args: show resource summary
-    if (!resource) {
-      const resources = getResourceSummaries();
-      return yield new CommandOutput<SchemaResult>({
-        kind: "resources",
-        resources,
-      });
-    }
-
-    // Resolve resource (with optional operation or glob pattern)
-    return yield new CommandOutput(resolveResourceQuery(resource, operation));
+    return yield new CommandOutput(
+      resolveResourceQuery(query, undefined, references),
+    );
   },
 });

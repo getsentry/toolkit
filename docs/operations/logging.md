@@ -5,10 +5,12 @@ How logging works in the Sentry MCP server using LogTape and Sentry. For tracing
 ## Overview
 
 We use [LogTape](https://logtape.org/) for structured logging with two sinks:
+
 - **Console sink**: JSON Lines format for log aggregation
 - **Sentry sink**: Sends logs to Sentry's Logs product using `Sentry.logger.*` API
 
 Log levels are controlled by:
+
 1. `LOG_LEVEL` environment variable (e.g., `"debug"`, `"info"`, `"warning"`, `"error"`)
 2. Falls back to `NODE_ENV`: `"debug"` in development, `"info"` in production
 
@@ -25,6 +27,7 @@ This is enforced in `packages/mcp-core/src/telem/logging.ts` via `STDERR_CONSOLE
 Regression history: #922 — LogTape's default level map sent `info`/`debug` records through `console.info`/`console.debug`, landing structured JSON on stdout and breaking stdio clients.
 
 **Rules for new code:**
+
 - Do not call `console.log`, `console.info`, or `console.debug` anywhere reachable from the stdio entry point. Use `logInfo`/`logDebug` instead.
 - Do not introduce new LogTape sinks that write to stdout.
 - Do not change `STDERR_CONSOLE_LEVEL_MAP` to map any level to a non-stderr method. The regression test in `logging.test.ts` enforces this for `info`.
@@ -32,70 +35,79 @@ Regression history: #922 — LogTape's default level map sent `info`/`debug` rec
 ## Using the Log Helpers
 
 ### logInfo() - Routine telemetry
+
 ```typescript
 import { logInfo } from "@sentry/mcp-server/telem/logging";
 
 logInfo("MCP server started", {
   loggerScope: ["server", "lifecycle"],
-  extra: { port: 3000 }
+  extra: { port: 3000 },
 });
 ```
 
 ### logWarn() - Operational warnings
+
 ```typescript
 import { logWarn } from "@sentry/mcp-server/telem/logging";
 
 logWarn("Rate limit approaching", {
   loggerScope: ["api", "rate-limit"],
-  extra: { remaining: 10, limit: 100 }
+  extra: { remaining: 10, limit: 100 },
 });
 ```
 
 ### logError() - Operational errors (no Sentry issue)
+
 ```typescript
 import { logError } from "@sentry/mcp-server/telem/logging";
 
 logError(error, {
   loggerScope: ["tools", "fetch-trace"],
-  extra: { traceId: "abc123" }
+  extra: { traceId: "abc123" },
 });
 ```
 
 ### logIssue() - System errors (creates Sentry issue)
+
 ```typescript
 import { logIssue } from "@sentry/mcp-server/telem/logging";
 
 const eventId = logIssue(error, {
   loggerScope: ["oauth", "token-refresh"],
   contexts: {
-    oauth: { client_id: "..." }
-  }
+    oauth: { client_id: "..." },
+  },
 });
 ```
 
 ## When to Use Each Helper
 
 **Use `logIssue()` for:**
+
 - System errors (5xx, network failures, unexpected exceptions)
 - Critical failures that need investigation
 - Creates a Sentry Issue + emits a log entry with Event ID
 
 **Use `logError()` for:**
+
 - Expected operational errors (trace fetch failed, encoding error)
 - Errors that are handled gracefully
 - Sends to Sentry Logs only (no Issue created)
 
 **Use `logWarn()` for:**
+
 - Rate limit approaching
 - Deprecated API usage
 - Configuration warnings
 
 **Use `logInfo()` for:**
+
 - Request lifecycle (connection established, tool invoked)
 - Configuration output
 - Routine telemetry
 
 **Skip logging:**
+
 - `UserInputError` - Expected validation failures
 - 4xx API responses - Client errors (except 429 rate limits)
 - See [Error Handling](../contributing/error-handling.md) for complete rules
@@ -106,9 +118,9 @@ All helpers accept:
 
 ```typescript
 interface LogOptions {
-  loggerScope?: string | readonly string[];  // e.g., ["cloudflare", "oauth"]
-  extra?: Record<string, unknown>;           // Additional context
-  contexts?: Record<string, Record<string, unknown>>;  // Sentry contexts
+  loggerScope?: string | readonly string[]; // e.g., ["cloudflare", "oauth"]
+  extra?: Record<string, unknown>; // Additional context
+  contexts?: Record<string, Record<string, unknown>>; // Sentry contexts
 }
 ```
 
@@ -117,10 +129,12 @@ interface LogOptions {
 ## Configuration
 
 **Environment Variables:**
+
 - `LOG_LEVEL` - Override log level (`"debug"`, `"info"`, `"warning"`, `"error"`)
 - `NODE_ENV` - Determines default level (`"development"` = debug, else info)
 
 **Sinks:**
+
 - Console: JSON Lines format for log aggregation
 - Sentry: Sends logs to Sentry for monitoring (uses `Sentry.init` config)
 

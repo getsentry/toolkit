@@ -11,8 +11,8 @@ permissions:
 
 env:
   NODE_VERSION_20: "20.20.2"
-  NODE_VERSION_22: "22.23.1"
-  NODE_VERSION_24: "24.18.0"
+  NODE_VERSION_22: "22.23.4"
+  NODE_VERSION_24: "24.22.1"
 
 jobs:
   discover-projects:
@@ -137,6 +137,9 @@ jobs:
           cache: pnpm
       - run: cp .env.example .env.local
       - run: pnpm install --frozen-lockfile
+      - name: Install zsh for CLI completion regression tests
+        if: matrix.name == 'sentry'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - name: Build project dependencies
         env:
           PROJECT_NAME: ${{ matrix.name }}

@@ -7,12 +7,14 @@ Complete playbook for building, running, and testing the stdio MCP server.
 The stdio transport runs the MCP server as a subprocess that communicates via stdin/stdout pipes. This is the standard way IDEs and local tools integrate with MCP servers.
 
 **When to use stdio:**
+
 - Testing with IDEs (Cursor, VSCode with MCP extension)
 - Self-hosted Sentry deployments
 - Local development without OAuth
 - Direct API token authentication
 
 **When to use remote instead:**
+
 - Testing OAuth flows
 - Testing constraint-based access control
 - Testing the web chat interface
@@ -27,6 +29,7 @@ The stdio transport runs the MCP server as a subprocess that communicates via st
 ### Required Scopes
 
 For full functionality, create a Sentry User Auth Token with:
+
 - `org:read` - List organizations
 - `project:read` - Access project data
 - `project:write` - Create/update projects
@@ -62,6 +65,7 @@ pnpm build
 ```
 
 The build process:
+
 1. Generates tool definitions (`pnpm run generate-definitions`)
 2. Compiles TypeScript to JavaScript
 3. Creates both ESM and CJS outputs
@@ -141,6 +145,7 @@ This opens the MCP Inspector at `http://localhost:6274`
 3. Configure the command:
 
 **For development (TypeScript):**
+
 ```json
 {
   "command": "pnpm",
@@ -154,6 +159,7 @@ This opens the MCP Inspector at `http://localhost:6274`
 ```
 
 **For built package:**
+
 ```json
 {
   "command": "node",
@@ -165,6 +171,7 @@ This opens the MCP Inspector at `http://localhost:6274`
 ```
 
 **For self-hosted Sentry:**
+
 ```json
 {
   "command": "npx",
@@ -177,6 +184,7 @@ This opens the MCP Inspector at `http://localhost:6274`
 ```
 
 **For self-hosted Sentry on plain HTTP:**
+
 ```json
 {
   "command": "npx",
@@ -195,12 +203,14 @@ This opens the MCP Inspector at `http://localhost:6274`
 ### 3. Test Tools Interactively
 
 **Basic workflow:**
+
 1. **List Tools** - Verify expected tools appear
 2. **Call a tool** - Start with `execute_sentry_tool` using `name="whoami"` and `arguments={}`
 3. **Test with parameters** - Try `find_organizations()`
 4. **Test complex operations** - Try `search_errors(query="errors in the last hour")`
 
 **Example test sequence:**
+
 ```
 1. execute_sentry_tool(name="whoami", arguments={})
 2. find_organizations()
@@ -226,6 +236,7 @@ The CLI client supports explicit transport selection:
 ### Basic Usage
 
 **Test stdio transport (local):**
+
 ```bash
 # Single query
 pnpm -w run cli --transport stdio --access-token=YOUR_TOKEN "who am I?"
@@ -242,6 +253,7 @@ pnpm -w run cli --transport stdio --list-tools
 
 **Verify stdio is being used:**
 Look for this in the output:
+
 ```
 ● Connected to MCP server (stdio)
   ⎿  tools available
@@ -287,6 +299,7 @@ pnpm -w run cli --transport stdio --access-token=test-fake-token-12345 "who am I
 ```
 
 **Expected output:**
+
 ```
 ● Connected to MCP server (stdio)
   ⎿  Tools available
@@ -321,10 +334,7 @@ Create or edit `.cursor/config.json`:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": [
-        "@sentry/mcp-server@latest",
-        "--access-token=YOUR_TOKEN"
-      ]
+      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
     }
   }
 }
@@ -333,11 +343,13 @@ Create or edit `.cursor/config.json`:
 **2. Use Environment Variables (Recommended):**
 
 Create `.cursor/.env`:
+
 ```bash
 SENTRY_ACCESS_TOKEN=your-token-here
 ```
 
 Update config:
+
 ```json
 {
   "mcpServers": {
@@ -353,6 +365,7 @@ Update config:
 ```
 
 **3. Test in Cursor:**
+
 - Restart Cursor
 - Open command palette (Cmd/Ctrl + Shift + P)
 - Search for "MCP" to verify server is connected
@@ -361,27 +374,27 @@ Update config:
 ### VSCode with MCP Extension
 
 **1. Install MCP Extension:**
+
 - Search for "Model Context Protocol" in VSCode extensions
 - Install the official MCP extension
 
 **2. Configure in VSCode Settings:**
 
 Add to `.vscode/settings.json`:
+
 ```json
 {
   "mcp.servers": {
     "sentry": {
       "command": "npx",
-      "args": [
-        "@sentry/mcp-server@latest",
-        "--access-token=YOUR_TOKEN"
-      ]
+      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
     }
   }
 }
 ```
 
 **3. Test:**
+
 - Reload window (Cmd/Ctrl + Shift + P → "Reload Window")
 - Use MCP-aware AI features to access Sentry data
 
@@ -487,12 +500,12 @@ OPENAI_API_KEY=your-key pnpm start --access-token=TOKEN
 # - Call search_issues(query="unresolved crashes")
 ```
 
-
 ### "Command not found: npx @sentry/mcp-server"
 
 **Cause:** Package not published or not in npm registry.
 
 **Solution:**
+
 ```bash
 # Use local build instead
 cd packages/mcp-server
@@ -505,6 +518,7 @@ node dist/index.js --access-token=TOKEN
 **Cause:** No authentication provided.
 
 **Solution:**
+
 ```bash
 # Option 1: CLI flag
 pnpm start --access-token=YOUR_TOKEN
@@ -519,6 +533,7 @@ pnpm start
 **Cause:** Missing `OPENAI_API_KEY`.
 
 **Solution:**
+
 ```bash
 # Set the API key
 export OPENAI_API_KEY=your-openai-key
@@ -531,11 +546,13 @@ pnpm start --access-token=TOKEN
 ### "Cannot connect to Sentry API"
 
 **Causes:**
+
 1. Invalid access token
 2. Wrong host configuration
 3. Network issues
 
 **Solution:**
+
 ```bash
 # Test token manually
 curl -H "Authorization: Bearer YOUR_TOKEN" \
@@ -552,11 +569,13 @@ pnpm start --access-token=TOKEN 2>&1 | tee debug.log
 ### "MCP Inspector can't connect to stdio server"
 
 **Causes:**
+
 1. Incorrect command path
 2. Missing dependencies
 3. Process exits immediately
 
 **Solution:**
+
 ```bash
 # Test command manually first
 pnpm start --access-token=TOKEN
@@ -577,6 +596,7 @@ pwd         # Get absolute path to project
 **Cause:** Built executable not marked as executable.
 
 **Solution:**
+
 ```bash
 chmod +x packages/mcp-server/dist/index.js
 ```
@@ -586,6 +606,7 @@ chmod +x packages/mcp-server/dist/index.js
 **Cause:** Missing dependencies in built output.
 
 **Solution:**
+
 ```bash
 # Clean and rebuild
 cd packages/mcp-server
@@ -624,6 +645,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
 To verify stdio behaves the same as remote:
 
 **Test with both transports:**
+
 ```bash
 # 1. Test stdio locally
 pnpm start --access-token=TOKEN
@@ -637,6 +659,7 @@ pnpm -w run cli --mcp-host=https://mcp.sentry.dev "who am I"
 ```
 
 **Key differences to expect:**
+
 - **Authentication:** Stdio uses access tokens, remote uses OAuth
 - **Constraints:** Remote supports URL-based org/project constraints
 - **Tools:** Both should have same tool count and functionality

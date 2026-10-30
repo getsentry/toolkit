@@ -294,6 +294,8 @@ export type DeleteCommandOptions = {
  * 3. Runs a non-interactive guard before `func()` — refuses to proceed if
  *    stdin is not a TTY and neither `--yes`/`--force` was passed (dry-run
  *    bypasses the guard since it makes no changes)
+ * 4. Marks the command `destructive`, which lists it in the generated agent
+ *    Safety Rules and makes its lazy target positionals refuse auto-detect
  *
  * Commands still handle their own confirmation prompts using
  * {@link confirmByTyping} + {@link isConfirmationBypassed} inside `func()`,
@@ -407,5 +409,6 @@ export function buildDeleteCommand<
     parameters: mergedParams,
     func: wrappedFunc,
     output: builderArgs.output,
+    destructive: true,
   });
 }

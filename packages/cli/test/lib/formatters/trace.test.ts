@@ -18,8 +18,10 @@ import {
   formatTraceDuration,
   formatTraceRow,
   formatTraceSummary,
+  formatSpanTable,
   formatTracesHeader,
   formatTraceTable,
+  type FlatSpan,
   spanListItemToFlatSpan,
   translateSpanQuery,
 } from "../../../src/lib/formatters/trace.js";
@@ -433,6 +435,73 @@ describe("formatTraceTable", () => {
 });
 
 // ---------------------------------------------------------------------------
+// formatSpanTable
+// ---------------------------------------------------------------------------
+
+describe("formatSpanTable", () => {
+  const traceId = "aaaa1111bbbb2222cccc3333dddd4444";
+
+  function makeFlatSpan(overrides: Partial<FlatSpan> = {}): FlatSpan {
+    return {
+      span_id: "a1b2c3d4e5f67890",
+      trace_id: traceId,
+      op: "http.client",
+      description: "GET /api/users",
+      duration_ms: 245.5,
+      start_timestamp: 1_705_314_600,
+      project_slug: "backend",
+      ...overrides,
+    };
+  }
+
+  test("omits the Trace ID column by default", () => {
+    const result = stripAnsi(formatSpanTable([makeFlatSpan()]));
+    expect(result).not.toContain("Trace ID");
+    expect(result).not.toContain(traceId);
+  });
+
+  test("shows the full trace ID after Span ID when showTraceId is set", () => {
+    const result = stripAnsi(
+      formatSpanTable([makeFlatSpan()], undefined, { showTraceId: true }),
+    );
+    expect(result).toContain(traceId);
+    expect(result.indexOf("Trace ID")).toBeGreaterThan(
+      result.indexOf("Span ID"),
+    );
+    expect(result.indexOf("Trace ID")).toBeLessThan(result.indexOf("Op"));
+  });
+
+  test("shows a dash when a span has no trace ID", () => {
+    const result = stripAnsi(
+      formatSpanTable([makeFlatSpan({ trace_id: undefined })], undefined, {
+        showTraceId: true,
+      }),
+    );
+    expect(result).toContain("Trace ID");
+    expect(result).toContain("—");
+  });
+
+  test("orders Project, Span ID, Trace ID for multi-project spans", () => {
+    const result = stripAnsi(
+      formatSpanTable(
+        [
+          makeFlatSpan({ project_slug: "backend" }),
+          makeFlatSpan({ span_id: "0f1e2d3c4b5a6978", project_slug: "web" }),
+        ],
+        undefined,
+        { showTraceId: true },
+      ),
+    );
+    const projectIdx = result.indexOf("Project");
+    const spanIdx = result.indexOf("Span ID");
+    const traceIdx = result.indexOf("Trace ID");
+    expect(projectIdx).toBeGreaterThan(-1);
+    expect(spanIdx).toBeGreaterThan(projectIdx);
+    expect(traceIdx).toBeGreaterThan(spanIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // translateSpanQuery
 // ---------------------------------------------------------------------------
 
@@ -611,6 +680,7 @@ describe("spanListItemToFlatSpan", () => {
     expect(flat.duration_ms).toBe(245.5);
     expect(flat.project_slug).toBe("backend");
     expect(flat.transaction).toBe("/api/users");
+    expect(flat.trace_id).toBe("aaaa1111bbbb2222cccc3333dddd4444");
   });
 
   test("handles missing optional fields", () => {

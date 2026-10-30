@@ -1,5 +1,5 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { InkUI } from "../../../../src/lib/init/ui/ink-ui.js";
 import {
@@ -83,7 +83,7 @@ describe("InkUI prompt telemetry", () => {
         message: "Choose features",
         options: [{ label: "Tracing", value: "performanceMonitoring" }],
       });
-      return ui.select({
+      return await ui.select({
         message: "Review your Sentry setup",
         options: [
           { label: "Continue", value: "continue" },
@@ -133,7 +133,7 @@ describe("InkUI prompt telemetry", () => {
           { label: "Back", value: "back" },
         ],
       });
-      return ui.multiselect({
+      return await ui.multiselect({
         message: "Choose features",
         options: [{ label: "Tracing", value: "performanceMonitoring" }],
       });

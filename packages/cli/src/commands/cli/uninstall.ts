@@ -28,8 +28,13 @@ import { homedir } from "node:os";
 import { basename, dirname } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { getSkillInstallPath } from "../../lib/agent-skills.js";
+import { isHomebrewInstall } from "../../lib/binary.js";
 import { getCompletionPath } from "../../lib/completions.js";
-import { closeDatabase, getConfigDir } from "../../lib/db/index.js";
+import {
+  closeDatabase,
+  DEFAULT_CONFIG_DIR_DISPLAY,
+  getConfigDir,
+} from "../../lib/db/index.js";
 import { getInstallInfo } from "../../lib/db/install-info.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
@@ -268,11 +273,13 @@ function gatherArtifacts(home: string): UninstallArtifact[] {
   const installInfo = getInstallInfo();
   const binaryPath = installInfo?.path || process.execPath;
   // Only self-delete for direct/curl installs (SEA binaries).
-  // For npm installs, the PM manages the binary.
+  // For npm/brew installs, the PM manages the binary — a Cellar path is
+  // never self-managed, even when stored info is missing or says curl.
   const isSelfManaged =
-    !(installInfo?.method || detectRuntimePackageManager()) ||
-    installInfo?.method === "curl" ||
-    installInfo?.method === "unknown";
+    !isHomebrewInstall() &&
+    (!(installInfo?.method || detectRuntimePackageManager()) ||
+      installInfo?.method === "curl" ||
+      installInfo?.method === "unknown");
 
   // Safety: verify the binary path looks like a sentry binary to avoid
   // accidentally deleting node, tsx, or other interpreters when install
@@ -325,7 +332,7 @@ function gatherArtifacts(home: string): UninstallArtifact[] {
     }
   }
 
-  // 5. Config directory (~/.sentry/)
+  // 5. Config directory (SENTRY_CONFIG_DIR, XDG, or legacy ~/.sentry)
   const configDir = getConfigDir();
   artifacts.push({
     label: "config directory",
@@ -427,6 +434,20 @@ export const uninstallCommand = buildDeleteCommand({
       "Remove the Sentry CLI binary, shell completions, PATH entries, " +
       "agent skill files, and configuration directory. Reverses the " +
       "changes made by `sentry cli setup`.",
+    examples: [
+      {
+        description: "Show what would be removed",
+        command: "sentry cli uninstall --dry-run",
+      },
+      {
+        description: "Uninstall, keeping the config directory",
+        command: "sentry cli uninstall --yes --keep-config",
+      },
+      {
+        description: "Full uninstall with confirmation",
+        command: "sentry cli uninstall",
+      },
+    ],
   },
   output: {
     human: formatUninstallHuman,
@@ -435,7 +456,7 @@ export const uninstallCommand = buildDeleteCommand({
     flags: {
       "keep-config": {
         kind: "boolean",
-        brief: "Keep the config directory (~/.sentry) and auth tokens",
+        brief: `Keep the config directory (default ${DEFAULT_CONFIG_DIR_DISPLAY}) and auth tokens`,
         default: false,
         optional: true,
       },
@@ -453,10 +474,14 @@ export const uninstallCommand = buildDeleteCommand({
   ) {
     const home = homedir();
 
-    // Check if installed via a package manager
+    // Check if installed via a package manager. The Cellar check wins over
+    // stored info, matching `cli upgrade`: stored info may be missing or
+    // stale for Homebrew installs. Avoid `detectInstallationMethod()` here —
+    // it spawns subprocesses and persists install info as a side effect.
     const installInfo = getInstallInfo();
-    const pmMethod =
-      installInfo?.method && installInfo.method in PM_UNINSTALL_HINTS
+    const pmMethod = isHomebrewInstall()
+      ? "brew"
+      : installInfo?.method && installInfo.method in PM_UNINSTALL_HINTS
         ? installInfo.method
         : detectRuntimePackageManager();
 

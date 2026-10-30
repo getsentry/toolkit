@@ -1,6 +1,6 @@
 import { MastraClient } from "@mastra/client-js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import {
   afterEach,
   beforeEach,

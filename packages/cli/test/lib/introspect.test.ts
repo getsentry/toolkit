@@ -6,6 +6,15 @@
  */
 
 import { describe, expect, test } from "vitest";
+import {
+  type CompletionTarget,
+  DASHBOARD_TARGET,
+  ISSUE_QUERY_TARGET,
+  ISSUE_TARGET,
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
+  withCompletionTarget,
+} from "../../src/lib/completion-target.js";
 import type {
   Command,
   FlagDef,
@@ -15,6 +24,7 @@ import type {
 import {
   buildCommandInfo,
   extractAllRoutes,
+  extractCommandCompletions,
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
@@ -23,6 +33,7 @@ import {
   isRouteMap,
   resolveCommandPath,
 } from "../../src/lib/introspect.js";
+import { sanitizeIssueQuery } from "../../src/lib/search-query.js";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -235,6 +246,12 @@ describe("buildCommandInfo", () => {
     const cmd = makeCommand({
       brief: "List things",
       fullDescription: "List all the things.",
+      __examples: [
+        {
+          description: "List things in an org",
+          command: "sentry thing list myorg",
+        },
+      ],
       parameters: {
         positional: {
           kind: "tuple",
@@ -251,9 +268,7 @@ describe("buildCommandInfo", () => {
       },
     });
 
-    const info = buildCommandInfo(cmd, "sentry thing list", [
-      "sentry thing list myorg",
-    ]);
+    const info = buildCommandInfo(cmd, "sentry thing list");
     expect(info.path).toBe("sentry thing list");
     expect(info.brief).toBe("List things");
     expect(info.fullDescription).toBe("List all the things.");
@@ -261,7 +276,25 @@ describe("buildCommandInfo", () => {
     expect(info.flags).toHaveLength(1);
     expect(info.flags[0].name).toBe("limit");
     expect(info.aliases).toEqual({ l: "limit" });
-    expect(info.examples).toEqual(["sentry thing list myorg"]);
+    expect(info.examples).toEqual([
+      "# List things in an org\nsentry thing list myorg",
+    ]);
+  });
+
+  test("renders multi-step workflow examples one step per line", () => {
+    const cmd = makeCommand({
+      brief: "Create things",
+      __examples: [
+        {
+          description: "Create, then finalize",
+          command: ["sentry thing create a", "sentry thing finalize a"],
+        },
+      ],
+    });
+    const info = buildCommandInfo(cmd, "sentry thing create");
+    expect(info.examples).toEqual([
+      "# Create, then finalize\nsentry thing create a\nsentry thing finalize a",
+    ]);
   });
 
   test("handles command with no positional args", () => {
@@ -375,6 +408,136 @@ describe("extractAllRoutes", () => {
     const routes = extractAllRoutes(topLevel);
     expect(routes).toHaveLength(1);
     expect(routes[0].name).toBe("visible");
+  });
+});
+
+describe("extractCommandCompletions", () => {
+  /** A fresh parser tagged with `kind`, as the bound parsers are. */
+  const tagged = (kind: CompletionTarget) =>
+    withCompletionTarget(kind, (input: string) => input);
+  const orgParser = tagged(ORG_TARGET);
+  const orgProjectParser = tagged(ORG_PROJECT_TARGET);
+  const issueParser = tagged(ISSUE_TARGET);
+
+  /** Command whose positionals use the given parsers. */
+  function commandWith(...parsers: unknown[]): Command {
+    return makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: parsers.map((parse, i) => ({
+            placeholder: `arg${i}`,
+            parse,
+          })),
+        },
+      },
+    });
+  }
+
+  test("reads the kind of each positional with full nested paths", () => {
+    const variadic = makeCommand({
+      parameters: {
+        positional: {
+          kind: "array",
+          parameter: { placeholder: "issue", parse: issueParser },
+        },
+      },
+    });
+    const nested = makeRouteMap([
+      makeEntry("view", commandWith(orgProjectParser)),
+    ]);
+    const topLevel = makeRouteMap([
+      makeEntry(
+        "issue",
+        makeRouteMap([
+          makeEntry("merge", variadic),
+          makeEntry("link", commandWith(issueParser, String)),
+          makeEntry("help", commandWith(String)),
+          makeEntry("rules", nested),
+        ]),
+      ),
+      makeEntry("trial", commandWith(String, orgParser)),
+      makeEntry("api", makeCommand()),
+    ]);
+
+    expect(extractCommandCompletions(topLevel)).toEqual({
+      "issue link": {
+        positionals: [ISSUE_TARGET, null],
+        variadic: false,
+        flags: {},
+      },
+      "issue merge": { positionals: [ISSUE_TARGET], variadic: true, flags: {} },
+      "issue rules view": {
+        positionals: [ORG_PROJECT_TARGET],
+        variadic: false,
+        flags: {},
+      },
+      trial: { positionals: [null, ORG_TARGET], variadic: false, flags: {} },
+    });
+  });
+
+  test("reads flag value kinds, listing other value-taking flags as null", () => {
+    const list = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [
+            {
+              placeholder: "target",
+              parse: tagged(DASHBOARD_TARGET),
+            },
+          ],
+        },
+        flags: {
+          web: { kind: "boolean" },
+          period: { kind: "parsed" },
+          query: { kind: "parsed", parse: sanitizeIssueQuery },
+        },
+        aliases: { w: "web", t: "period", q: "query" },
+      },
+    });
+    const flagOnly = makeCommand({
+      parameters: {
+        flags: { query: { kind: "parsed", parse: sanitizeIssueQuery } },
+      },
+    });
+    const topLevel = makeRouteMap([
+      makeEntry("list", list),
+      makeEntry("search", flagOnly),
+    ]);
+
+    expect(extractCommandCompletions(topLevel)).toEqual({
+      list: {
+        positionals: [DASHBOARD_TARGET],
+        variadic: false,
+        flags: {
+          "--period": null,
+          "--query": ISSUE_QUERY_TARGET,
+          "-q": ISSUE_QUERY_TARGET,
+          "-t": null,
+        },
+      },
+      search: {
+        positionals: [],
+        variadic: false,
+        flags: { "--query": ISSUE_QUERY_TARGET },
+      },
+    });
+  });
+
+  test("skips hidden commands, hidden groups, and commands without kinds", () => {
+    const annotated = commandWith(orgParser);
+    const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
+    const topLevel = makeRouteMap([
+      makeEntry("secret", annotated, true),
+      makeEntry("internal", hiddenGroup, true),
+      makeEntry(
+        "plain",
+        makeCommand({ parameters: { flags: { period: { kind: "parsed" } } } }),
+      ),
+    ]);
+
+    expect(extractCommandCompletions(topLevel)).toEqual({});
   });
 });
 

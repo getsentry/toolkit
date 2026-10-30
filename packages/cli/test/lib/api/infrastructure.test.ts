@@ -1,3 +1,4 @@
+import { listOrganizationTeams, SentryApiError } from "@sentry/api";
 import { array, number } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -8,10 +9,136 @@ import {
   paginate,
   rawApiRequest,
   throwApiError,
+  unwrapPaginatedResult,
+  unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+
+describe("SDK error compatibility", () => {
+  useTestConfigDir("api-sdk-errors-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  beforeEach(() => {
+    process.env.SENTRY_AUTH_TOKEN = "example-token";
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+  });
+
+  test.each([
+    {
+      status: 401,
+      detail: "Invalid token",
+      guidance: "is not recognized or has been revoked",
+      excluded: "missing the required scope",
+    },
+    {
+      status: 403,
+      detail: "You are missing the required scope team:read.",
+      guidance: "missing the required scope(s) 'team:read'",
+      excluded: "Unable to reach Sentry API",
+    },
+    {
+      status: 403,
+      detail: "Your organization has disabled this feature for members",
+      guidance: "This is an org-level policy setting",
+      excluded: "token may lack",
+    },
+    {
+      status: 401,
+      detail: { code: "member-disabled-over-limit" },
+      guidance: "This is a billing/seat-limit issue",
+      excluded: "Create a new token",
+    },
+  ])("preserves CLI guidance for $status: $detail", async (scenario) => {
+    const response = Response.json(
+      { detail: scenario.detail },
+      { status: scenario.status },
+    );
+    const result = await listOrganizationTeams({
+      baseUrl: "https://sentry.example",
+      path: { organization_id_or_slug: "example-org" },
+      fetch: async () => response,
+    });
+
+    expect(result.error).toBeInstanceOf(SentryApiError);
+    expect(result.response).toBe(response);
+    expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+      expect.objectContaining({
+        status: scenario.status,
+        detail: expect.stringContaining(scenario.guidance),
+      }),
+    );
+    expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+      expect.objectContaining({
+        detail: expect.not.stringContaining(scenario.excluded),
+      }),
+    );
+  });
+
+  test("keeps network failures readable when no HTTP response exists", async () => {
+    const cause = new TypeError("fetch failed");
+    const result = await listOrganizationTeams({
+      baseUrl: "https://sentry.example",
+      path: { organization_id_or_slug: "example-org" },
+      fetch: async () => {
+        throw cause;
+      },
+    });
+
+    expect(result.response).toBeUndefined();
+    expect(result.error).toBe(cause);
+    expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+      expect.objectContaining({
+        status: 0,
+        message: "Failed to list teams: Network error",
+        detail: expect.stringContaining("fetch failed"),
+      }),
+    );
+  });
+
+  test.each([undefined, null, false, 0, ""])(
+    "does not treat a thrown %s as successful response data",
+    async (cause) => {
+      const result = await listOrganizationTeams({
+        baseUrl: "https://sentry.example",
+        path: { organization_id_or_slug: "example-org" },
+        fetch: async () => {
+          throw cause;
+        },
+      });
+
+      expect(result).toHaveProperty("error", cause);
+      expect(() => unwrapResult(result, "Failed to list teams")).toThrow(
+        ApiError,
+      );
+    },
+  );
+
+  test("keeps response metadata available to existing pagination callers", async () => {
+    const response = Response.json([], {
+      headers: {
+        link: '<https://sentry.example/api/0/teams/>; rel="next"; results="true"; cursor="25:1:0"',
+        "x-request-id": "example-request",
+      },
+    });
+    const result = await listOrganizationTeams({
+      baseUrl: "https://sentry.example",
+      path: { organization_id_or_slug: "example-org" },
+      fetch: async () => response,
+    });
+
+    const page = unwrapPaginatedResult(result, "Failed to list teams");
+    expect(page.data).toEqual([]);
+    expect(page.nextCursor).toBe("25:1:0");
+    expect(page.response).toBe(response);
+    expect(page.response?.headers.get("x-request-id")).toBe("example-request");
+  });
+});
 
 describe("throwApiError", () => {
   test("network failure with Error produces readable message", () => {
@@ -584,7 +711,7 @@ describe("rawApiRequest binary handling", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
   });
 
   afterEach(() => {
@@ -611,12 +738,12 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.example.com",
     });
     globalThis.fetch = mockFetch(async (input, init) => {
-      expect(input).toBe(
+      const request = new Request(input, init);
+      expect(request.url).toBe(
         "https://sentry.example.com/sentry/api/0/organizations/acme/?cursor=a%3Ab",
       );
-      expect(new Headers(init?.headers).get("Authorization")).toBe(
-        "Bearer valid-token",
-      );
+      expect(request.headers.get("Authorization")).toBe("Bearer valid-token");
+      expect(request.headers.get("Content-Type")).toBe("application/custom");
       return new Response("{}", {
         headers: { "content-type": "application/json" },
       });
@@ -625,6 +752,7 @@ describe("rawApiRequest binary handling", () => {
     await rawApiRequest("/organizations/acme/", {
       baseUrl: "https://sentry.example.com/sentry",
       params: { cursor: "a:b" },
+      headers: { "content-type": "application/custom" },
     });
   });
 
@@ -651,11 +779,11 @@ describe("rawApiRequest binary handling", () => {
     expect(result.status).toBe(200);
     expect(result.body).toBeInstanceOf(Uint8Array);
     const body = result.body as Uint8Array;
-    expect(Array.from(body.slice(0, 8))).toEqual([
+    expect([...body.subarray(0, 8)]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
     // Must NOT contain the UTF-8 replacement sequence EF BF BD
-    expect(Array.from(body.slice(0, 3))).not.toEqual([0xef, 0xbf, 0xbd]);
+    expect([...body.subarray(0, 3)]).not.toEqual([0xef, 0xbf, 0xbd]);
     expect(body).toEqual(pngBytes);
   });
 
@@ -747,6 +875,7 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(25, undefined);
   });
 
+  // Raw server cursors, e.g. from an older CLI or an API response.
   test("forwards initial cursor", async () => {
     const spy = vi.fn().mockResolvedValue({ data: [] });
     await paginate({ cursor: "abc", limit: 5 }, spy);
@@ -761,45 +890,158 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(5, undefined);
   });
 
-  test("accumulates across pages when limit exceeds cap", async () => {
-    const spy = vi.fn((perPage: number, cursor: string | undefined) => {
-      const offset = cursor ? Number(cursor) : 0;
-      const data = Array.from({ length: perPage }, (_, i) => offset + i);
-      return Promise.resolve({
-        data,
-        nextCursor: String(offset + perPage),
+  test.each([
+    { limit: 101, perPage: 51 },
+    { limit: 150, perPage: 75 },
+    { limit: 200, perPage: 100 },
+    { limit: 201, perPage: 67 },
+    { limit: 250, perPage: 84 },
+    { limit: 1000, perPage: 100 },
+  ])(
+    "splits --limit $limit evenly into pages of $perPage",
+    async ({ limit, perPage }) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit }, spy);
+      expect(spy).toHaveBeenCalledWith(perPage, undefined);
+    },
+  );
+
+  // Cursor continuity across servers and limits is covered by
+  // test/lib/paginate.property.test.ts; these pin the request sequence.
+  describe("resumes mid-page across -c next", () => {
+    /** Pages `rows` like Sentry, with `<value>:<offset>:0` cursors. */
+    function server(cursorFor: (perPage: number, offset: number) => string) {
+      return vi.fn((perPage: number, cursor: string | undefined) => {
+        const [value = 0, page = 0] = (cursor ?? "0:0:0")
+          .split(":")
+          .map(Number);
+        const offset = value ? value * page : page;
+        const data = Array.from({ length: perPage }, (_, i) => offset + i);
+        return Promise.resolve({
+          data,
+          nextCursor: cursorFor(perPage, offset),
+        });
       });
+    }
+
+    test("with the page size of a page-number cursor", async () => {
+      const spy = server(
+        (perPage, offset) => `${perPage}:${offset / perPage + 1}:0`,
+      );
+
+      const first = await paginate({ limit: 250 }, spy);
+      expect(first.data).toEqual(Array.from({ length: 250 }, (_, i) => i));
+      // Page 84:2 was partly returned: 82 (0b1010010) rows to skip, in binary
+      // in is_prev with `_0` for 1 and `0` for 0.
+      expect(first.nextCursor).toBe("84:2:0_00_000_00");
+      const second = await paginate(
+        { limit: 10, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual(
+        Array.from({ length: 10 }, (_, i) => 250 + i),
+      );
+
+      expect(spy.mock.calls).toEqual([
+        [84, undefined],
+        [84, "84:1:0"],
+        [84, "84:2:0"],
+        [84, "84:2:0"],
+        [84, "84:3:0"],
+      ]);
     });
 
-    const result = await paginate({ limit: 150 }, spy);
-    expect(result.data).toEqual(Array.from({ length: 150 }, (_, i) => i));
-    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([
-      API_MAX_PER_PAGE,
-      50,
-    ]);
-    expect(result.nextCursor).toBe("150");
+    test("fetching the skipped rows in the same request otherwise", async () => {
+      const spy = server((perPage, offset) => `0:${offset + perPage}:0`);
+
+      const first = await paginate({ limit: 250 }, spy);
+      expect(first.nextCursor).toBe("0:168:0_00_000_00");
+      const second = await paginate(
+        { limit: 10, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual(
+        Array.from({ length: 10 }, (_, i) => 250 + i),
+      );
+      expect(second.nextCursor).toBe("0:260:0");
+
+      expect(spy.mock.calls.slice(3)).toEqual([[92, "0:168:0"]]);
+    });
+
+    test("from the first page", async () => {
+      const spy = server((perPage, offset) => `0:${offset + perPage}:0`);
+
+      const first = await paginate({ limit: 3 }, (perPage, cursor) =>
+        spy(perPage + 2, cursor),
+      );
+      expect(first.nextCursor).toBe("0:0:0_0_0");
+      const second = await paginate(
+        { limit: 2, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual([3, 4]);
+      expect(spy.mock.calls.at(-1)).toEqual([5, undefined]);
+    });
   });
 
-  test("drops nextCursor when a page exceeds the remaining budget", async () => {
+  test("returns page-boundary cursors unchanged", async () => {
     const spy = vi
       .fn()
-      .mockResolvedValueOnce({
-        data: Array.from({ length: 100 }, (_, i) => i),
-        nextCursor: "c1",
-      })
-      .mockResolvedValueOnce({
-        data: Array.from({ length: 100 }, (_, i) => 100 + i),
-        nextCursor: "c2",
-      });
-
-    const result = await paginate({ limit: 150 }, spy);
-    expect(result.data).toHaveLength(150);
-    expect(result.nextCursor).toBeUndefined();
-    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([
-      API_MAX_PER_PAGE,
-      50,
-    ]);
+      .mockResolvedValue({ data: [1, 2], nextCursor: "2:1:0" });
+    expect(await paginate({ limit: 2 }, spy)).toEqual({
+      data: [1, 2],
+      nextCursor: "2:1:0",
+    });
   });
+
+  test("returns no cursor once the server is exhausted", async () => {
+    const spy = vi.fn().mockResolvedValue({ data: [1, 2] });
+    expect(await paginate({ limit: 5 }, spy)).toEqual({ data: [1, 2] });
+  });
+
+  // A pasted page-number cursor is only valid with the page size it encodes.
+  test.each([
+    { cursor: "100:2:0", perPage: 100 },
+    { cursor: "25:4:0", perPage: 25 },
+    { cursor: "0:200:0", perPage: 67 },
+    { cursor: "1735689600000:0:0", perPage: 67 },
+    { cursor: "abc", perPage: 67 },
+  ])(
+    "resumes the raw cursor $cursor with pages of $perPage",
+    async ({ cursor, perPage }) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit: 201, cursor }, spy);
+      expect(spy.mock.calls).toEqual([[perPage, cursor]]);
+    },
+  );
+
+  // Every CLI version must be able to send a returned cursor to the API.
+  test.each(["token", "100:3:1"])(
+    "refetches the page of the cursor %s, which cannot carry a skip",
+    async (cursor) => {
+      const spy = vi
+        .fn()
+        .mockResolvedValue({ data: [1, 2, 3], nextCursor: "x" });
+      const first = await paginate({ limit: 2, cursor }, spy);
+      expect(first.nextCursor).toBe(cursor);
+    },
+  );
+
+  // Nightly builds returned cli1~<perPage>~<skip>~<server cursor> cursors.
+  test("resumes a nightly cli1~ cursor", async () => {
+    const spy = vi.fn().mockResolvedValue({ data: [] });
+    await paginate({ limit: 5, cursor: "cli1~84~2~84:2:0" }, spy);
+    expect(spy.mock.calls).toEqual([[84, "84:2:0"]]);
+  });
+
+  test.each(["cli1~0~0~abc", "cli1~101~0~abc", "cli1~10~-1~abc", "cli1~x~0~"])(
+    "restarts from the first page on the unreadable cursor %s",
+    async (cursor) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit: 5, cursor }, spy);
+      expect(spy.mock.calls).toEqual([[5, undefined]]);
+    },
+  );
 });
 
 describe("fetchAllPages", () => {

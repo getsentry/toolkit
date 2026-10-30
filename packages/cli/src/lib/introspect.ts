@@ -10,7 +10,13 @@
  * for introspection and documentation generation.
  */
 
-import type { CommandExample } from "./command.js";
+import generatedCommandApi from "../generated/command-api.json";
+import { type CommandExample, exampleSteps } from "./command-example.js";
+import {
+  type CompletionTarget,
+  getCompletionTarget,
+} from "./completion-target.js";
+import type { ApiReference, CommandApiReference } from "./api-schema.js";
 import {
   extractSchemaFields,
   type SchemaFieldInfo,
@@ -26,6 +32,7 @@ export type RouteMapEntry = {
   name: { original: string };
   target: RouteTarget;
   hidden: boolean;
+  aliases?: readonly string[];
 };
 
 /** A routing target is either a route map (group) or a command */
@@ -61,6 +68,8 @@ export type Command = {
    */
   __primaryUsage?: string;
   __examples?: readonly CommandExample[];
+  /** Set by `buildCommand({ destructive: true })` and `buildDeleteCommand`. */
+  __destructive?: boolean;
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -73,6 +82,8 @@ export type PositionalParam = {
   brief?: string;
   placeholder?: string;
   optional?: boolean;
+  /** Stricli parser; completion-aware parsers carry a {@link CompletionTarget}. */
+  parse?: unknown;
 };
 
 /** Extracted metadata for a single positional argument */
@@ -96,6 +107,8 @@ export type FlagDef = {
   variadic?: boolean;
   placeholder?: string;
   hidden?: boolean;
+  /** Stricli parser; completion-aware parsers carry a {@link CompletionTarget}. */
+  parse?: unknown;
 };
 
 // ---------------------------------------------------------------------------
@@ -115,6 +128,8 @@ export type CommandInfo = {
   examples: string[];
   /** JSON output field metadata extracted from `OutputConfig.schema` */
   jsonFields?: SchemaFieldInfo[];
+  /** Present (and `true`) when the command is destructive or irreversible */
+  destructive?: true;
 };
 
 /** Extracted metadata for a single flag */
@@ -287,13 +302,8 @@ export function extractFlags(
  *
  * @param cmd - The Stricli command to introspect
  * @param path - Full command path (e.g. "sentry issue list")
- * @param examples - Optional usage examples
  */
-export function buildCommandInfo(
-  cmd: Command,
-  path: string,
-  examples: string[] = [],
-): CommandInfo {
+export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
   const jsonFields = cmd.__jsonSchema
     ? extractSchemaFields(cmd.__jsonSchema)
     : undefined;
@@ -312,12 +322,12 @@ export function buildCommandInfo(
       cmd.__primaryUsage ?? getPositionalString(cmd.parameters.positional),
     positionals,
     aliases: cmd.parameters.aliases ?? {},
-    examples: cmd.__examples?.length
-      ? cmd.__examples.map(
-          ({ description, command }) => `# ${description}\n${command}`,
-        )
-      : examples,
+    examples: (cmd.__examples ?? []).map(
+      (example) =>
+        `# ${example.description}\n${exampleSteps(example).join("\n")}`,
+    ),
     jsonFields: jsonFields?.length ? jsonFields : undefined,
+    ...(cmd.__destructive ? { destructive: true as const } : {}),
   };
 }
 
@@ -326,12 +336,10 @@ export function buildCommandInfo(
  *
  * @param routeMap - The route map to introspect
  * @param routeName - Parent route name (e.g. "issue")
- * @param docExamples - Optional examples loaded from documentation
  */
 export function extractRouteGroupCommands(
   routeMap: RouteMap,
   routeName: string,
-  docExamples: Map<string, string[]> = new Map(),
 ): CommandInfo[] {
   const commands: CommandInfo[] = [];
 
@@ -343,13 +351,10 @@ export function extractRouteGroupCommands(
     const subTarget = subEntry.target;
     if (isCommand(subTarget)) {
       const path = `sentry ${routeName} ${subEntry.name.original}`;
-      const examples = docExamples.get(path) ?? [];
-      commands.push(buildCommandInfo(subTarget, path, examples));
+      commands.push(buildCommandInfo(subTarget, path));
     } else if (isRouteMap(subTarget)) {
       const nestedPrefix = `${routeName} ${subEntry.name.original}`;
-      commands.push(
-        ...extractRouteGroupCommands(subTarget, nestedPrefix, docExamples),
-      );
+      commands.push(...extractRouteGroupCommands(subTarget, nestedPrefix));
     }
   }
 
@@ -358,8 +363,6 @@ export function extractRouteGroupCommands(
 
 /**
  * Walk the entire route tree and extract metadata for all visible routes.
- * This is a synchronous version that doesn't load documentation examples
- * (unlike the async version in generate-skill.ts).
  *
  * @param routeMap - Top-level Stricli route map
  * @returns Array of route info for each visible top-level entry
@@ -394,26 +397,129 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
   return result;
 }
 
-/** Matches the "sentry " prefix at the start of a command path. */
-const SENTRY_PREFIX_RE = /^sentry /;
+/**
+ * What `__complete` needs to know about one command's arguments.
+ *
+ * Kinds come from the parsers the command already declares (see
+ * `completion-target.ts`); `null` marks an argument without one.
+ */
+type CommandCompletion = {
+  /**
+   * Kind of each positional, by index. A variadic positional has one entry
+   * that applies to every word.
+   */
+  positionals: (CompletionTarget | null)[];
+  /** Whether the last entry of {@link positionals} repeats. */
+  variadic: boolean;
+  /**
+   * Every flag spelling that consumes the next word (`--name`, `-a`), mapped
+   * to the kind of its value. Hidden flags count because the parser still
+   * accepts them.
+   */
+  flags: Record<string, CompletionTarget | null>;
+};
+
+/** {@link CommandCompletion} per command path (without the `sentry` prefix). */
+export type CommandCompletions = Record<string, CommandCompletion>;
+
+/** Read the completion metadata of one command's parameters. */
+function getCommandCompletion(command: Command): CommandCompletion {
+  const { positional, flags = {}, aliases = {} } = command.parameters;
+  const params = positional
+    ? positional.kind === "tuple"
+      ? positional.parameters
+      : [positional.parameter]
+    : [];
+  const flagKinds: Record<string, CompletionTarget | null> = {};
+  for (const [name, def] of Object.entries(flags)) {
+    if (def.kind !== "boolean") {
+      flagKinds[`--${name}`] = getCompletionTarget(def.parse) ?? null;
+    }
+  }
+  for (const [alias, name] of Object.entries(aliases)) {
+    const kind = flagKinds[`--${name}`];
+    if (kind !== undefined) {
+      flagKinds[`-${alias}`] = kind;
+    }
+  }
+  return {
+    positionals: params.map(
+      (param) => getCompletionTarget(param.parse) ?? null,
+    ),
+    variadic: positional?.kind === "array",
+    flags: Object.fromEntries(
+      Object.entries(flagKinds).sort(([a], [b]) => a.localeCompare(b)),
+    ),
+  };
+}
+
+/**
+ * Collect the completion metadata of every visible command that completes
+ * at least one positional or flag value.
+ *
+ * Paths are space-separated route segments without the binary name (e.g.
+ * `"issue list"`); nested groups contribute their full path. Sorted for
+ * stable generated output.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractCommandCompletions(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): CommandCompletions {
+  const result: CommandCompletions = {};
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+    const segments = [...prefix, entry.name.original];
+    const target = entry.target;
+    if (isRouteMap(target)) {
+      Object.assign(result, extractCommandCompletions(target, segments));
+    } else if (isCommand(target)) {
+      const completion = getCommandCompletion(target);
+      const kinds = [
+        ...completion.positionals,
+        ...Object.values(completion.flags),
+      ];
+      if (kinds.some((kind) => kind !== null)) {
+        result[segments.join(" ")] = completion;
+      }
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(result).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
 
 /** Maximum number of fuzzy suggestions to include in an UnresolvedPath. */
 const MAX_SUGGESTIONS = 3;
+const COMMAND_PATH_SEPARATOR = /\s+/;
+
+/** Find canonical public paths so hidden aliases cannot expose internal commands. */
+export function publicTargetPaths(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+  paths = new Map<RouteTarget, string[]>(),
+): Map<RouteTarget, string[]> {
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden || paths.has(entry.target)) {
+      continue;
+    }
+    const path = [...prefix, entry.name.original];
+    paths.set(entry.target, path);
+    if (isRouteMap(entry.target)) {
+      publicTargetPaths(entry.target, path, paths);
+    }
+  }
+  return paths;
+}
 
 /**
- * Resolve a command path through the route tree.
- *
- * Navigates the tree using the provided path segments:
- * - Single segment (e.g. ["issue"]) → returns the route group if it's a RouteMap,
- *   or the command if it's a standalone command
- * - Two segments (e.g. ["issue", "list"]) → returns the specific subcommand
- *
- * When a segment doesn't match, returns an {@link UnresolvedPath} with
- * fuzzy-matched suggestions from the available routes at that level.
- *
- * @param routeMap - Top-level Stricli route map
- * @param path - Command path segments (e.g. ["issue", "list"])
- * @returns Resolved command/group, unresolved with suggestions, or null for empty paths
+ * Resolve a full command path using the registered route names and aliases.
+ * Hidden aliases are accepted only when their target also has a public path.
+ * Results always use the canonical public spelling; no command is executed.
  */
 export function resolveCommandPath(
   routeMap: RouteMap,
@@ -423,85 +529,80 @@ export function resolveCommandPath(
     return null;
   }
 
-  const first = path[0];
-  const rest = path.slice(1);
+  const publicPaths = publicTargetPaths(routeMap);
+  let target: RouteTarget = routeMap;
+  let canonicalPath: string[] = [];
 
-  // length === 0 is handled above; this guard helps TS narrow the type
-  if (first === undefined) {
-    return null;
-  }
-
-  // Collect visible entries once — used for both exact match and fuzzy fallback
-  const visibleEntries = routeMap.getAllEntries().filter((e) => !e.hidden);
-  const entry = visibleEntries.find((e) => e.name.original === first);
-
-  if (!entry) {
-    const names = visibleEntries.map((e) => e.name.original);
-    return {
-      kind: "unresolved",
-      input: first,
-      suggestions: fuzzyMatch(first, names, { maxResults: MAX_SUGGESTIONS }),
-    };
-  }
-
-  const target = entry.target;
-
-  // No more path segments — return what we found
-  if (rest.length === 0) {
-    if (isRouteMap(target)) {
+  for (const segment of path) {
+    if (!isRouteMap(target)) {
+      return null;
+    }
+    const entries: RouteMapEntry[] = target
+      .getAllEntries()
+      .filter(
+        (candidate) => !candidate.hidden || publicPaths.has(candidate.target),
+      );
+    const entry: RouteMapEntry | undefined =
+      entries.find((candidate) => candidate.name.original === segment) ??
+      entries.find((candidate) => candidate.aliases?.includes(segment));
+    if (!entry) {
       return {
-        kind: "group",
-        info: {
-          name: entry.name.original,
-          brief: target.brief,
-          commands: extractRouteGroupCommands(target, entry.name.original),
-        },
+        kind: "unresolved",
+        input: segment,
+        suggestions: fuzzyMatch(
+          segment,
+          entries
+            .filter((candidate) => !candidate.hidden)
+            .map((candidate) => candidate.name.original),
+          { maxResults: MAX_SUGGESTIONS },
+        ),
       };
     }
-    if (isCommand(target)) {
-      return {
-        kind: "command",
-        info: buildCommandInfo(target, `sentry ${entry.name.original}`),
-      };
-    }
-    return null;
+    canonicalPath = entry.hidden
+      ? [...(publicPaths.get(entry.target) ?? [])]
+      : [...canonicalPath, entry.name.original];
+    target = entry.target;
   }
 
-  // More path segments — must be a route map to navigate deeper
-  if (!isRouteMap(target)) {
-    return null;
-  }
-
-  // Recurse into the sub-route map with remaining path segments
-  const subResult = resolveCommandPath(target, rest);
-  if (!subResult) {
-    return null;
-  }
-
-  // Prepend the parent route segment to all paths in the result
-  const parentPrefix = entry.name.original;
-  const prependPrefix = (p: string) =>
-    p.replace(SENTRY_PREFIX_RE, `sentry ${parentPrefix} `);
-
-  if (subResult.kind === "command") {
-    return {
-      kind: "command",
-      info: { ...subResult.info, path: prependPrefix(subResult.info.path) },
-    };
-  }
-  if (subResult.kind === "group") {
+  const name = canonicalPath.join(" ");
+  if (isRouteMap(target)) {
     return {
       kind: "group",
       info: {
-        ...subResult.info,
-        name: `${parentPrefix} ${subResult.info.name}`,
-        commands: subResult.info.commands.map((cmd) => ({
-          ...cmd,
-          path: prependPrefix(cmd.path),
-        })),
+        name,
+        brief: target.brief,
+        commands: extractRouteGroupCommands(target, name),
       },
     };
   }
+  if (isCommand(target)) {
+    return {
+      kind: "command",
+      info: buildCommandInfo(target, `sentry ${name}`),
+    };
+  }
+  return null;
+}
 
-  return subResult;
+/** Collect related APIs for one exact command path or all commands in a group. */
+export function getCommandApiReferences(
+  routeMap: RouteMap,
+  query: string,
+  apiByCommand: Readonly<
+    Record<string, readonly ApiReference[]>
+  > = generatedCommandApi,
+): CommandApiReference[] {
+  const path = query.trim().split(COMMAND_PATH_SEPARATOR).filter(Boolean);
+  const resolved = resolveCommandPath(routeMap, path);
+  if (!resolved || resolved.kind === "unresolved") {
+    return [];
+  }
+  const commands =
+    resolved.kind === "command" ? [resolved.info] : resolved.info.commands;
+  return commands.flatMap((command) =>
+    (apiByCommand[command.path] ?? []).map((reference) => ({
+      ...reference,
+      command: command.path,
+    })),
+  );
 }

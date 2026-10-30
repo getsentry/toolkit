@@ -14,19 +14,15 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import {
-  formatActor,
-  formatDate,
-  formatId,
-  readString,
-} from "./support/api-formatting";
+import { formatDate, formatId, readString } from "./support/api-formatting";
+import { formatActivityAuthor } from "./support/activity-formatting";
 
 function formatComment(comment: IssueComment): string {
-  const actor = comment.user ? formatActor(comment.user) : "current user";
+  const actor = formatActivityAuthor(comment, "current user");
   const text = comment.data ? readString(comment.data, "text") : null;
 
   return [
-    `**Comment ID**: ${formatId(comment.id)}`,
+    `**Comment ID**: ${formatId(comment.commentId ?? comment.id)}`,
     `**Type**: ${comment.type ?? "note"}`,
     `**Author**: ${actor}`,
     formatDate(comment.dateCreated)

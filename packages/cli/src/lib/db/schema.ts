@@ -12,14 +12,16 @@
  */
 
 import { createRequire } from "node:module";
+import { uuidv7 } from "uuidv7";
 import { getEnv } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
+import { storedCredentialIdentity } from "./identity-hash.js";
 import type { Database } from "./sqlite.js";
 
 const _require = createRequire(import.meta.url);
 
-export const CURRENT_SCHEMA_VERSION = 17;
+export const CURRENT_SCHEMA_VERSION = 20;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
@@ -45,6 +47,12 @@ export type TableSchema = {
    * should NOT also set `primaryKey: true`.
    */
   compositePrimaryKey?: string[];
+  /**
+   * The table holds data the CLI can't fetch or detect again, such as
+   * logins or settings. Every other table is a cache, which repair may drop
+   * and recreate when its shape is wrong or a newer CLI wrote it.
+   */
+  persistent?: boolean;
 };
 
 /**
@@ -53,27 +61,56 @@ export type TableSchema = {
  */
 export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   schema_version: {
+    persistent: true,
     columns: {
       version: { type: "INTEGER", primaryKey: true },
     },
   },
-  auth: {
+  /**
+   * Stored Sentry accounts (one row per login). Replaces the single-row
+   * `auth` and `user_info` tables in schema v18.
+   *
+   * Exactly one row is active at a time (`is_active = 1`); every
+   * credential read targets that row. `user_id` is NULL until the login
+   * flow learns who the token belongs to. Rows sharing `(host, user_id)`
+   * are deduplicated when user info is recorded, so re-logging in to the
+   * same account updates it instead of adding a duplicate.
+   */
+  accounts: {
+    persistent: true,
     columns: {
-      id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
+      account_id: { type: "TEXT", primaryKey: true },
+      // Origin URL (scheme://host[:port]) this token was issued against.
+      // Enforced at the fetch layer: credentials are only attached to requests
+      // whose origin matches this host (with SaaS equivalence). NULL only for
+      // rows migrated from pre-v16 `auth` rows; backfilled lazily on read.
+      host: { type: "TEXT" },
+      user_id: { type: "TEXT" },
+      email: { type: "TEXT" },
+      username: { type: "TEXT" },
+      name: { type: "TEXT" },
       token: { type: "TEXT" },
       refresh_token: { type: "TEXT" },
       expires_at: { type: "INTEGER" },
       issued_at: { type: "INTEGER" },
+      is_active: { type: "INTEGER", notNull: true, default: "0" },
+      created_at: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
       updated_at: {
         type: "INTEGER",
         notNull: true,
         default: "(unixepoch() * 1000)",
       },
-      // Origin URL (scheme://host[:port]) this token was issued against.
-      // Enforced at the fetch layer: credentials are only attached to requests
-      // whose origin matches this host (with SaaS equivalence). Nullable for
-      // rows created before schema v16; migrated lazily in getAuthConfig.
-      host: { type: "TEXT", addedInVersion: 16 },
+      // When this account last became active (login, switch, or logout
+      // promotion). Logout promotes the most recently used account.
+      last_used_at: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
     },
   },
 
@@ -156,6 +193,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     compositePrimaryKey: ["command_key", "context"],
   },
   metadata: {
+    persistent: true,
     columns: {
       key: { type: "TEXT", primaryKey: true },
       value: { type: "TEXT", notNull: true },
@@ -169,6 +207,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       org_role: { type: "TEXT", addedInVersion: 10 },
       region_url: { type: "TEXT", notNull: true },
       credential_identity: { type: "TEXT", notNull: true, addedInVersion: 17 },
+      account_id: { type: "TEXT", addedInVersion: 19 },
       source_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
       response_origin: { type: "TEXT", notNull: true, addedInVersion: 17 },
       updated_at: {
@@ -179,21 +218,8 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
     },
     compositePrimaryKey: ["credential_identity", "source_origin", "org_slug"],
   },
-  user_info: {
-    columns: {
-      id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
-      user_id: { type: "TEXT", notNull: true },
-      email: { type: "TEXT" },
-      username: { type: "TEXT" },
-      name: { type: "TEXT", addedInVersion: 3 },
-      updated_at: {
-        type: "INTEGER",
-        notNull: true,
-        default: "(unixepoch() * 1000)",
-      },
-    },
-  },
   instance_info: {
+    persistent: true,
     columns: {
       id: { type: "INTEGER", primaryKey: true, check: "id = 1" },
       instance_id: { type: "TEXT", notNull: true },
@@ -247,6 +273,30 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       },
     },
   },
+  /**
+   * Entities seen during normal CLI usage, kept for shell completion.
+   *
+   * `sentry __complete` reads this table instead of calling the API, so it can
+   * suggest issue short IDs and dashboards the user has already listed or
+   * viewed. `kind` names the entity type (see `db/completion-cache.ts`),
+   * `value` is what completion inserts and `label` is the description shells
+   * show next to it. Capped per kind and org, expired with the other caches,
+   * and cleared on logout because titles are scoped to the user's permissions.
+   */
+  completion_cache: {
+    columns: {
+      kind: { type: "TEXT", notNull: true },
+      org_slug: { type: "TEXT", notNull: true },
+      value: { type: "TEXT", notNull: true },
+      label: { type: "TEXT" },
+      last_seen: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
+    },
+    compositePrimaryKey: ["kind", "org_slug", "value"],
+  },
   project_root_cache: {
     columns: {
       cwd: { type: "TEXT", primaryKey: true },
@@ -268,6 +318,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
    * The next normal CLI run flushes entries as Sentry metrics and deletes them.
    */
   completion_telemetry_queue: {
+    persistent: true,
     columns: {
       id: { type: "INTEGER", primaryKey: true },
       created_at: {
@@ -400,29 +451,37 @@ export function hasColumn(
   return result.count > 0;
 }
 
+/** Primary key columns a table schema declares, in key order. */
+function declaredPrimaryKey(schema: TableSchema): string[] {
+  return (
+    schema.compositePrimaryKey ??
+    Object.entries(schema.columns)
+      .filter(([, col]) => col.primaryKey)
+      .map(([name]) => name)
+  );
+}
+
 /**
- * Check if a table has the expected composite primary key.
+ * Check if a table's primary key is exactly `expectedColumns`, in order.
  *
- * Inspects the CREATE TABLE DDL stored in sqlite_master to verify
- * the table has a table-level PRIMARY KEY constraint matching the
- * expected columns. Returns false if the table uses per-column
- * PRIMARY KEY instead (e.g., `command_key TEXT PRIMARY KEY`).
+ * Reads `pragma_table_info`, so single-column and composite keys compare the
+ * same way. A table written by another CLI version can have a different key
+ * with the same columns, which makes `ON CONFLICT` upserts fail.
  */
-function hasCompositePrimaryKey(
+function hasPrimaryKey(
   db: Database,
   table: string,
   expectedColumns: string[],
 ): boolean {
-  const row = db
-    .query("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
-    .get(table) as { sql: string } | undefined;
-
-  if (!row) {
-    return false;
-  }
-
-  const expectedPK = `PRIMARY KEY (${expectedColumns.join(", ")})`;
-  return row.sql.includes(expectedPK);
+  const rows = db
+    .query(
+      `SELECT name FROM pragma_table_info('${table}') WHERE pk > 0 ORDER BY pk`,
+    )
+    .all() as { name: string }[];
+  return (
+    rows.length === expectedColumns.length &&
+    rows.every((row, i) => row.name === expectedColumns[i])
+  );
 }
 
 /** Add a column to a table if it doesn't exist */
@@ -441,7 +500,8 @@ function addColumnIfMissing(
 export type SchemaIssue =
   | { type: "missing_table"; table: string }
   | { type: "missing_column"; table: string; column: string }
-  | { type: "wrong_primary_key"; table: string };
+  | { type: "wrong_primary_key"; table: string }
+  | { type: "newer_schema"; version: number };
 
 function findMissingColumns(db: Database, tableName: string): SchemaIssue[] {
   const columns = EXPECTED_COLUMNS[tableName];
@@ -459,10 +519,7 @@ function findMissingColumns(db: Database, tableName: string): SchemaIssue[] {
 
 function findPrimaryKeyIssues(db: Database, tableName: string): SchemaIssue[] {
   const schema = TABLE_SCHEMAS[tableName];
-  if (
-    schema?.compositePrimaryKey &&
-    !hasCompositePrimaryKey(db, tableName, schema.compositePrimaryKey)
-  ) {
+  if (schema && !hasPrimaryKey(db, tableName, declaredPrimaryKey(schema))) {
     return [{ type: "wrong_primary_key", table: tableName }];
   }
   return [];
@@ -474,6 +531,11 @@ function findPrimaryKeyIssues(db: Database, tableName: string): SchemaIssue[] {
  */
 export function getSchemaIssues(db: Database): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
+
+  const storedVersion = getSchemaVersion(db);
+  if (storedVersion > CURRENT_SCHEMA_VERSION) {
+    issues.push({ type: "newer_schema", version: storedVersion });
+  }
 
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
     if (!tableExists(db, tableName)) {
@@ -532,24 +594,26 @@ function repairMissingColumns(db: Database, result: RepairResult): void {
 }
 
 /**
- * Drop and recreate tables that have incorrect primary key constraints.
+ * Drop and recreate cache tables that have the wrong primary key.
  *
- * This fixes the CLI-72 bug where pagination_cursors was created with a
- * single-column PK (`command_key TEXT PRIMARY KEY`) instead of the expected
- * composite PK (`PRIMARY KEY (command_key, context)`). SQLite does not
- * support ALTER TABLE to change primary keys, so the table must be dropped
- * and recreated. The data loss is acceptable since pagination cursors are
- * ephemeral (5-minute TTL).
+ * SQLite cannot ALTER a primary key, so the table must be recreated. This
+ * covers CLI-72 (pagination_cursors created with a single-column PK) and a
+ * table whose key changed in another CLI version (#1611: `org_regions` from
+ * a newer CLI). Tables holding data the CLI cannot rebuild are reported
+ * instead of dropped.
  */
 function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
   for (const [tableName, schema] of Object.entries(TABLE_SCHEMAS)) {
-    if (!schema.compositePrimaryKey) {
-      continue;
-    }
     if (!tableExists(db, tableName)) {
       continue;
     }
-    if (hasCompositePrimaryKey(db, tableName, schema.compositePrimaryKey)) {
+    if (hasPrimaryKey(db, tableName, declaredPrimaryKey(schema))) {
+      continue;
+    }
+    if (schema.persistent) {
+      result.failed.push(
+        `Table ${tableName} has an unexpected primary key and holds data that cannot be rebuilt`,
+      );
       continue;
     }
     try {
@@ -565,9 +629,48 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
   }
 }
 
+/** Tables not marked persistent: caches the CLI can fetch or detect again. */
+const CACHE_TABLES = Object.entries(TABLE_SCHEMAS)
+  .filter(([, schema]) => !schema.persistent)
+  .map(([name]) => name);
+
+/**
+ * Rebuild every cache table when a newer CLI last wrote the database.
+ *
+ * A newer CLI can change what cached rows mean without changing their
+ * shape, so this version cannot trust them. Caches refill on demand.
+ */
+function rebuildCachesFromNewerSchema(
+  db: Database,
+  result: RepairResult,
+): void {
+  const storedVersion = getSchemaVersion(db);
+  if (storedVersion <= CURRENT_SCHEMA_VERSION) {
+    return;
+  }
+  try {
+    db.transaction(() => {
+      for (const tableName of CACHE_TABLES) {
+        db.exec(`DROP TABLE IF EXISTS ${tableName}`);
+        db.exec(EXPECTED_TABLES[tableName] as string);
+      }
+    })();
+    result.fixed.push(
+      `Rebuilt cached data written by a newer CLI (schema ${storedVersion})`,
+    );
+  } catch (e) {
+    const msg = stringifyUnknown(e);
+    result.failed.push(`Failed to rebuild cache tables: ${msg}`);
+  }
+}
+
 /**
  * Repair schema issues by creating missing tables, adding missing columns,
- * and recreating tables with incorrect primary key constraints.
+ * and recreating tables with incorrect primary key constraints. When a newer
+ * CLI last wrote the database, every cache table is rebuilt first.
+ *
+ * Any fix sets the stored version to {@link CURRENT_SCHEMA_VERSION}, so a
+ * newer CLI re-runs its later migrations against what this version wrote.
  *
  * @param db - The raw database connection (not the traced wrapper)
  * @returns Lists of fixed and failed repairs
@@ -575,6 +678,7 @@ function repairWrongPrimaryKeys(db: Database, result: RepairResult): void {
 export function repairSchema(db: Database): RepairResult {
   const result: RepairResult = { fixed: [], failed: [] };
 
+  rebuildCachesFromNewerSchema(db, result);
   repairMissingTables(db, result);
   repairMissingColumns(db, result);
   repairWrongPrimaryKeys(db, result);
@@ -728,10 +832,179 @@ export function initSchema(db: Database): void {
 }
 
 function getSchemaVersion(db: Database): number {
+  if (!tableExists(db, "schema_version")) {
+    return 0;
+  }
   const row = db.query("SELECT version FROM schema_version LIMIT 1").get() as {
     version: number;
   } | null;
   return row?.version ?? 0;
+}
+
+type LegacyAuthRow = {
+  token: string | null;
+  refresh_token: string | null;
+  expires_at: number | null;
+  issued_at: number | null;
+  updated_at: number | null;
+  host: string | null;
+};
+
+type LegacyUserRow = {
+  user_id: string | null;
+  email: string | null;
+  username: string | null;
+  name: string | null;
+};
+
+/**
+ * Copy the pre-v18 single-row credential (`auth`) and identity
+ * (`user_info`) into one active `accounts` row, then drop both tables.
+ *
+ * A NULL `host` (rows from before v16) is carried over as-is; the auth
+ * layer backfills it lazily from the boot-time URL snapshot.
+ */
+/** Tag cached org rows with the stored account whose credentials wrote them. */
+function backfillOrgRegionAccounts(db: Database): void {
+  if (!tableExists(db, "accounts")) {
+    return;
+  }
+  const accounts = db
+    .query("SELECT account_id, token, refresh_token FROM accounts")
+    .all() as {
+    account_id: string;
+    token: string | null;
+    refresh_token: string | null;
+  }[];
+  const update = db.query(
+    "UPDATE org_regions SET account_id = ? WHERE credential_identity = ? AND account_id IS NULL",
+  );
+  for (const account of accounts) {
+    const identity = storedCredentialIdentity(account);
+    if (identity) {
+      update.run(account.account_id, identity);
+    }
+  }
+}
+
+function migrateSingleAuthToAccounts(db: Database): void {
+  db.exec(EXPECTED_TABLES.accounts as string);
+
+  const auth = tableExists(db, "auth")
+    ? (db
+        .query(
+          `SELECT token, refresh_token, expires_at, issued_at, updated_at, ${
+            hasColumn(db, "auth", "host") ? "host" : "NULL AS host"
+          } FROM auth WHERE id = 1`,
+        )
+        .get() as LegacyAuthRow | undefined)
+    : undefined;
+  const user =
+    auth?.token && tableExists(db, "user_info")
+      ? (db
+          .query(
+            `SELECT user_id, email, username, ${
+              hasColumn(db, "user_info", "name") ? "name" : "NULL AS name"
+            } FROM user_info WHERE id = 1`,
+          )
+          .get() as LegacyUserRow | undefined)
+      : undefined;
+
+  if (auth?.token) {
+    const now = Date.now();
+    db.query("UPDATE accounts SET is_active = 0").run();
+    db.query(
+      `INSERT INTO accounts (account_id, host, user_id, email, username, name,
+        token, refresh_token, expires_at, issued_at, is_active, created_at, updated_at,
+        last_used_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+    ).run(
+      uuidv7(),
+      auth.host,
+      user?.user_id ?? null,
+      user?.email ?? null,
+      user?.username ?? null,
+      user?.name ?? null,
+      auth.token,
+      auth.refresh_token,
+      auth.expires_at,
+      auth.issued_at,
+      now,
+      auth.updated_at ?? now,
+      now,
+    );
+  }
+
+  db.exec("DROP TABLE IF EXISTS auth");
+  db.exec("DROP TABLE IF EXISTS user_info");
+}
+
+/** Schema of CLI 0.47.0 and earlier, before `accounts` (v18) existed. */
+const PRE_ACCOUNTS_SCHEMA_VERSION = 16;
+
+/**
+ * Leave the database readable by a CLI from before schema v18, ahead of
+ * `sentry cli upgrade` installing one (#1611).
+ *
+ * Those CLIs only migrate forward and create missing tables with
+ * `CREATE TABLE IF NOT EXISTS`, so this:
+ * - drops every cache table, letting the older CLI recreate them in its own
+ *   shape (v17 changed the `org_regions` key, which breaks older upserts);
+ * - deletes every stored account: the older CLI cannot read `accounts`, so
+ *   the user logs in again there;
+ * - sets the stored version to {@link PRE_ACCOUNTS_SCHEMA_VERSION}, so this
+ *   CLI re-runs its later migrations when it comes back and folds a login
+ *   made in the older CLI into `accounts`.
+ *
+ * Does nothing unless the stored version is this CLI's own, so callers can
+ * run it again after installing: only this CLI migrates to that version, so
+ * it means another invocation re-migrated the database during the download.
+ * An older CLI migrating forward from 16 stops below it and is left alone.
+ *
+ * Every migration after that version must therefore be safe to re-run.
+ */
+export function prepareDatabaseForDowngrade(db: Database): void {
+  if (getSchemaVersion(db) < CURRENT_SCHEMA_VERSION) {
+    return;
+  }
+  db.transaction(() => {
+    for (const tableName of CACHE_TABLES) {
+      db.exec(`DROP TABLE IF EXISTS ${tableName}`);
+    }
+    // DELETE, not DROP: later reads in this process must not hit a missing
+    // table, whose auto-repair would restore this CLI's schema version.
+    db.query("DELETE FROM accounts").run();
+    db.query("UPDATE schema_version SET version = ?").run(
+      PRE_ACCOUNTS_SCHEMA_VERSION,
+    );
+  })();
+}
+
+/**
+ * Make a database last written by a newer CLI usable by this version.
+ *
+ * Older CLIs never ran this check, so a downgrade left upserts failing
+ * against tables whose key had changed (#1611). Repair rebuilds the caches
+ * and records this version, so the newer CLI re-migrates when it returns.
+ */
+function adaptNewerSchema(db: Database, storedVersion: number): void {
+  const versions = `schema ${storedVersion}; this CLI uses ${CURRENT_SCHEMA_VERSION}`;
+  if (getEnv()[NO_AUTO_REPAIR_ENV] === "1") {
+    logger.warn(
+      `The local database was written by a newer Sentry CLI (${versions}). Run \`sentry cli fix\` to adapt it.`,
+    );
+    return;
+  }
+  const { failed } = repairSchema(db);
+  if (failed.length > 0) {
+    logger.warn(
+      `Could not adapt the local database written by a newer Sentry CLI (${versions}): ${failed.join("; ")}. Run \`sentry cli fix\`.`,
+    );
+    return;
+  }
+  logger.info(
+    `The local database was written by a newer Sentry CLI (${versions}). Cleared cached data so this version can use it.`,
+  );
 }
 
 /**
@@ -747,17 +1020,22 @@ function getSchemaVersion(db: Database): number {
 export function runMigrations(db: Database): void {
   const currentVersion = getSchemaVersion(db);
 
-  // Migration 1 -> 2: Add org_regions, user_info, and instance_info tables
+  if (currentVersion > CURRENT_SCHEMA_VERSION) {
+    adaptNewerSchema(db, currentVersion);
+    return;
+  }
+
+  // Migration 1 -> 2: Add org_regions and instance_info tables. The
+  // `user_info` table this step also created was folded into `accounts` in v18.
   if (currentVersion < 2) {
     db.exec(`
       ${EXPECTED_TABLES.org_regions};
-      ${EXPECTED_TABLES.user_info};
       ${EXPECTED_TABLES.instance_info};
     `);
   }
 
   // Migration 2 -> 3: Add name column to user_info table
-  if (currentVersion < 3) {
+  if (currentVersion < 3 && tableExists(db, "user_info")) {
     addColumnIfMissing(db, "user_info", "name", "TEXT");
   }
 
@@ -785,10 +1063,7 @@ export function runMigrations(db: Database): void {
   if (
     currentVersion < 6 &&
     tableExists(db, "pagination_cursors") &&
-    !hasCompositePrimaryKey(db, "pagination_cursors", [
-      "command_key",
-      "context",
-    ])
+    !hasPrimaryKey(db, "pagination_cursors", ["command_key", "context"])
   ) {
     db.exec("DROP TABLE pagination_cursors");
     db.exec(EXPECTED_TABLES.pagination_cursors as string);
@@ -870,7 +1145,7 @@ export function runMigrations(db: Database): void {
   // The column is NULL for existing rows; the first credential read backfills
   // it from the boot-time explicit host (or SaaS), before later config shims
   // can change SENTRY_URL.
-  if (currentVersion < 16) {
+  if (currentVersion < 16 && tableExists(db, "auth")) {
     addColumnIfMissing(db, "auth", "host", "TEXT");
   }
 
@@ -881,6 +1156,27 @@ export function runMigrations(db: Database): void {
       db.exec("DROP TABLE IF EXISTS org_regions");
       db.exec(EXPECTED_TABLES.org_regions as string);
     })();
+  }
+
+  // Migration 17 -> 18: Multi-account support. Fold the single-row `auth`
+  // and `user_info` tables into `accounts`; the migrated login stays active.
+  if (currentVersion < 18) {
+    db.transaction(() => migrateSingleAuthToAccounts(db))();
+  }
+
+  // Migration 18 -> 19: Record which account each cached org belongs to, so
+  // commands targeting an org can use that account without a manual switch.
+  if (currentVersion < 19) {
+    db.transaction(() => {
+      addColumnIfMissing(db, "org_regions", "account_id", "TEXT");
+      backfillOrgRegionAccounts(db);
+    })();
+  }
+
+  // Migration 19 -> 20: Add completion_cache for issue and dashboard shell
+  // completion from entities seen during normal CLI usage.
+  if (currentVersion < 20) {
+    db.exec(EXPECTED_TABLES.completion_cache as string);
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

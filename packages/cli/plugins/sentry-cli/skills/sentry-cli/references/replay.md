@@ -15,6 +15,12 @@ Search and inspect Session Replays
 
 List recent Session Replays
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Number of replays (1-1000) - (default: "25")`
 - `-q, --query <value> - Search query (Sentry replay search syntax)`
@@ -63,26 +69,49 @@ List recent Session Replays
 **Examples:**
 
 ```bash
+# List recent replays (project auto-detected)
+sentry replay list
+
 # List recent replays for a project
 sentry replay list my-org/frontend
 
-# Search across all projects in an org
+# Search across all projects in an organization
 sentry replay list my-org/ --query "environment:production"
 
 # Change the time window and sort
 sentry replay list my-org/frontend --period 24h --sort errors
 
-# Paginate through results
+# Find replays for a user
+sentry replay list my-org/frontend -q "user.email:foo@example.com"
+
+# Filter by environments
+sentry replay list my-org/frontend -e production -e canary
+
+# Show more results
+sentry replay list my-org/frontend --limit 50
+
+# Fetch the next page
 sentry replay list my-org/frontend -c next
+
+# Fetch the previous page
 sentry replay list my-org/frontend -c prev
 
-# Output machine-readable data
+# Output as JSON
 sentry replay list my-org/frontend --json
+
+# Find a project across organizations
+sentry replay list frontend
 ```
 
 ### `sentry replay view <replay-id-or-url...>`
 
 View a Session Replay
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<replay-id-or-url...>` | [&lt;org&gt;/&lt;project&gt;] &lt;replay-id or trace-id&gt; or &lt;replay-url&gt; |
 
 **Flags:**
 - `-w, --web - Open in browser`
@@ -132,25 +161,34 @@ View a Session Replay
 **Examples:**
 
 ```bash
-# View a replay by ID using auto-detected org/project context
+# View a replay by ID (organization and project auto-detected)
 sentry replay view 346789a703f6454384f1de473b8b9fcc
 
-# View a replay with an explicit org
+# View a replay in an explicit organization
 sentry replay view my-org/346789a703f6454384f1de473b8b9fcc
 
 # View a replay with explicit org/project context
 sentry replay view my-org/frontend/346789a703f6454384f1de473b8b9fcc
 
-# Open a replay in the browser
-sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web
+# View a replay from its URL
+sentry replay view https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/
 
 # View the replay linked to a trace
 sentry replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+# Open a replay in the browser
+sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web
 ```
 
 ### `sentry replay download <replay-id-or-url...>`
 
 Download a Session Replay as rrweb JSON
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<replay-id-or-url...>` | [&lt;org&gt;/&lt;project&gt;] &lt;replay-id or trace-id&gt; or &lt;replay-url&gt; |
 
 **Flags:**
 - `-o, --output <value> - Output path (default: <replay-id>.rrweb.json in the current directory)`

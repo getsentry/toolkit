@@ -15,6 +15,12 @@ Manage sourcemaps
 
 Inject debug IDs into JavaScript files and sourcemaps
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<directory>` | Directory to scan for JS + sourcemap pairs |
+
 **Flags:**
 - `--ext <value> - Comma-separated file extensions to process (default: .js,.cjs,.mjs)`
 - `--ignore <value> - Comma-separated glob patterns to exclude (gitignore-style)`
@@ -33,16 +39,25 @@ sentry sourcemap inject ./dist --dry-run
 
 # Only process specific extensions
 sentry sourcemap inject ./build --ext .js,.mjs
+
+# Allow a directory with no sourcemaps
+sentry sourcemap inject ./maybe-empty --allow-empty
 ```
 
 ### `sentry sourcemap upload <directory>`
 
 Upload sourcemaps to Sentry
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<directory>` | Directory containing sourcemaps |
+
 **Flags:**
 - `--release <value> - Release version to associate with the upload`
 - `--dist <value> - Distribution identifier to disambiguate builds within a release`
-- `--url-prefix <value> - URL prefix for uploaded files (default: ~/) - (default: "~/")`
+- `--url-prefix <value> - URL prefix for uploaded files - (default: "~/")`
 - `--ext <value> - Comma-separated file extensions to process (default: .js,.cjs,.mjs)`
 - `--ignore <value> - Comma-separated glob patterns to exclude (gitignore-style)`
 - `--ignore-file <value> - Path to a file with gitignore-style patterns to exclude`
@@ -63,12 +78,28 @@ sentry sourcemap upload ./dist --release 1.0.0
 # Set a custom URL prefix
 sentry sourcemap upload ./dist --url-prefix '~/static/js/'
 
+# Don't fail when no sourcemaps are found
 sentry sourcemap upload ./dist --allow-empty
+
+# Set a release and distribution
+sentry sourcemap upload ./dist --release 1.0.0 --dist 12345
+
+# Upload without rewriting sourcemaps
+sentry sourcemap upload ./dist --no-rewrite
+
+# Only upload some extensions
+sentry sourcemap upload ./dist --ext .js,.mjs
 ```
 
 ### `sentry sourcemap resolve <directory>`
 
 Resolve and report sourcemap linkage for JavaScript files
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<directory>` | Directory to scan for JS files |
 
 **Flags:**
 - `--ext <value> - Comma-separated file extensions to process (default: .js,.cjs,.mjs)`
@@ -78,12 +109,14 @@ Resolve and report sourcemap linkage for JavaScript files
 **Examples:**
 
 ```bash
-# Report how each JS file's sourcemap resolves and whether a debug ID
-# has been injected (read-only — never modifies files)
+# Report how each JS file's sourcemap resolves and whether a debug ID is injected
 sentry sourcemap resolve ./dist
 
-# Machine-readable output
+# Output as JSON
 sentry sourcemap resolve ./dist --json
+
+# Only scan some extensions
+sentry sourcemap resolve ./build --ext .js,.mjs
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

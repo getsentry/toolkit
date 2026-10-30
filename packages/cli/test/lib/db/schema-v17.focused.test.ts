@@ -7,7 +7,7 @@ useTestConfigDir("schema-v17-focused-");
 
 describe("schema v17 organization region provenance", () => {
   test("uses a strict credential, lookup-origin, and slug primary key", () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(17);
+    expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(17);
     const columns = getDatabase()
       .query("PRAGMA table_info(org_regions)")
       .all() as Array<{
@@ -42,7 +42,7 @@ describe("schema v17 organization region provenance", () => {
       migrated.query("SELECT COUNT(*) AS count FROM org_regions").get(),
     ).toEqual({ count: 0 });
     expect(migrated.query("SELECT version FROM schema_version").get()).toEqual({
-      version: 17,
+      version: CURRENT_SCHEMA_VERSION,
     });
   });
 });

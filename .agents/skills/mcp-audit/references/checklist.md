@@ -54,11 +54,13 @@ Use this checklist for repeatable MCP protocol and compatibility audits in any r
 9. Treat orchestration tools conservatively based on the strongest child tool they can reach.
 10. Treat conditional writes as mutating even if the write happens only on some code paths.
 11. Verify safety hints:
-   - every tool defines `readOnlyHint`
-   - every tool defines `openWorldHint`
-   - every write-capable tool defines `destructiveHint`
-   - only truly repeatable no-extra-effect tools define `idempotentHint`
-   - read-only tools are never marked destructive
+
+- every tool defines `readOnlyHint`
+- every tool defines `openWorldHint`
+- every write-capable tool defines `destructiveHint`
+- only truly repeatable no-extra-effect tools define `idempotentHint`
+- read-only tools are never marked destructive
+
 12. Verify `structuredContent` matches `outputSchema` when `outputSchema` is declared.
 13. Verify tool naming rules against the targeted spec revision.
 

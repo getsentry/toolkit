@@ -151,6 +151,18 @@ export async function getChunkUploadOptions(
     `organizations/${orgSlug}/chunk-upload/`,
     { schema: ChunkServerOptionsSchema },
   );
+
+  // Self-hosted Sentry instances may return a chunk-upload URL that embeds
+  // DSN credentials (e.g. https://<token>@host/...). Node.js 25+ rejects
+  // constructing a fetch Request from such a URL per the Fetch spec. Strip
+  // them here — auth is already handled by the authFetch wrapper.
+  const parsedUrl = new URL(data.url);
+  if (parsedUrl.username || parsedUrl.password) {
+    parsedUrl.username = "";
+    parsedUrl.password = "";
+    return { ...data, url: parsedUrl.href };
+  }
+
   return data;
 }
 
@@ -383,7 +395,9 @@ export async function uploadMissingChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const { fetch: authFetch } = getSdkConfig(regionUrl);
+  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+  // explicitly: the server-provided URL need not match the catalog path.
+  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
 
   await Promise.all(
     missingChunks.map((chunk) =>
@@ -475,7 +489,9 @@ export async function uploadMissingBufferChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const { fetch: authFetch } = getSdkConfig(regionUrl);
+  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+  // explicitly: the server-provided URL need not match the catalog path.
+  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
 
   await Promise.all(
     missingChunks.map((chunk) =>

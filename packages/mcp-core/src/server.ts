@@ -216,9 +216,7 @@ function configureServer({
   const grantedSkills: Set<Skill> | undefined = context.grantedSkills
     ? new Set<Skill>(context.grantedSkills)
     : undefined;
-  const grantedSkillIds = grantedSkills
-    ? Array.from(grantedSkills).sort()
-    : undefined;
+  const grantedSkillIds = grantedSkills ? [...grantedSkills].sort() : undefined;
   const availableTools = getAvailableTools({
     tools: registry,
     context,
@@ -386,7 +384,9 @@ function configureServer({
         if (isStructuredToolOutput(output)) {
           return structuredOutputToCallToolResult(output);
         }
-        throw new Error(`Invalid tool output: ${output}`);
+        throw new Error(
+          `Invalid tool output: ${typeof output === "object" ? JSON.stringify(output) : String(output)}`,
+        );
       } catch (error) {
         if (activeSpan) {
           activeSpan.setStatus({

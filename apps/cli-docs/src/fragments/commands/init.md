@@ -6,34 +6,6 @@
 
 In organization, team, and monorepo app selectors, type to filter the loaded choices by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos, including in unfinished prefixes such as `frone` for `frontend-web`. Queries with one or two characters match literal text only. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears an active filter; with no filter, Esc cancels. Ctrl+C always cancels.
 
-## Examples
-
-```bash
-# Interactive setup
-sentry init
-
-# Non-interactive agent/CI setup
-sentry init --yes --features errors,tracing,replay
-
-# Dry run to preview changes
-sentry init --dry-run
-
-# Target a subdirectory
-sentry init ./my-app
-
-# Use a specific org (auto-detect project)
-sentry init acme/
-
-# Use a specific org and project
-sentry init acme/my-app
-
-# Assign a team when creating a new project
-sentry init acme/ --team backend
-
-# Enable specific features
-sentry init --features profiling,replay
-```
-
 ## Target Syntax
 
 | Syntax | Meaning |
@@ -41,7 +13,7 @@ sentry init --features profiling,replay
 | _(omitted)_ | Auto-detect org and project |
 | `acme/` | Use org `acme`, auto-detect or create project |
 | `acme/my-app` | Use org `acme` and project `my-app` |
-| `my-app` | Search for project `my-app` across all accessible orgs |
+| `my-app` | Use the existing project `my-app` from any accessible org. If there is none, use org `my-app` when one exists; otherwise create a new project named `my-app` |
 
 Path-like arguments (starting with `.`, `/`, or `~`) are always treated as the directory. The order of target and directory can be swapped — the CLI will auto-correct with a warning.
 

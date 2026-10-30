@@ -7,7 +7,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { number, object, string } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { resolveEventInOrg } from "../../src/lib/api/events.js";
@@ -48,6 +48,7 @@ import {
   updateIssueStatus,
 } from "../../src/lib/api-client.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
+import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
 import { ApiError, AuthError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
@@ -59,7 +60,7 @@ let originalFetch: typeof globalThis.fetch;
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://sentry.io");
 });
 
@@ -200,6 +201,23 @@ describe("issues.ts", () => {
 
       const result = await getIssueByShortId("test-org", "test-1");
       expect(result.shortId).toBe("TEST-1");
+    });
+
+    test("remembers the issue for shell completion", async () => {
+      const issue = mockIssue({ shortId: "TEST-1", title: "Boom" });
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(JSON.stringify({ group: issue }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+
+      await getIssueByShortId("test-org", "test-1");
+
+      expect(getCachedCompletionEntities("issue", ["test-org"])).toEqual([
+        { orgSlug: "test-org", value: "TEST-1", label: "Boom" },
+      ]);
     });
 
     test("passes collapse query params when provided", async () => {
@@ -349,36 +367,6 @@ describe("issues.ts", () => {
       expect(callCount).toBe(2);
     });
 
-    test("trims when overshooting limit (no nextCursor)", async () => {
-      // Return 5 items but we only want 3
-      globalThis.fetch = mockFetch(
-        async () =>
-          new Response(
-            JSON.stringify([
-              mockIssue({ id: "1" }),
-              mockIssue({ id: "2" }),
-              mockIssue({ id: "3" }),
-              mockIssue({ id: "4" }),
-              mockIssue({ id: "5" }),
-            ]),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                Link: linkHeader("next", true),
-              },
-            },
-          ),
-      );
-
-      const result = await listIssuesAllPages("test-org", "test-project", {
-        limit: 3,
-      });
-      expect(result.issues).toHaveLength(3);
-      // Trimmed — no nextCursor to prevent skipping
-      expect(result.nextCursor).toBeUndefined();
-    });
-
     test("throws when limit < 1", async () => {
       await expect(
         listIssuesAllPages("test-org", "test-project", { limit: 0 }),
@@ -411,61 +399,6 @@ describe("issues.ts", () => {
 
       expect(onPageCalls).toHaveLength(1);
       expect(onPageCalls[0]).toEqual([2, 10]);
-    });
-
-    test("returns nextCursor when last page has more results but limit reached", async () => {
-      // Return exactly limit items with a next cursor
-      globalThis.fetch = mockFetch(
-        async () =>
-          new Response(
-            JSON.stringify([mockIssue({ id: "1" }), mockIssue({ id: "2" })]),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                Link: linkHeader("has-more", true),
-              },
-            },
-          ),
-      );
-
-      const result = await listIssuesAllPages("test-org", "test-project", {
-        limit: 2,
-      });
-      expect(result.issues).toHaveLength(2);
-      // Exactly at limit with more pages → keep nextCursor
-      expect(result.nextCursor).toBe("has-more");
-    });
-
-    test("uses the remaining limit on the final page and preserves its cursor", async () => {
-      const requestedLimits: string[] = [];
-      let callCount = 0;
-
-      globalThis.fetch = mockFetch(async (input, init) => {
-        callCount += 1;
-        const req = new Request(input!, init);
-        const url = new URL(req.url);
-        requestedLimits.push(url.searchParams.get("limit") ?? "");
-        const count = callCount === 3 ? 50 : 100;
-        const issues = Array.from({ length: count }, (_, index) =>
-          mockIssue({ id: `${callCount}-${index}` }),
-        );
-        return new Response(JSON.stringify(issues), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            Link: linkHeader(`cursor-${callCount + 1}`, true),
-          },
-        });
-      });
-
-      const result = await listIssuesAllPages("test-org", "test-project", {
-        limit: 250,
-      });
-
-      expect(result.issues).toHaveLength(250);
-      expect(requestedLimits).toEqual(["100", "100", "50"]);
-      expect(result.nextCursor).toBe("cursor-4");
     });
 
     test("accepts startCursor option", async () => {
@@ -1451,10 +1384,7 @@ describe("infrastructure.ts", () => {
       const apiError = new ApiError("test", 500, "detail");
       expect(() =>
         unwrapResult(
-          { data: undefined, error: apiError } as {
-            data: undefined;
-            error: unknown;
-          },
+          { data: undefined, error: apiError, response: undefined },
           "context",
         ),
       ).toThrow(apiError);
@@ -1464,10 +1394,7 @@ describe("infrastructure.ts", () => {
       const authError = new AuthError("expired");
       expect(() =>
         unwrapResult(
-          { data: undefined, error: authError } as {
-            data: undefined;
-            error: unknown;
-          },
+          { data: undefined, error: authError, response: undefined },
           "context",
         ),
       ).toThrow(authError);
@@ -1475,10 +1402,7 @@ describe("infrastructure.ts", () => {
 
     test("returns data on success", () => {
       const result = unwrapResult(
-        { data: { foo: "bar" }, error: undefined } as {
-          data: { foo: string };
-          error: undefined;
-        },
+        { data: { foo: "bar" }, response: new Response() },
         "context",
       );
       expect(result).toEqual({ foo: "bar" });
@@ -1496,10 +1420,7 @@ describe("infrastructure.ts", () => {
       };
 
       try {
-        unwrapResult(
-          result as { data: undefined; error: unknown },
-          "Failed operation",
-        );
+        unwrapResult(result, "Failed operation");
         expect(true).toBe(false); // Should not reach
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError);
@@ -1514,9 +1435,9 @@ describe("infrastructure.ts", () => {
     test("parses JSON error detail from non-ok response", async () => {
       globalThis.fetch = mockFetch(
         async () =>
-          new Response(JSON.stringify({ detail: "Rate limited" }), {
-            status: 429,
-            statusText: "Too Many Requests",
+          new Response(JSON.stringify({ detail: "Invalid query" }), {
+            status: 400,
+            statusText: "Bad Request",
             headers: { "Content-Type": "application/json" },
           }),
       );
@@ -1527,8 +1448,8 @@ describe("infrastructure.ts", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError);
         const apiErr = error as ApiError;
-        expect(apiErr.status).toBe(429);
-        expect(apiErr.detail).toBe("Rate limited");
+        expect(apiErr.status).toBe(400);
+        expect(apiErr.detail).toBe("Invalid query");
       }
     });
 
@@ -1844,10 +1765,12 @@ describe("traces.ts (transactions)", () => {
         });
       });
 
-      const result = await listTransactions("test-org", "test-project");
+      const result = await listTransactions("test-org", "test-project", {
+        limit: 1,
+      });
       expect(result.data).toHaveLength(1);
       expect(result.data[0]!.transaction).toBe("GET /api/users");
-      expect(result.nextCursor).toBe("txn-next");
+      expect(result.nextCursor).toContain("txn-next");
     });
 
     test("uses numeric project ID via project param", async () => {

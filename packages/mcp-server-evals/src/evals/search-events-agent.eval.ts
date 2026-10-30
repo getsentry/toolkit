@@ -121,7 +121,7 @@ describeEval("search-events-agent", {
           query: (value: unknown) =>
             typeof value === "string" &&
             [
-              'transaction:"VPN connections"',
+              'sentry.segment.name:"VPN connections"',
               "tags[type]:Unified",
               "tags[country]:CN",
             ].every((token) => value.includes(token)),

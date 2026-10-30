@@ -94,7 +94,7 @@ let func: ListFunc;
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
   func = (await listCommand.loader()) as unknown as ListFunc;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   setDefaultOrganization("test-org");
   setDefaultProject("test-project");
@@ -782,6 +782,116 @@ describe("issue list: server sort order preservation", () => {
   });
 });
 
+describe("issue list: query-scoped counts (#1583)", () => {
+  /**
+   * Serve `issues` from the list endpoint and record each list request URL so
+   * tests can assert which response blocks were collapsed.
+   */
+  function mockIssueList(issues: Record<string, unknown>[]) {
+    const issueUrls: URL[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      const projectResp = mockDefaultProject(req.url);
+      if (projectResp) return projectResp;
+      if (req.url.includes("/issues/")) {
+        issueUrls.push(new URL(req.url));
+        return Response.json(issues);
+      }
+      return Response.json([]);
+    });
+    return { issueUrls };
+  }
+
+  const releaseFiltered = {
+    count: "238",
+    userCount: 189,
+    firstSeen: "2025-01-01T00:00:00Z",
+    lastSeen: "2025-01-01T00:00:00Z",
+    stats: {},
+  };
+
+  test("requests filtered stats and uses them for a release: query", async () => {
+    const { issueUrls } = mockIssueList([
+      mockIssue({ count: "639", userCount: 442, filtered: releaseFiltered }),
+    ]);
+    const { context, stdout } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "date",
+      period: parsePeriod("90d"),
+      json: true,
+      query: 'release:"1.0.0"',
+    });
+
+    const collapse = issueUrls[0]?.searchParams.getAll("collapse");
+    expect(collapse).toContain("unhandled");
+    expect(collapse).not.toContain("filtered");
+    expect(collapse).not.toContain("stats");
+
+    const output = JSON.parse(stdout.output);
+    expect(output.data[0].count).toBe("238");
+    expect(output.data[0].userCount).toBe(189);
+    expect(output.data[0]).not.toHaveProperty("filtered");
+  });
+
+  test("keeps filtered collapsed without a release: filter", async () => {
+    const { issueUrls } = mockIssueList([mockIssue()]);
+    const { context, stdout } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "date",
+      period: parsePeriod("90d"),
+      json: true,
+      query: "is:unresolved",
+    });
+
+    expect(issueUrls[0]?.searchParams.getAll("collapse")).toContain("filtered");
+    const output = JSON.parse(stdout.output);
+    expect(output.data[0].count).toBe("10");
+    expect(output.data[0].userCount).toBe(5);
+  });
+
+  test("keeps top-level counts when the server returns filtered: null", async () => {
+    mockIssueList([mockIssue({ filtered: null })]);
+    const { context, stdout } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "date",
+      period: parsePeriod("90d"),
+      json: true,
+      query: 'release:"1.0.0"',
+    });
+
+    const output = JSON.parse(stdout.output);
+    expect(output.data[0].count).toBe("10");
+    expect(output.data[0].userCount).toBe(5);
+    expect(output.data[0]).not.toHaveProperty("filtered");
+  });
+
+  test("keeps stats for --sort freq even when --fields omits counts", async () => {
+    const { issueUrls } = mockIssueList([
+      mockIssue({ filtered: releaseFiltered }),
+    ]);
+    const { context } = createContext();
+
+    await func.call(context, {
+      limit: 10,
+      sort: "freq",
+      period: parsePeriod("90d"),
+      json: true,
+      fields: ["id", "title"],
+      query: 'release:"1.0.0"',
+    });
+
+    const collapse = issueUrls[0]?.searchParams.getAll("collapse");
+    expect(collapse).not.toContain("filtered");
+    expect(collapse).not.toContain("stats");
+  });
+});
+
 /** Shared mock references — vi.mocked() returns the same mock object each time */
 const listIssuesPaginatedMock = vi.mocked(issuesApi.listIssuesPaginated);
 const listIssuesAllPagesMock = vi.mocked(issuesApi.listIssuesAllPages);
@@ -987,8 +1097,8 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       cursor: "cached:cursor:789",
       direction: "next",
     });
-    listIssuesPaginatedMock.mockResolvedValue({
-      data: [sampleIssue],
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [sampleIssue],
       nextCursor: undefined,
     });
 
@@ -1011,10 +1121,10 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       "my-org/",
     );
 
-    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+    expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
       "my-org",
       "",
-      expect.objectContaining({ cursor: "cached:cursor:789" }),
+      expect.objectContaining({ limit: 10, startCursor: "cached:cursor:789" }),
     );
   });
 
@@ -1055,8 +1165,8 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       cursor: "explicit:cursor:val",
       direction: "next",
     });
-    listIssuesPaginatedMock.mockResolvedValue({
-      data: [sampleIssue],
+    listIssuesAllPagesMock.mockResolvedValue({
+      issues: [sampleIssue],
       nextCursor: undefined,
     });
 
@@ -1079,10 +1189,13 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       "my-org/",
     );
 
-    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+    expect(listIssuesAllPagesMock).toHaveBeenCalledWith(
       "my-org",
       "",
-      expect.objectContaining({ cursor: "explicit:cursor:val" }),
+      expect.objectContaining({
+        limit: 10,
+        startCursor: "explicit:cursor:val",
+      }),
     );
   });
 });
@@ -1114,6 +1227,18 @@ describe("issue list: cursor flag parse validation", () => {
   });
 });
 
+describe("issue list: query flag parse", () => {
+  const parseQuery = (
+    listCommand.parameters.flags!.query as { parse: (v: string) => string }
+  ).parse;
+
+  test("rewrites is: OR into a status in-list for the issues endpoint", () => {
+    expect(parseQuery("is:unresolved OR is:resolved")).toBe(
+      "status:[unresolved,resolved]",
+    );
+  });
+});
+
 describe("issue list: Phase 2 budget redistribution", () => {
   // Phase 2 triggers when: totalFetched < limit AND some targets hit their
   // quota but have more (nextCursor). The surplus budget redistributes.
@@ -1124,6 +1249,12 @@ describe("issue list: Phase 2 budget redistribution", () => {
   //     org-two: returns 1 issue, no cursor (exhausted)
   //   Surplus: 6 - 4 = 2, expandable = [org-one]
   //   Phase 2: fetch 2 more from org-one via cursor resume.
+
+  beforeEach(() => {
+    // Exercise the real pagination helpers, not overrides left by earlier tests.
+    listIssuesPaginatedMock.mockReset();
+    listIssuesAllPagesMock.mockReset();
+  });
 
   test("redistributes surplus to expandable targets", async () => {
     setOrgRegion("org-one", DEFAULT_SENTRY_URL);
@@ -1387,7 +1518,7 @@ describe("issue list: collapse parameter optimization", () => {
     resolveCursorMock.mockReset();
     advancePaginationStateMock.mockReset();
 
-    await setOrgRegion("my-org", DEFAULT_SENTRY_URL);
+    setOrgRegion("my-org", DEFAULT_SENTRY_URL);
   });
 
   // End-to-end guard for the headline feature: when --sort is omitted, the
@@ -1450,7 +1581,7 @@ describe("issue list: collapse parameter optimization", () => {
     test("uses date on a self-hosted instance", async () => {
       delete process.env.SENTRY_HOST;
       process.env.SENTRY_URL = "https://sentry.example.com";
-      await setOrgRegion("my-org", "https://sentry.example.com");
+      setOrgRegion("my-org", "https://sentry.example.com");
       const options = await runOrgAllWithoutSort();
       expect(listIssuesAllPagesMock).toHaveBeenCalled();
       expect(options.sort).toBe("date");
@@ -1673,6 +1804,61 @@ describe("issue list: multi-target cursor-safe budget", () => {
       undefined,
     );
   });
+
+  test("merges and trims multi-project --sort freq by release-scoped counts (#1583)", async () => {
+    findProjectsBySlugMock.mockResolvedValue({
+      projects: [
+        { id: "1", slug: "myproj", name: "My Project", orgSlug: "org-one" },
+        { id: "2", slug: "myproj", name: "My Project", orgSlug: "org-two" },
+      ],
+      orgs: [],
+    });
+    const scoped = (id: string, count: number, filteredCount: number) =>
+      mockIssue({
+        id,
+        shortId: id.toUpperCase(),
+        project: { slug: "myproj" },
+        count: String(count),
+        userCount: count,
+        filtered: {
+          count: String(filteredCount),
+          userCount: filteredCount,
+          firstSeen: null,
+          lastSeen: null,
+          stats: {},
+        },
+      });
+    // Each server page is already ordered by the release-scoped count.
+    // Period-wide counts would rank one-a and one-b above two-a instead.
+    const pages: Record<string, ReturnType<typeof mockIssue>[]> = {
+      "org-one": [scoped("one-b", 80, 70), scoped("one-a", 100, 5)],
+      "org-two": [scoped("two-a", 50, 90)],
+    };
+    listIssuesAllPagesMock.mockImplementation(async (org) => ({
+      issues: pages[org] ?? [],
+    }));
+
+    const { context, stdout } = createContext();
+    await func.call(
+      context,
+      {
+        limit: 2,
+        sort: "freq",
+        period: parsePeriod("90d"),
+        json: true,
+        query: 'release:"1.0.0"',
+      },
+      "myproj",
+    );
+
+    const output = JSON.parse(stdout.output);
+    expect(
+      output.data.map((i: { id: string; count: string }) => [i.id, i.count]),
+    ).toEqual([
+      ["two-a", "90"],
+      ["one-b", "70"],
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1877,6 +2063,16 @@ describe("appendIssueFlags", () => {
     fresh: false,
   };
 
+  test("preserves quoted queries in page-navigation hints", () => {
+    expect(
+      appendIssueFlags("sentry issue list org/ -c next", {
+        ...baseFlags,
+        sort: "recommended",
+        query: 'transaction:"GET /checkout"',
+      }),
+    ).toContain(`--query='transaction:"GET /checkout"'`);
+  });
+
   test("on SaaS, recommended (the default) is omitted but date is shown", () => {
     delete process.env.SENTRY_URL;
     expect(
@@ -2023,10 +2219,6 @@ describe("issue list: comma-separated project slugs", () => {
       ],
       nextCursor: "1735689600:0:1",
     });
-    listIssuesPaginatedMock.mockResolvedValue({
-      data: [],
-      nextCursor: undefined,
-    });
 
     await func.call(createContext().context, baseFlags, "test-org/web,api");
     await func.call(
@@ -2035,10 +2227,13 @@ describe("issue list: comma-separated project slugs", () => {
       "test-org/api,web",
     );
 
-    expect(listIssuesPaginatedMock).toHaveBeenCalledWith(
+    expect(listIssuesAllPagesMock).toHaveBeenLastCalledWith(
       "test-org",
       "",
-      expect.objectContaining({ cursor: "1735689600:0:1", projects: [2, 1] }),
+      expect.objectContaining({
+        startCursor: "1735689600:0:1",
+        projects: [2, 1],
+      }),
     );
   });
 

@@ -12,7 +12,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createBeforeExitHandler,
@@ -21,13 +21,13 @@ import {
 
 describe("createBeforeExitHandler", () => {
   /**
-   * Create a minimal mock LightNodeClient for testing the beforeExit handler.
+   * Create a minimal mock NodeClient for testing the beforeExit handler.
    * Only needs flush() since that's all the handler uses from the client.
    */
-  function createMockClient(): Sentry.LightNodeClient {
+  function createMockClient(): Sentry.NodeClient {
     return {
       flush: () => Promise.resolve(true),
-    } as unknown as Sentry.LightNodeClient;
+    } as unknown as Sentry.NodeClient;
   }
 
   test("ends OK session on beforeExit", () => {

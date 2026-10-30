@@ -4,13 +4,13 @@ This document describes how errors are handled throughout the MCP server tool sy
 
 ## Error Types and Hierarchy
 
-### API Error Classes (from api-client/errors.ts)
+### API Error Classes (from `@sentry/toolkit-core/api-client/errors`)
 
 ```
 ApiError (base class)
 ├─ ApiClientError (4xx - user errors, NOT sent to Sentry)
 │  ├─ ApiPermissionError (403)
-│  ├─ ApiNotFoundError (404) 
+│  ├─ ApiNotFoundError (404)
 │  ├─ ApiValidationError (400, 422)
 │  ├─ ApiAuthenticationError (401)
 │  └─ ApiRateLimitError (429)
@@ -18,7 +18,8 @@ ApiError (base class)
 ```
 
 **Key Method:**
-- `ApiClientError.toUserMessage()` - Returns `"API error (status): message"` 
+
+- `ApiClientError.toUserMessage()` - Returns `"API error (status): message"`
   - For 404s with generic messages, adds: "Please verify that the organization, project, or resource ID is correct and that you have access to it."
   - For 404s with specific messages, adds: "Please verify the parameters are correct."
 
@@ -44,6 +45,7 @@ ApiError (base class)
   - 5xx / network errors (provider down) → Also converted to `LLMProviderError` so tools degrade gracefully instead of flooding issues
 
 **Conversion Flow:**
+
 - `callEmbeddedAgent` converts provider `APICallError` (4xx, 5xx, and missing status) → `LLMProviderError` immediately after the AI SDK call
 - `callEmbeddedAgent` converts unexpected agent failures (including `NoOutputGeneratedError`) → `logIssue` once + `AgentExecutionError`
 - Defensive handling in `handleAgentToolError` and `formatErrorForUser` for any that slip through
@@ -53,6 +55,7 @@ ApiError (base class)
 ### Error Categories
 
 **User-Facing / Expected Errors (Should NOT create Sentry issues):**
+
 - All `ApiClientError` subclasses
 - `UserInputError`
 - `ConfigurationError` (except HTTP transport, which notifies operators once via `logIssue` with a generic user message)
@@ -60,6 +63,7 @@ ApiError (base class)
 - `APICallError` from the upstream AI provider (converted to `LLMProviderError` / logged as warnings)
 
 **System Errors (Should be captured by Sentry):**
+
 - `ApiServerError`
 - Unexpected runtime errors outside the AI provider boundary
 - Unexpected embedded-agent failures (`AgentExecutionError` / `NoOutputGeneratedError`) — captured once in `callEmbeddedAgent`, then handled gracefully downstream
@@ -67,35 +71,44 @@ ApiError (base class)
 ## Critical Principles
 
 ### 1. Let Errors Bubble Up Naturally
+
 **API errors should bubble up naturally to the appropriate handler.** The API client throws properly typed errors that are caught at the right level:
+
 - In MCP tools → Bubble up to MCP server wrapper → `formatErrorForUser`
 - In embedded agent tools → Caught by `agentTool` → Formatted for AI
 
 ### 2. Typed Error Handling
+
 **The API client uses a factory pattern (`createApiError`) to create properly typed errors:**
+
 - 4xx → `ApiClientError` subclass (ApiPermissionError, ApiNotFoundError, etc.)
 - 5xx → `ApiServerError`
 - Each error type has specific behaviors and helper methods
 
 ### 3. **SECURITY CRITICAL** - Trusted Error Messages Only
+
 **🚨 NEVER return untrusted error messages to AI agents - this creates prompt injection vulnerabilities.**
 
 In our system, we ONLY return trusted error messages from:
+
 - **Sentry API responses** (trusted - Sentry controls these messages)
 - **Our own validation errors** (`UserInputError` - we control the message content)
 - **Pre-formatted system messages** (hardcoded error templates we control)
 
 **Why this matters:**
+
 - AI agents receive error messages as part of their context
 - Malicious error messages could contain prompt injection attacks
 - Untrusted input could manipulate agent behavior or extract sensitive information
 
 **What we trust:**
+
 - Sentry's API error messages (via `ApiClientError.toUserMessage()`)
 - Our own `UserInputError` messages (application-controlled)
 - System-generated error templates with Event IDs
 
 **What we DON'T trust:**
+
 - User-provided input in error scenarios (never directly returned to agents)
 - Third-party API error messages (would need sanitization)
 - Database error messages (could contain sensitive schema information)
@@ -103,6 +116,7 @@ In our system, we ONLY return trusted error messages from:
 ## Logging vs Capturing
 
 ### Key Principle
+
 - **UserInputError** → Log to `console.warn()` in wrapAgentToolExecute (for Sentry logging, not as exception)
 - **ApiClientError** → Log to `console.warn()` in wrapAgentToolExecute (for Sentry logging, not as exception)
 - **ApiServerError/System errors (5xx)** → Let bubble up to be captured with `captureException()`
@@ -129,6 +143,7 @@ const result = await apiService.someMethod({ organizationSlug });
 ```
 
 **What happens:**
+
 - API client throws typed errors via `createApiError` factory:
   - 4xx → `ApiClientError` subclass (ApiPermissionError, ApiNotFoundError, etc.)
   - 5xx → `ApiServerError`
@@ -157,6 +172,7 @@ return agentTool({
 ```
 
 **What happens:**
+
 - API client throws `ApiClientError` or `ApiServerError`
 - `agentTool` catches ALL API errors and returns structured responses:
   - **Success:** `{ result: <data> }`
@@ -166,6 +182,7 @@ return agentTool({
 - Other errors (unexpected) → Re-thrown to parent tool
 
 **Key Benefits:**
+
 - **Structured responses:** AI agents receive consistent `{error?, result?}` objects instead of thrown errors
 - **Better error handling:** Agents can check for `error` property and handle failures gracefully
 - **Retry logic:** Agents can analyze error messages and determine if retry is worthwhile
@@ -175,9 +192,9 @@ return agentTool({
 
 #### Example 1: Permission Error in Embedded Agent Tool
 
-```
+````
 1. User calls search_events tool
-2. search_events uses AI agent with datasetAttributesTool  
+2. search_events uses AI agent with datasetAttributesTool
 3. datasetAttributesTool calls fetchCustomAttributes()
 4. fetchCustomAttributes calls apiService.listTraceItemAttributes() directly
 5. API returns 403 "no multi-project access"
@@ -187,20 +204,20 @@ return agentTool({
 9. Logs to console.warn() for Sentry logging
 10. Returns structured response:
     ```
-    { 
-      error: "Input Error: API error (403): You do not have access to query across multiple projects. Please select a project for your query. You may be able to resolve this by addressing the concern and trying again." 
+    {
+      error: "Input Error: API error (403): You do not have access to query across multiple projects. Please select a project for your query. You may be able to resolve this by addressing the concern and trying again."
     }
     ```
 11. AI agent receives the structured response and can check the error property
 12. AI agent analyzes error message and retries with a specific project
-```
+````
 
 #### Example 2: Server Error
 
 ```
 1. User calls get_sentry_resource for an issue
 2. Tool calls apiService.getIssue() directly (no withApiErrorHandling)
-3. API returns 502 Bad Gateway  
+3. API returns 502 Bad Gateway
 4. API client creates ApiServerError via createApiError factory and throws
 5. Error bubbles up naturally to MCP server wrapper
 6. formatErrorForUser handles ApiServerError, logs to Sentry with captureException
@@ -210,6 +227,7 @@ return agentTool({
 ## Best Practices
 
 ### DO:
+
 - Call API methods directly and let errors bubble up naturally
 - Use `agentTool()` for embedded agent tools
 - Let typed errors (ApiClientError, ApiServerError) bubble up
@@ -219,6 +237,7 @@ return agentTool({
 - **SECURITY: Only return trusted error messages to AI agents**
 
 ### DON'T:
+
 - Don't wrap API calls in try/catch unless adding value
 - Don't use `withApiErrorHandling` anymore (deprecated)
 - Don't use the old `wrapAgentToolExecute` function (use `agentTool` instead)
@@ -230,18 +249,24 @@ return agentTool({
 ### Security Guidelines for Agent Error Messages:
 
 **✅ SAFE - These are trusted and can be returned to agents:**
+
 ```typescript
 // Sentry API errors (controlled by Sentry)
-return { error: `Input Error: ${apiError.toUserMessage()}. You may be able to resolve this...` };
+return {
+  error: `Input Error: ${apiError.toUserMessage()}. You may be able to resolve this...`,
+};
 
 // Our own validation errors (controlled by our code)
 throw new UserInputError("Invalid organization slug format");
 
 // System-generated templates (controlled by our code)
-return { error: `Server Error (${status}): ${message}. Event ID: ${eventId}...` };
+return {
+  error: `Server Error (${status}): ${message}. Event ID: ${eventId}...`,
+};
 ```
 
 **❌ UNSAFE - These could enable prompt injection:**
+
 ```typescript
 // User input directly in error (NEVER do this)
 return { error: `Invalid input: ${userProvidedValue}` }; // 🚨 DANGEROUS
@@ -263,7 +288,7 @@ createApiError Factory
   └─ 5xx → ApiServerError
        ↓
     Thrown directly to tool (no withApiErrorHandling)
-       ↓  
+       ↓
     In Embedded Agent Tool?
     ├─ Yes → agentTool
     │        ├─ UserInputError → Returns { error: "Input Error: ..." }
@@ -296,6 +321,7 @@ When running in Cloudflare Workers:
 ### For Regular MCP Tools:
 
 1. **Call the API directly without wrappers:**
+
    ```typescript
    // Just call the API - errors bubble up naturally
    const result = await apiService.someMethod({ organizationSlug });
@@ -311,6 +337,7 @@ When running in Cloudflare Workers:
 ### For Embedded Agent Tools:
 
 1. **Use `agentTool()` instead of the regular `tool()` function:**
+
    ```typescript
    return agentTool({
      description: "Tool description",
@@ -324,6 +351,7 @@ When running in Cloudflare Workers:
    ```
 
 2. **Inside the tool, call the API directly:**
+
    ```typescript
    // No error handling needed - agentTool handles it automatically
    const data = await apiService.someMethod(params);
@@ -332,7 +360,7 @@ When running in Cloudflare Workers:
 3. **The wrapper will automatically:**
    - Return `{ result: <data> }` on success
    - Return `{ error: "formatted message" }` on failure
-   - Log UserInputError/ApiClientError to console.warn for Sentry logging  
+   - Log UserInputError/ApiClientError to console.warn for Sentry logging
    - Include Event IDs for ApiServerError in error messages
 
 ### Error Message Formats:
@@ -353,11 +381,12 @@ When running in Cloudflare Workers:
 ## Testing Error Handling
 
 When testing tools, verify:
+
 1. 404 errors include helpful hints via toUserMessage():
    - Generic messages get detailed help about checking org/project/resource IDs
    - Specific messages get brief parameter verification hint
 2. 403 errors are returned to agents as formatted markdown
-3. 5xx errors are captured by Sentry with Event IDs  
+3. 5xx errors are captured by Sentry with Event IDs
 4. Network errors bubble up appropriately
 5. UserInputErrors have clear, actionable messages
 6. ApiClientError in agent tools returns formatted markdown with "**Input Error**" header

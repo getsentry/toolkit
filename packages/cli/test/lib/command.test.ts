@@ -8,7 +8,7 @@
 
 import { setTimeout as sleep } from "node:timers/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import {
   buildApplication,
   type CommandContext,
@@ -26,6 +26,7 @@ import {
   numberParser,
   VERBOSE_FLAG,
 } from "../../src/lib/command.js";
+import { setEnv } from "../../src/lib/env.js";
 import { EXIT, OutputError } from "../../src/lib/errors.js";
 import { CommandOutput } from "../../src/lib/formatters/output.js";
 import {
@@ -1279,6 +1280,45 @@ describe("buildCommand return-based output", () => {
     expect(jsonRaw).not.toContain("Run 'sentry help' for more info");
     const jsonOutput = JSON.parse(jsonRaw);
     expect(jsonOutput).toEqual({ value: 42 });
+  });
+
+  test("strips only Tip: lines from the hint when tips are disabled", async () => {
+    const command = buildCommand<
+      { json: boolean; fields?: string[] },
+      [],
+      TestContext
+    >({
+      auth: false,
+      docs: { brief: "Test" },
+      output: {
+        human: (d: { value: number }) => `Value: ${d.value}`,
+      },
+      parameters: {},
+      async *func(this: TestContext) {
+        yield new CommandOutput({ value: 42 });
+        return {
+          hint: "Showing 10 of 25 items\nTip: Use 'sentry thing view <id>' for details",
+        };
+      },
+    });
+    const routeMap = buildRouteMap({
+      routes: { test: command },
+      docs: { brief: "Test app" },
+    });
+    const app = buildApplication(routeMap, { name: "test" });
+    const ctx = createTestContext();
+
+    setEnv({ ...process.env, SENTRY_DISABLE_TIPS: "1" });
+    try {
+      await run(app, ["test"], ctx as TestContext);
+    } finally {
+      setEnv(process.env);
+    }
+
+    const output = ctx.output.join("");
+    expect(output).toContain("Value: 42");
+    expect(output).toContain("Showing 10 of 25 items");
+    expect(output).not.toContain("Tip:");
   });
 
   test("void return does nothing (no crash)", async () => {

@@ -20,7 +20,7 @@ const { noopSpan } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@sentry/node-core/light", () => ({
+vi.mock("@sentry/node", () => ({
   startSpan: (_opts: unknown, fn: (span: unknown) => unknown) => fn(noopSpan),
   captureException: vi.fn(),
 }));

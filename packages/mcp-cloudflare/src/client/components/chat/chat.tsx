@@ -76,7 +76,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
       e.preventDefault();
       if (!input.trim()) return;
 
-      sendMessage({ text: input });
+      void sendMessage({ text: input });
       setInput("");
     },
     [input, sendMessage],
@@ -117,8 +117,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
       const definitionsByName = new Map(
         TOOL_DEFINITIONS.map((t) => [t.name, t]),
       );
-      const detailed = metadata.tools
-        .slice()
+      const detailed = [...metadata.tools]
         .sort((a, b) => a.localeCompare(b))
         .map((name) => {
           const def = definitionsByName.get(name);
@@ -229,7 +228,7 @@ Try asking me things like:
     ) {
       hadAuthErrorRef.current = false;
       // Retry the failed message
-      regenerate();
+      void regenerate();
     }
 
     // Reset retry state on successful completion (no error)
@@ -344,7 +343,7 @@ Try asking me things like:
       }
 
       // Send the message using sendMessage (AI SDK 5+ API)
-      sendMessage({ text: prompt });
+      void sendMessage({ text: prompt });
     },
     [sendMessage, handleSlashCommand],
   );

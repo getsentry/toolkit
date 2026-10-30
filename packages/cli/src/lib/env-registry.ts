@@ -44,7 +44,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_AUTH_TOKEN",
     description:
-      "Authentication token for the Sentry API. This is the primary way to authenticate in CI/CD pipelines and scripts where interactive login is not possible.\n\nYou can create auth tokens in your [Sentry account settings](https://sentry.io/settings/account/api/auth-tokens/). When a stored OAuth login from `sentry auth login` also exists, the stored login takes priority — set `SENTRY_FORCE_ENV_TOKEN=1` to override.",
+      "Authentication token for the Sentry API. This is the primary way to authenticate in CI/CD pipelines and scripts where interactive login is not possible.\n\nYou can create auth tokens in your [Sentry account settings](https://sentry.io/settings/account/api/auth-tokens/). When a stored OAuth login from `sentry auth login` also exists, the stored login is used by default and the env token acts as one more account: commands targeting an organization it can access (as listed by `sentry org list`) use it, and so does its own server when no stored login is on it. That requires its server to be known from a trusted source: an organization auth token's own URL, or sentry.io (a `SENTRY_HOST`/`SENTRY_URL` from the environment counts only when it is a sentry.io URL). For any other token on a self-hosted server, set `SENTRY_FORCE_ENV_TOKEN=1`. Set `SENTRY_FORCE_ENV_TOKEN=1` to use only the env token.",
     example: "sntrys_YOUR_TOKEN_HERE",
     topLevel: true,
     briefDescription: "Auth token used for API requests (CI, scripts).",
@@ -59,7 +59,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_FORCE_ENV_TOKEN",
     description:
-      "When set, environment variable tokens (`SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`) take precedence over the stored OAuth token from `sentry auth login`. By default, the stored OAuth token takes priority because it supports automatic refresh. Set this if you want to ensure the environment variable token is always used, which is useful for self-hosted setups or CI environments.",
+      "When set to a truthy value (`1`, `true`, `yes`, `on`), environment variable tokens (`SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`) are the only credential used, overriding the stored OAuth token from `sentry auth login` and account selection. By default, the stored OAuth token takes priority because it supports automatic refresh, and the env token is only used for organizations it can access and for its own server. Set this if you want to ensure the environment variable token is always used, which is useful for self-hosted setups or CI environments.",
     example: "1",
     topLevel: true,
     briefDescription: "Prefer the env-var token over a stored OAuth login.",
@@ -88,7 +88,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_DSN",
     description:
-      "Sentry DSN for project auto-detection. This is the same DSN you use in `Sentry.init()`. The CLI resolves it to determine your organization and project.\n\nThe CLI also detects DSNs from `.env` files and source code automatically — see [DSN Auto-Detection](./features/#dsn-auto-detection).",
+      "Sentry DSN for project auto-detection. This is the same DSN you use in `Sentry.init()`. The CLI resolves it to determine your organization and project.\n\nThe CLI also detects DSNs from `.env` files and source code automatically — see [DSN Auto-Detection](../features/#dsn-auto-detection).",
     example: "https://key@o123.ingest.us.sentry.io/456",
     topLevel: true,
     briefDescription: "DSN used to auto-detect org + project.",
@@ -107,7 +107,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_HOST",
     description:
-      "Base URL of your Sentry instance. **Only needed for [self-hosted Sentry](./self-hosted/).** SaaS users (sentry.io) should not set this.\n\nWhen set, all API requests (including OAuth login) are directed to this URL instead of `https://sentry.io`. The CLI also sets this automatically when you pass a self-hosted Sentry URL as a command argument.\n\n`SENTRY_HOST` takes precedence over `SENTRY_URL`. Both work identically — use whichever you prefer.",
+      "Base URL of your Sentry instance. **Only needed for [self-hosted Sentry](../self-hosted/).** SaaS users (sentry.io) should not set this.\n\nWhen set, all API requests are directed to this URL instead of `https://sentry.io`. Logging in to a self-hosted instance still requires `sentry auth login --url <your-url>`: the CLI refuses to log in to a self-hosted host that only comes from this variable. The CLI also sets this automatically when you pass a self-hosted Sentry URL as a command argument.\n\n`SENTRY_HOST` takes precedence over `SENTRY_URL`. Both work identically — use whichever you prefer.",
     example: "https://sentry.example.com",
     defaultValue: "https://sentry.io",
     topLevel: true,
@@ -126,7 +126,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_CLIENT_ID",
     description:
-      "Client ID of a public OAuth application on your Sentry instance. **Required for [self-hosted Sentry](./self-hosted/)** (26.1.0+) to use `sentry auth login` with the device flow. See the [Self-Hosted guide](./self-hosted/#1-create-a-public-oauth-application) for how to create one.",
+      "Client ID of a public OAuth application on your Sentry instance. **Required for [self-hosted Sentry](../self-hosted/)** (26.1.0+) to use `sentry auth login` with the device flow. See the [Self-Hosted guide](../self-hosted/#1-create-a-public-oauth-application) for how to create one.",
     example: "your-oauth-client-id",
     selfHosted: true,
     devGuide: "Sentry OAuth app client ID",
@@ -136,7 +136,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     name: "SENTRY_CUSTOM_HEADERS",
     description:
       "Custom HTTP headers to include in all requests to your Sentry instance. " +
-      "**Only applies to [self-hosted Sentry](./self-hosted/).** Ignored when targeting sentry.io.\n\n" +
+      "**Only applies to [self-hosted Sentry](../self-hosted/).** Ignored when targeting sentry.io.\n\n" +
       "Use semicolon-separated `Name: Value` pairs. Useful for environments behind " +
       "reverse proxies that require additional headers for authentication " +
       "(e.g., Google IAP, Cloudflare Access).\n\n" +
@@ -165,7 +165,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_VERSION",
     description:
-      "Pin a specific version for the [install script](./getting-started/#install-script). Accepts a version number (e.g., `0.40.0`) or `nightly`. The `--version` flag takes precedence if both are set.\n\nThis is useful in CI/CD pipelines and Dockerfiles where you want reproducible installations without inline flags.",
+      "Pin a specific version for the [install script](../getting-started/#install-script). Accepts a version number (e.g., `0.40.0`) or `nightly`. The `--version` flag takes precedence if both are set.\n\nThis is useful in CI/CD pipelines and Dockerfiles where you want reproducible installations without inline flags.",
     example: "nightly",
     installOnly: true,
   },
@@ -173,6 +173,13 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     name: "SENTRY_INIT",
     description:
       "Used with the install script. When set to `1`, the installer runs `sentry init` after installing the binary to guide you through project setup.",
+    example: "1",
+    installOnly: true,
+  },
+  {
+    name: "SENTRY_NO_MODIFY_PATH",
+    description:
+      "Used with the PowerShell install script (`install.ps1`). When set to `1`, the installer leaves the user `PATH` unchanged. The bash install script takes the `--no-modify-path` flag instead.",
     example: "1",
     installOnly: true,
   },
@@ -197,13 +204,19 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_PLAIN_OUTPUT",
     description:
-      "Force plain text output (no colors or ANSI formatting). Takes precedence over `NO_COLOR`.",
+      "Force plain text output (no colors or ANSI formatting). Takes precedence over `NO_COLOR`. Set to `0` or `false` to force formatted output, even when piped.",
     example: "1",
   },
   {
     name: "SENTRY_NO_GRAPHICS",
     description:
       "Disable inline terminal graphics (kitty and sixel) on terminals that support them; the banner falls back to block art, and image attachments printed by `sentry api` are written as raw bytes instead of rendered inline. You can also set this persistently with `sentry cli defaults graphics off`.",
+    example: "1",
+  },
+  {
+    name: "SENTRY_DISABLE_TIPS",
+    description:
+      "Hide `Tip: ...` hints in command output. Other notices (pagination, dry-run, cache age) are still shown. Overrides the persistent `sentry cli defaults tips` setting.",
     example: "1",
   },
   {
@@ -229,7 +242,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_OUTPUT_FORMAT",
     description:
-      "Force the output format for all commands. Currently only `json` is supported. This is primarily used by the [library API](./library-usage/) (`createSentrySDK()`) to get JSON output without passing `--json` flags.",
+      "Force the output format for all commands. Currently only `json` is supported. This is primarily used by the [library API](../library-usage/) (`createSentrySDK()`) to get JSON output without passing `--json` flags.",
     example: "json",
   },
   // -- Logging & telemetry --
@@ -286,7 +299,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_CLI_NO_AUTO_REPAIR",
     description:
-      "Disable automatic database schema repair. By default, the CLI automatically repairs its SQLite database when it detects schema drift. Set this to `1` to prevent auto-repair.",
+      "Disable automatic database schema repair. By default, the CLI automatically repairs its SQLite database when it detects schema drift, including clearing cached data a newer CLI version wrote. Set this to `1` to prevent auto-repair; `sentry cli fix` still repairs on demand.",
     example: "1",
   },
 ];

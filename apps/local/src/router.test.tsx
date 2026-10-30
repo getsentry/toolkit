@@ -29,9 +29,9 @@ describe("LocalRouter", () => {
 
     expect(
       (
-        await screen.findByRole("button", { name: "Open live activity view" })
+        await screen.findByRole("button", { name: "Open events view" })
       ).getAttribute("aria-current"),
     ).toBe("page");
-    expect(screen.queryByRole("banner")).toBeNull();
+    expect(screen.getByLabelText("Capture context")).not.toBeNull();
   });
 });

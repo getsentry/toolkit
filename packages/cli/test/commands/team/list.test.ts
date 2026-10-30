@@ -38,7 +38,7 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
@@ -223,6 +223,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
 describe("listCommand.func — explicit org/project", () => {
   const listProjectTeamsSpy = vi.mocked(apiClient.listProjectTeams);
+  const listTeamsPaginatedSpy = vi.mocked(apiClient.listTeamsPaginated);
 
   beforeEach(async () => {
     setOrgRegion("my-org", DEFAULT_SENTRY_URL);
@@ -230,6 +231,57 @@ describe("listCommand.func — explicit org/project", () => {
 
   afterEach(() => {
     listProjectTeamsSpy.mockReset();
+    listTeamsPaginatedSpy.mockReset();
+  });
+
+  test("a missing project falls back to matching team names", async () => {
+    listProjectTeamsSpy.mockRejectedValue(new ApiError("Not found", 404));
+    listTeamsPaginatedSpy.mockImplementation((_org, opts) =>
+      Promise.resolve({
+        // Like Sentry: `?query=` keeps slugs or names containing it.
+        data: sampleTeams.filter(
+          (team) => !opts?.query || team.slug.includes(opts.query),
+        ),
+        nextCursor: undefined,
+      }),
+    );
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: false }, "my-org/backnd");
+
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    expect(output).toContain("No project 'backnd' in 'my-org'");
+    expect(output).toContain("backend");
+    expect(output).not.toContain("frontend");
+  });
+
+  test("says the project is missing when no team matches either", async () => {
+    listProjectTeamsSpy.mockRejectedValue(new ApiError("Not found", 404));
+    listTeamsPaginatedSpy.mockResolvedValue({
+      data: sampleTeams,
+      nextCursor: undefined,
+    });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: false }, "my-org/zzzzzz");
+
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    expect(output).toContain(
+      "No project 'zzzzzz' in 'my-org', and no teams named like it.",
+    );
+  });
+
+  test("errors other than a missing project propagate", async () => {
+    listProjectTeamsSpy.mockRejectedValue(new ApiError("Forbidden", 403));
+
+    const { context } = createMockContext();
+    const func = await listCommand.loader();
+    await expect(
+      func.call(context, { limit: 30, json: false }, "my-org/my-project"),
+    ).rejects.toThrow("Forbidden");
+    expect(listTeamsPaginatedSpy).not.toHaveBeenCalled();
   });
 
   test("explicit org/project calls listProjectTeams for that project", async () => {
@@ -400,12 +452,12 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await listCommand.loader();
-    await func.call(context, { limit: 25, json: true }, "my-org/");
+    await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("hasMore", true);
-    expect(parsed).toHaveProperty("nextCursor", "cursor:abc:123");
+    expect(parsed.nextCursor).toContain("cursor:abc:123");
     expect(advancePaginationStateSpy).toHaveBeenCalled();
   });
 
@@ -546,5 +598,72 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
       "my-org",
       expect.objectContaining({ perPage: 10 }),
     );
+  });
+});
+
+describe("listCommand.func — name filter", () => {
+  const listTeamsSpy = vi.mocked(apiClient.listTeams);
+  const listTeamsPaginatedSpy = vi.mocked(apiClient.listTeamsPaginated);
+  const resolveOrgsForListingSpy = vi.mocked(
+    resolveTarget.resolveOrgsForListing,
+  );
+
+  beforeEach(() => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    listTeamsPaginatedSpy.mockResolvedValue({
+      data: sampleTeams,
+      nextCursor: undefined,
+    });
+  });
+
+  afterEach(() => {
+    listTeamsSpy.mockReset();
+    listTeamsPaginatedSpy.mockReset();
+    resolveOrgsForListingSpy.mockReset();
+  });
+
+  async function runJson(...args: (string | undefined)[]) {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: true }, ...args);
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    const parsed = JSON.parse(output);
+    const items: SentryTeam[] = Array.isArray(parsed) ? parsed : parsed.data;
+    return items.map((team) => team.slug);
+  }
+
+  test("<org>/<glob> reads every page and keeps matching teams", async () => {
+    expect(await runJson("test-org/front*")).toEqual(["frontend"]);
+    // listTeams returns only the first page, so a filter walks the pages,
+    // letting the server narrow them to names containing the glob's text.
+    expect(listTeamsPaginatedSpy).toHaveBeenCalledWith("test-org", {
+      cursor: undefined,
+      perPage: 100,
+      query: "front",
+    });
+    expect(listTeamsSpy).not.toHaveBeenCalled();
+  });
+
+  test("a bare name that is no project matches team names", async () => {
+    resolveOrgsForListingSpy.mockResolvedValue({ orgs: ["test-org"] });
+    const classifySpy = vi
+      .mocked(resolveTarget.classifyProjectSearchTarget)
+      .mockResolvedValue({
+        kind: "not-found",
+        suggestions: [],
+        displaySlug: "backnd",
+        scopedOrg: undefined,
+      });
+    try {
+      expect(await runJson("backnd")).toEqual(["backend"]);
+    } finally {
+      classifySpy.mockReset();
+    }
+  });
+
+  test("a lone glob filters the auto-detected org", async () => {
+    resolveOrgsForListingSpy.mockResolvedValue({ orgs: ["test-org"] });
+    expect(await runJson("*end")).toEqual(["backend", "frontend"]);
+    expect(await runJson("back*")).toEqual(["backend"]);
   });
 });

@@ -1,7 +1,9 @@
+import { metrics } from "@sentry/core";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { APICallError, generateText } from "ai";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiValidationError } from "../../api-client";
 import { UserInputError } from "../../errors";
 import { runSearchEvents } from "../support/search-events/search";
 import searchEvents from "./search-events";
@@ -12,6 +14,14 @@ vi.mock("@ai-sdk/openai", () => {
   return {
     openai: mockModel,
     createOpenAI: vi.fn(() => mockModel),
+  };
+});
+
+vi.mock("@sentry/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/core")>();
+  return {
+    ...actual,
+    metrics: { ...actual.metrics, distribution: vi.fn() },
   };
 });
 
@@ -325,6 +335,252 @@ describe("search_events", () => {
     // Peak (the max bucket) is still meaningful for non-additive aggregates.
     expect(result).toContain("**Peak**: 8");
   });
+
+  it("handles timeseries when the API returns a numeric string value (e.g. max(timestamp) epoch)", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "max(timestamp)", interval: "1d" },
+      timeRange: { statsPeriod: "45d" },
+      explanation: "Max timestamp per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    // Sentry passes non-count aggregate values through unchanged; numeric
+    // strings should be parsed and never render as "NaN".
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [
+              {
+                yAxis: "max(timestamp)",
+                values: [
+                  {
+                    timestamp: 1757548800000,
+                    value: "1757548800",
+                    incomplete: false,
+                  },
+                  {
+                    timestamp: 1757635200000,
+                    value: "1757635200",
+                    incomplete: false,
+                  },
+                ],
+                meta: {
+                  interval: 86400000,
+                  valueType: "date",
+                  valueUnit: null,
+                },
+              },
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event timestamp per day",
+        fields: null,
+        sort: null,
+        period: "45d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("max(timestamp) over time");
+    expect(result).toContain("**Peak**: 1,757,635,200 at 2025-09-12 00:00");
+    expect(result).not.toContain("NaN");
+  });
+
+  it("handles timeseries when the API returns ISO datetime string values", async () => {
+    const output = {
+      dataset: "errors" as const,
+      query: "",
+      fields: [] as string[],
+      sort: "-timestamp",
+      environment: null,
+      timeSeries: { yAxis: "max(timestamp)", interval: "1d" },
+      timeRange: { statsPeriod: "7d" },
+      explanation: "Max timestamp per day",
+    };
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify(output),
+      experimental_output: output,
+      finishReason: "stop" as const,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      warnings: [] as const,
+    } as any);
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [
+              {
+                yAxis: "max(timestamp)",
+                values: [
+                  // Empty buckets are zero-filled with a numeric 0 by Sentry.
+                  { timestamp: 1757462400000, value: 0, incomplete: false },
+                  {
+                    timestamp: 1757548800000,
+                    value: "2026-07-11T00:00:00+00:00",
+                    incomplete: false,
+                  },
+                  {
+                    timestamp: 1757635200000,
+                    value: "2026-07-12T00:00:00+00:00",
+                    incomplete: false,
+                  },
+                  {
+                    timestamp: 1757721600000,
+                    value: "2026-07-13T00:00:00+00:00",
+                    incomplete: false,
+                  },
+                ],
+                meta: {
+                  interval: 86400000,
+                  valueType: "date",
+                  valueUnit: null,
+                },
+              },
+            ],
+          }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "latest event timestamp per day",
+        fields: null,
+        sort: null,
+        period: "7d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("max(timestamp) over time");
+    // ISO datetime strings appear as-is, and the peak is the latest time.
+    expect(result).toContain(
+      "| 2025-09-13 00:00 | 2026-07-13T00:00:00+00:00 |",
+    );
+    expect(result).toContain(
+      "**Peak**: 2026-07-13T00:00:00+00:00 at 2025-09-13 00:00",
+    );
+    expect(result).not.toContain("NaN");
+  });
+
+  it.each([
+    {
+      yAxis: "latest_event()",
+      value: "abcdef0123456789abcdef0123456789",
+    },
+    { yAxis: "any(user.id)", value: "00123" },
+  ])(
+    "preserves string values and omits Peak for $yAxis timeseries",
+    async ({ yAxis, value }) => {
+      const response = mockAIResponse("errors", "", []);
+      const output = {
+        ...response.experimental_output,
+        timeSeries: { yAxis, interval: "1h" },
+      };
+      mockGenerateText.mockResolvedValueOnce({
+        ...response,
+        text: JSON.stringify(output),
+        experimental_output: output,
+      });
+
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+          () =>
+            HttpResponse.json({
+              timeSeries: [
+                {
+                  yAxis,
+                  values: [
+                    // String aggregates also have numeric zero-filled buckets.
+                    { timestamp: 1757548800000, value: 0, incomplete: false },
+                    { timestamp: 1757552400000, value, incomplete: false },
+                  ],
+                  meta: {
+                    interval: 3600000,
+                    valueType: "string",
+                    valueUnit: null,
+                  },
+                },
+              ],
+            }),
+        ),
+      );
+
+      const result = await searchEvents.handler(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query: "representative identifiers per hour",
+          fields: null,
+          sort: null,
+          period: "24h",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          accessToken: "test-token",
+          userId: "user-123",
+          clientId: "client-123",
+          grantedSkills: new Set(),
+          constraints: {},
+          sentryHost: "sentry.io",
+        },
+      );
+
+      expect(result).toContain(`${yAxis} over time`);
+      expect(result).toContain("| 2025-09-11 00:00 | 0 |");
+      expect(result).toContain(`| 2025-09-11 01:00 | ${value} |`);
+      expect(result).not.toContain("**Peak**");
+      expect(result).not.toContain("**Total**");
+    },
+  );
 
   it("marks incomplete buckets and reports ingestion delay", async () => {
     const output = {
@@ -3636,6 +3892,127 @@ describe("search_events", () => {
     expect(mockGenerateText).not.toHaveBeenCalled();
   });
 
+  describe("field recovery hints", () => {
+    const context = {
+      constraints: {
+        organizationSlug: null,
+        regionUrl: null,
+        projectSlug: null,
+      },
+      accessToken: "test-token",
+      userId: "1",
+    };
+    const baseParams = {
+      organizationSlug: "test-org",
+      regionUrl: null,
+      projectSlug: null,
+      period: "24h",
+      limit: 10,
+      includeExplanation: false,
+    };
+
+    beforeEach(() => {
+      process.env.OPENAI_API_KEY = "";
+    });
+
+    it("explains a rejected log timestamp aggregate", async () => {
+      const error =
+        "timestamp is invalid for parameter 1 in max. Its a string type field, but it must be one of these types: {'number'}";
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () =>
+            HttpResponse.json({
+              ...validEventsValidationResponse,
+              valid: false,
+              field: [
+                { name: "max(timestamp)", valid: false, attrType: null, error },
+              ],
+            }),
+        ),
+      );
+
+      const result = searchEvents.handler(
+        {
+          ...baseParams,
+          dataset: "logs",
+          query: "severity:error",
+          fields: ["severity", "max(timestamp)"],
+          sort: "-max(timestamp)",
+        },
+        context,
+      );
+
+      await expect(result).rejects.toThrow(UserInputError);
+      await expect(result).rejects.toThrow(error);
+      await expect(result).rejects.toThrow(
+        "Use `min(timestamp_precise)` or `max(timestamp_precise)`",
+      );
+    });
+
+    it.each([
+      {
+        detail: "first_seen is not a valid function",
+        fields: ["issue", "count()", "first_seen()"],
+        sort: "-count()",
+        hint: "Use `min(timestamp)` for the first occurrence",
+      },
+      {
+        detail: "Cannot sort by a field that is not selected.",
+        fields: ["issue", "count()"],
+        sort: "issue",
+        hint: "Sort by an aggregate such as `-count()`, or by `issue.id`.",
+      },
+    ])("explains the errors API rejection: $detail", async (testCase) => {
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json({ detail: testCase.detail }, { status: 400 }),
+        ),
+      );
+
+      const result = searchEvents.handler(
+        {
+          ...baseParams,
+          dataset: "errors",
+          query: "level:error",
+          fields: testCase.fields,
+          sort: testCase.sort,
+        },
+        context,
+      );
+
+      await expect(result).rejects.toThrow(UserInputError);
+      await expect(result).rejects.toThrow(
+        `API error (400): ${testCase.detail}`,
+      );
+      await expect(result).rejects.toThrow(testCase.hint);
+    });
+
+    it("keeps the API error when the request did not send the rejected expression", async () => {
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+          HttpResponse.json(
+            { detail: "first_seen is not a valid function" },
+            { status: 400 },
+          ),
+        ),
+      );
+
+      const result = searchEvents.handler(
+        {
+          ...baseParams,
+          dataset: "errors",
+          query: "level:error",
+          fields: ["issue", "count()"],
+          sort: "-count()",
+        },
+        context,
+      );
+
+      await expect(result).rejects.toThrow(ApiValidationError);
+    });
+  });
+
   it("keeps the caller's dataset when lockDataset is set", async () => {
     mockGenerateText.mockResolvedValueOnce(
       mockAIResponse("logs", "level:error"),
@@ -3758,8 +4135,11 @@ describe("search_events", () => {
         () => HttpResponse.json({ session, sentry_run_id: "run-uuid" }),
       );
 
+    const mockDistribution = vi.mocked(metrics.distribution);
+
     beforeEach(() => {
       mockSeerStart.mockClear();
+      mockDistribution.mockClear();
       mswServer.use(
         mockProject,
         http.post(
@@ -4398,6 +4778,108 @@ describe("search_events", () => {
       await searchEvents.handler(seerParams, context);
 
       expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    describe("assisted query outcome", () => {
+      const mockSeerEvents = (
+        resolver: Parameters<typeof http.get>[1],
+      ): Parameters<typeof mswServer.use> => [
+        mockOrganization([
+          "mcp-search-events-seer-translate",
+          "seer-assisted-query-cross-event-explorer",
+        ]),
+        mockSeerState({
+          status: "completed",
+          final_response: { responses: [seerQuery], unsupported_reason: null },
+        }),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          resolver,
+        ),
+      ];
+
+      it("should report has_results when the Seer query returns rows", async () => {
+        mswServer.use(
+          ...mockSeerEvents(() =>
+            HttpResponse.json({
+              data: [
+                { "span.description": "GET /a", "p95(span.duration)": 1 },
+                { "span.description": "GET /b", "p95(span.duration)": 2 },
+              ],
+            }),
+          ),
+        );
+
+        await searchEvents.handler(seerParams, context);
+
+        expect(mockDistribution).toHaveBeenCalledTimes(1);
+        expect(mockDistribution).toHaveBeenCalledWith(
+          "assisted_query.outcome",
+          2,
+          {
+            attributes: {
+              dataset: "spans",
+              mode: "aggregate",
+              org_slug: "test-org",
+              referrer: "assisted_query.mcp.traces",
+              run_id: "run-uuid",
+              conversation_url:
+                "https://sentry.io/organizations/sentry/explore/agents/conversations/run-uuid/",
+              outcome: "has_results",
+              code_mode: false,
+              cross_event_enabled: true,
+            },
+          },
+        );
+      });
+
+      it("should report error_on_load when validating the Seer query fails", async () => {
+        mswServer.use(
+          ...mockSeerEvents(() => HttpResponse.json({ data: [] })),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/validate/",
+            () =>
+              HttpResponse.json(
+                { detail: "Validation broke" },
+                { status: 400 },
+              ),
+          ),
+        );
+
+        await expect(
+          searchEvents.handler(seerParams, context),
+        ).rejects.toThrow();
+
+        expect(mockDistribution).toHaveBeenCalledTimes(1);
+        expect(mockDistribution).toHaveBeenCalledWith(
+          "assisted_query.outcome",
+          0,
+          {
+            attributes: expect.objectContaining({
+              outcome: "error_on_load",
+              error_reason: expect.any(String),
+            }),
+          },
+        );
+      });
+
+      it("should not report when the embedded agent translates the query", async () => {
+        mockGenerateText.mockResolvedValueOnce(
+          mockAIResponse("spans", "span.op:http.client"),
+        );
+        mswServer.use(
+          mockOrganization([]),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/",
+            () => HttpResponse.json({ data: [] }),
+          ),
+        );
+
+        await searchEvents.handler(seerParams, context);
+
+        expect(mockGenerateText).toHaveBeenCalled();
+        expect(mockDistribution).not.toHaveBeenCalled();
+      });
     });
   });
 });

@@ -8,10 +8,24 @@
 
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
-import { parseSentryLinkHeader } from "@sentry/api";
+import {
+  createSentryClient,
+  parseSentryLinkHeader,
+  type SdkResult,
+  SentryApiError,
+} from "@sentry/api";
+import { readErrorResponse } from "@sentry/toolkit-core/api-client/response";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
+import {
+  API_MAX_PER_PAGE,
+  decodePageCursor as decodeCursorPosition,
+  fetchAllPages as fetchEveryPage,
+  type FetchAllPagesFailure,
+  type PagePosition,
+  paginate as paginateFrom,
+} from "@sentry/toolkit-core/api-client/pagination";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
@@ -29,6 +43,7 @@ import {
   getDefaultSdkConfig,
   getSdkConfig,
 } from "../sentry-client.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -200,6 +215,11 @@ export type ApiRequestOptions<T = unknown> = {
   credential?: CredentialContext;
   /** Manually validate each redirect before forwarding credentials. */
   validatedRedirects?: boolean;
+  /**
+   * Retry transient failures even for writes. Only for requests the server
+   * dedupes (see `idempotent` in sentry-client.ts).
+   */
+  idempotent?: boolean;
 };
 
 /**
@@ -223,6 +243,10 @@ export function throwApiError(
       0,
       `Unable to reach Sentry API. Cause: ${cause}\n\n  Check your internet connection and try again.`,
     );
+  }
+
+  if (error instanceof SentryApiError) {
+    error = error.body;
   }
 
   const status = response.status;
@@ -261,32 +285,19 @@ export function throwApiError(
  * @returns The data from the successful response
  */
 export function unwrapResult<T>(
-  result:
-    | { data: unknown; error: undefined }
-    | { data: undefined; error: unknown },
+  result: Pick<SdkResult, "data" | "error" | "response">,
   context: string,
 ): T {
-  const { data, error } = result as {
-    data: unknown;
-    error: unknown;
-    response?: Response;
-  };
-
-  if (error !== undefined) {
+  if ("error" in result) {
+    const { error } = result;
     // Preserve known error types that were caught by the SDK from our fetch function
     if (error instanceof AuthError || error instanceof ApiError) {
       throw error;
     }
-    // The @sentry/api SDK always includes `response` on the returned object in
-    // the default "fields" responseStyle (see createClient request() in the SDK
-    // source — it spreads `{ request, response }` into every return value).
-    // The cast is typed as optional only because the SDK's TypeScript types omit
-    // `response` from the return type, not because it can be absent at runtime.
-    const response = (result as { response?: Response }).response;
-    throwApiError(error, response, context);
+    throwApiError(error, result.response, context);
   }
 
-  return data as T;
+  return result.data as T;
 }
 
 /**
@@ -300,12 +311,10 @@ export function unwrapResult<T>(
  * @returns Data and optional next-page cursor
  */
 export function unwrapPaginatedResult<T>(
-  result:
-    | { data: unknown; error: undefined }
-    | { data: undefined; error: unknown },
+  result: Pick<SdkResult, "data" | "error" | "response">,
   context: string,
 ): PaginatedResponse<T> {
-  const response = (result as { response?: Response }).response;
+  const { response } = result;
   const data = unwrapResult<T>(result, context);
   const { nextCursor, prevCursor } = parseLinkHeader(
     response?.headers.get("link") ?? null,
@@ -383,7 +392,7 @@ export function appendSearchParams(
  */
 export async function getOrgSdkConfig(orgSlug: string) {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkConfig(regionUrl);
+  return getSdkClientConfig(regionUrl);
 }
 
 /**
@@ -400,12 +409,20 @@ export const MAX_PAGINATION_PAGES = Math.max(
 );
 
 /**
- * Sentry API's maximum items per page.
- * Some endpoints silently cap larger `per_page` values; others (org project
- * list) return 400. Always send at most this many and auto-paginate for
- * larger `--limit`s via {@link paginate}.
+ * Sentry API's maximum items per page. Always send at most this many and
+ * auto-paginate for larger `--limit`s via {@link paginate}.
  */
-export const API_MAX_PER_PAGE = 100;
+export { API_MAX_PER_PAGE };
+
+export {
+  consumePage,
+  type PagePosition,
+} from "@sentry/toolkit-core/api-client/pagination";
+
+/** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
+export function decodePageCursor(raw: string | undefined): PagePosition {
+  return decodeCursorPosition(raw, (message) => logger.warn(message));
+}
 
 /**
  * Maximum concurrent API requests when fanning out across organizations or regions.
@@ -453,7 +470,7 @@ export async function autoPaginate<T>(
 ): Promise<PaginatedResponse<T[]>> {
   // Fast path: single-page fetch when limit fits in one API page
   if (limit <= API_MAX_PER_PAGE) {
-    return fetchPage(initialCursor);
+    return await fetchPage(initialCursor);
   }
 
   // Multi-page: accumulate rows across pages up to the requested limit
@@ -484,22 +501,23 @@ export async function autoPaginate<T>(
 }
 
 /**
- * Wire a single-page fetcher into a limit-bounded, auto-paginating list call.
+ * Fetch up to `limit` rows and a cursor that resumes after the last one.
  *
- * Centralizes the two things every list endpoint kept re-deriving by hand and
- * occasionally got wrong (see #1458): capping `per_page` at
- * {@link API_MAX_PER_PAGE} and threading `limit` plus the initial cursor into
- * {@link autoPaginate}. Each request asks only for the remaining item budget,
- * so a partial final page can return a cursor without skipping trimmed rows.
- * Callers still own region resolution and
- * endpoint-specific query building inside `fetchPage`.
+ * This is the only supported way to build a limit-bounded list; the
+ * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
+ * (#1458, #1608). Page sizing and resume-safe cursors live in
+ * `@sentry/toolkit-core/api-client/pagination`, shared with the MCP; this wrapper sets
+ * the CLI's page cap and default limit and logs the CLI's warnings.
+ *
+ * Callers own region resolution and query building inside `fetchPage`, and
+ * must send `perPage` as the request's `per_page` unchanged.
  *
  * @param options - Caller list options; `limit` bounds total rows, `cursor` is the start cursor
- * @param fetchPage - Fetches one page given the capped `perPage` and a page cursor
+ * @param fetchPage - Fetches one page given the page size and a server cursor
  * @param defaultLimit - Applied when `options.limit` is undefined
- * @returns Accumulated items with optional nextCursor
+ * @returns Up to `limit` items with optional nextCursor
  */
-export function paginate<T>(
+export async function paginate<T>(
   options: { limit?: number; cursor?: string },
   fetchPage: (
     perPage: number,
@@ -507,21 +525,35 @@ export function paginate<T>(
   ) => Promise<PaginatedResponse<T[]>>,
   defaultLimit = 10,
 ): Promise<PaginatedResponse<T[]>> {
-  const limit = options.limit ?? defaultLimit;
-  let remaining = limit;
-  return autoPaginate(
-    async (cursor) => {
-      const result = await fetchPage(
-        Math.min(remaining, API_MAX_PER_PAGE),
-        cursor,
-      );
-      remaining -= result.data.length;
-      return result;
+  const { data, nextCursor, stoppedAtPageCap } = await paginateFrom(
+    {
+      limit: options.limit ?? defaultLimit,
+      cursor: options.cursor,
+      maxPages: MAX_PAGINATION_PAGES,
+      warn: (message) => logger.warn(message),
     },
-    limit,
-    options.cursor,
+    fetchPage,
   );
+  if (stoppedAtPageCap) {
+    logger.warn(
+      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${data.length} items). ` +
+        "Use the returned cursor to continue.",
+    );
+  }
+  return nextCursor === undefined ? { data } : { data, nextCursor };
 }
+
+/** Error message for each way {@link fetchAllPages} can fail. */
+const FETCH_ALL_PAGES_ERRORS: Record<
+  FetchAllPagesFailure,
+  (context: string) => string
+> = {
+  "invalid-page": (context) => `Unexpected response format when ${context}`,
+  "repeated-cursor": (context) =>
+    `Pagination repeated a cursor when ${context}`,
+  "page-cap": (context) =>
+    `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when ${context}`,
+};
 
 /**
  * Fetch and validate every page of a list endpoint, or fail.
@@ -542,29 +574,18 @@ export async function fetchAllPages<T>(
   schema: GenericSchema<unknown, T[]>,
   context: string,
 ): Promise<T[]> {
-  const items: T[] = [];
-  const seen = new Set<string>();
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
-    const { data, nextCursor } = await fetchPage(cursor);
-    const parsed = safeParse(schema, data);
-    if (!parsed.success) {
-      throw new ApiError(`Unexpected response format when ${context}`, 0);
-    }
-    items.push(...parsed.output);
-    if (!nextCursor) {
-      return items;
-    }
-    if (seen.has(nextCursor)) {
-      throw new ApiError(`Pagination repeated a cursor when ${context}`, 0);
-    }
-    seen.add(nextCursor);
-    cursor = nextCursor;
-  }
-  throw new ApiError(
-    `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when ${context}`,
-    0,
+  const result = await fetchEveryPage(
+    fetchPage,
+    (data) => {
+      const parsed = safeParse(schema, data);
+      return parsed.success ? parsed.output : undefined;
+    },
+    MAX_PAGINATION_PAGES,
   );
+  if (!result.ok) {
+    throw new ApiError(FETCH_ALL_PAGES_ERRORS[result.reason](context), 0);
+  }
+  return result.items;
 }
 
 /**
@@ -590,8 +611,14 @@ export async function apiRequestToRegion<T>(
     schema,
     credential,
     validatedRedirects,
+    idempotent,
   } = options;
-  const config = getSdkConfig(regionUrl, { credential, validatedRedirects });
+  const config = getSdkConfig(regionUrl, {
+    credential,
+    validatedRedirects,
+    bufferResponseBody: true,
+    idempotent,
+  });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
   const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
@@ -689,25 +716,20 @@ async function throwRawApiError(
   response: Response,
   endpoint: string,
 ): Promise<never> {
+  const body = await readErrorResponse(response);
   let detail: string | undefined;
-  try {
-    const text = await response.text();
-    try {
-      const parsed = JSON.parse(text) as { detail?: string };
-      // Enriched statuses (403, 401) pass undefined when there is no
-      // usable string detail so the enrichment renders without a noisy
-      // `{"detail":null}` prefix. Other statuses get the full JSON as
-      // a debug aid.
-      if (typeof parsed.detail === "string") {
-        detail = parsed.detail;
-      } else if (response.status !== 403 && response.status !== 401) {
-        detail = JSON.stringify(parsed);
-      }
-    } catch {
-      detail = text || undefined;
-    }
-  } catch {
+  if (body.text === undefined) {
     detail = response.statusText;
+  } else if (body.parseError !== undefined) {
+    detail = body.text || undefined;
+  } else if (body.detail !== undefined) {
+    detail = body.detail;
+  } else if (response.status !== 403 && response.status !== 401) {
+    // Enriched statuses (403, 401) pass undefined when there is no
+    // usable string detail so the enrichment renders without a noisy
+    // `{"detail":null}` prefix. Other statuses get the full JSON as
+    // a debug aid.
+    detail = JSON.stringify(body.json);
   }
   // Attach a small allowlisted subset of response headers to the Sentry
   // event as context. This lets us distinguish Sentry-app 4xx/5xx (which
@@ -743,7 +765,7 @@ export async function apiRequestToRegionNoContent(
   options: Omit<ApiRequestOptions, "schema"> = {},
 ): Promise<void> {
   const { method = "GET", body, params } = options;
-  const config = getSdkConfig(regionUrl);
+  const config = getSdkConfig(regionUrl, { bufferResponseBody: true });
 
   const searchParams = buildSearchParams(params);
   const queryString = searchParams ? `?${searchParams.toString()}` : "";
@@ -829,8 +851,56 @@ export function isTextualContentType(contentType: string | null): boolean {
   return false;
 }
 
+/** Options for a raw request, retaining the CLI's transport and body policies. */
+type RawApiRequestOptions = ApiRequestOptions & {
+  /** Explicit caller headers, before authentication and proxy headers. */
+  headers?: Record<string, string>;
+  /** Caller-selected Sentry origin or instance prefix, checked at dispatch. */
+  baseUrl?: string;
+};
+
+/** A request snapshot and the CLI transport that will authenticate it. */
+export type PreparedRawApiRequest = {
+  /** SDK-prepared URL, headers, method and body; single-use when sent. */
+  request: Request;
+  /** Authenticated transport, including raw response buffering and host checks. */
+  fetch: ReturnType<typeof getSdkConfig>["fetch"];
+};
+
 /**
- * Make a raw API request that returns full response details.
+ * Prepare a raw request without fetching or refreshing credentials.
+ * Existing params retain append semantics; query overrides use the SDK's
+ * replacement semantics for decoded page cursors and page sizes.
+ */
+export async function prepareRawApiRequest(
+  endpoint: string,
+  options: RawApiRequestOptions = {},
+  query?: Record<string, unknown>,
+): Promise<PreparedRawApiRequest> {
+  const { method = "GET", body, params, headers, baseUrl } = options;
+  const config = baseUrl
+    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
+    : getDefaultSdkConfig({ bufferResponseBody: true });
+  const isStringBody = typeof body === "string";
+  const request = await createSentryClient(config).client.prepareRequest({
+    method,
+    url: buildSentryApiUrl("", appendSearchParams(endpoint, params)),
+    query,
+    body,
+    headers: isStringBody ? { "Content-Type": null, ...headers } : headers,
+    ...(isStringBody ? { bodySerializer: null } : {}),
+  });
+  // Raw requests honor an explicit Content-Type even without a body; the SDK
+  // otherwise removes it for bodyless operations and empty serialized bodies.
+  const contentType = new Headers(headers).get("content-type");
+  if (contentType !== null) {
+    request.headers.set("content-type", contentType);
+  }
+  return { request, fetch: config.fetch };
+}
+
+/**
+ * Send a prepared or endpoint-based raw request and return full response details.
  * Unlike apiRequest, this does not throw on non-2xx responses.
  * Used by the 'sentry api' command for direct API access.
  *
@@ -838,67 +908,26 @@ export function isTextualContentType(contentType: string | null): boolean {
  * ({@link isTextualContentType}). Non-textual bodies are returned as
  * `Uint8Array` so binary downloads stay byte-for-byte intact.
  *
- * @param endpoint - API endpoint path (e.g., "/organizations/")
- * @param options - Request options including method, body, params, custom headers, and optional trusted base URL
+ * @param endpoint - API endpoint path or the prepared request used for its preview
+ * @param options - Options used when preparing an endpoint-based request
  * @returns Response status, status text, headers, and parsed body
  * @throws {AuthError} On authentication failure
  * @throws {HostScopeError} Before credentials are attached to an untrusted origin
  */
 export async function rawApiRequest(
-  endpoint: string,
-  options: ApiRequestOptions & {
-    headers?: Record<string, string>;
-    /**
-     * Sentry instance or regional base URL. The authenticated fetch rejects
-     * origins outside the active token's trust scope before adding credentials.
-     */
-    baseUrl?: string;
-  } = {},
+  endpoint: string | PreparedRawApiRequest,
+  options: RawApiRequestOptions = {},
 ): Promise<{
   status: number;
   statusText: string;
   headers: Headers;
   body: unknown;
 }> {
-  const {
-    method = "GET",
-    body,
-    params,
-    headers: customHeaders = {},
-    baseUrl,
-  } = options;
-
-  // Both configs share createAuthenticatedFetch(), whose prepareHeaders()
-  // enforces isRequestOriginTrusted() before attaching Authorization.
-  const config = baseUrl ? getSdkConfig(baseUrl) : getDefaultSdkConfig();
-
-  const endpointWithParams = appendSearchParams(endpoint, params);
-  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
-
-  // Build request headers and body.
-  // String bodies: no Content-Type unless the caller explicitly provides one.
-  // Object bodies: application/json (auto-stringified).
-  const isStringBody = typeof body === "string";
-  const hasContentType = Object.keys(customHeaders).some(
-    (k) => k.toLowerCase() === "content-type",
-  );
-
-  const headers: Record<string, string> = { ...customHeaders };
-  if (!(isStringBody || hasContentType) && body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  let requestBody: string | undefined;
-  if (body !== undefined) {
-    requestBody = isStringBody ? body : JSON.stringify(body);
-  }
-
-  const fetchFn = config.fetch;
-  const response = await fetchFn(url, {
-    method,
-    headers,
-    body: requestBody,
-  });
+  const prepared =
+    typeof endpoint === "string"
+      ? await prepareRawApiRequest(endpoint, options)
+      : endpoint;
+  const response = await prepared.fetch(prepared.request);
 
   const contentType = response.headers.get("content-type");
   let responseBody: unknown;

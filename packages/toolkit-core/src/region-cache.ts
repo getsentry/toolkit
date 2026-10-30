@@ -15,7 +15,7 @@ export function resolveCachedRegion<Value>(
 
   // Start before returning so the lookup sees the source identity that keyed
   // this cache entry, even if a caller changes credentials in the same tick.
-  const pending = (async () => lookup())()
+  const pending = (async () => await lookup())()
     .then((value) => {
       if (!isCacheable(value) && cache.get(key) === pending) {
         cache.delete(key);

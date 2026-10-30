@@ -38,6 +38,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
+import { parseFailure } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,17 +135,28 @@ describe("dashboard create", () => {
     const { context } = createMockContext();
     const func = await createCommand.loader();
 
-    const err = await func
-      .call(context, { json: false })
-      .catch((e: Error) => e);
+    const err = await func.call(context, { json: false }).catch(parseFailure);
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Dashboard title is required");
+    expect(createDashboardSpy).not.toHaveBeenCalled();
   });
 
   test("two args parses target + title correctly", async () => {
     const { context } = createMockContext();
     const func = await createCommand.loader();
     await func.call(context, { json: false }, "my-org/", "My Dashboard");
+
+    expect(createDashboardSpy).toHaveBeenCalledWith("my-org", {
+      title: "My Dashboard",
+      widgets: [],
+      projects: undefined,
+    });
+  });
+
+  test("words after the target are one title", async () => {
+    const { context } = createMockContext();
+    const func = await createCommand.loader();
+    await func.call(context, { json: false }, "my-org/", "My", "Dashboard");
 
     expect(createDashboardSpy).toHaveBeenCalledWith("my-org", {
       title: "My Dashboard",

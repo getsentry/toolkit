@@ -8,6 +8,8 @@ you are working on:
   and the published CLI documentation site.
 - [Sentry MCP](mcp/README.md) — tools, transports, Cloudflare, operations, and
   MCP-specific tests and specs.
+- [Docs MCP](../apps/docs-mcp/README.md) — the independent private documentation
+  Worker, local development, and deployment ownership.
 
 The published CLI site lives in `apps/cli-docs/` because CLI releases build
 and package it from that workspace. The contributor index here links to its

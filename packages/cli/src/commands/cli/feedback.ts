@@ -10,7 +10,7 @@
 
 import { isatty } from "node:tty";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { ConfigError, ValidationError } from "../../lib/errors.js";
@@ -33,6 +33,16 @@ export const feedbackCommand = buildCommand({
     fullDescription:
       "Submit feedback about your experience with the Sentry CLI. " +
       "All text after 'feedback' is sent as your message.",
+    examples: [
+      {
+        description: "Send positive feedback",
+        command: "sentry cli feedback i love this tool",
+      },
+      {
+        description: "Report an issue",
+        command: "sentry cli feedback the issue view is confusing",
+      },
+    ],
   },
   output: { human: formatFeedbackResult },
   parameters: {

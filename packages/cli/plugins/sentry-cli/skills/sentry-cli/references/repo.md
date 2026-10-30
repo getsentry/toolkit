@@ -15,6 +15,12 @@ Work with Sentry repositories
 
 List repositories
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of repositories to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -37,11 +43,20 @@ List repositories
 **Examples:**
 
 ```bash
-# List repositories (auto-detect org)
+# List repositories (organization auto-detected)
 sentry repo list
 
-# List repos in a specific org with pagination
+# List repositories in an organization
+sentry repo list my-org/
+
+# Fetch the next page
 sentry repo list my-org/ -c next
+
+# Only repositories whose name matches a glob
+sentry repo list 'my-org/getsentry/*'
+
+# Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)
+sentry repo list my-org/sentry-pyhton
 
 # Output as JSON
 sentry repo list --json

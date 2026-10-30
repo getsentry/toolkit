@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetEdited } from "../../../lib/formatters/human.js";
@@ -26,13 +25,11 @@ import {
   validateWidgetLayout,
   type WidgetLayoutFlags,
 } from "../../../types/dashboard.js";
+import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import {
   applyGroupLimitAutoDefault,
-  enrichDashboardError,
+  withDashboardErrors,
   normalizeDataset,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
   resolveWidgetIndex,
   validateSortReferencesAggregate,
   validateWidgetEnums,
@@ -197,25 +194,39 @@ export const editCommand = buildCommand({
       "Identify the widget by --index (0-based) or --title.\n" +
       "Only provided flags are changed — omitted values are preserved.\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
-      "and size in the 6-column dashboard grid.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard widget edit 12345 --title 'Error Rate' --display bar\n" +
-      "  sentry dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration\n" +
-      "  sentry dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'\n" +
-      "  sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
+      "and size in the 6-column dashboard grid.",
+    examples: [
+      {
+        description: "Change a widget's display type",
+        command:
+          "sentry dashboard widget edit 12345 --title 'Error Rate' --display bar",
+      },
+      {
+        description: "Change the query of a widget selected by index",
+        command:
+          "sentry dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration",
+      },
+      {
+        description: "Rename a widget",
+        command:
+          "sentry dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'",
+      },
+      {
+        description: "Move and resize a widget",
+        command:
+          "sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
+      },
+    ],
   },
   output: {
     human: formatWidgetEdited,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/project/dashboard",
+      usageHint:
+        "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
+    }),
     flags: {
       index: {
         kind: "parsed",
@@ -319,9 +330,11 @@ export const editCommand = buildCommand({
       y: "row",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, ...args: string[]) {
-    const { cwd } = this;
-
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    target: DashboardArguments,
+  ) {
     if (flags.index === undefined && !flags.title) {
       throw new ValidationError(
         "Specify --index or --title to identify the widget to edit.\n\n" +
@@ -345,23 +358,16 @@ export const editCommand = buildCommand({
 
     validateWidgetEnums(normalizedFlags.display, normalizedFlags.dataset);
 
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+    const { orgSlug, dashboardId } = await target.resolved;
 
     // GET current dashboard → find widget → merge changes → PUT
-    const current = await getDashboard(orgSlug, dashboardId).catch(
-      async (error: unknown) =>
-        enrichDashboardError(error, {
-          orgSlug,
-          dashboardId,
-          operation: "view",
-        }),
+    const current = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "view",
+      },
+      () => getDashboard(orgSlug, dashboardId),
     );
     const widgets = current.widgets ?? [];
     const widgetIndex = resolveWidgetIndex(
@@ -390,16 +396,13 @@ export const editCommand = buildCommand({
 
     updateBody.widgets[widgetIndex] = replacement;
 
-    const updated = await updateDashboard(
-      orgSlug,
-      dashboardId,
-      updateBody,
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const updated = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "update",
-      }),
+      },
+      () => updateDashboard(orgSlug, dashboardId, updateBody),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 

@@ -5,7 +5,7 @@
 import { userInfo } from "node:os";
 
 const ALL_DIGITS_PATTERN = /^\d+$/;
-const SINGLE_QUOTE_PATTERN = /'/g;
+const SINGLE_QUOTE_PATTERN = /['\u2018-\u201b]/g;
 
 /**
  * Check if a string contains only digits (0-9).
@@ -19,6 +19,20 @@ const SINGLE_QUOTE_PATTERN = /'/g;
  */
 export function isAllDigits(str: string): boolean {
   return ALL_DIGITS_PATTERN.test(str);
+}
+
+/**
+ * Count occurrences of a single character in a string without allocating.
+ *
+ * @example
+ * countChar("org/project/rule", "/") // 2
+ */
+export function countChar(str: string, char: string): number {
+  let count = 0;
+  for (let i = str.indexOf(char); i !== -1; i = str.indexOf(char, i + 1)) {
+    count += 1;
+  }
+  return count;
 }
 
 /**
@@ -46,11 +60,14 @@ export function parseHttpUrl(value: string): URL | undefined {
 /**
  * Quote a value for safe use as one POSIX shell argument.
  *
+ * Double-quoted apostrophe segments also support inline flag values in
+ * PowerShell, which treats typographic apostrophes as single quotes.
+ *
  * @param value - Untrusted value to quote
  * @returns A single-quoted shell argument
  */
 export function shellQuote(value: string): string {
-  return `'${value.replace(SINGLE_QUOTE_PATTERN, "'\\''")}'`;
+  return `'${value.replace(SINGLE_QUOTE_PATTERN, (quote) => `'"${quote}"'`)}'`;
 }
 
 /**

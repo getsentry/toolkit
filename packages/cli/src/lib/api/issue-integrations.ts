@@ -13,7 +13,7 @@ import {
 import { safeParse } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
-import { getSdkConfig } from "../sentry-client.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { parseHttpUrl } from "../utils.js";
 import {
   API_MAX_PER_PAGE,
@@ -203,8 +203,8 @@ async function listIntegrations(
   orgSlug: string,
   issueId: string,
 ): Promise<NativeIntegration[]> {
-  const config = getSdkConfig(await resolveOrgRegion(orgSlug));
-  return fetchAllPages(
+  const config = getSdkClientConfig(await resolveOrgRegion(orgSlug));
+  return await fetchAllPages(
     async (cursor) => {
       const result = await listOrganizationIssueIntegrations({
         ...config,
@@ -357,7 +357,7 @@ export async function linkNativeIssue(
   prepared: PreparedNativeIssueLink,
 ): Promise<{ link: NativeIssueLink; changed: boolean }> {
   const result = await updateOrganizationIssueIntegration({
-    ...getSdkConfig(prepared.regionUrl),
+    ...getSdkClientConfig(prepared.regionUrl),
     path: {
       organization_id_or_slug: prepared.orgSlug,
       issue_id: prepared.issueId,
@@ -374,6 +374,9 @@ export async function linkNativeIssue(
       "Unexpected response format after linking; inspect the current links before retrying",
       0,
     );
+  }
+  if (!result.response) {
+    throw new ApiError("Link operation returned no HTTP response", 0);
   }
   const data = parsed.output;
   return {
@@ -400,7 +403,7 @@ export async function unlinkNativeIssueLink(
     );
   }
   const result = await deleteOrganizationIssueIntegration({
-    ...getSdkConfig(await resolveOrgRegion(orgSlug)),
+    ...getSdkClientConfig(await resolveOrgRegion(orgSlug)),
     path: {
       organization_id_or_slug: orgSlug,
       issue_id: issueId,

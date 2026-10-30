@@ -5,24 +5,23 @@
  * ID resolution from numeric IDs or title strings.
  */
 
+import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
 import {
   API_MAX_PER_PAGE,
+  getOrganization,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
-import type { parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
   ApiError,
   ResolutionError,
   ValidationError,
 } from "../../lib/errors.js";
+import { getCachedOrganizations, getOrgRegion } from "../../lib/db/regions.js";
 import { fuzzyMatch } from "../../lib/fuzzy.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgOnlyTarget } from "../../lib/resolve-target.js";
-import {
-  applySentryUrlContext,
-  parseSentryUrl,
-} from "../../lib/sentry-url-parser.js";
 import { isAllDigits } from "../../lib/utils.js";
 import {
   type DashboardWidget,
@@ -59,238 +58,40 @@ export type WidgetQueryFlags = {
  * @returns Organization slug
  */
 export function resolveOrgFromTarget(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   cwd: string,
   usageHint: string,
 ): Promise<string> {
   return resolveOrgOnlyTarget(parsed, cwd, "dashboard", usageHint);
 }
 
-/** Result of URL-based dashboard arg extraction */
-type DashboardArgResult = {
-  dashboardRef: string;
-  targetArg: string | undefined;
-};
-
 /**
- * Try to extract dashboard ref + org from a Sentry URL.
+ * Whether an org exists and is visible to the user: in the cached org list
+ * (or the region cache, which only orgs the API found are in), or else by
+ * fetching it.
  *
- * Calls `applySentryUrlContext` for host-scoping trust checks on non-SaaS URLs.
- * Returns null if the input isn't a recognized Sentry URL.
+ * @returns `false` when the API cannot find the org or denies access to it
+ * @throws {ApiError} For any other failure, such as a server error
  */
-function tryExtractDashboardUrl(
-  first: string,
-  args: string[],
-): DashboardArgResult | null {
-  const urlParsed = parseSentryUrl(first);
-  if (!urlParsed) {
-    return null;
+export async function orgExists(orgSlug: string): Promise<boolean> {
+  if (
+    getCachedOrganizations().some((org) => org.slug === orgSlug) ||
+    getOrgRegion(orgSlug) !== undefined
+  ) {
+    return true;
   }
-  applySentryUrlContext(urlParsed.baseUrl);
-  if (urlParsed.dashboardId) {
-    log.warn(
-      `Extracted dashboard ID ${urlParsed.dashboardId} from URL` +
-        (urlParsed.org ? ` (org: ${urlParsed.org})` : ""),
-    );
-    return {
-      dashboardRef: urlParsed.dashboardId,
-      targetArg: urlParsed.org ? `${urlParsed.org}/` : undefined,
-    };
-  }
-  // URL recognized but no dashboardId — use org context if available
-  if (urlParsed.org) {
-    log.warn(`Extracted org '${urlParsed.org}' from URL`);
-    if (args.length >= 2) {
-      return {
-        dashboardRef: args[1] as string,
-        targetArg: `${urlParsed.org}/`,
-      };
+  try {
+    await getOrganization(orgSlug);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.status === 404 || error.status === 403)
+    ) {
+      return false;
     }
-    throw new ValidationError(
-      "Dashboard ID or title is required.\n\n" +
-        "The URL provided contains an org but no dashboard ID.\n" +
-        `Try: sentry dashboard <command> ${urlParsed.org}/ <id-or-title>`,
-      "dashboard",
-    );
+    throw error;
   }
-  return null;
-}
-
-/**
- * Parse a dashboard reference and optional target from array positional args.
- *
- * Handles:
- * - `<id-or-title>` — single arg (auto-detect org)
- * - `<target> <id-or-title>` — explicit target + dashboard ref
- * - Full Sentry dashboard URL — extracts org + dashboard ID
- *
- * When two args are provided and the first is a bare slug (no `/`), it is
- * normalized to `slug/` so `parseOrgProjectArg` treats it as an org-all
- * target. Dashboards are org-scoped so the project component is irrelevant.
- *
- * @param args - Raw positional arguments
- * @returns Dashboard reference string and optional target arg
- */
-export function parseDashboardPositionalArgs(
-  args: string[],
-): DashboardArgResult {
-  if (args.length === 0) {
-    throw new ValidationError(
-      "Dashboard ID or title is required.",
-      "dashboard",
-    );
-  }
-
-  const first = args[0] as string;
-
-  // URL detection — extract org + dashboard ID from pasted Sentry URLs
-  const urlResult = tryExtractDashboardUrl(first, args);
-  if (urlResult) {
-    return urlResult;
-  }
-
-  if (args.length === 1) {
-    return {
-      dashboardRef: first,
-      targetArg: undefined,
-    };
-  }
-  // Normalize bare org slug → org/ (dashboards are org-scoped)
-  const target = first.includes("/") ? first : `${first}/`;
-  return {
-    dashboardRef: args[1] as string,
-    targetArg: target,
-  };
-}
-
-/**
- * Parse dashboard list positional args into a target and optional title filter.
- *
- * Handles:
- * - (empty) — auto-detect org, no filter
- * - `<org/>` or `<org/project>` — target, no filter
- * - `'CLI'` or `'Error*'` or `'*API*'` — auto-detect org, title filter
- * - `<org/> 'Error*'` or `<org> 'Error*'` — target + glob filter
- *
- * A single arg without `/` is always treated as a title filter, not a
- * project-search target. Dashboards are org-scoped so project-search
- * doesn't apply — `resolveOrgFromTarget` ignores the slug anyway.
- * To specify an org, use `org/` or pass two args: `org 'filter'`.
- *
- * When two args are provided and the first is a bare slug (no `/`), it is
- * normalized to `slug/` so `parseOrgProjectArg` treats it as an org-all target.
- *
- * @param args - Raw positional arguments
- * @returns Target arg for org resolution and optional title filter glob
- */
-/** Result of URL-based list arg extraction */
-type ListArgResult = {
-  targetArg: string | undefined;
-  titleFilter: string | undefined;
-};
-
-/**
- * Try to extract org context from a Sentry URL in dashboard list args.
- *
- * When the URL contains a dashboard ID, throws a helpful error suggesting
- * `sentry dashboard view` instead. When only an org is present, extracts
- * it as the target.
- */
-function tryExtractListUrl(
-  first: string,
-  remaining: string[],
-): ListArgResult | null {
-  const urlParsed = parseSentryUrl(first);
-  if (!urlParsed) {
-    return null;
-  }
-  applySentryUrlContext(urlParsed.baseUrl);
-  if (urlParsed.dashboardId) {
-    const orgPrefix = urlParsed.org ? `${urlParsed.org}/ ` : "";
-    const orgSuffix = urlParsed.org ? ` ${urlParsed.org}/` : "";
-    const orgNote = urlParsed.org ? ` in '${urlParsed.org}'` : "";
-    throw new ValidationError(
-      "This looks like a dashboard URL. To view a specific dashboard:\n\n" +
-        `  sentry dashboard view ${orgPrefix}${urlParsed.dashboardId}\n\n` +
-        `To list dashboards${orgNote}:\n\n` +
-        `  sentry dashboard list${orgSuffix}`,
-      "dashboard",
-    );
-  }
-  if (urlParsed.org) {
-    log.warn(`Extracted org '${urlParsed.org}' from URL`);
-    const titleFilter = remaining.length > 0 ? remaining.join(" ") : undefined;
-    return { targetArg: `${urlParsed.org}/`, titleFilter };
-  }
-  return null;
-}
-
-export function parseDashboardListArgs(args: string[]): ListArgResult {
-  // buildListCommand's interceptSubcommand may replace args[0] with undefined
-  // when the first positional matches a subcommand name (e.g. "view", "create").
-  // Filter those out so we don't crash on .includes("/").
-  const filtered = args.filter(
-    (a): a is string => a !== null && a !== undefined && a !== "",
-  );
-  if (filtered.length === 0) {
-    return { targetArg: undefined, titleFilter: undefined };
-  }
-
-  // URL detection — extract org or suggest `view` for dashboard-specific URLs
-  const urlResult = tryExtractListUrl(filtered[0] as string, filtered.slice(1));
-  if (urlResult) {
-    return urlResult;
-  }
-
-  if (filtered.length >= 2) {
-    // First arg is the target, remaining args are joined as the filter.
-    // This handles unquoted multi-word titles: `my-org/ CLI Health` arrives
-    // as ["my-org/", "CLI", "Health"] and becomes filter "CLI Health".
-    // Normalize bare org slug to org/ format so parseOrgProjectArg treats
-    // it as org-all (dashboards are org-scoped, project is irrelevant).
-    const raw = filtered[0] as string;
-    const target = raw.includes("/") ? raw : `${raw}/`;
-    const titleFilter = filtered.slice(1).join(" ");
-    return { targetArg: target, titleFilter };
-  }
-  // 1 arg: if it contains "/" it may be a target, or an org/project/name combo.
-  // Without "/" it's always a title filter (dashboards are org-scoped).
-  const arg = filtered[0] as string;
-  if (arg.includes("/")) {
-    return splitOrgProjectName(arg);
-  }
-  return { targetArg: undefined, titleFilter: arg };
-}
-
-/**
- * Split a slash-containing single arg into target and optional title filter.
- *
- * - `org/` or `org/project` (≤1 slash) → target only, no filter
- * - `org/project/name` (2+ slashes) → target is `org/project`, filter is the rest
- *
- * This lets users type `sentry dashboard list my-org/my-project/CLI` as a
- * single arg instead of requiring two separate args.
- */
-function splitOrgProjectName(arg: string): {
-  targetArg: string | undefined;
-  titleFilter: string | undefined;
-} {
-  const firstSlash = arg.indexOf("/");
-  const secondSlash = arg.indexOf("/", firstSlash + 1);
-
-  if (secondSlash === -1) {
-    // Only one slash: "org/" or "org/project" — target only
-    return { targetArg: arg, titleFilter: undefined };
-  }
-
-  // Two+ slashes: split into target + name filter
-  const target = arg.slice(0, secondSlash);
-  const name = arg.slice(secondSlash + 1);
-  if (!name) {
-    // Trailing slash after project: "org/project/" → target only
-    return { targetArg: arg, titleFilter: undefined };
-  }
-  return { targetArg: target, titleFilter: name };
 }
 
 /**
@@ -319,11 +120,13 @@ export async function resolveDashboardId(
   let cursor: string | undefined;
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const { data, nextCursor } = await listDashboardsPaginated(orgSlug, {
-      perPage: API_MAX_PER_PAGE,
-      cursor,
-    }).catch(async (error: unknown) =>
-      enrichDashboardError(error, { orgSlug, operation: "list" }),
+    const { data, nextCursor } = await withDashboardErrors(
+      { orgSlug, operation: "list" },
+      () =>
+        listDashboardsPaginated(orgSlug, {
+          perPage: API_MAX_PER_PAGE,
+          cursor,
+        }),
     );
     // Match by ID/slug first (e.g. "default-overview"), then fall back to title
     const match =
@@ -544,16 +347,13 @@ function warnUnknownAggregateFields(
     return;
   }
   for (const agg of aggregates) {
-    const parenIdx = agg.indexOf("(");
-    if (parenIdx < 0) {
-      continue;
-    }
-    const fn = agg.slice(0, parenIdx);
+    const parsed = parseFunction(agg);
     // Only check numeric aggregate functions — count_unique, any, etc. accept any column
-    if (!NUMERIC_AGGREGATE_FUNCTIONS.has(fn)) {
+    if (!(parsed && NUMERIC_AGGREGATE_FUNCTIONS.has(parsed.name))) {
       continue;
     }
-    const inner = agg.slice(parenIdx + 1, -1);
+    // The aggregated field is the first argument; percentile() adds a level.
+    const inner = parsed.arguments[0];
     if (!inner) {
       continue;
     }
@@ -777,6 +577,24 @@ export async function enrichDashboardError(
   }
 
   throw error;
+}
+
+/**
+ * Run a dashboard API operation, converting its failures with
+ * {@link enrichDashboardError}.
+ *
+ * @param ctx - Context about the operation for building error messages
+ * @param fn - The operation to run
+ */
+export async function withDashboardErrors<T>(
+  ctx: DashboardErrorContext,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    return await enrichDashboardError(error, ctx);
+  }
 }
 
 /**

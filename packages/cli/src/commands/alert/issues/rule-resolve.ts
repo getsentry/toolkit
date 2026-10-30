@@ -10,11 +10,13 @@ import {
   isNotFoundApiError,
   listIssueAlertsPaginated,
 } from "../../../lib/api-client.js";
+import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
 import type { ResolvedTarget } from "../../../lib/resolve-target.js";
-import { isAllDigits } from "../../../lib/utils.js";
+import { countChar, isAllDigits } from "../../../lib/utils.js";
+import { alertRuleParameter } from "../arguments.js";
 
 const log = logger.withTag("alert.issues");
 
@@ -42,7 +44,7 @@ export function parseIssueRuleArg(
     );
   }
 
-  const slashCount = [...trimmed].filter((c) => c === "/").length;
+  const slashCount = countChar(trimmed, "/");
   if (slashCount === 0) {
     return { ref: trimmed, targetArg: undefined };
   }
@@ -65,6 +67,20 @@ export function parseIssueRuleArg(
     );
   }
   return { ref, targetArg: targetPart || undefined };
+}
+
+/**
+ * The `<org>/<project>/<rule-id-or-name>` parameter of an issue alert
+ * command, parsed with {@link parseIssueRuleArg} before the command runs.
+ */
+export function issueRuleParameter(usageHint: string, brief: string) {
+  return alertRuleParameter({
+    placeholder: "org/project/rule-id-or-name",
+    brief,
+    kind: ORG_PROJECT_TARGET,
+    split: parseIssueRuleArg,
+    usageHint,
+  });
 }
 
 /** List all issue alert rules for a project (paginated). */

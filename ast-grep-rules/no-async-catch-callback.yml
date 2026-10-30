@@ -1,0 +1,13 @@
+id: no-async-catch-callback
+language: TypeScript
+severity: error
+message: Do not pass an async callback to `.catch()`.
+note: Use `try { return await op(); } catch (error) { ... }` (or a wrapper such as `withDashboardErrors`) so the error path is awaited explicitly and stays in async stack traces.
+rule:
+  pattern: $PROMISE.catch($HANDLER)
+constraints:
+  HANDLER:
+    any:
+      - kind: arrow_function
+      - kind: function_expression
+    regex: ^async\b

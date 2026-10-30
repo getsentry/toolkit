@@ -8,7 +8,6 @@ import {
   findEndpointsByPath,
   getAllEndpoints,
   getAllResources,
-  getEndpoint,
   getEndpointsByResource,
   getResourceSummaries,
   parseEndpointQuery,
@@ -84,27 +83,6 @@ describe("getEndpointsByResource", () => {
   });
 });
 
-describe("getEndpoint", () => {
-  test("finds specific endpoint by operationId substring", () => {
-    const ep = getEndpoint("issues", "getOrganizationIssue");
-    expect(ep).toBeDefined();
-    expect(ep?.resource).toBe("issues");
-    expect(ep?.method).toBe("GET");
-    expect(ep?.fn).toBe("getOrganizationIssue");
-  });
-
-  test("is case-insensitive", () => {
-    const ep1 = getEndpoint("issues", "list");
-    const ep2 = getEndpoint("Issues", "List");
-    expect(ep1).toEqual(ep2);
-  });
-
-  test("returns undefined for unknown endpoint", () => {
-    expect(getEndpoint("issues", "xyznonexistent123")).toBeUndefined();
-    expect(getEndpoint("nonexistent", "list")).toBeUndefined();
-  });
-});
-
 describe("parseEndpointQuery", () => {
   test("parses METHOD + OpenAPI path", () => {
     const parsed = parseEndpointQuery(
@@ -142,6 +120,12 @@ describe("parseEndpointQuery", () => {
 });
 
 describe("findEndpointsByPath", () => {
+  test("preserves SDK operation names for endpoints with optional arguments", () => {
+    const matches = findEndpointsByPath("/api/0/organizations/", "GET");
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.fn).toBe("listOrganizations");
+  });
+
   test("matches a concrete org slug against {organization_id_or_slug}", () => {
     const matches = findEndpointsByPath(
       "/api/0/organizations/acme/issues/",

@@ -5,6 +5,9 @@ packages. For the CLI, see the [CLI guide](docs/cli/README.md) and the published
 documentation at <https://cli.sentry.dev/>. The [documentation index](docs/README.md)
 covers both products and shared contributor guidance.
 
+The independent [Docs MCP Worker](apps/docs-mcp/README.md) provides documentation
+search and AI-generated answers backed by `docs.sentry.io`.
+
 ## Sentry MCP
 
 Sentry's MCP service is primarily designed for human-in-the-loop coding agents. Our tool selection and priorities are focused on developer workflows and debugging use cases, rather than providing a general-purpose MCP server for all Sentry functionality.
@@ -173,6 +176,15 @@ self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
   }
 }
 ```
+
+### Rate Limits
+
+Tool calls are subject to the Sentry API's rate limits. The MCP server retries
+rate-limited requests, and transient Sentry server errors on read requests,
+after a short wait. When a limit lasts longer, the tool returns a **Rate
+Limited** message that says when to try again. Agents hit the per-second
+limits most often by running many Sentry tool calls in parallel, so run them
+one at a time if you see this message.
 
 ### MCP Inspector
 

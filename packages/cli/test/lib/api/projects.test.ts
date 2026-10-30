@@ -8,7 +8,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   createProjectWithDsn,
@@ -97,7 +97,7 @@ let originalFetch: typeof globalThis.fetch;
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://us.sentry.io");
   projectCacheMocks.restoreActual();
 });

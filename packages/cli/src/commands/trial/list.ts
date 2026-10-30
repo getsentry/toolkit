@@ -9,12 +9,11 @@
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError } from "../../lib/errors.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { withProgress } from "../../lib/polling.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import { type OrgTarget, orgTarget } from "../../lib/target-positional.js";
 import {
   daysRemainingFromDate,
   getDaysRemaining,
@@ -202,11 +201,18 @@ export const listCommand = buildCommand({
     fullDescription:
       "List product trials for an organization, including available,\n" +
       "active, and expired trials.\n\n" +
-      "Examples:\n" +
-      "  sentry trial list\n" +
-      "  sentry trial list my-org\n" +
-      "  sentry trial list --json\n\n" +
       "Alias: `sentry trials` → `sentry trial list`",
+    examples: [
+      {
+        description: "List all trials for the current organization",
+        command: "sentry trial list",
+      },
+      {
+        description: "List trials for a specific organization",
+        command: "sentry trial list my-org",
+      },
+      { description: "Output as JSON", command: "sentry trial list --json" },
+    ],
   },
   output: {
     human: formatTrialListHuman,
@@ -220,21 +226,14 @@ export const listCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (auto-detected if omitted)",
-          parse: String,
+          parse: orgTarget,
           optional: true as const,
         },
       ],
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, org?: string) {
-    const resolved = await resolveOrg({
-      org,
-      cwd: this.cwd,
-    });
-
-    if (!resolved) {
-      throw new ContextError("Organization", "sentry trial list <org>");
-    }
+  async *func(this: SentryContext, flags: ListFlags, target: OrgTarget) {
+    const resolved = await target.resolved;
 
     const info = await withProgress(
       { message: "Fetching trials...", json: flags.json },

@@ -3,31 +3,22 @@
  */
 
 import { listFeedback } from "../../lib/api-client.js";
-import { type IssueSelector, parseIssueArg } from "../../lib/arg-parsing.js";
+import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   ApiError,
   ContextError,
   ResolutionError,
   ValidationError,
 } from "../../lib/errors.js";
+import {
+  type IssueArgument,
+  parseIssueArgument,
+} from "../../lib/issue-arguments.js";
 import { resolveEffectiveOrg } from "../../lib/region.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { SentryFeedback } from "../../types/index.js";
 import { buildCommandHint, resolveIssue } from "../issue/utils.js";
-
-/** Positional parameter for a Feedback selector or issue-style identifier. */
-export const feedbackIdPositional = {
-  kind: "tuple",
-  parameters: [
-    {
-      placeholder: "feedback",
-      brief:
-        "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>",
-      parse: String,
-    },
-  ],
-} as const;
 
 /** Result of resolving and category-checking a modern Feedback issue. */
 export type ResolvedFeedback = {
@@ -88,13 +79,21 @@ async function resolveFeedbackSelector(
  * The command name keeps recovery hints aligned with the caller's operation.
  */
 export async function resolveFeedback(
-  feedbackArg: string,
+  feedbackArg: string | IssueArgument,
   cwd: string,
   command = "view",
 ): Promise<ResolvedFeedback> {
-  const parsed = parseIssueArg(feedbackArg);
+  const { text, parsed } =
+    typeof feedbackArg === "string"
+      ? parseIssueArgument(feedbackArg)
+      : feedbackArg;
   if (parsed.type === "selector") {
-    return resolveFeedbackSelector(parsed.selector, parsed.org, cwd, command);
+    return await resolveFeedbackSelector(
+      parsed.selector,
+      parsed.org,
+      cwd,
+      command,
+    );
   }
 
   let resolved: Awaited<ReturnType<typeof resolveIssue>>;
@@ -108,9 +107,9 @@ export async function resolveFeedback(
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       throw new ResolutionError(
-        `Feedback '${feedbackArg}'`,
+        `Feedback '${text}'`,
         "not found",
-        buildCommandHint(command, feedbackArg, "sentry feedback"),
+        buildCommandHint(command, text, "sentry feedback"),
         ["List available Feedback: sentry feedback list"],
       );
     }

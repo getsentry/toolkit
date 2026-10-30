@@ -15,6 +15,12 @@ List and view spans in projects or traces
 
 List spans in a project or trace
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/trace-id...>` | [&lt;org&gt;/&lt;project&gt;] or [&lt;org&gt;/&lt;project&gt;/]&lt;trace-id&gt; |
+
 **Flags:**
 - `-n, --limit <value> - Number of spans (<=1000) - (default: "25")`
 - `-q, --query <value> - Filter spans (e.g., "op:db", "project:backend", "project:[cli,api]")`
@@ -49,25 +55,40 @@ sentry span list -q "op:db"
 # Slow spans in the last 24 hours
 sentry span list -q "duration:>100ms" --period 24h
 
+# Sort by slowest first
+sentry span list --sort duration
+
 # List spans within a specific trace
 sentry span list abc123def456abc123def456abc12345
-
-# Paginate through results
-sentry span list -c next
 
 # Show only spans from one project within a trace
 sentry span list my-org/cli-server/abc123def456abc123def456abc12345
 
-# Or use --query to filter by project
-sentry span list abc123def456abc123def456abc12345 -q "project:cli-server"
-
-# Multiple projects at once
+# Filter a trace's spans to several projects
 sentry span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"
+
+# Fetch the next page
+sentry span list -c next
+
+# List spans in an explicit project
+sentry span list my-org/cli-server
+
+# Find a project across organizations, then list a trace
+sentry span list cli-server abc123def456abc123def456abc12345
+
+# Fetch the next page of a trace
+sentry span list abc123def456abc123def456abc12345 -c next
 ```
 
 ### `sentry span view <trace-id/span-id...>`
 
 View details of specific spans
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<trace-id/span-id...>` | [&lt;org&gt;/&lt;project&gt;/]&lt;trace-id&gt; &lt;span-id&gt; [&lt;span-id&gt;...] - Trace ID and one or more span IDs |
 
 **Flags:**
 - `--spans <value> - Span tree depth limit (number, "all" for unlimited, "no" to disable) - (default: "3")`
@@ -82,7 +103,7 @@ sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890
 # View multiple spans at once
 sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012
 
-# With explicit org/project
+# Specify the organization and project explicitly
 sentry span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890
 ```
 

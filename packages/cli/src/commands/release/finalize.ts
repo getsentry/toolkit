@@ -17,7 +17,7 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release finalize [<org>/]<version>";
 
@@ -42,13 +42,26 @@ function formatReleaseFinalized(data: Record<string, unknown>): string {
 export const finalizeCommand = buildCommand({
   docs: {
     brief: "Finalize a release",
-    fullDescription:
-      "Mark a release as finalized by setting its release date.\n\n" +
-      "Examples:\n" +
-      "  sentry release finalize 1.0.0\n" +
-      "  sentry release finalize my-org/1.0.0\n" +
-      "  sentry release finalize 1.0.0 --released 2025-01-01T00:00:00Z\n" +
-      "  sentry release finalize 1.0.0 --dry-run",
+    fullDescription: "Mark a release as finalized by setting its release date.",
+    examples: [
+      {
+        description: "Finalize a release",
+        command: "sentry release finalize 1.0.0",
+      },
+      {
+        description: "Finalize a release in an explicit organization",
+        command: "sentry release finalize my-org/1.0.0",
+      },
+      {
+        description: "Set a custom release timestamp",
+        command:
+          "sentry release finalize 1.0.0 --released 2025-01-01T00:00:00Z",
+      },
+      {
+        description: "Preview without finalizing",
+        command: "sentry release finalize 1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatReleaseFinalized,
@@ -57,11 +70,10 @@ export const finalizeCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version to finalize",
-          parse: String,
-        },
+        releaseParameter(
+          USAGE_HINT,
+          "[<org>/]<version> - Release version to finalize",
+        ),
       ],
     },
     flags: {
@@ -90,15 +102,9 @@ export const finalizeCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
-    const { cwd } = this;
-
-    const { version, org, detectedFrom } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
       yield new CommandOutput({

@@ -7,7 +7,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import {
   type LogSortDirection,
@@ -16,9 +16,12 @@ import {
 } from "../../lib/api-client.js";
 import {
   buildProjectQuery,
+  type ParsedOrgProject,
   parseLogSort,
+  parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   AuthError,
   stringifyUnknown,
@@ -50,8 +53,12 @@ import {
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
 import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
   resolveLogProjectId,
-  resolveProjectBoundFromArg,
+  resolveProjectBoundTarget,
 } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
 import {
@@ -62,9 +69,12 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import {
-  parseDualModeArgs,
+  applyTraceTargetInput,
+  parseDualModeInput,
   resolveTraceOrg,
+  type TraceTargetInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 import { getUpdateNotification } from "../../lib/version-check.js";
@@ -154,16 +164,71 @@ type FetchResult = {
 // Positional argument disambiguation
 // ---------------------------------------------------------------------------
 
+/** What `log list` lists, as parsed: a project's logs or a trace's. */
+type LogListInput =
+  | {
+      readonly mode: "project";
+      readonly target: ParsedOrgProject;
+      /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+      readonly baseUrl?: string;
+    }
+  | { readonly mode: "trace"; readonly trace: TraceTargetInput };
+
+/** What `log list` lists, resolved. */
+type LogListTarget =
+  | { readonly mode: "project"; readonly org: string; readonly project: string }
+  | {
+      readonly mode: "trace";
+      readonly org: string;
+      readonly traceId: string;
+      /** Project the user named, to filter the trace's logs by */
+      readonly projectFilter?: string;
+    };
+
+/** The arguments of `log list`. */
+type LogListArguments = BoundArguments<LogListInput, LogListTarget>;
+
 /**
- * Disambiguate log list positional arguments.
- *
- * Thin wrapper around {@link parseDualModeArgs} that binds the
- * trace-mode usage hint for log list.
+ * Disambiguate log list positional arguments with {@link parseDualModeInput}
+ * (trace mode when the arguments end in a trace ID).
  */
-function parseLogListArgs(
-  args: string[],
-): ReturnType<typeof parseDualModeArgs> {
-  return parseDualModeArgs(args, TRACE_USAGE_HINT);
+function parseLogListInput(args: readonly string[]): LogListInput {
+  const input = parseDualModeInput(args, TRACE_USAGE_HINT);
+  if (input.mode === "trace") {
+    return input;
+  }
+  const { parsed, baseUrl } = parseOrgProjectInput(input.target);
+  return { mode: "project", target: parsed, baseUrl };
+}
+
+async function resolveLogListTarget(
+  input: LogListInput,
+  context: SentryContext,
+): Promise<LogListTarget> {
+  if (input.mode === "trace") {
+    const parsed = applyTraceTargetInput(input.trace);
+    warnIfNormalized(parsed, "log.list");
+    const { traceId, org } = await resolveTraceOrg(
+      parsed,
+      context.cwd,
+      TRACE_USAGE_HINT,
+    );
+    return {
+      mode: "trace",
+      org,
+      traceId,
+      projectFilter: parsed.type === "explicit" ? parsed.project : undefined,
+    };
+  }
+  if (input.baseUrl) {
+    applySentryUrlContext(input.baseUrl);
+  }
+  const { org, project } = await resolveProjectBoundTarget(
+    input.target,
+    context.cwd,
+    COMMAND_NAME,
+  );
+  return { mode: "project", org, project };
 }
 
 /**
@@ -703,22 +768,53 @@ export const listCommand = buildListCommand(
       brief: "List logs from a project",
       fullDescription:
         "List and stream logs from Sentry projects.\n\n" +
-        "Target patterns:\n" +
-        "  sentry log list               # auto-detect from DSN or config\n" +
-        "  sentry log list <org>/<proj>  # explicit org and project\n" +
-        "  sentry log list <project>     # find project across all orgs\n\n" +
         `${TARGET_PATTERN_NOTE}\n\n` +
-        "Trace filtering:\n" +
-        "  sentry log list <trace-id>           # Filter by trace (auto-detect org)\n" +
-        "  sentry log list <org>/<trace-id>     # Filter by trace (explicit org)\n\n" +
-        "Examples:\n" +
-        "  sentry log list                    # List last 100 logs\n" +
-        "  sentry log list -f                 # Stream logs (2s poll interval)\n" +
-        "  sentry log list -f 5               # Stream logs (5s poll interval)\n" +
-        "  sentry log list --limit 50         # Show last 50 logs\n" +
-        "  sentry log list -q 'severity:error' # Filter to errors only\n" +
-        "  sentry log list abc123def456abc123def456abc123de  # Filter by trace\n\n" +
+        "Pass a 32-character trace ID instead of a project to filter by trace.\n\n" +
         "Alias: `sentry logs` → `sentry log list`",
+      examples: [
+        { description: "List the last 100 logs", command: "sentry log list" },
+        {
+          description: "Show only error logs",
+          command: "sentry log list -q 'severity:error'",
+        },
+        {
+          description: "Filter by message content",
+          command: "sentry log list -q 'database'",
+        },
+        {
+          description: "Match a regular expression (key://pattern//)",
+          command: "sentry log list -q 'message://^Timeout after \\d+ms//'",
+        },
+        {
+          description: "Show the last 50 logs",
+          command: "sentry log list --limit 50",
+        },
+        {
+          description: "List logs for a trace",
+          command: "sentry log list abc123def456abc123def456abc12345",
+        },
+        {
+          description: "Stream logs (2-second poll interval)",
+          command: "sentry log list -f",
+        },
+        {
+          description: "Stream logs (5-second poll interval)",
+          command: "sentry log list -f 5",
+        },
+        {
+          description: "Stream error logs from a specific project",
+          command: "sentry log list my-org/backend -f -q 'severity:error'",
+        },
+        {
+          description: "Filter JSON output with jq",
+          command:
+            "sentry log list --json | jq '.data[] | select(.severity == \"error\")'",
+        },
+        {
+          description: "Filter by trace in an explicit organization",
+          command: "sentry log list my-org/abc123def456abc123def456abc12345",
+        },
+      ],
     },
     output: {
       human: createLogRenderer,
@@ -726,15 +822,13 @@ export const listCommand = buildListCommand(
       schema: SentryLogSchema,
     },
     parameters: {
-      positional: {
-        kind: "array",
-        parameter: {
-          placeholder: "org/project-or-trace-id",
-          brief:
-            "[<org>/[<project>/]]<trace-id>, <org>/<project>, or <project>",
-          parse: String,
-        },
-      },
+      positional: boundArguments({
+        placeholder: "org/project-or-trace-id",
+        brief: "[<org>/[<project>/]]<trace-id>, <org>/<project>, or <project>",
+        kind: ORG_PROJECT_TARGET,
+        parse: parseLogListInput,
+        resolve: resolveLogListTarget,
+      }),
       flags: {
         limit: {
           kind: "parsed",
@@ -777,17 +871,17 @@ export const listCommand = buildListCommand(
         s: "sort",
       },
     },
-    async *func(this: SentryContext, flags: ListFlags, ...args: string[]) {
+    async *func(
+      this: SentryContext,
+      flags: ListFlags,
+      target: LogListArguments,
+    ) {
       validateFollowFlags(flags);
-
-      const { cwd } = this;
-
-      const parsed = parseLogListArgs(args);
 
       // Resolve mode-dependent default period
       const timeRange =
         flags.period ??
-        (parsed.mode === "trace" ? TIME_RANGE_14D : TIME_RANGE_30D);
+        (target.parsed.mode === "trace" ? TIME_RANGE_14D : TIME_RANGE_30D);
 
       // Follow mode streams live events via short polling intervals —
       // absolute date ranges are silently ignored, so reject them entirely.
@@ -799,14 +893,10 @@ export const listCommand = buildListCommand(
         );
       }
 
-      if (parsed.mode === "trace") {
+      const resolved = await target.resolved;
+      if (resolved.mode === "trace") {
         // Trace mode: use the org-scoped trace-logs endpoint.
-        warnIfNormalized(parsed.parsed, "log.list");
-        const { traceId, org } = await resolveTraceOrg(
-          parsed.parsed,
-          cwd,
-          TRACE_USAGE_HINT,
-        );
+        const { traceId, org, projectFilter } = resolved;
 
         // Warn if --fields was passed — the trace-logs endpoint has a fixed
         // field set and doesn't support arbitrary extra fields.
@@ -815,10 +905,6 @@ export const listCommand = buildListCommand(
             "--fields is not supported for trace-scoped log queries. Use project-scoped mode instead.",
           );
         }
-
-        // Capture explicit project for API-level filtering
-        const projectFilter =
-          parsed.parsed.type === "explicit" ? parsed.parsed.project : undefined;
 
         // Prepend project filter to the query when user explicitly specified a project
         const traceQuery = buildProjectQuery(flags.query, projectFilter);
@@ -895,11 +981,7 @@ export const listCommand = buildListCommand(
 
       // Standard project-scoped mode
       {
-        const { org, project } = await resolveProjectBoundFromArg(
-          parsed.target,
-          cwd,
-          COMMAND_NAME,
-        );
+        const { org, project } = resolved;
         // Resolve the slug to a numeric project ID so the Events query scopes
         // via the `project` param. The `project:<slug>` filter only matches
         // actively-selected projects and can otherwise return no logs (#1317).

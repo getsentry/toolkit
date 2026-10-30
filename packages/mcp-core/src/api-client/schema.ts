@@ -26,32 +26,12 @@
  * const issues = IssueListSchema.parse(await response.json());
  * // TypeScript now knows the exact shape of issues
  * ```
- *
- * @example Error Handling
- * ```typescript
- * const { data, success, error } = ApiErrorSchema.safeParse(response);
- * if (success) {
- *   throw new ApiError(data.detail, statusCode);
- * }
- * ```
  */
 import type {
   SentryIssueIdentity,
   SentryNamedResource,
 } from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
-
-/**
- * Schema for Sentry API error responses.
- *
- * Uses .passthrough() to allow additional fields that may be present
- * in different error scenarios.
- */
-export const ApiErrorSchema = z
-  .object({
-    detail: z.string(),
-  })
-  .passthrough();
 
 export const UserSchema = z
   .object({
@@ -132,8 +112,8 @@ export const RepositorySchema = z
       })
       .passthrough(),
     status: z.string(),
-    externalSlug: z.string().optional(),
-    externalId: z.string().optional(),
+    externalSlug: z.string().nullish(),
+    externalId: z.string().nullish(),
     integrationId: z.union([z.string(), z.number()]).nullable().optional(),
   })
   .passthrough();
@@ -830,6 +810,8 @@ export const CommittersResponseSchema = z.object({
 export const IssueActivitySchema = z
   .object({
     id: ApiResourceIdSchema,
+    commentId: ApiResourceIdSchema.nullable().optional(),
+    source: z.string().nullable().optional(),
     type: z.string().nullable().optional(),
     dateCreated: z.string().datetime().nullable().optional(),
     user: ApiActorSchema.nullable().optional(),
@@ -1182,8 +1164,6 @@ const BaseEventSchema = z.object({
   _meta: z.unknown().optional(),
   // dateReceived is when the server received the event (may not be present in all contexts)
   dateReceived: z.string().datetime().nullish(),
-  // shared-formatter output, present when the event endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 export const ErrorEventSchema = BaseEventSchema.omit({
@@ -1418,8 +1398,6 @@ export const AutofixRunStateSchema = z.object({
     })
     .passthrough()
     .nullable(),
-  // shared-formatter output, present when the autofix endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 /**
@@ -1728,43 +1706,43 @@ export const TraceMetaSchema = z
  * Represents the hierarchical structure of spans with timing information,
  * operation details, and nested children spans.
  */
-export const TraceSpanSchema: z.ZodType<any> = z.lazy(() =>
-  z.object({
-    children: z.array(TraceSpanSchema),
-    errors: z.array(z.any()),
-    occurrences: z.array(z.any()),
-    event_id: z.string(),
-    span_id: z.string().optional(),
-    transaction_id: z.string(),
-    project_id: z.union([z.string(), z.number()]),
-    project_slug: z.string(),
-    profile_id: z.string().nullable().optional(),
-    profiler_id: z.string().nullable().optional(),
-    parent_span_id: z.string().nullable(),
-    start_timestamp: z.number(),
-    end_timestamp: z.number(),
-    measurements: z.record(z.string(), z.number()).optional(),
-    duration: z.number(),
-    trace: z.string().optional(),
-    transaction: z.string().nullable().optional(),
-    is_transaction: z.boolean().optional(),
-    description: z.string().nullable().optional(),
-    sdk_name: z.string().nullable().optional(),
-    op: z.string().nullable().optional(),
-    name: z.string().nullable().optional(),
-    event_type: z.string().nullable().optional(),
-    additional_attributes: z.record(z.string(), z.unknown()).optional(),
-    hash: z.string().nullable().optional(),
-    exclusive_time: z.number().optional(),
-    status: z.string().nullable().optional(),
-    is_segment: z.boolean().optional(),
-    same_process_as_parent: z.boolean().optional(),
-    organization: z.unknown().nullable().optional(),
-    tags: z.record(z.string(), z.unknown()).optional(),
-    timestamp: z.union([z.string(), z.number()]).optional(),
-    data: z.record(z.string(), z.unknown()).optional(),
-  }),
-);
+export const TraceSpanSchema = z.object({
+  get children() {
+    return z.array(TraceSpanSchema);
+  },
+  errors: z.array(z.any()),
+  occurrences: z.array(z.any()),
+  event_id: z.string(),
+  span_id: z.string().optional(),
+  transaction_id: z.string(),
+  project_id: z.union([z.string(), z.number()]),
+  project_slug: z.string(),
+  profile_id: z.string().nullable().optional(),
+  profiler_id: z.string().nullable().optional(),
+  parent_span_id: z.string().nullable(),
+  start_timestamp: z.number(),
+  end_timestamp: z.number(),
+  measurements: z.record(z.string(), z.number()).optional(),
+  duration: z.number(),
+  trace: z.string().optional(),
+  transaction: z.string().nullable().optional(),
+  is_transaction: z.boolean().optional(),
+  description: z.string().nullable().optional(),
+  sdk_name: z.string().nullable().optional(),
+  op: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  event_type: z.string().nullable().optional(),
+  additional_attributes: z.record(z.string(), z.unknown()).optional(),
+  hash: z.string().nullable().optional(),
+  exclusive_time: z.number().optional(),
+  status: z.string().nullable().optional(),
+  is_segment: z.boolean().optional(),
+  same_process_as_parent: z.boolean().optional(),
+  organization: z.unknown().nullable().optional(),
+  tags: z.record(z.string(), z.unknown()).optional(),
+  timestamp: z.union([z.string(), z.number()]).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
 
 /**
  * Schema for issue objects that can appear in trace responses.
@@ -2460,11 +2438,13 @@ export type IngestionMeta = z.infer<typeof IngestionMetaSchema>;
  * One bucket of an events-timeseries series. `timestamp` is in milliseconds.
  * `incomplete` marks buckets that may still receive data (the current bucket,
  * or anything after `meta.ingestion.completeThrough`).
+ * `value` is passed through from the query unchanged, so date-typed
+ * aggregates such as `max(timestamp)` return ISO datetime strings.
  */
 export const EventsTimeSeriesValueSchema = z
   .object({
     timestamp: z.number(),
-    value: z.number().nullish(),
+    value: z.union([z.number(), z.string()]).nullish(),
     incomplete: z.boolean(),
     incompleteReason: z.string().optional(),
   })

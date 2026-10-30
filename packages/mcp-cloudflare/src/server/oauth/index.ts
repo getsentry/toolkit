@@ -8,7 +8,4 @@ export {
   SENTRY_TOKEN_URL,
   TokenResponseSchema,
 } from "./constants";
-export {
-  getUpstreamAuthorizeUrl,
-  exchangeCodeForAccessToken,
-} from "./helpers";
+export { getUpstreamAuthorizeUrl, exchangeCodeForAccessToken } from "./helpers";

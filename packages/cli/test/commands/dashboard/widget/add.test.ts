@@ -5,6 +5,7 @@
  * Uses spyOn pattern to mock API client and resolve-target.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { addCommand } from "../../../../src/commands/dashboard/widget/add.js";
@@ -154,6 +155,58 @@ describe("dashboard widget add", () => {
     expect(body.widgets.length).toBe(3);
   });
 
+  test.each([
+    { ref: "my-org/123", target: { type: "org-all", org: "my-org" } },
+    {
+      ref: "my-org/web/123",
+      target: { type: "explicit", org: "my-org", project: "web" },
+    },
+  ])(
+    "adds a widget using the qualified dashboard ID $ref",
+    async ({ ref, target }) => {
+      resolveOrgOnlyTargetSpy.mockResolvedValue("my-org");
+      const listDashboardsSpy = vi
+        .spyOn(apiClient, "listDashboardsPaginated")
+        .mockResolvedValue({ data: [], nextCursor: undefined });
+      const { context, stdoutWrite } = createMockContext();
+      const func = await addCommand.loader();
+
+      try {
+        await func.call(
+          context,
+          { json: true, display: "line", query: ["count"] },
+          ref,
+          "New Widget",
+        );
+
+        expect(resolveOrgOnlyTargetSpy).toHaveBeenCalledWith(
+          target,
+          "/tmp",
+          "dashboard",
+          expect.any(String),
+        );
+        expect(getDashboardSpy).toHaveBeenCalledWith("my-org", "123");
+        expect(updateDashboardSpy).toHaveBeenCalledWith(
+          "my-org",
+          "123",
+          expect.objectContaining({
+            widgets: expect.arrayContaining([
+              expect.objectContaining({ title: "New Widget" }),
+            ]),
+          }),
+        );
+        expect(listDashboardsSpy).not.toHaveBeenCalled();
+        const output = JSON.parse(
+          stdoutWrite.mock.calls.map((call) => call[0]).join(""),
+        );
+        expect(output.url).toContain("my-org.sentry.io/dashboard/123");
+        expect(output.widget.title).toBe("New Widget");
+      } finally {
+        listDashboardsSpy.mockRestore();
+      }
+    },
+  );
+
   test("JSON output contains dashboard, widget, and url", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await addCommand.loader();
@@ -187,15 +240,20 @@ describe("dashboard widget add", () => {
     expect(output).toContain("Error Rate");
   });
 
-  test("throws ValidationError when title is missing (less than 2 positional args)", async () => {
+  test("fails to parse the arguments when the title is missing (less than 2 positional args)", async () => {
     const { context } = createMockContext();
     const func = await addCommand.loader();
 
     const err = await func
       .call(context, { json: false, display: "line" }, "123")
       .catch((e: Error) => e);
-    expect(err).toBeInstanceOf(ValidationError);
-    expect(err.message).toContain("Widget title is required");
+    expect(err).toBeInstanceOf(ArgumentParseError);
+    const { exception } = err as ArgumentParseError;
+    expect(exception).toBeInstanceOf(ValidationError);
+    expect((exception as ValidationError).message).toContain(
+      "Widget title is required",
+    );
+    expect(getDashboardSpy).not.toHaveBeenCalled();
   });
 
   test("throws ValidationError for invalid display type", async () => {

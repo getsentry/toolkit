@@ -19,6 +19,7 @@ import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
 import { withEnv } from "./env.js";
+import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
 /** CLI flag names/aliases that trigger infinite streaming output. */
@@ -73,7 +74,8 @@ export type FlagDef = {
   default?: unknown;
   optional?: boolean;
   parse?: (value: string) => unknown;
-  variadic?: boolean;
+  /** `true` or a separator string — Stricli collects either form into an array. */
+  variadic?: boolean | string;
 };
 
 /** Resolved command: handler function + flag definitions for default application. */
@@ -160,6 +162,9 @@ function resolveFlagDefault(def: FlagDef): unknown {
  *   (same as Stricli's `parseInput` path in `parseInputsForFlag`).
  * - For `kind: "boolean"` / `kind: "enum"` flags with a `default`, uses the raw value.
  * - Skips flags already set (non-`undefined`) by the caller.
+ * - Wraps a scalar caller value for a variadic flag in an array. Stricli always
+ *   hands variadic flags to the handler as arrays, so an untyped caller passing
+ *   `{ field: "title" }` would otherwise crash on array methods (CLI-28C).
  *
  * @param flags - The flags object from the SDK caller (may have `undefined` values).
  * @param flagDefs - The command's Stricli flag definitions.
@@ -173,9 +178,11 @@ export function applyFlagDefaults(
   // Copy caller-provided flags, skipping undefined values so they
   // don't shadow the defaults we're about to apply.
   for (const [key, value] of Object.entries(flags)) {
-    if (value !== undefined) {
-      result[key] = value;
+    if (value === undefined) {
+      continue;
     }
+    result[key] =
+      flagDefs[key]?.variadic && !Array.isArray(value) ? [value] : value;
   }
   // Apply defaults for any flag not already set by the caller
   for (const [name, def] of Object.entries(flagDefs)) {
@@ -197,7 +204,7 @@ const ANSI_RE = /\x1b\[[0-9;]*m/g;
 async function flushTelemetry(): Promise<void> {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const Sentry = await import("@sentry/node-core/light");
+    const Sentry = await import("@sentry/node");
     const client = Sentry.getClient();
     if (client) {
       await client.flush(3000);
@@ -217,7 +224,7 @@ function buildSdkError(
   const message =
     stderrStr.replace(ANSI_RE, "").trim() ||
     (thrown instanceof Error ? thrown.message : undefined) ||
-    (thrown !== undefined ? String(thrown) : undefined) ||
+    (thrown !== undefined ? stringifyUnknown(thrown) : undefined) ||
     `Command failed with exit code ${exitCode}`;
   return new SentryError(message, exitCode, stderrStr);
 }
@@ -409,7 +416,7 @@ async function executeWithCapture<T>(
       const { withTelemetry } = await import("./telemetry.js");
 
       try {
-        await withTelemetry(async (span) => executor(captureCtx, span), {
+        await withTelemetry(async (span) => await executor(captureCtx, span), {
           libraryMode: true,
         });
       } catch (thrown) {
@@ -495,7 +502,7 @@ function executeWithStream<T>(
         const { withTelemetry } = await import("./telemetry.js");
 
         // oxlint-disable-next-line typescript/no-non-null-assertion -- captureCtx is assigned on the line above
-        await withTelemetry(async (span) => executor(captureCtx!, span), {
+        await withTelemetry(async (span) => await executor(captureCtx!, span), {
           libraryMode: true,
         });
 
@@ -557,6 +564,11 @@ export function buildInvoker(options?: SentryOptions) {
     positionalArgs: string[],
     meta?: { streaming?: boolean },
   ): Promise<T> | AsyncIterable<T> {
+    // Usage hints read the command path Stricli's forCommand would set
+    const direct = {
+      commandPrefix: ["sentry", ...commandPath],
+      directInvoke: true,
+    };
     if (meta?.streaming) {
       return executeWithStream<T>(options, async (ctx, span) => {
         const { handler, flagDefs } = await resolveCommand(commandPath);
@@ -566,7 +578,7 @@ export function buildInvoker(options?: SentryOptions) {
         }
         const resolvedFlags = applyFlagDefaults(flags, flagDefs);
         await handler.call(
-          ctx.context,
+          { ...ctx.context, ...direct },
           { ...resolvedFlags, json: true },
           ...positionalArgs,
         );
@@ -581,7 +593,7 @@ export function buildInvoker(options?: SentryOptions) {
       }
       const resolvedFlags = applyFlagDefaults(flags, flagDefs);
       await handler.call(
-        ctx.context,
+        { ...ctx.context, ...direct },
         { ...resolvedFlags, json: true },
         ...positionalArgs,
       );

@@ -15,6 +15,7 @@ import {
   isReadonlyError,
   repairSchema,
   runMigrations,
+  TABLE_SCHEMAS,
   tableExists,
 } from "../../../src/lib/db/schema.js";
 import { Database } from "../../../src/lib/db/sqlite.js";
@@ -223,13 +224,12 @@ describe("EXPECTED_TABLES", () => {
   test("contains all required tables", () => {
     const expectedTableNames = [
       "schema_version",
-      "auth",
+      "accounts",
       "project_cache",
       "dsn_cache",
       "project_aliases",
       "metadata",
       "org_regions",
-      "user_info",
       "instance_info",
       "project_root_cache",
       "pagination_cursors",
@@ -238,6 +238,29 @@ describe("EXPECTED_TABLES", () => {
     for (const table of expectedTableNames) {
       expect(EXPECTED_TABLES).toHaveProperty(table);
     }
+  });
+});
+
+describe("TABLE_SCHEMAS persistence", () => {
+  // Tables without `persistent: true` are caches that repair and downgrade
+  // may drop. Listing them here makes adding a table a deliberate choice.
+  test("only known cache tables are droppable", () => {
+    const cacheTables = Object.entries(TABLE_SCHEMAS)
+      .filter(([, schema]) => !schema.persistent)
+      .map(([name]) => name)
+      .sort();
+
+    expect(cacheTables).toEqual([
+      "completion_cache",
+      "dsn_cache",
+      "issue_org_cache",
+      "org_regions",
+      "pagination_cursors",
+      "project_aliases",
+      "project_cache",
+      "project_root_cache",
+      "repo_cache",
+    ]);
   });
 });
 
@@ -254,11 +277,9 @@ describe("EXPECTED_COLUMNS", () => {
     expect(columnNames).toContain("ttl_expires_at");
   });
 
-  test("user_info includes v3 column", () => {
-    const userInfoColumns = EXPECTED_COLUMNS.user_info;
-    const columnNames = userInfoColumns?.map((c) => c.name) ?? [];
-
-    expect(columnNames).toContain("name");
+  test("legacy single-row auth and user_info tables are no longer expected", () => {
+    expect(EXPECTED_TABLES).not.toHaveProperty("auth");
+    expect(EXPECTED_TABLES).not.toHaveProperty("user_info");
   });
 });
 

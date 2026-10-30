@@ -7,7 +7,8 @@ const packageVersion =
 
 export default defineConfig({
   entry: ["src/**/*.ts", "!src/**/*.test.ts"],
-  format: ["cjs", "esm"], // Build for commonJS and ESmodules
+  // ESM only: the package is private and every export points at .js.
+  format: ["esm"],
   dts: true, // Generate declaration file (.d.ts)
   sourcemap: true,
   clean: true,

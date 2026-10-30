@@ -5,6 +5,7 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
@@ -12,9 +13,10 @@ import {
   ApiClientError,
   ApiNotFoundError,
   ApiPermissionError,
+  ApiRateLimitError,
   ApiServerError,
   ApiValidationError,
-} from "./errors";
+} from "@sentry/toolkit-core/api-client/errors";
 import { z } from "zod";
 
 describe("validateEvents error bodies", () => {
@@ -1063,6 +1065,85 @@ describe("monitor time parameters", () => {
   });
 });
 
+describe("getProject", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  const project = {
+    ...projectFixture,
+    id: "123",
+    slug: "backend",
+    name: "Backend",
+    organization: {
+      id: "456",
+      slug: "test-org",
+      name: "Test Organization",
+      features: ["organizations:issue-basic"],
+    },
+    hasProfiles: true,
+    hasReplays: false,
+    hasLogs: true,
+    firstTransactionEvent: false,
+  };
+  const api = new SentryApiService({
+    host: "sentry.io",
+    accessToken: "test-token",
+  });
+
+  it("keeps the default request and full organization response", async () => {
+    const requests: string[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/test-org/backend/",
+        ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json(project);
+        },
+      ),
+    );
+
+    const result = await api.getProject({
+      organizationSlug: "test-org",
+      projectSlugOrId: "backend",
+    });
+
+    expect(requests).toEqual([
+      "https://sentry.io/api/0/projects/test-org/backend/",
+    ]);
+    expect(result).toEqual(project);
+  });
+
+  it("collapses organization on the regional host and preserves project capabilities", async () => {
+    const collapsedProject = {
+      ...project,
+      organization: { id: "456", slug: "test-org" },
+    };
+    const requests: string[] = [];
+    mswServer.use(
+      http.get(
+        "https://eu.sentry.io/api/0/projects/test-org/backend/",
+        ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json(collapsedProject);
+        },
+      ),
+    );
+
+    const result = await api.getProject(
+      {
+        organizationSlug: "test-org",
+        projectSlugOrId: "backend",
+        collapse: "organization",
+      },
+      { host: "eu.sentry.io" },
+    );
+
+    expect(requests).toEqual([
+      "https://eu.sentry.io/api/0/projects/test-org/backend/?collapse=organization",
+    ]);
+    expect(result).toEqual(collapsedProject);
+  });
+});
+
 describe("getIssue", () => {
   it("uses the numeric issue ID when Sentry returns a null shortId", async () => {
     mswServer.use(
@@ -1429,8 +1510,32 @@ describe("transient 5xx retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("does not retry a non-gateway 500", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(internalError());
+  it("retries a 500 on a GET", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(internalError())
+      .mockResolvedValueOnce(authOk());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.getAuthenticatedUser();
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a deterministic 5xx such as 501", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Not Implemented" }), {
+        status: 501,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     globalThis.fetch = fetchMock;
 
     const apiService = new SentryApiService({
@@ -1464,7 +1569,7 @@ describe("transient 5xx retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry a 5xx that the caller opted into via allowStatuses", async () => {
+  it("returns an allowed 5xx as-is once the transport stops retrying", async () => {
     const fetchMock = vi.fn().mockResolvedValue(serviceUnavailable());
     globalThis.fetch = fetchMock;
 
@@ -1474,8 +1579,8 @@ describe("transient 5xx retry", () => {
     });
 
     // getEventAttachment passes allowStatuses so the caller can inspect the raw
-    // response; such requests must be returned as-is, never retried.
-    const response = await (
+    // response. Retries happen in the transport, before the status is checked.
+    const pending = (
       apiService as unknown as {
         request: (
           path: string,
@@ -1484,8 +1589,316 @@ describe("transient 5xx retry", () => {
         ) => Promise<Response>;
       }
     ).request("/auth/", undefined, { allowStatuses: [503] });
+    await vi.runAllTimersAsync();
 
-    expect(response.status).toBe(503);
+    expect((await pending).status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("network failure retry", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  const connectionReset = () => {
+    const error = new Error("fetch failed");
+    error.cause = new Error("read ECONNRESET");
+    return error;
+  };
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("retries a GET after a network failure and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(connectionReset())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "1",
+            name: "Test User",
+            email: "t@example.com",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.getAuthenticatedUser();
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a POST after a network failure", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(connectionReset());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.createTeam({
+      organizationSlug: "my-org",
+      name: "My Team",
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow(/Connection reset/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a malformed token, which fails before fetch", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "bad\ntoken",
+    });
+
+    await expect(apiService.getAuthenticatedUser()).rejects.toThrow(
+      /Malformed authentication token/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("rate limit retry", () => {
+  let originalFetch: typeof globalThis.fetch;
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0, 300);
+  const nowSeconds = Math.floor(now / 1000);
+
+  // Shaped like Sentry's rate-limit middleware response for a fixed window.
+  const rateLimited = (resetSeconds: number, headers = {}) =>
+    new Response(
+      JSON.stringify({
+        detail:
+          "You are attempting to use this endpoint too frequently. Limit is 40 requests in 1 seconds",
+      }),
+      {
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sentry-Rate-Limit-Remaining": "0",
+          "X-Sentry-Rate-Limit-Limit": "40",
+          "X-Sentry-Rate-Limit-Reset": String(resetSeconds),
+          ...headers,
+        },
+      },
+    );
+
+  const authOk = () =>
+    new Response(
+      JSON.stringify({ id: "1", name: "Test User", email: "test@example.com" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+  const rawRequest = (apiService: SentryApiService) =>
+    (
+      apiService as unknown as {
+        request: (path: string, options?: RequestInit) => Promise<Response>;
+      }
+    ).request.bind(apiService);
+
+  const apiService = () =>
+    new SentryApiService({ host: "sentry.io", accessToken: "test-token" });
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    vi.useFakeTimers({ now });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("waits for the rate-limit reset and retries a GET", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(rateLimited(nowSeconds + 1))
+      .mockResolvedValueOnce(authOk());
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    // The reset is 700ms away; no retry before then.
+    await vi.advanceTimersByTimeAsync(699);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a concurrency-limit 429 with backoff", async () => {
+    const concurrencyLimited = new Response(
+      JSON.stringify({
+        detail:
+          "You are attempting to go above the allowed concurrency for this endpoint. Concurrency limit is 25",
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sentry-Rate-Limit-Remaining": "30",
+          "X-Sentry-Rate-Limit-Reset": String(nowSeconds + 1),
+          "X-Sentry-Rate-Limit-ConcurrentRemaining": "0",
+          "X-Sentry-Rate-Limit-ConcurrentLimit": "25",
+        },
+      },
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(concurrencyLimited)
+      .mockResolvedValueOnce(authOk());
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    // The first backoff step is at most 250ms, well before the window reset.
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after the retry budget with the delay in the message", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => rateLimited(Math.floor(Date.now() / 1000) + 1));
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    const error = await promise.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiRateLimitError);
+    expect((error as ApiRateLimitError).toUserMessage()).toMatch(
+      /Retry in 1 second\.$/,
+    );
+    // Initial attempt + 2 retries.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not wait for a reset beyond the per-wait cap", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(rateLimited(nowSeconds + 30));
+    globalThis.fetch = fetchMock;
+
+    const error = await apiService()
+      .getAuthenticatedUser()
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiRateLimitError);
+    expect((error as ApiRateLimitError).retryAfterMs).toBe(29_700);
+    expect((error as ApiRateLimitError).toUserMessage()).toBe(
+      "API error (429): You are attempting to use this endpoint too frequently. Limit is 40 requests in 1 seconds. Retry in 30 seconds.",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("honors a proxy's Retry-After over the Sentry reset", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(rateLimited(nowSeconds + 1, { "Retry-After": "120" }));
+    globalThis.fetch = fetchMock;
+
+    const error = await apiService()
+      .getAuthenticatedUser()
+      .catch((e: unknown) => e);
+
+    expect((error as ApiRateLimitError).retryAfterMs).toBe(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a rate-limited POST, which Sentry rejected before running it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => rateLimited(Math.floor(Date.now() / 1000) + 1));
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().createTeam({
+      organizationSlug: "my-org",
+      name: "My Team",
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toBeInstanceOf(ApiRateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.method).toBe("POST");
+    }
+  });
+
+  it("sends a still-limited GET at most maxRetries + 1 times", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async () => rateLimited(nowSeconds + 1));
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toBeInstanceOf(ApiRateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops waiting when the request is aborted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(rateLimited(nowSeconds + 1));
+    globalThis.fetch = fetchMock;
+    const controller = new AbortController();
+    const reason = new Error("tool call cancelled");
+
+    const promise = rawRequest(apiService())("/auth/", {
+      signal: controller.signal,
+    });
+    promise.catch(() => {});
+    await vi.advanceTimersByTimeAsync(100);
+    controller.abort(reason);
+
+    await expect(promise).rejects.toBe(reason);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the caller's abort reason for an in-flight request", async () => {
+    const fetchMock = vi.fn(
+      (_input: Request | string | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    );
+    globalThis.fetch = fetchMock;
+    const controller = new AbortController();
+    const reason = new Error("tool call cancelled");
+
+    const promise = rawRequest(apiService())("/auth/", {
+      signal: controller.signal,
+    });
+    promise.catch(() => {});
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort(reason);
+
+    await expect(promise).rejects.toBe(reason);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -1529,12 +1942,18 @@ describe("request headers", () => {
 
     const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
-    expect(requestInit.headers["X-Sentry-MCP-Client-Id"]).toBe("abc123");
-    expect(requestInit.headers["X-Sentry-MCP-Client-Name"]).toBe("Claude Code");
-    expect(requestInit.headers["X-Sentry-MCP-Client-Family"]).toBe(
-      "claude-code",
+    expect(new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id")).toBe(
+      "abc123",
     );
-    expect(requestInit.headers["X-Sentry-MCP-Utm-Source"]).toBe("plugin");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Name"),
+    ).toBe("Claude Code");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Family"),
+    ).toBe("claude-code");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Utm-Source"),
+    ).toBe("plugin");
   });
 
   it("should not send MCP client headers when clientId and clientName are not set", async () => {
@@ -1561,10 +1980,18 @@ describe("request headers", () => {
 
     const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
-    expect(requestInit.headers["X-Sentry-MCP-Client-Id"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Client-Name"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Client-Family"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Utm-Source"]).toBeUndefined();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Name"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Family"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Utm-Source"),
+    ).toBeNull();
   });
 });
 
@@ -1816,6 +2243,36 @@ describe("organization SDK list pages", () => {
       "repeated pagination cursor",
     );
     expect(requests).toBe(2);
+  });
+});
+
+describe("listIssues request", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("sends an empty query so Sentry does not apply is:unresolved", async () => {
+    let params = new URLSearchParams();
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/issues/",
+        ({ request }) => {
+          params = new URL(request.url).searchParams;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    await new SentryApiService({ accessToken: "test-token" }).listIssues({
+      organizationSlug: "test-org",
+      projectId: "123",
+      sortBy: "freq",
+    });
+
+    expect(params.get("query")).toBe("");
+    expect(params.get("limit")).toBe("10");
+    expect(params.get("sort")).toBe("freq");
+    expect(params.get("statsPeriod")).toBe(DEFAULT_SEARCH_ISSUES_PERIOD);
+    expect(params.getAll("project")).toEqual(["123"]);
+    expect(params.getAll("collapse")).toEqual(["unhandled"]);
   });
 });
 
@@ -2188,6 +2645,7 @@ describe("API query builders", () => {
       // Mock the API response
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2227,6 +2685,7 @@ describe("API query builders", () => {
       // Mock the API response
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2264,6 +2723,7 @@ describe("API query builders", () => {
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2302,6 +2762,7 @@ describe("API query builders", () => {
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2340,6 +2801,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -2435,6 +2897,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -2862,6 +3325,7 @@ describe("API query builders", () => {
     it("should call the repos endpoint without query", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2898,6 +3362,7 @@ describe("API query builders", () => {
         .fn()
         .mockResolvedValueOnce({
           ok: true,
+          status: 200,
           headers: new Headers({
             "content-type": "application/json",
             link: '<https://sentry.io/api/0/organizations/test-org/repos/?cursor=cursor-2>; rel="next"; results="true"; cursor="cursor-2"',
@@ -2914,6 +3379,7 @@ describe("API query builders", () => {
         })
         .mockResolvedValueOnce({
           ok: true,
+          status: 200,
           headers: new Headers({
             "content-type": "application/json",
           }),
@@ -2945,6 +3411,7 @@ describe("API query builders", () => {
     it("should include query parameter when provided", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2974,6 +3441,7 @@ describe("API query builders", () => {
     it("should return empty array when no repos exist", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2986,6 +3454,36 @@ describe("API query builders", () => {
       });
 
       expect(repos).toHaveLength(0);
+    });
+
+    it("should accept repos with null externalSlug and externalId", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (key: string) =>
+            key === "content-type" ? "application/json" : null,
+        },
+        json: () =>
+          Promise.resolve([
+            {
+              id: "101",
+              name: "getsentry/sentry",
+              provider: { id: "integrations:github", name: "GitHub" },
+              status: "active",
+              externalSlug: null,
+              externalId: null,
+            },
+          ]),
+      });
+
+      const repos = await apiService.listRepos({
+        organizationSlug: "test-org",
+      });
+
+      expect(repos).toHaveLength(1);
+      expect(repos[0].externalSlug).toBeNull();
+      expect(repos[0].externalId).toBeNull();
     });
   });
 
@@ -3006,6 +3504,7 @@ describe("API query builders", () => {
     it("should POST to the code mappings bulk endpoint", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3056,6 +3555,7 @@ describe("API query builders", () => {
     it("should handle updated mappings response", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3114,6 +3614,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) => {
               if (key === "content-type") {
@@ -3159,6 +3660,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3185,6 +3687,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3211,6 +3714,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,

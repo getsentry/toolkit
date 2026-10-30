@@ -102,7 +102,7 @@ function linkHeader(cursor: string, hasResults: boolean): string {
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://us.sentry.io");
 });
 
@@ -290,6 +290,9 @@ describe("setCommitsAuto", () => {
       // List org repositories (SDK uses /repos/ endpoint)
       if (req.url.includes("/repos/")) {
         expect(req.method).toBe("GET");
+        const params = new URL(req.url).searchParams;
+        expect(params.get("query")).toBe("getsentry/cli");
+        expect(params.get("per_page")).toBe("100");
         return new Response(JSON.stringify([SAMPLE_REPO]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -335,6 +338,58 @@ describe("setCommitsAuto", () => {
     expect(release.commitCount).toBe(5);
   });
 
+  test("fetches the previous release commit concurrently with the repository lookup", async () => {
+    const withCommits = { ...SAMPLE_RELEASE, commitCount: 2 };
+    let releaseRepos: (() => void) | undefined;
+    const reposGate = new Promise<void>((resolve) => {
+      releaseRepos = resolve;
+    });
+    let previousRequestedBeforeReposResolved = false;
+    let reposResolved = false;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+
+      if (req.url.includes("/repos/")) {
+        await reposGate;
+        reposResolved = true;
+        return new Response(JSON.stringify([SAMPLE_REPO]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (req.url.includes("/previous-with-commits/")) {
+        previousRequestedBeforeReposResolved = !reposResolved;
+        // Unblock the repository lookup only once the previous-release
+        // request is in flight; a sequential implementation would deadlock.
+        releaseRepos?.();
+        return new Response(
+          JSON.stringify({
+            lastCommit: { id: "prev000000000000000000000000000000000000" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const body = (await req.json()) as {
+        refs: Array<{ previousCommit?: string }>;
+      };
+      expect(body.refs[0]?.previousCommit).toBe(
+        "prev000000000000000000000000000000000000",
+      );
+      return new Response(JSON.stringify(withCommits), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const release = await setCommitsAuto("test-org", "1.0.0", "/tmp");
+
+    expect(previousRequestedBeforeReposResolved).toBe(true);
+    expect(release.commitCount).toBe(2);
+  });
+
   test("throws ApiError when org has no repositories", async () => {
     globalThis.fetch = mockFetch(
       async () =>
@@ -344,9 +399,13 @@ describe("setCommitsAuto", () => {
         }),
     );
 
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /No repository integrations/,
-    );
+    await expect(
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      status: 404,
+      message: expect.stringMatching(/No repository integrations/),
+    });
   });
 
   test.each([
@@ -381,11 +440,45 @@ describe("setCommitsAuto", () => {
       });
       expect(isUserError(error)).toBe(false);
       expect(classifySilenced(error)).toBeNull();
-      expect(requests).toEqual([
+      // The previous-release lookup runs concurrently with the repository
+      // lookup, so only assert on the repository request and that the
+      // release was never updated.
+      expect(
+        requests.filter(({ pathname }) => pathname.endsWith("/repos/")),
+      ).toEqual([
         { method: "GET", pathname: "/api/0/organizations/test-org/repos/" },
       ]);
+      expect(requests.some(({ method }) => method === "PUT")).toBe(false);
     },
   );
+
+  test("throws ValidationError when the name filter matches nothing but the org has repos", async () => {
+    const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
+    const repoQueries: (string | null)[] = [];
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input!, init).url);
+      if (!url.pathname.endsWith("/repos/")) {
+        // Concurrent previous-release lookup
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const params = url.searchParams;
+      repoQueries.push(params.get("query"));
+      const repos = params.get("query") ? [] : [otherRepo];
+      return new Response(JSON.stringify(repos), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
+      /No Sentry repository matching/,
+    );
+    expect(repoQueries).toEqual(["getsentry/cli", null]);
+  });
 
   test("throws ValidationError when no repo matches local remote", async () => {
     const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
@@ -613,5 +706,51 @@ describe("listReleasesPaginated", () => {
     });
 
     expect(result.data).toHaveLength(0);
+  });
+
+  test.each(["sessions", "users", "crash_free_sessions", "crash_free_users"])(
+    "requests flattened results when sorting by %s",
+    async (sort) => {
+      let flatten: string | null = null;
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const url = new URL(new Request(input!, init).url);
+        flatten = url.searchParams.get("flatten");
+        // Sentry rejects session sorts unless the results are flattened.
+        if (flatten !== "1") {
+          return new Response(
+            JSON.stringify({
+              detail:
+                "sorting by crash statistics requires flattening (flatten=1)",
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify([SAMPLE_RELEASE]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const result = await listReleasesPaginated("test-org", { sort });
+
+      expect(flatten).toBe("1");
+      expect(result.data).toHaveLength(1);
+    },
+  );
+
+  test("does not flatten date-sorted results", async () => {
+    let flatten: string | null = "unset";
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input!, init).url);
+      flatten = url.searchParams.get("flatten");
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await listReleasesPaginated("test-org", { sort: "date" });
+
+    expect(flatten).toBeNull();
   });
 });

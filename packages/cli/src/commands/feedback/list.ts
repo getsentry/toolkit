@@ -26,6 +26,7 @@ import {
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
   targetPatternExplanation,
@@ -34,10 +35,13 @@ import { jsonTransformListResult } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type ResolvedOrgOptionalTarget,
-  resolveOrgOptionalFromArg,
   toNumericId,
 } from "../../lib/resolve-target.js";
-import { sanitizeQuery } from "../../lib/search-query.js";
+import { sanitizeIssueQuery } from "../../lib/search-query.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   PERIOD_BRIEF,
@@ -54,7 +58,6 @@ import {
 const DEFAULT_PERIOD = "14d";
 const DEFAULT_STATUS: FeedbackStatus = "unresolved";
 const PAGINATION_KEY = "feedback-list";
-const COMMAND_NAME = "feedback list";
 
 type ListFlags = {
   readonly status: FeedbackStatus;
@@ -134,17 +137,48 @@ export const listCommand = buildListCommand("feedback", {
     brief: "List and search User Feedback",
     fullDescription:
       "List modern User Feedback captured by Sentry. Feedback is queried from the issue index with a mandatory category filter.\n\n" +
-      "Target patterns:\n" +
-      "  sentry feedback list              # auto-detect organization\n" +
-      "  sentry feedback list <org>/       # all projects in an organization\n" +
-      "  sentry feedback list <org>/<proj> # one project\n" +
-      "  sentry feedback list <project>    # find project across organizations\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "Mailboxes:\n" +
       "  unresolved  Inbox feedback (default)\n" +
       "  resolved    Resolved feedback\n" +
       "  spam        Feedback marked as spam\n" +
       "  all         All feedback statuses",
+    examples: [
+      {
+        description: "List Feedback (organization auto-detected)",
+        command: "sentry feedback list",
+      },
+      {
+        description: "List Feedback for one project",
+        command: "sentry feedback list my-org/frontend",
+      },
+      {
+        description: "List Feedback across every project in an organization",
+        command: "sentry feedback list my-org/",
+      },
+      {
+        description: "Search for a project across accessible organizations",
+        command: "sentry feedback list frontend",
+      },
+      {
+        description: "Show resolved Feedback",
+        command: "sentry feedback list my-org/frontend --status resolved",
+      },
+      {
+        description: "Show the spam mailbox",
+        command: "sentry feedback list my-org/frontend --status spam",
+      },
+      {
+        description: "Show every status over the last 90 days",
+        command:
+          "sentry feedback list my-org/frontend --status all --period 90d",
+      },
+      {
+        description: "Search Feedback messages",
+        command:
+          'sentry feedback list my-org/frontend --query "message:*checkout*"',
+      },
+    ],
   },
   output: {
     human: formatFeedbackList,
@@ -157,8 +191,8 @@ export const listCommand = buildListCommand("feedback", {
       parameters: [
         {
           placeholder: "org/project",
-          brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: String,
+          brief: ORG_ALL_TARGET_BRIEF,
+          parse: orgOptionalTarget,
           optional: true,
         },
       ],
@@ -178,7 +212,7 @@ export const listCommand = buildListCommand("feedback", {
       },
       query: {
         kind: "parsed",
-        parse: sanitizeQuery,
+        parse: sanitizeIssueQuery,
         brief: "Search query (Sentry issue search syntax)",
         optional: true,
       },
@@ -195,12 +229,12 @@ export const listCommand = buildListCommand("feedback", {
       q: "query",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const resolved = await resolveOrgOptionalFromArg(
-      target,
-      this.cwd,
-      COMMAND_NAME,
-    );
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: OrgOptionalTarget,
+  ) {
+    const resolved = await target.resolved;
     const projectId = await projectIdFor(resolved);
     const contextKey = buildPaginationContextKey(
       "feedback",

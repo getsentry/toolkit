@@ -7,21 +7,31 @@
 import type { SentryContext } from "../../context.js";
 import { getConversationSpans } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError, validationError } from "../../lib/errors.js";
+import { ORG_TARGET } from "../../lib/completion-target.js";
 import {
   buildTranscriptResult,
   formatTranscriptResult,
   type TranscriptResult,
 } from "../../lib/formatters/conversation.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import { validateResourceId } from "../../lib/input-validation.js";
+import { ValidationError } from "../../lib/errors.js";
+import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
+import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
+  type OrgInput,
+  parseOrgInput,
+  resolveOrgInput,
+} from "../../lib/target-positional.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -31,45 +41,67 @@ type ViewFlags = {
 const USAGE = "[<org>/]<conversation-id>";
 const USAGE_HINT = `sentry agent-conversation view ${USAGE}`;
 
+const log = logger.withTag("agent-conversation.view");
+
+/** Parsed `agent-conversation view` arguments. */
+export type ConversationInput = {
+  readonly conversationId: string;
+  /** The org to look the conversation up in */
+  readonly org: OrgInput;
+  /** Warnings to log, such as for reversed arguments */
+  readonly warnings: readonly string[];
+};
+
+/** A conversation ID and the org it is in. */
+export type ResolvedConversation = {
+  readonly org: string;
+  readonly conversationId: string;
+};
+
+/** The arguments of `agent-conversation view`. */
+export type ConversationArguments = BoundArguments<
+  ConversationInput,
+  ResolvedConversation
+>;
+
 /**
- * Split a `[<org>/]<conversation-id>` positional into its parts.
+ * Parse `[<org>/]<conversation-id>` in the forms every ID-taking command
+ * takes (see `id-arguments.ts`). Conversation IDs are org-scoped, so a
+ * project is rejected. Has no side effects.
  *
- * Conversation IDs are org-scoped (not org/project-scoped like trace/replay
- * IDs) and never contain `/`, so the arg has at most one slash: everything
- * before the first `/` is the org, the remainder is the conversation ID. With
- * no slash the whole value is the conversation ID and the org is auto-detected.
+ * A conversation ID is opaque, so any word may be one: of two words, the
+ * first is the org (`<org> <conversation-id>`), as no reversed order can be
+ * told apart.
  *
- * @throws {ValidationError} When the target contains empty segments or multiple slashes.
+ * @throws {ContextError} When no conversation ID is given
+ * @throws {ValidationError} When the ID or org is malformed, a project is
+ *   given, or there are more arguments than an org and an ID
  */
-function parseConversationTarget(target: string): {
-  org?: string;
-  conversationId: string;
-} {
-  const trimmed = target.trim();
-  const slashIdx = trimmed.indexOf("/");
-  if (slashIdx === -1) {
-    validateResourceId(trimmed, "conversation ID");
-    return { conversationId: trimmed };
+export function parseConversationArguments(
+  args: readonly string[],
+): ConversationInput {
+  const parsed = parseIdArguments(args, ID_KINDS.conversation, {
+    usageHint: USAGE_HINT,
+    multiple: true,
+  });
+  let { target, ids } = parsed;
+  if (target === undefined && ids.length === 2) {
+    target = `${ids[0]}/`;
+    ids = ids.slice(1);
   }
-  if (slashIdx !== trimmed.lastIndexOf("/")) {
-    throw validationError(
-      "Conversation target must contain at most one '/'.",
-      [USAGE_HINT],
+  if (ids.length > 1) {
+    throw new ValidationError(
+      `View one conversation at a time: ${USAGE_HINT}`,
       "conversation-id",
     );
   }
-  const org = trimmed.slice(0, slashIdx);
-  const conversationId = trimmed.slice(slashIdx + 1);
-  if (!(org && conversationId)) {
-    throw validationError(
-      "Conversation target must include both an organization and conversation ID when using '/'.",
-      [USAGE_HINT],
-      "conversation-id",
-    );
-  }
-  validateResourceId(org, "organization slug");
-  validateResourceId(conversationId, "conversation ID");
-  return { org, conversationId };
+  const [conversationId = ""] = ids;
+  const org = parseOrgInput(target, USAGE_HINT);
+  return {
+    conversationId,
+    org: parsed.baseUrl ? { ...org, baseUrl: parsed.baseUrl } : org,
+    warnings: parsed.warnings,
+  };
 }
 
 export const viewCommand = buildCommand({
@@ -99,42 +131,38 @@ export const viewCommand = buildCommand({
     human: formatTranscriptResult,
   },
   parameters: {
-    positional: {
-      kind: "tuple",
-      parameters: [
-        {
-          placeholder: "org/conversation-id",
-          brief: "Organization slug (optional) and conversation ID",
-          parse: String,
-        },
-      ],
-    },
+    positional: boundArguments({
+      placeholder: "org/conversation-id",
+      brief: "Organization slug (optional) and conversation ID",
+      kind: ORG_TARGET,
+      parse: parseConversationArguments,
+      resolve: async (
+        input,
+        context: SentryContext,
+      ): Promise<ResolvedConversation> => {
+        for (const warning of input.warnings) {
+          log.warn(warning);
+        }
+        const { org } = await resolveOrgInput(
+          input.org,
+          context.cwd,
+          USAGE_HINT,
+        );
+        return { org, conversationId: input.conversationId };
+      },
+    }),
     flags: {
       fresh: FRESH_FLAG,
     },
     aliases: FRESH_ALIASES,
   },
-  async *func(this: SentryContext, flags: ViewFlags, target: string) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: ConversationArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-
-    if (target === undefined) {
-      throw new ContextError("Conversation ID", USAGE_HINT, []);
-    }
-    if (!target.trim()) {
-      throw validationError(
-        "Conversation ID cannot be empty.",
-        [USAGE_HINT],
-        "conversation-id",
-      );
-    }
-    const { org: orgArg, conversationId } = parseConversationTarget(target);
-
-    const resolved = await resolveOrg({ org: orgArg, cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
-    }
-    const org = resolved.org;
+    const { org, conversationId } = await target.resolved;
 
     const { spans, stats, truncated, title } = await withProgress(
       {

@@ -62,13 +62,17 @@ import teamFixture from "./fixtures/team.json" with { type: "json" };
 import traceFixture from "./fixtures/trace.json" with { type: "json" };
 import traceEventFixture from "./fixtures/trace-event.json" with { type: "json" };
 import traceItemsAttributesLogsNumberFixture from "./fixtures/trace-items-attributes-logs-number.json" with { type: "json" };
+import traceItemsAttributesLogsNumberWithContextFixture from "./fixtures/trace-items-attributes-logs-number-with-context.json" with { type: "json" };
 import traceItemsAttributesLogsStringFixture from "./fixtures/trace-items-attributes-logs-string.json" with { type: "json" };
+import traceItemsAttributesLogsStringWithContextFixture from "./fixtures/trace-items-attributes-logs-string-with-context.json" with { type: "json" };
 import traceItemsAttributesSpansNumberFixture from "./fixtures/trace-items-attributes-spans-number.json" with { type: "json" };
 import traceItemsAttributesSpansStringFixture from "./fixtures/trace-items-attributes-spans-string.json" with { type: "json" };
 import traceItemsAttributesSpansNumberWithContextFixture from "./fixtures/trace-items-attributes-spans-number-with-context.json" with { type: "json" };
 import traceItemsAttributesSpansStringWithContextFixture from "./fixtures/trace-items-attributes-spans-string-with-context.json" with { type: "json" };
 import traceItemsAttributesTraceMetricsNumberFixture from "./fixtures/trace-items-attributes-tracemetrics-number.json" with { type: "json" };
+import traceItemsAttributesTraceMetricsNumberWithContextFixture from "./fixtures/trace-items-attributes-tracemetrics-number-with-context.json" with { type: "json" };
 import traceItemsAttributesTraceMetricsStringFixture from "./fixtures/trace-items-attributes-tracemetrics-string.json" with { type: "json" };
+import traceItemsAttributesTraceMetricsStringWithContextFixture from "./fixtures/trace-items-attributes-tracemetrics-string-with-context.json" with { type: "json" };
 import traceMetaFixture from "./fixtures/trace-meta.json" with { type: "json" };
 import traceMetaWithNullsFixture from "./fixtures/trace-meta-with-nulls.json" with { type: "json" };
 import traceMixedFixture from "./fixtures/trace-mixed.json" with { type: "json" };
@@ -1175,6 +1179,18 @@ export const restHandlers = buildHandlers([
           ]);
         }
         if (normalizedItemType === "logs") {
+          if (useContext) {
+            return HttpResponse.json([
+              ...withTraceItemAttributeMetadata(
+                traceItemsAttributesLogsStringWithContextFixture,
+                "string",
+              ),
+              ...withTraceItemAttributeMetadata(
+                traceItemsAttributesLogsNumberWithContextFixture,
+                "number",
+              ),
+            ]);
+          }
           return HttpResponse.json([
             ...withTraceItemAttributeMetadata(
               traceItemsAttributesLogsStringFixture,
@@ -1182,6 +1198,18 @@ export const restHandlers = buildHandlers([
             ),
             ...withTraceItemAttributeMetadata(
               traceItemsAttributesLogsNumberFixture,
+              "number",
+            ),
+          ]);
+        }
+        if (useContext) {
+          return HttpResponse.json([
+            ...withTraceItemAttributeMetadata(
+              traceItemsAttributesTraceMetricsStringWithContextFixture,
+              "string",
+            ),
+            ...withTraceItemAttributeMetadata(
+              traceItemsAttributesTraceMetricsNumberWithContextFixture,
               "number",
             ),
           ]);

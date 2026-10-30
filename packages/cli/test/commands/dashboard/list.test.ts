@@ -10,6 +10,7 @@
  * integration tests focus on end-to-end behavior through the Stricli func().
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -294,7 +295,7 @@ describe("dashboard list command", () => {
   // --limit flag
   // -------------------------------------------------------------------------
 
-  test("passes limit as perPage to API", async () => {
+  test("requests full pages regardless of limit", async () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A],
@@ -306,12 +307,12 @@ describe("dashboard list command", () => {
     await func.call(context, defaultFlags({ json: true, limit: 10 }));
 
     expect(withProgressSpy).toHaveBeenCalled();
-    // perPage is Math.min(flags.limit, API_MAX_PER_PAGE). Verify org and cursor;
-    // perPage derivation tested via integration in the command's own tests.
-    expect(listDashboardsPaginatedSpy).toHaveBeenCalledWith(
-      "test-org",
-      expect.objectContaining({ cursor: undefined }),
-    );
+    // The page size stays fixed so a cursor resumed with another --limit
+    // still matches the page size the server encoded in it.
+    expect(listDashboardsPaginatedSpy).toHaveBeenCalledWith("test-org", {
+      cursor: undefined,
+      perPage: apiClient.API_MAX_PER_PAGE,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -433,6 +434,25 @@ describe("dashboard list command", () => {
     const parsed = JSON.parse(output);
     expect(parsed.data).toHaveLength(1);
     expect(parsed.data[0].title).toBe("API Monitoring");
+  });
+
+  test("a dashboard URL fails to parse with a view suggestion, before any request", async () => {
+    const { context } = createMockContext();
+    const func = await listCommand.loader();
+
+    const error = await func
+      .call(
+        context,
+        defaultFlags({ json: true }),
+        "https://my-org.sentry.io/dashboard/4326879/",
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect(String((error as ArgumentParseError).exception)).toContain(
+      "sentry dashboard view my-org/ 4326879",
+    );
+    expect(listDashboardsPaginatedSpy).not.toHaveBeenCalled();
   });
 
   test("glob filter is case-insensitive", async () => {

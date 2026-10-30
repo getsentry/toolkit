@@ -8,6 +8,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { downloadCommand } from "../../../src/commands/replay/download.js";
 
@@ -112,7 +113,7 @@ describe("replay download", () => {
     vi.clearAllMocks();
     tmpDir = await mkdtemp(join(tmpdir(), "replay-dl-"));
     resolveTargetSpy = vi
-      .spyOn(resolveTarget, "resolveOrgOptionalFromArg")
+      .spyOn(resolveTarget, "resolveOrgOptionalTarget")
       .mockResolvedValue({ org: "test-org" });
     resolveReplaySpy = vi
       .spyOn(apiClient, "resolveReplay")
@@ -189,7 +190,7 @@ describe("replay download", () => {
     );
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      "url-org/",
+      { type: "org-all", org: "url-org" },
       tmpDir,
       "replay download",
     );
@@ -265,7 +266,12 @@ describe("replay download", () => {
       .call(createContext().context, { fresh: false })
       .catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(ContextError);
-    expect((error as ContextError).message).toContain("sentry replay download");
+    // An argument error, as the CLI reports it, wrapping the parser's error
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    const { exception } = error as ArgumentParseError;
+    expect(exception).toBeInstanceOf(ContextError);
+    expect((exception as ContextError).message).toContain(
+      "sentry replay download",
+    );
   });
 });

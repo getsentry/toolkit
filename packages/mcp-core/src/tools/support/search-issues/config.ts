@@ -8,7 +8,7 @@ PRIMARY INVARIANT:
 Preserve every valid explicit Sentry search token exactly as written.
 
 DEFINITIONS:
-- Explicit token: field:value, field:>value, field:<value, field:[a,b], or boolean syntax.
+- Explicit token: field:value, !field:value, field:>value, field:<value, or field:[a,b].
 - Natural language: words outside explicit search tokens.
 
 BEHAVIOR:
@@ -22,17 +22,23 @@ BEHAVIOR:
    - assigned_or_suggested, not assignedOrSuggested
    - issue.category, not issueCategory
 8. Sort is returned only in the sort field, never inside query
+9. AND, OR, NOT, and parentheses are invalid in issue search even when written explicitly. Rewrite them using the forms in SYNTAX.
 
 SYNTAX:
 - Time ranges use relative notation: -24h, -7d, -30d
 - Comparisons: >, <, >=, <=
-- Boolean operators: AND, OR, NOT (or !)
+- Space-separated terms are ANDed. Issue search rejects AND and OR, and has no parentheses.
+- Negation: prefix a filter with !, such as !is:resolved. NOT is not an operator; it is searched as text.
+- OR on one field: use an in-list, such as level:[error,warning]
+- is: does not accept in-lists. For several statuses use status:[resolved,ignored]. For several substatuses of the same status use substatus:[regressed,escalating].
 - Field values with spaces need quotes: environment:"dev server"
 
 BUILT-IN FIELDS:
 - is: Issue status and inbox/substatus filters
   Values: unresolved, resolved, ignored, archived, escalating, new, ongoing, regressed, assigned, unassigned, for_review, linked, unlinked
   Use is:for_review for issues in the review queue.
+- status: Issue status, for in-lists only (unresolved, resolved, ignored)
+- substatus: Issue substatus, for in-lists only. Unresolved: new, ongoing, regressed, escalating. Ignored: archived_until_escalating, archived_until_condition_met, archived_forever. Never mix the two groups in one list.
 - level: Severity level (error, warning, info, debug, fatal)
   IMPORTANT: Almost NEVER use this field. Terms like "critical", "important", "severe" refer to IMPACT not level.
   Only use if user explicitly says "error level", "warning level", etc.

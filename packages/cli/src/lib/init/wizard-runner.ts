@@ -19,7 +19,7 @@ import {
   captureException,
   getTraceData,
   setTag,
-} from "@sentry/node-core/light";
+} from "@sentry/node";
 import { formatAuthHeader } from "../auth-header.js";
 import { formatBanner } from "../banner.js";
 import { CLI_VERSION } from "../constants.js";
@@ -452,7 +452,7 @@ async function handleSuspendedStep(
       "done",
     ]);
     const history = stepHistory.get(stepId) ?? [];
-    const previousPhases = history.slice();
+    const previousPhases = [...history];
     history.push(summarizeToolPhaseForHistory(payload, phase, toolResult));
     stepHistory.set(stepId, history);
 

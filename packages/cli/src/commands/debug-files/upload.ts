@@ -547,17 +547,55 @@ export const uploadCommand = buildCommand({
       "from each file's referenced generated C++ sources and uploaded as " +
       "separate il2cpp debug files; combine with --include-sources to also " +
       "bundle the referenced C# source files.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files upload ./build\n" +
-      "  sentry debug-files upload ./symbols.zip\n" +
-      "  sentry debug-files upload ./libexample.so --include-sources\n" +
-      "  sentry debug-files upload ./dsyms --type dsym --wait\n" +
-      "  sentry debug-files upload ./build --il2cpp-mapping --include-sources\n" +
-      "  sentry debug-files upload --derived-data --no-upload\n" +
-      "  sentry debug-files upload ./build --no-zips --no-upload\n\n" +
       "BCSymbolMap resolution (legacy --symbol-maps) is not supported: it " +
       "only applies to Apple Bitcode, which Apple has deprecated. Use the " +
       "legacy Rust sentry-cli if you still need it.",
+    examples: [
+      {
+        description:
+          "Upload debug information files (scans directories recursively)",
+        command: "sentry debug-files upload ./build",
+      },
+      {
+        description: "Attach a source bundle to each file",
+        command: "sentry debug-files upload ./libexample.so --include-sources",
+      },
+      {
+        description: "Scan a .zip archive in place",
+        command: "sentry debug-files upload ./symbols.zip",
+      },
+      {
+        description: "Skip .zip archives",
+        command: "sentry debug-files upload ./build --no-zips",
+      },
+      {
+        description: "Upload only dSYMs and wait for server-side processing",
+        command: "sentry debug-files upload ./dsyms --type dsym --wait",
+      },
+      {
+        description: "Fail unless the requested debug ID is found",
+        command:
+          "sentry debug-files upload ./build --id <debug-id> --require-all",
+      },
+      {
+        description: "Unity: upload IL2CPP line mappings",
+        command: "sentry debug-files upload ./build --il2cpp-mapping",
+      },
+      {
+        description:
+          "Unity: upload IL2CPP line mappings with referenced C# sources",
+        command:
+          "sentry debug-files upload ./build --il2cpp-mapping --include-sources",
+      },
+      {
+        description: "Preview what would be uploaded (no credentials needed)",
+        command: "sentry debug-files upload ./build --no-upload",
+      },
+      {
+        description: "Scan Xcode's DerivedData without uploading",
+        command: "sentry debug-files upload --derived-data --no-upload",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,

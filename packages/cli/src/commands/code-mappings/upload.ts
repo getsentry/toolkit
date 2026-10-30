@@ -174,12 +174,26 @@ export const uploadCommand = buildCommand({
       "and stack trace linking.\n\n" +
       "The input file must be a JSON array of objects with `stackRoot` and " +
       "`sourceRoot` fields.\n\n" +
-      "Usage:\n" +
-      "  sentry code-mappings upload mappings.json\n" +
-      "  sentry code-mappings upload mappings.json --repo owner/repo\n" +
-      "  sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop\n" +
-      "  sentry code-mappings upload mappings.json --json\n\n" +
       "Requires an Organization Token with `org:ci` scope.",
+    examples: [
+      {
+        description: "Upload code mappings from a JSON file",
+        command: "sentry code-mappings upload mappings.json",
+      },
+      {
+        description: "Specify the repository explicitly",
+        command: "sentry code-mappings upload mappings.json --repo owner/repo",
+      },
+      {
+        description: "Specify the repository and default branch",
+        command:
+          "sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry code-mappings upload mappings.json --json",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,

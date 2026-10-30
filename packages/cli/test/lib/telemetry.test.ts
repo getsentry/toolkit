@@ -7,7 +7,7 @@
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import {
   afterAll,
   afterEach,
@@ -41,7 +41,6 @@ import {
   setOrgProjectContext,
   withDbSpan,
   withFsSpan,
-  withHttpSpan,
   withSerializeSpan,
   withTelemetry,
   withTracing,
@@ -106,6 +105,23 @@ describe("initSentry", () => {
   test("uses 0.0.0-dev version when SENTRY_CLI_VERSION is not defined", () => {
     const client = initSentry(true);
     expect(client?.getOptions().release).toBe("0.0.0-dev");
+  });
+
+  test("library mode leaves the host's process hooks and channels alone", () => {
+    const client = initSentry(true, { libraryMode: true });
+    const names = client?.getOptions().integrations.map((i) => i.name) ?? [];
+    for (const hostHook of [
+      "OnUncaughtException",
+      "OnUnhandledRejection",
+      "Http",
+      "NodeFetch",
+      "WorkerThreads",
+      "Express",
+      "Postgres",
+      "OpenAI",
+    ]) {
+      expect(names).not.toContain(hostHook);
+    }
   });
 });
 
@@ -834,21 +850,6 @@ describe("setArgsContext", () => {
   });
 });
 
-describe("withHttpSpan", () => {
-  test("executes function and returns result", async () => {
-    const result = await withHttpSpan("GET", "/test", async () => "success");
-    expect(result).toBe("success");
-  });
-
-  test("propagates errors", async () => {
-    await expect(
-      withHttpSpan("POST", "/test", async () => {
-        throw new Error("http error");
-      }),
-    ).rejects.toThrow("http error");
-  });
-});
-
 describe("withDbSpan", () => {
   test("executes function and returns result", () => {
     const result = withDbSpan("testOp", () => 42);
@@ -1164,7 +1165,7 @@ describe("createTracedDatabase", () => {
 
     // toString() requires proper 'this' binding to access native private fields.
     // bun:sqlite returns the SQL string; Node.js sqlite returns "[object Object]".
-    const sqlString = stmt.toString();
+    const sqlString = (stmt as { toString(): string }).toString();
     if (sqlString !== "[object Object]") {
       expect(sqlString).toContain("SELECT * FROM test");
     }

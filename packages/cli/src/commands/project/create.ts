@@ -26,7 +26,7 @@ import {
   listTeams,
   MEMBER_PROJECT_CREATION_DISABLED_DETAIL,
 } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import { parseOrgProjectInput } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   ApiError,
@@ -46,16 +46,21 @@ import { logger } from "../../lib/logger.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import { renderPlatformGrid } from "../../lib/platform-grid.js";
 import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
   COMMON_PLATFORMS,
   isValidPlatform,
   suggestPlatform,
 } from "../../lib/platforms.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import { type ResolvedOrg, resolveOrg } from "../../lib/resolve-target.js";
 import {
   buildOrgNotFoundError,
   type ResolvedConcreteTeam,
   resolveOrCreateTeam,
 } from "../../lib/resolve-team.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { slugify } from "../../lib/utils.js";
 
 const log = logger.withTag("project.create");
@@ -77,17 +82,18 @@ type CreateFlags = {
  * Sentry's SDK guide URLs use dots (e.g., `sentry.io/for/javascript.nextjs`)
  * but platform identifiers use hyphens (`javascript-nextjs`). Users often
  * copy the dot-notation directly. This auto-corrects dots to hyphens and
- * warns via consola logger, following the same pattern as `normalizeFields` in `api.ts`.
+ * adds a warning to `warnings`, which the resolver logs, following the same
+ * pattern as `normalizeFields` in `api.ts`.
  *
  * Safe to auto-correct because the input is already invalid (dots are never
  * valid in platform identifiers) and the correction is unambiguous.
  */
-function normalizePlatform(platform: string): string {
+function normalizePlatform(platform: string, warnings: string[]): string {
   if (!platform.includes(".")) {
     return platform;
   }
   const corrected = platform.replace(/\./g, "-");
-  log.warn(
+  warnings.push(
     `Platform '${platform}' uses '.' instead of '-' — interpreting as '${corrected}'`,
   );
   return corrected;
@@ -375,13 +381,32 @@ type ParsedProjectSpec = {
   platform: string;
 };
 
+/** `project create`'s positionals, parsed. */
+type ProjectSpecsInput = {
+  /** Org prefix the names share, if any */
+  readonly explicitOrg?: string;
+  readonly parsed: readonly ParsedProjectSpec[];
+  /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+  readonly warnings: readonly string[];
+};
+
+/** `project create`'s `[<org>/]<name>:<platform>...` arguments. */
+export type ProjectCreateArguments = BoundArguments<
+  ProjectSpecsInput,
+  ResolvedOrg
+>;
+
 /**
  * Parse and validate a project name independently from its platform source.
  * Project names cannot contain whitespace in either supported syntax.
+ *
+ * @param baseUrls - Collects the server of a pasted Sentry URL
  */
 function parseProjectName(
   rawName: string,
   platform: string,
+  baseUrls: string[],
 ): ParsedProjectSpec {
   if (rawName.trim() === "") {
     throw new ValidationError("Project name cannot be empty.", "name");
@@ -393,7 +418,10 @@ function parseProjectName(
     );
   }
 
-  const parsedName = parseOrgProjectArg(rawName);
+  const { parsed: parsedName, baseUrl } = parseOrgProjectInput(rawName);
+  if (baseUrl) {
+    baseUrls.push(baseUrl);
+  }
   switch (parsedName.type) {
     case "explicit":
       return {
@@ -419,12 +447,16 @@ function parseProjectName(
 }
 
 /** Validate and normalize a platform associated with a project name. */
-function parseProjectPlatform(rawName: string, rawPlatform: string): string {
+function parseProjectPlatform(
+  rawName: string,
+  rawPlatform: string,
+  warnings: string[],
+): string {
   const trimmedPlatform = rawPlatform.trim();
   if (trimmedPlatform === "") {
     throw new ValidationError(buildPlatformError(rawName), "platform");
   }
-  const platform = normalizePlatform(trimmedPlatform);
+  const platform = normalizePlatform(trimmedPlatform, warnings);
   if (!isValidPlatform(platform)) {
     throw new ValidationError(
       buildPlatformError(rawName, platform),
@@ -440,7 +472,11 @@ function parseProjectPlatform(rawName: string, rawPlatform: string): string {
  * space-separated fallback — the platform must always be attached with `:`,
  * with or without an explicit org prefix on the name.
  */
-function parsePairedProjectSpec(rawSpec: string): ParsedProjectSpec {
+function parsePairedProjectSpec(
+  rawSpec: string,
+  warnings: string[],
+  baseUrls: string[],
+): ParsedProjectSpec {
   const separatorIndex = rawSpec.lastIndexOf(":");
   if (separatorIndex === -1) {
     throw new ValidationError(
@@ -453,19 +489,18 @@ function parsePairedProjectSpec(rawSpec: string): ParsedProjectSpec {
   const platform = parseProjectPlatform(
     rawName,
     rawSpec.slice(separatorIndex + 1),
+    warnings,
   );
-  return parseProjectName(rawName, platform);
+  return parseProjectName(rawName, platform, baseUrls);
 }
 
 /**
  * Parse one or more `[<org>/]<name>:<platform>` pairs, then require explicit
  * org prefixes to agree. A lone positional with no colon at all gets a
  * friendlier "platform is required" error instead of the generic syntax error.
+ * Has no side effects: warnings and a pasted URL's server are returned.
  */
-function parseProjectSpecs(rawSpecs: readonly string[]): {
-  explicitOrg?: string;
-  parsed: ParsedProjectSpec[];
-} {
+function parseProjectSpecs(rawSpecs: readonly string[]): ProjectSpecsInput {
   if (rawSpecs.length === 0) {
     throw new ContextError("Project specification", USAGE_HINT, []);
   }
@@ -476,7 +511,11 @@ function parseProjectSpecs(rawSpecs: readonly string[]): {
       "platform",
     );
   }
-  const parsed = rawSpecs.map(parsePairedProjectSpec);
+  const warnings: string[] = [];
+  const baseUrls: string[] = [];
+  const parsed = rawSpecs.map((spec) =>
+    parsePairedProjectSpec(spec, warnings, baseUrls),
+  );
 
   const orgs = new Set(
     parsed.map((p) => p.org).filter((o): o is string => Boolean(o)),
@@ -489,7 +528,33 @@ function parseProjectSpecs(rawSpecs: readonly string[]): {
     );
   }
   const [explicitOrg] = orgs;
-  return { explicitOrg, parsed };
+  // Applied in order before, so the last pasted URL's server won
+  return { explicitOrg, parsed, baseUrl: baseUrls.at(-1), warnings };
+}
+
+/**
+ * Resolve the org every project is created in, after applying a pasted
+ * URL's server and logging the parse's warnings.
+ *
+ * @throws {ContextError} When no org is given or detected
+ */
+async function resolveProjectSpecsOrg(
+  input: ProjectSpecsInput,
+  cwd: string,
+): Promise<ResolvedOrg> {
+  if (input.baseUrl) {
+    applySentryUrlContext(input.baseUrl);
+  }
+  for (const warning of input.warnings) {
+    log.warn(warning);
+  }
+  const resolved = await resolveOrg({ org: input.explicitOrg, cwd });
+  if (!resolved) {
+    throw new ContextError("Organization", USAGE_HINT, [
+      `Include org in name: ${USAGE_HINT}`,
+    ]);
+  }
+  return resolved;
 }
 
 /**
@@ -614,14 +679,33 @@ export const createCommand = buildCommand({
       "cannot contain whitespace.\n\n" +
       "Every project is a name:platform pair. Create several projects at once\n" +
       "by passing multiple pairs as separate arguments. All projects share one org.\n\n" +
-      "Projects are created under a team. If the org has one team, it is used\n" +
-      "automatically. If no teams exist, one is created. Otherwise, specify --team.\n\n" +
-      "Examples:\n" +
-      "  sentry project create my-app:node\n" +
-      "  sentry project create acme-corp/my-app:javascript-nextjs\n" +
-      "  sentry project create web:javascript api:python-django worker:node\n" +
-      "  sentry project create my-app:python-django --team backend\n" +
-      "  sentry project create my-app:go --json",
+      "Projects are created under a team. Without --team, a default team is\n" +
+      "chosen: your teams first, preferring ones you administer, then the oldest.\n" +
+      "If no teams exist, one is created.",
+    examples: [
+      {
+        description: "Create a project (every project is a name:platform pair)",
+        command: "sentry project create my-new-app:javascript-nextjs",
+      },
+      {
+        description: "Create several projects with their own platforms",
+        command:
+          "sentry project create web:javascript api:python-django worker:node",
+      },
+      {
+        description: "Create under a specific organization and team",
+        command:
+          "sentry project create my-org/my-new-app:python --team backend-team",
+      },
+      {
+        description: "Preview without creating",
+        command: "sentry project create my-new-app:node --dry-run",
+      },
+      {
+        description: "Output the created project as JSON",
+        command: "sentry project create my-app:go --json",
+      },
+    ],
   },
   output: {
     human: formatProjectCreateOutput,
@@ -633,14 +717,13 @@ export const createCommand = buildCommand({
     ],
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "name:platform",
-        brief: "One or more project name and platform pairs",
-        parse: String,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "name:platform",
+      brief: "One or more project name and platform pairs",
+      parse: parseProjectSpecs,
+      resolve: (input: ProjectSpecsInput, context: SentryContext) =>
+        resolveProjectSpecsOrg(input, context.cwd),
+    }),
     flags: {
       team: {
         kind: "parsed",
@@ -652,18 +735,15 @@ export const createCommand = buildCommand({
     },
     aliases: { ...DRY_RUN_ALIASES, t: "team" },
   },
-  async *func(this: SentryContext, flags: CreateFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { explicitOrg, parsed } = parseProjectSpecs(args);
+  async *func(
+    this: SentryContext,
+    flags: CreateFlags,
+    args: ProjectCreateArguments,
+  ) {
+    const { parsed } = args.parsed;
 
     // Resolve organization once — all projects are created in the same org.
-    const resolved = await resolveOrg({ org: explicitOrg, cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT, [
-        `Include org in name: ${USAGE_HINT}`,
-      ]);
-    }
+    const resolved = await args.resolved;
     const orgSlug = resolved.org;
 
     // If the org has no teams, the first project auto-creates one and the rest

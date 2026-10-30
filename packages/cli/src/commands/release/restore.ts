@@ -18,7 +18,7 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release restore [<org>/]<version>";
 
@@ -49,11 +49,21 @@ export const restoreCommand = buildCommand({
     brief: "Restore an archived release",
     fullDescription:
       "Restore an archived release by setting its status back to open, " +
-      "making it visible in the default `sentry release list` again.\n\n" +
-      "Examples:\n" +
-      "  sentry release restore 1.0.0\n" +
-      "  sentry release restore my-org/1.0.0\n" +
-      "  sentry release restore 1.0.0 --dry-run",
+      "making it visible in the default `sentry release list` again.",
+    examples: [
+      {
+        description: "Restore a previously archived release",
+        command: "sentry release restore 1.0.0",
+      },
+      {
+        description: "Restore a release in an explicit organization",
+        command: "sentry release restore my-org/1.0.0",
+      },
+      {
+        description: "Preview without restoring",
+        command: "sentry release restore 1.0.0 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatReleaseRestored,
@@ -62,11 +72,10 @@ export const restoreCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version to restore",
-          parse: String,
-        },
+        releaseParameter(
+          USAGE_HINT,
+          "[<org>/]<version> - Release version to restore",
+        ),
       ],
     },
     flags: {
@@ -81,15 +90,9 @@ export const restoreCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
-    const { cwd } = this;
-
-    const { version, org, detectedFrom } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
       yield new CommandOutput({ dryRun: true, version, org });

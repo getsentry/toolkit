@@ -31,8 +31,12 @@ import {
   type SolutionArtifact,
 } from "../../types/seer.js";
 import {
+  type IssueTarget,
+  issuePositional,
+  requireIssueArgument,
+} from "./positional.js";
+import {
   ensureRootCauseAnalysis,
-  issueIdPositional,
   pollAutofixState,
   resolveOrgAndIssueId,
 } from "./utils.js";
@@ -218,19 +222,31 @@ export const planCommand = buildCommand({
       "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "Prerequisites:\n" +
       "  - GitHub integration configured for your organization\n" +
-      "  - Code mappings set up for your project\n\n" +
-      "Examples:\n" +
-      "  sentry issue plan @latest\n" +
-      "  sentry issue plan 123456789\n" +
-      "  sentry issue plan sentry/EXTENSION-7\n" +
-      "  sentry issue plan cli-G\n" +
-      "  sentry issue plan 123456789 --force",
+      "  - Code mappings set up for your project",
+    examples: [
+      {
+        description: "Generate a fix plan (runs explain first if needed)",
+        command: "sentry issue plan 123456789",
+      },
+      {
+        description: "Generate a fix plan for the most recent issue",
+        command: "sentry issue plan @latest",
+      },
+      {
+        description: "Use a short ID with an organization prefix",
+        command: "sentry issue plan my-org/MYPROJECT-ABC",
+      },
+      {
+        description: "Force a fresh plan even if one already exists",
+        command: "sentry issue plan 123456789 --force",
+      },
+    ],
   },
   output: {
     human: formatPlanOutput,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: "plan" }),
     flags: {
       force: {
         kind: "boolean",
@@ -241,9 +257,10 @@ export const planCommand = buildCommand({
     },
     aliases: FRESH_ALIASES,
   },
-  async *func(this: SentryContext, flags: PlanFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: PlanFlags, target: IssueTarget) {
     applyFreshFlag(flags);
     const { cwd } = this;
+    const issueArg = requireIssueArgument(target.parsed, { command: "plan" });
 
     let resolvedOrg: string | undefined;
 
@@ -300,7 +317,7 @@ export const planCommand = buildCommand({
           "Plan creation timed out after 6 minutes. Try again or check the issue in Sentry web UI.",
         timeoutHint:
           "The plan may still be generated in the background.\n" +
-          `  Or retry: sentry issue plan ${issueArg}`,
+          `  Or retry: sentry issue plan ${issueArg.text}`,
       });
 
       if (finalState.status === "ERROR") {

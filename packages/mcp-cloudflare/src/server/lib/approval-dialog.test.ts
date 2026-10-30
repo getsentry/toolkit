@@ -571,7 +571,7 @@ describe("approval-dialog", () => {
           cookieSecret: TEST_SECRET,
         },
       );
-      return response.text();
+      return await response.text();
     };
 
     it("should strip javascript: clientUri and render name as plain text", async () => {

@@ -18,9 +18,13 @@
  */
 
 import path from "node:path";
-import { setTag } from "@sentry/node-core/light";
+import { setTag } from "@sentry/node";
 import type { SentryContext } from "../context.js";
-import { looksLikePath, parseOrgProjectArg } from "../lib/arg-parsing.js";
+import {
+  looksLikePath,
+  type ParsedOrgProject,
+  parseOrgProjectInput,
+} from "../lib/arg-parsing.js";
 import { buildCommand } from "../lib/command.js";
 import { refreshToken } from "../lib/db/auth.js";
 import { ContextError, ValidationError } from "../lib/errors.js";
@@ -34,7 +38,12 @@ import {
   YES_ALIASES,
   YES_FLAG,
 } from "../lib/mutate-command.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../lib/positional-parse.js";
 import { classifyProjectSearchTarget } from "../lib/resolve-target.js";
+import { applySentryUrlContext } from "../lib/sentry-url-parser.js";
 
 const log = logger.withTag("init");
 
@@ -98,14 +107,19 @@ type InitFlags = {
  * Classify and separate two optional positional args into a target and a directory.
  *
  * Uses {@link looksLikePath} to distinguish filesystem paths from org/project targets.
- * Detects swapped arguments and emits a warning when auto-correcting.
+ * Detects swapped arguments and returns a warning when auto-correcting.
  *
- * @returns Resolved target string (or undefined) and directory string (or undefined)
+ * @returns Target string (or undefined), directory string (or undefined),
+ *   and the warning for swapped arguments, if any
  */
 function classifyArgs(
   first?: string,
   second?: string,
-): { target: string | undefined; directory: string | undefined } {
+): {
+  target: string | undefined;
+  directory: string | undefined;
+  warning?: string;
+} {
   // No args — auto-detect everything
   if (!first) {
     return { target: undefined, directory: undefined };
@@ -152,8 +166,56 @@ function classifyArgs(
   }
 
   // (PATH, TARGET) — swapped, auto-correct with warning
-  log.warn(`Arguments appear reversed. Interpreting as: ${second} ${first}`);
-  return { target: second, directory: first };
+  return {
+    target: second,
+    directory: first,
+    warning: `Arguments appear reversed. Interpreting as: ${second} ${first}`,
+  };
+}
+
+/** `init`'s positionals, parsed: the target and the directory. */
+type InitInput = {
+  readonly target: ParsedOrgProject;
+  /** The directory as typed, relative to the cwd; `undefined` for the cwd */
+  readonly directory?: string;
+  /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+  /** Set when the arguments were swapped; `func` logs it */
+  readonly warning?: string;
+};
+
+/** `init`'s target, resolved to explicit org and project values. */
+type ResolvedInitTarget = {
+  readonly org: string | undefined;
+  readonly project: string | undefined;
+};
+
+/** `init`'s `[<target>] [<directory>]` arguments. */
+export type InitArguments = BoundArguments<InitInput, ResolvedInitTarget>;
+
+/**
+ * Parse `init`'s positionals without side effects: tell the target from
+ * the directory ({@link classifyArgs}), then parse and validate the target.
+ *
+ * @throws {ValidationError} For more than two arguments, two directories,
+ *   two targets, or an invalid org or project slug
+ */
+function parseInitInput(args: readonly string[]): InitInput {
+  if (args.length > 2) {
+    throw new ValidationError(
+      `Too many arguments: ${args.join(" ")}. Expected: sentry init [<target>] [<directory>]`,
+    );
+  }
+  const { target, directory, warning } = classifyArgs(args[0], args[1]);
+  const { parsed, baseUrl } = parseOrgProjectInput(target);
+  // Validate user-provided slugs before they reach API calls
+  if (parsed.type === "explicit") {
+    validateResourceId(parsed.org, "organization slug");
+    validateResourceId(parsed.project, "project name");
+  } else if (parsed.type === "org-all") {
+    validateResourceId(parsed.org, "organization slug");
+  }
+  return { target: parsed, directory, baseUrl, warning };
 }
 
 function parseFeatures(
@@ -218,27 +280,24 @@ function validateNonInteractiveInit(
 }
 
 /**
- * Resolve the parsed org/project target into explicit org and project values.
+ * Resolve the parsed org/project target into explicit org and project values,
+ * after applying a pasted URL's server.
  *
  * For `project-search` (bare slug), searches for an existing project first.
  * If not found, treats the slug as a **new project name** to create —
  * org will be resolved later by init preflight before the workflow starts.
  * If the slug matches an org name, treats it as org-only (like `slug/`).
  */
-async function resolveTarget(targetArg: string | undefined): Promise<{
-  org: string | undefined;
-  project: string | undefined;
-}> {
-  const parsed = parseOrgProjectArg(targetArg);
+async function resolveTarget(input: InitInput): Promise<ResolvedInitTarget> {
+  if (input.baseUrl) {
+    applySentryUrlContext(input.baseUrl);
+  }
+  const parsed = input.target;
 
   switch (parsed.type) {
     case "explicit":
-      // Validate user-provided slugs before they reach API calls
-      validateResourceId(parsed.org, "organization slug");
-      validateResourceId(parsed.project, "project name");
       return { org: parsed.org, project: parsed.project };
     case "org-all":
-      validateResourceId(parsed.org, "organization slug");
       return { org: parsed.org, project: undefined };
     case "project-search": {
       const resolution = await classifyProjectSearchTarget(parsed, {
@@ -288,44 +347,64 @@ async function resolveTarget(targetArg: string | undefined): Promise<{
 
 export const initCommand = buildCommand<
   InitFlags,
-  [string?, string?],
+  [InitArguments],
   SentryContext
 >({
   docs: {
     brief: "Initialize Sentry in your project (experimental)",
+    customUsage: ["[<target>] [<directory>]"],
     fullDescription:
       "EXPERIMENTAL: This command may modify your source files.\n\n" +
       "Runs the Sentry setup wizard to detect your project's framework, " +
       "install the SDK, and configure Sentry.\n\n" +
       "Supports org/project syntax and a directory positional. Path-like\n" +
       "arguments (starting with . / ~) are treated as the directory;\n" +
-      "everything else is treated as the target.\n\n" +
-      "Examples:\n" +
-      "  sentry init\n" +
-      "  sentry init acme/\n" +
-      "  sentry init acme/my-app\n" +
-      "  sentry init my-app\n" +
-      "  sentry init acme/my-app ./my-project\n" +
-      "  sentry init ./my-project",
+      "everything else is treated as the target.",
+    examples: [
+      { description: "Interactive setup", command: "sentry init" },
+      {
+        description: "Non-interactive agent/CI setup",
+        command: "sentry init --yes --features errors,tracing,replay",
+      },
+      {
+        description: "Dry run to preview changes",
+        command: "sentry init --dry-run",
+      },
+      { description: "Target a subdirectory", command: "sentry init ./my-app" },
+      {
+        description: "Use a specific organization (auto-detect project)",
+        command: "sentry init acme/",
+      },
+      {
+        description: "Use a specific organization and project",
+        command: "sentry init acme/my-app",
+      },
+      {
+        description: "Search for a project across organizations",
+        command: "sentry init my-app",
+      },
+      {
+        description: "Use a specific project in a subdirectory",
+        command: "sentry init acme/my-app ./my-project",
+      },
+      {
+        description: "Assign a team when creating a new project",
+        command: "sentry init acme/ --team backend",
+      },
+      {
+        description: "Enable specific features",
+        command: "sentry init --features profiling,replay",
+      },
+    ],
   },
   parameters: {
-    positional: {
-      kind: "tuple",
-      parameters: [
-        {
-          placeholder: "target",
-          brief: "<org>/<project>, <org>/, <project>, or a directory path",
-          parse: String,
-          optional: true,
-        },
-        {
-          placeholder: "directory",
-          brief: "Project directory (default: current directory)",
-          parse: String,
-          optional: true,
-        },
-      ],
-    },
+    positional: boundArguments({
+      placeholder: "target/directory",
+      brief:
+        "Optional target (<org>/<project>, <org>/, or <project>) and directory (default: current directory)",
+      parse: parseInitInput,
+      resolve: resolveTarget,
+    }),
     flags: {
       yes: {
         ...YES_FLAG,
@@ -368,17 +447,13 @@ export const initCommand = buildCommand<
     },
   },
   // oxlint-disable-next-line require-yield -- init renders through WizardUI instead of command output
-  async *func(
-    this: SentryContext,
-    flags: InitFlags,
-    first?: string,
-    second?: string,
-  ) {
-    // 1. Classify positionals into target vs directory
-    const { target: targetArg, directory: dirArg } = classifyArgs(
-      first,
-      second,
-    );
+  async *func(this: SentryContext, flags: InitFlags, args: InitArguments) {
+    // 1. Positionals were classified into target vs directory before func
+    //    ran; report a swap now, as before
+    const { directory: dirArg, warning } = args.parsed;
+    if (warning) {
+      log.warn(warning);
+    }
 
     // 2. Resolve directory
     const targetDir = dirArg ? path.resolve(this.cwd, dirArg) : this.cwd;
@@ -397,11 +472,10 @@ export const initCommand = buildCommand<
     }
 
     // 4. Resolve target → org + project
-    //    Validation of user-provided slugs happens inside resolveTarget.
+    //    User-provided slugs were validated when the target was parsed.
     //    For bare slugs, if no existing project is found, the slug becomes
     //    the name for a new project (org resolved later by the wizard).
-    const { org: explicitOrg, project: explicitProject } =
-      await resolveTarget(targetArg);
+    const { org: explicitOrg, project: explicitProject } = await args.resolved;
 
     // Mastra requires an explicit bearer, unlike regular Sentry API requests
     // that refresh OAuth lazily. Resolve it before opening the wizard so an
