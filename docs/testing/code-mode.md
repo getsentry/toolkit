@@ -190,6 +190,11 @@ its API access when the program ends; the parent broker enforces the boundary
 independently of generated code. Closed RPC calls settle with an error response
 instead of an unhandled rejection.
 
+Before returning success, the sandbox gives workerd a turn to report unhandled
+promise rejections. A failed request cannot disappear just because it settled
+before the program returned. Handled errors, including late catches and
+`Promise.allSettled`, remain valid. API access closes before that final turn.
+
 Cancellation is best effort for HTTP already sent: a write accepted upstream
 cannot be rolled back. The tool retains the warning to inspect state before
 retrying writes. Gate closure revokes API access; it does not forcibly terminate

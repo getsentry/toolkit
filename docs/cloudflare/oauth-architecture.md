@@ -435,6 +435,8 @@ an independent, additive permission: it allows API writes even when Triage Issue
 or Manage Projects & Teams is unchecked, subject to Sentry permissions and the
 connection's organization scope. Project-constrained sessions do not offer
 Code Mode skills.
+Project consent preserves previously remembered API Read/Write choices for the
+next organization consent without adding them to the project's grant.
 
 Note: These describe the MCP OAuth server, not Sentry's OAuth endpoints.
 
@@ -460,6 +462,12 @@ Direct mode intentionally does not:
 
 The caller owns token lifetime and refresh. `Authorization: Bearer ...` remains
 reserved for MCP OAuth access tokens.
+
+Direct requests default to all active skills, including API Read and API Write:
+the client already holds the upstream token. Sentry enforces that token's scopes
+and resource permissions, and MCP connection constraints still apply. The
+`skills` and `disable-skills` parameters can narrow access; the OAuth consent
+screen's unchecked API Write default does not apply to direct tokens.
 
 ## Integration Between MCP OAuth and MCP Server
 

@@ -258,6 +258,13 @@ beforeAll(async () => {
       response.end(JSON.stringify({ title: ["This field is required."] }));
       return;
     }
+    if (request.url === "/api/0/slow-items/") {
+      setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ items: [] }));
+      }, 50);
+      return;
+    }
     if (
       request.url === "/api/0/insufficient-scope/" ||
       request.url === "/api/0/forbidden/"
@@ -654,6 +661,76 @@ describe("HTTP Code Mode through real Dynamic Workers", () => {
       data: { detail: "You do not have permission to perform this action." },
     });
     expect(requests).toHaveLength(1);
+  });
+
+  it.each(["", ".then(() => {})"])(
+    "reports settled API failures from ignored promises%s",
+    async (chain) => {
+      const result = await callTool(
+        "execute_sentry_code",
+        `async () => {
+          sentry.request({method: "POST", path: "/failure/", body: {}})${chain};
+          await sentry.request({path: "/slow-items/"});
+          return "done";
+        }`,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        error: expect.stringContaining(
+          "POST /api/0/failure/ returned HTTP 400",
+        ),
+        httpError: { status: 400, method: "POST", path: "/api/0/failure/" },
+        stats: { apiCalls: 2, writesAttempted: 1 },
+      });
+      expect(result.structuredContent).not.toHaveProperty("result");
+      expect(result.content[0]?.text).toContain(
+        "writes may already have completed",
+      );
+      expect(requests.filter(({ method }) => method === "POST")).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  it("reports an ignored request rejection when the program returns immediately", async () => {
+    const result = await callTool(
+      "execute_sentry_code",
+      `async () => {
+        sentry.request({path: "invalid-path"});
+        return "done";
+      }`,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain("path must start with /");
+    expect(requests).toEqual([]);
+  });
+
+  it("allows handling an API failure after another request finishes", async () => {
+    const result = await callTool(
+      "execute_sentry_code",
+      `async () => {
+        const pending = sentry.request({method: "POST", path: "/failure/", body: {}});
+        await sentry.request({path: "/slow-items/"});
+        try { await pending; } catch (error) { return {status: error.status}; }
+      }`,
+    );
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent?.result).toEqual({ status: 400 });
+  });
+
+  it("allows collecting API failures with Promise.allSettled", async () => {
+    const result = await callTool(
+      "execute_sentry_code",
+      `async () => {
+        const results = await Promise.allSettled([
+          sentry.request({method: "POST", path: "/failure/", body: {}}),
+          sentry.request({path: "/items/"}),
+        ]);
+        return results.map(result => result.status);
+      }`,
+    );
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent?.result).toEqual(["rejected", "fulfilled"]);
   });
 
   it.each(["insufficient-scope", "forbidden"])(

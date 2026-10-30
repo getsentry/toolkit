@@ -1,4 +1,4 @@
-/** Trusted harness; model code is loaded after the private API broker is set. */
+/** One execution per isolate; model code is loaded after the private broker is set. */
 export function sandboxSource(apiBase?: string): string {
   return `
 import { WorkerEntrypoint } from "cloudflare:workers";
@@ -10,6 +10,14 @@ let apiCalls = 0;
 let writesAttempted = 0;
 let pendingApiCalls = 0;
 let apiBroker;
+const unhandledRejections = new Map();
+addEventListener("unhandledrejection", (event) => {
+  event.preventDefault();
+  unhandledRejections.set(event.promise, event.reason);
+});
+addEventListener("rejectionhandled", (event) => {
+  unhandledRejections.delete(event.promise);
+});
 async function request({ method = "GET", path, query, body }) {
     if (!apiBase) throw new Error("API access is unavailable during search.");
     if (!apiBroker) throw new Error("Code execution has finished.");
@@ -54,10 +62,7 @@ async function request({ method = "GET", path, query, body }) {
 const sentry = {
   request(options) {
     pendingApiCalls++;
-    const pending = request(options).finally(() => pendingApiCalls--);
-    // A forgotten await must become the execution error below, not an unhandled rejection.
-    pending.catch(() => {});
-    return pending;
+    return request(options).finally(() => pendingApiCalls--);
   },
 };
 Object.defineProperty(globalThis, "sentry", { value: sentry });
@@ -68,6 +73,7 @@ export default class extends WorkerEntrypoint {
     try {
       const { default: run } = await import("./user.js");
       const result = await run();
+      apiBroker = undefined;
       const serialized = JSON.stringify({ result: result ?? null, stats: { apiCalls, writesAttempted } });
       if (pendingApiCalls > 0) {
         throw new Error("Await every sentry.request() before returning. API calls are still pending.");
@@ -75,6 +81,9 @@ export default class extends WorkerEntrypoint {
       if (new TextEncoder().encode(serialized).byteLength > 50_000) {
         throw new Error("Result exceeds 50,000 bytes. Return selected fields or a smaller page.");
       }
+      // Let workerd report rejections after microtasks, including handlers attached late.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (unhandledRejections.size > 0) throw unhandledRejections.values().next().value;
       return new Response(serialized, { headers: { "content-type": "application/json" } });
     } catch (error) {
       const hasHttpDetails = Number.isFinite(error?.status) &&

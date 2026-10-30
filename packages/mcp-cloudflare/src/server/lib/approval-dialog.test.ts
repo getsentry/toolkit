@@ -455,6 +455,89 @@ describe("approval-dialog", () => {
       expect(remembered).toEqual(["triage", "project-management"]);
     });
 
+    it.each([{ apiSkills: ["api-read", "api-write"] }, { apiSkills: [] }])(
+      "preserves hidden API preferences through project consent ($apiSkills)",
+      async ({ apiSkills }) => {
+        let preferenceCookie = "";
+        const clientId = "test-client";
+        const render = async (projectSlug: string | null = null) => {
+          const defaultSkills = await getRememberedSkillsForClient(
+            preferenceCookie,
+            clientId,
+            TEST_SECRET,
+          );
+          const response = await renderApprovalDialog(
+            new Request("https://example.com/oauth/authorize"),
+            {
+              client: mockClient,
+              server: { name: "Sentry MCP" },
+              scope: { organizationSlug: "example", projectSlug },
+              state: {
+                oauthReqInfo: {
+                  clientId,
+                  resource: `https://example.com/mcp/example${projectSlug ? `/${projectSlug}` : ""}`,
+                },
+              },
+              cookieSecret: TEST_SECRET,
+              defaultSkills,
+            },
+          );
+          return await response.text();
+        };
+        const approve = async (html: string, skills: string[]) => {
+          const formData = new FormData();
+          formData.append(
+            "state",
+            html.match(/name="state" value="([^"]+)"/)![1],
+          );
+          formData.append("decision", "approve");
+          for (const skill of skills) formData.append("skill", skill);
+          const result = await parseRedirectApproval(
+            new Request("https://example.com/oauth/authorize", {
+              method: "POST",
+              headers: { Cookie: preferenceCookie },
+              body: formData,
+            }),
+            TEST_SECRET,
+          );
+          preferenceCookie = extractCookiePair(
+            result.headers.get("Set-Cookie") ?? "",
+            SKILL_PREFERENCES_COOKIE_NAME,
+          );
+          return result;
+        };
+
+        await approve(await render(), ["inspect", "triage", ...apiSkills]);
+        const projectHtml = await render("backend");
+        expect(projectHtml).not.toContain('name="skill" value="api-read"');
+        expect(projectHtml).not.toContain('name="skill" value="api-write"');
+
+        const projectApproval = await approve(projectHtml, ["inspect"]);
+        expect(projectApproval.skills).toEqual(["inspect"]);
+        expect(
+          await getRememberedSkillsForClient(
+            preferenceCookie,
+            clientId,
+            TEST_SECRET,
+          ),
+        ).toEqual(["inspect", ...apiSkills]);
+
+        const organizationHtml = await render();
+        expectSkillChecked(organizationHtml, "inspect");
+        expectSkillUnchecked(organizationHtml, "triage");
+        for (const skill of ["api-read", "api-write"]) {
+          if (apiSkills.includes(skill))
+            expectSkillChecked(organizationHtml, skill);
+          else expectSkillUnchecked(organizationHtml, skill);
+        }
+
+        await approve(organizationHtml, ["inspect"]);
+        const afterUnchecking = await render();
+        expectSkillUnchecked(afterUnchecking, "api-read");
+        expectSkillUnchecked(afterUnchecking, "api-write");
+      },
+    );
+
     it("should keep only the ten newest skill preference clients", async () => {
       let preferenceCookie = "";
 

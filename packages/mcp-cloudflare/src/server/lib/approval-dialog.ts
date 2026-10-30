@@ -7,6 +7,7 @@ import skillDefinitions, {
 } from "@sentry/mcp-core/skillDefinitions";
 import { logError, logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
 import { CODE_MODE_SKILLS } from "../../code-mode/definitions";
+import { parseResourceMcpConstraints } from "../oauth/resource-scope";
 import {
   type OAuthState,
   signState,
@@ -305,12 +306,24 @@ async function createSkillPreferencesSetCookie(
   clientId: string,
   skills: string[],
   cookieSecret: string,
+  resource?: string,
 ): Promise<string> {
   const preferences = await getSkillPreferencesFromCookie(
     request.headers.get("Cookie"),
     cookieSecret,
   );
-  const filteredSkills = filterApprovableSkillIds(skills);
+  // Hidden project permissions retain their preferences, never their grant.
+  const rememberedApiSkills = parseResourceMcpConstraints(resource)?.projectSlug
+    ? (preferences.clients
+        .find(([id]) => id === clientId)?.[1]
+        .filter((skill) =>
+          CODE_MODE_SKILLS.some((apiSkill) => apiSkill === skill),
+        ) ?? [])
+    : [];
+  const filteredSkills = filterApprovableSkillIds([
+    ...skills,
+    ...rememberedApiSkills,
+  ]);
   const clients = preferences.clients.filter(([id]) => id !== clientId);
 
   if (filteredSkills.length > 0) {
@@ -1220,6 +1233,7 @@ export async function parseRedirectApproval(
       clientId,
       skills,
       cookieSecret,
+      state.oauthReqInfo.resource,
     ),
   );
 
