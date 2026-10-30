@@ -29,7 +29,7 @@ import {
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
-import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
+import { SENTRY_CLI_DSN } from "../constants.js";
 import { MCP_SERVER_VERSION } from "../login-command.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
@@ -239,10 +239,7 @@ function configureAgentProvider(
  *
  * @internal Exported for testing
  */
-export function initMcpTelemetry(
-  config: McpServerConfig,
-  env: NodeJS.ProcessEnv,
-): void {
+export function initMcpTelemetry(config: McpServerConfig): void {
   const scopeContext = {
     "app.server.version": MCP_VERSION,
     // Tells `@sentry/mcp-server` installs apart from `sentry mcp`.
@@ -273,7 +270,8 @@ export function initMcpTelemetry(
         "app.server.mode.experimental": config.experimental,
       },
     },
-    release: env.SENTRY_RELEASE ?? (useCliDsn ? CLI_VERSION : undefined),
+    // Always the running release; an env override would misreport it.
+    release: MCP_VERSION,
     // Same credential redaction as the CLI's own telemetry.
     transport: (transportOptions) => {
       const transport = makeNodeTransport(transportOptions);
@@ -357,7 +355,7 @@ export function serveMcpStdio(
   options: McpServeOptions,
 ): void {
   configureAgentProvider(config, options.env);
-  initMcpTelemetry(config, options.env);
+  initMcpTelemetry(config);
 
   if (config.experimental) {
     console.warn(

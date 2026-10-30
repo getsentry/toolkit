@@ -3,6 +3,13 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      product:
+        description: Product to release
+        required: true
+        type: choice
+        default: cli
+        options:
+          - cli
       bump:
         description: Version bump type
         required: true
@@ -46,12 +53,36 @@ jobs:
         with:
           run_install: false
 
+      - name: Resolve release workspace
+        id: release
+        env:
+          PRODUCT: ${{ inputs.product }}
+        run: |
+          # Each product maps to a `.craft.yml` workspace. The `cli` release
+          # also publishes @sentry/mcp-server at the same version.
+          case "$PRODUCT" in
+            cli)
+              workspace=packages/cli
+              package_path=packages/cli
+              ;;
+            *)
+              echo "::error::Unsupported product: $PRODUCT"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "workspace=$workspace"
+            echo "package_path=$package_path"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Calculate version
         id: version
         env:
           BUMP: ${{ inputs.bump }}
+          PACKAGE_PATH: ${{ steps.release.outputs.package_path }}
         run: |
-          CURRENT=$(node -p "require('./packages/cli/package.json').version")
+          CURRENT=$(node -p "require('./$PACKAGE_PATH/package.json').version")
           NEW=$(npm exec --yes --package=semver@7.7.2 -- semver -i "$BUMP" "$CURRENT")
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
@@ -60,8 +91,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
-          # Also publishes @sentry/mcp-server at the same version.
-          workspace: packages/cli
+          workspace: ${{ steps.release.outputs.workspace }}
           version: ${{ steps.version.outputs.version }}
           force: ${{ inputs.force && 'true' || '' }}
           # GITHUB_TOKEN above is the release bot token for git/GitHub ops.

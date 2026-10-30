@@ -14,7 +14,7 @@ vi.mock("@sentry/node", async (importOriginal) => ({
 }));
 
 useTestConfigDir("mcp-telemetry-");
-useEnvSandbox(["SENTRY_CLI_NO_TELEMETRY", "DO_NOT_TRACK"]);
+useEnvSandbox(["SENTRY_CLI_NO_TELEMETRY", "DO_NOT_TRACK", "SENTRY_RELEASE"]);
 
 const config: McpServerConfig = {
   sentryHost: "sentry.io",
@@ -29,7 +29,7 @@ async function initOptions(
   overrides: Partial<McpServerConfig> = {},
 ): Promise<NodeOptions> {
   const { initMcpTelemetry } = await import("../../../src/lib/mcp/server.js");
-  initMcpTelemetry({ ...config, ...overrides }, {});
+  initMcpTelemetry({ ...config, ...overrides });
   const options = sentry.init.mock.lastCall?.[0];
   if (!options) {
     throw new Error("Sentry.init was not called");
@@ -57,6 +57,7 @@ describe("initMcpTelemetry", () => {
         "app.server.version": CLI_VERSION,
       },
     });
+    expect(options.release).toBe(CLI_VERSION);
   });
 
   test("honors the CLI's telemetry opt-out", async () => {
@@ -74,6 +75,14 @@ describe("initMcpTelemetry", () => {
     expect(options.enabled).toBe(true);
   });
 
+  test("ignores SENTRY_RELEASE so the reported release stays ours", async () => {
+    process.env.SENTRY_RELEASE = "spoofed";
+    const options = await initOptions({
+      sentryDsn: "https://key@o1.ingest.sentry.io/1",
+    });
+    expect(options.release).toBe(CLI_VERSION);
+  });
+
   test("tags @sentry/mcp-server installs", async () => {
     vi.stubGlobal("SENTRY_MCP_SERVER_VERSION", "1.2.3");
     vi.resetModules();
@@ -84,5 +93,6 @@ describe("initMcpTelemetry", () => {
         "app.server.version": "1.2.3",
       },
     });
+    expect(options.release).toBe("1.2.3");
   });
 });

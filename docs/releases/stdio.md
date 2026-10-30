@@ -42,8 +42,8 @@ smoke-tests the result.
 
 ## Release
 
-The `packages/cli` Craft workspace releases both packages through the **Release**
-workflow.
+The `packages/cli` Craft workspace releases both packages: run the **Release**
+workflow with `product: cli`.
 
 - `packages/cli/script/bump-version.ts` sets `packages/mcp-server/package.json`
   to the CLI's version, both for the release and for the next `-dev` version.
