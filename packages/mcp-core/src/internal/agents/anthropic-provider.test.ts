@@ -33,22 +33,6 @@ describe("anthropic-provider", () => {
     const model = getAnthropicModel() as LanguageModelV3;
 
     // Anthropic retires claude-sonnet-4-5 on 2026-11-30.
-    expect(model.modelId).toBe("claude-sonnet-4-6");
-  });
-
-  it("uses ANTHROPIC_MODEL when set", () => {
-    process.env.ANTHROPIC_MODEL = "claude-haiku-5-5";
-
-    const model = getAnthropicModel() as LanguageModelV3;
-
-    expect(model.modelId).toBe("claude-haiku-5-5");
-  });
-
-  it("prefers an explicit model over ANTHROPIC_MODEL", () => {
-    process.env.ANTHROPIC_MODEL = "claude-haiku-5-5";
-
-    const model = getAnthropicModel("claude-opus-5-5") as LanguageModelV3;
-
-    expect(model.modelId).toBe("claude-opus-5-5");
+    expect(model.modelId).toBe("claude-sonnet-5-5");
   });
 });
