@@ -27,6 +27,7 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../lib/db/pagination.js";
+import { buildDatasetParser, datasetDisplayName } from "../lib/datasets.js";
 import { toSearchQueryError, ValidationError } from "../lib/errors.js";
 import { toExploreFieldError } from "../lib/explore-errors.js";
 import {
@@ -100,43 +101,9 @@ const DEFAULT_PERIOD = "24h";
 /** Command key for pagination cursor storage */
 const PAGINATION_KEY = "explore";
 
-/**
- * Dataset aliases: user-facing name → API-level dataset name.
- *
- * All entries are accepted as `--dataset` values. `VALID_DATASETS` controls
- * which appear in `--help` and validation error messages.
- */
-const DATASET_ALIASES: Record<string, string> = {
-  errors: "errors",
-  error: "errors",
-  spans: "spans",
-  span: "spans",
-  metrics: "tracemetrics",
-  logs: "logs",
-  log: "logs",
-  replays: "replays",
-  replay: "replays",
-};
-
-/**
- * User-facing dataset names shown in `--help` and validation errors.
- *
- * Set preserves insertion order for the join-based help/error rendering.
- */
-const VALID_DATASETS = new Set([
-  "errors",
-  "spans",
-  "metrics",
-  "logs",
-  "replays",
-]);
-
-/**
- * Reverse map from API-level dataset name → canonical user-facing name.
- * Used by pagination hints so they emit `--dataset metrics` not `--dataset tracemetrics`.
- */
-const API_TO_USER_DATASET = new Map(
-  Array.from(VALID_DATASETS, (name) => [DATASET_ALIASES[name] ?? name, name]),
+const DATASETS = buildDatasetParser(
+  ["errors", "spans", "tracemetrics", "logs", "replays"],
+  [...LEGACY_TRANSACTION_DATASETS],
 );
 
 // ---------------------------------------------------------------------------
@@ -182,22 +149,6 @@ type ExploreData = {
 // ---------------------------------------------------------------------------
 // Flag parsing
 // ---------------------------------------------------------------------------
-
-/**
- * Parse and validate dataset flag value.
- * Accepts canonical names and common aliases.
- */
-function parseDataset(value: string): string {
-  const lower = value.toLowerCase();
-  const resolved = DATASET_ALIASES[lower];
-  if (resolved || LEGACY_TRANSACTION_DATASETS.has(lower)) {
-    return resolved ?? lower;
-  }
-  throw new ValidationError(
-    `Invalid dataset "${value}". Must be one of: ${Array.from(VALID_DATASETS).join(", ")}`,
-    "dataset",
-  );
-}
 
 /**
  * Parse --limit flag. Capped at {@link LIST_MAX_LIMIT} (1000).
@@ -277,7 +228,7 @@ function orderFieldNames(
 
 /** Format explore results for human-readable terminal output */
 function formatExploreHuman(data: ExploreData | ExploreTimeSeriesData): string {
-  const displayDataset = API_TO_USER_DATASET.get(data.dataset) ?? data.dataset;
+  const displayDataset = datasetDisplayName(data.dataset);
   if ("timeSeries" in data) {
     return formatExploreTimeSeriesHuman({ ...data, dataset: displayDataset });
   }
@@ -401,9 +352,7 @@ function appendFlagHints(
     flags.dataset === "replays" ? DEFAULT_REPLAY_SORT : undefined;
   if (flags.dataset !== DEFAULT_DATASET) {
     // Emit user-facing name, not API-level name (e.g. "metrics" not "tracemetrics")
-    const displayDataset =
-      API_TO_USER_DATASET.get(flags.dataset) ?? flags.dataset;
-    parts.push(`--dataset ${displayDataset}`);
+    parts.push(`--dataset ${datasetDisplayName(flags.dataset)}`);
   }
   appendMetricHints(parts, flags.metric, flags.agg);
   appendSortHint(parts, flags.sort, defaultSort);
@@ -648,8 +597,7 @@ function resolveDatasetConfig(params: {
         ...timeRangeToApiParams(timeRange),
       }).catch((error: unknown): never => {
         throw toExploreFieldError(error, {
-          dataset:
-            API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
+          dataset: datasetDisplayName(resolved.dataset),
           fields,
           userFields: (flags.field ?? []).filter(
             (field) => !flags.metric || !isAggregateFieldOrEquation(field),
@@ -684,9 +632,10 @@ export const exploreCommand = buildListCommand("explore", {
       "Query the Sentry Explore API for aggregate event data.\n\n" +
       "Supports arbitrary fields including columns (title, project),\n" +
       "aggregates (count(), count_unique(user), p50(span.duration)),\n" +
-      "and equations. Results are returned as a table.\n\n" +
+      "and equations. Results default to a table.\n\n" +
       "Use --time-series to calculate aggregates in time buckets with an automatic interval, " +
       "or pass a bucket duration such as --time-series 15m (-b 15m). " +
+      "Time series use one chart per aggregate on graphics-capable terminals, with table fallback. " +
       "This is a single historical query, not a live stream. " +
       "Grouping, --sort, --limit, and --cursor are table-only.\n\n" +
       "Datasets:\n" +
@@ -839,8 +788,8 @@ export const exploreCommand = buildListCommand("explore", {
       },
       dataset: {
         kind: "parsed",
-        parse: parseDataset,
-        brief: `Dataset to query (${[...VALID_DATASETS].join(", ")}; transaction(s) routes to spans)`,
+        parse: DATASETS.parse,
+        brief: `Dataset to query (${DATASETS.names.join(", ")}; transaction(s) routes to spans)`,
         default: DEFAULT_DATASET,
       },
       query: {
@@ -992,8 +941,7 @@ export const exploreCommand = buildListCommand("explore", {
             ...timeParams,
           }).catch((error: unknown): never => {
             const fieldError = toExploreFieldError(error, {
-              dataset:
-                API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
+              dataset: datasetDisplayName(resolved.dataset),
               fields: fieldList,
               userFields: (flags.field ?? []).filter(
                 (field) => !flags.metric || !isAggregateFieldOrEquation(field),

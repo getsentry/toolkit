@@ -344,7 +344,7 @@ async function handleAuthenticatedMcpRequest(
   }
 
   if (auth.kind === "oauth") {
-    const grantedSkills = Array.from(auth.grantedSkills).sort((a, b) =>
+    const grantedSkills = [...auth.grantedSkills].sort((a, b) =>
       a.localeCompare(b),
     );
     for (const skill of grantedSkills) {

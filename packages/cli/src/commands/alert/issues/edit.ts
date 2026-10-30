@@ -10,7 +10,6 @@ import {
   getIssueAlertWorkflowDocument,
   updateIssueAlertRule,
 } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
   ContextError,
@@ -27,7 +26,8 @@ import {
   triggerLogicType,
   validateIssueRuleArrays,
 } from "../mutation-utils.js";
-import { parseIssueRuleArg, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
 
 const USAGE_HINT =
   "sentry alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled";
@@ -204,11 +204,7 @@ export const editCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        issueRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
     flags: {
@@ -276,12 +272,15 @@ export const editCommand = buildCommand({
       m: "filter-match",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
     validateIssueEditFlags(flags);
 
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
       usageHint: USAGE_HINT,

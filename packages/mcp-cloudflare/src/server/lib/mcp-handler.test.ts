@@ -634,13 +634,10 @@ describe("MCP Handler", () => {
         ]);
         expect(env.MCP_CACHE.put).not.toHaveBeenCalled();
         expect(apiFetch).toHaveBeenCalledOnce();
-        expect(apiFetch).toHaveBeenCalledWith(
-          profileUrl,
-          expect.objectContaining({
-            headers: expect.objectContaining({
-              Authorization: `Bearer ${ctx.props.accessToken}`,
-            }),
-          }),
+        const [url, init] = apiFetch.mock.calls[0] ?? [];
+        expect(url).toBe(profileUrl);
+        expect(new Headers(init?.headers).get("Authorization")).toBe(
+          `Bearer ${ctx.props.accessToken}`,
         );
       } finally {
         apiFetch.mockRestore();

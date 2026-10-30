@@ -12,11 +12,12 @@
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 
 const _require = createRequire(import.meta.url);
 
 import { isMusl } from "./binary.js";
+import { isCi } from "./ci.js";
 import {
   CLI_VERSION,
   getCliEnvironment,
@@ -271,9 +272,7 @@ export async function withTelemetry<T>(
  *
  * @internal Exported for testing
  */
-export function createBeforeExitHandler(
-  client: Sentry.LightNodeClient,
-): () => void {
+export function createBeforeExitHandler(client: Sentry.NodeClient): () => void {
   let isFlushing = false;
   return () => {
     if (isFlushing) {
@@ -425,7 +424,14 @@ const LIBRARY_EXCLUDED_INTEGRATIONS = new Set([
   "NodeFetch", // diagnostics_channel + trace headers
   "FunctionToString", // wraps Function.prototype.toString
   "ChildProcess", // monitors child processes
+  "WorkerThreads", // diagnostics_channel on the host's worker threads
   "NodeRuntimeMetrics", // runtime metrics timer would keep host event loop alive
+  // Framework error handlers subscribe to the host's framework channels
+  "Express",
+  "Fastify",
+  "Hapi",
+  "Hono",
+  "Koa",
 ]);
 
 /**
@@ -449,6 +455,18 @@ const hasGetSystemErrorMap = (() => {
 
 /** Current beforeExit handler, tracked so it can be replaced on re-init */
 let currentBeforeExitHandler: (() => void) | null = null;
+
+let manualHttpTracing = false;
+
+/**
+ * Whether API requests need CLI-made `http.client` spans and trace headers.
+ * Library mode excludes the SDK's Http/NodeFetch integrations because they
+ * would also trace the host's requests, and Bun's fetch doesn't fire the
+ * undici diagnostics channels they listen on.
+ */
+export function isManualHttpTracing(): boolean {
+  return manualHttpTracing;
+}
 
 /** Match all SaaS regional URLs (us.sentry.io, de.sentry.io, o1234.ingest.us.sentry.io, etc.) */
 const SENTRY_SAAS_SUBDOMAIN_RE = /^https:\/\/[^/]*\.sentry\.io(\/|$)/;
@@ -524,9 +542,11 @@ function setAgentTags(info: AgentInfo): void {
 export function initSentry(
   enabled: boolean,
   options?: { libraryMode?: boolean },
-): Sentry.LightNodeClient | undefined {
+): Sentry.NodeClient | undefined {
   const libraryMode = options?.libraryMode ?? false;
   const environment = getCliEnvironment();
+  manualHttpTracing =
+    libraryMode || typeof process.versions.bun !== "undefined";
 
   /**
    * Ensure frame paths are absolute so Sentry's symbolicator can match them.
@@ -591,6 +611,18 @@ export function initSentry(
   const client = Sentry.init({
     dsn: SENTRY_CLI_DSN,
     enabled,
+    // The tracing integrations instrument database, framework, and AI
+    // libraries through diagnostics channels, which in library mode belong
+    // to the host application.
+    ...(libraryMode && {
+      defaultIntegrations: Sentry.getDefaultIntegrationsWithoutPerformance(),
+    }),
+    // Keep v10's transaction model: dashboards and alerts rely on scope tags
+    // on transactions, and beforeSendTransaction scrubs server_name.
+    traceLifecycle: "static",
+    // Shipped bundles strip these hooks via the `__SENTRY_CHANNEL_INJECTION__`
+    // build define; this keeps unbundled runs (dev, tests) consistent.
+    enableRuntimeChannelInjection: false,
     // Compress outgoing envelopes with zstd (level 3) instead of gzip —
     // smaller payloads, faster compress/decompress on both sides.
     // Automatic gzip fallback when running on Node < 22.15, where
@@ -608,8 +640,7 @@ export function initSentry(
     // The zstd-transport reads `caCerts` and passes it as `ca:` to
     // `http.request()`, and the SDK's fallback `makeNodeTransport` does the same.
     transportOptions: { caCerts: getCustomCaCerts() },
-    // Keep default integrations but filter out ones that add overhead without benefit.
-    // Important: Don't use defaultIntegrations: false as it may break debug ID support.
+    // Filter out default integrations that add overhead without benefit.
     // NodeSystemError is excluded on runtimes missing util.getSystemErrorMap (Bun) — CLI-K1.
     // Library mode uses the extended exclusion set to avoid polluting the host process.
     integrations: (defaults) => {
@@ -643,10 +674,9 @@ export function initSentry(
       return filtered;
     },
     environment,
-    // Enable Sentry structured logs for non-exception telemetry (e.g., unexpected input warnings).
-    // Disabled when telemetry is off or in library mode — the SDK registers
-    // beforeExit handlers for log flushing that keep the event loop alive.
-    enableLogs: enabled && !libraryMode,
+    // v11 removed `enableLogs` and always captures `Sentry.logger.*` calls.
+    // Library mode never sent logs in v10, so keep dropping them there.
+    ...(libraryMode && { beforeSendLog: () => null }),
     // Disable client reports when telemetry is off or in library mode — the SDK
     // registers a setInterval + beforeExit handler that keep the event loop alive.
     ...((libraryMode || !enabled) && { sendClientReports: false }),
@@ -694,6 +724,14 @@ export function initSentry(
     },
   });
 
+  // v11 attaches the client to the current scope before switching to the
+  // AsyncLocalStorage context strategy. When init runs inside a still-pending
+  // pre-init span (as in the CLI's middleware chain), that scope is lost in
+  // the switch and every later capture finds no client.
+  if (client) {
+    Sentry.setCurrentClient(client);
+  }
+
   // Always remove our own previous handler on re-init.
   if (currentBeforeExitHandler) {
     process.removeListener("beforeExit", currentBeforeExitHandler);
@@ -704,15 +742,15 @@ export function initSentry(
     const isBun = typeof process.versions.bun !== "undefined";
     const runtime = isBun ? "bun" : "node";
 
-    // LightNodeClient hardcodes runtime to { name: 'node' }. Override it so
-    // events carry the correct runtime when running as a compiled Bun binary.
+    // NodeClient defaults runtime to { name: 'node' }. Override it so
+    // events carry the correct runtime when the npm package runs under Bun.
     const opts = client.getOptions();
     opts.runtime = {
       name: runtime,
       version: isBun ? process.versions.bun : process.version,
     };
 
-    // Tag whether running as bun binary or node (npm package).
+    // Tag whether running under Bun or Node.
     // Kept alongside the SDK's promoted 'runtime' tag for explicit signaling
     // and backward compatibility with existing dashboards/alerts.
     Sentry.setTag("cli.runtime", runtime);
@@ -720,7 +758,10 @@ export function initSentry(
     // Tag whether targeting self-hosted Sentry (not SaaS)
     Sentry.setTag("is_self_hosted", !isSentrySaasUrl(getSentryBaseUrl()));
 
-    // Tag whether running in an interactive terminal or agent/CI environment
+    // CI and agent identity are independent: an agent can run inside CI.
+    Sentry.setTag("is_ci", isCi(getEnv()));
+
+    // Tag whether stdout is a terminal, independently of CI or agent detection.
     Sentry.setTag("is_tty", !!process.stdout.isTTY);
 
     // Tag the C library variant on Linux (musl vs glibc).
@@ -1009,7 +1050,7 @@ export function createWizardPromptTelemetry(): WizardPromptTelemetry {
  * to OK on success or Error on failure.
  *
  * Use this generic helper for custom operations, or use the specialized
- * helpers (withHttpSpan, withDbSpan, withFsSpan, withSerializeSpan) for
+ * helpers (withDbSpan, withFsSpan, withSerializeSpan) for
  * common operation types.
  *
  * @param name - Span name (e.g., "scanDirectory", "findProjectRoot")
@@ -1098,28 +1139,6 @@ export function withTracingSpan<T>(
       }
     },
   );
-}
-
-/**
- * Wrap an HTTP request with a span for tracing.
- *
- * Creates a child span under the current active span to track
- * HTTP request duration and status.
- *
- * @param method - HTTP method (GET, POST, etc.)
- * @param url - Request URL or path
- * @param fn - The async function that performs the HTTP request
- * @returns The result of the function
- */
-export function withHttpSpan<T>(
-  method: string,
-  url: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  return withTracing(`${method} ${url}`, "http.client", fn, {
-    "http.request.method": method,
-    "url.path": url,
-  });
 }
 
 /**

@@ -20,8 +20,8 @@ function rule(message, visitors) {
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
       if (!filename.includes("/packages/cli/")) return {};
-      return visitors(context, filename, (node) =>
-        context.report({ node, message }),
+      return visitors(context, filename, (node, override = message) =>
+        context.report({ node, message: override }),
       );
     },
   };
@@ -56,11 +56,37 @@ function readsProperty(node, object, property) {
   );
 }
 
-/** Target positional types from `src/lib/target-positional.ts`. */
+/**
+ * Target positional types from `src/lib/target-positional.ts`, and
+ * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
+ */
 const BOUND_TARGET_TYPES = new Set([
+  "ListCommandTarget",
   "OrgOptionalTarget",
   "OrgProjectTarget",
+  "OrgTarget",
   "ProjectBoundTarget",
+  "ReleaseTarget",
+  "AlertRuleArgument",
+  "BoundArguments",
+  "ConversationArguments",
+  "DashboardArguments",
+  "DashboardCreateArguments",
+  "DashboardListArguments",
+  "EventViewArguments",
+  "InitArguments",
+  "IntegrationArguments",
+  "IssuesArguments",
+  "LogListArguments",
+  "LogViewArguments",
+  "ProjectCreateArguments",
+  "ReplayArguments",
+  "SpanListArguments",
+  "SpanViewArguments",
+  "TraceLogsArguments",
+  "TraceViewArguments",
+  "TrialStartArguments",
+  "WidgetAddArguments",
 ]);
 
 function boundTargetParams(fn) {
@@ -139,6 +165,65 @@ function regexSource(node) {
   )
     return staticText(node.arguments[0]);
   return "";
+}
+
+/**
+ * Helpers that parse ID positionals by hand. Commands parse IDs with
+ * `parseIdArguments()` (src/lib/id-arguments.ts), so every command takes
+ * the same forms; issues take `issuePositional` or `issuesPositional`
+ * (src/commands/issue/positional.ts).
+ */
+const AD_HOC_ID_PARSING = new Set([
+  "parseSlashSeparatedArg",
+  "detectSwappedViewArgs",
+  "HEX_ID_RE",
+  "SPAN_ID_RE",
+]);
+
+/**
+ * Helpers that leave a target positional for `func` to parse:
+ * `withCompletionTarget` tags a parser that can leave the value raw, and the
+ * others parse a raw string (applying a pasted URL's server as they go).
+ * Commands take targets as bound positionals instead
+ * (src/lib/target-positional.ts, `boundArguments`), which parse before the
+ * command runs, carry the completion kind, and resolve on `target.resolved`.
+ */
+const UNBOUND_TARGET_PARSING = new Set([
+  "withCompletionTarget",
+  "parseOrgProjectArg",
+  "resolveOrgOnlyFromArg",
+  "resolveOrgOptionalFromArg",
+  "resolveProjectBoundFromArg",
+]);
+
+/** Whether `node` uses one of `names`; imports and `typeof` do not. */
+function usesName(node, names) {
+  return (
+    names.has(node.name) &&
+    node.parent?.type !== "ImportSpecifier" &&
+    node.parent?.type !== "TSTypeQuery"
+  );
+}
+
+/** Visitors reporting each use of one of `names` in a command file. */
+function bannedNames(file, names, report, message) {
+  if (!file.includes("/src/commands/")) return {};
+  return {
+    Identifier(node) {
+      if (usesName(node, names)) report(node, message);
+    },
+  };
+}
+
+const ID_ARGUMENT_PARSERS = new Set(["parseIdArguments", "parseIdArgument"]);
+
+/** Whether `node` is `ID_KINDS.<kind>`. */
+function isIdKind(node) {
+  return (
+    node?.type === "MemberExpression" &&
+    node.object.type === "Identifier" &&
+    node.object.name === "ID_KINDS"
+  );
 }
 
 const rules = {
@@ -306,6 +391,29 @@ const rules = {
         FunctionDeclaration: check,
         FunctionExpression: check,
         ArrowFunctionExpression: check,
+        ...bannedNames(
+          file,
+          UNBOUND_TARGET_PARSING,
+          report,
+          "Take the target as a bound positional (src/lib/target-positional.ts, boundArguments) instead of parsing it in func.",
+        ),
+      };
+    },
+  ),
+  "no-ad-hoc-id-arguments": rule(
+    "Parse ID positionals with parseIdArguments() and an ID_KINDS kind.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.endsWith("/lib/id-arguments.ts"))
+        return {};
+      return {
+        ...bannedNames(file, AD_HOC_ID_PARSING, report),
+        CallExpression(node) {
+          if (
+            ID_ARGUMENT_PARSERS.has(node.callee.name) &&
+            !isIdKind(node.arguments[1])
+          )
+            report(node);
+        },
       };
     },
   ),

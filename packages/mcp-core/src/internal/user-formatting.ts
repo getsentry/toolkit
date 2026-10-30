@@ -20,5 +20,5 @@ export function formatUserGeoSummary(value: unknown): string | null {
     return null;
   }
 
-  return Array.from(new Set(parts)).join(", ");
+  return [...new Set(parts)].join(", ");
 }

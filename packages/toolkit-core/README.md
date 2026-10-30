@@ -6,18 +6,87 @@ builds bundle this private workspace package into their artifacts.
 The shared code validates and formats upstream bearer tokens, assembles Sentry
 API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
 responses, advances retry intervals, decides when a Sentry API request may
-be retried and how long to wait (`api-retry`), recognizes Sentry hostnames and
+be retried and how long to wait (`api-client/retry`), recognizes Sentry hostnames and
 credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
 field expressions the way the Sentry frontend does, parses search queries with
 the Sentry frontend grammar, resolves Events endpoint sorts so the sort column
 is always selected, and deduplicates in-flight region lookups. Each product
 retains its own credential storage, regional cache identity and persistence,
-host allowlists, routing, polling
-deadline, HTTP transport, response validation, and user-facing errors.
+host allowlists, routing, polling deadline, response validation, and
+user-facing errors.
+
+## API client
+
+`api-client/` is the shared Sentry API client, built here first and moved
+into `@sentry/api` later, so it uses only web-standard APIs and runs in Node,
+Workers, and browsers. Lint bans `node:*` imports and Node globals in
+toolkit-core, and `pnpm run tsc` also typechecks it against the DOM library
+with no Node types (`tsconfig.browser.json`). The `node:zlib` cache codec is
+the one exception.
+
+- `errors` holds `ApiError` and its status subclasses, `createApiError`, and
+  the `UserInputError` and `ConfigurationError` the client throws. The MCP
+  re-exports them from `packages/mcp-core/src/errors.ts`.
+- `api-path` builds API paths with every identifier segment encoded.
+- `validate` checks a response with any
+  [Standard Schema](https://standardschema.dev) validator the host passes in:
+  Zod in the MCP, valibot in the CLI. Shared code depends only on the
+  interface's types.
+- `response` reads responses. `readErrorResponse` reads a failed response's
+  text, parsed JSON, string `detail`, whether it is an HTML page, and the
+  rate-limit wait, and each host maps that to its own errors.
+  `readJsonResponse` parses a successful body after checking its
+  Content-Type.
+- `core` is the request core endpoint wrappers build on.
+  `createApiClientCore` takes the host's transport, per-request headers
+  (credentials, user agent, attribution), and logger. Its `request` sends
+  to `<origin>/api/0<path>`, turns network failures into readable errors
+  (`ConfigurationError` for an unreachable host), and throws the status's
+  `ApiError` for an error response unless the caller allows that status.
+  `requestJson` also parses the body, and `sdkClient` gives a `@sentry/api`
+  operation a client that sends one GET through `request`. `listPage` walks
+  a list endpoint's pages up to a limit and validates each page. The MCP's
+  `SentryApiService` sends every request through the core.
+- `endpoints/` holds the endpoint wrappers by domain, on `@sentry/api`
+  operations where they exist. Each takes an `ApiTarget` (the core and an
+  origin) and the host's schema, and returns that schema's output. The host
+  picks the origin, such as the control host for the current user.
+  `endpoints/organizations` has `getAuthenticatedUser`, `listOrganizations`,
+  and `getOrganization`.
+- `pagination`, `retry`, `transport`, and `response-cache` are described in
+  the sections below. The `node:zlib` body codec stays outside, at
+  `response-cache/codec`, since browsers lack it.
+
+## API transport
+
+`api-client/transport` is the authenticated fetch both products send Sentry API
+requests through. `createApiTransport` sets the Authorization header, refreshes
+the credential once after a 401 and replays the request (any method, since the
+endpoint never ran), times out each attempt, and retries through `api-client/retry`.
+Request bodies are replayed on each attempt, including stream bodies.
+With `validateRedirects`, it follows redirects by hand, sends the credential
+only to origins the host trusts, and records the final origin for
+`getValidatedResponseSource`. With a cache, a GET is looked up first (a stale
+entry is revalidated with its `ETag`), a successful GET is stored, and a
+successful write invalidates what it made stale. While the host's `fresh`
+hook returns true, such as during a tool call that asked for fresh data, GETs
+skip the lookup and their responses replace the cached entry.
+
+The host passes in a `CredentialProvider` (the current credential, an optional
+refresh ahead of expiry, and the 401 refresh), header rules that may reject a
+request, a `TransportCache`, its error classes for timeouts, rate limits, and
+fatal fetch errors such as TLS failures, a logger, and a span hook. The CLI's
+`packages/cli/src/lib/sentry-client.ts` wires in its stored credentials,
+host-scope checks, disk cache, and telemetry.
+
+Credentials and timeouts are optional. Without a `CredentialProvider`, the
+transport keeps the request's own Authorization header, never refreshes, and
+skips the cache, since entries are scoped to a credential. The MCP's
+`SentryApiService` uses it that way, with retries only.
 
 ## Pagination
 
-`pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
+`api-client/pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
 the limit evenly over the fewest requests (at most 100 rows each), reuses the
 page size a page-number cursor encodes, and returns a cursor that resumes at
 the first row the caller has not received, even when the walk stopped inside
@@ -32,9 +101,18 @@ the page cap, receives warnings, and turns failures into its own errors. The
 CLI's `paginate` and `fetchAllPages` in
 `packages/cli/src/lib/api/infrastructure.ts` are thin wrappers over it.
 
+`paginate` delegates traversal and partial-page consumption to `@sentry/api`.
+Toolkit retains its page sizing and cursor encoding so existing bookmarks and
+navigation history keep working. The SDK receives decoded server cursors and
+row offsets, without depending on Toolkit's bookmark format or storage.
+
+`decodePageCursor` and `consumePage` expose the same resume logic for callers
+that read one server page at a time, such as `sentry api`. They restore the
+cursor's page size and remove rows already returned without fetching more pages.
+
 ## Response cache
 
-`response-cache` holds the cache policy for Sentry API GET responses.
+`api-client/response-cache` holds the cache policy for Sentry API GET responses.
 `classifyUrl` puts a URL in a fallback TTL tier for responses without HTTP
 caching headers: `volatile` (60 seconds) for issues, project event details,
 full traces, and log and span queries; `no-cache` for autofix and root-cause
@@ -45,10 +123,22 @@ as a WebCrypto HMAC-SHA256 that matches the CLI's earlier `node:crypto` keys.
 `computeInvalidationPrefixes` lists the URL prefixes a successful mutation
 makes stale.
 
+`storeResponse` and `lookupResponse` make the HTTP caching decisions through
+`http-cache-semantics`. Server `Cache-Control` directives win over the tiers,
+including `max-age=0`; the tier applies only when the server sent none. Only
+2xx JSON responses are stored, and `no-store` is honored. A stale entry with an
+`ETag` comes back from `lookupResponse` as `stale`, with the `If-None-Match`
+header to send; a matching 304 passed to its `revalidate` renews the entry and
+returns the cached body. Entries are kept for their freshness lifetime, plus
+`REVALIDATION_WINDOW_MS` (24 hours) when they have an `ETag`. Both take the
+`CacheStore` and body codec to use, and throw for unreadable entries so the
+host can drop them.
+
 The host supplies an identity that is a stable hash of the login (never a raw
-token), applies server caching headers ahead of the tiers, and deletes only
-the requesting identity's entries under each invalidation prefix. The CLI's
-disk cache in `packages/cli/src/lib/response-cache.ts` uses it.
+token), derives the key, decides when caching is enabled, records telemetry,
+and deletes only the requesting identity's entries under each invalidation
+prefix. The CLI's disk cache in `packages/cli/src/lib/response-cache.ts` uses
+it.
 
 Entries live in a `CacheStore`: `get`, `set` with a TTL, and
 `deleteMatching(identity, urlPrefix)`. An entry holds a body already encoded

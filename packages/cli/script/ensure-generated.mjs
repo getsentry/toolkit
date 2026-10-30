@@ -18,14 +18,21 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
-const SCHEMA = "src/generated/api-schema.json";
+/** Produced by `generate:schema`; imported at runtime by `src/`. */
+const SCHEMA_OUTPUTS = [
+  "src/generated/api-schema.json",
+  "src/generated/idempotent-operations.json",
+];
 /** Produced by `generate:grammar`; imported by `src/lib/arg-parsing.ts`. */
 const GRAMMAR_OUTPUTS = [
   "src/generated/org-project-target-grammar.js",
   "src/generated/org-project-target-grammar.d.ts",
+  "src/generated/field-list-grammar.js",
+  "src/generated/field-list-grammar.d.ts",
 ];
 /** Produced by `generate:docs`; imported at runtime by `src/`. */
 const DOCS_OUTPUTS = [
+  "src/generated/command-api.json",
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",
 ];
@@ -35,7 +42,7 @@ function run(script) {
   execSync(`pnpm run ${script}`, { stdio: "inherit" });
 }
 
-if (!existsSync(SCHEMA)) {
+if (!SCHEMA_OUTPUTS.every(existsSync)) {
   run("generate:schema");
 }
 if (process.argv[2] !== "schema" && !GRAMMAR_OUTPUTS.every(existsSync)) {

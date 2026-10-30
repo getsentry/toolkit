@@ -5,6 +5,7 @@
  * Uses spyOn pattern to mock API client and resolve-target.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { addCommand } from "../../../../src/commands/dashboard/widget/add.js";
@@ -239,15 +240,20 @@ describe("dashboard widget add", () => {
     expect(output).toContain("Error Rate");
   });
 
-  test("throws ValidationError when title is missing (less than 2 positional args)", async () => {
+  test("fails to parse the arguments when the title is missing (less than 2 positional args)", async () => {
     const { context } = createMockContext();
     const func = await addCommand.loader();
 
     const err = await func
       .call(context, { json: false, display: "line" }, "123")
       .catch((e: Error) => e);
-    expect(err).toBeInstanceOf(ValidationError);
-    expect(err.message).toContain("Widget title is required");
+    expect(err).toBeInstanceOf(ArgumentParseError);
+    const { exception } = err as ArgumentParseError;
+    expect(exception).toBeInstanceOf(ValidationError);
+    expect((exception as ValidationError).message).toContain(
+      "Widget title is required",
+    );
+    expect(getDashboardSpy).not.toHaveBeenCalled();
   });
 
   test("throws ValidationError for invalid display type", async () => {

@@ -31,6 +31,7 @@
  */
 
 import {
+  ArgumentScannerError,
   type Command,
   type CommandContext,
   buildCommand as stricliCommand,
@@ -69,6 +70,7 @@ import {
 import {
   applyBoundPositionals,
   checkDestructive,
+  isHelpArgument,
   rawPositional,
 } from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
@@ -692,16 +694,13 @@ export function buildCommand<
     },
     args: unknown[],
   ): Promise<boolean> {
-    if (!(err instanceof CliError) || err instanceof OutputError) {
+    const recoverable =
+      (err instanceof CliError && !(err instanceof OutputError)) ||
+      err instanceof ArgumentScannerError;
+    if (!recoverable) {
       return false;
     }
-    if (
-      args.length === 0 ||
-      !args.some((a) => {
-        const raw = rawPositional(a);
-        return raw === "help" || raw === "--h" || raw === "-help";
-      })
-    ) {
+    if (!args.flatMap(rawPositional).some(isHelpArgument)) {
       return false;
     }
     if (!ctx.commandPrefix || ctx.directInvoke) {
@@ -733,12 +732,29 @@ export function buildCommand<
   ) {
     // Callers that skip Stricli's scanner (SDK invoke, tests) pass raw
     // strings, and omitted optional positionals are undefined; give bound
-    // positionals the value Stricli would.
-    const args = applyBoundPositionals(
-      positionalArgs,
-      existingParams.positional,
-      this,
-    );
+    // positionals the value Stricli would. `boundArguments` positionals are
+    // parsed here for every caller.
+    let args: unknown[];
+    let argumentError: ArgumentScannerError | undefined;
+    try {
+      args = applyBoundPositionals(
+        positionalArgs,
+        existingParams.positional,
+        this,
+      );
+    } catch (error) {
+      // Next to a `help` argument, fail where it can turn into the help
+      if (
+        !(
+          error instanceof ArgumentScannerError &&
+          positionalArgs.some(isHelpArgument)
+        )
+      ) {
+        throw error;
+      }
+      argumentError = error;
+      args = positionalArgs;
+    }
 
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
@@ -757,7 +773,7 @@ export function buildCommand<
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
-      setArgsContext(args.map(rawPositional));
+      setArgsContext(args.flatMap(rawPositional));
     }
 
     // Environment-based JSON mode (used by library entry point)
@@ -820,6 +836,10 @@ export function buildCommand<
     // `sentry issue list help`). Without this, the auth prompt would fire
     // before the help-recovery path could show the command's help text.
     try {
+      if (argumentError) {
+        throw argumentError;
+      }
+
       // A usable stored account defers the check: the command's target may
       // select it even when the account in effect is logged out.
       if (requiresAuth && !getAuthConfig() && !hasUsableStoredAccount()) {

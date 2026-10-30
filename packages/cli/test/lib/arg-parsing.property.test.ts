@@ -18,10 +18,10 @@ import {
   detectSwappedViewArgs,
   looksLikeIssueShortId,
   normalizeSlug,
-  parseIssueArg,
   parseOrgProjectArg,
   parseSelector,
 } from "../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../src/lib/issue-arguments.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 // Arbitraries for generating valid inputs
@@ -218,7 +218,8 @@ describe("parseIssueArg properties", () => {
 
 describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
   /** Forbidden characters (besides the structural #) that must always be rejected. */
-  const forbiddenCharArb = constantFrom("?", "%", " ", "\t");
+  // A space makes words, which are a search rather than an identifier
+  const forbiddenCharArb = constantFrom("?", "%", "\t");
 
   test("org/project#FULL-SHORTID is equivalent to org/project/FULL-SHORTID", async () => {
     fcAssert(

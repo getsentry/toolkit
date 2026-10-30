@@ -1,9 +1,11 @@
 /**
- * Human tables and JSON output for Explore aggregates bucketed over time.
+ * Human charts/tables and JSON output for Explore aggregates bucketed over time.
  * Keeps response metadata and bucket values intact for machine consumers.
  */
 
 import type { EventsTimeSeriesResponse } from "../api/explore.js";
+import { formatLegendLabel } from "./chart-presentation.js";
+import { formatExploreTimeSeriesChart } from "./explore-timeseries-chart.js";
 import { filterFields } from "./json.js";
 import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
 import { buildMetaColumns } from "./meta-table.js";
@@ -44,13 +46,28 @@ function formatBucketStatus(bucket: Bucket): string {
   }
 }
 
-/** Render one measure using the same typed cell formatting as Explore tables. */
+/** Render one measure, retaining metadata and exact values for graph gaps. */
 function formatSeries(series: TimeSeries): string {
-  const details = [
-    `**${escapeMarkdownInline(series.yAxis)} over time**`,
-    `Interval: ${formatDurationCompactMs(series.meta.interval)}`,
-  ];
-  if (series.meta.valueUnit && series.meta.valueUnit !== "none") {
+  const chart =
+    series.values.length > 0 ? formatExploreTimeSeriesChart(series) : undefined;
+  const details: string[] = [];
+  // Every admitted Explore chart has room for its single fitted legend label.
+  // Keep the original expression when its fitted label omits more than syntax.
+  if (!chart || formatLegendLabel(series.yAxis).abbreviated) {
+    details.push(
+      `**${escapeMarkdownInline(series.yAxis)}${chart ? "" : " over time"}**`,
+    );
+  }
+  details.push(`Interval: ${formatDurationCompactMs(series.meta.interval)}`);
+  // The typed axis formatter appends units only for duration and size values.
+  const unitOnAxis =
+    chart &&
+    (series.meta.valueType === "duration" || series.meta.valueType === "size");
+  if (
+    !unitOnAxis &&
+    series.meta.valueUnit &&
+    series.meta.valueUnit !== "none"
+  ) {
     details.push(`Unit: ${escapeMarkdownInline(series.meta.valueUnit)}`);
   }
 
@@ -70,12 +87,27 @@ function formatSeries(series: TimeSeries): string {
     details.push("Results include sampled data.");
   }
 
-  const header = renderMarkdown(details.join("\n\n"));
+  const caption = renderMarkdown(details.join(chart ? " · " : "\n\n"));
   if (series.values.length === 0) {
-    return `${header}\n\nNo time buckets returned.`;
+    return `${caption}\n\nNo time buckets returned.`;
   }
 
-  const rows = series.values.map((bucket) => ({
+  if (!chart) {
+    return `${caption}\n\n${formatBuckets(series, series.values)}`;
+  }
+  const gaps = series.values.filter(
+    (bucket) => bucket.value === null || bucket.incomplete,
+  );
+  const gapDetails =
+    gaps.length > 0
+      ? `\n\n${renderMarkdown("Missing or incomplete buckets:")}\n\n${formatBuckets(series, gaps)}`
+      : "";
+  return `${chart}\n${caption}${gapDetails}`;
+}
+
+/** Use the same typed cells for the full fallback and the chart's gap details. */
+function formatBuckets(series: TimeSeries, buckets: Bucket[]): string {
+  const rows = buckets.map((bucket) => ({
     time: formatUtcTimestamp(bucket.timestamp),
     value: bucket.value,
     status: formatBucketStatus(bucket),
@@ -95,23 +127,23 @@ function formatSeries(series: TimeSeries): string {
               : column.value(row),
         },
   );
-  if (series.values.some((bucket) => bucket.incomplete)) {
+  if (buckets.some((bucket) => bucket.incomplete)) {
     columns.push(...buildMetaColumns(["status"]));
   }
 
-  return `${header}\n\n${formatTable(rows, columns)}`;
+  return formatTable(rows, columns);
 }
 
 /**
- * Render temporal buckets in UTC, retaining nulls, string values, and completeness
- * distinctions. No totals or peaks are inferred from the selected aggregate.
+ * Render temporal buckets in UTC, with a table fallback for terminals or series
+ * without graphics support. JSON and the original bucket values stay untouched.
  */
 export function formatExploreTimeSeriesHuman(
   data: ExploreTimeSeriesData,
 ): string {
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
   const details = [
-    `Querying ${escapeMarkdownInline(data.dataset)} in ${escapeMarkdownInline(scope)}:`,
+    `Querying ${escapeMarkdownInline(data.dataset)} in ${escapeMarkdownInline(scope)}`,
   ];
   if (data.meta?.start !== undefined && data.meta.end !== undefined) {
     details.push(
@@ -120,6 +152,7 @@ export function formatExploreTimeSeriesHuman(
   }
 
   const ingestion = data.meta?.ingestion;
+  const ingestionDetails: string[] = [];
   const hasPendingIngestion = data.timeSeries.some((series) =>
     series.values.some(
       (bucket) =>
@@ -127,21 +160,26 @@ export function formatExploreTimeSeriesHuman(
     ),
   );
   if (ingestion && (hasPendingIngestion || ingestion.status === "stalled")) {
-    details.push(
+    ingestionDetails.push(
       `Ingestion status: ${escapeMarkdownInline(ingestion.status)}.`,
     );
     if (ingestion.delaySeconds != null) {
-      details.push(
+      ingestionDetails.push(
         `Reported ingestion delay: ${formatDurationCompact(ingestion.delaySeconds)}.`,
       );
     }
   }
 
-  const header = renderMarkdown(details.join("\n\n"));
-  if (data.timeSeries.length === 0) {
-    return `${header}\n\nNo time series returned.`;
+  const sections = [
+    renderMarkdown(details.join(" · ")),
+    data.timeSeries.length === 0
+      ? "No time series returned."
+      : data.timeSeries.map(formatSeries).join("\n\n"),
+  ];
+  if (ingestionDetails.length > 0) {
+    sections.push(renderMarkdown(ingestionDetails.join(" · ")));
   }
-  return `${header}\n\n${data.timeSeries.map(formatSeries).join("\n\n")}`;
+  return sections.join("\n\n");
 }
 
 /**

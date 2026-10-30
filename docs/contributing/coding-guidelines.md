@@ -35,6 +35,14 @@ product-specific implementation patterns.
   write `return await` in async functions so callers stay in async stack
   traces. Type-aware correctness rules that still have a backlog are turned
   off at the root; #1573 tracks enabling them.
+- Copy and combine iterables with spread: `[...set]`, `[...a, ...b]`,
+  `[...path, key]`. `unicorn/prefer-spread` enforces this repo-wide and
+  autofixes `Array.from(x)` and `.slice()`. Spread rejects non-iterables at
+  compile time and at runtime, where `Array.from` accepts any `{ length }`
+  object. Keep `Array.from` for array-likes and `Array.from({ length: n }, fn)`.
+  To walk a string's UTF-16 code units, use `split("")`. Spread a string only
+  when you mean code points, and suppress `typescript/no-misused-spread` with
+  the reason.
 - Don't pass an async callback to `.catch()`. Use `try`/`await`/`catch`, or a
   wrapper such as `withDashboardErrors(ctx, fn)`. The `no-async-catch-callback`
   ast-grep rule enforces this.

@@ -6,12 +6,17 @@
 
 import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
+import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
+import {
+  type OrgProjectTarget,
+  orgProjectTarget,
+} from "../../../lib/target-positional.js";
 import {
   METRIC_ALERT_DATASET_BRIEF,
   parseMetricTriggers,
@@ -59,11 +64,11 @@ function formatCreated(result: CreateResult): string {
 }
 
 function resolveMetricCreateOrg(
-  arg: string | undefined,
+  parsed: ParsedOrgProject,
   cwd: string,
 ): Promise<string> {
-  return resolveOrgOnlyFromArg(
-    arg,
+  return resolveOrgOnlyTarget(
+    parsed,
     cwd,
     "alert metrics create",
     "sentry alert metrics create <org>/",
@@ -110,7 +115,9 @@ export const createCommand = buildCommand({
         {
           placeholder: "target",
           brief: "Target project or organization",
-          parse: String,
+          parse: orgProjectTarget((parsed, { cwd }) =>
+            resolveMetricCreateOrg(parsed, cwd),
+          ),
         },
       ],
     },
@@ -177,8 +184,11 @@ export const createCommand = buildCommand({
     },
     aliases: { ...DRY_RUN_ALIASES, t: "trigger", p: "project" },
   },
-  async *func(this: SentryContext, flags: CreateFlags, arg: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: CreateFlags,
+    target: OrgProjectTarget<string>,
+  ) {
     if (!flags.name.trim()) {
       throw new ValidationError("Rule name cannot be empty.", "name");
     }
@@ -211,7 +221,7 @@ export const createCommand = buildCommand({
       );
     }
 
-    const orgSlug = await resolveMetricCreateOrg(arg, cwd);
+    const orgSlug = await target.resolved;
 
     const body: Record<string, unknown> = {
       name: flags.name,

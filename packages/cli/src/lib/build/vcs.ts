@@ -59,39 +59,6 @@ export type VcsFlags = {
   "no-git-metadata"?: boolean;
 };
 
-/** Environment variables commonly set by CI providers. */
-const CI_ENV_VARS = [
-  "CI",
-  "JENKINS_URL",
-  "HUDSON_URL",
-  "TEAMCITY_VERSION",
-  "CIRCLE_BUILD_URL",
-  "bamboo_resultsUrl",
-  "GITHUB_ACTIONS",
-  "GITLAB_CI",
-  "TRAVIS_JOB_ID",
-  "BITRISE_BUILD_URL",
-  "GO_SERVER_URL",
-  "TF_BUILD",
-  "BUILDKITE",
-];
-
-/**
- * Detect whether we are running in a CI environment.
- *
- * @param env - Environment variables (defaults to `process.env`).
- */
-export function isCi(env: NodeJS.ProcessEnv = process.env): boolean {
-  return CI_ENV_VARS.some((name) => {
-    const value = env[name];
-    // Treat explicit opt-out values ("", "false", "0") as not-in-CI so a local
-    // `CI=false` does not silently enable git-metadata collection.
-    return (
-      value !== undefined && value !== "" && value !== "false" && value !== "0"
-    );
-  });
-}
-
 /** A 40-character lowercase hex SHA-1. */
 const SHA1_RE = /^[0-9a-f]{40}$/;
 

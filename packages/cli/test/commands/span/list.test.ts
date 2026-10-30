@@ -3,7 +3,7 @@
  *
  * Tests for the dual-mode span list command:
  * - parseSort: sort flag validation
- * - parseSpanListArgs: positional argument disambiguation (project vs trace mode)
+ * - parseSpanListInput: positional argument disambiguation (project vs trace mode)
  * - listCommand.func (trace mode): existing trace-scoped behavior
  * - listCommand.func (project mode): new project-scoped behavior
  */
@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   listCommand,
   parseSort,
-  parseSpanListArgs,
+  parseSpanListInput,
 } from "../../../src/commands/span/list.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -64,7 +64,7 @@ const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 // Reference paginationDb early to prevent import stripping by auto-organize
 const _paginationDbRef = paginationDb;
 
-// Note: parseTraceTarget parsing tests are in test/lib/trace-target.test.ts
+// Note: trace-target parsing tests are in test/lib/trace-target.test.ts
 
 // ============================================================================
 // parseSort
@@ -93,63 +93,98 @@ describe("parseSort", () => {
 });
 
 // ============================================================================
-// parseSpanListArgs — positional argument disambiguation
+// parseSpanListInput — positional argument disambiguation
 // ============================================================================
 
-describe("parseSpanListArgs", () => {
-  test("no args → project mode", () => {
-    const result = parseSpanListArgs([]);
-    expect(result).toEqual({ mode: "project" });
+describe("parseSpanListInput", () => {
+  test("no args → project mode, auto-detected", () => {
+    expect(parseSpanListInput([])).toEqual({
+      mode: "project",
+      target: { type: "auto-detect" },
+    });
   });
 
   test("org/project → project mode with target", () => {
-    const result = parseSpanListArgs(["my-org/my-project"]);
-    expect(result.mode).toBe("project");
-    if (result.mode === "project") {
-      expect(result.target).toBe("my-org/my-project");
-    }
+    expect(parseSpanListInput(["my-org/my-project"])).toEqual({
+      mode: "project",
+      target: { type: "explicit", org: "my-org", project: "my-project" },
+    });
   });
 
-  test("bare project name → project mode with target", () => {
-    const result = parseSpanListArgs(["my-project"]);
-    expect(result.mode).toBe("project");
-    if (result.mode === "project") {
-      expect(result.target).toBe("my-project");
-    }
+  test("bare project name → project mode, searched", () => {
+    expect(parseSpanListInput(["my-project"])).toMatchObject({
+      mode: "project",
+      target: { type: "project-search", projectSlug: "my-project" },
+    });
   });
 
   test("trace ID → trace mode", () => {
-    const result = parseSpanListArgs([VALID_TRACE_ID]);
-    expect(result.mode).toBe("trace");
+    expect(parseSpanListInput([VALID_TRACE_ID])).toEqual({
+      mode: "trace",
+      trace: {
+        parsed: { type: "auto-detect", traceId: VALID_TRACE_ID },
+        warnings: [],
+      },
+    });
   });
 
   test("org/project/trace-id → trace mode", () => {
-    const result = parseSpanListArgs([`my-org/my-project/${VALID_TRACE_ID}`]);
-    expect(result.mode).toBe("trace");
+    expect(
+      parseSpanListInput([`my-org/my-project/${VALID_TRACE_ID}`]),
+    ).toMatchObject({
+      mode: "trace",
+      trace: {
+        parsed: {
+          type: "explicit",
+          traceId: VALID_TRACE_ID,
+          org: "my-org",
+          project: "my-project",
+        },
+      },
+    });
+  });
+
+  test("<x>/trace-id names project <x>, since span list needs one", () => {
+    expect(parseSpanListInput([`frontend/${VALID_TRACE_ID}`])).toMatchObject({
+      mode: "trace",
+      trace: { parsed: { type: "project-search", projectSlug: "frontend" } },
+    });
   });
 
   test("project + trace-id (space-separated) → trace mode", () => {
-    const result = parseSpanListArgs(["my-project", VALID_TRACE_ID]);
-    expect(result.mode).toBe("trace");
+    expect(parseSpanListInput(["my-project", VALID_TRACE_ID]).mode).toBe(
+      "trace",
+    );
   });
 
   test("org/project + trace-id (space-separated) → trace mode", () => {
-    const result = parseSpanListArgs(["my-org/my-project", VALID_TRACE_ID]);
-    expect(result.mode).toBe("trace");
+    expect(parseSpanListInput(["my-org/my-project", VALID_TRACE_ID]).mode).toBe(
+      "trace",
+    );
   });
 
   test("short non-hex string → project mode", () => {
-    const result = parseSpanListArgs(["frontend"]);
-    expect(result.mode).toBe("project");
-    if (result.mode === "project") {
-      expect(result.target).toBe("frontend");
-    }
+    expect(parseSpanListInput(["frontend"]).mode).toBe("project");
   });
 
   test("32-char non-hex string → project mode", () => {
     // 32 chars but not valid hex
-    const result = parseSpanListArgs(["abcdefghijklmnopqrstuvwxyz123456"]);
-    expect(result.mode).toBe("project");
+    expect(parseSpanListInput(["abcdefghijklmnopqrstuvwxyz123456"]).mode).toBe(
+      "project",
+    );
+  });
+
+  test("a pasted URL's server is returned, not applied", () => {
+    const savedUrl = process.env.SENTRY_URL;
+    expect(
+      parseSpanListInput([
+        `https://sentry.example.com/organizations/acme/traces/${VALID_TRACE_ID}/`,
+      ]),
+    ).toMatchObject({
+      mode: "trace",
+      trace: { baseUrl: "https://sentry.example.com" },
+    });
+    expect(process.env.SENTRY_URL).toBe(savedUrl);
   });
 });
 
@@ -283,6 +318,31 @@ describe("listCommand.func (trace mode)", () => {
       "test-project",
       expect.objectContaining({
         query: `trace:${VALID_TRACE_ID} span.op:db`,
+      }),
+    );
+  });
+
+  test("requests discovered typed attribute keys intact through --fields", async () => {
+    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    const { context } = createContext();
+
+    await func.call(
+      context,
+      {
+        limit: 25,
+        sort: "date",
+        period: parsePeriod("7d"),
+        fresh: false,
+        fields: "id,tags[cart.total,number],tags[items[*],array]",
+      },
+      VALID_TRACE_ID,
+    );
+
+    expect(listSpansSpy).toHaveBeenCalledWith(
+      "test-org",
+      "test-project",
+      expect.objectContaining({
+        extraFields: ["tags[cart.total,number]", "tags[items[*],array]"],
       }),
     );
   });
@@ -560,9 +620,10 @@ describe("listCommand.func (trace mode)", () => {
 
 describe("listCommand.func (project mode)", () => {
   let func: ListFunc;
-  // span/list.ts calls resolveProjectBoundFromArg (not resolveOrgAndProject)
+  // Project mode resolves with resolveProjectBoundTarget (not
+  // resolveOrgAndProject)
   const resolveOrgAndProjectSpy = vi.mocked(
-    resolveTarget.resolveProjectBoundFromArg,
+    resolveTarget.resolveProjectBoundTarget,
   );
   const listSpansSpy = vi.mocked(apiClient.listSpans);
   const resolveCursorSpy = vi.mocked(paginationDb.resolveCursor);
@@ -593,16 +654,12 @@ describe("listCommand.func (project mode)", () => {
 
   beforeEach(async () => {
     func = (await listCommand.loader()) as unknown as ListFunc;
-    // Mock resolveProjectBoundFromArg to parse explicit "org/project" targets
-    // and fall back to a default for auto-detect (no target).
-    resolveOrgAndProjectSpy.mockImplementation(
-      async (target: string | undefined) => {
-        if (target?.includes("/")) {
-          const [org, project] = target.split("/");
-          return { org: org!, project: project! };
-        }
-        return { org: "test-org", project: "test-project" };
-      },
+    // Resolve explicit "org/project" targets as typed and fall back to a
+    // default for auto-detect (no target).
+    resolveOrgAndProjectSpy.mockImplementation(async (target) =>
+      target.type === "explicit"
+        ? { org: target.org, project: target.project }
+        : { org: "test-org", project: "test-project" },
     );
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(4242);
     resolveCursorSpy.mockReturnValue({
@@ -677,9 +734,9 @@ describe("listCommand.func (project mode)", () => {
       "my-project",
       expect.anything(),
     );
-    // resolveProjectBoundFromArg is called with the explicit target
+    // The explicit target is parsed before it is resolved
     expect(resolveOrgAndProjectSpy).toHaveBeenCalledWith(
-      "my-org/my-project",
+      { type: "explicit", org: "my-org", project: "my-project" },
       expect.any(String),
       expect.any(String),
     );

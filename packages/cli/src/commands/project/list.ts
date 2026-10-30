@@ -24,7 +24,6 @@ import {
   explicitProjectSlugs,
   formatProjectTarget,
   type ParsedOrgProject,
-  parseListTarget,
 } from "../../lib/arg-parsing.js";
 import { getDefaultOrganization } from "../../lib/db/defaults.js";
 import {
@@ -45,7 +44,7 @@ import {
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
-  NAMED_LIST_TARGET_POSITIONAL,
+  listTargetPositional,
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
@@ -71,6 +70,7 @@ import {
   resolveAllTargets,
 } from "../../lib/resolve-target.js";
 import { getApiBaseUrl } from "../../lib/sentry-client.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 import { shellQuote } from "../../lib/utils.js";
 import type { SentryProject } from "../../types/index.js";
 
@@ -922,7 +922,7 @@ export const listCommand = buildListCommand("project", {
     jsonTransform: jsonTransformListResult,
   } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
   parameters: {
-    positional: NAMED_LIST_TARGET_POSITIONAL,
+    positional: listTargetPositional({ names: true, multi: true }),
     flags: {
       limit: buildListLimitFlag("projects"),
       platform: {
@@ -934,10 +934,14 @@ export const listCommand = buildListCommand("project", {
     },
     aliases: { ...LIST_BASE_ALIASES, p: "platform" },
   },
-  async *func(this: SentryContext, cliFlags: ListFlags, rawTarget?: string) {
+  async *func(
+    this: SentryContext,
+    cliFlags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
 
-    const { parsed, filter } = parseListTarget(rawTarget, { multi: true });
+    const { parsed, filter } = await target.resolved;
     const flags: ProjectListFlags = { ...cliFlags, filter };
 
     const result = await dispatchOrgScopedList({

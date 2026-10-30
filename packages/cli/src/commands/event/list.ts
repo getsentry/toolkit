@@ -24,11 +24,8 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import { IssueEventSchema } from "../../types/index.js";
-import {
-  buildCommandHint,
-  issueIdPositional,
-  resolveIssue,
-} from "../issue/utils.js";
+import { type IssueTarget, issuePositional } from "../issue/positional.js";
+import { buildCommandHint } from "../issue/utils.js";
 import {
   appendEventsFlags,
   EVENTS_ALIASES,
@@ -132,28 +129,26 @@ export const listCommand = buildListCommand("event", {
     schema: IssueEventSchema,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({
+      command: COMMAND_NAME,
+      commandBase: COMMAND_BASE,
+    }),
     flags: EVENTS_FLAGS,
     aliases: EVENTS_ALIASES,
   },
-  async *func(this: SentryContext, flags: EventsFlags, issueArg: string) {
-    // interceptSubcommand (in buildListCommand) may replace the positional
-    // with undefined when the user types e.g. "sentry events view" via the
-    // plural alias. The tip message is already printed — just bail out.
+  async *func(this: SentryContext, flags: EventsFlags, target: IssueTarget) {
+    // interceptSubcommand (in buildListCommand) may drop the positional when
+    // the user types e.g. "sentry events view" via the plural alias. The tip
+    // message is already printed — just bail out.
+    const issueArg = target.raw;
     if (!issueArg) {
       return;
     }
 
-    const { cwd } = this;
     const timeRange = flags.period;
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND_NAME,
-      commandBase: COMMAND_BASE,
-    });
+    const { org, issue } = await target.resolved;
 
     // Org is required for region-routed events endpoint
     if (!org) {

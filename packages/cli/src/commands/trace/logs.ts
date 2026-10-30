@@ -13,7 +13,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import { toSearchQueryError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { formatLogTable } from "../../lib/formatters/log.js";
@@ -25,6 +25,10 @@ import {
   LIST_MAX_LIMIT,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
 import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import {
@@ -35,8 +39,11 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import {
-  parseTraceTarget,
+  applyTraceTargetInput,
+  parseTraceTargetInput,
+  type ResolvedTraceOrg,
   resolveTraceOrg,
+  type TraceTargetInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 
@@ -97,6 +104,42 @@ function parseLimit(value: string): number {
   return validateLimit(value, 1, LIST_MAX_LIMIT);
 }
 
+/** `trace logs` arguments, resolved. */
+type TraceLogsTarget = ResolvedTraceOrg & {
+  /** Project the user named, to filter the trace's logs by */
+  readonly projectFilter?: string;
+};
+
+/** The arguments of `trace logs`. */
+type TraceLogsArguments = BoundArguments<TraceTargetInput, TraceLogsTarget>;
+
+/** Parse `trace logs` arguments, without side effects. */
+function parseTraceLogsInput(args: readonly string[]): TraceTargetInput {
+  return parseTraceTargetInput(args, USAGE_HINT);
+}
+
+/**
+ * Resolve `trace logs` arguments to the trace's org; a project the user
+ * named becomes a filter.
+ */
+async function resolveTraceLogsTarget(
+  input: TraceTargetInput,
+  context: SentryContext,
+): Promise<TraceLogsTarget> {
+  const parsed = applyTraceTargetInput(input);
+  warnIfNormalized(parsed, "trace.logs");
+  const { traceId, org } = await resolveTraceOrg(
+    parsed,
+    context.cwd,
+    USAGE_HINT,
+  );
+  return {
+    traceId,
+    org,
+    projectFilter: parsed.type === "explicit" ? parsed.project : undefined,
+  };
+}
+
 export const logsCommand = buildCommand({
   docs: {
     brief: "View logs associated with a trace",
@@ -151,15 +194,14 @@ export const logsCommand = buildCommand({
     },
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/trace-id",
-        brief:
-          "[<org>/[<project>/]]<trace-id> - Optional org/project and required trace ID",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/trace-id",
+      brief:
+        "[<org>/[<project>/]]<trace-id> - Optional org/project and required trace ID",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseTraceLogsInput,
+      resolve: resolveTraceLogsTarget,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -202,17 +244,14 @@ export const logsCommand = buildCommand({
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: LogsFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: LogsFlags,
+    target: TraceLogsArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
     const timeRange = flags.period;
-
-    // Parse and resolve org/trace-id (project captured for filtering)
-    const parsed = parseTraceTarget(args, USAGE_HINT);
-    warnIfNormalized(parsed, "trace.logs");
-    const { traceId, org } = await resolveTraceOrg(parsed, cwd, USAGE_HINT);
-    const projectFilter =
-      parsed.type === "explicit" ? parsed.project : undefined;
+    const { traceId, org, projectFilter } = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(buildTraceUrl(org, traceId), "trace");

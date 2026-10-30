@@ -279,7 +279,7 @@ describe("parsePositionalArgs", () => {
       // Auto-swap: org/project becomes target, hex ID becomes the log ID
       expect(result.targetArg).toBe("my-org/my-project");
       expect(result.rawLogIds).toEqual(["968c763c740cfda8b6728f27fb9e9b01"]);
-      expect(result.suggestion).toContain("reversed");
+      expect(result.warnings).toEqual([expect.stringContaining("reversed")]);
     });
 
     test("returns suggestion when first arg looks like issue short ID", () => {

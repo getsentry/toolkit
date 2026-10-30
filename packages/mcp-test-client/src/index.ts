@@ -156,7 +156,7 @@ program
 
       try {
         if (listToolsOnly) {
-          const toolNames = Array.from(connection.tools.keys()).sort();
+          const toolNames = [...connection.tools.keys()].sort();
           logInfo("Available tools", `${toolNames.length} tools`);
           for (const toolName of toolNames) {
             console.log(chalk.gray(`  - ${toolName}`));

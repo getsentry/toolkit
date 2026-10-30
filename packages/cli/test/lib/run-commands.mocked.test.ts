@@ -1,7 +1,7 @@
 /**
  * Unit tests for the run-commands tool.
  *
- * Kept as a mocked sibling file because vi.mock() on @sentry/node-core/light
+ * Kept as a mocked sibling file because vi.mock() on @sentry/node
  * must precede all module imports to take effect.
  */
 
@@ -22,7 +22,7 @@ const { breadcrumbs } = vi.hoisted(() => ({
   breadcrumbs: [] as Breadcrumb[],
 }));
 
-vi.mock("@sentry/node-core/light", () => ({
+vi.mock("@sentry/node", () => ({
   addBreadcrumb: (crumb: Breadcrumb) => breadcrumbs.push(crumb),
 }));
 

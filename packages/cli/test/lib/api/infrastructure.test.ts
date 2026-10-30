@@ -738,12 +738,12 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.example.com",
     });
     globalThis.fetch = mockFetch(async (input, init) => {
-      expect(input).toBe(
+      const request = new Request(input, init);
+      expect(request.url).toBe(
         "https://sentry.example.com/sentry/api/0/organizations/acme/?cursor=a%3Ab",
       );
-      expect(new Headers(init?.headers).get("Authorization")).toBe(
-        "Bearer valid-token",
-      );
+      expect(request.headers.get("Authorization")).toBe("Bearer valid-token");
+      expect(request.headers.get("Content-Type")).toBe("application/custom");
       return new Response("{}", {
         headers: { "content-type": "application/json" },
       });
@@ -752,6 +752,7 @@ describe("rawApiRequest binary handling", () => {
     await rawApiRequest("/organizations/acme/", {
       baseUrl: "https://sentry.example.com/sentry",
       params: { cursor: "a:b" },
+      headers: { "content-type": "application/custom" },
     });
   });
 
@@ -778,11 +779,11 @@ describe("rawApiRequest binary handling", () => {
     expect(result.status).toBe(200);
     expect(result.body).toBeInstanceOf(Uint8Array);
     const body = result.body as Uint8Array;
-    expect(Array.from(body.slice(0, 8))).toEqual([
+    expect([...body.subarray(0, 8)]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
     // Must NOT contain the UTF-8 replacement sequence EF BF BD
-    expect(Array.from(body.slice(0, 3))).not.toEqual([0xef, 0xbf, 0xbd]);
+    expect([...body.subarray(0, 3)]).not.toEqual([0xef, 0xbf, 0xbd]);
     expect(body).toEqual(pngBytes);
   });
 

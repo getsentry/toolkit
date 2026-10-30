@@ -18,7 +18,7 @@ import { logger } from "../../lib/logger.js";
 import { parseRelativeParts, UNIT_SECONDS } from "../../lib/time-range.js";
 import type { SentryIssue } from "../../types/index.js";
 import type { IssueSubstatus } from "../../types/sentry.js";
-import { issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
 
 const log = logger.withTag("issue.archive");
 
@@ -394,7 +394,7 @@ export const archiveCommand = buildCommand({
     human: formatArchived,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND }),
     flags: {
       until: {
         kind: "parsed",
@@ -406,7 +406,7 @@ export const archiveCommand = buildCommand({
     },
     aliases: { u: "until" },
   },
-  async *func(this: SentryContext, flags: ArchiveFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: ArchiveFlags, target: IssueTarget) {
     let substatus: IssueSubstatus = "archived_forever";
     let statusDetails: IgnoreStatusDetails | undefined;
 
@@ -417,11 +417,7 @@ export const archiveCommand = buildCommand({
       statusDetails = opts.statusDetails;
     }
 
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd: this.cwd,
-      command: COMMAND,
-    });
+    const { org, issue } = await target.resolved;
 
     const updated = await updateIssueStatus(issue.id, "ignored", {
       statusDetails,

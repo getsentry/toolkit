@@ -29,7 +29,8 @@ import {
   formatEventsHuman,
   jsonTransformEvents,
 } from "../event/shared-events.js";
-import { buildCommandHint, issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
+import { buildCommandHint } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,20 +115,16 @@ export const eventsCommand = buildListCommand("issue", {
     schema: IssueEventSchema,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND_NAME }),
     flags: EVENTS_FLAGS,
     aliases: EVENTS_ALIASES,
   },
-  async *func(this: SentryContext, flags: EventsFlags, issueArg: string) {
-    const { cwd } = this;
+  async *func(this: SentryContext, flags: EventsFlags, target: IssueTarget) {
+    const issueArg = target.raw ?? "";
     const timeRange = flags.period;
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND_NAME,
-    });
+    const { org, issue } = await target.resolved;
 
     // Org is required for region-routed events endpoint
     if (!org) {

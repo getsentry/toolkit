@@ -6,7 +6,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   collectEventIds,
@@ -15,7 +15,7 @@ import {
   fetchMultipleEvents,
   formatEventView,
   jsonTransformEventView,
-  parsePositionalArgs,
+  parseEventViewInput,
   resolveAutoDetectTarget,
   resolveEventTarget,
   resolveOrgAllTarget,
@@ -91,16 +91,16 @@ vi.mock("../../../src/lib/span-tree.js", async (importOriginal) => {
 import * as spanTree from "../../../src/lib/span-tree.js";
 import type { SentryEvent } from "../../../src/types/index.js";
 
-describe("parsePositionalArgs", () => {
+describe("parseEventViewInput", () => {
   describe("single argument (event ID only)", () => {
     test("parses single arg as event ID", () => {
-      const result = parsePositionalArgs(["abc123def456"]);
+      const result = parseEventViewInput(["abc123def456"]);
       expect(result.eventId).toBe("abc123def456");
       expect(result.targetArg).toBeUndefined();
     });
 
     test("parses UUID-like event ID", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       ]);
       expect(result.eventId).toBe("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
@@ -108,32 +108,32 @@ describe("parsePositionalArgs", () => {
     });
 
     test("parses short event ID", () => {
-      const result = parsePositionalArgs(["abc"]);
+      const result = parseEventViewInput(["abc"]);
       expect(result.eventId).toBe("abc");
       expect(result.targetArg).toBeUndefined();
     });
 
     test("detects issue short ID and sets issueShortId", () => {
-      const result = parsePositionalArgs(["BRUNCHIE-APP-29"]);
+      const result = parseEventViewInput(["BRUNCHIE-APP-29"]);
       expect(result.eventId).toBe("@latest");
       expect(result.targetArg).toBeUndefined();
       expect(result.issueShortId).toBe("BRUNCHIE-APP-29");
     });
 
     test("detects short issue ID like CLI-G", () => {
-      const result = parsePositionalArgs(["CLI-G"]);
+      const result = parseEventViewInput(["CLI-G"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueShortId).toBe("CLI-G");
     });
 
     test("does not detect lowercase slug as issue short ID", () => {
-      const result = parsePositionalArgs(["my-project"]);
+      const result = parseEventViewInput(["my-project"]);
       expect(result.eventId).toBe("my-project");
       expect(result.issueShortId).toBeUndefined();
     });
 
     test("detects org/ISSUE-SHORT-ID pattern (CLI-9K)", () => {
-      const result = parsePositionalArgs(["figma/FULLSCREEN-2RN"]);
+      const result = parseEventViewInput(["figma/FULLSCREEN-2RN"]);
       expect(result.eventId).toBe("@latest");
       // Trailing slash signals OrgAll mode so downstream resolves org correctly
       expect(result.targetArg).toBe("figma/");
@@ -141,14 +141,14 @@ describe("parsePositionalArgs", () => {
     });
 
     test("detects org/CLI-G pattern", () => {
-      const result = parsePositionalArgs(["sentry/CLI-G"]);
+      const result = parseEventViewInput(["sentry/CLI-G"]);
       expect(result.eventId).toBe("@latest");
       expect(result.targetArg).toBe("sentry/");
       expect(result.issueShortId).toBe("CLI-G");
     });
 
     test("detects SHORT-ID/EVENT-ID pattern (CLI-HV)", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "CLI-G5/abc123def456abc123def456abc123de",
       ]);
       expect(result.eventId).toBe("abc123def456abc123def456abc123de");
@@ -157,7 +157,7 @@ describe("parsePositionalArgs", () => {
     });
 
     test("detects multi-dash SHORT-ID/EVENT-ID pattern", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "PHP-SYMFONY-HY/7388f6a62b7d436ab77bb5365f97a1ac",
       ]);
       expect(result.eventId).toBe("7388f6a62b7d436ab77bb5365f97a1ac");
@@ -166,7 +166,7 @@ describe("parsePositionalArgs", () => {
     });
 
     test("normalizes UUID-format event ID in SHORT-ID/EVENT-ID", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "CLI-G5/7388f6a6-2b7d-436a-b77b-b5365f97a1ac",
       ]);
       expect(result.eventId).toBe("7388f6a62b7d436ab77bb5365f97a1ac");
@@ -175,7 +175,7 @@ describe("parsePositionalArgs", () => {
 
     test("org/SHORT-ID takes precedence over SHORT-ID/EVENT-ID", () => {
       // "figma/FULLSCREEN-2RN" → org + issue, not issue + event
-      const result = parsePositionalArgs(["figma/FULLSCREEN-2RN"]);
+      const result = parseEventViewInput(["figma/FULLSCREEN-2RN"]);
       expect(result.eventId).toBe("@latest");
       expect(result.targetArg).toBe("figma/");
       expect(result.issueShortId).toBe("FULLSCREEN-2RN");
@@ -184,7 +184,7 @@ describe("parsePositionalArgs", () => {
     test("does not detect org/lowercase-slug as issue short ID", () => {
       // "my-org/my-project" is a normal org/project target, not an issue short ID.
       // parseSlashSeparatedArg will throw ContextError as expected.
-      expect(() => parsePositionalArgs(["my-org/my-project"])).toThrow(
+      expect(() => parseEventViewInput(["my-org/my-project"])).toThrow(
         "Event ID",
       );
     });
@@ -192,19 +192,19 @@ describe("parsePositionalArgs", () => {
 
   describe("two arguments (target + event ID)", () => {
     test("parses org/project target and event ID", () => {
-      const result = parsePositionalArgs(["my-org/frontend", "abc123def456"]);
+      const result = parseEventViewInput(["my-org/frontend", "abc123def456"]);
       expect(result.targetArg).toBe("my-org/frontend");
       expect(result.eventId).toBe("abc123def456");
     });
 
     test("parses project-only target and event ID", () => {
-      const result = parsePositionalArgs(["frontend", "abc123def456"]);
+      const result = parseEventViewInput(["frontend", "abc123def456"]);
       expect(result.targetArg).toBe("frontend");
       expect(result.eventId).toBe("abc123def456");
     });
 
     test("parses org/ target (all projects) and event ID", () => {
-      const result = parsePositionalArgs(["my-org/", "abc123def456"]);
+      const result = parseEventViewInput(["my-org/", "abc123def456"]);
       expect(result.targetArg).toBe("my-org/");
       expect(result.eventId).toBe("abc123def456");
     });
@@ -215,16 +215,68 @@ describe("parsePositionalArgs", () => {
     ])(
       "preserves and normalizes the event ID after an issue short ID: %s",
       (eventId) => {
-        const result = parsePositionalArgs(["JAVASCRIPT-NUXT-52", eventId]);
+        const result = parseEventViewInput(["JAVASCRIPT-NUXT-52", eventId]);
         expect(result.issueShortId).toBe("JAVASCRIPT-NUXT-52");
         expect(result.eventId).toBe("7388f6a62b7d436ab77bb5365f97a1ac");
         expect(result.targetArg).toBeUndefined();
-        expect(result.warning).toBeUndefined();
+        expect(result.warnings).toEqual([]);
       },
     );
 
+    test("reads an issue short ID before a target as reversed arguments", () => {
+      const result = parseEventViewInput(["CAM-82X", "my-org/frontend"]);
+      expect(result.eventId).toBe("@latest");
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.warnings).toEqual([
+        "Arguments appear reversed. Interpreting as: my-org/frontend CAM-82X",
+      ]);
+    });
+
+    test("reads an issue short ID after org/project/ as the issue", () => {
+      const result = parseEventViewInput(["my-org/frontend/CAM-82X"]);
+      expect(result.eventId).toBe("@latest");
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.targetArg).toBe("my-org/frontend");
+    });
+
+    test("reads an event ID after org/project/<short-id> as the issue's event", () => {
+      const eventId = "7388f6a62b7d436ab77bb5365f97a1ac";
+      const result = parseEventViewInput(["my-org/frontend/CAM-82X", eventId]);
+      expect(result.eventId).toBe(eventId);
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.targetArg).toBe("my-org/frontend");
+    });
+
+    test("reads an all-digit event ID after <short-id>/ as the issue's event", () => {
+      const eventId = "12345678901234567890123456789012";
+      const result = parseEventViewInput([`CAM-82X/${eventId}`]);
+      expect(result.eventId).toBe(eventId);
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.issueId).toBeUndefined();
+    });
+
+    test("<org>/<short-id> and <org>/<numeric-id> keep their order around <short-id>/<event-id>", () => {
+      expect(parseEventViewInput(["my-org/CAM-82X"])).toMatchObject({
+        issueShortId: "CAM-82X",
+        targetArg: "my-org/",
+      });
+      // A short number is no event ID: the issue ID, after a target
+      expect(parseEventViewInput(["CAM-82X/123"])).toMatchObject({
+        issueId: "123",
+        targetArg: "CAM-82X/",
+      });
+    });
+
+    test("rejects an incomplete event ID after <short-id>/", () => {
+      // Not project `CAM-82X` with a partial event ID to recover
+      expect(() => parseEventViewInput(["CAM-82X/95fd7f5a"])).toThrow(
+        ValidationError,
+      );
+    });
+
     test("rejects an incomplete event ID instead of selecting latest", () => {
-      expect(() => parsePositionalArgs(["CAM-82X", "95fd7f5a"])).toThrow(
+      expect(() => parseEventViewInput(["CAM-82X", "95fd7f5a"])).toThrow(
         ValidationError,
       );
     });
@@ -232,12 +284,12 @@ describe("parsePositionalArgs", () => {
 
   describe("error cases", () => {
     test("throws ContextError for empty args", () => {
-      expect(() => parsePositionalArgs([])).toThrow(ContextError);
+      expect(() => parseEventViewInput([])).toThrow(ContextError);
     });
 
     test("throws ContextError with usage hint", () => {
       try {
-        parsePositionalArgs([]);
+        parseEventViewInput([]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -248,14 +300,14 @@ describe("parsePositionalArgs", () => {
 
   describe("numeric issue IDs and bare 'latest'", () => {
     test("bare numeric ID maps to issueId + latest sentinel", () => {
-      const result = parsePositionalArgs(["17370"]);
+      const result = parseEventViewInput(["17370"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueId).toBe("17370");
       expect(result.targetArg).toBeUndefined();
     });
 
     test("org/numeric-ID maps to org-all target + issueId (CLI-1F5)", () => {
-      const result = parsePositionalArgs(["my-org/17370"]);
+      const result = parseEventViewInput(["my-org/17370"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueId).toBe("17370");
       // Trailing slash signals org-all so the org resolves downstream.
@@ -263,25 +315,25 @@ describe("parsePositionalArgs", () => {
     });
 
     test("org/project + numeric second arg maps to issueId", () => {
-      const result = parsePositionalArgs(["my-org/frontend", "17370"]);
+      const result = parseEventViewInput(["my-org/frontend", "17370"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueId).toBe("17370");
       expect(result.targetArg).toBe("my-org/frontend");
     });
 
     test("bare 'latest' (single arg) throws ContextError", () => {
-      expect(() => parsePositionalArgs(["latest"])).toThrow(ContextError);
+      expect(() => parseEventViewInput(["latest"])).toThrow(ContextError);
     });
 
     test("'latest' as second arg throws ContextError", () => {
-      expect(() => parsePositionalArgs(["my-org/frontend", "latest"])).toThrow(
+      expect(() => parseEventViewInput(["my-org/frontend", "latest"])).toThrow(
         ContextError,
       );
     });
 
     test("bare 'latest' error mentions Issue ID", () => {
       try {
-        parsePositionalArgs(["latest"]);
+        parseEventViewInput(["latest"]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -290,19 +342,19 @@ describe("parsePositionalArgs", () => {
     });
 
     test("'LATEST' is case-insensitive", () => {
-      expect(() => parsePositionalArgs(["LATEST"])).toThrow(ContextError);
+      expect(() => parseEventViewInput(["LATEST"])).toThrow(ContextError);
     });
   });
 
   describe("slash-separated org/project/eventId (single arg)", () => {
     test("parses org/project/eventId as target + event ID", () => {
-      const result = parsePositionalArgs(["sentry/cli/abc123def"]);
+      const result = parseEventViewInput(["sentry/cli/abc123def"]);
       expect(result.targetArg).toBe("sentry/cli");
       expect(result.eventId).toBe("abc123def");
     });
 
     test("parses with long hex event ID", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "my-org/frontend/a1b2c3d4e5f67890abcdef1234567890",
       ]);
       expect(result.targetArg).toBe("my-org/frontend");
@@ -310,22 +362,22 @@ describe("parsePositionalArgs", () => {
     });
 
     test("handles hyphenated org and project slugs", () => {
-      const result = parsePositionalArgs(["my-org/my-project/deadbeef"]);
+      const result = parseEventViewInput(["my-org/my-project/deadbeef"]);
       expect(result.targetArg).toBe("my-org/my-project");
       expect(result.eventId).toBe("deadbeef");
     });
 
     test("one slash (org/project, missing event ID) throws ContextError", () => {
-      expect(() => parsePositionalArgs(["sentry/cli"])).toThrow(ContextError);
+      expect(() => parseEventViewInput(["sentry/cli"])).toThrow(ContextError);
     });
 
     test("trailing slash (org/project/) throws ContextError", () => {
-      expect(() => parsePositionalArgs(["sentry/cli/"])).toThrow(ContextError);
+      expect(() => parseEventViewInput(["sentry/cli/"])).toThrow(ContextError);
     });
 
     test("one-slash ContextError mentions Event ID", () => {
       try {
-        parsePositionalArgs(["sentry/cli"]);
+        parseEventViewInput(["sentry/cli"]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -336,7 +388,7 @@ describe("parsePositionalArgs", () => {
 
   describe("edge cases", () => {
     test("collects extra args as additional event IDs", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "my-org/frontend",
         "abc123",
         "extra-arg",
@@ -346,10 +398,10 @@ describe("parsePositionalArgs", () => {
       expect(result.extraEventIds).toEqual(["extra-arg"]);
     });
 
-    test("handles empty string event ID in two-arg case", () => {
-      const result = parsePositionalArgs(["my-org/frontend", ""]);
-      expect(result.targetArg).toBe("my-org/frontend");
-      expect(result.eventId).toBe("");
+    test("an empty event ID after a target is a missing one", () => {
+      expect(() => parseEventViewInput(["my-org/frontend", ""])).toThrow(
+        ContextError,
+      );
     });
   });
 
@@ -366,7 +418,7 @@ describe("parsePositionalArgs", () => {
 
       // First arg has 2+ slashes → routed through single-arg path to correctly
       // extract org/project and first event ID, remaining become extraEventIds.
-      const result = parsePositionalArgs(expanded);
+      const result = parseEventViewInput(expanded);
       expect(result.targetArg).toBe("perzimo/perzimo-server");
       expect(result.eventId).toBe("189945b37884462cb9134bd5cabeaa3d");
       expect(result.extraEventIds).toEqual([
@@ -377,7 +429,7 @@ describe("parsePositionalArgs", () => {
 
     test("single arg with newlines goes through single-arg path after expansion", () => {
       // When there's only one line (no newlines), single-arg path works normally
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "perzimo/perzimo-server/189945b37884462cb9134bd5cabeaa3d",
       ]);
       expect(result.eventId).toBe("189945b37884462cb9134bd5cabeaa3d");
@@ -387,7 +439,7 @@ describe("parsePositionalArgs", () => {
 
     test("first arg with 2+ slashes routes through single-arg path and collects extras", () => {
       // Simulates expanded "org/project/id1\nid2\nid3" → 3 args
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "perzimo/perzimo-server/189945b37884462cb9134bd5cabeaa3d",
         "60c277e6c73f41c58ca46231b46dc0f8",
         "722e1158dfa147ec90ed831c4d096ae7",
@@ -401,7 +453,7 @@ describe("parsePositionalArgs", () => {
     });
 
     test("collects multiple extra event IDs", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "my-org/frontend",
         "abc123",
         "def456",
@@ -413,12 +465,12 @@ describe("parsePositionalArgs", () => {
     });
 
     test("no extra IDs when only two args", () => {
-      const result = parsePositionalArgs(["my-org/frontend", "abc123"]);
+      const result = parseEventViewInput(["my-org/frontend", "abc123"]);
       expect(result.extraEventIds).toBeUndefined();
     });
   });
 
-  // URL integration tests — applySentryUrlContext may set SENTRY_HOST/SENTRY_URL as a side effect.
+  // URL tests — parsing returns the server; resolving applies it.
   // Host-scoping: self-hosted URLs now require the token to be scoped to the
   // same host. Tests seed SENTRY_HOST before parsing so env-token-host matches.
   describe("Sentry URL inputs", () => {
@@ -452,25 +504,37 @@ describe("parsePositionalArgs", () => {
     });
 
     test("event URL extracts eventId and passes org as OrgAll target", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "https://sentry.io/organizations/my-org/issues/32886/events/abc123def456/",
       ]);
       expect(result.eventId).toBe("abc123def456");
       expect(result.targetArg).toBe("my-org/");
     });
 
-    test("self-hosted event URL extracts eventId, passes org, sets SENTRY_URL (requires matching token host)", () => {
+    test("self-hosted event URL extracts eventId and org, and returns the server without applying it", () => {
       process.env.SENTRY_HOST = "https://sentry.example.com";
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "https://sentry.example.com/organizations/acme/issues/999/events/deadbeef/",
       ]);
       expect(result.eventId).toBe("deadbeef");
       expect(result.targetArg).toBe("acme/");
-      expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");
+      expect(result.baseUrl).toBe("https://sentry.example.com");
+      // Parsing has no side effects; resolving the arguments applies it
+      expect(process.env.SENTRY_URL).toBeUndefined();
+    });
+
+    test("self-hosted issue URL returns the server without applying it", () => {
+      process.env.SENTRY_HOST = "https://sentry.example.com";
+      const result = parseEventViewInput([
+        "https://sentry.example.com/organizations/acme/issues/999/",
+      ]);
+      expect(result.issueId).toBe("999");
+      expect(result.baseUrl).toBe("https://sentry.example.com");
+      expect(process.env.SENTRY_URL).toBeUndefined();
     });
 
     test("issue URL without event ID returns issueId for latest event fetch", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "https://sentry.io/organizations/my-org/issues/32886/",
       ]);
       expect(result.issueId).toBe("32886");
@@ -480,7 +544,7 @@ describe("parsePositionalArgs", () => {
 
     test("org-only URL throws ContextError", () => {
       expect(() =>
-        parsePositionalArgs(["https://sentry.io/organizations/my-org/"]),
+        parseEventViewInput(["https://sentry.io/organizations/my-org/"]),
       ).toThrow(ContextError);
     });
   });
@@ -1337,6 +1401,22 @@ describe("viewCommand.func", () => {
     ).rejects.toThrow();
   });
 
+  test("parses the arguments before any API call", async () => {
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+
+    await expect(
+      func.call(
+        context,
+        { json: true, web: false, spans: 0 },
+        "CAM-82X",
+        "95fd7f5a",
+      ),
+    ).rejects.toThrow("Invalid event ID");
+    expect(getEventSpy).not.toHaveBeenCalled();
+    expect(getIssueInOrgSpy).not.toHaveBeenCalled();
+  });
+
   test("throws error for non-hex event ID", async () => {
     const { context } = createMockContext();
     const func = await viewCommand.loader();
@@ -1732,7 +1812,7 @@ describe("collectEventIds", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parsePositionalArgs: extraEventIds collection
+// parseEventViewInput: extraEventIds collection
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -1960,19 +2040,19 @@ describe("fetchMultipleEvents", () => {
   });
 });
 
-describe("parsePositionalArgs: extraEventIds", () => {
+describe("parseEventViewInput: extraEventIds", () => {
   test("no extras for single arg", () => {
-    const result = parsePositionalArgs(["abc123"]);
+    const result = parseEventViewInput(["abc123"]);
     expect(result.extraEventIds).toBeUndefined();
   });
 
   test("no extras for two args", () => {
-    const result = parsePositionalArgs(["my-org/proj", "abc123"]);
+    const result = parseEventViewInput(["my-org/proj", "abc123"]);
     expect(result.extraEventIds).toBeUndefined();
   });
 
   test("collects extras for three+ args", () => {
-    const result = parsePositionalArgs([
+    const result = parseEventViewInput([
       "my-org/proj",
       "abc123",
       "def456",
@@ -1983,12 +2063,15 @@ describe("parsePositionalArgs: extraEventIds", () => {
 
   test("collects extras when args are swapped", () => {
     // When swap is detected: first looks like hex ID, second looks like target
-    const result = parsePositionalArgs([
+    const result = parseEventViewInput([
       "abc123def456abc123def456abc123de",
       "test-org/test-proj",
       "extra1",
     ]);
-    expect(result.warning).toBeDefined();
+    expect(result.targetArg).toBe("test-org/test-proj");
+    expect(result.warnings).toEqual([
+      "Arguments appear reversed. Interpreting as: test-org/test-proj abc123def456abc123def456abc123de",
+    ]);
     expect(result.extraEventIds).toEqual(["extra1"]);
   });
 });

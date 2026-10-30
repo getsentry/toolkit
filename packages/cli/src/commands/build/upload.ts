@@ -27,10 +27,10 @@ import {
 } from "../../lib/build/index.js";
 import {
   collectVcsMetadata,
-  isCi,
   type VcsFlags,
   vcsInfoToBody,
 } from "../../lib/build/vcs.js";
+import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
