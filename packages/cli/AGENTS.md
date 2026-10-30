@@ -311,11 +311,10 @@ with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
 itself, and an omitted target arrives as auto-detect. The
 `sentry-cli/require-target-resolution` lint rule fails a function that takes
 one of these types and never reads `.resolved`. It also rejects, in commands,
-what leaves a target for `func` to parse: the completion-only parsers
-`parseOrgTarget` and `parseOrgProjectTarget`, `parseOrgProjectArg`, and the
-`resolve*FromArg` helpers. Neither rule has an allow-list: no command may
-parse a target or an ID by hand. `sentry-cli/no-ad-hoc-id-arguments` rejects
-the completion-only `parseIssueTarget` and `parseDashboardTarget` too.
+what leaves a target for `func` to parse: `parseOrgProjectArg`, the
+`resolve*FromArg` helpers, and `withCompletionTarget` (the bound parsers tag
+the kind). Neither rule has an allow-list: no command may
+parse a target or an ID by hand.
 
 **Release positionals:** `[<org>/]<version>` uses
 `releaseParameter(USAGE_HINT, brief)` from `src/commands/release/parse.ts`
@@ -390,11 +389,8 @@ dashboard are tagged with a completion kind from `src/lib/completion-target.ts`
 `DASHBOARD_TARGET` cached dashboards). The bound parsers above
 (`boundPositional(kind, …)`, `boundArguments({ kind, … })`) carry the kind, so
 the `target-positional.ts` parsers behind `listTargetPositional`,
-`issuePositional`, and `releaseParameter` complete the right values. The
-completion-only parsers (`parseOrgProjectTarget`, `parseOrgTarget`,
-`parseIssueTarget`) are rejected in commands by the lint rules above; commands
-use a bound parser. Shared value
-parsers are not tagged where they live; `PARSER_TARGETS` in
+`issuePositional`, and `releaseParameter` complete the right values. Shared
+value parsers are not tagged where they live; `PARSER_TARGETS` in
 `completion-target.ts` lists them instead, so every flag that parses with
 `sanitizeIssueQuery` completes issue search terms
 (`is:unr` → `is:unresolved`) and every flag that parses with `parsePeriod`

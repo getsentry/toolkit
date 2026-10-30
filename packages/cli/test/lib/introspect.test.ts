@@ -7,14 +7,12 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  type CompletionTarget,
   DASHBOARD_TARGET,
   ISSUE_QUERY_TARGET,
   ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
-  parseIssueTarget,
-  parseOrgProjectTarget,
-  parseOrgTarget,
   withCompletionTarget,
 } from "../../src/lib/completion-target.js";
 import type {
@@ -414,6 +412,13 @@ describe("extractAllRoutes", () => {
 });
 
 describe("extractCommandCompletions", () => {
+  /** A fresh parser tagged with `kind`, as the bound parsers are. */
+  const tagged = (kind: CompletionTarget) =>
+    withCompletionTarget(kind, (input: string) => input);
+  const orgParser = tagged(ORG_TARGET);
+  const orgProjectParser = tagged(ORG_PROJECT_TARGET);
+  const issueParser = tagged(ISSUE_TARGET);
+
   /** Command whose positionals use the given parsers. */
   function commandWith(...parsers: unknown[]): Command {
     return makeCommand({
@@ -434,24 +439,24 @@ describe("extractCommandCompletions", () => {
       parameters: {
         positional: {
           kind: "array",
-          parameter: { placeholder: "issue", parse: parseIssueTarget },
+          parameter: { placeholder: "issue", parse: issueParser },
         },
       },
     });
     const nested = makeRouteMap([
-      makeEntry("view", commandWith(parseOrgProjectTarget)),
+      makeEntry("view", commandWith(orgProjectParser)),
     ]);
     const topLevel = makeRouteMap([
       makeEntry(
         "issue",
         makeRouteMap([
           makeEntry("merge", variadic),
-          makeEntry("link", commandWith(parseIssueTarget, String)),
+          makeEntry("link", commandWith(issueParser, String)),
           makeEntry("help", commandWith(String)),
           makeEntry("rules", nested),
         ]),
       ),
-      makeEntry("trial", commandWith(String, parseOrgTarget)),
+      makeEntry("trial", commandWith(String, orgParser)),
       makeEntry("api", makeCommand()),
     ]);
 
@@ -479,10 +484,7 @@ describe("extractCommandCompletions", () => {
           parameters: [
             {
               placeholder: "target",
-              parse: withCompletionTarget(
-                DASHBOARD_TARGET,
-                (input: string) => input,
-              ),
+              parse: tagged(DASHBOARD_TARGET),
             },
           ],
         },
@@ -524,7 +526,7 @@ describe("extractCommandCompletions", () => {
   });
 
   test("skips hidden commands, hidden groups, and commands without kinds", () => {
-    const annotated = commandWith(parseOrgTarget);
+    const annotated = commandWith(orgParser);
     const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
     const topLevel = makeRouteMap([
       makeEntry("secret", annotated, true),

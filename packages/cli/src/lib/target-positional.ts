@@ -80,7 +80,7 @@ function commandNameOf(context: TargetContext): string {
 
 /**
  * Positional parser for an `[<org>/][<project>]` target with its own
- * resolver. Completes like `parseOrgProjectTarget`. In a destructive command
+ * resolver. Completes `ORG_PROJECT_TARGET`. In a destructive command
  * an auto-detected target fails `requireExplicitTarget` before `func` runs.
  *
  * The parse has no side effects; the server of a pasted Sentry URL is

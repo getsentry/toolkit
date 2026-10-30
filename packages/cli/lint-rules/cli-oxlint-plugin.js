@@ -170,30 +170,26 @@ function regexSource(node) {
 /**
  * Helpers that parse ID positionals by hand. Commands parse IDs with
  * `parseIdArguments()` (src/lib/id-arguments.ts), so every command takes
- * the same forms. `parseIssueTarget` and `parseDashboardTarget` only tag a
- * positional for completion, leaving the parsing to `func`; issues take
- * `issuePositional` or `issuesPositional` (src/commands/issue/positional.ts).
+ * the same forms; issues take `issuePositional` or `issuesPositional`
+ * (src/commands/issue/positional.ts).
  */
 const AD_HOC_ID_PARSING = new Set([
   "parseSlashSeparatedArg",
   "detectSwappedViewArgs",
   "HEX_ID_RE",
   "SPAN_ID_RE",
-  "parseIssueTarget",
-  "parseDashboardTarget",
 ]);
 
 /**
  * Helpers that leave a target positional for `func` to parse:
- * `parseOrgTarget` and `parseOrgProjectTarget` only tag it for completion,
- * and the others parse a raw string (applying a pasted URL's server as they
- * go). Commands take targets as bound positionals instead
+ * `withCompletionTarget` tags a parser that can leave the value raw, and the
+ * others parse a raw string (applying a pasted URL's server as they go).
+ * Commands take targets as bound positionals instead
  * (src/lib/target-positional.ts, `boundArguments`), which parse before the
- * command runs and resolve on `target.resolved`.
+ * command runs, carry the completion kind, and resolve on `target.resolved`.
  */
 const UNBOUND_TARGET_PARSING = new Set([
-  "parseOrgTarget",
-  "parseOrgProjectTarget",
+  "withCompletionTarget",
   "parseOrgProjectArg",
   "resolveOrgOnlyFromArg",
   "resolveOrgOptionalFromArg",
