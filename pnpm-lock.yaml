@@ -942,6 +942,10 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.7
+    devDependencies:
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.151.3(@cloudflare/workers-types@4.20260405.1)(@types/node@24.13.5)
 
   packages/mcp-server-mocks:
     dependencies:
