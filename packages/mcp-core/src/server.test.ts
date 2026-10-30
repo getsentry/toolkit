@@ -42,6 +42,7 @@ vi.mock("@sentry/core", () => ({
   ),
   captureException: vi.fn(),
   captureMessage: vi.fn(),
+  getClient: vi.fn(),
 }));
 
 vi.mock("@sentry/core/server", () => ({

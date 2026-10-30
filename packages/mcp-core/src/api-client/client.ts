@@ -3639,6 +3639,19 @@ export class SentryApiService {
       undefined,
       { ...opts, allowStatuses: [400] },
     );
+    // The endpoint can reject with an empty or non-JSON 400, such as when its
+    // feature gate is unavailable. That is still a client error, not a server bug.
+    const contentType = response.headers.get("content-type");
+    if (response.status === 400 && !contentType?.includes("application/json")) {
+      const text = await response.text();
+      throw createApiError(
+        `Expected JSON response but received ${contentType || "unknown content type"} ` +
+          `(${response.status} ${response.statusText})`,
+        response.status,
+        undefined,
+        text,
+      );
+    }
     const body = await readJsonResponse(response);
     // ParseError responses use a detail envelope instead of validation results.
     // Keep malformed validation results reportable, even when their status is 400.
