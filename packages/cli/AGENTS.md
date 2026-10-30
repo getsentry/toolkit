@@ -313,18 +313,22 @@ itself, and an omitted target arrives as auto-detect. The
 one of these types and never reads `.resolved`. It also rejects, in commands,
 what leaves a target for `func` to parse: the completion-only parsers
 `parseOrgTarget` and `parseOrgProjectTarget`, `parseOrgProjectArg`, and the
-`resolve*FromArg` helpers. Commands not migrated yet are on
-`UNBOUND_TARGET_PARSING_ALLOWED` in `lint-rules/cli-oxlint-plugin.js`, each
-with its follow-up; the list is a ratchet, so a file that stops using them
-fails until its entry is removed. `sentry-cli/no-ad-hoc-id-arguments` has no
-allow-list: no command may parse IDs by hand, and the completion-only
-`parseIssueTarget` and `parseDashboardTarget` are rejected too.
+`resolve*FromArg` helpers. Neither rule has an allow-list: no command may
+parse a target or an ID by hand. `sentry-cli/no-ad-hoc-id-arguments` rejects
+the completion-only `parseIssueTarget` and `parseDashboardTarget` too.
 
 **Release positionals:** `[<org>/]<version>` uses
 `releaseParameter(USAGE_HINT, brief)` from `src/commands/release/parse.ts`
 inside a tuple positional. `func` takes a `ReleaseTarget` and gets
 `{ version, org, detectedFrom }` from `await target.resolved`; a blank version
 fails the parse.
+
+**Alert rule positionals:** `<org>/<project>/<rule-id-or-name>` (issue
+alerts) and `<org>/<rule-id-or-name>` (metric alerts) use
+`issueRuleParameter` / `metricRuleParameter` from the alert `rule-resolve.ts`
+files inside a tuple positional. Rule names may contain spaces, so they keep
+their own syntax instead of `ID_KINDS`. `func` takes an `AlertRuleArgument`
+and gets `{ ref, target }` from `await rule.resolved`.
 
 List commands take their target from `listTargetPositional()` in
 `src/lib/list-command.ts` (`LIST_TARGET_POSITIONAL`,
@@ -388,8 +392,8 @@ dashboard are tagged with a completion kind from `src/lib/completion-target.ts`
 the `target-positional.ts` parsers behind `listTargetPositional`,
 `issuePositional`, and `releaseParameter` complete the right values. The
 completion-only parsers (`parseOrgProjectTarget`, `parseOrgTarget`,
-`parseIssueTarget`) remain for the allow-listed
-commands that still parse in `func`; new commands use a bound parser. Shared value
+`parseIssueTarget`) are rejected in commands by the lint rules above; commands
+use a bound parser. Shared value
 parsers are not tagged where they live; `PARSER_TARGETS` in
 `completion-target.ts` lists them instead, so every flag that parses with
 `sanitizeIssueQuery` completes issue search terms

@@ -67,6 +67,7 @@ const BOUND_TARGET_TYPES = new Set([
   "OrgTarget",
   "ProjectBoundTarget",
   "ReleaseTarget",
+  "AlertRuleArgument",
   "BoundArguments",
   "ConversationArguments",
   "DashboardArguments",
@@ -199,33 +200,6 @@ const UNBOUND_TARGET_PARSING = new Set([
   "resolveProjectBoundFromArg",
 ]);
 
-/**
- * Commands still allowed to, each with its follow-up. A ratchet: an entry
- * whose file no longer uses them is reported, so the list only shrinks.
- */
-const UNBOUND_TARGET_PARSING_ALLOWED = new Map([
-  // Follow-ups (#1564):
-  // `[<org>/[<project>/]]<rule>`, resolving to every matching project
-  ["/src/commands/alert/issues/create.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/delete.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/edit.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/view.ts", "#1564: alert rule target"],
-  // `[<org>/]<rule>`, org-scoped
-  ["/src/commands/alert/metrics/create.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/delete.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/edit.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/list.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/view.ts", "#1564: alert rule target"],
-]);
-
-/** The follow-up of `file` in an allow-list, if it is on it. */
-function allowedFollowUp(allowed, file) {
-  for (const [path, followUp] of allowed) {
-    if (file.endsWith(path)) return followUp;
-  }
-  return undefined;
-}
-
 /** Whether `node` uses one of `names`; imports and `typeof` do not. */
 function usesName(node, names) {
   return (
@@ -241,30 +215,6 @@ function bannedNames(file, names, report, message) {
   return {
     Identifier(node) {
       if (usesName(node, names)) report(node, message);
-    },
-  };
-}
-
-/**
- * Like {@link bannedNames}, except in files on `allowed`; those are reported
- * instead when they no longer use any, so the allow-list only shrinks.
- */
-function ratchetedNames(file, names, allowed, report, message) {
-  if (!file.includes("/src/commands/")) return {};
-  const followUp = allowedFollowUp(allowed, file);
-  let used = false;
-  return {
-    Identifier(node) {
-      if (!usesName(node, names)) return;
-      used = true;
-      if (followUp === undefined) report(node, message);
-    },
-    "Program:exit"(node) {
-      if (followUp !== undefined && !used)
-        report(
-          node,
-          `Remove this file from the allow-list (${followUp}): it no longer parses its positional by hand.`,
-        );
     },
   };
 }
@@ -445,10 +395,9 @@ const rules = {
         FunctionDeclaration: check,
         FunctionExpression: check,
         ArrowFunctionExpression: check,
-        ...ratchetedNames(
+        ...bannedNames(
           file,
           UNBOUND_TARGET_PARSING,
-          UNBOUND_TARGET_PARSING_ALLOWED,
           report,
           "Take the target as a bound positional (src/lib/target-positional.ts, boundArguments) instead of parsing it in func.",
         ),

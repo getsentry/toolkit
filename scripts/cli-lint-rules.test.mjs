@@ -196,11 +196,6 @@ tester.run(
         filename: source,
         code: "const parsed = parseOrgProjectArg(target);",
       },
-      {
-        // On the allow-list, with its follow-up
-        filename: "/repo/packages/cli/src/commands/alert/metrics/view.ts",
-        code: "const org = { placeholder: 'org', parse: parseOrgTarget };",
-      },
     ],
     invalid: [
       {
@@ -232,12 +227,6 @@ tester.run(
         filename: commands,
         code: "const org = await resolveOrgOnlyFromArg(arg, cwd, 'alert metrics view');",
         errors: 1,
-      },
-      {
-        // A ratchet: an allow-listed file that takes a bound target now
-        filename: "/repo/packages/cli/src/commands/alert/metrics/view.ts",
-        code: "const org = { parse: orgOptionalTarget };",
-        errors: [{ message: /Remove this file from the allow-list/ }],
       },
     ],
   },

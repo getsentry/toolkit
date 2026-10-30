@@ -11,6 +11,15 @@
 import { ArgumentParseError } from "@stricli/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { viewCommand as agentConversationViewCommand } from "../../src/commands/agent-conversation/view.js";
+import { createCommand as alertIssuesCreateCommand } from "../../src/commands/alert/issues/create.js";
+import { deleteCommand as alertIssuesDeleteCommand } from "../../src/commands/alert/issues/delete.js";
+import { editCommand as alertIssuesEditCommand } from "../../src/commands/alert/issues/edit.js";
+import { viewCommand as alertIssuesViewCommand } from "../../src/commands/alert/issues/view.js";
+import { createCommand as alertMetricsCreateCommand } from "../../src/commands/alert/metrics/create.js";
+import { deleteCommand as alertMetricsDeleteCommand } from "../../src/commands/alert/metrics/delete.js";
+import { editCommand as alertMetricsEditCommand } from "../../src/commands/alert/metrics/edit.js";
+import { listCommand as alertMetricsListCommand } from "../../src/commands/alert/metrics/list.js";
+import { viewCommand as alertMetricsViewCommand } from "../../src/commands/alert/metrics/view.js";
 import { createCommand as dashboardCreateCommand } from "../../src/commands/dashboard/create.js";
 import { listCommand as dashboardListCommand } from "../../src/commands/dashboard/list.js";
 import { restoreCommand as dashboardRestoreCommand } from "../../src/commands/dashboard/restore.js";
@@ -1075,5 +1084,119 @@ describe("init target and directory", () => {
     expect((bound as BoundPositional<unknown, unknown>).parsed).toMatchObject(
       expected,
     );
+  });
+});
+
+/** Commands that take an `<org>/<project>/<rule-id-or-name>` issue alert. */
+const ISSUE_RULE_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["alert issues view", alertIssuesViewCommand],
+  ["alert issues delete", alertIssuesDeleteCommand],
+  ["alert issues edit", alertIssuesEditCommand],
+];
+
+/** Commands that take an `<org>/<rule-id-or-name>` metric alert. */
+const METRIC_RULE_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["alert metrics view", alertMetricsViewCommand],
+  ["alert metrics delete", alertMetricsDeleteCommand],
+  ["alert metrics edit", alertMetricsEditCommand],
+];
+
+/** Alert commands that take only an `[<org>/][<project>]` target. */
+const ALERT_TARGET_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["alert issues create", alertIssuesCreateCommand],
+  ["alert metrics create", alertMetricsCreateCommand],
+  ["alert metrics list", alertMetricsListCommand],
+];
+
+const PROJECT_SETTINGS_URL = `${SERVER}/settings/acme/projects/web/`;
+
+/** The parsed value of a command's first positional. */
+function parsedOf(command: unknown, input: string): unknown {
+  const [bound] = bind(command, [input]);
+  expect(bound).toBeInstanceOf(BoundPositional);
+  return (bound as BoundPositional<unknown, unknown>).parsed;
+}
+
+describe.each(ISSUE_RULE_COMMANDS)("%s", (_name, command) => {
+  test.each([
+    ["42", { ref: "42", target: { type: "auto-detect" } }],
+    [
+      "my-org/web/High error rate",
+      {
+        ref: "High error rate",
+        target: { type: "explicit", org: "my-org", project: "web" },
+      },
+    ],
+    [
+      `${PROJECT_SETTINGS_URL}42`,
+      {
+        ref: "42",
+        target: { type: "explicit", org: "acme", project: "web" },
+      },
+    ],
+  ])("parses %s before the command runs", (input, expected) => {
+    expect(parsedOf(command, input)).toEqual(expected);
+  });
+
+  test.each(["my-org/web", "  "])("%s fails to parse", (input) => {
+    expect(() => bind(command, [input])).toThrow(ValidationError);
+  });
+
+  test("applies a pasted URL's server on resolve, not parse", async () => {
+    const [bound] = bind(command, [`${PROJECT_SETTINGS_URL}42`]);
+    expect(applyUrl).not.toHaveBeenCalled();
+    await expect(
+      (bound as BoundPositional<unknown, unknown>).resolved,
+    ).rejects.toBeInstanceOf(UrlApplied);
+    expect(applyUrl).toHaveBeenCalledWith(SERVER);
+  });
+});
+
+describe.each(METRIC_RULE_COMMANDS)("%s", (_name, command) => {
+  test.each([
+    ["42", { ref: "42", target: { type: "auto-detect" } }],
+    [
+      "my-org/High error rate",
+      { ref: "High error rate", target: { type: "org-all", org: "my-org" } },
+    ],
+  ])("parses %s before the command runs", (input, expected) => {
+    expect(parsedOf(command, input)).toEqual(expected);
+  });
+
+  test.each(["my-org/", "my-org/web/42", "  "])(
+    "%s fails to parse",
+    (input) => {
+      expect(() => bind(command, [input])).toThrow(ValidationError);
+    },
+  );
+});
+
+describe.each(ALERT_TARGET_COMMANDS)("%s", (name, command) => {
+  test.each([
+    ["my-org/", { type: "org-all", org: "my-org" }],
+    ["my-org/web", { type: "explicit", org: "my-org", project: "web" }],
+    ["web", { type: "project-search", projectSlug: "web" }],
+  ])("parses the target %s before the command runs", (input, expected) => {
+    const parsed = parsedOf(command, input);
+    // List targets wrap the parsed target with the name filter
+    const target =
+      command === alertMetricsListCommand
+        ? (parsed as { parsed: unknown }).parsed
+        : parsed;
+    expect(target).toEqual(expected);
+  });
+
+  test("applies a pasted URL's server on resolve, not parse", async () => {
+    // Target resolvers name the running command in usage hints
+    const [bound] = applyBoundPositionals(
+      [PROJECT_SETTINGS_URL],
+      positionalOf(command),
+      { ...CONTEXT, commandPrefix: ["sentry", ...name.split(" ")] },
+    );
+    expect(applyUrl).not.toHaveBeenCalled();
+    await expect(
+      (bound as BoundPositional<unknown, unknown>).resolved,
+    ).rejects.toBeInstanceOf(UrlApplied);
+    expect(applyUrl).toHaveBeenCalledWith(SERVER);
   });
 });

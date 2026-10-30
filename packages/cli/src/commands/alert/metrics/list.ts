@@ -14,8 +14,9 @@ import type { SentryContext } from "../../../context.js";
 import type { MetricAlertRule } from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
 import { listMetricAlertsPaginated } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
+import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiOrgContextKey,
@@ -62,6 +63,10 @@ import {
   resolveProjectBoundTargets,
 } from "../../../lib/resolve-target.js";
 import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import {
+  type ListCommandTarget,
+  listTarget,
+} from "../../../lib/target-positional.js";
 import type { Writer } from "../../../types/index.js";
 import {
   assertAlertListLimit,
@@ -82,7 +87,7 @@ const METRIC_ALERT_TARGET_POSITIONAL = {
     {
       placeholder: "target",
       brief: "<org>/, <org>/<project> (project ignored), or <project> (search)",
-      parse: String,
+      parse: listTarget(ORG_PROJECT_TARGET),
       optional: true as const,
     },
   ],
@@ -161,7 +166,7 @@ async function fetchRulesForOrg(
 // Mode handlers
 
 type ResolvedOrgsOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
   projectSearchResolution?: ProjectSearchTargetResolution;
@@ -176,7 +181,7 @@ type ResolvedOrgsOptions = {
  * detection / cross-org project search) to discover the org(s).
  */
 async function resolveOrgs(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   cwd: string,
   projectSearchResolution?: ProjectSearchTargetResolution,
 ): Promise<{ orgs: string[]; footer?: string }> {
@@ -195,7 +200,7 @@ async function resolveOrgs(
 }
 
 async function resolveWebUrl(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   cwd: string,
 ): Promise<string> {
   let projectSearchResolution: ProjectSearchTargetResolution | undefined;
@@ -544,9 +549,13 @@ export const listCommand = buildListCommand("alert metrics", {
     },
     aliases: { ...LIST_BASE_ALIASES, w: "web", q: "query" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
-    const parsed = parseOrgProjectArg(target);
+    const { parsed } = await target.resolved;
     assertAlertListLimit(flags.limit);
 
     if (flags.web) {
