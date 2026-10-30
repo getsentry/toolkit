@@ -89,10 +89,15 @@ export {
   appendSearchParams,
   autoPaginate,
   buildSearchParams,
+  consumePage,
+  decodePageCursor,
   isTextualContentType,
   ORG_FANOUT_CONCURRENCY,
+  type PagePosition,
   type PaginatedResponse,
   parseLinkHeader,
+  type PreparedRawApiRequest,
+  prepareRawApiRequest,
   rawApiRequest,
 } from "./api/infrastructure.js";
 export { getIssueTag } from "./api/issue-tags.js";

@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchAllPages, type Page, paginate } from "./pagination.js";
+import {
+  consumePage,
+  decodePageCursor,
+  fetchAllPages,
+  type Page,
+  paginate,
+} from "./pagination.js";
 
 const MAX_PAGES = 50;
 
@@ -73,6 +79,19 @@ describe("paginate", () => {
   });
 
   describe("resume-safe cursors", () => {
+    it("encodes the SDK's remaining offset as a shared CLI bookmark", () => {
+      const page = consumePage(
+        { data: [1, 2], nextCursor: "0:2:0" },
+        decodePageCursor("cli1~100~5~"),
+      );
+
+      expect(page.data).toEqual([]);
+      expect(decodePageCursor(page.nextCursor)).toEqual({
+        cursor: "0:2:0",
+        skip: 3,
+      });
+    });
+
     it("resumes inside a page without repeating or skipping rows", async () => {
       // The endpoint ignores per_page and always returns 67 rows.
       const endpoint = offsetEndpoint(1000, 67);
