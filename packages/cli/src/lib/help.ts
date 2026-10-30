@@ -6,7 +6,6 @@
  * Commands are auto-generated from Stricli's route structure.
  */
 
-import { routes } from "../app.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
 import { detectAgent } from "./detect-agent.js";
@@ -29,6 +28,7 @@ import {
   type RouteMapEntry,
   resolveCommandPath,
 } from "./introspect.js";
+import { getRoutes } from "./route-registry.js";
 import { graphicsBanner, graphicsBannerExtraRows } from "./sixel.js";
 
 const TAGLINE = "The command-line interface for Sentry";
@@ -112,7 +112,7 @@ const MIN_OVERVIEW_COMMANDS = 3;
 /** Visible top-level route entries, in registration order. */
 function visibleRouteEntries(): RouteMapEntry[] {
   // Cast to our introspection types — Stricli's generic types are compatible
-  const routeMap = routes as unknown as RouteMap;
+  const routeMap = getRoutes() as unknown as RouteMap;
   return routeMap
     .getAllEntries()
     .filter((entry: RouteMapEntry) => !entry.hidden);
@@ -460,7 +460,7 @@ export function introspectAllCommands(): {
   envVars: HelpEnvVarInfo[];
   flags: HelpFlagInfo[];
 } {
-  const routeMap = routes as unknown as RouteMap;
+  const routeMap = getRoutes() as unknown as RouteMap;
   return {
     routes: extractAllRoutes(routeMap),
     envVars: buildTopLevelEnvVars(),
@@ -476,7 +476,7 @@ export function introspectAllCommands(): {
 export function introspectCommand(
   commandPath: string[],
 ): CommandInfo | RouteInfo | { error: string; suggestions?: string[] } {
-  const routeMap = routes as unknown as RouteMap;
+  const routeMap = getRoutes() as unknown as RouteMap;
   const resolved = resolveCommandPath(routeMap, commandPath);
   if (!resolved) {
     return { error: `Command not found: ${commandPath.join(" ")}` };

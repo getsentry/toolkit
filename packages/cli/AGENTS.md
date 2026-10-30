@@ -229,6 +229,15 @@ export const myRoute = buildRouteMap({
 });
 ```
 
+**Reading the command tree:** code in `src/lib/` reads the top-level route map
+with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
+`app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
+import would pull every command into any bundle built from one of them.
+`app.ts` registers its map with `setRoutes()`; a test that needs the real tree
+imports `src/app.js`. `test/lib/route-registry.test.ts` fails when a module in
+`src/lib/` reaches `app.ts`; the only exception is `sdk-invoke.ts`, the
+library-mode runner that executes the whole application.
+
 ### Positional Arguments
 
 Required identifiers (trace IDs, span IDs) should be **positional args**, not

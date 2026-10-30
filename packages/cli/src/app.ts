@@ -93,6 +93,7 @@ import { buildTopLevelFlags } from "./lib/global-flags.js";
 import { renderJsonHelp } from "./lib/help.js";
 import { isRouteMap, type RouteMap } from "./lib/introspect.js";
 import { buildRouteMap } from "./lib/route-map.js";
+import { setRoutes } from "./lib/route-registry.js";
 
 /**
  * Plural alias → singular route name mapping.
@@ -226,6 +227,10 @@ export const routes = buildRouteMap({
     },
   },
 });
+
+// Library modules (help, completions, ...) read the command tree from the
+// registry instead of importing this module, which would pull in every command.
+setRoutes(routes);
 
 /**
  * Route group names that have `defaultCommand` set.

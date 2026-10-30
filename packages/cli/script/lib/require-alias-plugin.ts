@@ -12,7 +12,7 @@ import type { Plugin } from "esbuild";
  * `formatters/json` loads its generated parser only when --fields is parsed.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /** Transform _require() → require() so esbuild resolves lazy relative requires. */
