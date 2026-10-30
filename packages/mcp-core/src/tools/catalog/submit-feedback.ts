@@ -5,6 +5,10 @@ import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
 import { scrubSensitiveText } from "../../telem/sentry";
 
+// Sentry rejects User Feedback messages longer than 4096 code points. Slicing
+// UTF-16 units keeps us at or under that.
+const MAX_FEEDBACK_MESSAGE_LENGTH = 4096;
+
 export const submitFeedbackOutputSchema = z.object({
   feedbackId: z
     .string()
@@ -72,18 +76,20 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params) {
+    const message = scrubSensitiveText(
+      [
+        `Task: ${params.task}`,
+        params.toolName ? `Tool: ${params.toolName}` : null,
+        "",
+        params.description,
+      ]
+        .filter((line): line is string => line !== null)
+        .join("\n"),
+    );
+
     const feedbackId = captureFeedback({
       source: "mcp_agent",
-      message: scrubSensitiveText(
-        [
-          `Task: ${params.task}`,
-          params.toolName ? `Tool: ${params.toolName}` : null,
-          "",
-          params.description,
-        ]
-          .filter((line): line is string => line !== null)
-          .join("\n"),
-      ),
+      message: message.slice(0, MAX_FEEDBACK_MESSAGE_LENGTH),
       tags: {
         "feedback.kind": params.kind,
         "feedback.impact": params.impact,

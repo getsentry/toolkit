@@ -47,4 +47,21 @@ describe("submit_feedback", () => {
       }
     `);
   });
+
+  it("truncates messages to Sentry's feedback length limit", async () => {
+    await submitFeedback.handler(
+      {
+        task: "find slow endpoints",
+        kind: "broken",
+        impact: "friction",
+        description: "x".repeat(4096),
+        toolName: "search_traces",
+      },
+      createTestContext(),
+    );
+
+    const message = vi.mocked(captureFeedback).mock.calls.at(-1)?.[0].message;
+    expect(message?.startsWith("Task: find slow endpoints\n")).toBe(true);
+    expect(message).toHaveLength(4096);
+  });
 });
