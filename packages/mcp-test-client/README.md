@@ -124,6 +124,10 @@ SENTRY_ACCESS_TOKEN=your_token pnpm mcp-test-client --transport stdio
 
 # Test stdio auth/tool discovery without an LLM provider key
 pnpm mcp-test-client --transport stdio --list-tools
+
+# Run the built @sentry/mcp-server bundle instead of `sentry mcp` from source
+# (build it first: pnpm --filter @sentry/mcp-server run bundle)
+pnpm mcp-test-client --transport stdio --stdio-bundle --list-tools
 ```
 
 Stdio mode runs the workspace CLI's `sentry mcp`. When no token is provided,

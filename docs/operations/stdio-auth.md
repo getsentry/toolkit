@@ -2,10 +2,10 @@
 
 How the stdio MCP server (`@sentry/mcp-server`) authenticates with Sentry.
 
-The server has no auth flow or token cache of its own. It reuses the Sentry
-CLI's credential store: `npx -y @sentry/mcp-server auth login` runs the CLI's
-device flow, and a login from `sentry auth login` works too. The same server
-also runs as `sentry mcp` in the CLI.
+Sign in once with `npx -y @sentry/mcp-server auth login`. The package ships
+its own OAuth device flow and stores the session in the Sentry CLI's
+credential store, so the package and the CLI (which runs the same server as
+`sentry mcp`) share one login.
 
 ## Credential Sources
 
@@ -26,13 +26,11 @@ In order of precedence:
    rotation without a restart.
 
 When no credential is available and stdin is a TTY, the server starts the
-interactive login before serving. MCP clients launch the server over
-pipes, so in that case it exits with an error that names the login command:
-`npx -y @sentry/mcp-server auth login` from `@sentry/mcp-server`, and
-`sentry auth login` from `sentry mcp`. Other auth hints follow the same rule
-(`packages/cli/src/lib/login-command.ts`), except that confirming a self-hosted host with
-`--url` always names `npx -y sentry auth login --url`, because the
-standalone `auth login` takes no flags.
+interactive login before serving. MCP clients launch the server over pipes,
+so in that case it exits with an error that names the login command for the
+program that is running (`packages/cli/src/lib/login-command.ts`). The one
+exception is confirming a self-hosted host with `--url`: the package's
+`auth login` takes no flags yet, so that hint names the CLI.
 
 For self-hosted Sentry, set the host with `--host`/`--url` or
 `SENTRY_HOST`/`SENTRY_URL`. Only the environment variables also pick the stored
@@ -65,9 +63,9 @@ MCP servers, for example one per host via `SENTRY_HOST`, or one with a static
 Older releases had their own device code flow, bundled client ID, and token
 cache (`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`). Current releases do not
 read that cache. Run `npx -y @sentry/mcp-server auth login` once, or keep
-passing `--access-token` / `SENTRY_ACCESS_TOKEN`. `auth logout` and
-`auth status` are not part of the package; use `npx -y sentry auth logout` or
-`npx -y sentry auth status`.
+passing `--access-token` / `SENTRY_ACCESS_TOKEN`. The package does not have
+`auth logout` or `auth status` yet; the CLI's commands work on the same
+session.
 
 ## Key Files
 

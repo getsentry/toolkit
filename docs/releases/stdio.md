@@ -22,7 +22,7 @@ accepts these credentials:
 ## Bundle
 
 The package is a single file with no runtime dependencies.
-`packages/cli/script/bundle-mcp-server.ts` bundles
+`packages/mcp-server/script/bundle.ts` bundles the CLI's
 `packages/cli/src/mcp-server.ts` into `dist/sentry-mcp.cjs`:
 
 - Full flags, environment variables, tools, and self-hosted support, using the
@@ -33,7 +33,9 @@ The package is a single file with no runtime dependencies.
   completions, terminal images, the Ink UI, and debug-file processing. The
   SQLite WASM fallback is left out too, so the package needs Node.js 22.15+.
   The bundle script fails if any of these reach the output or the file grows
-  past its size budget.
+  past its size budget. Packages that only those code paths import (Ink,
+  React, the SQLite WASM fallback) resolve to empty stub modules, so the
+  output never `require`s a package the tarball does not ship.
 
 `pnpm --filter @sentry/mcp-server run bundle` builds it and `run test:bundle`
 smoke-tests the result.
@@ -91,19 +93,29 @@ Users run the server through npx in their MCP client configuration:
 }
 ```
 
-Sign in once with `npx @sentry/mcp-server@latest auth login` (or
-`sentry auth login`), or add `"env": { "SENTRY_ACCESS_TOKEN": "sntryu_..." }`.
+Sign in once with `npx @sentry/mcp-server@latest auth login`, or add
+`"env": { "SENTRY_ACCESS_TOKEN": "sntryu_..." }`.
 Pin a version with `@sentry/mcp-server@0.48.0`.
 
 ## Testing Before a Release
 
-```bash
-# Run the server from source
-pnpm --silent --dir packages/cli run cli mcp --help
+Test the package itself, not just the CLI source it is built from:
 
-# Exercise it with the test client
-pnpm -w run cli --transport stdio "who am I?"
+```bash
+# Build and smoke-test the bundle
+pnpm --filter @sentry/mcp-server run bundle
+pnpm --filter @sentry/mcp-server run test:bundle
+
+# Exercise the built bundle with the test client
+pnpm -w run cli --transport stdio --stdio-bundle "who am I?"
+
+# Install the packed tarball the way users do
+(cd packages/mcp-server && pnpm pack)
+npx -y --package=./packages/mcp-server/sentry-mcp-server-*.tgz sentry-mcp --help
 ```
+
+While iterating, `pnpm -w run cli --transport stdio` (without
+`--stdio-bundle`) runs `sentry mcp` from CLI source, which needs no build.
 
 ## References
 
@@ -111,4 +123,4 @@ pnpm -w run cli --transport stdio "who am I?"
 - Host (flags, env, telemetry): `packages/cli/src/lib/mcp/`
 - stdio transport: `packages/mcp-core/src/transports/stdio.ts`
 - `@sentry/mcp-server` entry: `packages/cli/src/mcp-server.ts`
-- `@sentry/mcp-server` bundle: `packages/cli/script/bundle-mcp-server.ts`
+- `@sentry/mcp-server` bundle: `packages/mcp-server/script/bundle.ts`

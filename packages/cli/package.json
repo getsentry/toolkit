@@ -61,7 +61,6 @@
     "build": "pnpm --filter @sentry/mcp-core run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts --single",
     "build:all": "pnpm --filter @sentry/mcp-core run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/build.ts",
     "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/bundle.ts",
-    "bundle:mcp-server": "pnpm --filter @sentry/mcp-core run build && pnpm run generate:schema && pnpm run generate:docs && pnpm run generate:sdk && pnpm tsx script/bundle-mcp-server.ts",
     "typecheck": "pnpm --filter @sentry/mcp-core run build && pnpm run generate:docs && pnpm run generate:sdk && tsc --noEmit",
     "lint": "pnpm -w exec oxlint --report-unused-disable-directives packages/cli && pnpm -w exec oxfmt --check packages/cli",
     "lint:fix": "pnpm -w exec oxlint --fix packages/cli && pnpm -w exec oxfmt --write packages/cli",

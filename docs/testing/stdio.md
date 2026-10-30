@@ -61,7 +61,21 @@ pnpm --silent --dir packages/cli run cli mcp --access-token=YOUR_TOKEN
 
 `--silent` keeps pnpm's banner off stdout, which carries JSON-RPC frames.
 
-### 3. Run the Published Package
+### 3. Run the Built Package
+
+Source runs skip the bundling step, so check the bundle that ships as
+`@sentry/mcp-server` before a release:
+
+```bash
+pnpm --filter @sentry/mcp-server run bundle
+node packages/mcp-server/dist/sentry-mcp.cjs --help
+node packages/mcp-server/dist/sentry-mcp.cjs --access-token=YOUR_TOKEN
+
+# Or drive it with the test client
+pnpm -w run cli --transport stdio --stdio-bundle --list-tools
+```
+
+### 4. Run the Published Package
 
 ```bash
 npx @sentry/mcp-server@latest
@@ -440,9 +454,10 @@ OPENAI_API_KEY=your-key pnpm --silent --dir packages/cli run cli mcp
 
 **Cause:** No CLI login and no static token.
 
-**Solution:** Run `sentry auth login` (`pnpm --filter sentry run cli auth login`
-from source), or pass `--access-token` / `SENTRY_ACCESS_TOKEN`. MCP clients do
-not give the server a TTY, so log in from a terminal first.
+**Solution:** Run `npx @sentry/mcp-server@latest auth login` (from source:
+`pnpm --silent --dir packages/cli run cli auth login`), or pass
+`--access-token` / `SENTRY_ACCESS_TOKEN`. MCP clients do not give the server a
+TTY, so log in from a terminal first.
 
 ### "AI-powered search tools unavailable"
 

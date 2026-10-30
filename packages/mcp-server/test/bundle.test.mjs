@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -35,6 +36,20 @@ function run(args, extraEnv = {}) {
 test("the package has no runtime dependencies", () => {
   assert.deepEqual(manifest.dependencies ?? {}, {});
   assert.deepEqual(manifest.files, ["dist/sentry-mcp.cjs"]);
+});
+
+test("the bundle requires only Node.js built-ins", () => {
+  const builtins = new Set(builtinModules);
+  // Skip `require(...)` inside string literals: ajv generates code with them.
+  const required = [
+    ...readFileSync(bin, "utf-8").matchAll(
+      /(?<![`'\w$.])require\("([^"]+)"\)/g,
+    ),
+  ].map(([, id]) => id);
+  const external = required.filter(
+    (id) => !(id.startsWith("node:") || builtins.has(id.split("/")[0])),
+  );
+  assert.deepEqual([...new Set(external)], []);
 });
 
 test("--version prints the package version", () => {

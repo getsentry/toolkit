@@ -8,7 +8,10 @@ Different Sentry SDKs for different environments:
 
 - **Core server**: `@sentry/core` (platform-agnostic)
 - **Cloudflare Workers**: `@sentry/cloudflare`
-- **Node.js stdio**: `@sentry/node`
+- **Node.js stdio**: `@sentry/node`. Without `--sentry-dsn`/`SENTRY_DSN`, the
+  stdio server reports to the Sentry CLI's project and honors the CLI's
+  opt-outs (`SENTRY_CLI_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, or
+  `sentry cli defaults telemetry off`).
 - **React client**: `@sentry/react`
 
 ## Core Server Instrumentation
@@ -177,6 +180,7 @@ These are Sentry MCP application attributes that are not part of the MCP semanti
 - `app.constraint.organization_slug` - Session organization constraint
 - `app.constraint.project_slug` - Session project constraint
 - `app.server.mode.experimental` - Whether experimental tools are enabled for this MCP request or stdio session
+- `app.server.distribution` - stdio only: `@sentry/mcp-server` for the npm package, `sentry mcp` for the CLI command
 - `app.consent.skill.<skill>.granted` - Per-skill boolean attributes for skills granted to the MCP request. Skill ids are normalized with `-` replaced by `_`
 - `app.upstream.host` - Upstream Sentry host configured for the server
 - `app.url.full` - MCP URL configured for stdio

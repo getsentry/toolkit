@@ -15,6 +15,8 @@ export interface MCPConfig {
   host?: string;
   sentryDsn?: string;
   useExperimental?: boolean;
+  /** Run the built `@sentry/mcp-server` bundle instead of CLI source. */
+  useBundle?: boolean;
 }
 
 export interface RemoteMCPConfig {

@@ -114,7 +114,7 @@ Top-level layout:
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
 - **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
-  bundle (`script/bundle-mcp-server.ts`). It must not import anything that
+  bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
   agent skills, completions, terminal images, and the SQLite WASM fallback.
 - **`src/commands/`** — one directory per command group (`agent-conversation`,

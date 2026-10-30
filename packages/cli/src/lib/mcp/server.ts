@@ -26,9 +26,14 @@ import {
   consoleLoggingIntegration,
   flush,
   init,
+  makeNodeTransport,
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
+import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
+import { MCP_SERVER_VERSION } from "../login-command.js";
+import { isTelemetryEnabled } from "../telemetry.js";
+import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
 import { mergeMcpArgs, parseMcpArgv, parseMcpEnv } from "./args.js";
 import { finalizeMcpConfig, type McpServerConfig } from "./config.js";
 import { buildMcpUsage, buildMcpVersion } from "./usage.js";
@@ -230,19 +235,32 @@ function configureAgentProvider(
   console.warn("");
 }
 
-function initMcpTelemetry(
+/**
+ * Start MCP telemetry.
+ *
+ * @internal Exported for testing
+ */
+export function initMcpTelemetry(
   config: McpServerConfig,
   env: NodeJS.ProcessEnv,
 ): void {
   const scopeContext = {
     "app.server.version": LIB_VERSION,
+    // Tells `@sentry/mcp-server` installs apart from `sentry mcp`.
+    "app.server.distribution": MCP_SERVER_VERSION
+      ? "@sentry/mcp-server"
+      : "sentry mcp",
     "app.transport": "stdio",
     "app.upstream.host": config.sentryHost,
     "app.url.full": config.mcpUrl,
   };
 
+  // Without `--sentry-dsn`/`SENTRY_DSN`, report to the CLI's own project,
+  // honoring the CLI's telemetry opt-outs.
+  const useCliDsn = !config.sentryDsn;
   init({
-    dsn: config.sentryDsn,
+    dsn: config.sentryDsn ?? SENTRY_CLI_DSN,
+    enabled: !useCliDsn || isTelemetryEnabled(),
     tracesSampleRate: 1,
     beforeSend: sentryBeforeSend,
     initialScope: {
@@ -256,7 +274,15 @@ function initMcpTelemetry(
         "app.server.mode.experimental": config.experimental,
       },
     },
-    release: env.SENTRY_RELEASE,
+    release: env.SENTRY_RELEASE ?? (useCliDsn ? CLI_VERSION : undefined),
+    // Same credential redaction as the CLI's own telemetry.
+    transport: (transportOptions) => {
+      const transport = makeNodeTransport(transportOptions);
+      return {
+        send: (envelope) => transport.send(redactTelemetryEnvelope(envelope)),
+        flush: (timeout) => transport.flush(timeout),
+      };
+    },
     integrations: [
       consoleLoggingIntegration(),
       zodErrorsIntegration(),

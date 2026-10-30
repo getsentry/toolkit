@@ -4,7 +4,7 @@
  * sent to a CLI they may not have installed.
  */
 
-/** Set by `script/bundle-mcp-server.ts` to the `@sentry/mcp-server` version. */
+/** Set by `packages/mcp-server/script/bundle.ts` to the `@sentry/mcp-server` version. */
 declare const SENTRY_MCP_SERVER_VERSION: string | undefined;
 
 /** The `@sentry/mcp-server` version when running as that bundle. */

@@ -24,6 +24,10 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
     import("./db/project-root-cache.js"),
   ]);
 
+  // Dynamic import: logger chains into consola
+  const { logger } = await import("./logger.js");
+  const log = logger.withTag("project-context");
+
   const result = await findProjectRoot(cwd);
   // The cache is an optimization; a DB failure must not skip the env shim
   // below, or boot would continue without the `.sentryclirc` token and URL.
@@ -33,10 +37,7 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
       reason: result.reason,
     });
   } catch (error) {
-    const { logger } = await import("./logger.js");
-    logger
-      .withTag("project-context")
-      .debug("Could not cache the project root", error);
+    log.debug("Could not cache the project root", error);
   }
 
   // Apply .sentryclirc env shim (token + URL). The URL trust check is
@@ -49,7 +50,6 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
   // Apply persistent URL default (lower priority than env vars and .sentryclirc).
   const env = getEnv();
   if (!(env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim())) {
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const { getDefaultUrl } = await import("./db/defaults.js");
       const url = getDefaultUrl();
@@ -58,8 +58,8 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
         const { markPersistedDefaultUrl } = await import("./constants.js");
         markPersistedDefaultUrl(url);
       }
-    } catch {
-      // DB not available — skip
+    } catch (error) {
+      log.debug("Could not read the persisted default URL", error);
     }
   }
 }

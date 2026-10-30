@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { MCPConfig, RequestedTransportMode } from "./types.js";
 
 export function resolveTransportMode(options: {
@@ -53,4 +54,22 @@ export function buildStdioServerLaunchConfig(
   }
 
   return { args, env };
+}
+
+/**
+ * The process that serves stdio: `sentry mcp` from the workspace CLI source,
+ * or the built `@sentry/mcp-server` bundle, which is what the package ships.
+ */
+export function buildStdioServerCommand(
+  config: Pick<MCPConfig, "useBundle">,
+  packagesDir: string,
+): { command: string; args: string[]; bundlePath?: string } {
+  if (config.useBundle) {
+    const bundlePath = join(packagesDir, "mcp-server/dist/sentry-mcp.cjs");
+    return { command: process.execPath, args: [bundlePath], bundlePath };
+  }
+  return {
+    command: "pnpm",
+    args: ["--silent", "--dir", join(packagesDir, "cli"), "run", "cli", "mcp"],
+  };
 }

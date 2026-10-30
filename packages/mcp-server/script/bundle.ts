@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Bundle `src/mcp-server.ts` into the standalone `@sentry/mcp-server` package.
+ * Bundle the CLI's `src/mcp-server.ts` into this package's `dist/sentry-mcp.cjs`.
  *
  * The package runs the same server as `sentry mcp` but ships only what the
  * server needs: the MCP tools, the API client, and the CLI's auth. The build
@@ -12,11 +12,11 @@ import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, type Metafile, type Plugin } from "esbuild";
-import { requireAliasPlugin } from "./lib/require-alias-plugin.js";
-import { textImportPlugin } from "./text-import-plugin.js";
+import { requireAliasPlugin } from "../../cli/script/lib/require-alias-plugin.js";
+import { textImportPlugin } from "../../cli/script/text-import-plugin.js";
 
-const CLI_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PACKAGE_ROOT = resolve(CLI_ROOT, "../mcp-server");
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const CLI_ROOT = resolve(PACKAGE_ROOT, "../cli");
 const OUTFILE = resolve(PACKAGE_ROOT, "dist/sentry-mcp.cjs");
 
 /**
@@ -65,6 +65,30 @@ const plainMarkdownPlugin: Plugin = {
   },
 };
 
+/**
+ * Packages that only CLI-only code paths import: the SQLite WASM fallback
+ * (Node.js < 22.15, which the version check rejects), the symbolic WASM
+ * binary, and the Ink UI. They resolve to an empty module instead of a
+ * `require()` of a package the tarball does not ship, so no dangling import
+ * reaches the output.
+ */
+const STUBBED_MODULES =
+  /^(?:node-sqlite3-wasm|@sentry\/symbolic\/symbolic_bg\.wasm|ink|ink-spinner|react|react-reconciler|react-devtools-core|yoga-layout)(?:\/.*)?$/;
+
+const stubModulesPlugin: Plugin = {
+  name: "stub-cli-only-modules",
+  setup(b) {
+    b.onResolve({ filter: STUBBED_MODULES }, (args) => ({
+      path: args.path,
+      namespace: "stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
+      contents: "module.exports = {};",
+      loader: "js",
+    }));
+  },
+};
+
 /** Inputs on {@link FORBIDDEN_INPUTS} that contribute code to the output. */
 function findForbiddenInputs(metafile: Metafile): string[] {
   return Object.values(metafile.outputs)
@@ -82,7 +106,7 @@ const cliPkg = JSON.parse(
 ) as { version: string };
 
 // Each CLI release publishes this package at the CLI's version, set by
-// `script/bump-version.ts`.
+// `packages/cli/script/bump-version.ts`.
 if (pkg.version !== cliPkg.version) {
   console.error(
     `\nError: @sentry/mcp-server is at ${pkg.version} but the CLI is at ${cliPkg.version}. Both must share one version.\n`,
@@ -118,22 +142,14 @@ const result = await build({
     __SENTRY_CHANNEL_INJECTION__: "false",
     "import.meta.url": "import_meta_url",
   },
-  external: [
-    "node:*",
-    // Only reachable on Node.js < 22.15, which the version check rejects.
-    "node-sqlite3-wasm",
-    "@sentry/symbolic/symbolic_bg.wasm",
-    "ink",
-    "ink-spinner",
-    "react",
-    "react/*",
-    "react-reconciler",
-    "react-reconciler/*",
-    "react-devtools-core",
-    "yoga-layout",
-  ],
+  external: ["node:*"],
   metafile: true,
-  plugins: [plainMarkdownPlugin, textImportPlugin, requireAliasPlugin],
+  plugins: [
+    stubModulesPlugin,
+    plainMarkdownPlugin,
+    textImportPlugin,
+    requireAliasPlugin,
+  ],
 });
 
 const forbidden = findForbiddenInputs(result.metafile);

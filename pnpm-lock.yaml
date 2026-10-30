@@ -852,7 +852,14 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
 
-  packages/mcp-server: {}
+  packages/mcp-server:
+    devDependencies:
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
+      tsx:
+        specifier: 'catalog:'
+        version: 4.20.3
 
   packages/mcp-server-evals:
     dependencies:

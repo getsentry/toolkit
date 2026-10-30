@@ -6,8 +6,12 @@ import { startNewTrace, startSpan } from "@sentry/core";
 import { logSuccess } from "./logger.js";
 import type { MCPConnection, MCPConfig } from "./types.js";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { LIB_VERSION } from "./version.js";
-import { buildStdioServerLaunchConfig } from "./transport.js";
+import {
+  buildStdioServerCommand,
+  buildStdioServerLaunchConfig,
+} from "./transport.js";
 
 export async function connectToMCPServer(
   config: MCPConfig,
@@ -26,24 +30,20 @@ export async function connectToMCPServer(
       },
       async (span) => {
         try {
-          // Run the workspace CLI's `sentry mcp` from source.
-          const cliDir = join(
-            dirname(fileURLToPath(import.meta.url)),
-            "../../cli",
+          const server = buildStdioServerCommand(
+            config,
+            join(dirname(fileURLToPath(import.meta.url)), "../.."),
           );
+          if (server.bundlePath && !existsSync(server.bundlePath)) {
+            throw new Error(
+              `${server.bundlePath} not found. Build it with \`pnpm --filter @sentry/mcp-server run bundle\`.`,
+            );
+          }
           const launchConfig = buildStdioServerLaunchConfig(config);
 
           const transport = new Experimental_StdioMCPTransport({
-            command: "pnpm",
-            args: [
-              "--silent",
-              "--dir",
-              cliDir,
-              "run",
-              "cli",
-              "mcp",
-              ...launchConfig.args,
-            ],
+            command: server.command,
+            args: [...server.args, ...launchConfig.args],
             env: launchConfig.env,
           });
 

@@ -40,7 +40,11 @@
     "dist/sentry-mcp.cjs"
   ],
   "scripts": {
-    "bundle": "pnpm --filter sentry run bundle:mcp-server",
+    "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter sentry run generate:schema && pnpm --filter sentry run generate:docs && pnpm --filter sentry run generate:sdk && tsx script/bundle.ts",
     "test:bundle": "node --test test/bundle.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "tsx": "catalog:"
   }
 }

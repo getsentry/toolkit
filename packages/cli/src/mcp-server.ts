@@ -2,7 +2,7 @@
  * Entry point for the standalone `@sentry/mcp-server` bundle.
  *
  * Runs the same server as `sentry mcp` without the rest of the CLI, so the
- * package stays small. Built by `script/bundle-mcp-server.ts`.
+ * package stays small. Built by `packages/mcp-server/script/bundle.ts`.
  */
 
 // Must stay the first import: later imports can load node:sqlite, whose

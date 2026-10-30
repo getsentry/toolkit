@@ -53,7 +53,9 @@ and hosted requests build independent servers without a notification channel for
 catalog changes. Modern `subscriptions/listen` acknowledgments therefore omit
 `toolsListChanged`, following the [MCP subscription contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions).
 
-**Note:** This package is **not published to npm**. It's a workspace-only package.
+**Note:** mcp-core is private and never published on its own. The CLI
+bundles it, and so do `@sentry/mcp-server` (through the CLI's `sentry mcp`
+server) and the Cloudflare worker.
 
 ### packages/cli (`sentry mcp`)
 
