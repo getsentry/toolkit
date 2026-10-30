@@ -15,7 +15,17 @@ describe("standalone @sentry/mcp-server bundle", () => {
     expect(buildMcpVersion()).toBe("sentry-mcp 1.2.3");
     const usage = buildMcpUsage(["inspect"]);
     expect(usage).toMatch(/^Usage: sentry-mcp /);
-    expect(usage).toContain("`sentry-mcp auth login`");
+    expect(usage).toContain("`npx -y @sentry/mcp-server auth login`");
     expect(usage).not.toContain("sentry mcp");
+  });
+
+  test("auth errors name the package's own login command", async () => {
+    vi.stubGlobal("SENTRY_MCP_SERVER_VERSION", "1.2.3");
+    vi.resetModules();
+    const { AuthError } = await import("../../../src/lib/errors.js");
+
+    expect(new AuthError("not_authenticated").message).toBe(
+      "Not authenticated. Run 'npx -y @sentry/mcp-server auth login' first.",
+    );
   });
 });

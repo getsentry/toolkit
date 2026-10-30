@@ -88,8 +88,8 @@ export async function resolveCliMcpAccessToken(
  * Mirrors how the rest of the CLI recovers from `not_authenticated`/`expired`
  * errors: in a TTY it launches the OAuth device flow (browser), then retries.
  * In a non-interactive context (e.g. an IDE launching `sentry mcp` over pipes)
- * it rethrows the original {@link AuthError} so the client sees a clear
- * "run `sentry auth login`" message instead of a hung browser prompt.
+ * it rethrows the original {@link AuthError} so the client sees which login
+ * command to run instead of a hung browser prompt.
  */
 async function resolveMcpAccessTokenWithLogin(
   config: McpTarget,

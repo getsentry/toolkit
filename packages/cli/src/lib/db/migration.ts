@@ -14,6 +14,7 @@ import { MalformedAuthTokenError } from "../errors.js";
 import { logger } from "../logger.js";
 import { getConfigDir } from "./index.js";
 import type { Database } from "./sqlite.js";
+import { LOGIN_COMMAND } from "../login-command.js";
 
 const log = logger.withTag("migration");
 
@@ -305,7 +306,7 @@ export function migrateFromJson(db: Database): void {
     if (invalidAuthToken) {
       log.warn(
         "Malformed authentication credentials were not migrated. The original config.json was kept. " +
-          "Run 'sentry auth login' to authenticate again, then remove the old file.",
+          `Run '${LOGIN_COMMAND}' to authenticate again, then remove the old file.`,
       );
     } else {
       // Best-effort cleanup: SQLite metadata prevents re-import if it fails.

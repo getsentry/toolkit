@@ -2,23 +2,13 @@
 
 import type { Skill } from "@sentry/mcp-core/skills";
 import { CLI_VERSION } from "../constants.js";
+import { LOGIN_COMMAND, MCP_SERVER_VERSION } from "../login-command.js";
 
-/** Set by `script/bundle-mcp-server.ts` to the `@sentry/mcp-server` version. */
-declare const SENTRY_MCP_SERVER_VERSION: string | undefined;
-
-/** Whether this code runs as the standalone `@sentry/mcp-server` bundle. */
-const IS_MCP_SERVER_PACKAGE = typeof SENTRY_MCP_SERVER_VERSION !== "undefined";
-
-const COMMAND = IS_MCP_SERVER_PACKAGE ? "sentry-mcp" : "sentry mcp";
-const LOGIN_COMMAND = IS_MCP_SERVER_PACKAGE
-  ? "sentry-mcp auth login"
-  : "sentry auth login";
+const COMMAND = MCP_SERVER_VERSION ? "sentry-mcp" : "sentry mcp";
 
 /** Build the `--version` output. */
 export function buildMcpVersion(): string {
-  return IS_MCP_SERVER_PACKAGE
-    ? `${COMMAND} ${SENTRY_MCP_SERVER_VERSION}`
-    : `${COMMAND} ${CLI_VERSION}`;
+  return `${COMMAND} ${MCP_SERVER_VERSION ?? CLI_VERSION}`;
 }
 
 /** Build the `--help` text. */

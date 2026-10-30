@@ -21,6 +21,7 @@ import { getDefaultUrl } from "./db/defaults.js";
 import { getEnv } from "./env.js";
 import { normalizeUserInputToOrigin } from "./sentry-urls.js";
 import { isHostTrusted, isLoginTrustAnchorFor } from "./token-host.js";
+import { URL_LOGIN_COMMAND } from "./login-command.js";
 
 /**
  * Resolve the host a login without `--url` would target, using the same env
@@ -91,6 +92,6 @@ export function buildHostRefusalMessage(
   return (
     `Refusing to log in against ${host} — ${sourceClause}.\n\n` +
     "To authenticate against this self-hosted instance, confirm the host explicitly:\n" +
-    `  sentry auth login --url ${host}${tokenFlag}`
+    `  ${URL_LOGIN_COMMAND} ${host}${tokenFlag}`
   );
 }

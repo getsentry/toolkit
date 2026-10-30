@@ -30,6 +30,7 @@ import {
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
+import { LOGIN_COMMAND, URL_LOGIN_COMMAND } from "./login-command.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -152,14 +153,14 @@ export class HostScopeError extends CliError {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           "Refusing to route requests to this host because no Sentry credentials are configured for it.\n" +
-          `To use this host, run: sentry auth login --url ${destinationUrl}`,
+          `To use this host, run: ${URL_LOGIN_COMMAND} ${destinationUrl}`,
         EXIT.AUTH_HOST_SCOPE,
       );
     } else {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           `Refusing to route requests here because it doesn't match the host your Sentry credentials are for (${tokenHost}).\n` +
-          `To use this host, run: sentry auth login --url ${destinationUrl}\n` +
+          `To use this host, run: ${URL_LOGIN_COMMAND} ${destinationUrl}\n` +
           "To keep using your current credentials, remove this URL override.",
         EXIT.AUTH_HOST_SCOPE,
       );
@@ -272,9 +273,8 @@ export class AuthError extends CliError {
     options?: AuthErrorOptions,
   ) {
     const defaultMessages: Record<AuthErrorReason, string> = {
-      not_authenticated: "Not authenticated. Run 'sentry auth login' first.",
-      expired:
-        "Authentication expired. Run 'sentry auth login' to re-authenticate.",
+      not_authenticated: `Not authenticated. Run '${LOGIN_COMMAND}' first.`,
+      expired: `Authentication expired. Run '${LOGIN_COMMAND}' to re-authenticate.`,
       invalid: "Invalid authentication token.",
     };
     const exitCodes: Record<AuthErrorReason, number> = {
@@ -295,7 +295,7 @@ export class MalformedAuthTokenError extends AuthError {
     super(
       "invalid",
       "Invalid authentication token. Copy it again as a single line without spaces or control characters, " +
-        "or run 'sentry auth login' to replace stored credentials.",
+        `or run '${LOGIN_COMMAND}' to replace stored credentials.`,
     );
     this.name = "MalformedAuthTokenError";
   }

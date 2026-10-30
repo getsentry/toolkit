@@ -47,7 +47,14 @@ test("--help names the standalone command", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^Usage: sentry-mcp /);
-  assert.match(result.stdout, /`sentry-mcp auth login`/);
+  assert.match(result.stdout, /`npx -y @sentry\/mcp-server auth login`/);
+});
+
+test("without credentials, points to its own auth login", () => {
+  const result = run([]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /npx -y @sentry\/mcp-server auth login/);
+  assert.doesNotMatch(result.stderr, /'sentry auth login'/);
 });
 
 test("auth subcommands other than login point to the CLI", () => {
