@@ -15,8 +15,11 @@ import { clearVersionCheckCache } from "./version-check.js";
 
 const KEY = "release_channel";
 
+/** The release channels a user can track. */
+export const RELEASE_CHANNELS = ["stable", "nightly"] as const;
+
 /** The release channel a user tracks for upgrades and version-check notifications. */
-export type ReleaseChannel = "stable" | "nightly";
+export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number];
 
 /**
  * Get the persisted release channel.
@@ -60,8 +63,10 @@ export function setReleaseChannel(channel: ReleaseChannel): void {
  */
 export function parseReleaseChannel(value: string): ReleaseChannel {
   const normalized = value.toLowerCase();
-  if (normalized === "stable" || normalized === "nightly") {
-    return normalized;
+  if ((RELEASE_CHANNELS as readonly string[]).includes(normalized)) {
+    return normalized as ReleaseChannel;
   }
-  throw new Error(`Invalid channel: ${value}. Must be one of: stable, nightly`);
+  throw new Error(
+    `Invalid channel: ${value}. Must be one of: ${RELEASE_CHANNELS.join(", ")}`,
+  );
 }

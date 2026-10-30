@@ -104,7 +104,7 @@ export const tagsCommand = buildCommand({
     flags: {
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Filter to one environment (default: all environments)",
         optional: true,
       },

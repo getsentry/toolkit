@@ -12,7 +12,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDirectoryPath } from "../../lib/completion-target.js";
+import { parseDirectoryPath, parseText } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -92,17 +92,17 @@ export const bundleJvmCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: "Output directory for the bundle ZIP",
       },
       "debug-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Debug ID (UUID) to stamp on the bundle",
       },
       exclude: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Additional directory names to exclude (repeatable)",
         optional: true,
         variadic: true,

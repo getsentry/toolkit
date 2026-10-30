@@ -13,6 +13,7 @@ import {
   resolveReplay,
 } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ApiError, ResolutionError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
@@ -87,7 +88,7 @@ export const downloadCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path (default: <replay-id>.rrweb.json in the current directory)",
         optional: true,

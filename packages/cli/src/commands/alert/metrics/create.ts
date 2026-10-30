@@ -8,6 +8,7 @@ import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import { choiceParser, parseText } from "../../../lib/completion-target.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -19,6 +20,7 @@ import {
 } from "../../../lib/target-positional.js";
 import {
   METRIC_ALERT_DATASET_BRIEF,
+  METRIC_ALERT_DATASET_NAMES,
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
@@ -124,22 +126,22 @@ export const createCommand = buildCommand({
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Rule name",
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Metric query filter string",
       },
       aggregate: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Aggregate expression (for example count(), p95(span.duration))",
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(METRIC_ALERT_DATASET_NAMES),
         brief: METRIC_ALERT_DATASET_BRIEF,
       },
       "time-window": {
@@ -149,33 +151,33 @@ export const createCommand = buildCommand({
       },
       trigger: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Trigger object JSON (repeatable, or pass one JSON array)",
       },
       project: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Project slug filter (repeatable or comma-separated)",
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "Environment filter",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "Owner value accepted by Sentry API",
       },
       workflow: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Alert (workflow) id to notify (repeatable or comma-separated)",

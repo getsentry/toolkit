@@ -20,7 +20,11 @@ import {
   rawApiRequest,
 } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
-import { parseText } from "../lib/completion-target.js";
+import {
+  choiceParser,
+  parseFilePath,
+  parseText,
+} from "../lib/completion-target.js";
 import { applyCustomHeaders } from "../lib/custom-headers.js";
 import { getIdentityFingerprint } from "../lib/db/auth.js";
 import {
@@ -1701,7 +1705,7 @@ export const apiCommand = buildCommand({
     flags: {
       method: {
         kind: "parsed",
-        parse: parseMethod,
+        parse: choiceParser(VALID_METHODS, parseMethod),
         brief: "The HTTP method for the request",
         default: "GET" as const,
         placeholder: "method",
@@ -1709,35 +1713,35 @@ export const apiCommand = buildCommand({
       cursor: LIST_CURSOR_FLAG,
       data: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Inline JSON body for the request (like curl -d)",
         optional: true,
         placeholder: "json",
       },
       field: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a typed parameter (key=value, key[sub]=value, key[]=value)",
         variadic: true,
         optional: true,
       },
       "raw-field": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a string parameter without JSON parsing",
         variadic: true,
         optional: true,
       },
       header: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a HTTP request header in key:value format",
         variadic: true,
         optional: true,
       },
       input: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           'The file to use as body for the HTTP request (use "-" to read from standard input)',
         optional: true,

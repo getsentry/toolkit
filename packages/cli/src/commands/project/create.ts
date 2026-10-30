@@ -28,7 +28,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectInput } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { PROJECT_SPEC_TARGET } from "../../lib/completion-target.js";
+import { parseText, PROJECT_SPEC_TARGET } from "../../lib/completion-target.js";
 import {
   ApiError,
   CliError,
@@ -729,7 +729,7 @@ export const createCommand = buildCommand({
     flags: {
       team: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Team to create the project under",
         optional: true,
       },

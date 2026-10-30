@@ -23,6 +23,7 @@
 import type { SentryContext } from "../../context.js";
 import { type MergeIssuesResult, mergeIssues } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import {
   ApiError,
   CliError,
@@ -302,7 +303,7 @@ export const mergeCommand = buildCommand({
     flags: {
       into: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Prefer this issue as the canonical parent (included in the merge if not already listed)",
         optional: true,

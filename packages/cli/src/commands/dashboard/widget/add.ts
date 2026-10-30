@@ -7,7 +7,11 @@
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { DASHBOARD_TARGET } from "../../../lib/completion-target.js";
+import {
+  choiceParser,
+  DASHBOARD_TARGET,
+  parseText,
+} from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetAdded } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -20,9 +24,12 @@ import {
   assignDefaultLayout,
   type DashboardDetail,
   type DashboardWidget,
+  DISPLAY_TYPES,
   FALLBACK_LAYOUT,
   prepareDashboardForUpdate,
   validateWidgetLayout,
+  WIDGET_LAYOUT_MODES,
+  WIDGET_TYPES,
   type WidgetLayoutFlags,
   type WidgetLayoutMode,
 } from "../../../types/dashboard.js";
@@ -168,40 +175,40 @@ export const addCommand = buildCommand({
     flags: {
       display: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(DISPLAY_TYPES),
         brief:
           "Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)",
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(WIDGET_TYPES),
         brief:
           "Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue",
         optional: true,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Aggregate expression (e.g. count, p95:span.duration)",
         variadic: true,
         optional: true,
       },
       where: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search conditions filter (e.g. is:unresolved)",
         optional: true,
       },
       "group-by": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Group-by column (repeatable)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Order by (prefix - for desc, e.g. -count)",
         optional: true,
       },
@@ -237,7 +244,7 @@ export const addCommand = buildCommand({
       },
       layout: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(WIDGET_LAYOUT_MODES),
         brief: "Layout mode: sequential (append in order) or dense (fill gaps)",
         default: "sequential",
       },
@@ -286,11 +293,10 @@ export const addCommand = buildCommand({
     // Validate layout mode before any network calls
     if (
       flags.layout &&
-      flags.layout !== "sequential" &&
-      flags.layout !== "dense"
+      !(WIDGET_LAYOUT_MODES as readonly string[]).includes(flags.layout)
     ) {
       throw new ValidationError(
-        `Invalid --layout mode "${flags.layout}". Valid values: sequential, dense`,
+        `Invalid --layout mode "${flags.layout}". Valid values: ${WIDGET_LAYOUT_MODES.join(", ")}`,
         "layout",
       );
     }

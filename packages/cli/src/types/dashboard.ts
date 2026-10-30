@@ -529,7 +529,10 @@ export const GRID_COLUMNS = 6;
  * - `dense` — First-fit packing: scan top-to-bottom, left-to-right
  *   and place in the first available gap. Produces compact layouts.
  */
-export type WidgetLayoutMode = "sequential" | "dense";
+export type WidgetLayoutMode = (typeof WIDGET_LAYOUT_MODES)[number];
+
+/** The {@link WidgetLayoutMode} values, which `--layout` accepts. */
+export const WIDGET_LAYOUT_MODES = ["sequential", "dense"] as const;
 
 /** Default widget dimensions by displayType */
 const DEFAULT_WIDGET_SIZE: Partial<

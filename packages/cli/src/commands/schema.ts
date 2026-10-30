@@ -507,7 +507,7 @@ export const schemaCommand = buildCommand({
       },
       search: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search endpoints by keyword",
         optional: true,
       },

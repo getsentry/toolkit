@@ -382,35 +382,49 @@ grammar knows no kind of ID: the command's `ID_KINDS` entry tells it what an
 ID looks like, so the syntax cannot drift between commands. It accepts any
 input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 
-**Shell completion:** Every visible positional declares a completion kind,
-a key of `COMPLETERS` in `src/lib/complete.ts`; `test/lib/completion-coverage.test.ts`
-walks the route tree and fails, naming the command and placeholder, for any
-positional without one. Pick the parser by what the argument takes:
+**Shell completion:** Every visible positional and every visible
+value-taking flag declares a completion kind, a key of `COMPLETERS` in
+`src/lib/complete.ts`; `test/lib/completion-coverage.test.ts` walks the
+route tree and fails, naming the command and the placeholder or flag, for
+any without one. There is no allow-list: a flag with nothing to suggest
+says so with `parseText` or `textParser`. Pick the parser by what the
+argument takes:
 
 | Argument | Parser | Completes |
 |----------|--------|-----------|
 | Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
-| File or directory path | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
+| File or directory path (`--output`, `--ignore-file`) | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
 | Directory | `parseDirectoryPath` | directories only |
 | Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
-| Fixed values | `choiceParser(values)` (take the values from the module that defines them) | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). The parser returns its input, so the command still validates it |
-| Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`) |
+| Fixed values | `choiceParser(values)`, or `choiceParser(values, parse)` to keep a command's own validating parser (`choiceParser(VALID_SORT_VALUES, parseSort)`). Take the values from the module that defines them | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). Without `parse` the parser returns its input, so the command still validates it |
+| Comma-separated fixed values (`--scope`, `--features`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
+| Platform | `parsePlatform` | platform identifiers, common ones first |
+| Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`, `org list --account`) |
 | CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |
 | URL | `parseUrl` (the command validates it) | nothing |
 | Free text, IDs with no cache, names of new things | `parseText` | nothing |
+| Numbers and other values a command parses itself (`parsePort`, `parseLimit`) | `textParser(parse)` | nothing |
 
 Import the pre-tagged parsers; never tag `String` or write
-`withCompletionTarget` in a command (the lint rules above reject it there).
-Org, project, and issue targets stay bound parsers. `enum` flags complete
-their `values` like `choiceParser`.
+`withCompletionTarget` in a command (the lint rules above reject it there),
+and never leave `parse: String` on a flag. Org, project, and issue targets
+stay bound parsers. `enum` flags complete their `values` like
+`choiceParser`. `buildCommand` tags the injected `--fields` once: with an
+output schema, it completes the schema's field paths, nested ones in dot
+notation (`--fields id,ti` → `id,title`, `project.s` → `project.slug`);
+without one, nothing.
 
 Shared value parsers are not tagged where they live; `PARSER_TARGETS` in
-`completion-target.ts` lists them instead, so every flag that parses with
-`sanitizeIssueQuery` completes issue search terms (`is:unr` →
-`is:unresolved`), every flag that parses with `parsePeriod` completes
-relative periods, and `parseLoginEmail` completes stored accounts. Fixed
-values (search keys, period units) come from the modules that define them
-through `COMPLETION_VALUES`.
+`completion-target.ts` lists them instead, with a kind or the values they
+accept, so every flag that parses with `sanitizeIssueQuery` completes issue
+search terms (`is:unr` → `is:unresolved`), every flag that parses with
+`parsePeriod` completes relative periods, `parseCursorFlag` completes
+`next`/`prev`/`first`, `parseLogSort` its directions, `numberParser`
+nothing, and `parseLoginEmail` completes stored accounts. Fixed values
+(search keys, period units) come from the modules that define them
+through `COMPLETION_VALUES`. A new shared parser goes in `PARSER_TARGETS`;
+its module must not import `completion-target.ts`, or the two would load
+in a cycle.
 Issue and dashboard suggestions come from the `completion_cache` table. The
 authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
 `src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`

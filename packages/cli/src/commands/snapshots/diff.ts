@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDirectoryPath } from "../../lib/completion-target.js";
+import { parseDirectoryPath, textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -273,13 +273,13 @@ export const diffCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: `Directory for diff mask images (default: ${DEFAULT_OUTPUT})`,
         optional: true,
       },
       threshold: {
         kind: "parsed",
-        parse: parseThreshold,
+        parse: textParser(parseThreshold),
         brief: "Pixel color difference threshold (0.0-1.0)",
         default: "0.01",
       },

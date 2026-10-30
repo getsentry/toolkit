@@ -14,6 +14,7 @@ import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { textParser } from "../../lib/completion-target.js";
 import { getDefaultUrl } from "../../lib/db/defaults.js";
 import { HostScopeError, ValidationError } from "../../lib/errors.js";
 import { success, warning } from "../../lib/formatters/colors.js";
@@ -305,7 +306,7 @@ export const importCommand = buildCommand({
       "dry-run": DRY_RUN_FLAG,
       url: {
         kind: "parsed",
-        parse: parseImportUrl,
+        parse: textParser(parseImportUrl),
         brief: "Explicitly trust this URL (bypasses same-file trust check)",
         optional: true,
       },

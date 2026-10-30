@@ -11,7 +11,10 @@ import {
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseAccountSelector } from "../../lib/completion-target.js";
+import {
+  parseAccountSelector,
+  textParser,
+} from "../../lib/completion-target.js";
 import {
   type AccountSummary,
   getAccountRow,
@@ -105,7 +108,7 @@ export const switchCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: textParser(parseLoginUrl),
         brief:
           "Only consider accounts on this server (disambiguates the same email on several servers)",
         optional: true,

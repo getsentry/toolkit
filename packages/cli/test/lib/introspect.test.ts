@@ -5,10 +5,14 @@
  * and `script/generate-skill.ts`.
  */
 
+import { numberParser } from "@stricli/core";
 import { describe, expect, test } from "vitest";
+import { parseLogSort } from "../../src/lib/arg-parsing.js";
 import {
+  CHOICE_LIST_TARGET,
   CHOICE_TARGET,
   type CompletionTarget,
+  choiceListParser,
   choiceParser,
   DASHBOARD_TARGET,
   FILE_TARGET,
@@ -17,6 +21,8 @@ import {
   ORG_PROJECT_TARGET,
   ORG_TARGET,
   parseFilePath,
+  TEXT_TARGET,
+  textParser,
   withCompletionTarget,
 } from "../../src/lib/completion-target.js";
 import type {
@@ -582,6 +588,50 @@ describe("extractCommandCompletions", () => {
         },
       },
     });
+  });
+
+  test("reads list flags, wrapped parsers, and shared parsers", () => {
+    const list = makeCommand({
+      parameters: {
+        flags: {
+          fields: { kind: "parsed", parse: choiceListParser(["id", "title"]) },
+          limit: { kind: "parsed", parse: numberParser },
+          port: { kind: "parsed", parse: textParser(Number) },
+          sort: { kind: "parsed", parse: parseLogSort },
+        },
+      },
+    });
+
+    expect(
+      extractCommandCompletions(makeRouteMap([makeEntry("list", list)])),
+    ).toEqual({
+      list: {
+        positionals: [],
+        variadic: false,
+        flags: {
+          "--fields": CHOICE_LIST_TARGET,
+          "--limit": TEXT_TARGET,
+          "--port": TEXT_TARGET,
+          "--sort": CHOICE_TARGET,
+        },
+        choices: {
+          "--fields": ["id", "title"],
+          "--sort": ["newest", "oldest"],
+        },
+      },
+    });
+  });
+
+  test("wrapped parsers still parse and validate", () => {
+    const parse = choiceParser(["a", "b"], (value) => {
+      if (value !== "a" && value !== "b") {
+        throw new Error(`bad ${value}`);
+      }
+      return value.toUpperCase();
+    });
+    expect(parse("a")).toBe("A");
+    expect(() => parse("c")).toThrow("bad c");
+    expect(textParser(Number)("42")).toBe(42);
   });
 });
 

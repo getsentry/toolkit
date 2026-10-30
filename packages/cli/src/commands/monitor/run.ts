@@ -34,7 +34,11 @@ import {
   resolveIngestDsn,
   sendEnvelopeRequest,
 } from "../../lib/envelope/transport.js";
-import { parseText } from "../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 
@@ -205,54 +209,54 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
     flags: {
       dsn: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "DSN to send check-ins to (overrides SENTRY_DSN env var)",
         optional: true,
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Environment of the monitor",
         default: "production",
       },
       schedule: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Upsert the monitor with this crontab schedule (e.g. '0 * * * *')",
         optional: true,
       },
       "check-in-margin": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Minutes after the expected check-in before it is missed (requires --schedule)",
         optional: true,
       },
       "max-runtime": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Minutes a check-in may run before timing out (requires --schedule)",
         optional: true,
       },
       timezone: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(Intl.supportedValuesOf("timeZone")),
         brief:
           "Timezone of the schedule, tz database string (requires --schedule)",
         optional: true,
       },
       "failure-issue-threshold": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Consecutive failures before an issue is created (requires --schedule)",
         optional: true,
       },
       "recovery-threshold": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Consecutive successes before an issue is resolved (requires --schedule)",
         optional: true,

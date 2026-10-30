@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { getProject, listConversations } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseText, textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -208,13 +209,13 @@ export const listCommand = buildListCommand("agent-conversation", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of conversations (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Any matching span selects its conversation; totals include all spans in selected projects and time range",
         optional: true,

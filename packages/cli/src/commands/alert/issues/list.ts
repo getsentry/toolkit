@@ -15,8 +15,12 @@ import { buildProjectAliasMap } from "../../../lib/alias.js";
 import type { IssueAlertRule } from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
 import { listIssueAlertsPaginated } from "../../../lib/api-client.js";
-import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
+import {
+  type ParsedOrgProject,
+  parseCursorFlag,
+} from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
+import { parseText } from "../../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiTargetContextKey,
@@ -48,7 +52,6 @@ import {
   LIST_MAX_LIMIT,
   LIST_TARGET_POSITIONAL,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../../lib/list-command.js";
 import { logger } from "../../../lib/logger.js";
@@ -540,7 +543,7 @@ export const listCommand = buildListCommand("alert issues", {
       limit: buildListLimitFlag("issue alert rules"),
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Filter rules by name",
         optional: true,
       },

@@ -9,7 +9,10 @@ import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseText } from "../../lib/completion-target.js";
+import {
+  parseAccountSelector,
+  parseText,
+} from "../../lib/completion-target.js";
 import { DEFAULT_SENTRY_HOST } from "../../lib/constants.js";
 import {
   type AccountSummary,
@@ -446,7 +449,7 @@ export const listCommand = buildCommand({
       fresh: FRESH_FLAG,
       account: {
         kind: "parsed",
-        parse: String,
+        parse: parseAccountSelector,
         brief:
           "Only list organizations of this account (email, username, or account id; <who>:<server> for one server; env:SENTRY_AUTH_TOKEN)",
         optional: true,

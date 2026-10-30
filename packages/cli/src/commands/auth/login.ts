@@ -9,6 +9,11 @@ import {
 } from "../../lib/api-client.js";
 import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  choiceListParser,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
   getAccountIdToReplace,
@@ -62,6 +67,7 @@ import {
   type SentryCliRcConfig,
 } from "../../lib/sentryclirc.js";
 import { registerLoginTrustAnchor } from "../../lib/token-host.js";
+import { SENTRY_SCOPES } from "../../lib/api-scope.js";
 
 const log = logger.withTag("auth.login");
 
@@ -540,7 +546,7 @@ export const loginCommand = buildCommand({
     flags: {
       token: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Authenticate using an API token instead of OAuth",
         optional: true,
       },
@@ -559,7 +565,7 @@ export const loginCommand = buildCommand({
       },
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: textParser(parseLoginUrl),
         brief:
           "Sentry instance URL to authenticate against (e.g. https://sentry.example.com). " +
           "Required for self-hosted; defaults to SaaS (https://sentry.io).",
@@ -574,7 +580,7 @@ export const loginCommand = buildCommand({
       },
       scope: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(SENTRY_SCOPES),
         brief:
           "Request specific OAuth scopes (repeatable, comma-separated). " +
           "E.g. --scope project:read --scope org:read. Overrides the default scope set.",
