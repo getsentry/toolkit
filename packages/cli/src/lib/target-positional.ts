@@ -31,7 +31,6 @@ import {
   parseListTargetInput,
   parseOrgProjectInput,
 } from "./arg-parsing.js";
-import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { ContextError, ValidationError } from "./errors.js";
 import { validateResourceId } from "./input-validation.js";
 import { requireExplicitTarget } from "./mutate-command.js";
@@ -80,7 +79,7 @@ function commandNameOf(context: TargetContext): string {
 
 /**
  * Positional parser for an `[<org>/][<project>]` target with its own
- * resolver. Completes `ORG_PROJECT_TARGET`. In a destructive command
+ * resolver. Completes `org/project`. In a destructive command
  * an auto-detected target fails `requireExplicitTarget` before `func` runs.
  *
  * The parse has no side effects; the server of a pasted Sentry URL is
@@ -96,7 +95,7 @@ export function orgProjectTarget<R>(
   ) => Promise<R>,
 ): (this: TargetContext, input?: string) => OrgProjectTarget<R> {
   return boundPositional(
-    ORG_PROJECT_TARGET,
+    "org/project",
     (raw) => parseOrgProjectInput(raw).parsed,
     async (parsed, context: TargetContext, raw) => {
       const commandName = commandNameOf(context);
@@ -210,7 +209,7 @@ export type OrgTarget = BoundPositional<OrgInput, ResolvedOrg>;
  * where it was detected from. Completes org slugs.
  */
 export const orgTarget = boundPositional(
-  ORG_TARGET,
+  "org",
   (raw) => parseOrgInput(raw),
   (input, context: TargetContext) =>
     resolveOrgInput(
@@ -235,7 +234,7 @@ export type ListCommandTarget = BoundPositional<ListTarget, ListTarget>;
  *   org-scoped resources, else orgs, projects, and aliases
  */
 export function listTarget(
-  kind: typeof ORG_TARGET | typeof ORG_PROJECT_TARGET,
+  kind: "org" | "org/project",
   options: ListTargetOptions = {},
 ): (this: unknown, input?: string) => ListCommandTarget {
   return boundPositional(

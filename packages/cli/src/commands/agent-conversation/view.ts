@@ -7,7 +7,6 @@
 import type { SentryContext } from "../../context.js";
 import { getConversationSpans } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { ORG_TARGET } from "../../lib/completion-target.js";
 import {
   buildTranscriptResult,
   formatTranscriptResult,
@@ -134,7 +133,7 @@ export const viewCommand = buildCommand({
     positional: boundArguments({
       placeholder: "org/conversation-id",
       brief: "Organization slug (optional) and conversation ID",
-      kind: ORG_TARGET,
+      kind: "org",
       parse: parseConversationArguments,
       resolve: async (
         input,

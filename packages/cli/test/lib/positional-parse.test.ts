@@ -16,11 +16,7 @@ import {
 import { describe, expect, test, vi } from "vitest";
 import type { ParsedOrgProject } from "../../src/lib/arg-parsing.js";
 import { buildCommand } from "../../src/lib/command.js";
-import {
-  getCompletionTarget,
-  ORG_PROJECT_TARGET,
-  ORG_TARGET,
-} from "../../src/lib/completion-target.js";
+import { getCompletionTarget } from "../../src/lib/completion-target.js";
 import {
   ContextError,
   EXIT,
@@ -187,7 +183,7 @@ describe("orgProjectTarget", () => {
   });
 
   test("keeps completing org/project slugs", () => {
-    expect(getCompletionTarget(echoTarget)).toBe(ORG_PROJECT_TARGET);
+    expect(getCompletionTarget(echoTarget)).toBe("org/project");
   });
 });
 
@@ -258,7 +254,7 @@ describe("parsing and resolution", () => {
 
 describe("listTarget", () => {
   const context = { cwd: "/work" };
-  const namedTarget = listTarget(ORG_PROJECT_TARGET, { names: true });
+  const namedTarget = listTarget("org/project", { names: true });
 
   test("parses what to list and the name filter", () => {
     expect(namedTarget.call(context, "acme/web-*").parsed).toEqual({
@@ -286,8 +282,8 @@ describe("listTarget", () => {
   });
 
   test("completes org slugs only for org-scoped resources", () => {
-    expect(getCompletionTarget(listTarget(ORG_TARGET))).toBe(ORG_TARGET);
-    expect(getCompletionTarget(namedTarget)).toBe(ORG_PROJECT_TARGET);
+    expect(getCompletionTarget(listTarget("org"))).toBe("org");
+    expect(getCompletionTarget(namedTarget)).toBe("org/project");
   });
 
   test("invalid input fails as an argument parse error", async () => {
@@ -349,7 +345,7 @@ const idResolver = vi.fn(
 const idArguments = boundArguments({
   placeholder: "target-or-id",
   brief: "[<target>] <id>",
-  kind: ORG_PROJECT_TARGET,
+  kind: "org/project",
   parse: parseIdArguments,
   resolve: idResolver,
 });
@@ -493,7 +489,7 @@ describe("boundArguments", () => {
 
   test("each argument completes as the given kind", () => {
     expect(getCompletionTarget(idArguments.parameter.parse)).toBe(
-      ORG_PROJECT_TARGET,
+      "org/project",
     );
   });
 });

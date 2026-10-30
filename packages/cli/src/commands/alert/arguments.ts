@@ -15,10 +15,6 @@ import {
   type ParsedOrgProject,
   parseOrgProjectInput,
 } from "../../lib/arg-parsing.js";
-import type {
-  ORG_PROJECT_TARGET,
-  ORG_TARGET,
-} from "../../lib/completion-target.js";
 import {
   type BoundPositional,
   boundPositional,
@@ -56,7 +52,7 @@ type RuleArgSplitter = (
 export function alertRuleParameter(options: {
   readonly placeholder: string;
   readonly brief: string;
-  readonly kind: typeof ORG_TARGET | typeof ORG_PROJECT_TARGET;
+  readonly kind: "org" | "org/project";
   readonly split: RuleArgSplitter;
   readonly usageHint: string;
 }) {

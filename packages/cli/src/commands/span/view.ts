@@ -13,7 +13,6 @@ import {
 } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -380,7 +379,7 @@ export const viewCommand = buildCommand({
       placeholder: "trace-id/span-id",
       brief:
         "[<org>/<project>/]<trace-id> <span-id> [<span-id>...] - Trace ID and one or more span IDs",
-      kind: ORG_PROJECT_TARGET,
+      kind: "org/project",
       parse: parseSpanViewInput,
       resolve: resolveSpanViewInput,
     }),

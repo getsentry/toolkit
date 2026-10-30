@@ -8,7 +8,6 @@
  * pasted issue URL is applied. See `positional-parse.ts`.
  */
 
-import { ISSUE_TARGET } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import {
   type IssueArgument,
@@ -80,7 +79,7 @@ function issueTarget(
 ): (this: IssueTargetContext, input?: string) => IssueTarget {
   const { command, commandBase = "sentry issue" } = issueCommand;
   return boundPositional(
-    ISSUE_TARGET,
+    "issue",
     parseIssueTargetInput,
     async (issue, context: IssueTargetContext) =>
       await resolveIssue({
@@ -142,7 +141,7 @@ export function issuesPositional(options: {
   return boundArguments({
     placeholder: "issue",
     brief,
-    kind: ISSUE_TARGET,
+    kind: "issue",
     parse: (raw): readonly IssueArgument[] => {
       const issues = parseIssueArguments(raw, { usageHint, optional });
       if (!distinct) {

@@ -11,7 +11,6 @@ import {
   parseOrgProjectInput,
 } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { formatDashboardCreated } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -186,7 +185,7 @@ export const createCommand = buildCommand({
     positional: boundArguments({
       placeholder: "org/project/title",
       brief: "[<org/project>] <title>",
-      kind: ORG_PROJECT_TARGET,
+      kind: "org/project",
       parse: parseCreateInput,
       resolve: async (input: CreateInput, context: SentryContext) => {
         if (input.baseUrl) {

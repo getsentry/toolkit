@@ -25,7 +25,6 @@ import {
   type CommandDocumentation,
   numberParser,
 } from "./command.js";
-import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
 import { logger } from "./logger.js";
 
@@ -119,10 +118,7 @@ export function listTargetPositional(
         brief: parseOptions.names
           ? NAMED_LIST_TARGET_BRIEF
           : ORG_ALL_TARGET_BRIEF,
-        parse: listTarget(
-          orgScoped ? ORG_TARGET : ORG_PROJECT_TARGET,
-          parseOptions,
-        ),
+        parse: listTarget(orgScoped ? "org" : "org/project", parseOptions),
         optional: true as const,
       },
     ],

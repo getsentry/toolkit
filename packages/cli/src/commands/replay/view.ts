@@ -18,7 +18,6 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import { ApiError, ResolutionError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -127,7 +126,7 @@ export function replayArguments(
   return boundArguments({
     placeholder: "replay-id-or-url",
     brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
-    kind: ORG_PROJECT_TARGET,
+    kind: "org/project",
     parse: (raw) => parseReplayArguments(raw, usageHint),
     resolve: async (
       input,

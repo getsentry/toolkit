@@ -20,7 +20,6 @@ import {
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { success } from "../../lib/formatters/colors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -162,7 +161,7 @@ export const startCommand = buildCommand({
     positional: boundArguments({
       placeholder: "name",
       brief: `Trial name (${NAMES_LIST}) and organization slug (auto-detected if omitted)`,
-      kind: ORG_TARGET,
+      kind: "org",
       parse: parseTrialStartArguments,
       resolve: async (
         input,

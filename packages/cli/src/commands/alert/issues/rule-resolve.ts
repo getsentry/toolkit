@@ -10,7 +10,6 @@ import {
   isNotFoundApiError,
   listIssueAlertsPaginated,
 } from "../../../lib/api-client.js";
-import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
@@ -77,7 +76,7 @@ export function issueRuleParameter(usageHint: string, brief: string) {
   return alertRuleParameter({
     placeholder: "org/project/rule-id-or-name",
     brief,
-    kind: ORG_PROJECT_TARGET,
+    kind: "org/project",
     split: parseIssueRuleArg,
     usageHint,
   });

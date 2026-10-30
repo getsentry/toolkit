@@ -382,20 +382,21 @@ grammar knows no kind of ID: the command's `ID_KINDS` entry tells it what an
 ID looks like, so the syntax cannot drift between commands. It accepts any
 input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 
-**Shell completion:** Every visible positional declares a completion kind
-from `src/lib/completion-target.ts`; `test/lib/completion-coverage.test.ts`
+**Shell completion:** Every visible positional declares a completion kind,
+a key of `COMPLETERS` in `src/lib/complete.ts`; `test/lib/completion-coverage.test.ts`
 walks the route tree and fails, naming the command and placeholder, for any
 positional without one. Pick the parser by what the argument takes:
 
 | Argument | Parser | Completes |
 |----------|--------|-----------|
-| Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
+| Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `"org"` org slugs; `"org/project"` `org/`, `org/project`, aliases; `"issue"` plus cached issue short IDs; `"dashboard"` cached dashboards |
 | File or directory path | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
 | Directory | `parseDirectoryPath` | directories only |
-| Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
+| Target or directory (`init`) | `boundArguments({ kind: "org-project-or-directory", … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
 | Fixed values | `choiceParser(values)` (take the values from the module that defines them) | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). The parser returns its input, so the command still validates it |
 | Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`) |
 | CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |
+| URL | `parseUrl` (the command validates it) | nothing |
 | Free text, IDs with no cache, names of new things | `parseText` | nothing |
 
 Import the pre-tagged parsers; never tag `String` or write
@@ -417,9 +418,9 @@ operations it lists (by URL template, type-checked against the SDK), so API
 functions never seed by hand. To complete a new entity type, add it to
 `CompletionEntityKind`, its operations in `completion-seed.ts`, a tagged
 parser, and an `entityCompleter` entry in `src/lib/complete.ts`. To add a
-kind that is not an entity, add it to `COMPLETION_TARGETS`, a pre-tagged
-parser, and its entry in `COMPLETERS` (`src/lib/complete.ts`; the record
-type makes a missing completer a type error).
+kind that is not an entity, add its entry to `COMPLETERS`
+(`src/lib/complete.ts`), whose keys are the `CompletionTarget` type, and a
+pre-tagged parser.
 `pnpm run generate:completions` collects every command's kinds and choice
 values, and every route group's subcommands, into the gitignored
 `src/generated/completion-targets.json` that the `__complete` fast path

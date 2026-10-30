@@ -9,7 +9,6 @@
 
 import type { SentryContext } from "../../context.js";
 import { deleteIntegration, getIntegration } from "../../lib/api-client.js";
-import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ApiError, ValidationError } from "../../lib/errors.js";
 import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -181,7 +180,7 @@ export const deleteCommand = buildDeleteCommand({
     positional: boundArguments({
       placeholder: "org/integration-id",
       brief: "[<org>/]<integration-id> - Integration to remove",
-      kind: ORG_TARGET,
+      kind: "org",
       parse: parseIntegrationArguments,
       resolve: async (
         input,

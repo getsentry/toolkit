@@ -16,7 +16,6 @@ import { paginate } from "../../../lib/api/infrastructure.js";
 import { listMetricAlertsPaginated } from "../../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
-import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiOrgContextKey,
@@ -87,7 +86,7 @@ const METRIC_ALERT_TARGET_POSITIONAL = {
     {
       placeholder: "target",
       brief: "<org>/, <org>/<project> (project ignored), or <project> (search)",
-      parse: listTarget(ORG_PROJECT_TARGET),
+      parse: listTarget("org/project"),
       optional: true as const,
     },
   ],

@@ -3,7 +3,6 @@
  * identifier, parsed before the command runs.
  */
 
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import {
   type IssueArgument,
@@ -40,7 +39,7 @@ export function feedbackPositional(command: string) {
         brief:
           "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>",
         parse: boundPositional(
-          ORG_PROJECT_TARGET,
+          "org/project",
           (raw) => (raw === undefined ? undefined : parseIssueArgument(raw)),
           async (feedback, context: { readonly cwd: string }) => {
             if (!feedback) {

@@ -1,6 +1,6 @@
 /** Shared arguments for external issue association commands. */
 
-import { parseText } from "../../lib/completion-target.js";
+import { parseUrl } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { issueParameter } from "./positional.js";
 
@@ -12,7 +12,7 @@ export function externalIssuePositionals(command: string) {
       issueParameter({ command }),
       {
         placeholder: "url",
-        parse: parseText,
+        parse: parseUrl,
         brief: "URL of an existing tracker issue or GitHub pull request",
       },
     ],
