@@ -1,8 +1,14 @@
 import { normalizeAuthToken } from "./auth-header.js";
 import { getConfiguredSentryUrl } from "./constants.js";
-import { refreshToken } from "./db/auth.js";
+import { getAccountScope } from "./db/account-scope.js";
+import { getAccountRow } from "./db/accounts.js";
+import {
+  type AuthSource,
+  getEffectiveAccountRow,
+  refreshToken,
+} from "./db/auth.js";
 import { getEnv } from "./env.js";
-import { HostScopeError, ValidationError } from "./errors.js";
+import { AuthError, HostScopeError, ValidationError } from "./errors.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 
@@ -53,18 +59,61 @@ export function prepareMcpServerArgs(
 }
 
 /**
+ * The CLI credential a server process started with. Every later refresh stays
+ * on it, so another process running `sentry auth switch` or logging in to a
+ * different account cannot change who the running server acts as.
+ */
+export type McpCredentialPin =
+  | { kind: "stored"; accountId: string; userId: string | null }
+  | { kind: "env" };
+
+export type McpCliCredential = { token: string; pin: McpCredentialPin };
+
+const ACCOUNT_CHANGED_MESSAGE =
+  "The account this MCP server started with is no longer available. Restart the MCP server to use the current CLI login.";
+
+/**
+ * Point this process's credential reads at the pinned credential, or fail
+ * closed when it is gone. The host check alone cannot tell two accounts on
+ * the same server apart.
+ */
+function applyCredentialPin(pin: McpCredentialPin): void {
+  const scope = getAccountScope();
+  if (pin.kind === "env") {
+    scope.accountId = undefined;
+    scope.envToken = true;
+    return;
+  }
+  const row = getAccountRow(pin.accountId);
+  // A login can replace an account's credentials in place, so also require
+  // the same user when the account recorded one.
+  if (!row?.token || (pin.userId && row.user_id !== pin.userId)) {
+    throw new AuthError("expired", ACCOUNT_CHANGED_MESSAGE, {
+      skipAutoAuth: true,
+    });
+  }
+  scope.envToken = undefined;
+  scope.accountId = pin.accountId;
+}
+
+/**
  * Resolve a credential for the local MCP server from the CLI's authenticated
  * session, preserving the CLI's host-scoping protections.
  *
- * Pass `force` to bypass the refresh threshold — used after an upstream 401 so
- * a long-running server picks up a fresh token without being restarted.
+ * Without `pin`, resolves the effective CLI account and pins it. With `pin`,
+ * refreshes only that credential. Pass `force` to bypass the refresh
+ * threshold — used after an upstream 401 so a long-running server picks up a
+ * fresh token without being restarted.
  */
-export async function resolveCliMcpAccessToken(
+export async function resolveCliMcpCredential(
   config: McpTarget,
-  options: { force?: boolean } = {},
-): Promise<string> {
+  options: { force?: boolean; pin?: McpCredentialPin } = {},
+): Promise<McpCliCredential> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
-  const { token } = await refreshToken({ force: options.force });
+  if (options.pin) {
+    applyCredentialPin(options.pin);
+  }
+  const result = await refreshToken({ force: options.force });
   const tokenHost = getActiveTokenHost();
 
   if (!(tokenHost && isHostTrusted(targetUrl, tokenHost))) {
@@ -75,10 +124,27 @@ export async function resolveCliMcpAccessToken(
     );
   }
 
+  const pin = options.pin ?? pinFromSource(result.source);
+  // A stored credential that can no longer refresh falls back to the env
+  // token; that is a different identity, so refuse it.
+  const resolvedKind = result.source === "oauth" ? "stored" : "env";
+  if (pin.kind !== resolvedKind) {
+    throw new AuthError("expired", ACCOUNT_CHANGED_MESSAGE, {
+      skipAutoAuth: true,
+    });
+  }
+
   // Env tokens and stored rows bypass the refresh path's normalization, so a
   // credential with pasted newlines or padding could reach the MCP server. Trim
   // and validate here before it becomes an Authorization header.
-  return normalizeAuthToken(token);
+  return { token: normalizeAuthToken(result.token), pin };
+}
+
+function pinFromSource(source: AuthSource): McpCredentialPin {
+  const row = source === "oauth" ? getEffectiveAccountRow() : undefined;
+  return row
+    ? { kind: "stored", accountId: row.account_id, userId: row.user_id }
+    : { kind: "env" };
 }
 
 /**
@@ -91,11 +157,11 @@ export async function resolveCliMcpAccessToken(
  * it rethrows the original {@link AuthError} so the client sees which login
  * command to run instead of a hung browser prompt.
  */
-async function resolveMcpAccessTokenWithLogin(
+async function resolveMcpCredentialWithLogin(
   config: McpTarget,
-): Promise<string> {
+): Promise<McpCliCredential> {
   try {
-    return await resolveCliMcpAccessToken(config);
+    return await resolveCliMcpCredential(config);
   } catch (error) {
     const { isatty } = await import("node:tty");
     const { shouldAutoAuth, assertAutoLoginHostTrusted } =
@@ -120,7 +186,7 @@ async function resolveMcpAccessTokenWithLogin(
       throw error;
     }
 
-    return await resolveCliMcpAccessToken(config);
+    return await resolveCliMcpCredential(config);
   }
 }
 
@@ -178,11 +244,14 @@ export async function startMcpServer(args: string[]): Promise<boolean> {
     return true;
   }
 
+  const { token, pin } = await resolveMcpCredentialWithLogin(config);
   serveMcpStdio(config, {
-    accessToken: await resolveMcpAccessTokenWithLogin(config),
+    accessToken: token,
     // Force a refresh past the usual threshold: the upstream already rejected
-    // the current token, so mirror `--follow`'s refresh-on-401 behavior.
-    refreshAccessToken: () => resolveCliMcpAccessToken(config, { force: true }),
+    // the current token, so mirror `--follow`'s refresh-on-401 behavior. The
+    // pin keeps the refresh on the startup account.
+    refreshAccessToken: async () =>
+      (await resolveCliMcpCredential(config, { force: true, pin })).token,
     env,
   });
   return true;

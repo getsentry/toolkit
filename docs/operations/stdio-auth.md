@@ -45,7 +45,10 @@ The credential store can hold several accounts, but each server process uses
 one: the account resolved at startup. With `SENTRY_HOST`/`SENTRY_URL` set, that
 is a stored account on that server; otherwise it is the active account
 (`sentry auth switch`). Refreshes after a 401 stay on that account, and tool
-calls never pick a different one. To use two accounts at once, configure two
+calls never pick a different one, even when another process switches or adds
+accounts. If that account is removed or another user logs in over it, the
+refresh fails and tool calls keep failing until the server restarts. To use
+two accounts at once, configure two
 MCP servers, for example one per host via `SENTRY_HOST`, or one with a static
 `SENTRY_ACCESS_TOKEN`.
 

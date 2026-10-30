@@ -7,7 +7,7 @@ import {
 } from "../../src/lib/errors.js";
 import {
   prepareMcpServerArgs,
-  resolveCliMcpAccessToken,
+  resolveCliMcpCredential,
   startMcpServer,
 } from "../../src/lib/mcp.js";
 import {
@@ -33,7 +33,13 @@ afterEach(async () => {
   await resetHostScopingState();
 });
 
-describe("resolveCliMcpAccessToken", () => {
+async function resolveCliMcpAccessToken(
+  config: Parameters<typeof resolveCliMcpCredential>[0],
+): Promise<string> {
+  return (await resolveCliMcpCredential(config)).token;
+}
+
+describe("resolveCliMcpCredential", () => {
   test("returns the active CLI session token for its scoped host", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",

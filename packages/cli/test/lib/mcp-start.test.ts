@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { clearAuth, setAuthToken } from "../../src/lib/db/auth.js";
+import {
+  clearAuth,
+  removeAccount,
+  setActiveAccount,
+  setAuthToken,
+} from "../../src/lib/db/auth.js";
+import { setUserInfo } from "../../src/lib/db/user.js";
 import {
   HostScopeError,
   MalformedAuthTokenError,
@@ -26,6 +32,7 @@ vi.mock("../../src/lib/mcp/server.js", async (importOriginal) => ({
 
 useTestConfigDir("mcp-start-");
 useEnvSandbox([
+  "SENTRY_CLIENT_ID",
   "SENTRY_ACCESS_TOKEN",
   "SENTRY_AUTH_TOKEN",
   "SENTRY_TOKEN",
@@ -77,6 +84,105 @@ describe("startMcpServer credential wiring", () => {
       host: "https://sentry.io",
     });
     await expect(options.refreshAccessToken?.()).resolves.toBe("rotated-token");
+  });
+});
+
+describe("startMcpServer account pinning", () => {
+  const originalFetch = globalThis.fetch;
+  const refreshedWith: string[] = [];
+
+  /** Store a new account on sentry.io, as `sentry auth login` does. */
+  function login(token: string, userId: string): string {
+    const id = setAuthToken(token, 3600, `${token}-refresh`, {
+      host: "https://sentry.io",
+      newAccount: true,
+    });
+    setUserInfo({ userId, email: `${userId}@example.com` });
+    return id;
+  }
+
+  beforeEach(async () => {
+    await clearAuth();
+    refreshedWith.length = 0;
+    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    // Each refresh rotates the access token of whichever refresh token it got.
+    globalThis.fetch = async (input, init) => {
+      expect(new Request(input).url).toBe("https://sentry.io/oauth/token/");
+      const body = init?.body;
+      const refresh =
+        body instanceof URLSearchParams ? body.get("refresh_token") : null;
+      refreshedWith.push(refresh ?? "");
+      return Response.json({
+        access_token: `${refresh?.replace(/-refresh$/, "")}-rotated`,
+        token_type: "bearer",
+        expires_in: 3600,
+        refresh_token: refresh,
+      });
+    };
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("keeps refreshing the startup account after another process switches accounts", async () => {
+    const a = login("a-token", "1");
+    const b = login("b-token", "2");
+    setActiveAccount(a);
+    const { options } = await start([]);
+    expect(options.accessToken).toBe("a-token");
+
+    setActiveAccount(b);
+
+    await expect(options.refreshAccessToken?.()).resolves.toBe(
+      "a-token-rotated",
+    );
+    // A second refresh, after the first cleared the cached rows, stays on A.
+    await expect(options.refreshAccessToken?.()).resolves.toBe(
+      "a-token-rotated",
+    );
+    expect(refreshedWith).toEqual(["a-token-refresh", "a-token-refresh"]);
+  });
+
+  test("fails closed when the startup account is removed", async () => {
+    const a = login("a-token", "1");
+    login("b-token", "2");
+    setActiveAccount(a);
+    const { options } = await start([]);
+
+    await removeAccount(a, { promoteNext: true });
+
+    await expect(options.refreshAccessToken?.()).rejects.toThrow(
+      "The account this MCP server started with is no longer available",
+    );
+    expect(refreshedWith).toEqual([]);
+  });
+
+  test("fails closed when another user logs in over the startup account", async () => {
+    login("a-token", "1");
+    const { options } = await start([]);
+
+    // `sentry auth login --force` replaces the account's credentials in place.
+    setAuthToken("c-token", 3600, "c-token-refresh", {
+      host: "https://sentry.io",
+    });
+    setUserInfo({ userId: "3", email: "3@example.com" });
+
+    await expect(options.refreshAccessToken?.()).rejects.toThrow(
+      "The account this MCP server started with is no longer available",
+    );
+    expect(refreshedWith).toEqual([]);
+  });
+
+  test("keeps an env token after a stored login appears", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_HOST = "https://sentry.io";
+    const { options } = await start([]);
+    expect(options.accessToken).toBe("env-token");
+
+    login("stored-token", "1");
+
+    await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
   });
 });
 
