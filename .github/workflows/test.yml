@@ -211,7 +211,7 @@ jobs:
     needs: discover-projects
     if: contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry')
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     outputs:
       shard-count: ${{ strategy.job-total }}
     strategy:
