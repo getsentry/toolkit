@@ -23,7 +23,10 @@ smoke-test suite remains in its own workflow.
 
 `CLI E2E (Node 24)` runs independently of the CLI project job. It builds the
 standalone CLI on Node 22, then builds the npm bundle and tests both on Node 24.
-Unit tests and coverage remain in the project job. The final `test` gate
+Dependencies and generated sources are prepared once per job. The CLI project
+job runs typechecks, unit tests, and coverage without rebuilding the standalone
+or repeating generation. Public build and test commands still prepare their own
+inputs for local use. The final `test` gate
 requires E2E to pass whenever the CLI is selected, and requires it to be skipped
 otherwise.
 

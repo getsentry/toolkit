@@ -43,8 +43,10 @@ describe("workspace CI selection", () => {
     assert.match(docsScripts[docs.prepare], /sentry run generate:schema/);
     assert.match(docsScripts[docs.prepare], /sentry run generate:docs/);
     const cli = matrix.include.find(({ name }) => name === "sentry");
-    assert.equal(cli.build, "build");
-    assert.equal(cli.test, "test:unit");
+    assert.equal(cli.prepare, "ci:prepare");
+    assert.equal(cli.build, "");
+    assert.equal(cli.typecheck, "ci:typecheck");
+    assert.equal(cli.test, "ci:test:unit");
     assert.equal(cli.policy, "ci:policy");
     assert.equal(cli.e2e, "");
     assert.equal(cli.coverage, "packages/cli/coverage/lcov.info");
