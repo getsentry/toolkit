@@ -43,7 +43,9 @@ A repo-local `.sentryclirc` URL is not a trust source. Unless `--host`/`--url`
 is passed, a non-SaaS `[defaults] url` must match a server you are logged in
 to, the same check every CLI command applies. Otherwise the server refuses to
 start (`HostScopeError`) instead of sending any token, including a static one,
-to that host.
+to that host. An org auth token (`sntrys_`) is the exception: it names the
+server it was issued for, so it is served when that server matches the target
+and refused when it does not.
 
 ## Accounts
 

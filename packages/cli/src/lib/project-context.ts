@@ -25,10 +25,19 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
   ]);
 
   const result = await findProjectRoot(cwd);
-  await setCachedProjectRoot(cwd, {
-    projectRoot: result.projectRoot,
-    reason: result.reason,
-  });
+  // The cache is an optimization; a DB failure must not skip the env shim
+  // below, or boot would continue without the `.sentryclirc` token and URL.
+  try {
+    await setCachedProjectRoot(cwd, {
+      projectRoot: result.projectRoot,
+      reason: result.reason,
+    });
+  } catch (error) {
+    const { logger } = await import("./logger.js");
+    logger
+      .withTag("project-context")
+      .debug("Could not cache the project root", error);
+  }
 
   // Apply .sentryclirc env shim (token + URL). The URL trust check is
   // deferred to buildCommand's wrapper where commands can opt out via

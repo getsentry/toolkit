@@ -264,23 +264,32 @@ export async function startMcpServer(args: string[]): Promise<boolean> {
     return false;
   }
 
+  const { config } = invocation;
+  const staticToken = config.accessToken
+    ? resolveStaticMcpAccessToken({
+        ...config,
+        accessToken: config.accessToken,
+      })
+    : undefined;
+
   // A repo-local `.sentryclirc` can set the target URL, but it is not a trust
-  // source: without this gate, a static token (which carries no host claim
-  // unless it is an org token) would be sent to whatever server the file
-  // names. Apply the same rc-URL check as every other CLI command, unless an
-  // explicit `--host`/`--url` flag overrides the target.
-  if (!hasSentryTargetArg(args)) {
+  // source: without this gate, a static token with no host claim would be
+  // sent to whatever server the file names. Apply the same rc-URL check as
+  // every other CLI command, unless an explicit `--host`/`--url` flag
+  // overrides the target, or the token is an org token whose host claim
+  // `resolveStaticMcpAccessToken` already matched against the target.
+  if (
+    !(
+      hasSentryTargetArg(args) ||
+      (staticToken && parseSntrysClaim(staticToken))
+    )
+  ) {
     const { assertRcUrlTrusted } = await import("./sentryclirc.js");
     await assertRcUrlTrusted(process.cwd());
   }
 
-  const { config } = invocation;
-  const { accessToken } = config;
-  if (accessToken) {
-    serveMcpStdio(config, {
-      accessToken: resolveStaticMcpAccessToken({ ...config, accessToken }),
-      env,
-    });
+  if (staticToken) {
+    serveMcpStdio(config, { accessToken: staticToken, env });
     return true;
   }
 

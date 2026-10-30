@@ -400,6 +400,38 @@ describe("startMcpServer .sentryclirc URLs", () => {
     expect(options.accessToken).toBe("static-token");
   });
 
+  test("serves an org token whose claim matches a self-hosted rc URL", async () => {
+    await inRcDir("https://sentry.example.com");
+    const token = mintSntrysToken({
+      iat: 1,
+      url: "https://sentry.example.com",
+      org: "acme",
+    });
+
+    const fromFlag = await start([`--access-token=${token}`]);
+    expect(fromFlag.options.accessToken).toBe(token);
+
+    served.calls = [];
+    process.env.SENTRY_ACCESS_TOKEN = token;
+    const fromEnv = await start([]);
+    expect(fromEnv.options.accessToken).toBe(token);
+  });
+
+  test("refuses an org token whose claim does not match the rc URL", async () => {
+    await inRcDir("https://evil.example.com");
+    const token = mintSntrysToken({
+      iat: 1,
+      url: "https://sentry.example.com",
+      org: "acme",
+    });
+
+    const { startMcpServer } = await import("../../src/lib/mcp.js");
+    await expect(
+      startMcpServer([`--access-token=${token}`]),
+    ).rejects.toBeInstanceOf(HostScopeError);
+    expect(served.calls).toHaveLength(0);
+  });
+
   test("serves a static token for an rc URL the user has logged in to", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.example.com",
