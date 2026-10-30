@@ -56,6 +56,6 @@
     "oxlint": "^1.79.0",
     "typescript": "catalog:",
     "vite": "^8.3.3",
-    "vitest": "^4.1.9"
+    "vitest": "catalog:"
   }
 }

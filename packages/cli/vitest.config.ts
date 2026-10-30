@@ -79,12 +79,6 @@ export default defineConfig({
     testTimeout: 15_000,
     isolate: true,
     pool: "forks",
-    poolOptions: {
-      forks: {
-        execArgv: [],
-        env: { UV_USE_IO_URING: "0" },
-      },
-    },
     include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
     exclude: ["**/node_modules/**", "**/dist/**"],
     coverage: {
