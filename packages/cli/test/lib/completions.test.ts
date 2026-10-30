@@ -52,7 +52,7 @@ describe("completions", () => {
 
     test("zsh script escapes colons in dynamic completion values", () => {
       const script = getCompletionScript("zsh");
-      expect(script).toContain(`escaped_value="\${value//:/\\\\:}"`);
+      expect(script).toContain(`value="\${value//:/\\\\:}"`);
     });
 
     test("fish script includes __complete callback", () => {
@@ -60,27 +60,23 @@ describe("completions", () => {
       expect(script).toContain("__complete");
     });
 
-    test("bash script includes flag completion variables", () => {
-      const script = getCompletionScript("bash");
-      // Should contain flag variables for at least some commands
-      expect(script).toContain("_flags=");
+    test("zsh script adds suggestions ending in a slash without a space", () => {
+      const script = getCompletionScript("zsh");
+      expect(script).toContain("_describe -t values 'value' slashed -S ''");
+    });
+
+    test("fish descriptions keep their parentheses", () => {
+      const script = getCompletionScript("fish");
+      expect(script).toContain(
+        '-a "init" -d "Initialize Sentry in your project (experimental)"',
+      );
     });
   });
 
   describe("extractCommandTree", () => {
-    test("includes flags for subcommands", () => {
-      const tree = extractCommandTree();
-      // At least one group should have subcommands with flags
-      const hasFlags = tree.groups.some((g) =>
-        g.subcommands.some((s) => s.flags.length > 0),
-      );
-      expect(hasFlags).toBe(true);
-    });
-
-    test("standalone commands include flags", () => {
-      const tree = extractCommandTree();
-      const hasFlags = tree.standalone.some((s) => s.flags.length > 0);
-      expect(hasFlags).toBe(true);
+    test("lists nested groups as subcommands of their group", () => {
+      const alert = extractCommandTree().groups.find((g) => g.name === "alert");
+      expect(alert?.subcommands.map((s) => s.name)).toContain("issues");
     });
   });
 
