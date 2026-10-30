@@ -52,6 +52,48 @@ export type PaginationState = {
   index: number;
 };
 
+/** Request metadata stored with a cursor walk for endpoint-free navigation. */
+export type PaginationRequest = {
+  /** Opaque identity, host, and working-directory scope. */
+  scope: string;
+  /** Omit when the request cannot be reconstructed without explicit inputs. */
+  url?: string;
+};
+
+/** Remove expired requests together with the cursor state that owns them. */
+function clearExpiredPaginationRequests(commandKey: string, now: number): void {
+  getDatabase()
+    .query(
+      "DELETE FROM pagination_cursors WHERE command_key = ? AND request_scope IS NOT NULL AND expires_at <= ?",
+    )
+    .run(commandKey, now);
+}
+
+/**
+ * Find up to two live requests in a scope, enough to detect ambiguity.
+ * Exhausted walks and requests without a reconstructible URL still count:
+ * dropping either could silently select a different request.
+ */
+export function getPaginationRequests(
+  commandKey: string,
+  scope: string,
+): { contextKey: string; url?: string }[] {
+  const now = Date.now();
+  clearExpiredPaginationRequests(commandKey, now);
+  const rows = getDatabase()
+    .query(
+      "SELECT context, request_url FROM pagination_cursors WHERE command_key = ? AND request_scope = ? AND expires_at > ? LIMIT 2",
+    )
+    .all(commandKey, scope, now) as {
+    context: string;
+    request_url: string | null;
+  }[];
+  return rows.map((row) => ({
+    contextKey: row.context,
+    url: row.request_url ?? undefined,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Stack read / write
 // ---------------------------------------------------------------------------
@@ -109,14 +151,18 @@ export function getPaginationState(
  * @param commandKey - Command identifier
  * @param contextKey - Serialized query context
  * @param state - The pagination state to persist
+ * @param request - Request metadata to replace, or undefined to preserve it
  * @param ttlMs - Time-to-live in milliseconds (default: 5 minutes)
  */
 function savePaginationState(
   commandKey: string,
   contextKey: string,
   state: PaginationState,
+  request?: PaginationRequest,
   ttlMs = CURSOR_TTL_MS,
 ): void {
+  const now = Date.now();
+  clearExpiredPaginationRequests(commandKey, now);
   const db = getDatabase();
   runUpsert(
     db,
@@ -126,7 +172,11 @@ function savePaginationState(
       context: contextKey,
       cursor_stack: JSON.stringify(state.stack),
       page_index: state.index,
-      expires_at: Date.now() + ttlMs,
+      expires_at: now + ttlMs,
+      ...(request && {
+        request_scope: request.scope,
+        request_url: request.url ?? null,
+      }),
     },
     ["command_key", "context"],
   );
@@ -239,23 +289,28 @@ export function resolveCursor(
  * @param contextKey - Serialized query context
  * @param direction - Which direction the user navigated
  * @param nextCursor - Cursor for the page after the one just displayed (undefined if last page)
- * @param currentCursor - Exact cursor used for this page, including any bookmark;
- *   `""` means the first page. Omit to retain the existing stack entry.
+ * @param options - Current cursor and request metadata to replace atomically;
+ *   omitted fields retain their existing values.
  */
 export function advancePaginationState(
   commandKey: string,
   contextKey: string,
   direction: CursorDirection,
   nextCursor: string | undefined,
-  currentCursor?: string,
+  options: {
+    /** Exact page-start cursor including bookmarks; "" means the first page. */
+    currentCursor?: string;
+    request?: PaginationRequest;
+  } = {},
 ): void {
+  const { currentCursor, request } = options;
   const state = getPaginationState(commandKey, contextKey);
 
   if (!state) {
     // First page ever — initialise the stack
     const first = currentCursor ?? "";
     const stack = nextCursor ? [first, nextCursor] : [first];
-    savePaginationState(commandKey, contextKey, { stack, index: 0 });
+    savePaginationState(commandKey, contextKey, { stack, index: 0 }, request);
     return;
   }
 
@@ -270,10 +325,12 @@ export function advancePaginationState(
       if (nextCursor) {
         stack[newIndex + 1] = nextCursor;
       }
-      savePaginationState(commandKey, contextKey, {
-        stack,
-        index: newIndex,
-      });
+      savePaginationState(
+        commandKey,
+        contextKey,
+        { stack, index: newIndex },
+        request,
+      );
       break;
     }
 
@@ -288,17 +345,22 @@ export function advancePaginationState(
         stack[newIndex + 1] = nextCursor;
       }
       // Truncate beyond newIndex + 2 to keep only the immediate next
-      savePaginationState(commandKey, contextKey, {
-        stack: stack.slice(0, nextCursor ? newIndex + 2 : newIndex + 1),
-        index: newIndex,
-      });
+      savePaginationState(
+        commandKey,
+        contextKey,
+        {
+          stack: stack.slice(0, nextCursor ? newIndex + 2 : newIndex + 1),
+          index: newIndex,
+        },
+        request,
+      );
       break;
     }
 
     case "first": {
       const first = currentCursor ?? "";
       const stack = nextCursor ? [first, nextCursor] : [first];
-      savePaginationState(commandKey, contextKey, { stack, index: 0 });
+      savePaginationState(commandKey, contextKey, { stack, index: 0 }, request);
       break;
     }
 

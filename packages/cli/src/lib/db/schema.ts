@@ -21,7 +21,7 @@ import type { Database } from "./sqlite.js";
 
 const _require = createRequire(import.meta.url);
 
-export const CURRENT_SCHEMA_VERSION = 20;
+export const CURRENT_SCHEMA_VERSION = 21;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
@@ -189,6 +189,8 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       cursor_stack: { type: "TEXT", notNull: true },
       page_index: { type: "INTEGER", notNull: true, default: "0" },
       expires_at: { type: "INTEGER", notNull: true },
+      request_scope: { type: "TEXT", addedInVersion: 21 },
+      request_url: { type: "TEXT", addedInVersion: 21 },
     },
     compositePrimaryKey: ["command_key", "context"],
   },
@@ -1177,6 +1179,12 @@ export function runMigrations(db: Database): void {
   // completion from entities seen during normal CLI usage.
   if (currentVersion < 20) {
     db.exec(EXPECTED_TABLES.completion_cache as string);
+  }
+
+  // Migration 20 -> 21: Keep resumable request metadata on its cursor stack.
+  if (currentVersion < 21) {
+    addColumnIfMissing(db, "pagination_cursors", "request_scope", "TEXT");
+    addColumnIfMissing(db, "pagination_cursors", "request_url", "TEXT");
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

@@ -6,6 +6,7 @@
  */
 
 import { access, readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../context.js";
@@ -26,10 +27,12 @@ import {
   advancePaginationState,
   buildPaginationContextKey,
   type CursorDirection,
+  getPaginationRequests,
   hasPreviousPage,
   resolveCursor,
 } from "../lib/db/pagination.js";
 import {
+  ContextError,
   OutputError,
   stringifyUnknown,
   ValidationError,
@@ -38,9 +41,10 @@ import { filterFields } from "../lib/formatters/json.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { validateEndpoint } from "../lib/input-validation.js";
 import { imageBytesToKitty } from "../lib/kitty-image.js";
-import { LIST_CURSOR_FLAG } from "../lib/list-command.js";
+import { CURSOR_KEYWORDS, LIST_CURSOR_FLAG } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
 import { buildCacheKey } from "../lib/response-cache.js";
+import { getDefaultSdkConfig } from "../lib/sentry-client.js";
 import {
   canRenderKitty,
   canRenderSixel,
@@ -1256,6 +1260,10 @@ type ApiPagination = {
   prepared: PreparedRawApiRequest;
   /** Identity-scoped fingerprint of the caller's request, excluding cursor. */
   contextKey: string;
+  /** Cursor-free caller URL, before any bookmark overrides the page size. */
+  requestUrl: string;
+  /** Directory, host and identity scope used to recover this query. */
+  requestScope: string;
   /** Navigation operation to commit after a successful response. */
   direction: CursorDirection;
   /** Original cursor, including any bookmark, saved for backward navigation. */
@@ -1263,6 +1271,82 @@ type ApiPagination = {
   /** Shared decoded position; skip counts rows already returned to the caller. */
   position: PagePosition;
 };
+
+/** Scope resumable API queries to the current identity, configured host and directory. */
+async function getApiRequestScope(cwd: string): Promise<string> {
+  return await buildCacheKey(
+    "GET",
+    getDefaultSdkConfig().baseUrl,
+    JSON.stringify([getIdentityFingerprint(), resolve(cwd)]),
+  );
+}
+
+/**
+ * Recover one recent query without choosing between concurrent walks.
+ * Request modifiers require an explicit endpoint; output flags belong to the
+ * current invocation. Stored URLs are revalidated by the normal request path.
+ */
+function restoreApiRequest(flags: ApiFlags, scope: string) {
+  if (!flags.cursor) {
+    throw new ContextError("API endpoint", "sentry api <endpoint>", []);
+  }
+  if (!CURSOR_KEYWORDS.has(flags.cursor)) {
+    throw new ValidationError(
+      "An endpoint is required unless --cursor is next, prev, or first.",
+      "endpoint",
+    );
+  }
+  if (
+    flags.data !== undefined ||
+    flags.input !== undefined ||
+    flags.field?.length ||
+    flags["raw-field"]?.length ||
+    flags.header?.length
+  ) {
+    throw new ValidationError(
+      "Request options require an endpoint. To resume unchanged, use sentry api --cursor " +
+        flags.cursor +
+        ".",
+      "endpoint",
+    );
+  }
+  const requests = getPaginationRequests(PAGINATION_KEY, scope);
+  if (requests.length > 1) {
+    throw new ValidationError(
+      "More than one recent API query is saved in this directory. Repeat the endpoint and filters to choose which query to continue.",
+      "endpoint",
+    );
+  }
+  const request = requests[0];
+  if (!request) {
+    throw new ValidationError(
+      "No recent API query is saved in this directory. Run the request with its endpoint and filters first.",
+      "endpoint",
+    );
+  }
+  if (!request.url) {
+    throw new ValidationError(
+      "The saved API query requires explicit headers or a body. Repeat the endpoint and request options to continue.",
+      "endpoint",
+    );
+  }
+  const url = URL.canParse(request.url) ? new URL(request.url) : undefined;
+  if (
+    !url ||
+    (url.protocol !== "https:" && url.protocol !== "http:") ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    !url.pathname.includes(API_PREFIX_WITH_SLASH) ||
+    url.searchParams.has("cursor")
+  ) {
+    throw new ValidationError(
+      "The saved API query is invalid. Repeat the endpoint and filters to continue.",
+      "endpoint",
+    );
+  }
+  return { endpoint: request.url, contextKey: request.contextKey };
+}
 
 /**
  * Resolve CLI navigation and custom cursors while retaining a single request.
@@ -1274,6 +1358,8 @@ async function resolveApiNavigation(
   endpoint: string,
   cursorFlag: string | undefined,
   request: NonNullable<Parameters<typeof rawApiRequest>[1]>,
+  scope: string,
+  expectedContextKey?: string,
 ): Promise<ApiPagination> {
   const queryIndex = endpoint.indexOf("?");
   const query = new URLSearchParams(
@@ -1289,15 +1375,17 @@ async function resolveApiNavigation(
   effectiveHeaders.delete("authorization");
   effectiveHeaders.delete("sentry-trace");
   effectiveHeaders.delete("baggage");
-  const identity = JSON.stringify([
-    getIdentityFingerprint(),
-    [...effectiveHeaders],
-    request.body,
-  ]);
+  const identity = JSON.stringify([scope, [...effectiveHeaders], request.body]);
   const contextKey = buildPaginationContextKey(
     "api",
     await buildCacheKey("GET", contextUrl, identity),
   );
+  if (expectedContextKey !== undefined && contextKey !== expectedContextKey) {
+    throw new ValidationError(
+      "The saved API query no longer matches the current request configuration. Repeat the endpoint and request options to continue.",
+      "endpoint",
+    );
+  }
   const { cursor, direction } = resolveCursor(
     cursorFlag,
     PAGINATION_KEY,
@@ -1314,6 +1402,8 @@ async function resolveApiNavigation(
             per_page: position.perPage,
           }),
     contextKey,
+    requestUrl: contextUrl,
+    requestScope: scope,
     direction,
     currentCursor,
     position,
@@ -1602,7 +1692,9 @@ export const apiCommand = buildCommand({
       "pagination when navigation is available. Repeat the same GET and " +
       "filters with --cursor next, prev, or first, or pass a raw cursor. " +
       "Shared custom cursors restore page size and skip rows already read. " +
-      "Each invocation fetches one page.\n\n" +
+      "Each invocation fetches one page. With one recent query in the current " +
+      "directory, omit the endpoint and filters when using next, prev, or first. " +
+      "If several queries are saved, repeat their endpoint and filters.\n\n" +
       "Body options:\n" +
       '  --data/-d \'{"key":"value"}\'   Inline JSON body (like curl -d)\n' +
       '  --input/-i file.json          Read body from file (or "-" for stdin)\n\n' +
@@ -1622,12 +1714,12 @@ export const apiCommand = buildCommand({
         command: "sentry api organizations/ -f per_page=2 --json",
       },
       {
-        description: "Continue the same query using shared pagination",
-        command: "sentry api organizations/ -f per_page=2 --cursor next --json",
-      },
-      {
-        description: "Return to the previously visited page",
-        command: "sentry api organizations/ -f per_page=2 --cursor prev --json",
+        description: "Navigate a recent query without repeating its arguments",
+        command: [
+          "sentry api organizations/ -f per_page=2 --json",
+          "sentry api --cursor next --json",
+          "sentry api --cursor prev --json",
+        ],
       },
       {
         description: "Get a specific issue",
@@ -1691,9 +1783,11 @@ export const apiCommand = buildCommand({
       kind: "tuple",
       parameters: [
         {
-          brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
+          brief:
+            "API endpoint relative to /api/0/, or an absolute HTTP(S) URL; omit to resume a recent query",
           parse: String,
           placeholder: "endpoint",
+          optional: true,
         },
       ],
     },
@@ -1768,7 +1862,7 @@ export const apiCommand = buildCommand({
       n: "dry-run",
     },
   },
-  async *func(this: SentryContext, flags: ApiFlags, endpoint: string) {
+  async *func(this: SentryContext, flags: ApiFlags, endpoint?: string) {
     const { stdin } = this;
     if (flags.cursor !== undefined && flags.method !== "GET") {
       throw new ValidationError(
@@ -1777,8 +1871,17 @@ export const apiCommand = buildCommand({
       );
     }
 
+    const scope =
+      flags.method === "GET" ? await getApiRequestScope(this.cwd) : undefined;
+    const target =
+      endpoint === undefined && scope !== undefined
+        ? restoreApiRequest(flags, scope)
+        : { endpoint, contextKey: undefined };
+    if (target.endpoint === undefined) {
+      throw new ContextError("API endpoint", "sentry api <endpoint>", []);
+    }
     const { normalizedEndpoint, requestBaseUrl, strippedApiPrefix } =
-      resolveApiTarget(endpoint);
+      resolveApiTarget(target.endpoint);
     tagOrgFromApiPath(normalizedEndpoint);
     if (strippedApiPrefix) {
       // Silent auto-fix — not a warning. Users commonly copy/paste URLs
@@ -1803,8 +1906,14 @@ export const apiCommand = buildCommand({
       baseUrl: requestBaseUrl,
     };
     const navigation =
-      flags.method === "GET"
-        ? await resolveApiNavigation(composedEndpoint, flags.cursor, request)
+      scope !== undefined
+        ? await resolveApiNavigation(
+            composedEndpoint,
+            flags.cursor,
+            request,
+            scope,
+            target.contextKey,
+          )
         : undefined;
     const prepared =
       navigation?.prepared ??
@@ -1883,7 +1992,20 @@ export const apiCommand = buildCommand({
         navigation.contextKey,
         navigation.direction,
         pagination.nextCursor,
-        navigation.currentCursor ?? "",
+        {
+          currentCursor: navigation.currentCursor ?? "",
+          request:
+            response.headers.has("link") ||
+            navigation.currentCursor !== undefined
+              ? {
+                  scope: navigation.requestScope,
+                  url:
+                    body === undefined && !flags.header?.length
+                      ? navigation.requestUrl
+                      : undefined,
+                }
+              : undefined,
+        },
       );
       pagination.hasPrev = hasPreviousPage(
         PAGINATION_KEY,
