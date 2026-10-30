@@ -17,6 +17,8 @@ them. The [Toolkit index](../README.md) also links the CLI and shared guides.
   [error handling](../contributing/error-handling.md) — MCP client conventions.
 - [Testing](../testing/overview.md), [stdio](../testing/stdio.md), and
   [remote](../testing/remote.md) — tests and transport QA.
+- [HTTP Code Mode](../testing/code-mode.md) — runtime integration, permissions,
+  and safety validation.
 
 ## Run and Release
 

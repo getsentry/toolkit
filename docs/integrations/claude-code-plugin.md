@@ -63,18 +63,20 @@ The body below the frontmatter is the agent's system prompt.
 
 ## Keeping `allowedTools` in Sync
 
-The `allowedTools` list in the agent frontmatter must match the generated default-grant direct MCP surface. The `generate-definitions` script handles this automatically:
+The `allowedTools` list in the agent frontmatter must match the generated default-grant direct MCP surface, including the hosted `search_sentry_api` and `execute_sentry_code` tools. Their availability and write permissions still depend on the connection's existing grant and constraints. The `generate-definitions` script handles this automatically:
 
 ```bash
 pnpm run --filter @sentry/mcp-core generate-definitions
 ```
+
+The public `/.mcp/tools.json` metadata includes the same hosted definitions. Code Mode has no fixed tool-level API scopes (`requiredScopes: []`): each HTTP operation is authorized against the connection's permissions and organization constraint before the request is sent.
 
 This script:
 
 1. Imports all tools from `packages/mcp-core/src/tools/index.ts`
 2. Imports all skills from `packages/mcp-core/src/skills.ts`
 3. Writes `toolDefinitions.json` and `skillDefinitions.json` to `packages/mcp-core/src/`
-4. Updates `allowedTools` in both `plugins/sentry-mcp/agents/sentry-mcp.md` and `plugins/sentry-mcp-experimental/agents/sentry-mcp.md`, using the default-grant direct surface for each plugin mode. Optional-skill tools remain reachable through `search_sentry_tools` and `execute_sentry_tool` when available.
+4. Updates `allowedTools` in both `plugins/sentry-mcp/agents/sentry-mcp.md` and `plugins/sentry-mcp-experimental/agents/sentry-mcp.md`, using the default-grant direct surface for each plugin mode plus hosted Code Mode names from `packages/mcp-cloudflare/src/code-mode/definitions.ts`. These hosted tools are not added to core/stdio JSON definitions. Optional-skill tools remain reachable through `search_sentry_tools` and `execute_sentry_tool` when available.
 
 The script runs automatically as a `prebuild` and `pretest` hook in `packages/mcp-core/package.json`. Run it explicitly after:
 
@@ -82,7 +84,7 @@ The script runs automatically as a `prebuild` and `pretest` hook in `packages/mc
 - Changing tool skills assignments
 - Modifying agent prompts (to verify frontmatter stays valid)
 
-The script skips regeneration if all outputs are newer than all inputs (tool source files, `skills.ts`, and the script itself).
+The script skips regeneration if all outputs are newer than all inputs (tool source files, hosted Code Mode definitions, `skills.ts`, and the script itself).
 
 ## Modifying the Agent Prompt
 

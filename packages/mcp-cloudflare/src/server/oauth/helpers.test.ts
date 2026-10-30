@@ -1,6 +1,7 @@
 import type { TokenExchangeCallbackOptions } from "@cloudflare/workers-oauth-provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkerProps } from "../types";
+
 const { logIssue, logWarn, sentryMetricsCount, sentrySetUser } = vi.hoisted(
   () => ({
     logIssue: vi.fn(),
@@ -23,12 +24,6 @@ vi.mock("@sentry/cloudflare", () => ({
 }));
 
 import {
-  OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE,
-  OAUTH_GRANT_SHAPE_ATTRIBUTE,
-  OAUTH_REFRESH_OUTCOME_ATTRIBUTE,
-  OAUTH_UPSTREAM_EXPIRES_IN_BUCKET_ATTRIBUTE,
-} from "./telemetry";
-import {
   appendAuthorizationResponseIss,
   createResourceValidationError,
   exchangeCodeForAccessToken,
@@ -38,6 +33,12 @@ import {
   tokenExchangeCallback,
   validateResourceParameter,
 } from "./helpers";
+import {
+  OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE,
+  OAUTH_GRANT_SHAPE_ATTRIBUTE,
+  OAUTH_REFRESH_OUTCOME_ATTRIBUTE,
+  OAUTH_UPSTREAM_EXPIRES_IN_BUCKET_ATTRIBUTE,
+} from "./telemetry";
 
 const GRANT_TYPES = {
   AUTHORIZATION_CODE:
@@ -230,45 +231,54 @@ describe("tokenExchangeCallback", () => {
     expect(result).toBeUndefined();
   });
 
-  it("should return cached token TTL when token is locally valid", async () => {
-    const now = Date.now();
-    const futureExpiry = Date.now() + 10 * 60 * 1000;
-    const options = createRefreshOptions({
-      accessTokenExpiresAt: futureExpiry,
-      sessionStartedAt: now - 2 * 24 * 60 * 60 * 1000,
-      upstreamExpiresAt: now + 3 * 24 * 60 * 60 * 1000,
-    });
+  it.each([
+    ["known", ["event:write", "org:read"]],
+    ["unknown", undefined],
+  ] as const)(
+    "preserves %s upstream scopes when reusing a locally valid token",
+    async (_, upstreamScopes) => {
+      const now = Date.now();
+      const futureExpiry = Date.now() + 10 * 60 * 1000;
+      const options = createRefreshOptions({
+        accessTokenExpiresAt: futureExpiry,
+        sessionStartedAt: now - 2 * 24 * 60 * 60 * 1000,
+        upstreamExpiresAt: now + 3 * 24 * 60 * 60 * 1000,
+        upstreamScopes: upstreamScopes ? [...upstreamScopes] : undefined,
+      });
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    const result = await callTokenExchangeCallback(options);
-    expect(result).toEqual({
-      newProps: expect.objectContaining({
-        accessToken: "old-access-token",
-      }),
-      accessTokenTTL: expect.any(Number),
-    });
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(sentryMetricsCount).toHaveBeenCalledWith(
-      "app.oauth.token_exchange",
-      1,
-      {
-        attributes: expect.objectContaining({
-          [OAUTH_REFRESH_OUTCOME_ATTRIBUTE]: "cached_valid_local",
-          [OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE]: "1d_7d",
-          [OAUTH_UPSTREAM_EXPIRES_IN_BUCKET_ATTRIBUTE]: "1d_7d",
-          "app.client.registration.method":
-            expect.stringMatching(/^(cimd|dcr|unknown)$/),
+      const result = await callTokenExchangeCallback(options);
+      expect(result).toEqual({
+        newProps: expect.objectContaining({
+          accessToken: "old-access-token",
+          upstreamScopes,
         }),
-      },
-    );
-  });
+        accessTokenTTL: expect.any(Number),
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(sentryMetricsCount).toHaveBeenCalledWith(
+        "app.oauth.token_exchange",
+        1,
+        {
+          attributes: expect.objectContaining({
+            [OAUTH_REFRESH_OUTCOME_ATTRIBUTE]: "cached_valid_local",
+            [OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE]: "1d_7d",
+            [OAUTH_UPSTREAM_EXPIRES_IN_BUCKET_ATTRIBUTE]: "1d_7d",
+            "app.client.registration.method":
+              expect.stringMatching(/^(cimd|dcr|unknown)$/),
+          }),
+        },
+      );
+    },
+  );
 
   it("should clear upstreamTokenInvalid after a successful probe", async () => {
     const pastExpiry = Date.now() - 60 * 1000;
     const options = createRefreshOptions({
       accessTokenExpiresAt: pastExpiry,
       upstreamTokenInvalid: true,
+      upstreamScopes: ["event:write", "org:read"],
     });
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -286,6 +296,10 @@ describe("tokenExchangeCallback", () => {
     );
 
     const result = await callTokenExchangeCallback(options);
+    expect(result?.newProps?.upstreamScopes).toEqual([
+      "event:write",
+      "org:read",
+    ]);
     expect(result).toEqual({
       newProps: expect.not.objectContaining({
         upstreamTokenInvalid: true,
@@ -395,6 +409,32 @@ describe("exchangeCodeForAccessToken", () => {
       },
       scope: "org:read project:read",
     });
+    expect(logIssue).not.toHaveBeenCalled();
+    expect(logWarn).not.toHaveBeenCalled();
+  });
+
+  it("accepts token responses with omitted scope without inferring permissions", async () => {
+    const token = {
+      access_token: "test-access-token",
+      refresh_token: "test-refresh-token",
+      token_type: "bearer",
+      expires_in: 3600,
+      expires_at: "2026-04-13T16:36:23.087Z",
+      user: { id: "user-123", name: "Test User" },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(token));
+
+    const [payload, response] = await exchangeCodeForAccessToken({
+      client_id: "test-client-id",
+      client_secret: "test-client-secret",
+      code: "test-code",
+      upstream_url: "https://sentry.io/oauth/token",
+      redirect_uri: "https://mcp.sentry.dev/oauth/callback",
+    });
+
+    expect(response).toBeNull();
+    expect(payload).toEqual(token);
+    expect(payload?.scope).toBeUndefined();
     expect(logIssue).not.toHaveBeenCalled();
     expect(logWarn).not.toHaveBeenCalled();
   });

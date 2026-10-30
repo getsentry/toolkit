@@ -18,6 +18,9 @@ const toolsModule = await import("../src/tools/index.ts");
 const surfacesModule = await import("../src/tools/surfaces.ts");
 const skillsModule = await import("../src/skills.ts");
 const toolTypesModule = await import("../src/tools/types.ts");
+// Hosted-only tools belong in remote plugin allowlists, not core/stdio exports.
+const { CODE_MODE_TOOL_NAMES, CODE_MODE_SKILLS, getCodeModeToolDefinitions } =
+  await import("../../mcp-cloudflare/src/code-mode/definitions.ts");
 
 function writeJson(file: string, data: unknown) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -194,6 +197,7 @@ async function generateSkillDefinitions() {
         description: string;
         defaultEnabled: boolean;
         deprecated?: boolean;
+        hostedOnly?: boolean;
         order: number;
         toolCount?: number;
       }>
@@ -283,11 +287,26 @@ async function generateSkillDefinitions() {
       });
     }
 
+    if (CODE_MODE_SKILLS.some((skillId) => skillId === skill.id)) {
+      const definitions = getCodeModeToolDefinitions({
+        allowWrites: skill.id === "api-write",
+        authorizationRequired: true,
+      });
+      for (const [name, definition] of Object.entries(definitions)) {
+        skillTools.push({
+          name,
+          description: definition.description,
+          requiredScopes: [],
+        });
+      }
+    }
+
     // Sort tools alphabetically by name
     skillTools.sort((a, b) => a.name.localeCompare(b.name));
 
     return {
       ...skill,
+      ...(skill.hostedOnly ? { toolCount: skillTools.length } : {}),
       tools: skillTools,
     };
   });
@@ -349,6 +368,7 @@ function isUpToDate(outDir: string): boolean {
     path.join(__dirname, "../src/skills.ts"),
     path.join(__dirname, "../src/tools/surfaces.ts"),
     path.join(__dirname, "../src/tools/types.ts"),
+    path.join(__dirname, "../../mcp-cloudflare/src/code-mode/definitions.ts"),
     path.join(
       __dirname,
       "../src/internal/tool-helpers/tool-call-formatting.ts",
@@ -415,12 +435,16 @@ async function main() {
     const experimentalDirectTools = experimentalTools.filter(
       (tool) => tool.surface === "direct",
     );
-    const toolNames = directTools
-      .filter(isEnabledByDefaultSkills)
-      .map((t) => t.name);
-    const experimentalToolNames = experimentalDirectTools
-      .filter(isEnabledByDefaultSkills)
-      .map((t) => t.name);
+    const toolNames = [
+      ...directTools.filter(isEnabledByDefaultSkills).map((t) => t.name),
+      ...CODE_MODE_TOOL_NAMES,
+    ].sort();
+    const experimentalToolNames = [
+      ...experimentalDirectTools
+        .filter(isEnabledByDefaultSkills)
+        .map((t) => t.name),
+      ...CODE_MODE_TOOL_NAMES,
+    ].sort();
 
     let agentsSynced = 0;
     for (const agentConfig of agentConfigs()) {

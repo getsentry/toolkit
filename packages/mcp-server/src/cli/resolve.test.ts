@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { finalize } from "./resolve";
 
 describe("cli/finalize", () => {
@@ -138,6 +138,18 @@ describe("cli/finalize", () => {
   );
 
   // Skills tests
+  it.each(["api-read", "api-write"])(
+    "rejects hosted-only %s in explicit stdio configuration",
+    (skill) => {
+      expect(() =>
+        finalize({ skills: `inspect,${skill}`, unknownArgs: [] }),
+      ).toThrow(`available only on the hosted MCP: ${skill}`);
+      expect(() => finalize({ disableSkills: skill, unknownArgs: [] })).toThrow(
+        `available only on the hosted MCP: ${skill}`,
+      );
+    },
+  );
+
   it("throws on invalid skills", () => {
     expect(() =>
       finalize({
@@ -212,6 +224,8 @@ describe("cli/finalize", () => {
     expect(cfg.finalSkills.has("seer")).toBe(true);
     expect(cfg.finalSkills.has("docs")).toBe(false);
     expect(cfg.finalSkills.has("preprod")).toBe(false);
+    expect(cfg.finalSkills.has("api-read")).toBe(false);
+    expect(cfg.finalSkills.has("api-write")).toBe(false);
   });
 
   it("grants all active skills with --all-skills", () => {
@@ -227,6 +241,8 @@ describe("cli/finalize", () => {
     expect(cfg.finalSkills.has("seer")).toBe(true);
     expect(cfg.finalSkills.has("docs")).toBe(false);
     expect(cfg.finalSkills.has("preprod")).toBe(false);
+    expect(cfg.finalSkills.has("api-read")).toBe(false);
+    expect(cfg.finalSkills.has("api-write")).toBe(false);
   });
 
   // Self-hosted defaults
