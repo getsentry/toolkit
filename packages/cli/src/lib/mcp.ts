@@ -1,10 +1,10 @@
 import { normalizeAuthToken } from "./auth-header.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getAccountScope } from "./db/account-scope.js";
-import { getAccountRow } from "./db/accounts.js";
+import { accountIdentity, getAccountRow } from "./db/accounts.js";
 import {
-  type AuthSource,
   getEffectiveAccountRow,
+  type RefreshTokenResult,
   refreshToken,
 } from "./db/auth.js";
 import { getEnv } from "./env.js";
@@ -72,6 +72,8 @@ export type McpCliCredential = { token: string; pin: McpCredentialPin };
 const ACCOUNT_CHANGED_MESSAGE =
   "The account this MCP server started with is no longer available. Restart the MCP server to use the current CLI login.";
 
+const ENV_PIN: McpCredentialPin = { kind: "env" };
+
 /**
  * Point this process's credential reads at the pinned credential, or fail
  * closed when it is gone. The host check alone cannot tell two accounts on
@@ -97,6 +99,37 @@ function applyCredentialPin(pin: McpCredentialPin): void {
 }
 
 /**
+ * The stored account to start with: the effective one, chosen before the
+ * refresh reads it so the startup token and the pin come from the same row.
+ */
+function startupPin(): McpCredentialPin | undefined {
+  const row = getEffectiveAccountRow();
+  return row?.token
+    ? { kind: "stored", accountId: row.account_id, userId: row.user_id }
+    : undefined;
+}
+
+/**
+ * Whether `result` is the pinned credential. A stored pin must match the
+ * account row's current credential: if the row vanished mid-refresh, the
+ * CLI falls back to another account, and that token must not be used.
+ */
+function isPinnedCredential(
+  result: RefreshTokenResult,
+  pin: McpCredentialPin,
+): boolean {
+  if (pin.kind === "env") {
+    return result.source !== "oauth";
+  }
+  if (result.source !== "oauth") {
+    return false;
+  }
+  // SQLite yields null, not undefined, for a missing row.
+  const row = getAccountRow(pin.accountId);
+  return row ? accountIdentity(row) === result.identity : false;
+}
+
+/**
  * Resolve a credential for the local MCP server from the CLI's authenticated
  * session, preserving the CLI's host-scoping protections.
  *
@@ -110,8 +143,9 @@ export async function resolveCliMcpCredential(
   options: { force?: boolean; pin?: McpCredentialPin } = {},
 ): Promise<McpCliCredential> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
-  if (options.pin) {
-    applyCredentialPin(options.pin);
+  const requested = options.pin ?? startupPin();
+  if (requested) {
+    applyCredentialPin(requested);
   }
   const result = await refreshToken({ force: options.force });
   const tokenHost = getActiveTokenHost();
@@ -124,11 +158,14 @@ export async function resolveCliMcpCredential(
     );
   }
 
-  const pin = options.pin ?? pinFromSource(result.source);
-  // A stored credential that can no longer refresh falls back to the env
-  // token; that is a different identity, so refuse it.
-  const resolvedKind = result.source === "oauth" ? "stored" : "env";
-  if (pin.kind !== resolvedKind) {
+  // At startup, an unusable stored credential falls back to the env token,
+  // the same as other CLI commands. Later, that fallback is a different
+  // identity, so it is refused like any other account change.
+  const pin =
+    !options.pin && result.source !== "oauth"
+      ? ENV_PIN
+      : (requested ?? ENV_PIN);
+  if (!isPinnedCredential(result, pin)) {
     throw new AuthError("expired", ACCOUNT_CHANGED_MESSAGE, {
       skipAutoAuth: true,
     });
@@ -138,13 +175,6 @@ export async function resolveCliMcpCredential(
   // credential with pasted newlines or padding could reach the MCP server. Trim
   // and validate here before it becomes an Authorization header.
   return { token: normalizeAuthToken(result.token), pin };
-}
-
-function pinFromSource(source: AuthSource): McpCredentialPin {
-  const row = source === "oauth" ? getEffectiveAccountRow() : undefined;
-  return row
-    ? { kind: "stored", accountId: row.account_id, userId: row.user_id }
-    : { kind: "env" };
 }
 
 /**

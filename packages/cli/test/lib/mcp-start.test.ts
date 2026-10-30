@@ -23,6 +23,29 @@ type Served = { config: McpServerConfig; options: McpServeOptions };
 
 const served: { calls: Served[] } = { calls: [] };
 
+/**
+ * Hooks around the CLI's `refreshToken`, to change the credential store at
+ * the exact moments another process could.
+ */
+const refreshHooks = vi.hoisted(() => ({
+  before: undefined as (() => Promise<void> | void) | undefined,
+  after: undefined as (() => Promise<void> | void) | undefined,
+}));
+
+vi.mock("../../src/lib/db/auth.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/lib/db/auth.js")>();
+  return {
+    ...actual,
+    refreshToken: async (...args: Parameters<typeof actual.refreshToken>) => {
+      await refreshHooks.before?.();
+      const result = await actual.refreshToken(...args);
+      await refreshHooks.after?.();
+      return result;
+    },
+  };
+});
+
 vi.mock("../../src/lib/mcp/server.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/mcp/server.js")>()),
   serveMcpStdio: vi.fn((config: McpServerConfig, options: McpServeOptions) => {
@@ -123,6 +146,8 @@ describe("startMcpServer account pinning", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    refreshHooks.before = undefined;
+    refreshHooks.after = undefined;
   });
 
   test("keeps refreshing the startup account after another process switches accounts", async () => {
@@ -172,6 +197,39 @@ describe("startMcpServer account pinning", () => {
       "The account this MCP server started with is no longer available",
     );
     expect(refreshedWith).toEqual([]);
+  });
+
+  test("pins the account whose token startup returned, even if the active account changes right after", async () => {
+    const a = login("a-token", "1");
+    const b = login("b-token", "2");
+    setActiveAccount(a);
+    refreshHooks.after = () => {
+      refreshHooks.after = undefined;
+      setActiveAccount(b);
+    };
+
+    const { options } = await start([]);
+    expect(options.accessToken).toBe("a-token");
+
+    await expect(options.refreshAccessToken?.()).resolves.toBe(
+      "a-token-rotated",
+    );
+    expect(refreshedWith).toEqual(["a-token-refresh"]);
+  });
+
+  test("refuses another account's token when the startup account vanishes mid-refresh", async () => {
+    const a = login("a-token", "1");
+    login("b-token", "2");
+    setActiveAccount(a);
+    const { options } = await start([]);
+
+    // Removed after the pin check but before the credential read, so the
+    // CLI's account selection falls back to the remaining account.
+    refreshHooks.before = () => removeAccount(a, { promoteNext: true });
+
+    await expect(options.refreshAccessToken?.()).rejects.toThrow(
+      "The account this MCP server started with is no longer available",
+    );
   });
 
   test("keeps an env token after a stored login appears", async () => {
