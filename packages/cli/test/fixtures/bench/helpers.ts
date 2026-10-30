@@ -149,7 +149,7 @@ export async function withBenchDb<T>(
   fn: (configDir: string) => Promise<T>,
 ): Promise<T> {
   // Import lazily — importing `src/lib/db/index.js` has non-trivial side
-  // effects (loads bun:sqlite, @sentry/node-core via createTracedDatabase).
+  // effects (loads bun:sqlite, @sentry/node via createTracedDatabase).
   const { closeDatabase } = await import("../../../src/lib/db/index.js");
 
   const saved = process.env.SENTRY_CONFIG_DIR;

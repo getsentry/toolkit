@@ -25,6 +25,13 @@ function paramsType(name: string): string {
 }
 
 describe("generated SDK flag types", () => {
+  test("keeps optional Explore limits numeric alongside temporal flags", () => {
+    const explore = paramsType("ExploreParams");
+    expect(explore).toContain("limit?: number;");
+    expect(explore).toContain("timeSeries?: string;");
+    expect(explore).not.toContain("interval?:");
+  });
+
   test("declares variadic flags as arrays and keeps scalar flags scalar", () => {
     const login = paramsType("AuthLoginParams");
     expect(login).toContain("scope?: Array<string>;");
@@ -35,10 +42,10 @@ describe("generated SDK flag types", () => {
     // Streaming calls still take their target as trailing positionals, e.g.
     // `sdk.log.list({ follow: "5" }, "org/project")` must type as an AsyncIterable.
     expect(declarations).toContain(
-      "(params: LogListParams & { follow: string }, ...positional: string[]): AsyncIterable<unknown>;",
+      "(params: LogListParams & { follow: string; }, ...positional: string[]): AsyncIterable<unknown>;",
     );
     expect(declarations).toContain(
-      "(params: DashboardViewParams & { refresh: string }, ...positional: string[]): AsyncIterable<unknown>;",
+      "(params: DashboardViewParams & { refresh: string; }, ...positional: string[]): AsyncIterable<unknown>;",
     );
   });
 });

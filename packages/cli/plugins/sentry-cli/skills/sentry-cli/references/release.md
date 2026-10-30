@@ -15,6 +15,12 @@ Work with Sentry releases
 
 List releases with adoption and health metrics
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of releases to list - (default: "25")`
 - `-s, --sort <value> - Sort: date, sessions, users, crash_free_sessions (cfs), crash_free_users (cfu) - (default: "date")`
@@ -47,11 +53,20 @@ sentry release list --period 7d
 
 # Output as JSON
 sentry release list --json
+
+# Fetch the next page
+sentry release list my-org/ -c next
 ```
 
 ### `sentry release view <org/version>`
 
 View release details with health metrics
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to view |
 
 **Flags:**
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -76,6 +91,12 @@ sentry release view 1.0.0 --json
 
 Create a release
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to create |
+
 **Flags:**
 - `-p, --project <value> - Associate with project(s), comma-separated`
 - `--finalize - Immediately finalize the release (set dateReleased)`
@@ -98,8 +119,14 @@ sentry release create 1.0.0 --finalize
 # Create a release for specific projects
 sentry release create 1.0.0 --project proj-a,proj-b
 
+# Typical CI release: create, associate commits, finalize, and record a deploy
+sentry release create my-org/1.0.0 --project my-project
+sentry release set-commits my-org/1.0.0 --auto
+sentry release finalize my-org/1.0.0
+sentry release deploy my-org/1.0.0 production
+
 # Create a release from a proposed version
-sentry release create $(sentry release propose-version)
+sentry release create "$(sentry release propose-version --json | jq -r .version)"
 
 # Set the release ref and URL
 sentry release create 1.0.0 --ref main --url https://github.com/org/repo/releases/tag/1.0.0
@@ -111,6 +138,12 @@ sentry release create 1.0.0 --dry-run
 ### `sentry release finalize <org/version>`
 
 Finalize a release
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to finalize |
 
 **Flags:**
 - `--released <value> - Custom release timestamp (ISO 8601). Defaults to now.`
@@ -137,6 +170,14 @@ sentry release finalize 1.0.0 --dry-run
 
 Delete a release
 
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to delete |
+
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
@@ -159,6 +200,12 @@ sentry release delete my-org/1.0.0 --dry-run
 
 Archive a release
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to archive |
+
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
 
@@ -179,6 +226,12 @@ sentry release archive my-org/1.0.0 --dry-run
 
 Restore an archived release
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to restore |
+
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
 
@@ -198,6 +251,14 @@ sentry release restore 1.0.0 --dry-run
 ### `sentry release deploy <org/version> <environment> [<name>]`
 
 Create a deploy for a release
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
+| `<environment>` | Deploy environment (e.g. production) |
+| `[<name>]` | Optional deploy name (quote multi-word names, e.g. "Deploy #42") |
 
 **Flags:**
 - `--url <value> - URL for the deploy`
@@ -229,6 +290,12 @@ sentry release deploy 1.0.0 production --dry-run
 
 List deploys for a release
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
+
 **Examples:**
 
 ```bash
@@ -245,6 +312,12 @@ sentry release deploys 1.0.0 --json
 ### `sentry release set-commits <org/version>`
 
 Set commits for a release
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
 
 **Flags:**
 - `--auto - Auto-discover commits via repository integration (needs local git checkout)`
@@ -292,6 +365,9 @@ sentry release propose-version
 
 # Output as JSON
 sentry release propose-version --json
+
+# Create a release named after the proposed version
+sentry release create "$(sentry release propose-version --json | jq -r .version)"
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

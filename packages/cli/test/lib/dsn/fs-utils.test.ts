@@ -11,7 +11,7 @@ const { captureException } = vi.hoisted(() => ({
   captureException: vi.fn(),
 }));
 
-vi.mock("@sentry/node-core/light", () => ({
+vi.mock("@sentry/node", () => ({
   captureException,
   startSpan: (_opts: unknown, fn: () => unknown) => fn(),
 }));

@@ -6,13 +6,14 @@
  * project list) and single-item commands (issue view, explain, plan).
  */
 
+import { parse as parseTarget } from "../generated/org-project-target-grammar.js";
 import type { LogSortDirection } from "./api/logs.js";
 import { ContextError, ValidationError, validationError } from "./errors.js";
 import { validateResourceId } from "./input-validation.js";
+import { isGlobFilter } from "./list-filter.js";
 
 import type { ParsedSentryUrl } from "./sentry-url-parser.js";
 import { applySentryUrlContext, parseSentryUrl } from "./sentry-url-parser.js";
-import { isAllDigits } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Slug normalization
@@ -26,9 +27,9 @@ import { isAllDigits } from "./utils.js";
  * is effectively a no-op — valid slug characters pass through unchanged.
  * It remains as a stable call-site for future normalization rules.
  *
- * Spaces are handled separately: {@link looksLikeDisplayName} detects them
- * and the parsing layer routes to a display-name search path that skips
- * slug validation and API lookup entirely.
+ * Spaces are handled separately: the target grammar
+ * (`grammar/org-project-target.pegjs`) routes them to a display-name search
+ * that skips slug validation.
  *
  * @param slug - Raw slug string from CLI input
  * @returns The slug unchanged with `normalized: false`
@@ -38,38 +39,6 @@ export function normalizeSlug(slug: string): {
   normalized: boolean;
 } {
   return { slug, normalized: false };
-}
-
-/**
- * Check if a string looks like a display name rather than a slug.
- * Display names contain spaces, which are never valid in slugs.
- */
-function looksLikeDisplayName(input: string): boolean {
-  return input.includes(" ");
-}
-
-/**
- * Split a project selector on commas.
- *
- * Sentry slugs cannot contain commas, so `org/web,api,worker` is unambiguous.
- * Trims whitespace, drops empty tokens, and de-duplicates while preserving
- * first-seen order.
- *
- * @param rawProject - Raw project selector, potentially containing commas
- * @returns A non-empty list of unique project slugs in input order
- * @throws {ValidationError} When every token is empty (`org/,,,`)
- */
-function splitProjectSelector(rawProject: string): [string, ...string[]] {
-  const [first, ...rest] = [
-    ...new Set(rawProject.split(",").map((part) => part.trim())),
-  ].filter((slug) => slug !== "");
-  if (first === undefined) {
-    throw new ValidationError(
-      "Invalid project slug: comma-separated list is empty.",
-      "project",
-    );
-  }
-  return [first, ...rest];
 }
 
 /**
@@ -164,7 +133,7 @@ const LINE_SPLIT_PATTERN = /\r?\n/;
  * "contains a newline" error (CLI-1G1, CLI-1RA). Slugs and identifiers are
  * always single-line tokens, so the first non-blank line is the intended value.
  */
-function firstNonBlankLine(arg: string): string {
+export function firstNonBlankLine(arg: string): string {
   return (
     arg
       .split(LINE_SPLIT_PATTERN)
@@ -241,7 +210,7 @@ export function isIssueCommandToken(slug: string): boolean {
  * @throws {ValidationError} When the project segment is `issue`/`issues` and the
  *   suffix is purely numeric
  */
-function rejectIssueCommandTokenWithNumericSuffix(
+export function rejectIssueCommandTokenWithNumericSuffix(
   arg: string,
   projectSlug: string,
   suffix: string,
@@ -267,7 +236,8 @@ function rejectIssueCommandTokenWithNumericSuffix(
  * Reject org/project list targets that look like `issue-1` command tokens.
  *
  * `parseOrgProjectArg` treats bare `issue-1` as a single project slug; this
- * applies the same guard as `parseIssueArg` for bare and `org/issue-1` forms.
+ * applies the same guard as `parseIssueArgument` for bare and `org/issue-1`
+ * forms.
  *
  * @throws {ValidationError} When the target matches an issue command token with
  *   a purely numeric suffix
@@ -653,6 +623,19 @@ export type ParsedOrgProject =
   | { type: typeof ProjectSpecificationType.AutoDetect };
 
 /**
+ * A list target that filters names (`<org>/web-*`, `web-*`), from the
+ * target grammar when {@link parseListTargetInput} passes its
+ * `isNameFilter` hook.
+ */
+export type ParsedNameFilter = {
+  type: "name-filter";
+  /** The glob, trimmed */
+  filter: string;
+  /** Organization slug, when the target had one */
+  org?: string;
+};
+
+/**
  * Map a parsed Sentry URL to a ParsedOrgProject.
  * If the URL contains a project slug, returns explicit; otherwise org-all.
  * Share URLs without org context fall back to auto-detect.
@@ -668,69 +651,10 @@ function orgProjectFromUrl(parsed: ParsedSentryUrl): ParsedOrgProject {
 }
 
 /**
- * Map a parsed Sentry URL to a ParsedIssueArg.
- * Handles share URLs, numeric group IDs, and short IDs (e.g., "CLI-G") from the URL path.
- */
-function issueArgFromUrl(parsed: ParsedSentryUrl): ParsedIssueArg | null {
-  // Share URL → resolve via public share API
-  if (parsed.shareId) {
-    return {
-      type: "share",
-      shareId: parsed.shareId,
-      org: parsed.org,
-      baseUrl: parsed.baseUrl,
-    };
-  }
-
-  const { issueId } = parsed;
-  if (!issueId) {
-    return null;
-  }
-
-  // Non-share URLs always have org from their matchers; guard narrows the type
-  const { org } = parsed;
-  if (!org) {
-    return null;
-  }
-
-  // Numeric group ID (e.g., /issues/32886/)
-  if (isAllDigits(issueId)) {
-    return {
-      type: "explicit-org-numeric",
-      org,
-      numericId: issueId,
-    };
-  }
-
-  // Short ID with dash (e.g., /issues/CLI-G/ or /issues/SPOTLIGHT-ELECTRON-4Y/)
-  const dashIdx = issueId.lastIndexOf("-");
-  if (dashIdx > 0) {
-    const project = issueId.slice(0, dashIdx);
-    const suffix = issueId.slice(dashIdx + 1).toUpperCase();
-    if (project && suffix) {
-      // Lowercase project slug — Sentry slugs are always lowercase.
-      return {
-        type: "explicit",
-        org,
-        project: project.toLowerCase(),
-        suffix,
-      };
-    }
-  }
-
-  // No dash — treat as suffix-only with org context
-  return {
-    type: "explicit-org-suffix",
-    org,
-    suffix: issueId.toUpperCase(),
-  };
-}
-
-/**
  * Reject `@`-prefixed values in org/project positions.
  *
  * `@latest` and `@most_frequent` are issue selectors supported by
- * `parseIssueArg()` (for `issue view`, `explain`, `plan`). They are not
+ * `parseIssueArgument()` (for `issue view`, `explain`, `plan`). They are not
  * valid project slugs. This guard provides a helpful redirect instead of
  * the confusing "Project '@latest' not found" resolution error.
  *
@@ -760,146 +684,11 @@ function rejectAtSelector(value: string, label: string): void {
 }
 
 /**
- * Parse a slash-delimited `org/project` string into a {@link ParsedOrgProject}.
- * Applies {@link normalizeSlug} to both components and validates against
- * URL injection characters.
- */
-function parseSlashOrgProject(input: string, multi: boolean): ParsedOrgProject {
-  const slashIndex = input.indexOf("/");
-  const rawOrg = input.slice(0, slashIndex);
-  const rawProject = input.slice(slashIndex + 1);
-
-  if (!rawOrg) {
-    // "/cli" → search for project across all orgs
-    if (!rawProject) {
-      throw new ValidationError(
-        'Invalid format: "/" requires a project slug (e.g., "/cli")',
-      );
-    }
-    rejectAtSelector(rawProject, "project slug");
-    if (looksLikeDisplayName(rawProject)) {
-      // Spaces → display name, not a slug. Skip slug validation and let
-      // the resolution layer do a fuzzy name-based search.
-      return {
-        type: "project-search",
-        projectSlug: rawProject,
-        originalSlug: rawProject,
-      };
-    }
-    const np = normalizeSlug(rawProject);
-    validateResourceId(np.slug, "project slug");
-    return {
-      type: "project-search",
-      projectSlug: np.slug,
-    };
-  }
-
-  rejectAtSelector(rawOrg, "organization slug");
-  const no = normalizeSlug(rawOrg);
-  validateResourceId(no.slug, "organization slug");
-
-  if (!rawProject) {
-    // "sentry/" → list all projects in org
-    return {
-      type: "org-all",
-      org: no.slug,
-      ...(no.normalized && { normalized: true }),
-    };
-  }
-
-  // "sentry/web,api,worker" for list commands that explicitly opt in
-  if (multi && rawProject.includes(",")) {
-    return parseExplicitProjectList(no, rawProject);
-  }
-
-  rejectAtSelector(rawProject, "project slug");
-  if (looksLikeDisplayName(rawProject)) {
-    // Spaces → display name, not a slug. Skip slug validation and let the
-    // resolution layer do a fuzzy name-based search (mirrors the bare-slug
-    // and leading-slash paths). Prevents a hard ValidationError when callers
-    // pass a project display name in "org/project" form (CLI-1RA).
-    return {
-      type: "project-search",
-      projectSlug: rawProject,
-      originalSlug: rawProject,
-      org: no.slug,
-    };
-  }
-  const np = validateProjectSlugToken(rawProject);
-  const normalized = no.normalized || np.normalized;
-  return {
-    type: "explicit",
-    org: no.slug,
-    project: np.slug,
-    ...(normalized && { normalized: true }),
-  };
-}
-
-/**
- * Validate one project slug token: reject `@` selectors, normalize, and
- * check for URL-injection characters. Shared by the single-slug and
- * comma-list explicit paths.
- */
-function validateProjectSlugToken(token: string): {
-  slug: string;
-  normalized: boolean;
-} {
-  rejectAtSelector(token, "project slug");
-  const np = normalizeSlug(token);
-  validateResourceId(np.slug, "project slug");
-  return np;
-}
-
-/**
- * Parse `org/web,api,worker` into an explicit target with `projects` set.
- *
- * Display names are rejected here: a comma list is a slug selector, not a
- * search. Each token is validated independently so a bad slug fails at parse
- * time instead of as a 404 against the concatenated string.
- */
-function parseExplicitProjectList(
-  org: { slug: string; normalized: boolean },
-  rawProject: string,
-): ParsedOrgProject {
-  const [firstToken, ...restTokens] = splitProjectSelector(rawProject);
-  if ([firstToken, ...restTokens].some(looksLikeDisplayName)) {
-    throw new ValidationError(
-      "Comma-separated project targets must be slugs, not display names.",
-      "project",
-    );
-  }
-
-  const first = validateProjectSlugToken(firstToken);
-  const rest = restTokens.map(validateProjectSlugToken);
-  const normalized =
-    org.normalized ||
-    first.normalized ||
-    rest.some((token) => token.normalized);
-  const [second, ...others] = rest;
-
-  return {
-    type: "explicit",
-    org: org.slug,
-    project: first.slug,
-    ...(second !== undefined && {
-      projects: [first.slug, second.slug, ...others.map((t) => t.slug)],
-    }),
-    ...(normalized && { normalized: true }),
-  };
-}
-
-/**
  * Parse an org/project positional argument string.
  *
- * Supports the following patterns:
- * - `undefined` or empty → auto-detect from DSN/config
- * - `https://sentry.io/organizations/org/...` → extract from Sentry URL
- * - `sentry/cli` → explicit org and project
- * - `sentry/web,api` → explicit org and multiple projects when
- *   `options.multi` is true
- * - `sentry/` → org with all projects
- * - `/cli` → search for project across all orgs (leading slash)
- * - `cli` → search for project across all orgs
+ * Empty input auto-detects and Sentry web URLs are read here; every other
+ * form is defined by `grammar/org-project-target.pegjs`, which also
+ * documents them.
  *
  * @param arg - Input string from CLI positional argument
  * @param options.multi - Parse comma-separated project slugs after
@@ -920,45 +709,137 @@ export function parseOrgProjectArg(
   arg: string | undefined,
   options: { multi?: boolean } = {},
 ): ParsedOrgProject {
+  const { parsed, baseUrl } = parseOrgProjectInput(arg, options);
+  if (baseUrl) {
+    applySentryUrlContext(baseUrl);
+  }
+  return parsed;
+}
+
+/** A parsed org/project argument and the server of a pasted Sentry URL. */
+export type OrgProjectInput = {
+  readonly parsed: ParsedOrgProject;
+  /** Base URL of a pasted Sentry web URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+};
+
+/**
+ * Parse an org/project argument like {@link parseOrgProjectArg}, without
+ * side effects: the server of a pasted Sentry URL is returned as `baseUrl`
+ * instead of applied, so the caller applies it with `applySentryUrlContext`
+ * when it is safe to.
+ */
+export function parseOrgProjectInput(
+  arg: string | undefined,
+  options: { multi?: boolean } = {},
+): OrgProjectInput {
+  return parseTargetInput(arg, (text) =>
+    parseTarget(text, targetHooks(options)),
+  );
+}
+
+/** A parsed list target: what to list, and the name filter, if any. */
+export type ListTarget = {
+  readonly parsed: ParsedOrgProject;
+  /** Name filter (a glob) from `[<org>/]<glob>` */
+  readonly filter?: string;
+};
+
+/** Which target forms a list command accepts beyond `[<org>/][<project>]`. */
+export type ListTargetOptions = {
+  /** Read a glob as a name filter (`<org>/web-*`) */
+  readonly names?: boolean;
+  /** Accept comma-separated projects (`<org>/web,api`) */
+  readonly multi?: boolean;
+};
+
+/** A parsed list target and the server of a pasted Sentry URL. */
+export type ListTargetInput = {
+  readonly target: ListTarget;
+  /** Base URL of a pasted Sentry web URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+};
+
+/**
+ * Parse the target of a list command, without side effects: the server of a
+ * pasted Sentry URL is returned as `baseUrl` instead of applied (see
+ * {@link parseOrgProjectInput}).
+ *
+ * With `names`, a glob is a filter rather than a project (no slug contains
+ * glob characters; the grammar decides): `<org>/web-*` lists that
+ * organization's matches, and `web-*` or `/web-*` the auto-detected ones.
+ * Every other form parses like {@link parseOrgProjectInput}.
+ *
+ * @example
+ * parseListTargetInput("acme/web-*", { names: true }).target
+ * // { parsed: { type: "org-all", org: "acme" }, filter: "web-*" }
+ * parseListTargetInput("web-*", { names: true }).target
+ * // { parsed: { type: "auto-detect" }, filter: "web-*" }
+ * parseListTargetInput("acme/web").target
+ * // { parsed: { type: "explicit", org: "acme", project: "web" } }
+ */
+export function parseListTargetInput(
+  arg: string | undefined,
+  options: ListTargetOptions = {},
+): ListTargetInput {
+  const hooks = targetHooks(options);
+  const { parsed, baseUrl } = parseTargetInput(arg, (text) =>
+    options.names
+      ? parseTarget(text, { ...hooks, isNameFilter: isGlobFilter })
+      : parseTarget(text, hooks),
+  );
+  if (parsed.type !== "name-filter") {
+    return { target: { parsed }, baseUrl };
+  }
+  return {
+    target: {
+      parsed:
+        parsed.org === undefined
+          ? { type: "auto-detect" }
+          : { type: "org-all", org: parsed.org },
+      filter: parsed.filter,
+    },
+    baseUrl,
+  };
+}
+
+/** The grammar options shared by every target parse. */
+function targetHooks(options: { multi?: boolean }) {
+  return {
+    multi: options.multi === true,
+    checkSlug: validateResourceId,
+    rejectAt: rejectAtSelector,
+    invalid: (message: string, field?: string): never => {
+      throw new ValidationError(message, field);
+    },
+  };
+}
+
+/**
+ * Handle the target forms the grammar never sees (omitted, URL), and hand
+ * the rest to `parse`.
+ */
+function parseTargetInput<T>(
+  arg: string | undefined,
+  parse: (text: string) => T,
+): { readonly parsed: T | ParsedOrgProject; readonly baseUrl?: string } {
   // Keep only the first non-blank line: agents often pass targets with
   // appended output or notes after a newline (CLI-1RA).
   const trimmed = arg ? firstNonBlankLine(arg) : "";
   if (!trimmed) {
-    return { type: "auto-detect" };
+    return { parsed: { type: "auto-detect" } };
   }
 
   // URL detection — extract org/project from Sentry web URLs
   const urlParsed = parseSentryUrl(trimmed);
   if (urlParsed) {
-    applySentryUrlContext(urlParsed.baseUrl);
-    return orgProjectFromUrl(urlParsed);
+    return {
+      parsed: orgProjectFromUrl(urlParsed),
+      baseUrl: urlParsed.baseUrl,
+    };
   }
 
-  let parsed: ParsedOrgProject;
-  if (trimmed.includes("/")) {
-    parsed = parseSlashOrgProject(trimmed, options.multi === true);
-  } else {
-    // No slash → search for project across all orgs
-    rejectAtSelector(trimmed, "project slug");
-    if (looksLikeDisplayName(trimmed)) {
-      // Spaces → display name, not a slug. Skip slug validation and let
-      // the resolution layer do a fuzzy name-based search.
-      parsed = {
-        type: "project-search",
-        projectSlug: trimmed,
-        originalSlug: trimmed,
-      };
-    } else {
-      const np = normalizeSlug(trimmed);
-      validateResourceId(np.slug, "project slug");
-      parsed = {
-        type: "project-search",
-        projectSlug: np.slug,
-      };
-    }
-  }
-
-  return parsed;
+  return { parsed: parse(trimmed) };
 }
 
 /**
@@ -1002,360 +883,6 @@ const SELECTOR_MAP = new Map<string, IssueSelector>([
  */
 export function parseSelector(value: string): IssueSelector | undefined {
   return SELECTOR_MAP.get(value.toLowerCase());
-}
-
-export type ParsedIssueArg =
-  | { type: "numeric"; id: string }
-  | { type: "explicit"; org: string; project: string; suffix: string }
-  | { type: "explicit-org-suffix"; org: string; suffix: string }
-  | { type: "explicit-org-numeric"; org: string; numericId: string }
-  | { type: "project-search"; projectSlug: string; suffix: string }
-  | { type: "suffix-only"; suffix: string }
-  | { type: "selector"; selector: IssueSelector; org?: string }
-  | { type: "share"; shareId: string; org?: string; baseUrl: string };
-
-/**
- * Parse a CLI issue argument into its component parts.
- *
- * Uses `parseOrgProjectArg` internally for the left part of dash-separated
- * inputs, providing consistent org/project parsing across commands.
- *
- * Flow:
- * 1. Pure numeric → { type: "numeric" }
- * 1b. Contains "#" → GitHub-style separator (org/project#SHORTID) → parseWithHash
- * 2. Has dash → split on last "-", parse left with parseOrgProjectArg
- *    - "explicit" → { type: "explicit", org, project, suffix }
- *    - "project-search" → { type: "project-search", projectSlug, suffix }
- *    - "org-all" or "auto-detect" → rejected as invalid
- * 3. Has slash but no dash → explicit org + suffix/numeric
- * 4. Otherwise → suffix-only
- *
- * @param arg - Raw CLI argument
- * @returns Parsed issue argument with type discrimination
- * @throws {Error} If input has invalid format (e.g., "sentry/-G")
- *
- * @example
- * parseIssueArg("123456789")          // { type: "numeric", id: "123456789" }
- * parseIssueArg("sentry/cli-G")       // { type: "explicit", org: "sentry", project: "cli", suffix: "G" }
- * parseIssueArg("cli-G")              // { type: "project-search", projectSlug: "cli", suffix: "G" }
- * parseIssueArg("sentry/G")           // { type: "explicit-org-suffix", org: "sentry", suffix: "G" }
- * parseIssueArg("G")                  // { type: "suffix-only", suffix: "G" }
- * parseIssueArg("sentry/cli#CLI-G")   // { type: "explicit", org: "sentry", project: "cli", suffix: "G" }
- * parseIssueArg("cli#CLI-G")          // { type: "project-search", projectSlug: "cli", suffix: "G" }
- * parseIssueArg("#CLI-G")             // { type: "project-search", projectSlug: "cli", suffix: "G" }
- */
-/**
- * Handle multi-slash issue args like "org/project/suffix" or "org/project/123".
- *
- * Splits `rest` on its first `/` to extract the project slug and a remainder
- * that is treated as the issue reference (suffix, numeric ID, or short ID).
- *
- * Handles three remainder formats:
- * - Pure digits → numeric issue ID (project context is redundant)
- * - Full short ID whose prefix matches the project → extract just the suffix
- * - Anything else → treat entire remainder as the suffix
- */
-function parseMultiSlashIssueArg(
-  arg: string,
-  org: string,
-  rest: string,
-): ParsedIssueArg {
-  const slashIdx = rest.indexOf("/");
-  const project = rest.slice(0, slashIdx);
-  const remainder = rest.slice(slashIdx + 1);
-
-  if (!(project && remainder)) {
-    throw new ValidationError(
-      `Invalid issue format: "${arg}". Missing project or issue ID segment.`,
-      "issue",
-    );
-  }
-
-  // Lowercase project slug — Sentry slugs are always lowercase.
-  const normalizedProject = project.toLowerCase();
-
-  // Pure numeric remainder: "org/project/123456789" → org + numeric ID.
-  // Project context is redundant for numeric IDs — Sentry resolves them globally.
-  if (isAllDigits(remainder)) {
-    return { type: "explicit-org-numeric", org, numericId: remainder };
-  }
-
-  // Remainder with dash: could be a full short ID like "CLI-A1" or "SPOTLIGHT-ELECTRON-4Y"
-  if (remainder.includes("-")) {
-    const lastDash = remainder.lastIndexOf("-");
-    const prefix = remainder.slice(0, lastDash);
-    const suffix = remainder.slice(lastDash + 1).toUpperCase();
-
-    if (prefix && suffix) {
-      // Check if the prefix matches the project slug (case-insensitive).
-      // If so, the remainder is already a full short ID — use only the suffix.
-      // e.g., "sentry/cli/CLI-A1" → prefix "CLI" matches project "cli" → suffix "A1"
-      // e.g., "org/spotlight-electron/SPOTLIGHT-ELECTRON-4Y" → prefix matches → suffix "4Y"
-      if (prefix.toLowerCase() === normalizedProject) {
-        return {
-          type: "explicit",
-          org,
-          project: normalizedProject,
-          suffix,
-        };
-      }
-
-      // Prefix doesn't match project — treat entire remainder as the suffix.
-      // e.g., "org/project/SUBPROJ-G" where SUBPROJ ≠ project
-      return {
-        type: "explicit",
-        org,
-        project: normalizedProject,
-        suffix: `${prefix}-${suffix}`.toUpperCase(),
-      };
-    }
-  }
-
-  // No dash: "org/project/G" — treat remainder as suffix
-  return {
-    type: "explicit",
-    org,
-    project: normalizedProject,
-    suffix: remainder.toUpperCase(),
-  };
-}
-
-function parseAfterSlash(
-  arg: string,
-  org: string,
-  rest: string,
-): ParsedIssueArg {
-  if (isAllDigits(rest)) {
-    // "my-org/123456789" → explicit org + numeric ID
-    return { type: "explicit-org-numeric", org, numericId: rest };
-  }
-
-  // Multi-slash: "org/project/suffix" or "org/project/123"
-  if (rest.includes("/")) {
-    return parseMultiSlashIssueArg(arg, org, rest);
-  }
-
-  // Check if rest contains a dash (project-suffix pattern)
-  if (rest.includes("-")) {
-    const lastDash = rest.lastIndexOf("-");
-    const project = rest.slice(0, lastDash);
-    const suffix = rest.slice(lastDash + 1).toUpperCase();
-
-    if (!project) {
-      throw new ValidationError(
-        `Invalid issue format: "${arg}". Cannot use trailing slash before suffix.`,
-        "issue",
-      );
-    }
-
-    if (!suffix) {
-      throw new ValidationError(
-        `Invalid issue format: "${arg}". Missing suffix after dash.`,
-        "issue",
-      );
-    }
-
-    rejectIssueCommandTokenWithNumericSuffix(arg, project, suffix);
-
-    // "my-org/cli-G" or "sentry/spotlight-electron-4Y"
-    // Lowercase the project slug — Sentry slugs are always lowercase.
-    return { type: "explicit", org, project: project.toLowerCase(), suffix };
-  }
-
-  // "my-org/G" → explicit org + suffix only (no dash in rest)
-  return { type: "explicit-org-suffix", org, suffix: rest.toUpperCase() };
-}
-
-/**
- * Parse issue arg with slash (org/...).
- */
-function parseWithSlash(arg: string): ParsedIssueArg {
-  const slashIdx = arg.indexOf("/");
-  const org = arg.slice(0, slashIdx);
-  const rest = arg.slice(slashIdx + 1);
-
-  if (!rest) {
-    throw new ValidationError(
-      `Invalid issue format: "${arg}". Missing issue ID after slash.`,
-      "issue",
-    );
-  }
-
-  if (!org) {
-    // Leading slash with dash → project-search (e.g., "/cli-G")
-    if (rest.includes("-")) {
-      return parseWithDash(rest);
-    }
-    // "/G" → treat as suffix-only (unusual but valid)
-    return { type: "suffix-only", suffix: rest.toUpperCase() };
-  }
-
-  return parseAfterSlash(arg, org, rest);
-}
-
-/**
- * Resolve a `project` + `identifier` pair into a project-scoped issue lookup.
- *
- * Shared by the colon (`PROJECT:SHORTID`) and GitHub-style hash
- * (`project#SHORTID`) parsers. The caller is responsible for validating the
- * project slug and identifier against injection characters first.
- *
- * Handles the identifier in three forms:
- * - Pure digits → numeric lookup (project context is redundant)
- * - Full short ID (`PROJECT-SUFFIX`) → extract just the suffix from the last dash
- * - Anything else → treat the whole identifier as the suffix
- *
- * @param project - Project slug (will be lowercased)
- * @param id - Issue identifier portion
- * @returns Parsed issue argument (`numeric` or `project-search`)
- */
-function parseProjectIdentifier(project: string, id: string): ParsedIssueArg {
-  const projectSlug = project.toLowerCase();
-
-  // Numeric ID part → direct numeric lookup (project context not needed)
-  if (isAllDigits(id)) {
-    return { type: "numeric", id };
-  }
-
-  // ID part contains a dash → likely a full short ID like "PROJECT-SUFFIX".
-  // Extract just the suffix from the last dash.
-  if (id.includes("-")) {
-    const suffix = id.slice(id.lastIndexOf("-") + 1).toUpperCase();
-    if (suffix) {
-      return { type: "project-search", projectSlug, suffix };
-    }
-  }
-
-  // Plain suffix (no dash, or empty trailing suffix) → use as-is.
-  return { type: "project-search", projectSlug, suffix: id.toUpperCase() };
-}
-
-/**
- * Parse issue arg containing a colon as a project:identifier separator.
- *
- * Handles formats like:
- * - `PROJECT:SUFFIX` → project-search with suffix
- * - `PROJECT:PROJECT-SUFFIX` → project-search, extracts suffix from last dash
- * - `PROJECT:NUMERICID` → numeric lookup (project context ignored)
- *
- * Returns null if the colon is not a valid separator (e.g., empty parts).
- */
-function parseWithColon(arg: string): ParsedIssueArg | null {
-  const colonIdx = arg.indexOf(":");
-  const projectPart = arg.slice(0, colonIdx);
-  const idPart = arg.slice(colonIdx + 1);
-
-  // Both parts must be non-empty. Neither part should contain a slash —
-  // slashes indicate org/project notation which should be handled by parseWithSlash.
-  if (
-    !(projectPart && idPart) ||
-    projectPart.includes("/") ||
-    idPart.includes("/")
-  ) {
-    return null;
-  }
-
-  return parseProjectIdentifier(projectPart, idPart);
-}
-
-/**
- * Parse a GitHub-style `#`-separated issue identifier (CLI-1G1).
- *
- * AI agents (claude-code, codex) frequently pass GitHub-style references where
- * `#` separates the project from the issue short ID. Supported forms:
- * - `org/project#SHORTID` → explicit (delegates to the slash path, reusing the
- *   full-short-ID prefix-match logic in {@link parseMultiSlashIssueArg})
- * - `project#SHORTID`     → project-search (project context, org auto-detected)
- * - `#SHORTID`            → bare identifier (numeric / project-search / suffix-only)
- *
- * IMPORTANT: this runs BEFORE parseIssueArg's main `validateResourceId` guard
- * (which rejects `#`), so it must validate BOTH the project prefix and the
- * fragment itself. `validateResourceId` permits `:`, so a `:` mixed with `#`
- * is rejected explicitly to avoid silently swallowing the colon into a suffix
- * (cf. the `sentry/CLI:W9` precedent).
- *
- * @param arg - Raw issue argument containing at least one `#`
- * @returns Parsed issue argument
- * @throws {ValidationError} If the fragment is empty, contains a second `#`, a
- *   `:`, or any forbidden character, or if the project prefix is invalid.
- */
-function parseWithHash(arg: string): ParsedIssueArg {
-  const firstHash = arg.indexOf("#");
-  const prefix = arg.slice(0, firstHash);
-  const fragment = arg.slice(firstHash + 1);
-
-  if (fragment.includes("#") || fragment === "") {
-    throw new ValidationError(
-      `Invalid issue identifier: "${arg}".\n` +
-        "  Use a single '#' separating the project from the short ID, e.g. `org/project#PROJ-123`.\n" +
-        "  Or use a slash: `org/project/PROJ-123`.",
-      "issue identifier",
-    );
-  }
-  if (fragment.includes(":")) {
-    throw new ValidationError(
-      `Invalid issue identifier: "${arg}". Do not mix '#' and ':' separators.\n` +
-        "  Use `org/project#PROJ-123` or `project:PROJ-123`.",
-      "issue identifier",
-    );
-  }
-  // Validate the fragment on its own — it must not contain forbidden characters
-  // (?, %, whitespace, control chars). The main guard at the call site is
-  // skipped for `#` inputs, so this validation happens here instead.
-  validateResourceId(fragment, "issue identifier");
-
-  // Bare `#SHORTID` → parse the fragment exactly like a standalone identifier.
-  if (prefix === "") {
-    return parseBareIssueIdentifier(fragment);
-  }
-
-  // `org/project#SHORTID` → equivalent to `org/project/SHORTID`. Validate the
-  // org/project prefix components first — the `#` path skips the main
-  // validateResourceId guard, and parseWithSlash doesn't re-validate.
-  if (prefix.includes("/")) {
-    validateResourceId(prefix.replace(/\//g, ""), "issue identifier");
-    return parseWithSlash(`${prefix}/${fragment}`);
-  }
-
-  // `project#SHORTID` → project-scoped lookup. The `#` path skips the main
-  // validateResourceId guard, so validate the project slug here.
-  validateResourceId(prefix, "project slug");
-  return parseProjectIdentifier(prefix, fragment);
-}
-
-/**
- * Parse issue arg with dash but no slash (project-suffix).
- */
-function parseWithDash(arg: string): ParsedIssueArg {
-  const lastDash = arg.lastIndexOf("-");
-  const projectSlug = arg.slice(0, lastDash);
-  const suffix = arg.slice(lastDash + 1).toUpperCase();
-
-  if (!projectSlug) {
-    throw new ValidationError(
-      `Invalid issue format: "${arg}". Missing project before suffix.`,
-      "issue",
-    );
-  }
-
-  if (!suffix) {
-    throw new ValidationError(
-      `Invalid issue format: "${arg}". Missing suffix after dash.`,
-      "issue",
-    );
-  }
-
-  rejectIssueCommandTokenWithNumericSuffix(arg, projectSlug, suffix);
-
-  // "cli-G" or "spotlight-electron-4Y"
-  // Lowercase the project slug since Sentry slugs are always lowercase.
-  // Users often type short IDs in uppercase (e.g., "EASI-API-3Y4") which
-  // produces an uppercase project slug that would fail API lookups (CLI-C8).
-  return {
-    type: "project-search",
-    projectSlug: projectSlug.toLowerCase(),
-    suffix,
-  };
 }
 
 /**
@@ -1419,127 +946,6 @@ export function parseSlashSeparatedArg(
   validateResourceId(id, idLabel);
 
   return { id, targetArg };
-}
-
-export function parseIssueArg(arg: string): ParsedIssueArg {
-  // Take the first non-blank line. A bare `.trim()` only strips leading and
-  // trailing whitespace, so multi-line input (command substitution that
-  // captured extra output, an identifier with an appended note, or several
-  // newline-separated IDs) left an *internal* newline that reached
-  // validateResourceId and threw a cryptic "contains a newline" error
-  // (CLI-1G1, 116+ users). An issue identifier is always a single line, so the
-  // first non-blank line is the intended value. Unlike `sentry api`, which
-  // rejoins wrapped URLs (CLI-FR), identifiers are atomic tokens — joining
-  // lines would produce garbage, so we keep only the first line.
-  // Splitting on `\n` (a control char) never breaks project display names with
-  // spaces (#1116), since those are rejected as control chars anyway.
-  const input = firstNonBlankLine(arg);
-
-  if (!input) {
-    throw new ValidationError(
-      "Issue identifier is empty after trimming whitespace.",
-      "issue identifier",
-    );
-  }
-
-  // 0. URL detection — extract issue ID from Sentry web URLs
-  const urlParsed = parseSentryUrl(input);
-  if (urlParsed) {
-    applySentryUrlContext(urlParsed.baseUrl);
-    const result = issueArgFromUrl(urlParsed);
-    if (result) {
-      return result;
-    }
-    // URL recognized but no issue ID (e.g., trace or project settings URL)
-    throw new ValidationError(
-      "This Sentry URL does not contain an issue ID. Use an issue URL like:\n" +
-        "  https://sentry.io/organizations/{org}/issues/{id}/",
-    );
-  }
-
-  // 1. Magic @ selectors — detect before any other parsing.
-  // Supports bare `@latest` and org-prefixed `sentry/@latest`.
-  if (input.includes("@")) {
-    const slashIdx = input.indexOf("/");
-    const selectorPart = slashIdx === -1 ? input : input.slice(slashIdx + 1);
-    const selector = parseSelector(selectorPart);
-    if (selector) {
-      if (slashIdx !== -1) {
-        const org = normalizeSlug(input.slice(0, slashIdx)).slug;
-        validateResourceId(org, "organization slug");
-        return { type: "selector", selector, org };
-      }
-      return { type: "selector", selector };
-    }
-    // Not a recognized selector — fall through to normal parsing.
-    // The @ character will be caught by validateResourceId below.
-  }
-
-  // 1b. GitHub-style "#" separator (CLI-1G1): org/project#SHORTID, project#SHORTID,
-  // or bare #SHORTID. AI agents frequently pass this form. Handle it before the
-  // validateResourceId guard below rejects "#" as a forbidden URL fragment.
-  if (input.includes("#")) {
-    return parseWithHash(input);
-  }
-
-  // Validate raw input against injection characters before parsing.
-  // Slashes are allowed (they're structural separators), but ?, #, %, whitespace,
-  // and control characters are never valid in issue identifiers.
-  validateResourceId(input.replace(/\//g, ""), "issue identifier");
-
-  return parseBareIssueIdentifier(input);
-}
-
-/**
- * Parse a bare issue identifier (no Sentry URL, `@` selector, or `#` fragment)
- * into its component parts. This is steps 2–5 of {@link parseIssueArg}.
- *
- * Callers MUST validate the input against injection characters before calling
- * this function — it performs no validation of its own.
- *
- * Flow:
- * - Pure numeric → `numeric`
- * - Colon separator → `parseWithColon` (project:identifier)
- * - Slash → `parseWithSlash` (org/...)
- * - Dash → `parseWithDash` (project-suffix)
- * - Otherwise → `suffix-only`
- *
- * @param input - Trimmed, validated issue identifier
- * @returns Parsed issue argument with type discrimination
- */
-function parseBareIssueIdentifier(input: string): ParsedIssueArg {
-  // 2. Pure numeric → direct fetch by ID
-  if (isAllDigits(input)) {
-    return { type: "numeric", id: input };
-  }
-
-  // 2b. Colon separator — treat as project:identifier notation.
-  // Users sometimes type "PROJECT:SHORTID" or "PROJECT:NUMERICID" where
-  // the colon separates the project slug from the issue identifier.
-  // e.g., "CHATEX:CHATEX-W9" → project=chatex, suffix=W9
-  //       "MYAH-FRONTEND:115562020" → numeric ID 115562020
-  //       "CHATEX:W9" → project=chatex, suffix=W9
-  if (input.includes(":")) {
-    const colonResult = parseWithColon(input);
-    if (colonResult) {
-      return colonResult;
-    }
-    // Colon not parseable as project:id — fall through to normal parsing
-  }
-
-  // 3. Has slash → check slash FIRST (takes precedence over dashes)
-  // This ensures "my-org/123" parses as org="my-org", not project="my"
-  if (input.includes("/")) {
-    return parseWithSlash(input);
-  }
-
-  // 4. Has dash but no slash → split on last "-" for project-suffix
-  if (input.includes("-")) {
-    return parseWithDash(input);
-  }
-
-  // 5. No dash, no slash → suffix only (needs DSN context)
-  return { type: "suffix-only", suffix: input.toUpperCase() };
 }
 
 // ---------------------------------------------------------------------------

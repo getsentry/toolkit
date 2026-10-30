@@ -426,9 +426,9 @@ export async function fetchSnapshotSummary(
   if (hasDiffs) {
     sections.push("\n## Changes\n");
 
-    const sortedChanged = changed
-      .slice()
-      .sort((left, right) => (right.diff ?? -1) - (left.diff ?? -1));
+    const sortedChanged = [...changed].sort(
+      (left, right) => (right.diff ?? -1) - (left.diff ?? -1),
+    );
 
     sections.push(
       ...renderTreeSections([

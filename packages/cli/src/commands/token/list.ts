@@ -7,22 +7,18 @@
 import type { SentryContext } from "../../context.js";
 import { listOrgAuthTokens } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
-import { ContextError } from "../../lib/errors.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import { type OrgTarget, orgTarget } from "../../lib/target-positional.js";
 import { type OrgAuthToken, OrgAuthTokenSchema } from "../../types/index.js";
 import {
   ensureTokenScopes,
   explainTokenForbidden,
   LIST_SCOPES,
 } from "./shared.js";
-
-const TRAILING_SLASHES_RE = /\/+$/;
 
 type ListFlags = {
   readonly json: boolean;
@@ -84,20 +80,14 @@ export const listCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (auto-detected if omitted)",
-          parse: parseOrgTarget,
+          parse: orgTarget,
           optional: true,
         },
       ],
     },
   },
-  async *func(this: SentryContext, _flags: ListFlags, orgArg?: string) {
-    const resolved = await resolveOrg({
-      org: orgArg?.replace(TRAILING_SLASHES_RE, "") || undefined,
-      cwd: this.cwd,
-    });
-    if (!resolved) {
-      throw new ContextError("Organization", "sentry token list <org>");
-    }
+  async *func(this: SentryContext, _flags: ListFlags, target: OrgTarget) {
+    const resolved = await target.resolved;
 
     selectAccountForOrg(resolved.org);
     const scopeMissing = await ensureTokenScopes(

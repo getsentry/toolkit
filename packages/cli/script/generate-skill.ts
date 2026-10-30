@@ -24,7 +24,11 @@
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
-import { formatCommandExamples } from "./generate-skill-markdown.js";
+import {
+  formatCommandArguments,
+  formatCommandExamples,
+  formatDestructiveNotice,
+} from "./generate-skill-markdown.js";
 import {
   demoteHeadings,
   markdownCodeBlocks,
@@ -348,6 +352,18 @@ function generateFullCommandDoc(cmd: CommandInfo): string {
   lines.push(`### \`${signature}\``);
   lines.push("");
   lines.push(cmd.brief);
+
+  const destructiveNotice = formatDestructiveNotice(cmd);
+  if (destructiveNotice) {
+    lines.push(
+      "",
+      `**Destructive:** ${destructiveNotice} Confirm with the user before running it.`,
+    );
+  }
+
+  if (cmd.positionals.length > 0) {
+    lines.push("", formatCommandArguments(cmd.positionals));
+  }
 
   const visibleFlags = getVisibleFlags(cmd);
   if (visibleFlags.length > 0) {

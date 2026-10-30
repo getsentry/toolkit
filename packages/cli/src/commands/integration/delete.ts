@@ -9,28 +9,39 @@
 
 import type { SentryContext } from "../../context.js";
 import { deleteIntegration, getIntegration } from "../../lib/api-client.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
-import { ApiError, ContextError, ValidationError } from "../../lib/errors.js";
+import { ORG_TARGET } from "../../lib/completion-target.js";
+import { ApiError, ValidationError } from "../../lib/errors.js";
 import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
+import { logger } from "../../lib/logger.js";
 import {
   buildDeleteCommand,
   confirmByTyping,
   isConfirmationBypassed,
 } from "../../lib/mutate-command.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import { ensureScopesForAction } from "../../lib/scope-recovery.js";
+import {
+  type OrgInput,
+  parseOrgInput,
+  resolveOrgInput,
+} from "../../lib/target-positional.js";
 
-const USAGE_HINT = "sentry integration delete [<org>/]<integration-id>";
+const USAGE = "[<org>/]<integration-id>";
+const USAGE_HINT = `sentry integration delete ${USAGE}`;
+
+const log = logger.withTag("integration.delete");
 
 /**
  * Scope Sentry requires (besides org:admin) to uninstall an integration.
  * Part of the CLI's default scopes, but logins from before it was added lack it.
  */
 const DELETE_SCOPE = "org:integrations";
-
-const INTEGRATION_ID_RE = /^\d+$/;
 
 type DeleteResult = {
   deleted: boolean;
@@ -64,30 +75,51 @@ function formatIntegrationDeleted(result: DeleteResult): string {
   );
 }
 
+/** Parsed `integration delete` arguments. */
+export type IntegrationInput = {
+  readonly id: string;
+  /** The org the integration is installed in */
+  readonly org: OrgInput;
+  /** Warnings to log, such as for reversed arguments */
+  readonly warnings: readonly string[];
+};
+
+/** An integration ID and the org it is installed in. */
+export type ResolvedIntegration = { readonly org: string; readonly id: string };
+
+/** The arguments of `integration delete`. */
+export type IntegrationArguments = BoundArguments<
+  IntegrationInput,
+  ResolvedIntegration
+>;
+
 /**
- * Parse `[<org>/]<integration-id>`.
+ * Parse `[<org>/]<integration-id>` in the forms every ID-taking command
+ * takes (see `id-arguments.ts`). Integrations are org-scoped, so a project
+ * is rejected, and removing one takes exactly one ID. Has no side effects.
  *
- * @throws {ContextError} When the argument is empty
- * @throws {ValidationError} When the ID is not numeric
+ * @throws {ContextError} When no integration ID is given
+ * @throws {ValidationError} When the ID is not numeric, the org is
+ *   malformed, a project is given, or there is more than one ID
  */
-export function parseIntegrationArg(arg: string | undefined): {
-  id: string;
-  orgSlug?: string;
-} {
-  const trimmed = arg?.trim();
-  if (!trimmed) {
-    throw new ContextError("Integration ID", USAGE_HINT, []);
-  }
-  const slash = trimmed.lastIndexOf("/");
-  const orgSlug = slash > 0 ? trimmed.slice(0, slash) : undefined;
-  const id = slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
-  if (!INTEGRATION_ID_RE.test(id)) {
+export function parseIntegrationArguments(
+  args: readonly string[],
+): IntegrationInput {
+  const { target, ids, baseUrl, warnings } = parseIdArguments(
+    args,
+    ID_KINDS.integration,
+    { usageHint: USAGE_HINT, multiple: true },
+  );
+  // Not an ignored extra: deleting one of several IDs would surprise
+  if (ids.length > 1) {
     throw new ValidationError(
-      `Invalid integration ID '${id}'. Use the numeric ID from 'sentry integration list'.`,
+      `Remove one integration at a time, not ${ids.length}: ${USAGE_HINT}`,
       "integration-id",
     );
   }
-  return { id, orgSlug };
+  const [id = ""] = ids;
+  const org = parseOrgInput(target, USAGE_HINT);
+  return { id, org: baseUrl ? { ...org, baseUrl } : org, warnings };
 }
 
 /**
@@ -119,6 +151,7 @@ function enrichDeleteError(error: unknown, scopeMissing: boolean): unknown {
 export const deleteCommand = buildDeleteCommand({
   docs: {
     brief: "Remove an installed integration",
+    customUsage: [USAGE],
     fullDescription:
       "Uninstall an integration from an organization. Sentry also removes the " +
       "integration's linked issues and stops syncing with the provider.\n\n" +
@@ -145,24 +178,33 @@ export const deleteCommand = buildDeleteCommand({
     human: formatIntegrationDeleted,
   },
   parameters: {
-    positional: {
-      kind: "tuple",
-      parameters: [
-        {
-          placeholder: "org/integration-id",
-          brief: "[<org>/]<integration-id> - Integration to remove",
-          parse: parseOrgTarget,
-        },
-      ],
-    },
+    positional: boundArguments({
+      placeholder: "org/integration-id",
+      brief: "[<org>/]<integration-id> - Integration to remove",
+      kind: ORG_TARGET,
+      parse: parseIntegrationArguments,
+      resolve: async (
+        input,
+        context: SentryContext,
+      ): Promise<ResolvedIntegration> => {
+        for (const warning of input.warnings) {
+          log.warn(warning);
+        }
+        const { org } = await resolveOrgInput(
+          input.org,
+          context.cwd,
+          USAGE_HINT,
+        );
+        return { org, id: input.id };
+      },
+    }),
   },
-  async *func(this: SentryContext, flags: DeleteFlags, target: string) {
-    const { id, orgSlug } = parseIntegrationArg(target);
-    const resolved = await resolveOrg({ org: orgSlug, cwd: this.cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
-    }
-    const { org } = resolved;
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    target: IntegrationArguments,
+  ) {
+    const { org, id } = await target.resolved;
 
     // Verify the integration exists before prompting for confirmation
     const integration = await getIntegration(org, id);

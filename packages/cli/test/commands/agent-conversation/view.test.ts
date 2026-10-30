@@ -2,9 +2,10 @@
  * Conversation View Command Tests
  *
  * Tests for the `sentry agent-conversation view` command func() body, covering:
- * - Resolving org + conversationId from a single `<org>/<conversation-id>` arg
+ * - Resolving org + conversationId from `<org>/<conversation-id>` or
+ *   `<org> <conversation-id>`
  * - Resolving org via resolveOrg when only the conversation-id is given
- * - Throwing error when no args provided
+ * - Failing to parse malformed or missing arguments
  * - Throwing ContextError when org cannot be resolved
  * - Yielding CommandOutput with transcript result
  * - Setting truncated flag from API response
@@ -12,6 +13,7 @@
  * Uses spyOn mocking to avoid real HTTP calls or database access.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { viewCommand } from "../../../src/commands/agent-conversation/view.js";
 
@@ -236,11 +238,39 @@ describe("viewCommand.func", () => {
     );
   });
 
+  test("reads <org> <conversation-id> like <org>/<conversation-id>", async () => {
+    getConversationSpansSpy.mockResolvedValue({
+      spans: sampleSpans,
+      truncated: false,
+      title: null,
+    });
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(context, JSON_FLAGS, ORG, CONVERSATION_ID);
+
+    expect(resolveOrgSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ org: ORG }),
+    );
+    expect(getConversationSpansSpy).toHaveBeenCalledWith(ORG, CONVERSATION_ID);
+  });
+
+  test("rejects more arguments than an org and a conversation ID", async () => {
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    const error = await func
+      .call(context, HUMAN_FLAGS, ORG, CONVERSATION_ID, "extra")
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ValidationError,
+    );
+    expect(resolveOrgSpy).not.toHaveBeenCalled();
+  });
+
   test.each([
     `${ORG}/${CONVERSATION_ID}/extra`,
     `${ORG}//${CONVERSATION_ID}`,
-    `/${CONVERSATION_ID}`,
-    `${ORG}/`,
     `acme?x=1/${CONVERSATION_ID}`,
     `acme#fragment/${CONVERSATION_ID}`,
     `acme%20bad/${CONVERSATION_ID}`,
@@ -252,14 +282,16 @@ describe("viewCommand.func", () => {
     "conv?x=1",
     "conv#fragment",
     "conv%20bad",
-    "conv bad",
-    "conv\tbad",
   ])(
     "rejects malformed target %s before resolution or API access",
     async (target) => {
       const { context } = createMockContext();
       const func = await viewCommand.loader();
-      await expect(func.call(context, HUMAN_FLAGS, target)).rejects.toThrow(
+      const error = await func
+        .call(context, HUMAN_FLAGS, target)
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(
         ValidationError,
       );
       expect(resolveOrgSpy).not.toHaveBeenCalled();
@@ -267,26 +299,17 @@ describe("viewCommand.func", () => {
     },
   );
 
-  test("throws error when no args provided", async () => {
+  test("no args fail to parse, mentioning the Conversation ID", async () => {
     const { context } = createMockContext();
     const func = await viewCommand.loader();
 
-    await expect(
-      func.call(context, HUMAN_FLAGS, undefined as unknown as string),
-    ).rejects.toThrow(ContextError);
-  });
-
-  test("no-args error mentions Conversation ID", async () => {
-    const { context } = createMockContext();
-    const func = await viewCommand.loader();
-
-    try {
-      await func.call(context, HUMAN_FLAGS, undefined as unknown as string);
-      expect.unreachable("Should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ContextError);
-      expect((error as ContextError).message).toContain("Conversation ID");
-    }
+    const error = await func
+      .call(context, HUMAN_FLAGS)
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    const cause = (error as ArgumentParseError).exception;
+    expect(cause).toBeInstanceOf(ContextError);
+    expect((cause as ContextError).message).toContain("Conversation ID");
   });
 
   test("throws ContextError when org cannot be resolved", async () => {

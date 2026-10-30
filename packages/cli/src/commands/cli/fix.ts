@@ -72,6 +72,9 @@ function formatIssue(issue: SchemaIssue): string {
   if (issue.type === "missing_column") {
     return `Missing column: ${issue.table}.${issue.column}`;
   }
+  if (issue.type === "newer_schema") {
+    return `Written by a newer CLI: schema ${issue.version}, this CLI uses ${CURRENT_SCHEMA_VERSION}`;
+  }
   return `Wrong primary key: ${issue.table}`;
 }
 

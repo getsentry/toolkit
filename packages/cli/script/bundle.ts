@@ -166,9 +166,10 @@ const sentrySourcemapPlugin: Plugin = {
  * it stays a runtime `require()` that fails in a real install (the driver is
  * a devDependency, not shipped). `node:sqlite` in the same file stays a
  * builtin and is left external by esbuild regardless.
+ * `formatters/json` loads its generated parser only when --fields is parsed.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|list-command|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.
@@ -311,6 +312,9 @@ const commonDefine: Record<string, string> = {
   SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
   "process.env.NODE_ENV": JSON.stringify("production"),
   __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
+  // Tree-shakes the SDK's runtime module hooks, which can't instrument a
+  // bundle and would hook the host app in library mode.
+  __SENTRY_CHANNEL_INJECTION__: "false",
 };
 
 // In an ESM bundle, `require`, `__dirname`, and `__filename` don't exist, but

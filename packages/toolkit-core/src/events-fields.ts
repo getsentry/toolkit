@@ -202,9 +202,17 @@ export function getColumnsAndAggregates(fields: readonly string[]): {
 
 /**
  * Whether an aggregate uses the trace metrics argument format
- * `aggregation(value,metric_name,metric_type,unit)`.
+ * `aggregation(value,metric_name,metric_type,unit)`, optionally preceded by
+ * the search filter of an `_if` aggregate.
  */
 export function isTracemetricsAggregate(field: string): boolean {
-  const args = parseFunction(field)?.arguments;
-  return args?.length === TRACEMETRICS_ARGUMENT_COUNT && args[0] === "value";
+  const parsed = parseFunction(field);
+  if (!parsed) {
+    return false;
+  }
+  const offset = parsed.filter === undefined ? 0 : 1;
+  return (
+    parsed.arguments.length === TRACEMETRICS_ARGUMENT_COUNT + offset &&
+    parsed.arguments[offset] === "value"
+  );
 }

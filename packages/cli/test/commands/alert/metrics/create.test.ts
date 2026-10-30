@@ -31,6 +31,7 @@ function createContext() {
     stdout: { write: stdoutWrite },
     stderr: { write: vi.fn(() => true) },
     cwd: getConfigDir(),
+    commandPrefix: ["sentry", "alert", "metrics", "create"],
     stdoutWrite,
   };
 }

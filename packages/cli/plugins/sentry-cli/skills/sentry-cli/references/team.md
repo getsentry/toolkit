@@ -15,6 +15,12 @@ Work with Sentry teams
 
 List teams
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of teams to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -43,6 +49,12 @@ sentry team list my-org/
 
 # Fetch the next page
 sentry team list my-org/ -c next
+
+# Only teams whose slug or name matches a glob
+sentry team list 'my-org/back*'
+
+# Teams named like 'backend' when no such project exists (fuzzy)
+sentry team list my-org/backnd
 
 # Output as JSON
 sentry team list --json

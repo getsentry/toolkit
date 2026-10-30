@@ -26,6 +26,7 @@ import {
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
   targetPatternExplanation,
@@ -36,7 +37,7 @@ import {
   type ResolvedOrgOptionalTarget,
   toNumericId,
 } from "../../lib/resolve-target.js";
-import { sanitizeQuery } from "../../lib/search-query.js";
+import { sanitizeIssueQuery } from "../../lib/search-query.js";
 import {
   type OrgOptionalTarget,
   orgOptionalTarget,
@@ -136,11 +137,6 @@ export const listCommand = buildListCommand("feedback", {
     brief: "List and search User Feedback",
     fullDescription:
       "List modern User Feedback captured by Sentry. Feedback is queried from the issue index with a mandatory category filter.\n\n" +
-      "Target patterns:\n" +
-      "  sentry feedback list              # auto-detect organization\n" +
-      "  sentry feedback list <org>/       # all projects in an organization\n" +
-      "  sentry feedback list <org>/<proj> # one project\n" +
-      "  sentry feedback list <project>    # find project across organizations\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "Mailboxes:\n" +
       "  unresolved  Inbox feedback (default)\n" +
@@ -195,7 +191,7 @@ export const listCommand = buildListCommand("feedback", {
       parameters: [
         {
           placeholder: "org/project",
-          brief: "<org>/, <org>/<project>, or <project> (search)",
+          brief: ORG_ALL_TARGET_BRIEF,
           parse: orgOptionalTarget,
           optional: true,
         },
@@ -216,7 +212,7 @@ export const listCommand = buildListCommand("feedback", {
       },
       query: {
         kind: "parsed",
-        parse: sanitizeQuery,
+        parse: sanitizeIssueQuery,
         brief: "Search query (Sentry issue search syntax)",
         optional: true,
       },

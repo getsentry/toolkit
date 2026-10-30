@@ -1,5 +1,6 @@
 import {
   type ApplicationText,
+  ArgumentScannerError,
   buildApplication,
   text_en,
   UnexpectedPositionalError,
@@ -9,6 +10,8 @@ import { conversationRoute } from "./commands/agent-conversation/index.js";
 import { listCommand as conversationListCommand } from "./commands/agent-conversation/list.js";
 import { alertRoute } from "./commands/alert/index.js";
 import { apiCommand } from "./commands/api.js";
+import { attributeRoute } from "./commands/attribute/index.js";
+import { listCommand as attributeListCommand } from "./commands/attribute/list.js";
 import { authRoute } from "./commands/auth/index.js";
 import { whoamiCommand } from "./commands/auth/whoami.js";
 import { bashHookCommand } from "./commands/bash-hook.js";
@@ -76,7 +79,7 @@ import {
 } from "./lib/command-suggestions.js";
 import { CLI_VERSION } from "./lib/constants.js";
 import { redactCredentialText } from "./lib/credential-redaction.js";
-import { reportCliError } from "./lib/error-reporting.js";
+import { reportArgumentError, reportCliError } from "./lib/error-reporting.js";
 import {
   ApiError,
   AuthError,
@@ -87,6 +90,7 @@ import {
   WizardError,
 } from "./lib/errors.js";
 import { error as errorColor, warning } from "./lib/formatters/colors.js";
+import { stripAnsi } from "./lib/formatters/plain-detect.js";
 import { buildTopLevelFlags } from "./lib/global-flags.js";
 import { renderJsonHelp } from "./lib/help.js";
 import { isRouteMap, type RouteMap } from "./lib/introspect.js";
@@ -98,6 +102,7 @@ import { buildRouteMap } from "./lib/route-map.js";
  */
 const PLURAL_TO_SINGULAR: Record<string, string> = {
   "agent-conversations": "agent-conversation",
+  attributes: "attribute",
   dashboards: "dashboard",
   dsns: "dsn",
   events: "event",
@@ -124,6 +129,7 @@ export const routes = buildRouteMap({
   routes: {
     help: helpCommand,
     alert: alertRoute,
+    attribute: attributeRoute,
     auth: authRoute,
     build: buildRoute,
     cli: cliRoute,
@@ -171,6 +177,7 @@ export const routes = buildRouteMap({
     "send-envelope": sendEnvelopeCommand,
     "bash-hook": bashHookCommand,
     "agent-conversations": conversationListCommand,
+    attributes: attributeListCommand,
     dashboards: dashboardListCommand,
     dsns: dsnListCommand,
     integrations: integrationListCommand,
@@ -199,6 +206,7 @@ export const routes = buildRouteMap({
     hideRoute: {
       dsns: true,
       "agent-conversations": true,
+      attributes: true,
       dashboards: true,
       events: true,
       integrations: true,
@@ -318,6 +326,38 @@ function escapesToOuterMiddleware(exc: unknown): boolean {
   return exc instanceof ApiError && (exc.status === 401 || exc.status === 403);
 }
 
+/** Message for an argument that failed to parse, with our hints. */
+function formatArgumentError(exc: unknown, ansiColor: boolean): string {
+  // Case A: bare route group with no subcommand (e.g., `sentry issue`)
+  if (exc instanceof UnsatisfiedPositionalError) {
+    const bareHint = detectBareRouteGroup(ansiColor);
+    if (bareHint) {
+      return bareHint;
+    }
+  }
+
+  // Case B + plural alias: extra args that Stricli can't consume
+  if (exc instanceof UnexpectedPositionalError) {
+    const pluralHint = detectPluralAliasMisuse(ansiColor);
+    if (pluralHint) {
+      return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${pluralHint}`;
+    }
+
+    // With defaultCommand: "view", unknown tokens like "metrics" fill the
+    // positional slot, then extra args (e.g., CLI-AB) trigger this error.
+    // Check if the first non-route token is a known synonym.
+    const synonymHint = getSynonymSuggestionFromArgv();
+    if (synonymHint) {
+      const tip = ansiColor
+        ? warning(`\nTip: ${synonymHint}`)
+        : `\nTip: ${synonymHint}`;
+      return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${tip}`;
+    }
+  }
+
+  return text_en.exceptionWhileParsingArguments(exc, ansiColor);
+}
+
 /**
  * Custom error formatting for CLI errors.
  *
@@ -331,34 +371,10 @@ const customText: ApplicationText = {
     exc: unknown,
     ansiColor: boolean,
   ): string => {
-    // Case A: bare route group with no subcommand (e.g., `sentry issue`)
-    if (exc instanceof UnsatisfiedPositionalError) {
-      const bareHint = detectBareRouteGroup(ansiColor);
-      if (bareHint) {
-        return bareHint;
-      }
-    }
-
-    // Case B + plural alias: extra args that Stricli can't consume
-    if (exc instanceof UnexpectedPositionalError) {
-      const pluralHint = detectPluralAliasMisuse(ansiColor);
-      if (pluralHint) {
-        return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${pluralHint}`;
-      }
-
-      // With defaultCommand: "view", unknown tokens like "metrics" fill the
-      // positional slot, then extra args (e.g., CLI-AB) trigger this error.
-      // Check if the first non-route token is a known synonym.
-      const synonymHint = getSynonymSuggestionFromArgv();
-      if (synonymHint) {
-        const tip = ansiColor
-          ? warning(`\nTip: ${synonymHint}`)
-          : `\nTip: ${synonymHint}`;
-        return `${text_en.exceptionWhileParsingArguments(exc, ansiColor)}${tip}`;
-      }
-    }
-
-    return text_en.exceptionWhileParsingArguments(exc, ansiColor);
+    const message = formatArgumentError(exc, ansiColor);
+    // Exit 252 never reaches reportCliError; record it for UX research
+    reportArgumentError(exc, stripAnsi(message));
+    return message;
   },
   noCommandRegisteredForInput: ({ input, corrections, ansiColor }): string => {
     // Default error message from Stricli (e.g., "No command registered for `info`")
@@ -391,6 +407,12 @@ const customText: ApplicationText = {
     return base;
   },
   exceptionWhileRunningCommand: (exc: unknown, ansiColor: boolean): string => {
+    // `boundArguments` positionals parse in the command wrapper, after
+    // Stricli's scanner; their errors still read as argument errors
+    if (exc instanceof ArgumentScannerError) {
+      return customText.exceptionWhileParsingArguments(exc, ansiColor);
+    }
+
     // These errors are handled outside Stricli: OutputError has already been
     // rendered, while auth errors may trigger login and a single retry.
     if (escapesToOuterMiddleware(exc)) {

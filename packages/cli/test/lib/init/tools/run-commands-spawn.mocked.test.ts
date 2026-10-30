@@ -47,7 +47,7 @@ vi.mock("node:child_process", async () => {
   };
 });
 
-vi.mock("@sentry/node-core/light", () => ({
+vi.mock("@sentry/node", () => ({
   addBreadcrumb: vi.fn(),
 }));
 

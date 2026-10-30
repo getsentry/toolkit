@@ -13,8 +13,13 @@
  *   - getting-started.mdx: platform support table
  *   - agent-guidance.md: destructive commands (from `destructive` commands)
  *   - agentic-usage.md: detected agents (from AGENT_DISPLAY_NAMES)
- *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (TARGET_FORMS)
+ *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (from the
+ *     `@form` lines in grammar/org-project-target.pegjs)
  *   - plugins/README.md: skill file layout (paths checked on disk)
+ *   - features.md: DSN-scanned extensions (from TEXT_EXTENSIONS) and project
+ *     alias examples (computed by buildOrgAwareAliases)
+ *   - library-usage.md: `sdk.run()` sample (translated from command
+ *     `docs.examples`)
  *
  * Unlike generate-command-docs.ts (which produces gitignored files from scratch),
  * this script edits committed files in-place between marker pairs.
@@ -26,7 +31,9 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
+import peggy from "peggy";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
+import { shellCommands } from "./shell-words.js";
 
 // Bootstrap: skill-content stub (same pattern as generate-command-docs.ts)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
@@ -42,17 +49,20 @@ if (!skillContentExists) {
 }
 
 import type { EnvVarEntry } from "../src/lib/env-registry.js";
-import type { TargetForm } from "../src/lib/target-syntax.js";
-import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
+import { exampleSteps } from "../src/lib/command-example.js";
+import type { Command, RouteInfo, RouteMap } from "../src/lib/introspect.js";
 
 const { routes } = await import("../src/app.js");
-const { extractAllRoutes } = await import("../src/lib/introspect.js");
+const { extractAllRoutes, isCommand, isRouteMap } =
+  await import("../src/lib/introspect.js");
 const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
 const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
 const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
-const { TARGET_FORMS } = await import("../src/lib/target-syntax.js");
-const { parseOrgProjectArg } = await import("../src/lib/arg-parsing.js");
+const { TEXT_EXTENSIONS } = await import("../src/lib/scan/constants.js");
+const { buildOrgAwareAliases } = await import("../src/lib/alias.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+const TARGET_GRAMMAR = "grammar/org-project-target.pegjs";
+const targetGrammar = await readFile(TARGET_GRAMMAR, "utf-8");
 const workspace = JSON.parse(await readFile("../../package.json", "utf-8"));
 
 const isCheck = process.argv.includes("--check");
@@ -152,9 +162,7 @@ function getSubcommandLabel(route: RouteInfo): string {
     const parts = cmd.path.split(" ");
     return parts.at(-1) ?? route.name;
   });
-  return Array.from(new Set(raw))
-    .sort((a, b) => a.localeCompare(b))
-    .join(", ");
+  return [...new Set(raw)].sort((a, b) => a.localeCompare(b)).join(", ");
 }
 
 /**
@@ -605,25 +613,88 @@ function generateDetectedAgents(): string {
 // Section: Target Syntax (commands/index.md fragment, CONTRIBUTING.md)
 // ---------------------------------------------------------------------------
 
-/**
- * Generate the target syntax table from TARGET_FORMS. Each example goes
- * through the real parser, so generation fails when the docs and the parser
- * disagree about what a form means.
- */
-function generateTargetSyntax(): string {
-  const lines = ["| Target | Meaning |", "|--------|---------|"];
-  for (const [type, forms] of Object.entries(TARGET_FORMS)) {
-    for (const form of forms as readonly TargetForm[]) {
-      const parsed = parseOrgProjectArg(form.example, { multi: form.multi });
-      if (parsed.type !== type) {
-        throw new Error(
-          `TARGET_FORMS: ${form.syntax} example ${JSON.stringify(form.example)} parses as "${parsed.type}", not "${type}"`,
-        );
-      }
-      lines.push(`| ${form.syntax} | ${form.meaning} |`);
+/** `// @form <syntax> — <meaning>` or `// @invalid`. */
+const TARGET_ANNOTATION_RE = /^\s*\/\/ @(form|invalid)\b ?(.*)$/;
+/** An indented `//` line continuing the annotation above it. */
+const TARGET_CONTINUATION_RE = /^\s*\/\/ {3}(\S.*)$/;
+const COMMENT_LINE_RE = /^\s*\/\//;
+
+/** One annotation; `start` and `end` are 1-based line numbers. */
+type TargetAnnotation = {
+  start: number;
+  end: number;
+  kind: string;
+  text: string;
+};
+
+/** Collect the `@form` and `@invalid` annotations of a grammar. */
+function readTargetAnnotations(lines: string[]): TargetAnnotation[] {
+  const annotations: TargetAnnotation[] = [];
+  for (const [index, line] of lines.entries()) {
+    const annotation = TARGET_ANNOTATION_RE.exec(line);
+    const continuation = TARGET_CONTINUATION_RE.exec(line);
+    const previous = annotations.at(-1);
+    if (annotation) {
+      annotations.push({
+        start: index + 1,
+        end: index + 1,
+        kind: annotation[1] ?? "",
+        text: annotation[2] ?? "",
+      });
+    } else if (continuation && previous?.end === index) {
+      previous.text += ` ${continuation[1]}`;
+      previous.end = index + 1;
     }
   }
-  return lines.join("\n");
+  return annotations;
+}
+
+/**
+ * Generate the target syntax table from the `@form` lines in the target
+ * grammar. Generation fails when an alternative of the `target` rule has no
+ * `@form` or `@invalid` line in the comments right above it, so a new form
+ * cannot ship undocumented.
+ */
+function generateTargetSyntax(): string {
+  // Checkouts with CRLF line endings (Windows) must parse the same.
+  const lines = targetGrammar.split(/\r?\n/);
+  const annotations = readTargetAnnotations(lines);
+
+  const target = peggy.parser
+    .parse(targetGrammar, { grammarSource: TARGET_GRAMMAR })
+    .rules.find((rule) => rule.name === "target");
+  if (target?.expression.type !== "choice") {
+    throw new Error(
+      `${TARGET_GRAMMAR}: expected a "target" rule with alternatives`,
+    );
+  }
+  for (const alternative of target.expression.alternatives) {
+    const line = alternative.location.start.line;
+    let first = line;
+    while (first > 1 && COMMENT_LINE_RE.test(lines[first - 2] ?? "")) {
+      first -= 1;
+    }
+    if (!annotations.some((a) => a.start >= first && a.start < line)) {
+      throw new Error(
+        `${TARGET_GRAMMAR}:${line}: target alternative has no @form or @invalid line`,
+      );
+    }
+  }
+
+  const rows = ["| Target | Meaning |", "|--------|---------|"];
+  for (const { start, kind, text } of annotations) {
+    if (kind !== "form") {
+      continue;
+    }
+    const [syntax, meaning] = text.split(" — ");
+    if (!(syntax && meaning)) {
+      throw new Error(
+        `${TARGET_GRAMMAR}:${start}: expected "@form <syntax> — <meaning>"`,
+      );
+    }
+    rows.push(`| ${syntax} | ${meaning} |`);
+  }
+  return rows.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -665,6 +736,146 @@ function generateSkillLayout(): string {
     ([, note], i) => `${paths[i]?.padEnd(width)}  # ${note}`,
   );
   return ["```", ...rows, "```"].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Section: DSN-Scanned Extensions (features.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Language family labels for {@link TEXT_EXTENSIONS}. Generation fails when an
+ * extension is scanned but unlisted here, or listed here but not scanned, so
+ * the features page can't drift from the scanner.
+ */
+const DSN_EXTENSION_FAMILIES: [string, string[]][] = [
+  [
+    "JavaScript/TypeScript",
+    [".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".astro", ".vue", ".svelte"],
+  ],
+  ["Python", [".py"]],
+  ["Go", [".go"]],
+  [
+    "JVM (Java, Kotlin, Scala, Groovy)",
+    [".java", ".kt", ".kts", ".scala", ".groovy"],
+  ],
+  [".NET (C#, F#, VB)", [".cs", ".fs", ".vb"]],
+  ["Ruby", [".rb", ".erb"]],
+  ["PHP", [".php"]],
+  ["Swift/Objective-C", [".swift", ".m", ".mm"]],
+  ["Rust", [".rs"]],
+  ["Dart/Flutter", [".dart"]],
+  ["Elixir/Erlang", [".ex", ".exs", ".erl"]],
+  ["Lua", [".lua"]],
+  [
+    "Config files",
+    [".json", ".yaml", ".yml", ".toml", ".xml", ".properties", ".config"],
+  ],
+];
+
+/** Generate the scanned-extension table, checked against TEXT_EXTENSIONS. */
+function generateDsnExtensions(): string {
+  const listed = DSN_EXTENSION_FAMILIES.flatMap(([, exts]) => exts);
+  const unlisted = [...TEXT_EXTENSIONS].filter((ext) => !listed.includes(ext));
+  const unscanned = listed.filter((ext) => !TEXT_EXTENSIONS.has(ext));
+  if (unlisted.length > 0 || unscanned.length > 0) {
+    throw new Error(
+      "DSN_EXTENSION_FAMILIES is out of sync with TEXT_EXTENSIONS: " +
+        `unlisted ${unlisted.join(", ") || "none"}; ` +
+        `not scanned ${unscanned.join(", ") || "none"}`,
+    );
+  }
+  const rows = DSN_EXTENSION_FAMILIES.map(
+    ([family, exts]) =>
+      `| ${family} | ${exts.map((ext) => `\`${ext}\``).join(", ")} |`,
+  );
+  return [
+    "| Language Family | File Extensions |",
+    "|----------------|-----------------|",
+    ...rows,
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Section: Project Alias Examples (features.md)
+// ---------------------------------------------------------------------------
+
+type AliasPair = { org: string; project: string };
+
+/** Render the aliases the CLI generates for `pairs` as a Markdown table. */
+function generateAliasTable(
+  header: string,
+  pairs: AliasPair[],
+  label: (pair: AliasPair) => string,
+): string {
+  const { aliasMap } = buildOrgAwareAliases(pairs);
+  const rows = pairs.map((pair) => {
+    const alias = aliasMap.get(`${pair.org}/${pair.project}`);
+    if (!alias) {
+      throw new Error(`No alias generated for ${pair.org}/${pair.project}`);
+    }
+    return `| \`${label(pair)}\` | \`${alias}\` |`;
+  });
+  return [`| ${header} | Alias |`, "|---|---|", ...rows].join("\n");
+}
+
+const projectSlug = (pair: AliasPair) => pair.project;
+const orgProject = (pair: AliasPair) => `${pair.org}/${pair.project}`;
+const inOrg = (org: string, projects: string[]): AliasPair[] =>
+  projects.map((project) => ({ org, project }));
+
+// ---------------------------------------------------------------------------
+// Section: sdk.run() Examples (library-usage.md)
+// ---------------------------------------------------------------------------
+
+/** The command at `path` in the route tree, e.g. `["issue", "list"]`. */
+function commandAt(path: string[]): Command {
+  let target: unknown = routeMap;
+  for (const name of path) {
+    target = isRouteMap(target)
+      ? target.getAllEntries().find((e) => e.name.original === name)?.target
+      : undefined;
+  }
+  if (!isCommand(target)) {
+    throw new Error(
+      `sdk-run-examples: no command \`sentry ${path.join(" ")}\``,
+    );
+  }
+  return target;
+}
+
+/**
+ * Translate the first single-step example of `path` that passes a flag into
+ * an `sdk.run(…)` statement, so the library docs show an invocation the CLI
+ * already documents and checks.
+ */
+function sdkRunStatement(path: string[], variable: string): string {
+  for (const example of commandAt(path).__examples ?? []) {
+    const steps = exampleSteps(example);
+    const commands = steps.length === 1 ? shellCommands(steps[0] ?? "") : [];
+    const words = commands.length === 1 ? (commands[0] ?? []) : [];
+    if (words[0] === "sentry" && words.some((w) => w.startsWith("-"))) {
+      const argv = words.slice(1).map((w) => JSON.stringify(w));
+      return [
+        `// ${example.description}`,
+        `const ${variable} = await sdk.run(${argv.join(", ")});`,
+      ].join("\n");
+    }
+  }
+  throw new Error(
+    `sdk-run-examples: \`sentry ${path.join(" ")}\` has no single-step example with a flag`,
+  );
+}
+
+function generateSdkRunExamples(): string {
+  return [
+    "```typescript",
+    "// Run any CLI command — returns parsed JSON by default",
+    'const version = await sdk.run("--version");',
+    sdkRunStatement(["issue", "list"], "issues"),
+    "// Help text for a command group",
+    'const help = await sdk.run("help", "issue");',
+    "```",
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -783,6 +994,53 @@ const sections: SectionDef[] = [
     filePath: "plugins/README.md",
     sectionName: "skill-layout",
     generate: generateSkillLayout,
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "dsn-extensions",
+    generate: generateDsnExtensions,
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "alias-unique-prefix",
+    generate: () =>
+      generateAliasTable(
+        "Project Slug",
+        inOrg("acme", ["frontend", "functions", "backend"]),
+        projectSlug,
+      ),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "alias-common-prefix",
+    generate: () =>
+      generateAliasTable(
+        "Project Slug",
+        inOrg("acme", [
+          "spotlight-electron",
+          "spotlight-website",
+          "spotlight-backend",
+        ]),
+        projectSlug,
+      ),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "alias-cross-org",
+    generate: () =>
+      generateAliasTable(
+        "Org/Project",
+        [
+          { org: "acme", project: "api" },
+          { org: "globex", project: "api" },
+        ],
+        orgProject,
+      ),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/library-usage.md`,
+    sectionName: "sdk-run-examples",
+    generate: generateSdkRunExamples,
   },
 ];
 

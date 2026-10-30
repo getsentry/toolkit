@@ -12,7 +12,7 @@ import {
   updateOrganizationDashboard,
 } from "@sentry/api";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 
 import { array, safeParse } from "valibot";

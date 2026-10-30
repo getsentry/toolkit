@@ -3,9 +3,8 @@ import {
   type FilterToken,
   type ParseResultToken,
   parseSearch,
-  TermOperator,
-  Token,
-} from "@sentry/toolkit-core/search-syntax";
+} from "@sentry/search-syntax/parser";
+import { TermOperator, Token } from "@sentry/search-syntax/tokens";
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import type {

@@ -12,6 +12,17 @@ import type { TraceSpan } from "../../types/index.js";
 import { colorTag } from "./markdown.js";
 
 /**
+ * Format an epoch-millisecond timestamp as YYYY-MM-DD HH:mm:ss in UTC.
+ * Omits fractional seconds and never depends on the machine's local timezone.
+ */
+export function formatUtcTimestamp(timestamp: number): string {
+  return new Date(timestamp)
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, "");
+}
+
+/**
  * Format a date string as a relative time label.
  *
  * - Under 60 minutes: "5m ago"

@@ -120,10 +120,6 @@ export const checkCommand = buildCommand({
       "PE/PDB, Portable PDB, WebAssembly, Breakpad, and source bundles.\n\n" +
       "The format is auto-detected. This command is local-only and makes no " +
       "network requests.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files check ./libexample.so\n" +
-      "  sentry debug-files check MyApp.dSYM/Contents/Resources/DWARF/MyApp\n" +
-      "  sentry debug-files check ./app.pdb --json\n\n" +
       "Exits non-zero if the file is not usable for symbolication.",
     examples: [
       {

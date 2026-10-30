@@ -13,7 +13,7 @@ import {
 } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -28,11 +28,12 @@ import {
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { computeSpanDurationMs } from "../../lib/formatters/time-utils.js";
-import { HEX_ID_RE, SPAN_ID_RE, validateSpanId } from "../../lib/hex-id.js";
+import { validateSpanId } from "../../lib/hex-id.js";
 import {
   handleRecoveryResult,
   recoverHexId,
 } from "../../lib/hex-id-recovery.js";
+import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
@@ -40,9 +41,15 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import {
-  parseSlashSeparatedTraceTarget,
-  parseTraceTargetWithRecovery,
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
+  parseTraceArgumentsInput,
+  type ResolvedTraceOrgProject,
+  resolveTraceArguments,
   resolveTraceOrgProject,
+  type TraceArgumentsInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 
@@ -59,145 +66,119 @@ type ViewFlags = {
 const USAGE_HINT =
   "sentry span view [<org>/<project>/]<trace-id> <span-id> [<span-id>...]";
 
-/** Result of the initial positional-arg parse for `span view`. */
-type SpanViewArgs =
-  | {
-      /** Args are already resolved (auto-split `<trace-id>/<span-id>`). */
-      kind: "resolved";
-      traceTarget: ReturnType<typeof parseSlashSeparatedTraceTarget>;
-      rawSpanIds: string[];
-    }
-  | {
-      /**
-       * First arg is the raw trace target (needs async recovery); the rest
-       * are raw span IDs. Command layer calls `parseTraceTargetWithRecovery`.
-       */
-      kind: "deferred";
-      rawTraceArg: string;
-      rawSpanIds: string[];
-    };
+/** The arguments of `span view`, parsed but with the IDs as typed. */
+export type SpanViewInput = {
+  /** The trace, validated (or recovered) when the arguments resolve */
+  readonly trace: TraceArgumentsInput;
+  readonly rawSpanIds: readonly string[];
+};
+
+/** The trace and the span IDs of `span view`, validated or recovered. */
+type ResolvedSpans = ResolvedTraceOrgProject & {
+  readonly spanIds: string[];
+};
+
+/** The arguments of `span view`. */
+type SpanViewArguments = BoundArguments<SpanViewInput, ResolvedSpans>;
 
 /**
- * Parse positional arguments for span view.
+ * Parse `span view` arguments, without side effects.
  *
- * Handles a few sync edge cases (single-arg `<trace>/<span>` slash split,
- * bare span ID without a trace) and returns either a fully-resolved
- * target or a deferred form. In the deferred case the command layer calls
- * {@link parseTraceTargetWithRecovery} on `rawTraceArg` so a malformed
- * trace ID gets the full recovery treatment (matching `trace view`
- * behavior).
+ * Span IDs take the forms every ID-taking command does (see
+ * `id-arguments.ts`), with the trace as their target:
+ * `[<org>/<project>/]<trace-id> <span-id>...`, or
+ * `[<org>/<project>/]<trace-id>/<span-id>` in one argument (as `span list`
+ * prints them), with more span IDs after it.
  *
- * @throws {ContextError} If insufficient arguments or a single bare span ID
+ * IDs are kept as typed: {@link resolveSpanViewInput} validates the trace
+ * and then the spans once it knows the trace, so malformed IDs can be
+ * recovered.
+ *
+ * @throws {ContextError} If the trace or the span IDs are missing
  */
+export function parseSpanViewInput(rawArgs: readonly string[]): SpanViewInput {
+  // A lone argument that does not end in a span ID is the trace
+  const { target, ids } = parseIdArguments(rawArgs, ID_KINDS.span, {
+    usageHint: USAGE_HINT,
+    multiple: true,
+    optional: true,
+    needsProject: true,
+    validate: false,
+  });
+  const [first] = ids;
 
-/**
- * Try to auto-split a single arg of the form `<trace-target>/<span-id>`.
- *
- * Handles one-slash (`<trace-id>/<span-id>`) and multi-slash
- * (`org/project/<trace-id>/<span-id>`) forms. Returns null when the arg
- * cannot be unambiguously split (e.g. left side is not a hex trace ID in
- * the single-slash case). Throws a trace-focused {@link ContextError} when
- * the arg clearly intends the `<trace-target>/<span-id>` form but the
- * trace-target portion is invalid (e.g. `org/project/<span-id>`).
- *
- * @throws {ContextError} When the trace-target prefix fails validation.
- */
-function tryAutoSplitSpanArg(arg: string): SpanViewArgs | null {
-  const lastSlashIdx = arg.lastIndexOf("/");
-  if (lastSlashIdx === -1) {
-    return null;
+  if (target === undefined) {
+    // Span IDs without a trace: say so, rather than "invalid trace ID"
+    // (CLI-SC)
+    throw new ContextError(
+      "Trace ID and span ID",
+      USAGE_HINT,
+      first && ID_KINDS.span.isId(first)
+        ? [
+            `'${first}' looks like a span ID (16 characters), not a trace ID`,
+            `Provide the trace ID first: sentry span view <trace-id> ${validateSpanId(first)}`,
+            `Use 'sentry trace list' to find trace IDs`,
+          ]
+        : [],
+    );
   }
 
-  const tracePrefix = arg.slice(0, lastSlashIdx);
-  const possibleSpanId = arg
-    .slice(lastSlashIdx + 1)
-    .trim()
-    .toLowerCase()
-    .replace(/-/g, "");
-
-  if (!SPAN_ID_RE.test(possibleSpanId) || tracePrefix.length === 0) {
-    return null;
-  }
-
-  const hasMultipleSlashes = tracePrefix.includes("/");
-  const normalizedPrefix = tracePrefix.trim().toLowerCase().replace(/-/g, "");
-
-  // For single-slash form the prefix must be a hex trace ID.
-  // For multi-slash (org/project/trace-id) always attempt the split.
-  if (!(hasMultipleSlashes || HEX_ID_RE.test(normalizedPrefix))) {
-    return null;
-  }
-
-  let traceTarget: ReturnType<typeof parseSlashSeparatedTraceTarget>;
-  try {
-    traceTarget = parseSlashSeparatedTraceTarget(tracePrefix, USAGE_HINT);
-  } catch (_error) {
-    // We already confirmed the last segment is a span ID and the prefix
-    // looked like a trace target, so a validation failure here means the
-    // trace-target portion is bad — e.g. `org/project/<span-id>` (missing
-    // the trace ID) or `org/project/<bad-trace>/<span-id>`. Surface a
-    // trace-focused ContextError that preserves the underlying detail
-    // rather than falling through to the misleading "missing span ID" path.
-    const suggestion = HEX_ID_RE.test(tracePrefix.split("/").pop() || "")
-      ? `Provide the correct trace ID: sentry span view ${tracePrefix} ${possibleSpanId}`
-      : `Provide the trace ID: sentry span view ${tracePrefix}/<trace-id> ${possibleSpanId}`;
-    throw new ContextError("Trace ID", USAGE_HINT, [
-      `'${arg}' is missing a valid trace ID before the span ID '${possibleSpanId}'`,
-      suggestion,
+  if (first === undefined) {
+    throw new ContextError("Span ID", USAGE_HINT, [
+      `Use 'sentry span list ${target}' to find span IDs within this trace`,
     ]);
   }
-  log.warn(
-    `Interpreting '${arg}' as <trace-target>/<span-id>. ` +
-      `Use separate arguments: sentry span view ${tracePrefix} ${possibleSpanId}`,
-  );
-  return { kind: "resolved", traceTarget, rawSpanIds: [possibleSpanId] };
+
+  return { trace: parseTrace(target, first), rawSpanIds: ids };
 }
 
-export function parsePositionalArgs(args: string[]): SpanViewArgs {
-  if (args.length === 0) {
-    throw new ContextError("Trace ID and span ID", USAGE_HINT, []);
-  }
-
-  const first = args[0];
-  if (first === undefined) {
-    throw new ContextError("Trace ID and span ID", USAGE_HINT, []);
-  }
-
-  // Auto-detect single-arg forms where the last slash-segment is a span ID.
-  // This handles:
-  //   <trace-id>/<span-id>                       (one slash)
-  //   [<org>/][<project>/]<trace-id>/<span-id>   (two+ slashes, e.g. copy-paste from `span list`)
-  // Without this check, parseSlashSeparatedTraceTarget treats the span
-  // ID as a trace ID and fails validation (CLI-G6 / CLI-1BD).
-  if (args.length === 1) {
-    const resolved = tryAutoSplitSpanArg(first);
-    if (resolved) {
-      return resolved;
+/**
+ * Parse the target of the span IDs as the trace, with a trace-focused error
+ * when it has no trace ID, as in `<org>/<project>/<span-id>` (CLI-1GP). A
+ * malformed trace ID is left for {@link resolveTraceArguments}.
+ *
+ * @throws {ContextError} When the trace ID is missing
+ */
+function parseTrace(traceArg: string, spanId: string): TraceArgumentsInput {
+  try {
+    return parseTraceArgumentsInput([traceArg], USAGE_HINT, {
+      needsProject: true,
+    });
+  } catch (error) {
+    if (!(error instanceof ContextError)) {
+      throw error;
     }
-  }
-
-  // Single bare arg that looks like a span ID (16-char hex, no slashes):
-  // the user forgot the trace ID. Give a targeted ContextError instead
-  // of the confusing "Invalid trace ID" from validateTraceId() (CLI-SC).
-  if (args.length === 1 && !first.includes("/")) {
-    const normalized = first.trim().toLowerCase().replace(/-/g, "");
-    if (SPAN_ID_RE.test(normalized)) {
-      throw new ContextError("Trace ID and span ID", USAGE_HINT, [
-        `'${first}' looks like a span ID (16 characters), not a trace ID`,
-        `Provide the trace ID first: sentry span view <trace-id> ${normalized}`,
-        `Use 'sentry trace list' to find trace IDs`,
-      ]);
-    }
-  }
-
-  const rawSpanIds = args.slice(1);
-  if (rawSpanIds.length === 0) {
-    throw new ContextError("Span ID", USAGE_HINT, [
-      `Use 'sentry span list ${first}' to find span IDs within this trace`,
+    throw new ContextError("Trace ID", USAGE_HINT, [
+      `'${traceArg}' is missing a trace ID before the span ID '${spanId}'`,
+      `Provide the trace ID: sentry span view ${traceArg}/<trace-id> ${spanId}`,
     ]);
   }
+}
 
-  return { kind: "deferred", rawTraceArg: first, rawSpanIds };
+/**
+ * Resolve `span view` arguments: validate (or recover) the trace ID, find
+ * the trace's org and project, then validate (or recover) the span IDs in
+ * that trace.
+ */
+async function resolveSpanViewInput(
+  input: SpanViewInput,
+  context: SentryContext,
+): Promise<ResolvedSpans> {
+  const traceTarget = await resolveTraceArguments(input.trace);
+  warnIfNormalized(traceTarget, "span.view");
+  const { traceId, org, project } = await resolveTraceOrgProject(
+    traceTarget,
+    context.cwd,
+    USAGE_HINT,
+  );
+  // Span IDs are unique only within a trace, so recovery scopes its fuzzy
+  // lookup via `ctx.traceId`.
+  const spanIds = await Promise.all(
+    input.rawSpanIds.map((raw) =>
+      validateAndRecoverSpanId(raw, { org, project, traceId }),
+    ),
+  );
+  return { traceId, org, project, spanIds };
 }
 
 /**
@@ -210,7 +191,7 @@ async function validateAndRecoverSpanId(
   ctx: { org: string; project: string; traceId: string },
 ): Promise<string> {
   try {
-    return validateSpanId(rawSpanId);
+    return ID_KINDS.span.validate(rawSpanId);
   } catch (err) {
     if (!(err instanceof ValidationError)) {
       throw err;
@@ -370,9 +351,6 @@ export const viewCommand = buildCommand({
     brief: "View details of specific spans",
     fullDescription:
       "View detailed information about one or more spans within a trace.\n\n" +
-      "Target specification:\n" +
-      "  sentry span view <trace-id> <span-id>                        # auto-detect\n" +
-      "  sentry span view <org>/<project>/<trace-id> <span-id>        # explicit\n\n" +
       "The first argument is the trace ID (optionally prefixed with org/project),\n" +
       "followed by one or more span IDs.",
     examples: [
@@ -398,52 +376,28 @@ export const viewCommand = buildCommand({
     jsonTransform: jsonTransformSpanView,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "trace-id/span-id",
-        brief:
-          "[<org>/<project>/]<trace-id> <span-id> [<span-id>...] - Trace ID and one or more span IDs",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "trace-id/span-id",
+      brief:
+        "[<org>/<project>/]<trace-id> <span-id> [<span-id>...] - Trace ID and one or more span IDs",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseSpanViewInput,
+      resolve: resolveSpanViewInput,
+    }),
     flags: {
       ...spansFlag,
       fresh: FRESH_FLAG,
     },
     aliases: { ...FRESH_ALIASES },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: SpanViewArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
+    const { traceId, org, project, spanIds } = await target.resolved;
 
-    // Parse positional args. Either we get a resolved trace target (single-arg
-    // <trace>/<span> slash form) or a deferred trace arg that routes through
-    // `parseTraceTargetWithRecovery` for async trace-ID recovery — same
-    // contract as `trace view`.
-    const parsed = parsePositionalArgs(args);
-    const rawSpanIds = parsed.rawSpanIds;
-    const traceTarget =
-      parsed.kind === "resolved"
-        ? parsed.traceTarget
-        : await parseTraceTargetWithRecovery([parsed.rawTraceArg], USAGE_HINT);
-    warnIfNormalized(traceTarget, "span.view");
-
-    // Resolve org/project
-    const { traceId, org, project } = await resolveTraceOrgProject(
-      traceTarget,
-      cwd,
-      USAGE_HINT,
-    );
-
-    // Validate + recover span IDs now that trace context is available.
-    // Span IDs are unique only within a trace, so recovery scopes its
-    // fuzzy lookup via `ctx.traceId`.
-    const spanIds = await Promise.all(
-      rawSpanIds.map((raw) =>
-        validateAndRecoverSpanId(raw, { org, project, traceId }),
-      ),
-    );
     // Fetch trace data (single fetch for all span lookups)
     const spans = await getDetailedTrace(org, traceId);
 

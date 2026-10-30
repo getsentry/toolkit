@@ -19,13 +19,13 @@ import type { SentryContext } from "../context.js";
 
 const _require = createRequire(import.meta.url);
 
-import { parseOrgProjectArg } from "./arg-parsing.js";
+import type { ListTargetOptions } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
   numberParser,
 } from "./command.js";
-import { parseOrgProjectTarget, parseOrgTarget } from "./completion-target.js";
+import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
 import { logger } from "./logger.js";
 
@@ -44,8 +44,14 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
-import { applyLazyPositionals, rawPositional } from "./positional-parse.js";
+import {
+  applyBoundPositionals,
+  rawPositional,
+  skipLeadingArgument,
+  skippedArgument,
+} from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
+import { type ListCommandTarget, listTarget } from "./target-positional.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
 
@@ -69,38 +75,73 @@ export const LIST_MIN_LIMIT = 1;
 export const LIST_DEFAULT_LIMIT = 25;
 
 /**
- * Positional `org/project` parameter shared by all list commands.
+ * Accepted forms of an `[<org>/][<project>]` target that supports org-all
+ * mode. Positional briefs render in `--help`, the generated command docs, and
+ * the skill references, so the target syntax is described here once instead
+ * of in each command's `fullDescription`.
+ */
+export const ORG_ALL_TARGET_BRIEF =
+  "<org>/ (all projects), <org>/<project>, or <project> (search)";
+
+/**
+ * {@link ORG_ALL_TARGET_BRIEF} for list commands that also match names
+ * (see {@link parseListTargetInput}): a glob filters names, and a name that
+ * is no project matches names instead.
+ */
+export const NAMED_LIST_TARGET_BRIEF =
+  "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)";
+
+/** Accepted forms of a target that names one project (no org-all mode). */
+export const PROJECT_TARGET_BRIEF = "<org>/<project> or <project> (search)";
+
+/**
+ * Positional `org/project` parameter of a list command, parsed with
+ * {@link listTarget}: `func` gets a `ListCommandTarget` and passes
+ * `(await target.resolved)` to `dispatchOrgScopedList`.
  *
  * Accepts `<org>/`, `<org>/<project>`, or bare `<project>` (search).
  * Marked optional so the command falls back to auto-detection when omitted.
+ *
+ * @param options.orgScoped - For org-scoped resources (teams, repos,
+ *   releases, …): shell completion suggests org slugs only
+ * @param options.names - A glob filters names, and a name that is no
+ *   project matches names instead
  */
-export const LIST_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      placeholder: "org/project",
-      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
-      parse: parseOrgProjectTarget,
-      optional: true as const,
-    },
-  ],
-};
+export function listTargetPositional(
+  options: ListTargetOptions & { readonly orgScoped?: boolean } = {},
+) {
+  const { orgScoped, ...parseOptions } = options;
+  return {
+    kind: "tuple" as const,
+    parameters: [
+      {
+        placeholder: "org/project",
+        brief: parseOptions.names
+          ? NAMED_LIST_TARGET_BRIEF
+          : ORG_ALL_TARGET_BRIEF,
+        parse: listTarget(
+          orgScoped ? ORG_TARGET : ORG_PROJECT_TARGET,
+          parseOptions,
+        ),
+        optional: true as const,
+      },
+    ],
+  };
+}
 
-/**
- * {@link LIST_TARGET_POSITIONAL} for org-scoped resources (teams, repos,
- * releases, …): same syntax, but shell completion suggests org slugs only.
- */
-export const LIST_ORG_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      placeholder: "org/project",
-      brief: "<org>/ (all projects), <org>/<project>, or <project> (search)",
-      parse: parseOrgTarget,
-      optional: true as const,
-    },
-  ],
-};
+/** {@link listTargetPositional} for most list commands. */
+export const LIST_TARGET_POSITIONAL = listTargetPositional();
+
+/** {@link listTargetPositional} for org-scoped resources. */
+export const LIST_ORG_TARGET_POSITIONAL = listTargetPositional({
+  orgScoped: true,
+});
+
+/** {@link listTargetPositional} for org-scoped resources matched by name. */
+export const NAMED_LIST_ORG_TARGET_POSITIONAL = listTargetPositional({
+  orgScoped: true,
+  names: true,
+});
 
 /**
  * Short note for commands that accept a bare project name but do not support
@@ -488,19 +529,21 @@ export function interceptSubcommand(
   stderr: { write(s: string): void },
   routeName: string,
 ): string | undefined {
-  if (!target) {
+  if (!(target && isSubcommandName(target, routeName))) {
     return target;
   }
-  const trimmed = target.trim();
-  if (trimmed && getSubcommandsForRoute(routeName).has(trimmed)) {
-    stderr.write(
-      warning(
-        `Tip: "${trimmed}" is a subcommand. Running: sentry ${routeName} ${trimmed}\n`,
-      ),
-    );
-    return;
-  }
-  return target;
+  stderr.write(
+    warning(
+      `Tip: "${target.trim()}" is a subcommand. Running: sentry ${routeName} ${target.trim()}\n`,
+    ),
+  );
+  return;
+}
+
+/** Whether `arg` names a subcommand of `routeName` (see {@link interceptSubcommand}). */
+function isSubcommandName(arg: string, routeName: string): boolean {
+  const trimmed = arg.trim();
+  return trimmed !== "" && getSubcommandsForRoute(routeName).has(trimmed);
 }
 
 // ---------------------------------------------------------------------------
@@ -607,8 +650,15 @@ export function buildListCommand<
     mergedAliases.c = "cursor";
   }
 
+  // `boundArguments` positionals parse every argument before this wrapper
+  // runs, so a subcommand name is left out of that parse, before it changes
+  // what the other arguments mean
+  const positional = skipLeadingArgument(params.positional, (arg) =>
+    isSubcommandName(arg, routeName),
+  );
   const mergedParams = {
     ...params,
+    ...(positional ? { positional } : {}),
     flags: mergedFlags,
     aliases: mergedAliases,
   };
@@ -620,17 +670,22 @@ export function buildListCommand<
 
     // The first positional arg is always the target (org/project pattern),
     // either a raw string or a parsed value. Intercept it to handle plural
-    // alias confusion.
+    // alias confusion. All list commands use SentryContext which has stderr
+    // at top level
+    const ctx = this as unknown as { stderr: { write(s: string): void } };
+    const skipped = skippedArgument(args[0]);
     const rawTarget = rawPositional(args[0]);
-    if (typeof rawTarget === "string") {
-      // All list commands use SentryContext which has stderr at top level
-      const ctx = this as unknown as { stderr: { write(s: string): void } };
-      if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
-        args[0] = undefined;
-      }
+    if (skipped !== undefined) {
+      // The scanner already parsed the other arguments without it
+      interceptSubcommand(skipped, ctx.stderr, routeName);
+    } else if (
+      typeof rawTarget === "string" &&
+      interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined
+    ) {
+      args[0] = undefined;
     }
-    // A dropped lazy target becomes an omitted one (auto-detect)
-    const finalArgs = applyLazyPositionals(args, params.positional, this);
+    // A dropped bound target becomes an omitted one (auto-detect)
+    const finalArgs = applyBoundPositionals(args, positional, this);
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
@@ -692,7 +747,7 @@ function formatListHuman<TEntity, TWithOrg>(
  * encapsulated in the shared org-list framework. The resulting command has:
  * - An optional positional `target` argument
  * - `--limit` / `-n`, `--json`, `--fields`, `--cursor` / `-c` flags
- * - A `func` that calls `parseOrgProjectArg` then `dispatchOrgScopedList`
+ * - A `func` that passes the resolved target to `dispatchOrgScopedList`
  *
  * Rendering is handled automatically via `OutputConfig`:
  * - JSON mode produces paginated envelopes or flat arrays
@@ -716,7 +771,9 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       schema: config.schema,
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
-      positional: LIST_ORG_TARGET_POSITIONAL,
+      positional: config.namesOf
+        ? NAMED_LIST_ORG_TARGET_POSITIONAL
+        : LIST_ORG_TARGET_POSITIONAL,
       flags: {
         limit: buildListLimitFlag(config.entityPlural),
       },
@@ -731,15 +788,16 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
         readonly fresh: boolean;
         readonly fields?: string[];
       },
-      target?: string,
+      target: ListCommandTarget,
     ) {
       const { cwd } = this;
-      const parsed = parseOrgProjectArg(target);
+      const { parsed, filter } = await target.resolved;
       const result = await dispatchOrgScopedList({
         config,
         cwd,
         flags,
         parsed,
+        filter,
       });
       yield new CommandOutput(result);
       // Only forward hint to the footer when items exist — empty results

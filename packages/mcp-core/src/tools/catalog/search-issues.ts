@@ -1,6 +1,12 @@
 import { getActiveSpan } from "@sentry/core";
+import {
+  type RewrittenSearchQuery,
+  rewriteSearchQuery,
+  SearchQueryError,
+} from "@sentry/toolkit-core/search-query";
 import { z } from "zod";
 import { SEARCH_ISSUES_PERIOD_VALUES } from "../../constants";
+import { UserInputError } from "../../errors";
 import { hasAgentProvider } from "../../internal/agents/provider-factory";
 import { withProviderFallback } from "../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -16,6 +22,25 @@ import {
 } from "../support/search-issues/formatters";
 
 const ProjectSlugOrIdSchema = z.string().trim().superRefine(validateSlugOrId);
+
+/**
+ * Rewrite a query into syntax the issues endpoint accepts.
+ *
+ * The endpoint rejects AND/OR and has no grouping. Runs after the optional
+ * agent repair, so it also covers sessions without an agent provider.
+ */
+function rewriteIssueQuery(query: string): RewrittenSearchQuery {
+  try {
+    return rewriteSearchQuery(query, { issueSearch: true });
+  } catch (error) {
+    if (error instanceof SearchQueryError) {
+      throw new UserInputError(`${error.message}\n\nSentry query: ${query}`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
 
 function buildIssueSearchRepairPrompt(params: {
   query: string;
@@ -57,6 +82,8 @@ export default defineTool({
     "- issue.priority:high",
     "- environment:production",
     "- userCount:>100",
+    "",
+    "No AND/OR or parentheses: spaces mean AND. For OR on one field use field:[a,b]; for several statuses use status:[resolved,ignored] or substatus:[regressed,escalating].",
     "",
     "DO NOT USE FOR COUNTS/AGGREGATIONS → use search_errors",
     "DO NOT USE FOR individual events with timestamps → use search_errors, search_logs, or search_traces",
@@ -101,7 +128,7 @@ export default defineTool({
       .enum(SEARCH_ISSUES_PERIOD_VALUES)
       .default("30d")
       .describe(
-        "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 24h for very recent issues or 90d for broader historical searches.",
+        "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 1h or 24h for very recent issues or 90d for broader historical searches.",
       ),
     includeExplanation: z
       .boolean()
@@ -177,6 +204,9 @@ export default defineTool({
       sort = params.sort;
     }
 
+    const rewritten = rewriteIssueQuery(query);
+    query = rewritten.query;
+
     const issues = await apiService.listIssues({
       organizationSlug: params.organizationSlug,
       projectId,
@@ -238,6 +268,10 @@ export default defineTool({
         availableToolNames: context.availableToolNames,
         directToolNames: context.directToolNames,
       });
+    }
+
+    if (rewritten.notes.length > 0) {
+      output += `\n\n**Query rewritten:** ${rewritten.notes.join(" ")} Ran \`${query}\`.`;
     }
 
     return output;

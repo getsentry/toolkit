@@ -12,12 +12,13 @@ import {
   detectSwappedViewArgs,
   looksLikeIssueShortId,
   normalizeSlug,
-  parseIssueArg,
+  parseListTargetInput,
   parseOrgProjectArg,
   parseSlashSeparatedArg,
   rejectIssueCommandTokenListTarget,
   splitNewlineArg,
 } from "../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../src/lib/issue-arguments.js";
 import { stripDsnOrgPrefix } from "../../src/lib/dsn/index.js";
 import { ValidationError } from "../../src/lib/errors.js";
 
@@ -1349,6 +1350,91 @@ describe("detectSwappedTrialArgs", () => {
   });
 });
 
+describe("parseListTargetInput", () => {
+  test.each([
+    [undefined, { parsed: { type: "auto-detect" } }],
+    ["my-org/", { parsed: { type: "org-all", org: "my-org" } }],
+    // Text without glob characters still names a project.
+    ["web", { parsed: { type: "project-search", projectSlug: "web" } }],
+    [
+      "my-org/web",
+      { parsed: { type: "explicit", org: "my-org", project: "web" } },
+    ],
+    // No slug has glob characters, so the grammar parses a glob as a filter.
+    ["web-*", { parsed: { type: "auto-detect" }, filter: "web-*" }],
+    [
+      "my-org/web-*",
+      { parsed: { type: "org-all", org: "my-org" }, filter: "web-*" },
+    ],
+    // `/<name>` means `<name>`, so `/web-*` filters the detected org.
+    ["/web-*", { parsed: { type: "auto-detect" }, filter: "web-*" }],
+    // Braces hold commas, but a glob wins over a project list.
+    [
+      "my-org/{web,api}-*",
+      { parsed: { type: "org-all", org: "my-org" }, filter: "{web,api}-*" },
+    ],
+    [
+      "my-org/ web-* ",
+      { parsed: { type: "org-all", org: "my-org" }, filter: "web-*" },
+    ],
+  ] as const)("%j → %j", (target, expected) => {
+    expect(
+      parseListTargetInput(target, { names: true, multi: true }).target,
+    ).toEqual(expected);
+  });
+
+  test("a project list is still a list", () => {
+    expect(
+      parseListTargetInput("my-org/web,api", { names: true, multi: true })
+        .target.parsed,
+    ).toEqual({
+      type: "explicit",
+      org: "my-org",
+      project: "web",
+      projects: ["web", "api"],
+    });
+  });
+
+  test("a glob after a second slash is not a filter", () => {
+    expect(
+      parseListTargetInput("my-org/proj/x*", { names: true }).target.filter,
+    ).toBeUndefined();
+  });
+
+  test("the org of a filter is validated like any org slug", () => {
+    expect(() =>
+      parseListTargetInput("@latest/web-*", { names: true }),
+    ).toThrow(ValidationError);
+  });
+
+  test("without names, a glob names a project", () => {
+    expect(parseListTargetInput("my-org/web-*").target).toEqual({
+      parsed: { type: "explicit", org: "my-org", project: "web-*" },
+    });
+  });
+
+  test("returns a pasted URL's server instead of applying it", () => {
+    expect(
+      parseListTargetInput("https://sentry.example.com/organizations/acme/"),
+    ).toEqual({
+      target: { parsed: { type: "org-all", org: "acme" } },
+      baseUrl: "https://sentry.example.com",
+    });
+  });
+
+  test("targets of other commands never parse as filters", () => {
+    expect(parseOrgProjectArg("my-org/web-*")).toEqual({
+      type: "explicit",
+      org: "my-org",
+      project: "web-*",
+    });
+    expect(parseOrgProjectArg("web-*")).toEqual({
+      type: "project-search",
+      projectSlug: "web-*",
+    });
+  });
+});
+
 describe("parseOrgProjectArg: underscores pass through", () => {
   // Sentry allows underscores in project slugs (the UI and API both accept
   // them at creation time), so the CLI must not rewrite them. Previously
@@ -1564,9 +1650,20 @@ describe("parseIssueArg: injection hardening", () => {
   test("rejects forbidden characters inside a # fragment", () => {
     // A bare "#" is now a valid GitHub-style separator (CLI-1G1), but the
     // fragment after it is still validated against injection characters.
-    expect(() => parseIssueArg("cli#an chor")).toThrow(ValidationError);
     expect(() => parseIssueArg("cli#an%20chor")).toThrow(ValidationError);
     expect(() => parseIssueArg("cli#G?extra")).toThrow(ValidationError);
+  });
+
+  test("words with spaces are a search, not an identifier", () => {
+    // A search is sent as a query parameter, never as a path segment
+    expect(parseIssueArg("cli#an chor")).toEqual({
+      type: "search",
+      query: "cli#an chor",
+    });
+    expect(parseIssueArg("12345 6789")).toEqual({
+      type: "search",
+      query: "12345 6789",
+    });
   });
 
   test("rejects pre-encoded space in issue arg", () => {
@@ -1577,10 +1674,6 @@ describe("parseIssueArg: injection hardening", () => {
     expect(() => parseIssueArg("CLI-G\x00")).toThrow(ValidationError);
     // Tab in the middle is still rejected (trailing tab is trimmed like newlines)
     expect(() => parseIssueArg("CLI\tG")).toThrow(ValidationError);
-  });
-
-  test("rejects space in numeric ID", () => {
-    expect(() => parseIssueArg("12345 6789")).toThrow(ValidationError);
   });
 
   test("rejects query string in org/issue format", () => {
@@ -1708,7 +1801,6 @@ describe("parseIssueArg: GitHub-style # separator (CLI-1G1)", () => {
 
     test("forbidden characters in fragment throw", () => {
       expect(() => parseIssueArg("cli#?bad")).toThrow(ValidationError);
-      expect(() => parseIssueArg("cli#an chor")).toThrow(ValidationError);
       expect(() => parseIssueArg("cli#an%20chor")).toThrow(ValidationError);
     });
 

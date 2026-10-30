@@ -53,6 +53,7 @@ vi.mock("../../src/lib/db/regions.js", async (importOriginal) => {
 });
 
 import {
+  ApiError,
   AuthError,
   ResolutionError,
   ValidationError,
@@ -489,14 +490,18 @@ describe("handleOrgAll", () => {
     const listPaginated = vi.fn(
       (_org: string, opts: { cursor?: string; perPage: number }) => {
         expect(opts.perPage).toBeLessThanOrEqual(100);
-        const offset = opts.cursor ? Number(opts.cursor) : 0;
+        // OffsetPaginator cursors: <per_page>:<page>:<is_prev>.
+        const [size = 0, page = 0] = (opts.cursor ?? "0:0:0")
+          .split(":")
+          .map(Number);
+        const offset = size * page;
         const data = Array.from({ length: opts.perPage }, (_, i) => ({
           id: String(offset + i),
           name: `W${offset + i}`,
         }));
         return Promise.resolve({
           data,
-          nextCursor: String(offset + opts.perPage),
+          nextCursor: `${opts.perPage}:${offset / opts.perPage + 1}:0`,
         });
       },
     );
@@ -512,17 +517,18 @@ describe("handleOrgAll", () => {
     });
 
     expect(result.items).toHaveLength(250);
-    // Full pages keep requests to a minimum; the cursor carries the page size
-    // because team and repo lists use page-number cursors.
+    // The fewest requests, split evenly instead of overfetching on the last
+    // one; the cursor carries the page size because team and repo lists use
+    // page-number cursors.
     expect(listPaginated.mock.calls.map((call) => call[1].perPage)).toEqual([
-      100, 100, 100,
+      84, 84, 84,
     ]);
     // The mock always returns a nextCursor, so hasMore is true and
     // the cursor points to the first item beyond the fetched 250.
     expect(result.hasMore).toBe(true);
 
     // `-c next` with another --limit keeps the walk's page size and refetches
-    // the third page, skipping the 50 rows already returned.
+    // the third page, skipping the 82 rows already returned.
     listPaginated.mockClear();
     const next = await handleOrgAll({
       config,
@@ -536,7 +542,8 @@ describe("handleOrgAll", () => {
       Array.from({ length: 30 }, (_, i) => String(250 + i)),
     );
     expect(listPaginated.mock.calls.map((call) => call[1])).toEqual([
-      { cursor: "200", perPage: 100 },
+      { cursor: "84:2:0", perPage: 84 },
+      { cursor: "84:3:0", perPage: 84 },
     ]);
   });
 });
@@ -1238,5 +1245,238 @@ describe("dispatchOrgScopedList", () => {
       expect(handler).toHaveBeenCalledTimes(1);
       expect(handler.mock.calls[0]?.[0].parsed.type).toBe("project-search");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchOrgScopedList — name filter
+// ---------------------------------------------------------------------------
+
+describe("dispatchOrgScopedList name filter", () => {
+  const WIDGETS: FakeEntity[] = [
+    { id: "1", name: "web-frontend" },
+    { id: "2", name: "api" },
+    { id: "3", name: "web-backend" },
+  ];
+  let resolveEffectiveOrgSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    resolveEffectiveOrgSpy = vi
+      .spyOn(region, "resolveEffectiveOrg")
+      .mockImplementation((org: string) => Promise.resolve(org));
+  });
+
+  afterEach(() => {
+    resolveEffectiveOrgSpy.mockRestore();
+  });
+
+  function filterConfig() {
+    return makeConfig({
+      listPaginated: vi.fn(() =>
+        Promise.resolve({ data: WIDGETS, nextCursor: undefined }),
+      ),
+      namesOf: (widget) => [widget.name],
+    });
+  }
+
+  test("org-all fetches every widget, then filters", async () => {
+    const config = filterConfig();
+    const result = await dispatchOrgScopedList({
+      config,
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "web-*",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+      "web-frontend",
+      "web-backend",
+    ]);
+    expect(config.listPaginated).toHaveBeenCalledWith("my-org", {
+      cursor: undefined,
+      perPage: 100,
+    });
+    // listForOrg may return only the first page.
+    expect(config.listForOrg).not.toHaveBeenCalled();
+    // The paginated `<org>/` tip would drop the filter.
+    expect(result.hint ?? "").not.toContain("paginated");
+  });
+
+  test("auto-detect keeps the filter in the <org>/ tip", async () => {
+    const defaultOrgSpy = vi
+      .spyOn(defaults, "getDefaultOrganization")
+      .mockReturnValue("my-org");
+    try {
+      const result = await dispatchOrgScopedList({
+        config: filterConfig(),
+        cwd: "/tmp",
+        flags: { limit: 10, json: true },
+        parsed: { type: "auto-detect" },
+        filter: "web-*",
+      });
+
+      expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+        "web-frontend",
+        "web-backend",
+      ]);
+      expect(result.hint).toContain("sentry widget list <org>/web-*'");
+    } finally {
+      defaultOrgSpy.mockRestore();
+    }
+  });
+
+  test("walks every page, so matches past the first page are kept", async () => {
+    const listPaginated = vi.fn((_org: string, opts: { cursor?: string }) =>
+      Promise.resolve(
+        opts.cursor
+          ? { data: [{ id: "9", name: "web-late" }], nextCursor: undefined }
+          : { data: WIDGETS, nextCursor: "page-2" },
+      ),
+    );
+    const result = await dispatchOrgScopedList({
+      config: makeConfig({ listPaginated, namesOf: (w) => [w.name] }),
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "web-*",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+      "web-frontend",
+      "web-backend",
+      "web-late",
+    ]);
+    expect(listPaginated).toHaveBeenCalledTimes(2);
+  });
+
+  test("API errors propagate instead of reading as no matches", async () => {
+    const config = makeConfig({
+      listPaginated: vi.fn(() =>
+        Promise.reject(new ApiError("Organization not found", 404)),
+      ),
+      namesOf: (widget) => [widget.name],
+    });
+    await expect(
+      dispatchOrgScopedList({
+        config,
+        cwd: "/tmp",
+        flags: { limit: 10, json: true },
+        parsed: { type: "org-all", org: "missing-org" },
+        filter: "web-*",
+      }),
+    ).rejects.toThrow(ApiError);
+  });
+
+  test("plain text is fuzzy and --limit applies to the matches", async () => {
+    const result = await dispatchOrgScopedList({
+      config: filterConfig(),
+      cwd: "/tmp",
+      flags: { limit: 1, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "web-backnd",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual([
+      "web-backend",
+    ]);
+  });
+
+  test("an empty result names the filter", async () => {
+    const result = await dispatchOrgScopedList({
+      config: filterConfig(),
+      cwd: "/tmp",
+      flags: { limit: 10, json: false },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: "nope-*",
+    });
+
+    expect(result.items).toEqual([]);
+    expect(result.hint).toBe(
+      "No widgets matching 'nope-*' found in organization 'my-org'.",
+    );
+  });
+
+  test("filters project-scoped listings too", async () => {
+    const listForProject = vi.fn(() => Promise.resolve(WIDGETS));
+    const config = makeConfig({
+      listForProject,
+      namesOf: (widget) => [widget.name],
+    });
+    const result = await dispatchOrgScopedList({
+      config,
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "explicit", org: "my-org", project: "proj" },
+      filter: "api",
+    });
+
+    expect(result.items.map((w: FakeWithOrg) => w.name)).toEqual(["api"]);
+    expect(listForProject).toHaveBeenCalledWith("my-org", "proj");
+  });
+
+  test("ranks matches merged across projects before --limit", async () => {
+    // The same project slug in two orgs: org-a only has a contains match,
+    // org-b has the exact one, which must win the single slot.
+    const findSpy = vi
+      .spyOn(apiClient, "findProjectsBySlug")
+      .mockResolvedValue({
+        projects: [
+          { orgSlug: "org-a", slug: "my-proj", id: "1", name: "My Project" },
+          { orgSlug: "org-b", slug: "my-proj", id: "2", name: "My Project" },
+        ],
+        orgs: [],
+      });
+    try {
+      const teams: Record<string, FakeEntity[]> = {
+        "org-a": [{ id: "1", name: "backend-old" }],
+        "org-b": [{ id: "2", name: "backend" }],
+      };
+      const config = makeConfig({
+        listForProject: (org: string) => Promise.resolve(teams[org] ?? []),
+        namesOf: (team) => [team.name],
+      });
+      const result = await dispatchOrgScopedList({
+        config,
+        cwd: "/tmp",
+        flags: { limit: 1, json: true },
+        parsed: { type: "project-search", projectSlug: "my-proj" },
+        filter: "backend",
+      });
+
+      expect(result.items.map((t: FakeWithOrg) => [t.orgSlug, t.name])).toEqual(
+        [["org-b", "backend"]],
+      );
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("rejects --cursor with a filter", async () => {
+    await expect(
+      dispatchOrgScopedList({
+        config: filterConfig(),
+        cwd: "/tmp",
+        flags: { limit: 10, json: false, cursor: "next" },
+        parsed: { type: "org-all", org: "my-org" },
+        filter: "web-*",
+      }),
+    ).rejects.toThrow(/name filter/);
+  });
+
+  test("overrides receive the filter as ctx.filter", async () => {
+    const orgAll = vi.fn(() => Promise.resolve({ items: [] }));
+    await dispatchOrgScopedList({
+      config: META_ONLY,
+      cwd: "/tmp",
+      flags: { limit: 10, json: true },
+      parsed: { type: "org-all", org: "my-org" },
+      filter: " web-* ",
+      overrides: { "org-all": orgAll },
+    });
+
+    expect(orgAll).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: "web-*" }),
+    );
   });
 });

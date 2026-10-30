@@ -38,3 +38,5 @@ and depends on generated CLI documentation. The root
 own rules.
 
 - [Local daemon and browser viewer](local-control-plane.md) — scoped telemetry sessions and viewer development.
+
+For viewer development and envelope replay, see the [Local viewer guide](../../apps/local/README.md).

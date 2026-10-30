@@ -167,10 +167,6 @@ export const uploadCommand = buildCommand({
       "A debug ID (--debug-id) is required to associate the map with its " +
       "companion native debug file (dSYM/ELF). The sentry-dart-plugin " +
       "extracts this automatically.\n\n" +
-      "Usage:\n" +
-      "  sentry dart-symbol-map upload --debug-id <uuid> mapping.json\n" +
-      "  sentry dart-symbol-map upload --debug-id <uuid> mapping.json --no-upload\n" +
-      "  sentry dart-symbol-map upload --debug-id <uuid> mapping.json --json\n\n" +
       "Supported on Sentry SaaS and self-hosted >= 25.8.0.",
     examples: [
       {

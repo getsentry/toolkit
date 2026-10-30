@@ -50,6 +50,8 @@ const teamListConfig: OrgListConfig<SentryTeam, TeamWithOrg> = {
   listForOrg: (org) => listTeams(org),
   listPaginated: (org, opts) => listTeamsPaginated(org, opts),
   withOrg: (team, orgSlug) => ({ ...team, orgSlug }),
+  namesOf: (team) => [team.slug, team.name],
+  searchesNames: true,
   displayTable: (teams: TeamWithOrg[]) => formatTable(teams, TEAM_COLUMNS),
   listForProject: (org, project) => listProjectTeams(org, project),
   schema: SentryTeamSchema,
@@ -59,14 +61,7 @@ const docs: OrgListCommandDocs = {
   brief: "List teams",
   fullDescription:
     "List teams in an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry team list               # auto-detect from DSN or config\n" +
-    "  sentry team list <org>/        # list all teams in org (paginated)\n" +
-    "  sentry team list <org>/<proj>  # list teams in org (project context)\n" +
-    "  sentry team list <org>         # list teams in org\n\n" +
-    "Pagination:\n" +
-    "  sentry team list <org>/ -c next  # fetch next page\n" +
-    "  sentry team list <org>/ -c prev  # fetch previous page\n\n" +
+    "With a glob after the slash (`<org>/back*`), only teams whose slug or name matches are listed. When `<name>` or `<org>/<name>` names no project, `<name>` matches team names instead: exact or partial matches first, then close (fuzzy) matches. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry teams` → `sentry team list`",
   examples: [
     {
@@ -80,6 +75,15 @@ const docs: OrgListCommandDocs = {
     {
       description: "Fetch the next page",
       command: "sentry team list my-org/ -c next",
+    },
+    {
+      description: "Only teams whose slug or name matches a glob",
+      command: "sentry team list 'my-org/back*'",
+    },
+    {
+      description:
+        "Teams named like 'backend' when no such project exists (fuzzy)",
+      command: "sentry team list my-org/backnd",
     },
     { description: "Output as JSON", command: "sentry team list --json" },
   ],

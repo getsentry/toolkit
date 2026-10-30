@@ -1,13 +1,27 @@
 
 
+## Context recovery
+
+If auto-detection cannot find a project, authenticated non-interactive runs show
+one copyable retry example and compact lists of other available organizations
+and `org/project` targets. Choose the project that matches your task; the retry
+keeps your query, period, limit, sort, and output flags. Navigation keywords such as `--cursor next`
+become `--cursor first` because the chosen project may have no saved pagination state;
+raw API cursors are preserved. Suggestions are a bounded sample, with one
+`sentry project list` example to discover other projects. Showing suggestions
+does not save defaults.
+
 ## Search syntax
 
 :::caution[Search syntax]
 Sentry search uses **implicit AND** — space-separated terms are all required.
 **AND/OR operators are not supported** for issue search. Use alternatives:
 - `key:[val1,val2]` — in-list syntax (matches val1 OR val2 for one key)
+- `status:[resolved,ignored]` or `substatus:[regressed,escalating]` — `is:` has no in-list form
 - Run separate queries for different terms
 - `*term*` — wildcard matching
+
+The CLI rewrites same-key ORs to in-lists automatically, including `is:resolved OR is:ignored` → `status:[resolved,ignored]`.
 
 Full syntax reference: [Sentry Search Docs](https://docs.sentry.io/concepts/search/)
 :::
@@ -22,6 +36,31 @@ Use `@latest` and `@most_frequent` to target issues without knowing their ID.
 - **Issue short IDs use uppercase prefixes** — `CLI-G`, not `cli-g`. The CLI tolerates lowercase input in most commands, but agents should prefer the canonical form.
 - **`org/project` targets use slugs, not numeric IDs** — `sentry issue list my-org/6775615880` fails when `6775615880` is a project ID copied from a URL. Run `sentry project list my-org/` to find the slug (e.g. `frontend`).
 - **Prefer auto-detect over guessing slugs** — omit the target when possible; the CLI resolves org/project from DSNs, `.env` files, and your working directory.
+
+## Inspect tag distributions
+
+After opening an issue, compare which releases, servers, or browsers account for
+its events. `issue view` shows tags on the latest event; `issue tags` aggregates
+across the issue's retained events.
+
+The result contains up to **9 top values**, ordered by count. Human output shows
+each value's count and percentage of **all retained events**, including events
+with a missing value. Any remainder appears as "Other values (not shown)";
+percentages are never calculated from just the displayed rows. Retention limits
+apply, so this total can differ from the issue's lifetime event count.
+
+`--environment` selects one environment; omitting it includes all environments.
+This aggregate does **not** support `--period`, `--query`, `--limit`, or cursor
+pagination. Use `issue events` when you need filtered event records. For example,
+after identifying a release, inspect recent events with
+`sentry issue events FRONT-ABC --query 'release:1.2.3' --period 7d`.
+
+JSON preserves `key`, `name`, `totalValues`, and `topValues`, including counts and
+first/last seen timestamps. Values and counts may be `null`; missing data is not
+zero. `--fields` selects top-level fields. To discover tag keys, inspect the
+latest event with `sentry issue view <issue>`; it may not contain every tag used
+by earlier events. A tag with no retained values, or an unknown environment,
+can return a not-found error.
 
 ## Short IDs and organizations
 

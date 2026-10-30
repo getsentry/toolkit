@@ -29,6 +29,7 @@ import {
   getProject,
   listOrganizations,
   listProjects,
+  listProjectsPaginated,
   ORG_FANOUT_CONCURRENCY,
   type ProjectWithOrg,
   resolveOrgDisplayName,
@@ -78,7 +79,7 @@ import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
 import { CONFIG_FILENAME, loadSentryCliRc } from "./sentryclirc.js";
 import { setOrgProjectContext, withTracingSpan } from "./telemetry.js";
-import { isAllDigits } from "./utils.js";
+import { isAllDigits, shellQuote } from "./utils.js";
 
 const log = logger.withTag("resolve-target");
 
@@ -250,6 +251,8 @@ export type ResolveOptions = {
   cwd: string;
   /** Usage hint shown when only one of org/project is provided */
   usageHint?: string;
+  /** Format a retry command for an explicit org/project candidate after detection fails. */
+  formatRecoveryCommand?: (target: string) => string;
   /**
    * Whether an interactive org/project picker may be shown when auto-detection
    * fails. Only consulted by {@link resolveOrgProjectOrGuide}. When omitted, it
@@ -796,7 +799,7 @@ async function findSimilarProjectsAcrossOrgs(
 
     // Deduplicate slugs so fuzzyMatch doesn't waste slots on the same
     // project appearing in multiple orgs.
-    const uniqueSlugs = Array.from(new Set(allProjects.map((p) => p.slug)));
+    const uniqueSlugs = [...new Set(allProjects.map((p) => p.slug))];
     const slugMatches = fuzzyMatch(slug, uniqueSlugs, { maxResults: 5 });
 
     // When a display name is provided (input contained spaces), also
@@ -813,7 +816,7 @@ async function findSimilarProjectsAcrossOrgs(
           nameToSlug.set(p.name, p.slug);
         }
       }
-      const uniqueNames = Array.from(nameToSlug.keys());
+      const uniqueNames = [...nameToSlug.keys()];
       const matchedNames = fuzzyMatch(displayName, uniqueNames, {
         maxResults: 5,
       });
@@ -823,9 +826,7 @@ async function findSimilarProjectsAcrossOrgs(
     }
 
     // Merge slug matches and name matches, preferring slug matches.
-    const mergedSlugs = Array.from(
-      new Set(slugMatches.concat(nameMatchedSlugs)),
-    );
+    const mergedSlugs = [...new Set([...slugMatches, ...nameMatchedSlugs])];
 
     // Expand matched slugs back to org-qualified entries (may include
     // the same slug from multiple orgs — that's correct for suggestions).
@@ -1899,35 +1900,123 @@ async function promptForOrgProject(): Promise<ResolvedTarget | null> {
   return toAccountTarget(org, project, "interactive selection");
 }
 
+/** Bound discovery work and error output when the account has many organizations. */
+const CONTEXT_ORG_LIMIT = 3;
+
+/** Number of explicit project candidates requested from each organization. */
+const CONTEXT_PROJECT_LIMIT = 3;
+
+/** Bounded project suggestions and an optional diagnostic for one organization. */
+type ContextProjectCandidates = {
+  /** Explicit org/project values that the caller may choose. */
+  targets: string[];
+  /** Explains incomplete discovery without claiming the shown targets are exhaustive. */
+  note?: string;
+};
+
+/** Fetch one page of project candidates without turning discovery failures into command failures. */
+async function getContextProjectCandidates(
+  org: string,
+): Promise<ContextProjectCandidates> {
+  try {
+    const { data, nextCursor } = await listProjectsPaginated(org, {
+      perPage: CONTEXT_PROJECT_LIMIT,
+    });
+    const targets = data
+      .slice(0, CONTEXT_PROJECT_LIMIT)
+      .map((project) => `${org}/${project.slug}`);
+    if (nextCursor || data.length > targets.length) {
+      return {
+        targets,
+        note: `More projects are available in '${org}'.`,
+      };
+    }
+    return {
+      targets,
+      note:
+        targets.length === 0
+          ? `No accessible projects were returned for '${org}'.`
+          : undefined,
+    };
+  } catch (error) {
+    log.debug(`Failed to list project candidates for '${org}'`, error);
+    return {
+      targets: [],
+      note: `Could not list projects in '${org}'.`,
+    };
+  }
+}
+
 /**
- * Build an actionable {@link ContextError} for authenticated users whose
- * org/project could not be auto-detected. Lists the accessible organizations so
- * the next command is copy-pasteable, instead of the generic "run org list"
- * guidance shown to logged-out users.
+ * Suggest explicit targets after detection fails, preserving any known org scope.
+ * Discovery is bounded to one project page for each of at most three orgs. The
+ * suggestions never select a target or save defaults, even if only one is shown.
  */
 async function buildAccountContextError(
   usageHint: string,
+  options: Partial<
+    Pick<ResolveOptions, "cwd" | "org" | "formatRecoveryCommand">
+  >,
 ): Promise<ContextError> {
+  let orgs: string[];
   try {
-    const orgs = await listOrganizations();
-    if (orgs.length > 0) {
-      const shown = orgs.slice(0, 10).map((o) => `  ${o.slug}`);
-      const more =
-        orgs.length > shown.length
-          ? `  …and ${orgs.length - shown.length} more`
-          : "";
-      const orgList = [...shown, more].filter(Boolean).join("\n");
-      return new ContextError("Organization and project", usageHint, [
-        `Specify one of your organizations:\n${orgList}`,
-        "List a project: sentry project list <org>/",
-        "Save a default: sentry cli defaults org <slug>",
-      ]);
-    }
+    const scopedOrg =
+      options.org ??
+      (options.cwd ? (await resolveOrg({ cwd: options.cwd }))?.org : undefined);
+    orgs = scopedOrg
+      ? [scopedOrg]
+      : (await listOrganizations()).map((org) => org.slug);
   } catch (error) {
-    log.debug("Failed to list organizations for context error", error);
+    log.debug("Failed to discover organizations for context error", error);
+    return new ContextError("Organization and project", usageHint);
   }
-  // Fall back to the standard auto-detect guidance.
-  return new ContextError("Organization and project", usageHint);
+  if (orgs.length === 0) {
+    return new ContextError("Organization and project", usageHint);
+  }
+
+  const shownOrgs = orgs.slice(0, CONTEXT_ORG_LIMIT);
+  const candidates = await Promise.all(
+    shownOrgs.map(getContextProjectCandidates),
+  );
+  const targets = candidates.flatMap((candidate) => candidate.targets);
+  const alternatives: string[] = [];
+  const [exampleTarget, ...otherTargets] = targets;
+  const exampleOrg = exampleTarget?.split("/")[0] ?? shownOrgs[0];
+  const otherOrgs = shownOrgs.filter((org) => org !== exampleOrg);
+  const recoveryCommand = exampleTarget
+    ? options.formatRecoveryCommand?.(exampleTarget)
+    : undefined;
+  if (recoveryCommand !== undefined) {
+    alternatives.push(`Retry example:\n    ${recoveryCommand}`);
+  }
+  if (otherOrgs.length > 0) {
+    alternatives.push(`Other available orgs: ${otherOrgs.join(", ")}`);
+  }
+  if (recoveryCommand !== undefined) {
+    if (otherTargets.length > 0) {
+      alternatives.push(`Other available projects: ${otherTargets.join(", ")}`);
+    }
+  } else if (targets.length > 0) {
+    alternatives.push(
+      `Choose an explicit target:\n${targets.map((target) => `    ${target}`).join("\n")}`,
+    );
+  }
+  alternatives.push(
+    `List projects example: sentry project list ${shellQuote(`${exampleOrg}/`)}`,
+  );
+  const notes = candidates.flatMap((candidate) =>
+    candidate.note ? [candidate.note] : [],
+  );
+  if (shownOrgs.length < orgs.length) {
+    notes.push(`Showing ${shownOrgs.length} of ${orgs.length} organizations.`);
+    alternatives.push("List all organizations: sentry org list");
+  }
+  return new ContextError(
+    "Organization and project",
+    usageHint,
+    alternatives,
+    notes.length > 0 ? notes.join(" ") : undefined,
+  );
 }
 
 /**
@@ -1938,8 +2027,8 @@ async function buildAccountContextError(
  *
  * 1. Offers an interactive org/project picker (TTY only; saves the choice as a
  *    default), then
- * 2. For authenticated users, throws a {@link ContextError} listing their
- *    accessible organizations, otherwise
+ * 2. For authenticated users, throws a {@link ContextError} with explicit
+ *    project candidates within any known organization scope, otherwise
  * 3. Throws the standard auto-detect {@link ContextError}.
  *
  * Kept separate from {@link resolveOrgAndProject} so callers that mock the
@@ -1951,7 +2040,11 @@ async function buildAccountContextError(
  *   accessible projects.
  */
 export async function guideOrgProjectFailure(
-  options: Pick<ResolveOptions, "usageHint" | "interactive">,
+  options: Pick<
+    ResolveOptions,
+    "usageHint" | "interactive" | "org" | "formatRecoveryCommand"
+  > &
+    Partial<Pick<ResolveOptions, "cwd">>,
 ): Promise<ResolvedTarget> {
   const usageHint = options.usageHint ?? "sentry <command> <org>/<project>";
 
@@ -1963,7 +2056,7 @@ export async function guideOrgProjectFailure(
   }
 
   if (isAuthenticated()) {
-    throw await buildAccountContextError(usageHint);
+    throw await buildAccountContextError(usageHint, options);
   }
   throw new ContextError("Organization and project", usageHint);
 }
@@ -2430,6 +2523,8 @@ export type ResolveProjectBoundTargetsOptions = {
   cwd: string;
   /** Usage hint shown in error messages (e.g. "sentry issue list <org>/<project>"). */
   usageHint: string;
+  /** Format a retry command for an explicit org/project candidate after detection fails. */
+  formatRecoveryCommand?: (target: string) => string;
   /** Request-scoped project-search classification from a dispatcher. */
   projectSearchResolution?: ProjectSearchTargetResolution;
   /**
@@ -2466,6 +2561,7 @@ export async function resolveProjectBoundTargets(
   const {
     cwd,
     usageHint,
+    formatRecoveryCommand,
     projectSearchResolution,
     enrichProjectIds,
     checkIssueShortId,
@@ -2483,7 +2579,13 @@ export async function resolveProjectBoundTargets(
         // Offer an interactive picker (TTY) or an actionable error listing the
         // user's accessible orgs, and let a single-org/single-project account
         // resolve automatically (CLI-3B).
-        result.targets = [await resolveOrgProjectOrGuide({ cwd, usageHint })];
+        result.targets = [
+          await resolveOrgProjectOrGuide({
+            cwd,
+            usageHint,
+            formatRecoveryCommand,
+          }),
+        ];
       }
       if (enrichProjectIds) {
         result.targets = await Promise.all(

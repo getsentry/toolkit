@@ -124,6 +124,93 @@ tester.run("no-silent-catch", plugin.rules["no-silent-catch"], {
   ],
 });
 
+tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
+  valid: [
+    {
+      filename: commands,
+      code: "import { HEX_ID_RE } from './hex-id.js'; parseIdArguments(args, ID_KINDS.trace, options);",
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/id-arguments.ts",
+      code: "parseIdArguments(args, kind, options);",
+    },
+  ],
+  invalid: [
+    {
+      filename: commands,
+      code: "parseSlashSeparatedArg(arg, label, hint);",
+      errors: 1,
+    },
+    {
+      // No command is exempt, not even `event view`, which also takes issues
+      filename: "/repo/packages/cli/src/commands/event/view.ts",
+      code: "parseSlashSeparatedArg(arg, label, hint);",
+      errors: 1,
+    },
+    {
+      filename: commands,
+      code: "const swapped = detectSwappedViewArgs(first, second);",
+      errors: 1,
+    },
+    { filename: commands, code: "HEX_ID_RE.test(value);", errors: 1 },
+    {
+      filename: source,
+      code: "parseIdArguments(args, { label: 'Thing ID', isId }, options);",
+      errors: 1,
+    },
+  ],
+});
+
+tester.run(
+  "require-target-resolution",
+  plugin.rules["require-target-resolution"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "async function* run(flags, target: ReleaseTarget) { const { org } = await target.resolved; }",
+      },
+      {
+        filename: commands,
+        code: "import { parseOrgProjectArg } from './arg-parsing.js'; type Parsed = ReturnType<typeof parseOrgProjectArg>;",
+      },
+      {
+        // Libraries implement the bound positionals
+        filename: source,
+        code: "const parsed = parseOrgProjectArg(target);",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "async function* run(flags, target: ReleaseTarget) { return target.parsed; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "async function* run(flags, issues: IssuesArguments) { return issues.parsed; }",
+        errors: 1,
+      },
+      {
+        // Tagging a raw parser leaves the target for func to parse
+        filename: commands,
+        code: "const org = { parse: withCompletionTarget(ORG_TARGET, String) };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "async function* run(flags, arg) { const parsed = parseOrgProjectArg(arg); }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const org = await resolveOrgOnlyFromArg(arg, cwd, 'alert metrics view');",
+        errors: 1,
+      },
+    ],
+  },
+);
+
 tester.run("no-raw-metadata-queries", plugin.rules["no-raw-metadata-queries"], {
   valid: [
     {
@@ -159,6 +246,14 @@ tester.run(
       },
       {
         filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\nRun `sentry item view` for details.' } });",
+      },
+      {
+        filename: commands,
+        code: "throw new ContextError('Item', 'sentry item view <id>\\n  sentry item list');",
+      },
+      {
+        filename: commands,
         code: "throw new ValidationError('Bad input.\\n\\nExamples:\\n  sentry list');",
       },
       {
@@ -180,6 +275,16 @@ tester.run(
       {
         filename: commands,
         code: "buildCommand({ docs: { fullDescription: 'Manage items.\\n\\n' + '## Examples\\n\\n' + 'sentry item list\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.\\n\\n' + 'Target patterns:\\n' + '  sentry item list <org>/  # all items in org\\n' } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: `Lists items.\\n\\n  sentry item list -c next\\n\\n${note}` } });",
         errors: 1,
       },
     ],

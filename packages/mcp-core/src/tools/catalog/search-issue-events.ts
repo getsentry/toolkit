@@ -239,7 +239,6 @@ export default defineTool({
       issueId,
       query,
       limit: params.limit,
-      sort: sortParam,
       ...timeParams,
     });
 

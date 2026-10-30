@@ -15,6 +15,12 @@ View Sentry logs
 
 List logs from a project
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project-or-trace-id...>` | [&lt;org&gt;/[&lt;project&gt;/]]&lt;trace-id&gt;, &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; |
+
 **Flags:**
 - `-n, --limit <value> - Number of log entries (1-1000) - (default: "100")`
 - `-q, --query <value> - Filter query (e.g., "severity:error", "project:backend", "project:[a,b]")`
@@ -66,11 +72,20 @@ sentry log list my-org/backend -f -q 'severity:error'
 
 # Filter JSON output with jq
 sentry log list --json | jq '.data[] | select(.severity == "error")'
+
+# Filter by trace in an explicit organization
+sentry log list my-org/abc123def456abc123def456abc12345
 ```
 
 ### `sentry log view <org/project/log-id...>`
 
 View details of one or more log entries
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/project/log-id...>` | [&lt;org&gt;/&lt;project&gt;] &lt;log-id&gt; [&lt;log-id&gt;...] - Target (optional) and one or more log IDs |
 
 **Flags:**
 - `-w, --web - Open in browser`
@@ -87,6 +102,9 @@ sentry log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01
 
 # Open in the browser
 sentry log view 968c763c740cfda8b6728f27fb9e9b01 -w
+
+# Find a project across organizations
+sentry log view backend 968c763c740cfda8b6728f27fb9e9b01
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

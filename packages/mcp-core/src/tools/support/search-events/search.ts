@@ -2,6 +2,7 @@ import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
 import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
+import { ApiValidationError } from "../../../api-client";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
@@ -34,6 +35,8 @@ import {
   RECOMMENDED_FIELDS,
   TRACE_METRICS_SAMPLE_IDENTITY_FIELDS,
 } from "./config";
+import { buildDroppedEventsNote } from "./dropped-events-note";
+import { getFieldRecoveryHints } from "./field-hints";
 import {
   formatErrorResults,
   formatLogResults,
@@ -129,7 +132,7 @@ function buildRequestFields(
   return dataset !== "replays" &&
     isMetricsDataset(dataset) &&
     !isAggregateQuery(fields)
-    ? Array.from(new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS]))
+    ? [...new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS])]
     : fields;
 }
 
@@ -139,6 +142,10 @@ function isTraceItemDataset(dataset: PublicEventsDataset | "replays"): boolean {
 
 function hasFields(fields?: string[] | null): fields is string[] {
   return Array.isArray(fields) && fields.length > 0;
+}
+
+function appendHints(message: string, hints: readonly string[]): string {
+  return hints.length > 0 ? `${message}\n\n${hints.join("\n")}` : message;
 }
 
 function formatSearchValue(value: string): string {
@@ -1000,15 +1007,30 @@ async function executeSearchEvents(
     // request shape — fields + orderby — which is not what a timeseries
     // sends (yAxis + interval, no fields/sort). events-timeseries validates
     // the query server-side, so a bad query still surfaces as an API error.
-    const series = await apiService.getEventsTimeSeries({
-      organizationSlug,
-      query: timeSeriesQuery,
-      yAxis: timeSeries.yAxis,
-      interval: timeSeries.interval ?? undefined,
-      projectId,
-      dataset,
-      ...timeParams,
-    });
+    // Fetch drops for the same window in parallel with the series: wall-clock
+    // cost is max(series, drops), not the sum. The note is appended only when
+    // unintentional drops are material.
+    const [series, droppedEventsNote] = await Promise.all([
+      apiService.getEventsTimeSeries({
+        organizationSlug,
+        query: timeSeriesQuery,
+        yAxis: timeSeries.yAxis,
+        interval: timeSeries.interval ?? undefined,
+        projectId,
+        dataset,
+        ...timeParams,
+      }),
+      buildDroppedEventsNote({
+        apiService,
+        organizationSlug,
+        projectId,
+        dataset: dataset as PublicEventsDataset,
+        interval: timeSeries.interval,
+        timeParams,
+        toolAvailable:
+          context.availableToolNames?.has("find_dropped_events") ?? false,
+      }),
+    ]);
     // A series always has buckets, so count the ones with data.
     trackSeerOutcome(
       seerOutcome,
@@ -1030,17 +1052,20 @@ async function executeSearchEvents(
       timeParams.start,
       timeParams.end,
     );
+    const timeSeriesOutput = formatTimeSeriesResults({
+      series,
+      yAxis: timeSeries.yAxis,
+      interval: timeSeries.interval,
+      inputQuery: params.query || timeSeriesQuery,
+      includeExplanation: params.includeExplanation,
+      explanation,
+      timeRange: timeParams,
+      url: statsUrl,
+    });
     return withLeadingNote(
-      formatTimeSeriesResults({
-        series,
-        yAxis: timeSeries.yAxis,
-        interval: timeSeries.interval,
-        inputQuery: params.query || timeSeriesQuery,
-        includeExplanation: params.includeExplanation,
-        explanation,
-        timeRange: timeParams,
-        url: statsUrl,
-      }),
+      droppedEventsNote
+        ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
+        : timeSeriesOutput,
     );
   }
 
@@ -1080,7 +1105,15 @@ async function executeSearchEvents(
     const formatted = formatEventsValidationResults(lastValidation);
     throw new UserInputError(
       formatted
-        ? `Search validation failed:\n${formatted}`
+        ? appendHints(
+            `Search validation failed:\n${formatted}`,
+            getFieldRecoveryHints({
+              dataset,
+              fields: requestFields,
+              sort: sortParam,
+              detail: formatted,
+            }),
+          )
         : "Search validation failed.",
     );
   }
@@ -1092,17 +1125,38 @@ async function executeSearchEvents(
     environment,
   );
 
-  const eventsResponse = await apiService.searchEvents({
-    organizationSlug,
-    query: sentryQuery,
-    fields: finalRequestFields,
-    limit: params.limit,
-    projectId,
-    dataset,
-    sort: sortParam,
-    crossEventQueries: seerTranslation?.crossEventQueries,
-    ...timeParams,
-  });
+  let eventsResponse: Awaited<ReturnType<typeof apiService.searchEvents>>;
+  try {
+    eventsResponse = await apiService.searchEvents({
+      organizationSlug,
+      query: sentryQuery,
+      fields: finalRequestFields,
+      limit: params.limit,
+      projectId,
+      dataset,
+      sort: sortParam,
+      crossEventQueries: seerTranslation?.crossEventQueries,
+      ...timeParams,
+    });
+  } catch (error) {
+    // The validate endpoint misses some errors-dataset rejections, such as
+    // `first_seen()` and sorting by `issue`, so check the final API error too.
+    if (!(error instanceof ApiValidationError)) {
+      throw error;
+    }
+    const hints = getFieldRecoveryHints({
+      dataset,
+      fields: finalRequestFields,
+      sort: sortParam,
+      detail: error.message,
+    });
+    if (hints.length === 0) {
+      throw error;
+    }
+    throw new UserInputError(appendHints(error.toUserMessage(), hints), {
+      cause: error,
+    });
+  }
 
   const { columns: groupByFields, aggregates: aggregateFunctions } =
     getColumnsAndAggregates(fields);

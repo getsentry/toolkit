@@ -90,10 +90,13 @@ jobs:
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release
-        uses: getsentry/craft@v2
+        uses: getsentry/craft@v3
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
           workspace: ${{ steps.release.outputs.workspace }}
           version: ${{ steps.version.outputs.version }}
           force: ${{ inputs.force && 'true' || '' }}
+          # GITHUB_TOKEN above is the release bot token for git/GitHub ops.
+          # AI changelog summaries use the workflow token for Copilot requests.
+          llm_api_key: ${{ github.token }}

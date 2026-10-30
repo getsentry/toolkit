@@ -23,6 +23,7 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   buildBillingUrl,
@@ -71,6 +72,8 @@ export const EXIT = {
   API: 30,
   /** Operation timed out */
   TIMEOUT: 31,
+  /** Rate limited by the Sentry API — wait before retrying */
+  RATE_LIMITED: 32,
 
   // 40–49: Feature / billing (HTTP 402/451 family)
   /** Seer not enabled for the organization */
@@ -209,6 +212,37 @@ export class ApiError extends CliError {
       msg += `\n  ${this.detail}`;
     }
     return msg;
+  }
+}
+
+/**
+ * The Sentry API rejected a request with 429 and the CLI could not wait it
+ * out (the wait exceeds the cap, or retries ran out).
+ *
+ * @param endpoint - API path that was rate limited
+ * @param retryAfterMs - Server-requested wait, when known
+ * @param serverDetail - The API's `detail` message, when present
+ */
+export class RateLimitError extends ApiError {
+  /** Distinct exit code so scripts and agents can back off without parsing stderr. */
+  override readonly exitCode: number = EXIT.RATE_LIMITED;
+  readonly retryAfterMs?: number;
+
+  constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
+    const seconds = Math.max(1, Math.ceil((retryAfterMs ?? 0) / 1000));
+    const wait =
+      retryAfterMs === undefined
+        ? "a few seconds"
+        : `${seconds} second${seconds === 1 ? "" : "s"}`;
+    const advice = `Retry in ${wait}; do not repeat the request before then. Make fewer requests in parallel.`;
+    super(
+      "Rate limited by the Sentry API",
+      429,
+      serverDetail ? `${serverDetail}\n  ${advice}` : advice,
+      endpoint,
+    );
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -812,11 +846,17 @@ export function formatError(error: unknown): string {
  * Get process exit code for an error.
  *
  * @param error - Any thrown value
- * @returns Exit code (from CliError.exitCode or 1 for other errors)
+ * @returns Exit code (from CliError.exitCode, Stricli's `InvalidArgument`
+ *   for an argument error the command wrapper threw, or 1 for other errors)
  */
 export function getExitCode(error: unknown): number {
   if (error instanceof CliError) {
     return error.exitCode;
+  }
+  // `boundArguments` positionals parse in the command wrapper, after
+  // Stricli's scanner; their errors exit like the scanner's
+  if (error instanceof ArgumentScannerError) {
+    return ExitCode.InvalidArgument;
   }
   return 1;
 }

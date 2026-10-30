@@ -15,7 +15,7 @@ import { buildProjectAliasMap } from "../../../lib/alias.js";
 import type { IssueAlertRule } from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
 import { listIssueAlertsPaginated } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import {
   advancePaginationState,
@@ -69,6 +69,7 @@ import {
   resolveProjectBoundTargets,
 } from "../../../lib/resolve-target.js";
 import { buildIssueAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import type { ListCommandTarget } from "../../../lib/target-positional.js";
 import type { ProjectAliasEntry, Writer } from "../../../types/index.js";
 import {
   assertAlertListLimit,
@@ -156,7 +157,7 @@ async function fetchRulesForTarget(
 }
 
 async function resolveWebUrl(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   cwd: string,
 ): Promise<string> {
   if (parsed.type === "explicit") {
@@ -210,7 +211,7 @@ async function resolveWebUrl(
 // Mode handler
 
 type ResolvedTargetsOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
   projectSearchResolution?: ProjectSearchTargetResolution;
@@ -497,15 +498,14 @@ export const listCommand = buildListCommand("alert issues", {
     fullDescription:
       "List issue alert rules for one or more Sentry projects.\n\n" +
       "Issue alerts trigger notifications when error events match conditions.\n\n" +
-      "Target patterns:\n" +
-      "  sentry alert issues list                     # auto-detect from DSN or config\n" +
-      "  sentry alert issues list <org>/<project>     # explicit org and project\n" +
-      "  sentry alert issues list <org>/              # all projects in org\n" +
-      "  sentry alert issues list <project>           # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows alert rules from all detected projects.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
     examples: [
+      {
+        description: "List issue alert rules (project auto-detected)",
+        command: "sentry alert issues list",
+      },
       {
         description: "List issue alert rules for a project",
         command: "sentry alert issues list my-org/my-project",
@@ -513,6 +513,15 @@ export const listCommand = buildListCommand("alert issues", {
       {
         description: "Filter rules by name",
         command: 'sentry alert issues list my-org/my-project --query "spike"',
+      },
+      {
+        description:
+          "List issue alert rules for all projects in an organization",
+        command: "sentry alert issues list my-org/",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry alert issues list frontend",
       },
     ],
   },
@@ -545,9 +554,13 @@ export const listCommand = buildListCommand("alert issues", {
     },
     aliases: { ...LIST_BASE_ALIASES, w: "web", q: "query" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
-    const parsed = parseOrgProjectArg(target);
+    const { parsed } = await target.resolved;
     assertAlertListLimit(flags.limit);
 
     if (flags.web) {

@@ -26,32 +26,12 @@
  * const issues = IssueListSchema.parse(await response.json());
  * // TypeScript now knows the exact shape of issues
  * ```
- *
- * @example Error Handling
- * ```typescript
- * const { data, success, error } = ApiErrorSchema.safeParse(response);
- * if (success) {
- *   throw new ApiError(data.detail, statusCode);
- * }
- * ```
  */
 import type {
   SentryIssueIdentity,
   SentryNamedResource,
 } from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
-
-/**
- * Schema for Sentry API error responses.
- *
- * Uses .passthrough() to allow additional fields that may be present
- * in different error scenarios.
- */
-export const ApiErrorSchema = z
-  .object({
-    detail: z.string(),
-  })
-  .passthrough();
 
 export const UserSchema = z
   .object({
@@ -830,6 +810,8 @@ export const CommittersResponseSchema = z.object({
 export const IssueActivitySchema = z
   .object({
     id: ApiResourceIdSchema,
+    commentId: ApiResourceIdSchema.nullable().optional(),
+    source: z.string().nullable().optional(),
     type: z.string().nullable().optional(),
     dateCreated: z.string().datetime().nullable().optional(),
     user: ApiActorSchema.nullable().optional(),

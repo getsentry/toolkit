@@ -26,9 +26,15 @@ sentry auth list
 
 Authenticate with Sentry
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<email>]` | Email of the account to add or log in to again (&lt;email&gt;:&lt;server&gt; also sets --url); the login is refused if you approve it as someone else |
+
 **Flags:**
 - `--token <value> - Authenticate using an API token instead of OAuth`
-- `--timeout <value> - Timeout for OAuth flow in seconds (default: 900) - (default: "900")`
+- `--timeout <value> - Timeout for OAuth flow in seconds - (default: "900")`
 - `--force - Replace the stored login for this server without prompting, instead of adding another account`
 - `--url <value> - Sentry instance URL to authenticate against (e.g. https://sentry.example.com). Required for self-hosted; defaults to SaaS (https://sentry.io).`
 - `--read-only - Request only read-only OAuth scopes (project:read, org:read, event:read, member:read, team:read). Useful for handing tokens to AI agents or CI jobs that should not be able to mutate Sentry state.`
@@ -68,6 +74,12 @@ sentry auth login jane@example.com:sentry.example.com
 ### `sentry auth logout <account...>`
 
 Log out of Sentry
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<account...>` | Accounts to log out of (email, username, user ID, or account ID; comma-separated), or 'all' |
 
 **Flags:**
 - `--url <value> - Only match accounts on this server (disambiguates the same email on several servers)`
@@ -140,6 +152,12 @@ sentry auth status --show-token
 ### `sentry auth switch [<account>]`
 
 Switch the active account
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<account>]` | Email, username, user ID, or account ID to switch to |
 
 **Flags:**
 - `--url <value> - Only consider accounts on this server (disambiguates the same email on several servers)`

@@ -1,16 +1,22 @@
 import type { SentryContext } from "../../../context.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+import {
+  getIssueAlertWorkflowDocument,
+  getMetricAlertRule,
+} from "../../../lib/api-client.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
-import { CommandOutput } from "../../../lib/formatters/output.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
-import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import { ApiError } from "../../../lib/errors.js";
 import {
-  type MetricRuleResolution,
-  parseMetricRuleArg,
-  resolveMetricAlertRule,
-} from "./rule-resolve.js";
-import { metricAlertStatusLabel } from "./status.js";
+  formatMetricAlertView,
+  type MetricAlertViewResult,
+} from "../../../lib/formatters/alerts.js";
+import { filterFields } from "../../../lib/formatters/json.js";
+import { CommandOutput } from "../../../lib/formatters/output.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
+import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import { isAllDigits } from "../../../lib/utils.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 
 const USAGE_HINT = "sentry alert metrics view <org>/<rule-id-or-name>";
 
@@ -20,31 +26,15 @@ type ViewFlags = {
   readonly fields?: string[];
 };
 
-type MetricAlertViewResult = MetricRuleResolution;
-
-function formatMetricAlertView(data: MetricRuleResolution): string {
-  const { orgSlug, rule } = data;
-  const status = metricAlertStatusLabel(rule.status);
-  return [
-    `Metric alert rule in ${orgSlug}:`,
-    "",
-    `ID:           ${rule.id}`,
-    `Name:         ${rule.name}`,
-    `Status:       ${status}`,
-    `Dataset:      ${rule.dataset}`,
-    `Aggregate:    ${rule.aggregate}`,
-    `Query:        ${rule.query || "(none)"}`,
-    `Time Window:  ${rule.timeWindow}m`,
-    `Projects:     ${rule.projects.join(", ") || "(all)"}`,
-    `Environment:  ${rule.environment ?? "all"}`,
-    `Owner:        ${rule.owner ?? "none"}`,
-  ].join("\n");
-}
-
 export const viewCommand = buildCommand({
   docs: {
     brief: "View a metric alert rule",
-    fullDescription: "View a single metric alert rule by ID or name.",
+    fullDescription:
+      "View a metric alert rule by ID or name, including detection settings, " +
+      "threshold conditions, and linked notification workflows.\n\n" +
+      "JSON preserves native config, conditionGroup, workflowIds, and workflow " +
+      "documents. Workflows that cannot be read (403/404) are listed in " +
+      "workflowErrors. This shows current configuration, not delivery history.",
     examples: [
       {
         description:
@@ -59,24 +49,29 @@ export const viewCommand = buildCommand({
         description: "View by name",
         command: "sentry alert metrics view my-org/'P95 latency alert'",
       },
+      {
+        description: "Inspect native thresholds and notification workflows",
+        command: "sentry alert metrics view my-org/12345 --json",
+      },
     ],
   },
   output: {
     human: formatMetricAlertView,
-    jsonTransform: (data: MetricAlertViewResult) => ({
-      ...data.rule,
-      org: data.orgSlug,
-    }),
+    jsonTransform: (data: MetricAlertViewResult, fields) => {
+      const result = {
+        ...data.rule,
+        org: data.orgSlug,
+        workflows: data.workflows,
+        workflowErrors: data.workflowErrors,
+      };
+      return fields?.length ? filterFields(result, fields) : result;
+    },
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Metric alert rule ID or name",
-          parse: String,
-        },
+        metricRuleParameter(USAGE_HINT, "Metric alert rule ID or name"),
       ],
     },
     flags: {
@@ -88,10 +83,13 @@ export const viewCommand = buildCommand({
     },
     aliases: { w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
 
     if (flags.web && parsed.type === "org-all") {
       await openInBrowser(
@@ -101,11 +99,7 @@ export const viewCommand = buildCommand({
       return;
     }
 
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics view",
-    );
+    const org = await resolveOrgOnlyTarget(parsed, cwd, "alert metrics view");
 
     if (flags.web) {
       await openInBrowser(buildMetricAlertsUrl(org), "metric alert rules");
@@ -113,6 +107,35 @@ export const viewCommand = buildCommand({
     }
 
     const result = await resolveMetricAlertRule([org], ref, USAGE_HINT);
-    yield new CommandOutput(result);
+    // Name resolution uses the compact list projection; inspect the detail
+    // document so it has the same conditions and links as an ID lookup.
+    const rule = isAllDigits(ref)
+      ? result.rule
+      : await getMetricAlertRule(result.orgSlug, result.rule.id);
+    const data: MetricAlertViewResult = {
+      orgSlug: result.orgSlug,
+      rule,
+      workflows: [],
+      workflowErrors: [],
+    };
+    for (const id of new Set(rule.workflowIds ?? [])) {
+      try {
+        data.workflows.push(
+          await getIssueAlertWorkflowDocument(result.orgSlug, id),
+        );
+      } catch (error) {
+        // A missing or inaccessible link must not hide the readable detector
+        // or be mistaken for an alert with no notification configuration.
+        if (
+          error instanceof ApiError &&
+          (error.status === 403 || error.status === 404)
+        ) {
+          data.workflowErrors.push({ id, status: error.status });
+        } else {
+          throw error;
+        }
+      }
+    }
+    yield new CommandOutput(data);
   },
 });

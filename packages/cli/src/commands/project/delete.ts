@@ -14,8 +14,8 @@
  * Safety measures:
  * - Uses `buildDeleteCommand` — auto-injects `--yes`/`--force`/`--dry-run`
  *   flags and enforces the non-interactive guard before `func()` runs
- * - No auto-detect mode: `buildDeleteCommand` marks the target destructive, so
- *   `target.resolved` rejects an omitted target
+ * - No auto-detect mode: `buildDeleteCommand` marks the command destructive,
+ *   so an omitted target fails before `func()` runs
  * - Type-out confirmation via `confirmByTyping` (unless --yes/--force)
  */
 

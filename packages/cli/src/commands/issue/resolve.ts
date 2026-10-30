@@ -31,7 +31,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryIssue } from "../../types/index.js";
 import { resolveCommitSpec } from "./resolve-commit-spec.js";
-import { issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
 
 const log = logger.withTag("issue.resolve");
 
@@ -145,7 +145,7 @@ export const resolveCommand = buildCommand({
     jsonTransform,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND }),
     flags: {
       in: {
         kind: "parsed",
@@ -158,15 +158,11 @@ export const resolveCommand = buildCommand({
       i: "in",
     },
   },
-  async *func(this: SentryContext, flags: ResolveFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: ResolveFlags, target: IssueTarget) {
     const { cwd } = this;
     const parsed = parseResolveSpec(flags.in);
 
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND,
-    });
+    const { org, issue } = await target.resolved;
 
     // Static specs (release / next-release / omitted) are ready to send.
     // Commit specs need git + Sentry-repo lookup before they become a

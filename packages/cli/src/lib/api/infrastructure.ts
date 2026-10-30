@@ -9,13 +9,23 @@
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
   SentryApiError,
 } from "@sentry/api";
+import { readErrorResponse } from "@sentry/toolkit-core/api-client/response";
 import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
+import {
+  API_MAX_PER_PAGE,
+  decodePageCursor as decodeCursorPosition,
+  fetchAllPages as fetchEveryPage,
+  type FetchAllPagesFailure,
+  type PagePosition,
+  paginate as paginateFrom,
+} from "@sentry/toolkit-core/api-client/pagination";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
@@ -25,12 +35,7 @@ import {
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getEnv } from "../env.js";
-import {
-  ApiError,
-  AuthError,
-  stringifyUnknown,
-  ValidationError,
-} from "../errors.js";
+import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -210,6 +215,11 @@ export type ApiRequestOptions<T = unknown> = {
   credential?: CredentialContext;
   /** Manually validate each redirect before forwarding credentials. */
   validatedRedirects?: boolean;
+  /**
+   * Retry transient failures even for writes. Only for requests the server
+   * dedupes (see `idempotent` in sentry-client.ts).
+   */
+  idempotent?: boolean;
 };
 
 /**
@@ -399,12 +409,20 @@ export const MAX_PAGINATION_PAGES = Math.max(
 );
 
 /**
- * Sentry API's maximum items per page.
- * Some endpoints silently cap larger `per_page` values; others (org project
- * list) return 400. Always send at most this many and auto-paginate for
- * larger `--limit`s via {@link paginate}.
+ * Sentry API's maximum items per page. Always send at most this many and
+ * auto-paginate for larger `--limit`s via {@link paginate}.
  */
-export const API_MAX_PER_PAGE = 100;
+export { API_MAX_PER_PAGE };
+
+export {
+  consumePage,
+  type PagePosition,
+} from "@sentry/toolkit-core/api-client/pagination";
+
+/** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
+export function decodePageCursor(raw: string | undefined): PagePosition {
+  return decodeCursorPosition(raw, (message) => logger.warn(message));
+}
 
 /**
  * Maximum concurrent API requests when fanning out across organizations or regions.
@@ -482,75 +500,14 @@ export async function autoPaginate<T>(
   return { data: allRows.slice(0, limit) };
 }
 
-/** Marks cursors produced by {@link paginate}; Sentry cursors never use it. */
-const PAGE_CURSOR_PREFIX = "cli1~";
-
-/**
- * Where a {@link paginate} walk resumes: the server cursor that fetches the
- * page, the page size it must be fetched with, and how many of that page's
- * rows were already returned.
- */
-type PagePosition = {
-  cursor: string | undefined;
-  perPage: number;
-  skip: number;
-};
-
-function encodePageCursor({ cursor, perPage, skip }: PagePosition): string {
-  return `${PAGE_CURSOR_PREFIX}${perPage}~${skip}~${cursor ?? ""}`;
-}
-
-/**
- * Decode a cursor from {@link paginate}, or treat anything else as a raw
- * server cursor (older stored cursors, or one pasted from an API response).
- */
-function decodePageCursor(
-  raw: string | undefined,
-): Partial<PagePosition> & { cursor: string | undefined } {
-  if (!raw?.startsWith(PAGE_CURSOR_PREFIX)) {
-    return { cursor: raw };
-  }
-  const [perPage, skip, ...server] = raw
-    .slice(PAGE_CURSOR_PREFIX.length)
-    .split("~");
-  const position = {
-    perPage: Number(perPage),
-    skip: Number(skip),
-    cursor: server.join("~") || undefined,
-  };
-  if (
-    !Number.isInteger(position.perPage) ||
-    position.perPage < 1 ||
-    position.perPage > API_MAX_PER_PAGE ||
-    !Number.isInteger(position.skip) ||
-    position.skip < 0
-  ) {
-    throw new ValidationError(`Invalid pagination cursor '${raw}'.`, "cursor");
-  }
-  return position;
-}
-
 /**
  * Fetch up to `limit` rows and a cursor that resumes after the last one.
  *
  * This is the only supported way to build a limit-bounded list; the
- * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops. It
- * owns the decisions those loops kept getting wrong (#1458, #1608):
- *
- * - Every request of a walk, including later `-c next` calls with a different
- *   `--limit`, uses the `per_page` of its first request. Sentry's page-number
- *   paginators (`OffsetPaginator`, used by projects, teams, members,
- *   repositories, and dashboard revisions) put the page size in the cursor
- *   (`<per_page>:<page>:<is_prev>`), and pairing it with another `per_page`
- *   reads the wrong window and silently skips rows.
- * - The returned cursor always resumes at the first row the caller has not
- *   received. When a call stops inside a page (a smaller `--limit`, or a
- *   server that ignored `per_page`), the cursor refetches that page and skips
- *   the rows already returned.
- *
- * Returned cursors are opaque CLI cursors; pass them back through this
- * function, never directly to an API request. Raw server cursors are accepted
- * as a starting point.
+ * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
+ * (#1458, #1608). Page sizing and resume-safe cursors live in
+ * `@sentry/toolkit-core/api-client/pagination`, shared with the MCP; this wrapper sets
+ * the CLI's page cap and default limit and logs the CLI's warnings.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
  * must send `perPage` as the request's `per_page` unchanged.
@@ -568,52 +525,35 @@ export async function paginate<T>(
   ) => Promise<PaginatedResponse<T[]>>,
   defaultLimit = 10,
 ): Promise<PaginatedResponse<T[]>> {
-  const limit = options.limit ?? defaultLimit;
-  const start = decodePageCursor(options.cursor);
-  const perPage =
-    start.perPage ?? Math.max(1, Math.min(limit, API_MAX_PER_PAGE));
-  let cursor = start.cursor;
-  let skip = start.skip ?? 0;
-  const rows: T[] = [];
-
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
-    const { data, nextCursor } = await fetchPage(perPage, cursor);
-    const unseen = data.slice(skip);
-    const remaining = limit - rows.length;
-
-    if (unseen.length > remaining) {
-      rows.push(...unseen.slice(0, remaining));
-      return {
-        data: rows,
-        nextCursor: encodePageCursor({
-          cursor,
-          perPage,
-          skip: skip + remaining,
-        }),
-      };
-    }
-    rows.push(...unseen);
-    if (!nextCursor) {
-      return { data: rows };
-    }
-    cursor = nextCursor;
-    skip = 0;
-    if (rows.length === limit) {
-      break;
-    }
-  }
-
-  if (rows.length < limit) {
+  const { data, nextCursor, stoppedAtPageCap } = await paginateFrom(
+    {
+      limit: options.limit ?? defaultLimit,
+      cursor: options.cursor,
+      maxPages: MAX_PAGINATION_PAGES,
+      warn: (message) => logger.warn(message),
+    },
+    fetchPage,
+  );
+  if (stoppedAtPageCap) {
     logger.warn(
-      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${rows.length} items). ` +
+      `Pagination limit reached (${MAX_PAGINATION_PAGES} pages, ${data.length} items). ` +
         "Use the returned cursor to continue.",
     );
   }
-  return {
-    data: rows,
-    nextCursor: encodePageCursor({ cursor, perPage, skip: 0 }),
-  };
+  return nextCursor === undefined ? { data } : { data, nextCursor };
 }
+
+/** Error message for each way {@link fetchAllPages} can fail. */
+const FETCH_ALL_PAGES_ERRORS: Record<
+  FetchAllPagesFailure,
+  (context: string) => string
+> = {
+  "invalid-page": (context) => `Unexpected response format when ${context}`,
+  "repeated-cursor": (context) =>
+    `Pagination repeated a cursor when ${context}`,
+  "page-cap": (context) =>
+    `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when ${context}`,
+};
 
 /**
  * Fetch and validate every page of a list endpoint, or fail.
@@ -634,29 +574,18 @@ export async function fetchAllPages<T>(
   schema: GenericSchema<unknown, T[]>,
   context: string,
 ): Promise<T[]> {
-  const items: T[] = [];
-  const seen = new Set<string>();
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
-    const { data, nextCursor } = await fetchPage(cursor);
-    const parsed = safeParse(schema, data);
-    if (!parsed.success) {
-      throw new ApiError(`Unexpected response format when ${context}`, 0);
-    }
-    items.push(...parsed.output);
-    if (!nextCursor) {
-      return items;
-    }
-    if (seen.has(nextCursor)) {
-      throw new ApiError(`Pagination repeated a cursor when ${context}`, 0);
-    }
-    seen.add(nextCursor);
-    cursor = nextCursor;
-  }
-  throw new ApiError(
-    `Pagination exceeded ${MAX_PAGINATION_PAGES} pages when ${context}`,
-    0,
+  const result = await fetchEveryPage(
+    fetchPage,
+    (data) => {
+      const parsed = safeParse(schema, data);
+      return parsed.success ? parsed.output : undefined;
+    },
+    MAX_PAGINATION_PAGES,
   );
+  if (!result.ok) {
+    throw new ApiError(FETCH_ALL_PAGES_ERRORS[result.reason](context), 0);
+  }
+  return result.items;
 }
 
 /**
@@ -682,11 +611,13 @@ export async function apiRequestToRegion<T>(
     schema,
     credential,
     validatedRedirects,
+    idempotent,
   } = options;
   const config = getSdkConfig(regionUrl, {
     credential,
     validatedRedirects,
     bufferResponseBody: true,
+    idempotent,
   });
 
   const endpointWithParams = appendSearchParams(endpoint, params);
@@ -785,25 +716,20 @@ async function throwRawApiError(
   response: Response,
   endpoint: string,
 ): Promise<never> {
+  const body = await readErrorResponse(response);
   let detail: string | undefined;
-  try {
-    const text = await response.text();
-    try {
-      const parsed = JSON.parse(text) as { detail?: string };
-      // Enriched statuses (403, 401) pass undefined when there is no
-      // usable string detail so the enrichment renders without a noisy
-      // `{"detail":null}` prefix. Other statuses get the full JSON as
-      // a debug aid.
-      if (typeof parsed.detail === "string") {
-        detail = parsed.detail;
-      } else if (response.status !== 403 && response.status !== 401) {
-        detail = JSON.stringify(parsed);
-      }
-    } catch {
-      detail = text || undefined;
-    }
-  } catch {
+  if (body.text === undefined) {
     detail = response.statusText;
+  } else if (body.parseError !== undefined) {
+    detail = body.text || undefined;
+  } else if (body.detail !== undefined) {
+    detail = body.detail;
+  } else if (response.status !== 403 && response.status !== 401) {
+    // Enriched statuses (403, 401) pass undefined when there is no
+    // usable string detail so the enrichment renders without a noisy
+    // `{"detail":null}` prefix. Other statuses get the full JSON as
+    // a debug aid.
+    detail = JSON.stringify(body.json);
   }
   // Attach a small allowlisted subset of response headers to the Sentry
   // event as context. This lets us distinguish Sentry-app 4xx/5xx (which
@@ -925,8 +851,56 @@ export function isTextualContentType(contentType: string | null): boolean {
   return false;
 }
 
+/** Options for a raw request, retaining the CLI's transport and body policies. */
+type RawApiRequestOptions = ApiRequestOptions & {
+  /** Explicit caller headers, before authentication and proxy headers. */
+  headers?: Record<string, string>;
+  /** Caller-selected Sentry origin or instance prefix, checked at dispatch. */
+  baseUrl?: string;
+};
+
+/** A request snapshot and the CLI transport that will authenticate it. */
+export type PreparedRawApiRequest = {
+  /** SDK-prepared URL, headers, method and body; single-use when sent. */
+  request: Request;
+  /** Authenticated transport, including raw response buffering and host checks. */
+  fetch: ReturnType<typeof getSdkConfig>["fetch"];
+};
+
 /**
- * Make a raw API request that returns full response details.
+ * Prepare a raw request without fetching or refreshing credentials.
+ * Existing params retain append semantics; query overrides use the SDK's
+ * replacement semantics for decoded page cursors and page sizes.
+ */
+export async function prepareRawApiRequest(
+  endpoint: string,
+  options: RawApiRequestOptions = {},
+  query?: Record<string, unknown>,
+): Promise<PreparedRawApiRequest> {
+  const { method = "GET", body, params, headers, baseUrl } = options;
+  const config = baseUrl
+    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
+    : getDefaultSdkConfig({ bufferResponseBody: true });
+  const isStringBody = typeof body === "string";
+  const request = await createSentryClient(config).client.prepareRequest({
+    method,
+    url: buildSentryApiUrl("", appendSearchParams(endpoint, params)),
+    query,
+    body,
+    headers: isStringBody ? { "Content-Type": null, ...headers } : headers,
+    ...(isStringBody ? { bodySerializer: null } : {}),
+  });
+  // Raw requests honor an explicit Content-Type even without a body; the SDK
+  // otherwise removes it for bodyless operations and empty serialized bodies.
+  const contentType = new Headers(headers).get("content-type");
+  if (contentType !== null) {
+    request.headers.set("content-type", contentType);
+  }
+  return { request, fetch: config.fetch };
+}
+
+/**
+ * Send a prepared or endpoint-based raw request and return full response details.
  * Unlike apiRequest, this does not throw on non-2xx responses.
  * Used by the 'sentry api' command for direct API access.
  *
@@ -934,69 +908,26 @@ export function isTextualContentType(contentType: string | null): boolean {
  * ({@link isTextualContentType}). Non-textual bodies are returned as
  * `Uint8Array` so binary downloads stay byte-for-byte intact.
  *
- * @param endpoint - API endpoint path (e.g., "/organizations/")
- * @param options - Request options including method, body, params, custom headers, and optional trusted base URL
+ * @param endpoint - API endpoint path or the prepared request used for its preview
+ * @param options - Options used when preparing an endpoint-based request
  * @returns Response status, status text, headers, and parsed body
  * @throws {AuthError} On authentication failure
  * @throws {HostScopeError} Before credentials are attached to an untrusted origin
  */
 export async function rawApiRequest(
-  endpoint: string,
-  options: ApiRequestOptions & {
-    headers?: Record<string, string>;
-    /**
-     * Sentry instance or regional base URL. The authenticated fetch rejects
-     * origins outside the active token's trust scope before adding credentials.
-     */
-    baseUrl?: string;
-  } = {},
+  endpoint: string | PreparedRawApiRequest,
+  options: RawApiRequestOptions = {},
 ): Promise<{
   status: number;
   statusText: string;
   headers: Headers;
   body: unknown;
 }> {
-  const {
-    method = "GET",
-    body,
-    params,
-    headers: customHeaders = {},
-    baseUrl,
-  } = options;
-
-  // Both configs share createAuthenticatedFetch(), whose prepareHeaders()
-  // enforces isRequestOriginTrusted() before attaching Authorization.
-  const config = baseUrl
-    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true });
-
-  const endpointWithParams = appendSearchParams(endpoint, params);
-  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
-
-  // Build request headers and body.
-  // String bodies: no Content-Type unless the caller explicitly provides one.
-  // Object bodies: application/json (auto-stringified).
-  const isStringBody = typeof body === "string";
-  const hasContentType = Object.keys(customHeaders).some(
-    (k) => k.toLowerCase() === "content-type",
-  );
-
-  const headers: Record<string, string> = { ...customHeaders };
-  if (!(isStringBody || hasContentType) && body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  let requestBody: string | undefined;
-  if (body !== undefined) {
-    requestBody = isStringBody ? body : JSON.stringify(body);
-  }
-
-  const fetchFn = config.fetch;
-  const response = await fetchFn(url, {
-    method,
-    headers,
-    body: requestBody,
-  });
+  const prepared =
+    typeof endpoint === "string"
+      ? await prepareRawApiRequest(endpoint, options)
+      : endpoint;
+  const response = await prepared.fetch(prepared.request);
 
   const contentType = response.headers.get("content-type");
   let responseBody: unknown;

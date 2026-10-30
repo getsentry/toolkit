@@ -15,6 +15,12 @@ Query aggregate event data (Explore)
 
 Query aggregate event data (Explore)
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<target>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-F, --field <value>... - API field or aggregate (repeatable). E.g., title, "count()", "p50(span.duration)"`
 - `-m, --metric <value> - Metric name for --dataset metrics. Auto-resolves type/unit via API.`
@@ -23,7 +29,8 @@ Query aggregate event data (Explore)
 - `-q, --query <value> - Search query (Sentry search syntax)`
 - `-s, --sort <value> - Sort field (prefix with - for desc, e.g., "-count()")`
 - `-e, --environment <value>... - Environment filter (repeatable, comma-separated)`
-- `-n, --limit <value> - Number of rows (1-1000) - (default: "25")`
+- `-n, --limit <value> - Number of table rows (1-1000, default: 25)`
+- `-b, --time-series <value> - Query time series (default: auto; optional bucket duration, e.g., 15m)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "24h")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
@@ -49,11 +56,26 @@ sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period
 # Filter by error type (combined with the project filter)
 sentry explore my-org/cli -F title -F "count()" -q "error.type:TypeError" --period 1h
 
+# Combine span filters while keeping the project scope
+sentry explore my-org/cli --dataset spans -F "count()" -q "span.op:http.client OR span.status:internal_error"
+
+# Count a metric only for a matching release
+sentry explore my-org/ --dataset metrics -F 'count_if(`release:example`,value,request_duration,distribution,none)'
+
 # Span operation latency
 sentry explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.duration)" --dataset spans --period 1h
 
 # Top spans by count
 sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"
+
+# Error counts in 15-minute buckets over the last hour
+sentry explore my-org/cli --time-series 15m --period 1h
+
+# Latency over time with automatic bucket duration, as JSON
+sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json
+
+# A metric over time using its discovered type and unit
+sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h
 
 # Sum a custom metric (e.g., LLM token usage) across an organization
 sentry explore my-org/ -m llm.token_usage --dataset metrics --period 7d

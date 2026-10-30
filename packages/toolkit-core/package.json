@@ -47,9 +47,13 @@
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"
     },
-    "./search-syntax": {
-      "types": "./src/search-syntax.ts",
-      "default": "./src/search-syntax.ts"
+    "./response-cache/codec": {
+      "types": "./src/response-cache/codec.ts",
+      "default": "./src/response-cache/codec.ts"
+    },
+    "./search-query": {
+      "types": "./src/search-query.ts",
+      "default": "./src/search-query.ts"
     },
     "./sentry-host": {
       "types": "./src/sentry-host.ts",
@@ -58,17 +62,33 @@
     "./sentry-origin": {
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
+    },
+    "./api-client/response-cache": {
+      "types": "./src/api-client/response-cache/index.ts",
+      "default": "./src/api-client/response-cache/index.ts"
+    },
+    "./api-client/*": {
+      "types": "./src/api-client/*.ts",
+      "default": "./src/api-client/*.ts"
     }
   },
   "scripts": {
-    "generate": "tsx script/generate-parsers.ts",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc --noEmit && tsc -p tsconfig.browser.json"
+  },
+  "dependencies": {
+    "@sentry/api": "catalog:",
+    "@sentry/search-syntax": "catalog:",
+    "@standard-schema/spec": "1.1.0",
+    "http-cache-semantics": "^4.2.0"
   },
   "devDependencies": {
-    "peggy": "^5.1.0",
+    "@types/http-cache-semantics": "^4.2.0",
+    "fast-check": "^4.8.0",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "valibot": "^1.4.2",
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

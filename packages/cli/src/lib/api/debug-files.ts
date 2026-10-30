@@ -275,7 +275,11 @@ async function postAssemble(
   const { data } = await apiRequestToRegion<DifAssembleResponse>(
     regionUrl,
     endpoint,
-    { method: "POST", body, schema: DifAssembleResponseSchema },
+    {
+      method: "POST",
+      body,
+      schema: DifAssembleResponseSchema,
+    },
   );
   return data;
 }

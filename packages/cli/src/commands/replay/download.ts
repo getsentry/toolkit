@@ -19,7 +19,6 @@ import {
   formatReplayDownloadResult,
   type ReplayDownloadData,
 } from "../../lib/formatters/replay.js";
-import { validateHexId } from "../../lib/hex-id.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
@@ -31,9 +30,12 @@ import {
   rrwebDurationMs,
   toRRWebEvents,
 } from "../../lib/replay-rrweb.js";
-import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
 import type { ReplayDetails } from "../../types/index.js";
-import { parsePositionalArgs, validateReplayProjectScope } from "./view.js";
+import {
+  type ReplayArguments,
+  replayArguments,
+  validateReplayProjectScope,
+} from "./view.js";
 
 type DownloadFlags = {
   readonly output?: string;
@@ -81,14 +83,7 @@ export const downloadCommand = buildCommand({
     human: formatReplayDownloadResult,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "replay-id-or-url",
-        brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
-        parse: String,
-      },
-    },
+    positional: replayArguments("download", USAGE_HINT),
     flags: {
       output: {
         kind: "parsed",
@@ -101,21 +96,16 @@ export const downloadCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, o: "output" },
   },
-  async *func(this: SentryContext, flags: DownloadFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: DownloadFlags,
+    target: ReplayArguments,
+  ) {
     applyFreshFlag(flags);
     const { cwd } = this;
 
-    const parsedArgs = parsePositionalArgs(args, USAGE_HINT);
-    if (parsedArgs.warning) {
-      log.warn(parsedArgs.warning);
-    }
-
-    const replayId = validateHexId(parsedArgs.replayId, "replay ID");
-    const resolved = await resolveOrgOptionalFromArg(
-      parsedArgs.targetArg,
-      cwd,
-      "replay download",
-    );
+    const resolved = await target.resolved;
+    const { replayId } = resolved;
 
     let replay: ReplayDetails;
     try {

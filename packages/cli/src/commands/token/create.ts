@@ -8,9 +8,8 @@
 import type { SentryContext } from "../../context.js";
 import { createOrgAuthToken } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
+import { ORG_TARGET } from "../../lib/completion-target.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
-import { ContextError } from "../../lib/errors.js";
 import {
   escapeMarkdownInline,
   mdKvTable,
@@ -19,7 +18,11 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import {
+  type BoundPositional,
+  boundPositional,
+} from "../../lib/positional-parse.js";
+import { resolveOrgInput } from "../../lib/target-positional.js";
 import type { OrgAuthToken } from "../../types/index.js";
 import {
   CREATE_SCOPES,
@@ -39,6 +42,12 @@ type CreateFlags = {
 type CreateResult =
   | { dryRun: true; org: string; name: string }
   | (OrgAuthToken & { dryRun?: false; org: string });
+
+/** A token name bound to the organization where it will be created. */
+type TokenCreateTarget = BoundPositional<
+  ReturnType<typeof parseOrgScopedArg>,
+  { readonly name: string; readonly org: string }
+>;
 
 function formatTokenCreated(result: CreateResult): string {
   if (result.dryRun) {
@@ -97,7 +106,18 @@ export const createCommand = buildCommand({
         {
           placeholder: "org/name",
           brief: "[<org>/]<name> - Name of the new token",
-          parse: parseOrgTarget,
+          parse: boundPositional(
+            ORG_TARGET,
+            (raw) => parseOrgScopedArg(raw, "Token name", USAGE_HINT),
+            async ({ value: name, orgSlug }, context: SentryContext) => {
+              const { org } = await resolveOrgInput(
+                { org: orgSlug },
+                context.cwd,
+                USAGE_HINT,
+              );
+              return { name, org };
+            },
+          ),
         },
       ],
     },
@@ -106,17 +126,12 @@ export const createCommand = buildCommand({
     },
     aliases: { ...DRY_RUN_ALIASES },
   },
-  async *func(this: SentryContext, flags: CreateFlags, target: string) {
-    const { value: name, orgSlug } = parseOrgScopedArg(
-      target,
-      "Token name",
-      USAGE_HINT,
-    );
-    const resolved = await resolveOrg({ org: orgSlug, cwd: this.cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
-    }
-    const { org } = resolved;
+  async *func(
+    this: SentryContext,
+    flags: CreateFlags,
+    target: TokenCreateTarget,
+  ) {
+    const { name, org } = await target.resolved;
 
     if (flags["dry-run"]) {
       yield new CommandOutput<CreateResult>({ dryRun: true, org, name });

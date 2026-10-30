@@ -117,6 +117,7 @@ afterEach(async () => {
 async function runCommand(
   command: typeof listCommand,
   target: string,
+  name = "list",
 ): Promise<void> {
   const func = await command.loader();
   await func.call(
@@ -124,6 +125,7 @@ async function runCommand(
       stdout: { write: vi.fn(() => true) },
       stderr: { write: vi.fn(() => true) },
       cwd: getConfigDir(),
+      commandPrefix: ["sentry", "token", name],
     },
     { json: true, yes: true, force: false, "dry-run": false },
     target,
@@ -152,8 +154,8 @@ describe("token command accounts", () => {
     },
   ])(
     "$name uses the target account for scopes and the action",
-    async ({ command, target, methods }) => {
-      await runCommand(command, target);
+    async ({ name, command, target, methods }) => {
+      await runCommand(command, target, name);
 
       expect(requests).toEqual(
         [

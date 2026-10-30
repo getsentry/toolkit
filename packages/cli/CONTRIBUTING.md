@@ -16,16 +16,23 @@ sentry project list [org] [--limit N] [--json]
 sentry issue list [<org>/<project>] [--json]
 ```
 
-**Target syntax** (generated from `src/lib/target-syntax.ts`):
+**Target syntax** (generated from `grammar/org-project-target.pegjs`):
 
 <!-- GENERATED:START target-syntax -->
 | Target | Meaning |
 |--------|---------|
 | _(omitted)_ | Auto-detect the org and project from config, DSNs, or the directory name |
+| `https://<org>.sentry.io/...` | A Sentry web URL. Selects the org and project in the URL, or the whole organization when it names no project |
+| `<org>/<glob>` | Entities in that organization whose names match the glob, e.g. `<org>/web-*` (list commands that filter by name) |
+| `<glob>` | Entities whose names match the glob, in the auto-detected organization (list commands that filter by name) |
+| `/<glob>` | Same as `<glob>` |
 | `<org>/<project>` | That project in that organization |
 | `<org>/<project>,<project>` | Several projects in the same organization (commands that accept several projects) |
+| `<org>/<Project Name>` | A project in that organization whose display name matches. A target with a space is a name, not a slug |
 | `<org>/` | The whole organization |
 | `<name>` | A project named `<name>` in any accessible organization. If no project matches, commands that accept an organization use the organization named `<name>`. When both exist, the project wins: add the trailing slash (`<name>/`) to select the organization |
+| `/<name>` | Same as `<name>` |
+| `<Project Name>` | A project whose display name matches, in any accessible organization |
 <!-- GENERATED:END target-syntax -->
 
 **Rationale**: Positional arguments follow `gh` CLI conventions and are more concise than flags.

@@ -12,7 +12,7 @@
 import { accessSync, constants, existsSync, mkdirSync } from "node:fs";
 import { rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { captureException } from "@sentry/node-core/light";
+import { captureException } from "@sentry/node";
 import { SKILL_FILES } from "../generated/skill-content.js";
 
 /** Where skills are installed */

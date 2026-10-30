@@ -56,7 +56,7 @@ async function signHex(key: CryptoKey, data: string): Promise<string> {
     key,
     enc.encode(data),
   );
-  return Array.from(new Uint8Array(signatureBuffer))
+  return [...new Uint8Array(signatureBuffer)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }

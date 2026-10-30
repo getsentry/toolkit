@@ -17,8 +17,6 @@
     "packages/cli/AGENTS.md",
     "packages/mcp-server-mocks/src/fixtures/**",
     "**/worker-configuration.d.ts",
-    "**/tsconfig*.json",
-    "packages/toolkit-core/src/generated/**",
-    "packages/toolkit-core/test/fixtures/**"
+    "**/tsconfig*.json"
   ]
 }

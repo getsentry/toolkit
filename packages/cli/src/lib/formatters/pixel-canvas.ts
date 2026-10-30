@@ -216,7 +216,8 @@ function* normalizeBitmapText(text: string): Iterable<string> {
       .replace(COMBINING_MARK_RE, "");
     if (
       decomposed.length > 0 &&
-      Array.from(decomposed).every((candidate) => hasSpleenGlyph(candidate))
+      // oxlint-disable-next-line typescript/no-misused-spread -- glyphs are looked up per code point
+      [...decomposed].every((candidate) => hasSpleenGlyph(candidate))
     ) {
       yield* decomposed;
       continue;

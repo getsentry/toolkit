@@ -15,6 +15,12 @@ Manage org auth tokens
 
 List org auth tokens
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>]` | Organization slug (auto-detected if omitted) |
+
 **JSON Fields** (use `--json --fields` to select specific fields):
 
 | Field | Type | Description |
@@ -45,6 +51,12 @@ sentry token list --json
 
 Create an org auth token
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/name>` | [&lt;org&gt;/]&lt;name&gt; - Name of the new token |
+
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
 
@@ -61,9 +73,17 @@ sentry token create my-org/github-actions
 sentry token create my-org/github-actions --json
 ```
 
-### `sentry token delete <org/token-id>`
+### `sentry token delete [<org>/]<token-id>`
 
 Revoke an org auth token
+
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>/]<token-id>` | [&lt;org&gt;/]&lt;token-id&gt; - Token to revoke |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`

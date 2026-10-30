@@ -146,24 +146,18 @@ experimentation only; do not run it with production credentials.
 ## Daemon-owned sessions
 
 Use `--session <name>` to capture into the shared loopback daemon and retain data
-after your foreground command exits. Sessions keep up to 500 envelopes for three
-hours after closing and subsequent ingestion. Stopping or restarting the daemon
-clears all sessions.
+after your foreground command exits. Sessions keep up to 500 envelopes by default
+(`--max-envelopes` accepts 1 to 50,000) for three hours after closing and
+subsequent ingestion. Session commands start the daemon when it isn't running;
+`sentry local daemon start` starts it ahead of time. Stopping or restarting the
+daemon (`sentry local daemon restart`) clears all sessions.
 
-<!-- allow-commands: session lifecycle walkthrough across local subcommands -->
-```bash
-sentry local run --session web -- npm run dev
-sentry local serve --session worker
-sentry local session list --json
-sentry local event list web --json
-sentry local event view web <event-id> --json
-sentry local envelope list web --json
-sentry local session reset web
-sentry local session close web
-sentry local daemon status
-sentry local daemon stop
-```
+The `sentry local run` examples above walk through a full session lifecycle:
+capture, inspect sessions, events, and envelopes, then reset, close, and stop
+the daemon. `sentry local serve --session worker` captures into a session the
+same way without wrapping a command.
 
-`local session create <name> --json` returns separate SDK ingest and viewer read
-capability URLs. Keep these URLs private. `--clientId <key>` makes retried session
-creation idempotent. Use the session ID when multiple sessions share a label.
+`sentry local session create <name> --json` returns separate SDK ingest and
+viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
+retried session creation idempotent. Use the session ID when multiple sessions
+share a label.

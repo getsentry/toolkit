@@ -20,6 +20,10 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ApiError, AuthError } from "../../../src/lib/errors.js";
+import {
+  applyBoundPositionals,
+  BoundPositional,
+} from "../../../src/lib/positional-parse.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
@@ -124,6 +128,28 @@ describe("token create", () => {
       id: "9",
       token: created.token,
     });
+  });
+
+  test("parses slash names without resolving the org until execution", async () => {
+    const { context } = createMockContext();
+    const [target] = applyBoundPositionals(
+      ["my-org/deploy/prod"],
+      createCommand.parameters.positional,
+      context,
+    );
+
+    expect(target).toBeInstanceOf(BoundPositional);
+    expect((target as BoundPositional<unknown, unknown>).parsed).toEqual({
+      orgSlug: "my-org",
+      value: "deploy/prod",
+    });
+    expect(resolveOrgSpy).not.toHaveBeenCalled();
+
+    const func = await createCommand.loader();
+    await func.call(context, flags, target);
+
+    expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
+    expect(createSpy).toHaveBeenCalledWith("my-org", "deploy/prod");
   });
 
   test("dry-run neither elevates nor creates", async () => {

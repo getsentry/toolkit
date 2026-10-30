@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   deleteCommand,
-  parseTokenArg,
+  parseTokenArguments,
 } from "../../../src/commands/token/delete.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -21,12 +21,7 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
-import {
-  ApiError,
-  ContextError,
-  ResolutionError,
-  ValidationError,
-} from "../../../src/lib/errors.js";
+import { ApiError, ResolutionError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
@@ -80,16 +75,11 @@ function output(write: ReturnType<typeof vi.fn>): string {
   return write.mock.calls.map((c) => c[0]).join("");
 }
 
-describe("parseTokenArg", () => {
-  test("parses org/id and bare id", () => {
-    expect(parseTokenArg("my-org/7")).toEqual({ id: "7", orgSlug: "my-org" });
-    expect(parseTokenArg("7")).toEqual({ id: "7" });
-  });
-
-  test("rejects empty and non-numeric IDs", () => {
-    expect(() => parseTokenArg("")).toThrow(ContextError);
-    expect(() => parseTokenArg("my-org/github-actions")).toThrow(
-      ValidationError,
+describe("parseTokenArguments", () => {
+  // Shared org/ID forms and rejection cases live in argument-conventions.test.ts.
+  test("points non-numeric IDs to token list", () => {
+    expect(() => parseTokenArguments(["my-org/github-actions"])).toThrow(
+      "Use the numeric ID from 'sentry token list'",
     );
   });
 });

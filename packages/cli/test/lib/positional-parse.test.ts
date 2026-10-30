@@ -1,34 +1,54 @@
 /**
- * Lazily parsed and resolved target positionals (src/lib/positional-parse.ts,
- * src/lib/target-positional.ts).
+ * Bound target positionals (src/lib/positional-parse.ts,
+ * src/lib/target-positional.ts, the list targets in src/lib/list-command.ts).
  *
  * Runs a test command through Stricli's `run()` so the positional parser,
  * the command wrapper, and exit-code handling are exercised together.
  */
 
-import { buildApplication, type CommandContext, run } from "@stricli/core";
+import {
+  ArgumentParseError,
+  buildApplication,
+  type CommandContext,
+  ExitCode,
+  run,
+} from "@stricli/core";
 import { describe, expect, test, vi } from "vitest";
 import type { ParsedOrgProject } from "../../src/lib/arg-parsing.js";
 import { buildCommand } from "../../src/lib/command.js";
 import {
   getCompletionTarget,
   ORG_PROJECT_TARGET,
+  ORG_TARGET,
 } from "../../src/lib/completion-target.js";
 import {
   ContextError,
   EXIT,
   getExitCode,
+  HostScopeError,
   ValidationError,
 } from "../../src/lib/errors.js";
+import { LIST_TARGET_POSITIONAL } from "../../src/lib/list-command.js";
 import {
-  markDestructive,
+  applyBoundPositionals,
+  type BoundArguments,
+  BoundPositional,
+  boundArguments,
+  checkDestructive,
   rawPositional,
+  skipLeadingArgument,
+  skippedArgument,
 } from "../../src/lib/positional-parse.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
 import {
+  type ListCommandTarget,
+  listTarget,
   type OrgProjectTarget,
   orgProjectTarget,
 } from "../../src/lib/target-positional.js";
+import { useTestConfigDir } from "../helpers.js";
+
+useTestConfigDir("positional-parse-");
 
 type TestContext = CommandContext & {
   cwd: string;
@@ -48,10 +68,43 @@ const echoTarget = orgProjectTarget(echoResolver);
 
 type EchoTarget = OrgProjectTarget<Awaited<ReturnType<typeof echoResolver>>>;
 
+/** Run `test cmd ...args` through Stricli, as the CLI does. */
+async function runCommand(
+  command: ReturnType<typeof buildCommand>,
+  args: string[],
+): Promise<{ stderr: string; exitCode: number | undefined }> {
+  const app = buildApplication(
+    buildRouteMap({ routes: { cmd: command }, docs: { brief: "Test" } }),
+    { name: "test", determineExitCode: getExitCode },
+  );
+  let stderr = "";
+  const stdout = { write: () => true };
+  const context = {
+    cwd: "/work",
+    // Like buildContext: Stricli passes the command path to forCommand
+    forCommand({ prefix }: { prefix: readonly string[] }) {
+      return { ...this, commandPrefix: prefix };
+    },
+    process: {
+      stdout,
+      stderr: {
+        write: (s: string) => {
+          stderr += s;
+          return true;
+        },
+      },
+      exitCode: undefined,
+    },
+    stdout,
+  } as unknown as TestContext;
+  await run(app, ["cmd", ...args], context);
+  return { stderr, exitCode: context.process.exitCode };
+}
+
 /** Run `test cmd ...args`, recording what `target.resolved` yields. */
 async function runWithTarget(
   args: string[],
-  { destructive = false } = {},
+  { destructive = false, readResolved = true } = {},
 ): Promise<{
   resolved: unknown[];
   stderr: string;
@@ -81,35 +134,11 @@ async function runWithTarget(
     },
     // oxlint-disable-next-line require-yield -- test command only records the resolved target
     async *func(_flags, target) {
-      resolved.push(await target.resolved);
+      // Reading only `parsed` still goes through the destructive check
+      resolved.push(readResolved ? await target.resolved : target.parsed);
     },
   });
-  const app = buildApplication(
-    buildRouteMap({ routes: { cmd: command }, docs: { brief: "Test" } }),
-    { name: "test", determineExitCode: getExitCode },
-  );
-  let stderr = "";
-  const stdout = { write: () => true };
-  const context = {
-    cwd: "/work",
-    // Like buildContext: Stricli passes the command path to forCommand
-    forCommand({ prefix }: { prefix: readonly string[] }) {
-      return { ...this, commandPrefix: prefix };
-    },
-    process: {
-      stdout,
-      stderr: {
-        write: (s: string) => {
-          stderr += s;
-          return true;
-        },
-      },
-      exitCode: undefined,
-    },
-    stdout,
-  } as unknown as TestContext;
-  await run(app, ["cmd", ...args], context);
-  return { resolved, stderr, exitCode: context.process.exitCode };
+  return { resolved, ...(await runCommand(command, args)) };
 }
 
 describe("orgProjectTarget", () => {
@@ -140,13 +169,21 @@ describe("orgProjectTarget", () => {
     expect(stderr).toContain("Auto-detection is disabled");
   });
 
-  test("invalid input fails inside the command with the CliError exit code", async () => {
+  test("a destructive command refuses an auto-detected target it only reads as parsed", async () => {
+    const { resolved, exitCode } = await runWithTarget([], {
+      destructive: true,
+      readResolved: false,
+    });
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(EXIT.CONTEXT_MISSING);
+  });
+
+  test("invalid input fails as an argument parse error", async () => {
     const { resolved, stderr, exitCode } = await runWithTarget(["@latest"]);
     expect(resolved).toEqual([]);
-    expect(exitCode).toBe(EXIT.VALIDATION);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "@latest"');
     expect(stderr).toContain("is an issue selector");
-    // Not Stricli's argument-parse error, which would exit with -4.
-    expect(stderr).not.toContain("Failed to parse");
   });
 
   test("keeps completing org/project slugs", () => {
@@ -154,17 +191,11 @@ describe("orgProjectTarget", () => {
   });
 });
 
-describe("lazy parsing and resolution", () => {
+describe("parsing and resolution", () => {
   const context = { cwd: "/work", commandPrefix: ["sentry", "thing", "list"] };
 
-  test("parses on first read of parsed", () => {
-    const target = echoTarget.call(context, "@latest");
-    expect(() => target.parsed).toThrow(ValidationError);
-  });
-
-  test("rejects resolved with the parse error", async () => {
-    const target = echoTarget.call(context, "@latest");
-    await expect(target.resolved).rejects.toThrow(ValidationError);
+  test("parses when the parser runs", () => {
+    expect(() => echoTarget.call(context, "@latest")).toThrow(ValidationError);
   });
 
   test("keeps the raw input and the parsed value", () => {
@@ -188,22 +219,27 @@ describe("lazy parsing and resolution", () => {
     expect(echoResolver).toHaveBeenCalledTimes(1);
   });
 
-  test("a destructive command refuses an auto-detected target", async () => {
-    echoResolver.mockClear();
+  test("the destructive check refuses only an auto-detected target", () => {
     const omitted = echoTarget.call(context, undefined);
-    markDestructive([omitted]);
-    const error = await omitted.resolved.catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ContextError);
-    expect((error as Error).message).toContain(
+    expect(() => checkDestructive([omitted])).toThrow(ContextError);
+    expect(() => checkDestructive([omitted])).toThrow(
       "sentry thing list <org>/<project>",
     );
-    expect(echoResolver).not.toHaveBeenCalled();
 
     const explicit = echoTarget.call(context, "acme/web");
-    markDestructive([explicit]);
-    await expect(explicit.resolved).resolves.toMatchObject({
-      commandName: "thing list",
-    });
+    expect(() => checkDestructive([explicit, "plain"])).not.toThrow();
+  });
+
+  test("applies a pasted URL's server when resolving, not when parsing", async () => {
+    echoResolver.mockClear();
+    // No account for this server: applying it throws HostScopeError
+    const target = echoTarget.call(
+      context,
+      "https://sentry.example.com/organizations/acme/projects/web/",
+    );
+    expect(target.parsed).toMatchObject({ org: "acme" });
+    await expect(target.resolved).rejects.toThrow(HostScopeError);
+    expect(echoResolver).not.toHaveBeenCalled();
   });
 
   test("needs the command path on the context", async () => {
@@ -211,21 +247,253 @@ describe("lazy parsing and resolution", () => {
     await expect(target.resolved).rejects.toThrow("commandPrefix");
   });
 
-  test("is not a thenable, so awaiting it does not parse", async () => {
-    // Stricli awaits parser results; a parse here would fail in its scanner.
-    const target = echoTarget.call(context, "@latest");
+  test("is not a thenable, so awaiting it does not resolve", async () => {
+    // Stricli awaits parser results; resolving there would skip the auth guard.
+    echoResolver.mockClear();
+    const target = echoTarget.call(context, "acme/web");
     await expect(Promise.resolve(target)).resolves.toBe(target);
+    expect(echoResolver).not.toHaveBeenCalled();
+  });
+});
+
+describe("listTarget", () => {
+  const context = { cwd: "/work" };
+  const namedTarget = listTarget(ORG_PROJECT_TARGET, { names: true });
+
+  test("parses what to list and the name filter", () => {
+    expect(namedTarget.call(context, "acme/web-*").parsed).toEqual({
+      parsed: { type: "org-all", org: "acme" },
+      filter: "web-*",
+    });
+    expect(namedTarget.call(context, undefined).parsed).toEqual({
+      parsed: { type: "auto-detect" },
+    });
+  });
+
+  test("resolves to the parsed target", async () => {
+    const target = namedTarget.call(context, "acme/web");
+    await expect(target.resolved).resolves.toBe(target.parsed);
+  });
+
+  test("applies a pasted URL's server when resolving, not when parsing", async () => {
+    // No account for this server: applying it throws HostScopeError
+    const target = namedTarget.call(
+      context,
+      "https://sentry.example.com/organizations/acme/",
+    );
+    expect(target.parsed).toEqual({ parsed: { type: "org-all", org: "acme" } });
+    await expect(target.resolved).rejects.toThrow(HostScopeError);
+  });
+
+  test("completes org slugs only for org-scoped resources", () => {
+    expect(getCompletionTarget(listTarget(ORG_TARGET))).toBe(ORG_TARGET);
+    expect(getCompletionTarget(namedTarget)).toBe(ORG_PROJECT_TARGET);
+  });
+
+  test("invalid input fails as an argument parse error", async () => {
+    const resolved: unknown[] = [];
+    const command = buildCommand<
+      Record<string, never>,
+      [ListCommandTarget],
+      TestContext
+    >({
+      docs: { brief: "Lists things" },
+      auth: false,
+      parameters: { positional: LIST_TARGET_POSITIONAL },
+      // oxlint-disable-next-line require-yield -- test command only records the resolved target
+      async *func(_flags, target) {
+        resolved.push(await target.resolved);
+      },
+    });
+    const { stderr, exitCode } = await runCommand(command, ["@latest"]);
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "@latest"');
   });
 });
 
 describe("rawPositional", () => {
   const context = { cwd: "/work" };
 
-  test("returns what the user typed without parsing", () => {
+  test("returns what the user typed", () => {
     expect(rawPositional(echoTarget.call(context, "acme/"))).toBe("acme/");
-    expect(rawPositional(echoTarget.call(context, "@latest"))).toBe("@latest");
     expect(rawPositional(echoTarget.call(context, undefined))).toBeUndefined();
     expect(rawPositional("plain")).toBe("plain");
     expect(rawPositional(undefined)).toBeUndefined();
+  });
+});
+
+/** `[<target>] <id>`: what the first argument means depends on the count. */
+function parseIdArguments(raw: readonly string[]): {
+  target?: string;
+  id: string;
+} {
+  if (raw.length === 0) {
+    throw new ContextError("ID", "test cmd [<target>] <id>", []);
+  }
+  if (raw.length > 2) {
+    throw new ValidationError("Too many arguments");
+  }
+  const [first = "", second] = raw;
+  return second === undefined ? { id: first } : { target: first, id: second };
+}
+
+const idResolver = vi.fn(
+  async (
+    parsed: ReturnType<typeof parseIdArguments>,
+    { cwd }: { cwd: string },
+    raw: readonly string[],
+  ) => ({ ...parsed, cwd, raw: [...raw] }),
+);
+
+const idArguments = boundArguments({
+  placeholder: "target-or-id",
+  brief: "[<target>] <id>",
+  kind: ORG_PROJECT_TARGET,
+  parse: parseIdArguments,
+  resolve: idResolver,
+});
+
+type IdArguments = BoundArguments<
+  ReturnType<typeof parseIdArguments>,
+  Awaited<ReturnType<typeof idResolver>>
+>;
+
+/** Run `test cmd ...args` with {@link idArguments}, recording the result. */
+async function runWithArguments(
+  args: string[],
+  positional: typeof idArguments = idArguments,
+): Promise<{
+  resolved: unknown[];
+  stderr: string;
+  exitCode: number | undefined;
+}> {
+  const resolved: unknown[] = [];
+  const command = buildCommand<
+    Record<string, never>,
+    [IdArguments],
+    TestContext
+  >({
+    docs: { brief: "Takes an ID" },
+    auth: false,
+    parameters: { positional },
+    // oxlint-disable-next-line require-yield -- test command only records the resolved arguments
+    async *func(_flags, target) {
+      resolved.push(await target.resolved);
+    },
+  });
+  const app = buildApplication(
+    buildRouteMap({ routes: { cmd: command }, docs: { brief: "Test" } }),
+    { name: "test", determineExitCode: getExitCode },
+  );
+  let stderr = "";
+  const stdout = { write: () => true };
+  const context = {
+    cwd: "/work",
+    process: {
+      stdout,
+      stderr: {
+        write: (s: string) => {
+          stderr += s;
+          return true;
+        },
+      },
+      exitCode: undefined,
+    },
+    stdout,
+  } as unknown as TestContext;
+  await run(app, ["cmd", ...args], context);
+  return { resolved, stderr, exitCode: context.process.exitCode };
+}
+
+describe("boundArguments", () => {
+  test("parses every argument at once, so the count decides what each means", async () => {
+    expect((await runWithArguments(["abc"])).resolved).toEqual([
+      { id: "abc", cwd: "/work", raw: ["abc"] },
+    ]);
+    expect((await runWithArguments(["acme/web", "abc"])).resolved).toEqual([
+      { target: "acme/web", id: "abc", cwd: "/work", raw: ["acme/web", "abc"] },
+    ]);
+  });
+
+  test("a parse error fails as an argument parse error", async () => {
+    const { resolved, stderr, exitCode } = await runWithArguments([
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "a b c" for target-or-id');
+    expect(stderr).toContain("Too many arguments");
+  });
+
+  test("parses no arguments too", async () => {
+    const { resolved, exitCode, stderr } = await runWithArguments([]);
+    expect(resolved).toEqual([]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain("ID is required");
+  });
+
+  test("raw strings (SDK invoke, tests) become one bound value", async () => {
+    idResolver.mockClear();
+    const context = { cwd: "/work" };
+    const [value, ...rest] = applyBoundPositionals(
+      ["acme/web", "abc"],
+      idArguments,
+      context,
+    );
+    expect(rest).toEqual([]);
+    expect(value).toBeInstanceOf(BoundPositional);
+    const bound = value as IdArguments;
+    expect(bound.raw).toEqual(["acme/web", "abc"]);
+    expect(bound.parsed).toEqual({ target: "acme/web", id: "abc" });
+    expect(idResolver).not.toHaveBeenCalled();
+    await expect(bound.resolved).resolves.toMatchObject({ cwd: "/work" });
+
+    // A value already parsed is kept
+    expect(applyBoundPositionals([bound], idArguments, context)).toEqual([
+      bound,
+    ]);
+  });
+
+  test("raw strings that fail to parse throw an argument parse error", () => {
+    let error: unknown;
+    try {
+      applyBoundPositionals([], idArguments, {});
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ContextError,
+    );
+  });
+
+  test("rawPositional returns every argument", () => {
+    const [bound] = applyBoundPositionals(["abc"], idArguments, {});
+    expect(rawPositional(bound)).toEqual(["abc"]);
+  });
+
+  test("skipLeadingArgument leaves a matching first argument out before parsing", async () => {
+    const skipping = skipLeadingArgument(idArguments, (arg) => arg === "view");
+    // Parsed without "view", so the count still decides
+    expect(
+      (await runWithArguments(["view", "acme/web", "abc"], skipping)).resolved,
+    ).toEqual([
+      { target: "acme/web", id: "abc", cwd: "/work", raw: ["acme/web", "abc"] },
+    ]);
+
+    const [bound] = applyBoundPositionals(["view", "abc"], skipping, {});
+    expect(skippedArgument(bound)).toBe("view");
+    expect((bound as IdArguments).parsed).toEqual({ id: "abc" });
+    const [kept] = applyBoundPositionals(["abc"], skipping, {});
+    expect(skippedArgument(kept)).toBeUndefined();
+  });
+
+  test("each argument completes as the given kind", () => {
+    expect(getCompletionTarget(idArguments.parameter.parse)).toBe(
+      ORG_PROJECT_TARGET,
+    );
   });
 });
