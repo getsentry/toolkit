@@ -37,6 +37,7 @@ import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
 import { getProjectAliases } from "./db/project-aliases.js";
 import { getCachedProjectsForOrg } from "./db/project-cache.js";
 import { getCachedOrganizations } from "./db/regions.js";
+import { getEnv } from "./env.js";
 import { ValidationError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
 import type { CommandCompletions } from "./introspect.js";
@@ -65,15 +66,28 @@ type Completion = {
 };
 
 /**
- * Main entry point for `sentry __complete`.
+ * Run `sentry __complete`.
  *
- * Called from the cli.ts fast-path. Parses the shell words to determine
- * what kind of completion is needed, queries the cache, and writes
- * results to stdout.
+ * `src/bin.ts` and the npm package's `dist/bin.cjs` (`dist/complete.cjs`)
+ * call this before anything else of the CLI loads, so a TAB press loads only
+ * this module's imports. `test/script/cli-startup.test.ts` keeps them free of
+ * `@sentry/node`, the API client, and the command tree.
+ *
+ * @param args - The words after `__complete`
+ */
+export async function runCompletion(args: string[]): Promise<void> {
+  // Keeps the database modules from requiring telemetry and `@sentry/node`
+  getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
+  await handleComplete(args);
+}
+
+/**
+ * Complete the shell words in `args`: parses them to determine what kind of
+ * completion is needed, queries the cache, and writes results to stdout.
  *
  * @param args - The words after `__complete` (COMP_WORDS[1:] from the shell)
  */
-export async function handleComplete(args: string[]): Promise<void> {
+async function handleComplete(args: string[]): Promise<void> {
   const startMs = performance.now();
 
   // The last word is the partial being completed (may be empty)
