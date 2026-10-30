@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import { listOrgAuthTokens } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseOrgTarget } from "../../lib/completion-target.js";
+import { selectAccountForOrg } from "../../lib/db/auth.js";
 import { ContextError } from "../../lib/errors.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -98,6 +99,7 @@ export const listCommand = buildCommand({
       throw new ContextError("Organization", "sentry token list <org>");
     }
 
+    selectAccountForOrg(resolved.org);
     const scopeMissing = await ensureTokenScopes(
       LIST_SCOPES,
       "Listing org auth tokens",

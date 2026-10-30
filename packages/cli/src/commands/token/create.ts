@@ -9,6 +9,7 @@ import type { SentryContext } from "../../context.js";
 import { createOrgAuthToken } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseOrgTarget } from "../../lib/completion-target.js";
+import { selectAccountForOrg } from "../../lib/db/auth.js";
 import { ContextError } from "../../lib/errors.js";
 import {
   escapeMarkdownInline,
@@ -50,11 +51,12 @@ function formatTokenCreated(result: CreateResult): string {
     ["ID", result.id],
     ["Scopes", result.scopes.join(", ")],
   ];
-  if (result.token) {
-    rows.push(["Token", safeCodeSpan(result.token)]);
-  }
+  // Keep the one-time secret outside the table, which hard-wraps long cells.
+  const token = result.token
+    ? `\n\nToken:\n\n${safeCodeSpan(result.token)}`
+    : "";
   return renderMarkdown(
-    `## Org auth token created in ${escapeMarkdownInline(result.org)}\n\n${mdKvTable(rows)}`,
+    `## Org auth token created in ${escapeMarkdownInline(result.org)}\n\n${mdKvTable(rows)}${token}`,
   );
 }
 
@@ -121,6 +123,7 @@ export const createCommand = buildCommand({
       return { hint: "Dry run — no token was created." };
     }
 
+    selectAccountForOrg(org);
     const scopeMissing = await ensureTokenScopes(
       CREATE_SCOPES,
       "Creating an org auth token",

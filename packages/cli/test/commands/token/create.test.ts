@@ -2,6 +2,7 @@
  * Token Create Command Tests
  */
 
+import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createCommand } from "../../../src/commands/token/create.js";
 
@@ -50,7 +51,7 @@ const created = {
   tokenLastCharacters: "abcd",
   dateCreated: "2026-01-01T00:00:00Z",
   dateLastUsed: null,
-  token: "sntrys_secret_abcd",
+  token: `sntrys_${"abcdef0123456789".repeat(14)}`,
 };
 
 const flags = { "dry-run": false, json: false };
@@ -72,11 +73,14 @@ function output(write: ReturnType<typeof vi.fn>): string {
 }
 
 describe("token create", () => {
+  let savedColumns: number;
   let createSpy: ReturnType<typeof vi.spyOn>;
   let resolveOrgSpy: ReturnType<typeof vi.spyOn>;
   const ensureScopesSpy = vi.mocked(scopeRecovery.ensureScopesForAction);
 
   beforeEach(() => {
+    savedColumns = process.stdout.columns;
+    process.stdout.columns = 80;
     ensureScopesSpy.mockResolvedValue("ready");
     createSpy = vi.spyOn(apiClient, "createOrgAuthToken");
     resolveOrgSpy = vi.spyOn(resolveTarget, "resolveOrg");
@@ -85,12 +89,13 @@ describe("token create", () => {
   });
 
   afterEach(() => {
+    process.stdout.columns = savedColumns;
     createSpy.mockRestore();
     resolveOrgSpy.mockRestore();
     ensureScopesSpy.mockReset();
   });
 
-  test("creates a token and prints its value once", async () => {
+  test("prints a long token intact on its own line exactly once", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await createCommand.loader();
     await func.call(context, flags, "my-org/github-actions");
@@ -102,7 +107,10 @@ describe("token create", () => {
       expect.any(Function),
     );
     expect(createSpy).toHaveBeenCalledWith("my-org", "github-actions");
-    expect(output(stdoutWrite)).toContain("sntrys_secret_abcd");
+    const lines = stripVTControlCharacters(output(stdoutWrite)).split("\n");
+    expect(lines.filter((line) => line === created.token)).toEqual([
+      created.token,
+    ]);
   });
 
   test("JSON output includes the token value", async () => {
@@ -114,7 +122,7 @@ describe("token create", () => {
     expect(JSON.parse(output(stdoutWrite))).toMatchObject({
       org: "my-org",
       id: "9",
-      token: "sntrys_secret_abcd",
+      token: created.token,
     });
   });
 

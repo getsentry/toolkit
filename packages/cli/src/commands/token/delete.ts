@@ -10,6 +10,7 @@
 import type { SentryContext } from "../../context.js";
 import { deleteOrgAuthToken, listOrgAuthTokens } from "../../lib/api-client.js";
 import { parseOrgTarget } from "../../lib/completion-target.js";
+import { selectAccountForOrg } from "../../lib/db/auth.js";
 import {
   ContextError,
   ResolutionError,
@@ -155,6 +156,7 @@ export const deleteCommand = buildDeleteCommand({
     }
     const { org } = resolved;
 
+    selectAccountForOrg(org);
     // Elevate before looking the token up and confirming, so an older login
     // authorizes once instead of failing with 403 after the prompt.
     const scopeMissing = await ensureTokenScopes(
