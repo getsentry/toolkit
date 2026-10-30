@@ -120,7 +120,7 @@
     "@types/react": "^19.2.17",
     "@types/semver": "^7.7.1",
     "@types/yauzl": "3.4.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.5",
     "binpatch": "^0.4.2",
     "chalk": "^5.6.2",
     "cli-highlight": "^2.1.11",
@@ -154,7 +154,7 @@
     "typescript": "catalog:",
     "uuidv7": "^1.2.1",
     "valibot": "^1.4.2",
-    "vitest": "^4.1.11",
+    "vitest": "^5.0.5",
     "wrap-ansi": "^10.0.0",
     "yauzl": "3.4.0"
   }

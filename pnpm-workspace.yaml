@@ -64,7 +64,7 @@ catalog:
   "@types/react": ^19.1.8
   "@types/react-dom": ^19.1.6
   "@vitejs/plugin-react": ^4.6.0
-  "@vitest/coverage-v8": ^4.1.10
+  "@vitest/coverage-v8": ^5.0.5
   agents: 0.20.1
   ai: ^6.0.64
   better-sqlite3: ^11.10.0
@@ -97,7 +97,7 @@ catalog:
   typescript: ^5.9.3
   valibot: ^1.4.2
   vite: ^6.4.5
-  vitest: ^4.1.11
+  vitest: ^5.0.5
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3
   wrangler: 4.151.3
