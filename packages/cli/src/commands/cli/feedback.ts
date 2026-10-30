@@ -13,6 +13,7 @@ import { isatty } from "node:tty";
 import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { ConfigError, ValidationError } from "../../lib/errors.js";
 import { formatFeedbackResult } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -51,7 +52,7 @@ export const feedbackCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Your feedback message",
-        parse: String,
+        parse: parseText,
         placeholder: "message",
       },
     },

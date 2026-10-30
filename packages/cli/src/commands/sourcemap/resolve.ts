@@ -10,6 +10,7 @@
 import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownCell,
@@ -138,7 +139,7 @@ export const resolveCommand = buildCommand({
       parameters: [
         {
           brief: "Directory to scan for JS files",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],

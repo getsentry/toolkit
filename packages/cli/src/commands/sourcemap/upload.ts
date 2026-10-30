@@ -17,6 +17,7 @@ import {
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -254,7 +255,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Directory containing sourcemaps",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],

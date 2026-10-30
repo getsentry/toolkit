@@ -19,6 +19,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
+import { parseFilePath } from "../lib/completion-target.js";
 import { ValidationError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { formatBuildId, uuidToBytes } from "../lib/wasm/build-id.js";
@@ -104,7 +105,7 @@ export const wasmSplitCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the wasm file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "input",
         },
       ],

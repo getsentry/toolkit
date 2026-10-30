@@ -14,6 +14,7 @@
 import { resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import { readCaCertFile } from "../../lib/custom-ca.js";
 import { parseCustomHeaders } from "../../lib/custom-headers.js";
@@ -326,7 +327,7 @@ export const defaultsCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Setting key and optional value",
-        parse: String,
+        parse: choiceParser(Object.keys(DEFAULTS_REGISTRY)),
         placeholder: "key value",
       },
     },

@@ -7,7 +7,8 @@
  * complete which arguments, and it must not load the modules that define
  * the values it offers. This script walks the route tree at build time and
  * writes, per command, the completion kind of each positional and
- * value-taking flag as JSON, plus those values (`COMPLETION_VALUES`). Kinds
+ * value-taking flag as JSON, the subcommands of every route group, and the
+ * values completers offer (`COMPLETION_VALUES`). Kinds
  * come from the parsers the arguments already use
  * (src/lib/completion-target.ts); flags without one are still listed so
  * `__complete` can skip their values.
@@ -40,19 +41,22 @@ if (!skillContentExists) {
 import type { RouteMap } from "../src/lib/introspect.js";
 
 const { routes } = await import("../src/app.js");
-const { extractCommandCompletions } = await import("../src/lib/introspect.js");
+const { extractCommandCompletions, extractRouteGroups } =
+  await import("../src/lib/introspect.js");
 const { COMPLETION_VALUES } = await import("../src/lib/completion-target.js");
 
 const OUTPUT_PATH = "src/generated/completion-targets.json";
 
-const commands = extractCommandCompletions(routes as unknown as RouteMap);
+const routeMap = routes as unknown as RouteMap;
+const commands = extractCommandCompletions(routeMap);
+const groups = extractRouteGroups(routeMap);
 
 // Plain JSON (like api-schema.json) so the output is produced by a real
 // serializer rather than hand-assembled source text.
 mkdirSync("src/generated", { recursive: true });
 await writeFile(
   OUTPUT_PATH,
-  `${JSON.stringify({ commands, values: COMPLETION_VALUES }, null, 2)}\n`,
+  `${JSON.stringify({ commands, groups, values: COMPLETION_VALUES }, null, 2)}\n`,
   "utf8",
 );
 process.stdout.write(

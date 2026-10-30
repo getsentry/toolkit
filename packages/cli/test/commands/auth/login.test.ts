@@ -83,8 +83,10 @@ vi.mock("../../../src/lib/logger.js", () => ({
 }));
 
 // Dynamic import: must run AFTER vi.mock() so login.ts picks up fakeLog.
-const { loginCommand, parseLoginEmail, rcTokenHint, splitLoginTarget } =
+const { loginCommand, rcTokenHint } =
   await import("../../../src/commands/auth/login.js");
+const { parseLoginEmail, splitLoginTarget } =
+  await import("../../../src/lib/db/accounts.js");
 
 vi.mock("../../../src/lib/account-selection.js", async (importOriginal) => {
   const actual =

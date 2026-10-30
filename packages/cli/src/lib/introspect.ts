@@ -13,7 +13,9 @@
 import generatedCommandApi from "../generated/command-api.json";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
+  CHOICE_TARGET,
   type CompletionTarget,
+  getCompletionChoices,
   getCompletionTarget,
 } from "./completion-target.js";
 import type { ApiReference, CommandApiReference } from "./api-schema.js";
@@ -109,6 +111,8 @@ export type FlagDef = {
   hidden?: boolean;
   /** Stricli parser; completion-aware parsers carry a {@link CompletionTarget}. */
   parse?: unknown;
+  /** Accepted values of an `enum` flag. */
+  values?: readonly string[];
 };
 
 // ---------------------------------------------------------------------------
@@ -414,13 +418,39 @@ type CommandCompletion = {
   /**
    * Every flag spelling that consumes the next word (`--name`, `-a`), mapped
    * to the kind of its value. Hidden flags count because the parser still
-   * accepts them.
+   * accepts them. `enum` flags complete their values as `choice`.
    */
   flags: Record<string, CompletionTarget | null>;
+  /**
+   * Values of each `choice` argument, keyed by positional index (`"0"`) or
+   * flag spelling (`"--format"`). Omitted when the command has none.
+   */
+  choices?: Record<string, readonly string[]>;
 };
 
 /** {@link CommandCompletion} per command path (without the `sentry` prefix). */
 export type CommandCompletions = Record<string, CommandCompletion>;
+
+/**
+ * The kind and, for `choice`, the values of one argument: those of an
+ * `enum` flag, or of a `choiceParser` parser.
+ */
+function argumentCompletion(
+  parse: unknown,
+  enumValues?: readonly string[],
+): { kind: CompletionTarget | null; values?: readonly string[] } {
+  const values = enumValues ?? getCompletionChoices(parse);
+  return values
+    ? { kind: CHOICE_TARGET, values }
+    : { kind: getCompletionTarget(parse) ?? null };
+}
+
+/** Sort an object's entries by key, for stable generated output. */
+function sortedByKey<T>(record: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(record).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
 
 /** Read the completion metadata of one command's parameters. */
 function getCommandCompletion(command: Command): CommandCompletion {
@@ -430,10 +460,25 @@ function getCommandCompletion(command: Command): CommandCompletion {
       ? positional.parameters
       : [positional.parameter]
     : [];
+  const choices: Record<string, readonly string[]> = {};
+  const positionals = params.map((param, index) => {
+    const { kind, values } = argumentCompletion(param.parse);
+    if (values) {
+      choices[index] = values;
+    }
+    return kind;
+  });
   const flagKinds: Record<string, CompletionTarget | null> = {};
   for (const [name, def] of Object.entries(flags)) {
     if (def.kind !== "boolean") {
-      flagKinds[`--${name}`] = getCompletionTarget(def.parse) ?? null;
+      const { kind, values } = argumentCompletion(
+        def.parse,
+        def.kind === "enum" ? def.values : undefined,
+      );
+      flagKinds[`--${name}`] = kind;
+      if (values) {
+        choices[`--${name}`] = values;
+      }
     }
   }
   for (const [alias, name] of Object.entries(aliases)) {
@@ -441,15 +486,18 @@ function getCommandCompletion(command: Command): CommandCompletion {
     if (kind !== undefined) {
       flagKinds[`-${alias}`] = kind;
     }
+    const values = choices[`--${name}`];
+    if (values) {
+      choices[`-${alias}`] = values;
+    }
   }
   return {
-    positionals: params.map(
-      (param) => getCompletionTarget(param.parse) ?? null,
-    ),
+    positionals,
     variadic: positional?.kind === "array",
-    flags: Object.fromEntries(
-      Object.entries(flagKinds).sort(([a], [b]) => a.localeCompare(b)),
-    ),
+    flags: sortedByKey(flagKinds),
+    ...(Object.keys(choices).length > 0
+      ? { choices: sortedByKey(choices) }
+      : {}),
   };
 }
 
@@ -488,9 +536,36 @@ export function extractCommandCompletions(
       }
     }
   }
-  return Object.fromEntries(
-    Object.entries(result).sort(([a], [b]) => a.localeCompare(b)),
-  );
+  return sortedByKey(result);
+}
+
+/**
+ * Visible subcommand names and briefs of every route group, by group path
+ * (without the `sentry` prefix; `""` is the top level), so `__complete`
+ * can complete nested subcommands and command paths. Sorted for stable
+ * generated output.
+ *
+ * @param routeMap - Top-level Stricli route map
+ * @param prefix - Route segments above `routeMap` (used for recursion)
+ */
+export function extractRouteGroups(
+  routeMap: RouteMap,
+  prefix: readonly string[] = [],
+): Record<string, Record<string, string>> {
+  const subcommands: Record<string, string> = {};
+  const result: Record<string, Record<string, string>> = {};
+  for (const entry of routeMap.getAllEntries()) {
+    if (entry.hidden) {
+      continue;
+    }
+    subcommands[entry.name.original] = entry.target.brief;
+    if (isRouteMap(entry.target)) {
+      const segments = [...prefix, entry.name.original];
+      Object.assign(result, extractRouteGroups(entry.target, segments));
+    }
+  }
+  result[prefix.join(" ")] = sortedByKey(subcommands);
+  return sortedByKey(result);
 }
 
 /** Maximum number of fuzzy suggestions to include in an UnresolvedPath. */

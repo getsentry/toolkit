@@ -7,6 +7,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath } from "../../lib/completion-target.js";
 import {
   colorTag,
   mdKvTable,
@@ -95,7 +96,7 @@ export const injectCommand = buildCommand({
       parameters: [
         {
           brief: "Directory to scan for JS + sourcemap pairs",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],

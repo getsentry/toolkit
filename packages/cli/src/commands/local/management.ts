@@ -3,6 +3,7 @@
 import { basename } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { CliError, ValidationError } from "../../lib/errors.js";
 import { formatLocalControlResult } from "../../lib/formatters/local.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -70,7 +71,7 @@ const SESSION_REFERENCE_POSITIONAL = {
   kind: "array",
   parameter: {
     brief: "Session ID or unique name",
-    parse: String,
+    parse: parseText,
     placeholder: "session",
   },
 } as const;
@@ -225,7 +226,7 @@ const sessionCreateCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Optional session label",
-        parse: String,
+        parse: parseText,
         placeholder: "name",
       },
     },
@@ -295,7 +296,7 @@ function buildTelemetryViewCommand(
         kind: "array",
         parameter: {
           brief: `Session and ${kind} ID`,
-          parse: String,
+          parse: parseText,
           placeholder: `session ${kind}`,
         },
       },

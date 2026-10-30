@@ -20,6 +20,7 @@ import {
   rawApiRequest,
 } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
+import { parseText } from "../lib/completion-target.js";
 import { applyCustomHeaders } from "../lib/custom-headers.js";
 import { getIdentityFingerprint } from "../lib/db/auth.js";
 import {
@@ -1692,7 +1693,7 @@ export const apiCommand = buildCommand({
       parameters: [
         {
           brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
-          parse: String,
+          parse: parseText,
           placeholder: "endpoint",
         },
       ],

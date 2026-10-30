@@ -78,11 +78,8 @@ function extractFlagEntries(
       continue;
     }
     const entry: FlagEntry = { name, brief: def.brief ?? "" };
-    if (def.kind === "enum" && "values" in def) {
-      const enumDef = def as FlagDef & { values?: readonly string[] };
-      if (enumDef.values) {
-        entry.enumValues = [...enumDef.values];
-      }
+    if (def.kind === "enum" && def.values) {
+      entry.enumValues = [...def.values];
     }
     entries.push(entry);
   }

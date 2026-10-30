@@ -22,6 +22,7 @@ import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
@@ -440,7 +441,7 @@ export const runCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Command to run",
-        parse: String,
+        parse: parseText,
         placeholder: "command",
       },
     },

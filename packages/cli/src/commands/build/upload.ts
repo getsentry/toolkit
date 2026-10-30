@@ -32,6 +32,7 @@ import {
 } from "../../lib/build/vcs.js";
 import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -225,7 +226,7 @@ export const uploadCommand = buildCommand({
       parameter: {
         brief:
           "Path(s) to the build(s) to upload (APK, AAB, IPA, or XCArchive)",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },

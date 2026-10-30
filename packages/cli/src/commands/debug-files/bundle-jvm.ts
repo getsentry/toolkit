@@ -12,6 +12,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -83,7 +84,7 @@ export const bundleJvmCommand = buildCommand({
       parameters: [
         {
           brief: "Directory containing JVM source files",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "path",
         },
       ],

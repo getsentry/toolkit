@@ -34,6 +34,7 @@ import {
   resolveIngestDsn,
   sendEnvelopeRequest,
 } from "../../lib/envelope/transport.js";
+import { parseText } from "../../lib/completion-target.js";
 import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 
@@ -197,7 +198,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       kind: "array",
       parameter: {
         brief: "Monitor slug followed by the command to run",
-        parse: String,
+        parse: parseText,
         placeholder: "monitor-slug command",
       },
     },

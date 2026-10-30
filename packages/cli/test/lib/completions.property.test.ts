@@ -18,7 +18,10 @@ import { constantFrom, assert as fcAssert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
 import generatedTargets from "../../src/generated/completion-targets.json";
-import { COMPLETION_VALUES } from "../../src/lib/completion-target.js";
+import {
+  COMPLETION_VALUES,
+  PROJECT_SPEC_TARGET,
+} from "../../src/lib/completion-target.js";
 import { parsePeriod } from "../../src/lib/time-range.js";
 import {
   extractCommandTree,
@@ -28,6 +31,7 @@ import {
 } from "../../src/lib/completions.js";
 import {
   extractCommandCompletions,
+  extractRouteGroups,
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
@@ -402,11 +406,16 @@ describe("complete.ts: generated completion targets", () => {
   // Use the ESM import (routes) instead of require() which fails under
   // vitest because Node's CJS require can't resolve .js→.ts for transitive imports.
   const commands = extractCommandCompletions(routes as unknown as RouteMap);
+  const groups = extractRouteGroups(routes as unknown as RouteMap);
 
   // A mismatch means src/generated/completion-targets.json is stale.
   // Regenerate with: pnpm run generate:completions
   test("generated completion targets match the route tree", () => {
-    expect(generatedTargets).toEqual({ commands, values: COMPLETION_VALUES });
+    expect(generatedTargets).toEqual({
+      commands,
+      groups,
+      values: COMPLETION_VALUES,
+    });
   });
 
   test("every suggested period is one --period accepts", () => {
@@ -419,9 +428,9 @@ describe("complete.ts: generated completion targets", () => {
     }
   });
 
-  test("project create keeps its dedicated name:platform completer", () => {
-    expect(Object.keys(generatedTargets.commands)).not.toContain(
-      "project create",
-    );
+  test("project create completes name:platform specs", () => {
+    expect(generatedTargets.commands["project create"]?.positionals).toEqual([
+      PROJECT_SPEC_TARGET,
+    ]);
   });
 });

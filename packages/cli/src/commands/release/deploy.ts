@@ -8,6 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   mdKvTable,
@@ -111,13 +112,13 @@ export const deployCommand = buildCommand({
         {
           placeholder: "environment",
           brief: "Deploy environment (e.g. production)",
-          parse: String,
+          parse: parseText,
         },
         {
           placeholder: "name",
           brief:
             'Optional deploy name (quote multi-word names, e.g. "Deploy #42")',
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],
