@@ -7606,12 +7606,12 @@
     "outputSchema": {
       "type": "object",
       "properties": {
-        "submitted": {
-          "type": "boolean",
-          "description": "Whether the feedback was sent to the Sentry MCP maintainers."
+        "feedbackId": {
+          "type": "string",
+          "description": "ID of the feedback sent to the Sentry MCP maintainers."
         }
       },
-      "required": ["submitted"],
+      "required": ["feedbackId"],
       "additionalProperties": false
     },
     "requiredScopes": [],

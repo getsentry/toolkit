@@ -1,4 +1,4 @@
-import { captureFeedback, getClient } from "@sentry/core";
+import { captureFeedback } from "@sentry/core";
 import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -6,9 +6,9 @@ import { ALL_SKILLS } from "../../skills";
 import { scrubSensitiveText } from "../../telem/sentry";
 
 export const submitFeedbackOutputSchema = z.object({
-  submitted: z
-    .boolean()
-    .describe("Whether the feedback was sent to the Sentry MCP maintainers."),
+  feedbackId: z
+    .string()
+    .describe("ID of the feedback sent to the Sentry MCP maintainers."),
 });
 
 export default defineTool({
@@ -72,13 +72,7 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params) {
-    // Without a configured DSN (e.g. stdio without SENTRY_DSN) there is
-    // nowhere to send feedback, so report that instead of pretending.
-    if (!getClient()?.getDsn()) {
-      return structuredResult({ submitted: false });
-    }
-
-    captureFeedback({
+    const feedbackId = captureFeedback({
       source: "mcp_agent",
       message: scrubSensitiveText(
         [
@@ -97,6 +91,6 @@ export default defineTool({
       },
     });
 
-    return structuredResult({ submitted: true });
+    return structuredResult({ feedbackId });
   },
 });

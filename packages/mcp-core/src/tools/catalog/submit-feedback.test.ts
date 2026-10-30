@@ -1,5 +1,5 @@
-import { captureFeedback, getClient } from "@sentry/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { captureFeedback } from "@sentry/core";
+import { describe, expect, it, vi } from "vitest";
 import { createTestContext } from "../../test-utils/context.js";
 import {
   assertStructuredOnlyResult,
@@ -9,36 +9,26 @@ import submitFeedback from "./submit-feedback.js";
 
 vi.mock("@sentry/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@sentry/core")>();
-  return {
-    ...actual,
-    captureFeedback: vi.fn(() => "event-id"),
-    getClient: vi.fn(),
-  };
+  return { ...actual, captureFeedback: vi.fn(() => "event-id") };
 });
 
-const params = {
-  task: "find slow endpoints",
-  kind: "missing" as const,
-  impact: "blocked" as const,
-  description: "No tool returns p95 latency. Contact jane@example.com.",
-  toolName: "search_traces",
-};
-
 describe("submit_feedback", () => {
-  beforeEach(() => {
-    vi.mocked(captureFeedback).mockClear();
-    vi.mocked(getClient).mockReturnValue({
-      getDsn: () => ({ host: "o1.ingest.sentry.io" }),
-    } as unknown as ReturnType<typeof getClient>);
-  });
-
   it("sends scrubbed feedback to Sentry", async () => {
-    const result = await submitFeedback.handler(params, createTestContext());
+    const result = await submitFeedback.handler(
+      {
+        task: "find slow endpoints",
+        kind: "missing",
+        impact: "blocked",
+        description: "No tool returns p95 latency. Contact jane@example.com.",
+        toolName: "search_traces",
+      },
+      createTestContext(),
+    );
 
     assertStructuredOnlyResult(result);
     expect(getStructuredContent(result)).toMatchInlineSnapshot(`
       {
-        "submitted": true,
+        "feedbackId": "event-id",
       }
     `);
     expect(vi.mocked(captureFeedback).mock.calls[0]?.[0])
@@ -56,14 +46,5 @@ describe("submit_feedback", () => {
         },
       }
     `);
-  });
-
-  it("does not send feedback when Sentry is not configured", async () => {
-    vi.mocked(getClient).mockReturnValue(undefined);
-
-    const result = await submitFeedback.handler(params, createTestContext());
-
-    expect(getStructuredContent(result)).toEqual({ submitted: false });
-    expect(captureFeedback).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import { getClient } from "@sentry/core";
 import type {
   ServerNotification,
   ServerRequest,
@@ -117,6 +118,12 @@ function isHiddenByConstraints({
   );
 }
 
+// submit_feedback can only deliver reports when Sentry telemetry has a DSN
+// (e.g. stdio without SENTRY_DSN has none), so hide it otherwise.
+function isMissingFeedbackDsn(key: string): boolean {
+  return key === "submit_feedback" && !getClient()?.getDsn();
+}
+
 export function getFilteredInputSchema(
   tool: ToolConfig<any>,
   context: ServerContext,
@@ -177,6 +184,10 @@ export function getAvailableTools({
     }
 
     if (!hasRequiredCapabilities({ tool, context })) {
+      continue;
+    }
+
+    if (isMissingFeedbackDsn(key)) {
       continue;
     }
 
