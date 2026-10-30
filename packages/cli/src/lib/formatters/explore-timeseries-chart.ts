@@ -124,7 +124,9 @@ function formatMaximum(value: number, series: TimeSeries): string {
     if (valueType === "percentage") {
       return `${value * 100}%`;
     }
-    return appendUnitSuffix(String(value), valueUnit);
+    return valueType === "duration" || valueType === "size"
+      ? appendUnitSuffix(String(value), valueUnit)
+      : String(value);
   }
   return formatCellValue(value, valueType, valueUnit);
 }

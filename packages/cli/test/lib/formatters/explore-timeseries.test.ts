@@ -380,19 +380,35 @@ describe("Explore time-series graphics", () => {
     },
   );
 
-  test("retains rate units below a chart with a unitless numeric axis", () => {
-    const data = makeData();
-    data.timeSeries[0]!.meta.valueType = "rate";
-    data.timeSeries[0]!.meta.valueUnit = "1/second";
+  test.each([
+    { valueType: "rate", maximum: 1234, label: "1,234" },
+    { valueType: "rate", maximum: 0.002, label: "0.002" },
+    { valueType: "number", maximum: 0.002, label: "0.002" },
+  ])(
+    "keeps $valueType units in the caption on a narrow chart (maximum $maximum)",
+    ({ valueType, maximum, label }) => {
+      const data = makeData();
+      const series = data.timeSeries[0]!;
+      series.meta.valueType = valueType;
+      series.meta.valueUnit = "1/second";
+      series.values[0]!.value = maximum;
+      // A redundant axis unit would consume the space needed by the UTC labels.
+      process.stdout.columns = 56;
+      vi.mocked(terminal.terminalPixelWidth).mockReturnValue(448);
 
-    const output = formatExploreTimeSeriesHuman(data);
+      const output = formatExploreTimeSeriesHuman(data);
+      const images = kittyImages(output);
 
-    expect(kittyImages(output)).toHaveLength(1);
-    expect(output).toContain("Interval: 5m · Unit: 1/second");
-    expect(output.indexOf("Unit: 1/second")).toBeGreaterThan(
-      output.indexOf("\x1b_Ga=T"),
-    );
-  });
+      expect(images).toHaveLength(1);
+      expect(textPixels(images[0]!, 0, 0, label.length)).toEqual(
+        labelPixels(label),
+      );
+      expect(output).toContain("Interval: 5m · Unit: 1/second");
+      expect(output.indexOf("Unit: 1/second")).toBeGreaterThan(
+        output.indexOf("\x1b_Ga=T"),
+      );
+    },
+  );
 
   test("keeps gaps in place, distinguishes zero, and retains incomplete values and warnings", () => {
     const data = makeData();
