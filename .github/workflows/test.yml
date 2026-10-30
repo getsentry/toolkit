@@ -227,7 +227,7 @@ jobs:
         with:
           node-version-file: .github/node-versions/22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter 'sentry...' install --frozen-lockfile
       - name: Install zsh for CLI completion regression tests
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - name: Build project dependencies

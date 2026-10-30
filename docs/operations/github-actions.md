@@ -28,7 +28,8 @@ all three Node versions.
 
 When the CLI is selected, its lint, typecheck, and policy checks run in the
 project job. Unit tests run on Node 22 in three parallel shards, with the same
-test directories and coverage as `pnpm --filter sentry test:unit`. Each shard
+test directories and coverage as `pnpm --filter sentry test:unit`. Shards install
+only the CLI and its workspace dependencies, retaining install scripts. Each
 uploads a Vitest blob report; `CLI coverage` requires a report from every shard
 before merging them into `packages/cli/coverage/lcov.info`.
 The merge job installs the CLI dependency set without install scripts; it does
