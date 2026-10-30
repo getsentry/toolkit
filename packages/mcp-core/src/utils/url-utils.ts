@@ -591,6 +591,21 @@ export function getTraceUrl(
   );
 }
 
+export function getLogUrl(
+  host: string,
+  organizationSlug: string,
+  logId: string,
+  protocol: SentryProtocol = "https",
+): string {
+  const urlParams = new URLSearchParams({ project: "-1", logsPinned: logId });
+  return getSentryWebBaseUrl(
+    host,
+    organizationSlug,
+    `/explore/logs/?${urlParams.toString()}`,
+    protocol,
+  );
+}
+
 /**
  * Generates a Sentry replay URL.
  * @param host The Sentry host (may include regional subdomain for API access)

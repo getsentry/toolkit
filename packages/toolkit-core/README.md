@@ -101,6 +101,15 @@ the page cap, receives warnings, and turns failures into its own errors. The
 CLI's `paginate` and `fetchAllPages` in
 `packages/cli/src/lib/api/infrastructure.ts` are thin wrappers over it.
 
+`paginate` delegates traversal and partial-page consumption to `@sentry/api`.
+Toolkit retains its page sizing and cursor encoding so existing bookmarks and
+navigation history keep working. The SDK receives decoded server cursors and
+row offsets, without depending on Toolkit's bookmark format or storage.
+
+`decodePageCursor` and `consumePage` expose the same resume logic for callers
+that read one server page at a time, such as `sentry api`. They restore the
+cursor's page size and remove rows already returned without fetching more pages.
+
 ## Response cache
 
 `api-client/response-cache` holds the cache policy for Sentry API GET responses.

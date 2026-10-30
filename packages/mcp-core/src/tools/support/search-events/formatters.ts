@@ -386,6 +386,10 @@ export function formatLogResults(params: FormatEventResultsParams): string {
 
       output += `### Log ${i + 1}\n`;
 
+      if (typeof event.id === "string" && event.id) {
+        output += `- **Log URL**: ${apiService.getLogUrl(organizationSlug, event.id)}\n`;
+      }
+
       // Display priority fields first
       for (const field of priorityFields) {
         if (

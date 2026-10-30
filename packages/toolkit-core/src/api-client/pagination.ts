@@ -4,6 +4,8 @@
  * fetches pages, validates rows, logs, and maps failures to its own errors.
  */
 
+import { consumePage as consumeSdkPage, paginateUpTo } from "@sentry/api";
+
 /**
  * Sentry API's maximum items per page. Some endpoints silently cap larger
  * `per_page` values; others (org project list) return 400.
@@ -40,9 +42,12 @@ const CLI_CURSOR_PREFIX = "cli1~";
  * page, the page size it must be fetched with, and how many of that page's
  * rows were already returned.
  */
-type PagePosition = {
+export type PagePosition = {
+  /** Server cursor to request; undefined starts at the first page. */
   cursor: string | undefined;
-  perPage: number;
+  /** Required page size in rows, when encoded in the cursor; otherwise unspecified. */
+  perPage?: number;
+  /** Number of rows already returned from this position; zero starts at its first row. */
   skip: number;
 };
 
@@ -92,12 +97,12 @@ function encodePageCursor(cursor: string | undefined, skip: number): string {
  * A damaged `cli1~` cursor is ignored with a warning and the walk starts from
  * the first page, so it never fails a call or reaches the API.
  */
-function decodePageCursor(
+export function decodePageCursor(
   raw: string | undefined,
-  warn: Warn,
-): Partial<PagePosition> & { cursor: string | undefined } {
+  warn: Warn = () => {},
+): PagePosition {
   if (!raw) {
-    return { cursor: undefined };
+    return { cursor: undefined, skip: 0 };
   }
   if (raw.startsWith(CLI_CURSOR_PREFIX)) {
     return decodeCliCursor(raw, warn);
@@ -112,10 +117,7 @@ function decodePageCursor(
   return perPage === undefined ? position : { ...position, perPage };
 }
 
-function decodeCliCursor(
-  raw: string,
-  warn: Warn,
-): Partial<PagePosition> & { cursor: string | undefined } {
+function decodeCliCursor(raw: string, warn: Warn): PagePosition {
   const [perPage, skip, ...server] = raw
     .slice(CLI_CURSOR_PREFIX.length)
     .split("~");
@@ -136,7 +138,38 @@ function decodeCliCursor(
   warn(
     "Ignoring an unreadable pagination cursor; starting from the first page.",
   );
-  return { cursor: undefined };
+  return { cursor: undefined, skip: 0 };
+}
+
+/**
+ * Consume one fetched page from a decoded cursor position without making requests.
+ *
+ * Removes rows already delivered by a previous call. Sentry next-page cursors
+ * record any unconsumed rows or remaining skip; other cursor shapes are returned
+ * unchanged and may replay rows on resume.
+ *
+ * @param page - Server page fetched using the position's cursor and page size
+ * @param position - Decoded continuation for this page
+ * @param limit - Maximum rows to return, a non-negative integer; omitted means all remaining rows
+ * @returns Remaining rows and continuation metadata
+ */
+export function consumePage<T>(
+  page: Page<T[]>,
+  position: PagePosition,
+  limit = Number.POSITIVE_INFINITY,
+): Page<T[]> {
+  const consumed = consumeSdkPage(
+    { data: page.data, nextCursor: page.nextCursor || undefined },
+    { cursor: position.cursor, offset: position.skip },
+    limit,
+  );
+  return {
+    ...page,
+    data: consumed.data,
+    nextCursor: consumed.position
+      ? encodePageCursor(consumed.position.cursor, consumed.position.offset)
+      : undefined,
+  };
 }
 
 /**
@@ -221,42 +254,36 @@ export async function paginate<T>(
   ) => Promise<Page<T[]>>,
 ): Promise<PaginateResult<T>> {
   const { limit, maxPages, warn = () => {} } = options;
-  const start = decodePageCursor(options.cursor, warn);
-  let cursor = start.cursor;
-  let skip = start.skip ?? 0;
-  // Cursors without a page size accept any, so fetch the skipped rows too.
-  const perPage = start.perPage ?? pageSizeForLimit(limit + skip);
-  const rows: T[] = [];
-
-  for (let page = 0; page < maxPages; page += 1) {
-    const { data, nextCursor } = await fetchPage(perPage, cursor);
-    const unseen = data.slice(skip);
-    const remaining = limit - rows.length;
-
-    if (unseen.length > remaining) {
-      rows.push(...unseen.slice(0, remaining));
-      return {
-        data: rows,
-        nextCursor: encodePageCursor(cursor, skip + remaining),
-        stoppedAtPageCap: false,
-      };
-    }
-    rows.push(...unseen);
-    if (!nextCursor) {
-      return { data: rows, stoppedAtPageCap: false };
-    }
-    cursor = nextCursor;
-    // A resumed walk can fetch pages smaller than the rows it must skip.
-    skip = Math.max(0, skip - data.length);
-    if (rows.length === limit) {
-      break;
-    }
-  }
-
+  const position = decodePageCursor(options.cursor, warn);
+  // Keep the CLI's page sizing and legacy bookmarks while the SDK owns traversal.
+  const perPage = position.perPage ?? pageSizeForLimit(limit + position.skip);
+  const result = await paginateUpTo(
+    async (cursor) => {
+      const page = await fetchPage(perPage, cursor);
+      return { data: page.data, nextCursor: page.nextCursor || undefined };
+    },
+    {
+      limit,
+      maxPages,
+      resume: {
+        cursor: position.cursor,
+        offset: position.skip,
+        requestBudget: limit + position.skip,
+      },
+    },
+    "paginate",
+  );
   return {
-    data: rows,
-    nextCursor: encodePageCursor(cursor, skip),
-    stoppedAtPageCap: rows.length < limit,
+    data: result.data,
+    ...(result.continuation
+      ? {
+          nextCursor: encodePageCursor(
+            result.continuation.cursor,
+            result.continuation.offset,
+          ),
+        }
+      : {}),
+    stoppedAtPageCap: result.stopReason === "maxPages",
   };
 }
 

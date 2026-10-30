@@ -738,12 +738,12 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.example.com",
     });
     globalThis.fetch = mockFetch(async (input, init) => {
-      expect(input).toBe(
+      const request = new Request(input, init);
+      expect(request.url).toBe(
         "https://sentry.example.com/sentry/api/0/organizations/acme/?cursor=a%3Ab",
       );
-      expect(new Headers(init?.headers).get("Authorization")).toBe(
-        "Bearer valid-token",
-      );
+      expect(request.headers.get("Authorization")).toBe("Bearer valid-token");
+      expect(request.headers.get("Content-Type")).toBe("application/custom");
       return new Response("{}", {
         headers: { "content-type": "application/json" },
       });
@@ -752,6 +752,7 @@ describe("rawApiRequest binary handling", () => {
     await rawApiRequest("/organizations/acme/", {
       baseUrl: "https://sentry.example.com/sentry",
       params: { cursor: "a:b" },
+      headers: { "content-type": "application/custom" },
     });
   });
 
