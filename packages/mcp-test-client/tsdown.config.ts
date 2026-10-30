@@ -12,9 +12,9 @@ export default defineConfig({
   platform: "node",
   minify: false,
   shims: true,
-  banner: {
-    js: "#!/usr/bin/env node",
-  },
+  // Keep the .js name the bin entry points at.
+  fixedExtension: false,
+  // src/index.ts carries the shebang, so no banner is needed.
   env: {
     DEFAULT_SENTRY_DSN:
       "https://d0805acebb937435abcb5958da99cdab@o1.ingest.us.sentry.io/4509062593708032",

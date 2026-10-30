@@ -8,7 +8,7 @@
  */
 
 import { array, assert as fcAssert, property, string } from "fast-check";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, test } from "vitest";
 import {
   f,

@@ -52,6 +52,7 @@
   "dependencies": {
     "@ast-grep/cli": "catalog:",
     "@types/node": "catalog:",
+    "@typescript/typescript6": "catalog:",
     "dotenv": "catalog:",
     "dotenv-cli": "catalog:",
     "lint-staged": "catalog:",

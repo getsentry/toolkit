@@ -18,7 +18,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { routes } from "../src/app.js";
 import { extractSchemaFields } from "../src/lib/formatters/output.js";
 import {

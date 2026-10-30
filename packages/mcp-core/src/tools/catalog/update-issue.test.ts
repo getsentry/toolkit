@@ -4,7 +4,11 @@ import { issueFixture, mswServer } from "@sentry/mcp-server-mocks";
 import { prepareToolParams } from "../catalog-runtime/availability.js";
 import updateIssue from "./update-issue.js";
 
-type MockIssue = typeof issueFixture;
+// The fixture always has an assignee, but these tests also unassign issues and
+// echo request bodies back, so assignedTo can hold any value.
+type MockIssue = Omit<typeof issueFixture, "assignedTo"> & {
+  assignedTo: unknown;
+};
 
 const serverContext = {
   constraints: {

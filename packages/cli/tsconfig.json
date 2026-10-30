@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "lib": ["ESNext"],
+    "types": ["node"],
     "target": "ESNext",
     "module": "ESNext",
     "jsx": "react-jsx",

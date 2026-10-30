@@ -5,7 +5,7 @@
  * describes the library entry point itself.
  */
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 /** Location of the module `SentryOptions` is lifted from, relative to `packages/cli`. */
 export const SDK_TYPES_PATH = "src/lib/sdk-types.ts";

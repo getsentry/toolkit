@@ -14,11 +14,25 @@ product-specific implementation patterns.
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "types": ["node"],
     "sourceMap": true,
     "noImplicitAny": true
   }
 }
 ```
+
+The workspace compiles with TypeScript 7, the native compiler:
+
+- `types` defaults to `[]`, so configs for Node code list `"node"` to get its
+  globals.
+- The `typescript` package no longer exposes the compiler API. Scripts that
+  parse or print TypeScript import `@typescript/typescript6` instead, and
+  `.pnpmfile.mjs` gives third-party packages that load the API (such as
+  `@sentry/api`) TypeScript 6 of their own.
+- tsdown generates declarations with tsgo, which cannot emit types for JSON
+  modules. A package whose declarations re-export JSON imports keeps those
+  files external and copies them next to the output, as
+  `@sentry/mcp-server-mocks` does with its fixtures.
 
 ## Code Style
 
