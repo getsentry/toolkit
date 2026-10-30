@@ -19,6 +19,8 @@ them. The [Toolkit index](../README.md) also links the CLI and shared guides.
   [remote](../testing/remote.md) — tests and transport QA.
 - [HTTP Code Mode](../testing/code-mode.md) — runtime integration, permissions,
   and safety validation.
+- [Code Mode evaluations](../testing/code-mode-evals.md) — agent discovery,
+  stateful API fixtures, task verification and historical results.
 
 ## Run and Release
 

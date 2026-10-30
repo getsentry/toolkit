@@ -1,0 +1,2307 @@
+{
+  "provenance": {
+    "openapiCommit": "803d6de98c9156c15e9ddc1bf9accbac6e24cebc",
+    "backendCommit": "c4b7b5f3502b7f7c2ae8edc9ae1da36c8a1c98a4",
+    "sourceDashboard": "packages/mcp-server-mocks/src/fixtures/dashboard-details.json"
+  },
+  "sourceDashboard": {
+    "id": "101",
+    "title": "Errors Overview",
+    "dateCreated": "2025-04-14T10:15:00.000Z",
+    "createdBy": {
+      "id": "1",
+      "name": "Test User",
+      "email": "user@example.com"
+    },
+    "widgets": [
+      {
+        "id": "201",
+        "title": "Handled Errors",
+        "description": "Handled errors over time",
+        "displayType": "line",
+        "thresholds": null,
+        "interval": "5m",
+        "dateCreated": "2025-04-14T10:16:00.000Z",
+        "dashboardId": "101",
+        "queries": [
+          {
+            "id": "301",
+            "name": "",
+            "fields": ["count()"],
+            "aggregates": ["count()"],
+            "columns": [],
+            "fieldAliases": [],
+            "conditions": "error.handled:true",
+            "orderby": "-count()",
+            "widgetId": "201",
+            "onDemand": [],
+            "isHidden": false,
+            "selectedAggregate": 0,
+            "linkedDashboards": []
+          }
+        ],
+        "limit": null,
+        "widgetType": "error-events",
+        "layout": {
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "minH": 2
+        },
+        "axisRange": null,
+        "legendType": null,
+        "datasetSource": "user",
+        "changedReason": null
+      },
+      {
+        "id": "202",
+        "title": "Top Issues",
+        "description": null,
+        "displayType": "table",
+        "thresholds": null,
+        "interval": "5m",
+        "dateCreated": "2025-04-14T10:18:00.000Z",
+        "dashboardId": "101",
+        "queries": [
+          {
+            "id": "302",
+            "name": "Top Issues",
+            "fields": ["issue", "count()"],
+            "aggregates": ["count()"],
+            "columns": ["issue"],
+            "fieldAliases": [],
+            "conditions": "is:unresolved",
+            "orderby": "-count()",
+            "widgetId": "202",
+            "onDemand": [],
+            "isHidden": false,
+            "selectedAggregate": 0,
+            "linkedDashboards": []
+          }
+        ],
+        "limit": 5,
+        "widgetType": "error-events",
+        "layout": {
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 3,
+          "minH": 2
+        },
+        "axisRange": null,
+        "legendType": null,
+        "datasetSource": "user",
+        "changedReason": null
+      }
+    ],
+    "filters": {
+      "release": ["frontend@1.2.3"]
+    },
+    "permissions": {
+      "isEditableByEveryone": true,
+      "teamsWithEditAccess": []
+    },
+    "isFavorited": true,
+    "projects": [101, 102],
+    "environment": ["production"],
+    "period": "24h",
+    "utc": true,
+    "expired": false,
+    "prebuiltId": null
+  },
+  "openapi": {
+    "openapi": "3.0.3",
+    "info": {
+      "title": "Sentry Dashboard API eval fixture",
+      "version": "v0"
+    },
+    "paths": {
+      "/api/0/organizations/{organization_id_or_slug}/dashboards/": {
+        "get": {
+          "operationId": "listOrganizationDashboards",
+          "description": "Retrieve a list of custom dashboards that are associated with the given organization.",
+          "summary": "List an Organization's Custom Dashboards",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "organization_id_or_slug",
+              "schema": {
+                "type": "string"
+              },
+              "description": "The ID or slug of the organization the resource belongs to.",
+              "required": true
+            },
+            {
+              "in": "query",
+              "name": "filter",
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "excludeFavorites",
+                    "excludePrebuilt",
+                    "onlyFavorites",
+                    "onlyPrebuilt",
+                    "owned",
+                    "shared",
+                    "showHidden"
+                  ]
+                }
+              },
+              "description": "Filter the dashboards returned. Repeat this parameter to apply multiple filters."
+            },
+            {
+              "in": "query",
+              "name": "query",
+              "schema": {
+                "type": "string"
+              },
+              "description": "Filter dashboards by title."
+            },
+            {
+              "in": "query",
+              "name": "sort",
+              "schema": {
+                "type": "string"
+              },
+              "description": "The property to sort results by. Prefix the value with `-` to sort in descending order.\n\nAvailable fields are:\n- `title`\n- `dateCreated`\n- `mostPopular`\n- `recentlyViewed`\n- `mydashboards`\n- `myDashboardsAndRecentlyViewed`\n"
+            },
+            {
+              "in": "query",
+              "name": "pin",
+              "schema": {
+                "type": "string",
+                "enum": ["favorites"]
+              },
+              "description": "Pin favorited dashboards to the top of the results."
+            },
+            {
+              "in": "query",
+              "name": "per_page",
+              "schema": {
+                "type": "integer"
+              },
+              "description": "Limit the number of rows to return in the result. Default and maximum allowed is 100."
+            },
+            {
+              "in": "query",
+              "name": "cursor",
+              "schema": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "A pointer to the last object fetched and its sort order; used to retrieve the next or previous results.",
+              "x-learn-more": "https://docs.sentry.io/api/pagination/"
+            }
+          ],
+          "tags": ["Dashboards"],
+          "security": [
+            {
+              "auth_token": ["org:admin", "org:read", "org:write"]
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "dateCreated": {
+                          "type": "string"
+                        },
+                        "createdBy": {
+                          "type": "object",
+                          "properties": {
+                            "identities": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "organization": {
+                                    "type": "object",
+                                    "properties": {
+                                      "slug": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["name", "slug"]
+                                  },
+                                  "provider": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["id", "name"]
+                                  },
+                                  "dateVerified": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "dateSynced": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "required": [
+                                  "dateSynced",
+                                  "dateVerified",
+                                  "id",
+                                  "name",
+                                  "organization",
+                                  "provider"
+                                ]
+                              }
+                            },
+                            "avatar": {
+                              "type": "object",
+                              "properties": {
+                                "avatarType": {
+                                  "type": "string"
+                                },
+                                "avatarUuid": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "avatarUrl": {
+                                  "type": "string",
+                                  "nullable": true
+                                }
+                              }
+                            },
+                            "authenticators": {
+                              "type": "array",
+                              "items": {}
+                            },
+                            "canReset2fa": {
+                              "type": "boolean"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "username": {
+                              "type": "string"
+                            },
+                            "email": {
+                              "type": "string"
+                            },
+                            "avatarUrl": {
+                              "type": "string"
+                            },
+                            "isActive": {
+                              "type": "boolean"
+                            },
+                            "isSuspended": {
+                              "type": "boolean"
+                            },
+                            "hasPasswordAuth": {
+                              "type": "boolean"
+                            },
+                            "isManaged": {
+                              "type": "boolean"
+                            },
+                            "dateJoined": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "lastLogin": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "has2fa": {
+                              "type": "boolean"
+                            },
+                            "lastActive": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "isSuperuser": {
+                              "type": "boolean"
+                            },
+                            "isStaff": {
+                              "type": "boolean"
+                            },
+                            "experiments": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            },
+                            "emails": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "email": {
+                                    "type": "string"
+                                  },
+                                  "is_verified": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["email", "id", "is_verified"]
+                              }
+                            }
+                          },
+                          "required": [
+                            "avatarUrl",
+                            "dateJoined",
+                            "email",
+                            "emails",
+                            "experiments",
+                            "has2fa",
+                            "hasPasswordAuth",
+                            "id",
+                            "isActive",
+                            "isManaged",
+                            "isStaff",
+                            "isSuperuser",
+                            "isSuspended",
+                            "lastActive",
+                            "lastLogin",
+                            "name",
+                            "username"
+                          ]
+                        },
+                        "environment": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "filters": {
+                          "type": "object",
+                          "properties": {
+                            "release": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "releaseId": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "globalFilter": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": {}
+                              }
+                            }
+                          }
+                        },
+                        "lastVisited": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "widgetDisplay": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "widgetPreview": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "permissions": {
+                          "type": "object",
+                          "properties": {
+                            "isEditableByEveryone": {
+                              "type": "boolean"
+                            },
+                            "teamsWithEditAccess": {
+                              "type": "array",
+                              "items": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "required": [
+                            "isEditableByEveryone",
+                            "teamsWithEditAccess"
+                          ],
+                          "nullable": true
+                        },
+                        "isFavorited": {
+                          "type": "boolean"
+                        },
+                        "projects": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          }
+                        },
+                        "prebuiltId": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "createdBy",
+                        "dateCreated",
+                        "environment",
+                        "filters",
+                        "id",
+                        "isFavorited",
+                        "lastVisited",
+                        "permissions",
+                        "prebuiltId",
+                        "projects",
+                        "title",
+                        "widgetDisplay",
+                        "widgetPreview"
+                      ]
+                    }
+                  },
+                  "examples": {
+                    "QueryDashboards": {
+                      "value": [
+                        {
+                          "id": "1",
+                          "title": "Dashboard",
+                          "dateCreated": "2024-06-20T14:38:03.498574Z",
+                          "lastVisited": "2024-06-20T14:38:03.498574Z",
+                          "projects": [1],
+                          "environment": ["alpha"],
+                          "filters": {
+                            "release": [
+                              "frontend@a02311a400636ff9640b3e4ca2991ee153dbbdcc",
+                              "frontend@36934c05140c16df93aa8ebf671f9386e916b501"
+                            ]
+                          },
+                          "createdBy": {
+                            "id": "1",
+                            "name": "Admin",
+                            "username": "admin",
+                            "email": "admin@example.com",
+                            "avatarUrl": "www.example.com",
+                            "isActive": true,
+                            "isSuspended": false,
+                            "hasPasswordAuth": true,
+                            "isManaged": false,
+                            "dateJoined": "2021-10-25T17:07:33.190596Z",
+                            "lastLogin": "2024-07-16T15:28:39.261659Z",
+                            "has2fa": true,
+                            "lastActive": "2024-07-16T20:45:49.364197Z",
+                            "isSuperuser": false,
+                            "isStaff": false,
+                            "experiments": {},
+                            "emails": [
+                              {
+                                "id": "1",
+                                "email": "admin@example.com",
+                                "is_verified": true
+                              }
+                            ],
+                            "avatar": {
+                              "avatarType": "letter_avatar",
+                              "avatarUuid": null,
+                              "avatarUrl": "www.example.com"
+                            }
+                          },
+                          "widgetDisplay": [],
+                          "widgetPreview": [],
+                          "permissions": {
+                            "isEditableByEveryone": true,
+                            "teamsWithEditAccess": []
+                          },
+                          "isFavorited": false,
+                          "prebuiltId": null
+                        },
+                        {
+                          "id": "2",
+                          "title": "Dashboard",
+                          "dateCreated": "2024-06-20T14:38:03.498574Z",
+                          "lastVisited": "2024-06-20T14:38:03.498574Z",
+                          "projects": [],
+                          "environment": ["alpha"],
+                          "filters": {
+                            "release": [
+                              "frontend@a02311a400636ff9640b3e4ca2991ee153dbbdcc",
+                              "frontend@36934c05140c16df93aa8ebf671f9386e916b501"
+                            ]
+                          },
+                          "createdBy": {
+                            "id": "1",
+                            "name": "Admin",
+                            "username": "admin",
+                            "email": "admin@example.com",
+                            "avatarUrl": "www.example.com",
+                            "isActive": true,
+                            "isSuspended": false,
+                            "hasPasswordAuth": true,
+                            "isManaged": false,
+                            "dateJoined": "2021-10-25T17:07:33.190596Z",
+                            "lastLogin": "2024-07-16T15:28:39.261659Z",
+                            "has2fa": true,
+                            "lastActive": "2024-07-16T20:45:49.364197Z",
+                            "isSuperuser": false,
+                            "isStaff": false,
+                            "experiments": {},
+                            "emails": [
+                              {
+                                "id": "1",
+                                "email": "admin@example.com",
+                                "is_verified": true
+                              }
+                            ],
+                            "avatar": {
+                              "avatarType": "letter_avatar",
+                              "avatarUuid": null,
+                              "avatarUrl": "www.example.com"
+                            }
+                          },
+                          "widgetDisplay": [],
+                          "widgetPreview": [],
+                          "permissions": null,
+                          "isFavorited": false,
+                          "prebuiltId": null
+                        }
+                      ],
+                      "summary": "Query Dashboards"
+                    }
+                  }
+                }
+              },
+              "description": ""
+            },
+            "400": {
+              "description": "Bad Request"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Not Found"
+            }
+          }
+        },
+        "post": {
+          "operationId": "createOrganizationDashboard",
+          "description": "Create a new dashboard for the given Organization",
+          "summary": "Create a New Dashboard for an Organization",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "organization_id_or_slug",
+              "schema": {
+                "type": "string"
+              },
+              "description": "The ID or slug of the organization the resource belongs to.",
+              "required": true
+            }
+          ],
+          "tags": ["Dashboards"],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Allows parameters to be defined in snake case, but passed as camel case.\n\nErrors are output in camel case.",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "The user defined title for this dashboard.",
+                      "maxLength": 255
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "A dashboard's unique id."
+                    },
+                    "widgets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "Allows parameters to be defined in snake case, but passed as camel case.\n\nErrors are output in camel case.",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string",
+                            "maxLength": 255
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "thresholds": {
+                            "type": "object",
+                            "additionalProperties": {},
+                            "nullable": true
+                          },
+                          "display_type": {
+                            "enum": [
+                              "line",
+                              "area",
+                              "bar",
+                              "table",
+                              "big_number",
+                              "details",
+                              "categorical_bar",
+                              "wheel",
+                              "rage_and_dead_clicks",
+                              "server_tree",
+                              "text",
+                              "agents_traces_table",
+                              "heatmap"
+                            ],
+                            "type": "string",
+                            "description": "* `line`\n* `area`\n* `bar`\n* `table`\n* `big_number`\n* `details`\n* `categorical_bar`\n* `wheel`\n* `rage_and_dead_clicks`\n* `server_tree`\n* `text`\n* `agents_traces_table`\n* `heatmap`"
+                          },
+                          "interval": {
+                            "type": "string",
+                            "maxLength": 10
+                          },
+                          "queries": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "description": "Allows parameters to be defined in snake case, but passed as camel case.\n\nErrors are output in camel case.",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "aggregates": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "nullable": true
+                                },
+                                "columns": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "nullable": true
+                                },
+                                "field_aliases": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "nullable": true
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "conditions": {
+                                  "type": "string"
+                                },
+                                "orderby": {
+                                  "type": "string"
+                                },
+                                "is_hidden": {
+                                  "type": "boolean"
+                                },
+                                "on_demand_extraction": {
+                                  "type": "object",
+                                  "description": "Allows parameters to be defined in snake case, but passed as camel case.\n\nErrors are output in camel case.",
+                                  "properties": {
+                                    "extraction_state": {
+                                      "type": "string"
+                                    },
+                                    "enabled": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                },
+                                "on_demand_extraction_disabled": {
+                                  "type": "boolean"
+                                },
+                                "selected_aggregate": {
+                                  "type": "integer",
+                                  "nullable": true
+                                },
+                                "linked_dashboards": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "description": "Allows parameters to be defined in snake case, but passed as camel case.\n\nErrors are output in camel case.",
+                                    "properties": {
+                                      "field": {
+                                        "type": "string"
+                                      },
+                                      "dashboard_id": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["dashboard_id", "field"]
+                                  },
+                                  "nullable": true
+                                }
+                              }
+                            }
+                          },
+                          "widget_type": {
+                            "enum": [
+                              "discover",
+                              "issue",
+                              "metrics",
+                              "error-events",
+                              "transaction-like",
+                              "spans",
+                              "logs",
+                              "tracemetrics",
+                              "preprod-app-size",
+                              null
+                            ],
+                            "type": "string",
+                            "description": "* `discover`\n* `issue`\n* `metrics`\n* `error-events`\n* `transaction-like`\n* `spans`\n* `logs`\n* `tracemetrics`\n* `preprod-app-size`",
+                            "nullable": true
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "nullable": true
+                          },
+                          "layout": {
+                            "allOf": [
+                              {
+                                "type": "object",
+                                "description": "Widget grid layout position and dimensions for dashboard creation.\n\nThe dashboard uses a 6-column grid. Required keys: x, y, w, h.\nConstraints: x (0-5), y (>= 0), w (1-6), h (>= 1), and x + w <= 6.",
+                                "properties": {
+                                  "x": {
+                                    "type": "integer",
+                                    "maximum": 5,
+                                    "minimum": 0,
+                                    "description": "Column position (0-indexed)."
+                                  },
+                                  "y": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "description": "Row position (0-indexed)."
+                                  },
+                                  "w": {
+                                    "type": "integer",
+                                    "maximum": 6,
+                                    "minimum": 1,
+                                    "description": "Width in grid columns (1-6)."
+                                  },
+                                  "h": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "description": "Height in grid rows."
+                                  }
+                                },
+                                "required": ["h", "w", "x", "y"]
+                              }
+                            ],
+                            "nullable": true
+                          },
+                          "axis_range": {
+                            "enum": ["auto", "dataMin", null],
+                            "type": "string",
+                            "description": "* `auto`\n* `dataMin`",
+                            "nullable": true
+                          },
+                          "legend_type": {
+                            "enum": ["default", "breakdown", null],
+                            "type": "string",
+                            "description": "* `default`\n* `breakdown`",
+                            "nullable": true
+                          }
+                        }
+                      },
+                      "description": "A json list of widgets saved in this dashboard."
+                    },
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "description": "The saved projects filter for this dashboard."
+                    },
+                    "environment": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "nullable": true,
+                      "description": "The saved environment filter for this dashboard."
+                    },
+                    "period": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "The saved time range period for this dashboard."
+                    },
+                    "start": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "The saved start time for this dashboard."
+                    },
+                    "end": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "The saved end time for this dashboard."
+                    },
+                    "filters": {
+                      "type": "object",
+                      "additionalProperties": {},
+                      "description": "The saved filters for this dashboard."
+                    },
+                    "utc": {
+                      "type": "boolean",
+                      "description": "Setting that lets you display saved time range for this dashboard in UTC."
+                    },
+                    "permissions": {
+                      "allOf": [
+                        {
+                          "type": "object",
+                          "description": "Allows parameters to be defined in snake case, but passed as camel case.\n\nErrors are output in camel case.",
+                          "properties": {
+                            "is_editable_by_everyone": {
+                              "type": "boolean",
+                              "description": "Whether the dashboard is editable by everyone."
+                            },
+                            "teams_with_edit_access": {
+                              "type": "array",
+                              "items": {
+                                "type": "integer"
+                              },
+                              "description": "List of team IDs that have edit access to a dashboard."
+                            }
+                          },
+                          "required": ["is_editable_by_everyone"]
+                        }
+                      ],
+                      "nullable": true,
+                      "description": "Permissions that restrict users from editing dashboards"
+                    },
+                    "is_favorited": {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "Favorite the dashboard automatically for the request user"
+                    }
+                  },
+                  "required": ["title"]
+                }
+              }
+            },
+            "required": true
+          },
+          "security": [
+            {
+              "auth_token": ["org:admin", "org:read", "org:write"]
+            }
+          ],
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "environment": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "period": {
+                        "type": "string"
+                      },
+                      "utc": {
+                        "type": "string"
+                      },
+                      "expired": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "end": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "dateCreated": {
+                        "type": "string"
+                      },
+                      "createdBy": {
+                        "type": "object",
+                        "properties": {
+                          "identities": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "organization": {
+                                  "type": "object",
+                                  "properties": {
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["name", "slug"]
+                                },
+                                "provider": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["id", "name"]
+                                },
+                                "dateVerified": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "dateSynced": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                }
+                              },
+                              "required": [
+                                "dateSynced",
+                                "dateVerified",
+                                "id",
+                                "name",
+                                "organization",
+                                "provider"
+                              ]
+                            }
+                          },
+                          "avatar": {
+                            "type": "object",
+                            "properties": {
+                              "avatarType": {
+                                "type": "string"
+                              },
+                              "avatarUuid": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "avatarUrl": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            }
+                          },
+                          "authenticators": {
+                            "type": "array",
+                            "items": {}
+                          },
+                          "canReset2fa": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "avatarUrl": {
+                            "type": "string"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          },
+                          "isSuspended": {
+                            "type": "boolean"
+                          },
+                          "hasPasswordAuth": {
+                            "type": "boolean"
+                          },
+                          "isManaged": {
+                            "type": "boolean"
+                          },
+                          "dateJoined": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "lastLogin": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "has2fa": {
+                            "type": "boolean"
+                          },
+                          "lastActive": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "isSuperuser": {
+                            "type": "boolean"
+                          },
+                          "isStaff": {
+                            "type": "boolean"
+                          },
+                          "experiments": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          },
+                          "emails": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "email": {
+                                  "type": "string"
+                                },
+                                "is_verified": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["email", "id", "is_verified"]
+                            }
+                          }
+                        },
+                        "required": [
+                          "avatarUrl",
+                          "dateJoined",
+                          "email",
+                          "emails",
+                          "experiments",
+                          "has2fa",
+                          "hasPasswordAuth",
+                          "id",
+                          "isActive",
+                          "isManaged",
+                          "isStaff",
+                          "isSuperuser",
+                          "isSuspended",
+                          "lastActive",
+                          "lastLogin",
+                          "name",
+                          "username"
+                        ],
+                        "nullable": true
+                      },
+                      "widgets": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "displayType": {
+                              "type": "string"
+                            },
+                            "thresholds": {
+                              "type": "object",
+                              "properties": {
+                                "preferredPolarity": {
+                                  "type": "string"
+                                },
+                                "timeWindow": {
+                                  "type": "string"
+                                },
+                                "max_values": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "unit": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["max_values", "unit"],
+                              "nullable": true
+                            },
+                            "interval": {
+                              "type": "string"
+                            },
+                            "dateCreated": {
+                              "type": "string"
+                            },
+                            "dashboardId": {
+                              "type": "string"
+                            },
+                            "queries": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "fields": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "aggregates": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "columns": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "fieldAliases": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "conditions": {
+                                    "type": "string"
+                                  },
+                                  "orderby": {
+                                    "type": "string"
+                                  },
+                                  "widgetId": {
+                                    "type": "string"
+                                  },
+                                  "onDemand": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "enabled": {
+                                          "type": "boolean"
+                                        },
+                                        "extractionState": {
+                                          "type": "string"
+                                        },
+                                        "dashboardWidgetQueryId": {
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "dashboardWidgetQueryId",
+                                        "enabled",
+                                        "extractionState"
+                                      ]
+                                    }
+                                  },
+                                  "isHidden": {
+                                    "type": "boolean"
+                                  },
+                                  "selectedAggregate": {
+                                    "type": "integer",
+                                    "nullable": true
+                                  },
+                                  "linkedDashboards": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "field": {
+                                          "type": "string"
+                                        },
+                                        "dashboardId": {
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": ["dashboardId", "field"]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "aggregates",
+                                  "columns",
+                                  "conditions",
+                                  "fieldAliases",
+                                  "fields",
+                                  "id",
+                                  "isHidden",
+                                  "linkedDashboards",
+                                  "name",
+                                  "onDemand",
+                                  "orderby",
+                                  "selectedAggregate",
+                                  "widgetId"
+                                ]
+                              }
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "nullable": true
+                            },
+                            "widgetType": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "layout": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "integer"
+                              },
+                              "nullable": true
+                            },
+                            "axisRange": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "legendType": {
+                              "enum": ["default", "breakdown", null],
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "datasetSource": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "exploreUrls": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "nullable": true
+                            },
+                            "changedReason": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "orderby": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "nullable": true
+                                  },
+                                  "equations": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "nullable": true
+                                  },
+                                  "selected_columns": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "equations",
+                                  "orderby",
+                                  "selected_columns"
+                                ]
+                              },
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "axisRange",
+                            "changedReason",
+                            "dashboardId",
+                            "datasetSource",
+                            "dateCreated",
+                            "description",
+                            "displayType",
+                            "exploreUrls",
+                            "id",
+                            "interval",
+                            "layout",
+                            "legendType",
+                            "limit",
+                            "queries",
+                            "thresholds",
+                            "title",
+                            "widgetType"
+                          ]
+                        }
+                      },
+                      "projects": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "filters": {
+                        "type": "object",
+                        "properties": {
+                          "release": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "releaseId": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "globalFilter": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            }
+                          }
+                        }
+                      },
+                      "permissions": {
+                        "type": "object",
+                        "properties": {
+                          "isEditableByEveryone": {
+                            "type": "boolean"
+                          },
+                          "teamsWithEditAccess": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "required": [
+                          "isEditableByEveryone",
+                          "teamsWithEditAccess"
+                        ],
+                        "nullable": true
+                      },
+                      "isFavorited": {
+                        "type": "boolean"
+                      },
+                      "prebuiltId": {
+                        "type": "integer",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "createdBy",
+                      "dateCreated",
+                      "filters",
+                      "id",
+                      "isFavorited",
+                      "permissions",
+                      "prebuiltId",
+                      "projects",
+                      "title",
+                      "widgets"
+                    ]
+                  },
+                  "examples": {
+                    "CreateDashboard": {
+                      "value": {
+                        "id": "1",
+                        "title": "Dashboard",
+                        "dateCreated": "2024-06-20T14:38:03.498574Z",
+                        "createdBy": {
+                          "id": "1",
+                          "name": "Admin",
+                          "username": "admin",
+                          "email": "admin@example.com",
+                          "avatarUrl": "www.example.com",
+                          "isActive": true,
+                          "isSuspended": false,
+                          "hasPasswordAuth": true,
+                          "isManaged": false,
+                          "dateJoined": "2021-10-25T17:07:33.190596Z",
+                          "lastLogin": "2024-07-16T15:28:39.261659Z",
+                          "has2fa": true,
+                          "lastActive": "2024-07-16T20:45:49.364197Z",
+                          "isSuperuser": false,
+                          "isStaff": false,
+                          "experiments": {},
+                          "emails": [
+                            {
+                              "id": "1",
+                              "email": "admin@example.com",
+                              "is_verified": true
+                            }
+                          ],
+                          "avatar": {
+                            "avatarType": "letter_avatar",
+                            "avatarUuid": null,
+                            "avatarUrl": "www.example.com"
+                          }
+                        },
+                        "widgets": [
+                          {
+                            "id": "658714",
+                            "title": "Custom Widget",
+                            "description": null,
+                            "displayType": "table",
+                            "thresholds": null,
+                            "interval": "5m",
+                            "dateCreated": "2024-07-16T15:36:46.048343Z",
+                            "dashboardId": "1",
+                            "datasetSource": "user",
+                            "queries": [
+                              {
+                                "id": "1",
+                                "name": "",
+                                "fields": [
+                                  "avg(transaction.duration)",
+                                  "transaction"
+                                ],
+                                "aggregates": ["avg(transaction.duration)"],
+                                "columns": ["transaction"],
+                                "fieldAliases": ["", ""],
+                                "conditions": "",
+                                "orderby": "-avg(transaction.duration)",
+                                "widgetId": "1",
+                                "onDemand": [
+                                  {
+                                    "enabled": false,
+                                    "extractionState": "disabled:not-applicable",
+                                    "dashboardWidgetQueryId": 1
+                                  }
+                                ],
+                                "isHidden": false,
+                                "selectedAggregate": null,
+                                "linkedDashboards": []
+                              }
+                            ],
+                            "limit": null,
+                            "widgetType": "transaction-like",
+                            "layout": {
+                              "w": 2,
+                              "y": 0,
+                              "h": 2,
+                              "minH": 2,
+                              "x": 0
+                            },
+                            "exploreUrls": null,
+                            "changedReason": null,
+                            "axisRange": null,
+                            "legendType": "default"
+                          }
+                        ],
+                        "projects": [1],
+                        "filters": {},
+                        "environment": ["alpha"],
+                        "period": "7d",
+                        "permissions": {
+                          "isEditableByEveryone": true,
+                          "teamsWithEditAccess": []
+                        },
+                        "isFavorited": false,
+                        "prebuiltId": null
+                      },
+                      "summary": "Create Dashboard"
+                    }
+                  }
+                }
+              },
+              "description": ""
+            },
+            "400": {
+              "description": "Bad Request"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Not Found"
+            },
+            "409": {
+              "description": "Conflict"
+            }
+          }
+        }
+      },
+      "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/": {
+        "get": {
+          "operationId": "getOrganizationDashboard",
+          "description": "Return details about an organization's custom dashboard.",
+          "summary": "Retrieve an Organization's Custom Dashboard",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "organization_id_or_slug",
+              "schema": {
+                "type": "string"
+              },
+              "description": "The ID or slug of the organization the resource belongs to.",
+              "required": true
+            },
+            {
+              "in": "path",
+              "name": "dashboard_id",
+              "schema": {
+                "type": "integer"
+              },
+              "description": "The ID of the dashboard you'd like to retrieve.",
+              "required": true
+            }
+          ],
+          "tags": ["Dashboards"],
+          "security": [
+            {
+              "auth_token": ["org:admin", "org:read", "org:write"]
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "environment": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "period": {
+                        "type": "string"
+                      },
+                      "utc": {
+                        "type": "string"
+                      },
+                      "expired": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "end": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "dateCreated": {
+                        "type": "string"
+                      },
+                      "createdBy": {
+                        "type": "object",
+                        "properties": {
+                          "identities": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "organization": {
+                                  "type": "object",
+                                  "properties": {
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["name", "slug"]
+                                },
+                                "provider": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["id", "name"]
+                                },
+                                "dateVerified": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "dateSynced": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                }
+                              },
+                              "required": [
+                                "dateSynced",
+                                "dateVerified",
+                                "id",
+                                "name",
+                                "organization",
+                                "provider"
+                              ]
+                            }
+                          },
+                          "avatar": {
+                            "type": "object",
+                            "properties": {
+                              "avatarType": {
+                                "type": "string"
+                              },
+                              "avatarUuid": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "avatarUrl": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            }
+                          },
+                          "authenticators": {
+                            "type": "array",
+                            "items": {}
+                          },
+                          "canReset2fa": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "avatarUrl": {
+                            "type": "string"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          },
+                          "isSuspended": {
+                            "type": "boolean"
+                          },
+                          "hasPasswordAuth": {
+                            "type": "boolean"
+                          },
+                          "isManaged": {
+                            "type": "boolean"
+                          },
+                          "dateJoined": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "lastLogin": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "has2fa": {
+                            "type": "boolean"
+                          },
+                          "lastActive": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "isSuperuser": {
+                            "type": "boolean"
+                          },
+                          "isStaff": {
+                            "type": "boolean"
+                          },
+                          "experiments": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          },
+                          "emails": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "email": {
+                                  "type": "string"
+                                },
+                                "is_verified": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["email", "id", "is_verified"]
+                            }
+                          }
+                        },
+                        "required": [
+                          "avatarUrl",
+                          "dateJoined",
+                          "email",
+                          "emails",
+                          "experiments",
+                          "has2fa",
+                          "hasPasswordAuth",
+                          "id",
+                          "isActive",
+                          "isManaged",
+                          "isStaff",
+                          "isSuperuser",
+                          "isSuspended",
+                          "lastActive",
+                          "lastLogin",
+                          "name",
+                          "username"
+                        ],
+                        "nullable": true
+                      },
+                      "widgets": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "displayType": {
+                              "type": "string"
+                            },
+                            "thresholds": {
+                              "type": "object",
+                              "properties": {
+                                "preferredPolarity": {
+                                  "type": "string"
+                                },
+                                "timeWindow": {
+                                  "type": "string"
+                                },
+                                "max_values": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "unit": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["max_values", "unit"],
+                              "nullable": true
+                            },
+                            "interval": {
+                              "type": "string"
+                            },
+                            "dateCreated": {
+                              "type": "string"
+                            },
+                            "dashboardId": {
+                              "type": "string"
+                            },
+                            "queries": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "fields": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "aggregates": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "columns": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "fieldAliases": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "conditions": {
+                                    "type": "string"
+                                  },
+                                  "orderby": {
+                                    "type": "string"
+                                  },
+                                  "widgetId": {
+                                    "type": "string"
+                                  },
+                                  "onDemand": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "enabled": {
+                                          "type": "boolean"
+                                        },
+                                        "extractionState": {
+                                          "type": "string"
+                                        },
+                                        "dashboardWidgetQueryId": {
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "dashboardWidgetQueryId",
+                                        "enabled",
+                                        "extractionState"
+                                      ]
+                                    }
+                                  },
+                                  "isHidden": {
+                                    "type": "boolean"
+                                  },
+                                  "selectedAggregate": {
+                                    "type": "integer",
+                                    "nullable": true
+                                  },
+                                  "linkedDashboards": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "field": {
+                                          "type": "string"
+                                        },
+                                        "dashboardId": {
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": ["dashboardId", "field"]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "aggregates",
+                                  "columns",
+                                  "conditions",
+                                  "fieldAliases",
+                                  "fields",
+                                  "id",
+                                  "isHidden",
+                                  "linkedDashboards",
+                                  "name",
+                                  "onDemand",
+                                  "orderby",
+                                  "selectedAggregate",
+                                  "widgetId"
+                                ]
+                              }
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "nullable": true
+                            },
+                            "widgetType": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "layout": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "integer"
+                              },
+                              "nullable": true
+                            },
+                            "axisRange": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "legendType": {
+                              "enum": ["default", "breakdown", null],
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "datasetSource": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "exploreUrls": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "nullable": true
+                            },
+                            "changedReason": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "orderby": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "nullable": true
+                                  },
+                                  "equations": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "nullable": true
+                                  },
+                                  "selected_columns": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "equations",
+                                  "orderby",
+                                  "selected_columns"
+                                ]
+                              },
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "axisRange",
+                            "changedReason",
+                            "dashboardId",
+                            "datasetSource",
+                            "dateCreated",
+                            "description",
+                            "displayType",
+                            "exploreUrls",
+                            "id",
+                            "interval",
+                            "layout",
+                            "legendType",
+                            "limit",
+                            "queries",
+                            "thresholds",
+                            "title",
+                            "widgetType"
+                          ]
+                        }
+                      },
+                      "projects": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "filters": {
+                        "type": "object",
+                        "properties": {
+                          "release": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "releaseId": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "globalFilter": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            }
+                          }
+                        }
+                      },
+                      "permissions": {
+                        "type": "object",
+                        "properties": {
+                          "isEditableByEveryone": {
+                            "type": "boolean"
+                          },
+                          "teamsWithEditAccess": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "required": [
+                          "isEditableByEveryone",
+                          "teamsWithEditAccess"
+                        ],
+                        "nullable": true
+                      },
+                      "isFavorited": {
+                        "type": "boolean"
+                      },
+                      "prebuiltId": {
+                        "type": "integer",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "createdBy",
+                      "dateCreated",
+                      "filters",
+                      "id",
+                      "isFavorited",
+                      "permissions",
+                      "prebuiltId",
+                      "projects",
+                      "title",
+                      "widgets"
+                    ]
+                  },
+                  "examples": {
+                    "DashboardGETResponse": {
+                      "value": {
+                        "id": "1",
+                        "title": "Dashboard",
+                        "dateCreated": "2024-06-20T14:38:03.498574Z",
+                        "createdBy": {
+                          "id": "1",
+                          "name": "Admin",
+                          "username": "admin",
+                          "email": "admin@example.com",
+                          "avatarUrl": "www.example.com",
+                          "isActive": true,
+                          "isSuspended": false,
+                          "hasPasswordAuth": true,
+                          "isManaged": false,
+                          "dateJoined": "2021-10-25T17:07:33.190596Z",
+                          "lastLogin": "2024-07-16T15:28:39.261659Z",
+                          "has2fa": true,
+                          "lastActive": "2024-07-16T20:45:49.364197Z",
+                          "isSuperuser": false,
+                          "isStaff": false,
+                          "experiments": {},
+                          "emails": [
+                            {
+                              "id": "1",
+                              "email": "admin@example.com",
+                              "is_verified": true
+                            }
+                          ],
+                          "avatar": {
+                            "avatarType": "letter_avatar",
+                            "avatarUuid": null,
+                            "avatarUrl": "www.example.com"
+                          }
+                        },
+                        "widgets": [
+                          {
+                            "id": "658714",
+                            "title": "Custom Widget",
+                            "description": null,
+                            "displayType": "table",
+                            "thresholds": null,
+                            "interval": "5m",
+                            "dateCreated": "2024-07-16T15:36:46.048343Z",
+                            "dashboardId": "1",
+                            "datasetSource": "user",
+                            "queries": [
+                              {
+                                "id": "1",
+                                "name": "",
+                                "fields": [
+                                  "avg(transaction.duration)",
+                                  "transaction"
+                                ],
+                                "aggregates": ["avg(transaction.duration)"],
+                                "columns": ["transaction"],
+                                "fieldAliases": ["", ""],
+                                "conditions": "",
+                                "orderby": "-avg(transaction.duration)",
+                                "widgetId": "1",
+                                "onDemand": [
+                                  {
+                                    "enabled": false,
+                                    "extractionState": "disabled:not-applicable",
+                                    "dashboardWidgetQueryId": 1
+                                  }
+                                ],
+                                "isHidden": false,
+                                "selectedAggregate": null,
+                                "linkedDashboards": []
+                              }
+                            ],
+                            "limit": null,
+                            "widgetType": "transaction-like",
+                            "layout": {
+                              "w": 2,
+                              "y": 0,
+                              "h": 2,
+                              "minH": 2,
+                              "x": 0
+                            },
+                            "exploreUrls": null,
+                            "changedReason": null,
+                            "axisRange": null,
+                            "legendType": "default"
+                          }
+                        ],
+                        "projects": [1],
+                        "filters": {},
+                        "environment": ["alpha"],
+                        "period": "7d",
+                        "permissions": {
+                          "isEditableByEveryone": true,
+                          "teamsWithEditAccess": []
+                        },
+                        "isFavorited": false,
+                        "prebuiltId": null
+                      },
+                      "summary": "Dashboard GET response"
+                    }
+                  }
+                }
+              },
+              "description": ""
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Not Found"
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "securitySchemes": {
+        "auth_token": {
+          "type": "http",
+          "scheme": "bearer"
+        },
+        "dsn": {
+          "type": "http",
+          "scheme": "DSN"
+        }
+      }
+    }
+  }
+}
