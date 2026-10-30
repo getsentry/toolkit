@@ -5,6 +5,7 @@
  * attachSentryReporter, and the logger instance configuration.
  */
 
+import { createConsolaReporter } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   attachSentryReporter,
@@ -271,13 +272,13 @@ describe("attachSentryReporter", () => {
   test("can be called without error", () => {
     // attachSentryReporter is idempotent and safe to call even when
     // Sentry is not initialized (it catches errors internally)
-    expect(() => attachSentryReporter()).not.toThrow();
+    expect(() => attachSentryReporter(createConsolaReporter())).not.toThrow();
   });
 
   test("is idempotent (second call is a no-op)", () => {
     // First call may or may not succeed depending on Sentry state
-    attachSentryReporter();
+    attachSentryReporter(createConsolaReporter());
     // Second call should be a no-op due to internal guard
-    expect(() => attachSentryReporter()).not.toThrow();
+    expect(() => attachSentryReporter(createConsolaReporter())).not.toThrow();
   });
 });

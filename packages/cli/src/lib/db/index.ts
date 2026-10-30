@@ -224,16 +224,7 @@ export function getDatabase(): Database {
     }
 
     // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node (~100ms).
-    // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
-    if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
-      db = rawDb;
-    } else {
-      const { createTracedDatabase } = _require("../telemetry.js") as {
-        createTracedDatabase: (d: Database) => Database;
-      };
-      db = createTracedDatabase(rawDb);
-    }
+    db = lazyTelemetry()?.createTracedDatabase(rawDb) ?? rawDb;
     dbOpenedPath = dbPath;
     registerExitHandler();
 
@@ -244,6 +235,29 @@ export function getDatabase(): Database {
     rawDb = null;
     throw error;
   }
+}
+
+/**
+ * The telemetry module, required lazily so the database modules never import
+ * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
+ * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
+ */
+function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
+  if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
+    return;
+  }
+  return _require("../telemetry.js") as typeof import("../telemetry.js");
+}
+
+/** Run a database operation in a `db.operation` span (telemetry's `withDbSpan`). */
+export function withDbSpan<T>(operation: string, fn: () => T): T {
+  const telemetry = lazyTelemetry();
+  return telemetry ? telemetry.withDbSpan(operation, fn) : fn();
+}
+
+/** Record a cache hit or miss (telemetry's `recordCacheHit`). */
+export function recordCacheHit(cacheName: string, hit: boolean): void {
+  lazyTelemetry()?.recordCacheHit(cacheName, hit);
 }
 
 /** Close the database connection (used for testing). */

@@ -59,8 +59,7 @@
  * @module
  */
 
-import { createConsolaReporter } from "@sentry/node";
-import type { ConsolaInstance } from "consola";
+import type { ConsolaInstance, ConsolaReporter } from "consola";
 import { createConsola } from "consola";
 
 import { getEnv } from "./env.js";
@@ -261,6 +260,8 @@ let sentryReporterAttached = false;
  *
  * Must be called after `Sentry.init()` completes so that `createConsolaReporter()`
  * can find the active client. Safe to call multiple times — subsequent calls are no-ops.
+ * The caller creates the reporter so this module never imports `@sentry/node`:
+ * the `__complete` fast path loads the logger through the database modules.
  *
  * The reporter auto-forwards all consola log messages to Sentry structured logs,
  * mapping consola types to Sentry severity levels:
@@ -270,14 +271,12 @@ let sentryReporterAttached = false;
  *
  * Tags are preserved as `consola.tag` attributes in Sentry.
  */
-export function attachSentryReporter(): void {
+export function attachSentryReporter(reporter: ConsolaReporter): void {
   if (sentryReporterAttached) {
     return;
   }
 
-  // Imported statically: the bundler leaves a runtime `require()` unresolved,
-  // which would either fail or load a host application's `@sentry/node`.
-  logger.addReporter(createConsolaReporter());
+  logger.addReporter(reporter);
   sentryReporterAttached = true;
 }
 

@@ -434,6 +434,21 @@ reads, SQLite, no network); ones that need a parser (`arg-parsing.ts`, the
 search grammar) import it when called, so the fast path only loads it for
 the arguments that need it.
 
+The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
+and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
+for `__complete` first and call `runCompletion` without loading `cli.ts`;
+the npm package ships it as the separate `dist/complete.cjs` bundle. That
+graph must stay free of `@sentry/node`, telemetry, the API client, and the
+command tree: the database modules get spans and cache metrics through
+`withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
+telemetry lazily and skip it when telemetry is off (`runCompletion` turns it
+off), and `logger.ts` takes the Sentry reporter from `initSentry`.
+`test/script/cli-startup.test.ts` bundles the graph and fails on any package
+not in its `COMPLETION_PACKAGES` list, naming the importer, or on more source
+modules than `COMPLETION_MODULE_BUDGET`. Defer a heavy dependency with a
+dynamic `import()` in the completer that needs it rather than adding it to
+the list.
+
 ### Multiple Values in Arguments
 
 Split by argument type — do not mix the conventions:

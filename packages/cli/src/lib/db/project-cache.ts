@@ -3,8 +3,7 @@
  */
 
 import type { CachedProject } from "../../types/index.js";
-import { recordCacheHit } from "../telemetry.js";
-import { getDatabase, maybeCleanupCaches } from "./index.js";
+import { getDatabase, maybeCleanupCaches, recordCacheHit } from "./index.js";
 import { runUpsert, touchCacheEntry } from "./utils.js";
 
 type ProjectCacheRow = {
