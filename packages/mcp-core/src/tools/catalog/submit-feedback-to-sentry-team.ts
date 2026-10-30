@@ -9,14 +9,14 @@ import { scrubSensitiveText } from "../../telem/sentry";
 // UTF-16 units keeps us at or under that.
 const MAX_FEEDBACK_MESSAGE_LENGTH = 4096;
 
-export const submitFeedbackOutputSchema = z.object({
+export const submitFeedbackToSentryTeamOutputSchema = z.object({
   feedbackId: z
     .string()
     .describe("ID of the feedback sent to the Sentry MCP maintainers."),
 });
 
 export default defineTool({
-  name: "submit_feedback",
+  name: "submit_feedback_to_sentry_team",
   description: [
     "Report friction with the Sentry MCP server to its maintainers.",
     "",
@@ -26,7 +26,7 @@ export default defineTool({
     "- Suggest an improvement to the Sentry MCP tools",
     "",
     "<examples>",
-    "submit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')",
+    "submit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')",
     "</examples>",
     "",
     "<hints>",
@@ -67,7 +67,7 @@ export default defineTool({
       .optional()
       .describe("The Sentry MCP tool the feedback is about, if any."),
   },
-  outputSchema: submitFeedbackOutputSchema,
+  outputSchema: submitFeedbackToSentryTeamOutputSchema,
   skills: ALL_SKILLS,
   requiredScopes: [],
   annotations: {

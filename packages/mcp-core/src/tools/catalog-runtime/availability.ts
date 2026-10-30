@@ -118,10 +118,10 @@ function isHiddenByConstraints({
   );
 }
 
-// submit_feedback can only deliver reports when Sentry telemetry has a DSN
+// submit_feedback_to_sentry_team can only deliver reports when Sentry telemetry has a DSN
 // (e.g. stdio without SENTRY_DSN has none), so hide it otherwise.
 function isMissingFeedbackDsn(key: string): boolean {
-  return key === "submit_feedback" && !getClient()?.getDsn();
+  return key === "submit_feedback_to_sentry_team" && !getClient()?.getDsn();
 }
 
 export function getFilteredInputSchema(

@@ -80,18 +80,22 @@ describe("catalog availability", () => {
     );
   });
 
-  it("shows submit_feedback only when Sentry telemetry has a DSN", () => {
+  it("shows submit_feedback_to_sentry_team only when Sentry telemetry has a DSN", () => {
     const context = getServerContext({
       grantedSkills: new Set<Skill>(["inspect"]),
     });
 
     vi.mocked(getClient).mockReturnValueOnce(undefined);
-    expect(getSearchableToolNames(context)).not.toContain("submit_feedback");
+    expect(getSearchableToolNames(context)).not.toContain(
+      "submit_feedback_to_sentry_team",
+    );
 
     vi.mocked(getClient).mockReturnValueOnce({
       getDsn: () => ({ host: "o1.ingest.sentry.io" }),
     } as unknown as ReturnType<typeof getClient>);
-    expect(getSearchableToolNames(context)).toContain("submit_feedback");
+    expect(getSearchableToolNames(context)).toContain(
+      "submit_feedback_to_sentry_team",
+    );
   });
 
   it("hides create_project from project-scoped project-management sessions", () => {

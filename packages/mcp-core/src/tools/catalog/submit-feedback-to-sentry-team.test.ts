@@ -5,16 +5,16 @@ import {
   assertStructuredOnlyResult,
   getStructuredContent,
 } from "../../test-utils/structured-content.js";
-import submitFeedback from "./submit-feedback.js";
+import submitFeedbackToSentryTeam from "./submit-feedback-to-sentry-team.js";
 
 vi.mock("@sentry/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@sentry/core")>();
   return { ...actual, captureFeedback: vi.fn(() => "event-id") };
 });
 
-describe("submit_feedback", () => {
+describe("submit_feedback_to_sentry_team", () => {
   it("sends scrubbed feedback to Sentry", async () => {
-    const result = await submitFeedback.handler(
+    const result = await submitFeedbackToSentryTeam.handler(
       {
         task: "find slow endpoints",
         kind: "missing",
@@ -49,7 +49,7 @@ describe("submit_feedback", () => {
   });
 
   it("truncates messages to Sentry's feedback length limit", async () => {
-    await submitFeedback.handler(
+    await submitFeedbackToSentryTeam.handler(
       {
         task: "find slow endpoints",
         kind: "broken",

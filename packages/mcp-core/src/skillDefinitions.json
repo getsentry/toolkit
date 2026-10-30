@@ -238,8 +238,8 @@
         "requiredScopes": ["event:read"]
       },
       {
-        "name": "submit_feedback",
-        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
         "requiredScopes": []
       },
       {
@@ -338,8 +338,8 @@
         "requiredScopes": ["event:read"]
       },
       {
-        "name": "submit_feedback",
-        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
         "requiredScopes": []
       },
       {
@@ -384,8 +384,8 @@
         "requiredScopes": []
       },
       {
-        "name": "submit_feedback",
-        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
         "requiredScopes": []
       },
       {
@@ -514,8 +514,8 @@
         "requiredScopes": ["event:read"]
       },
       {
-        "name": "submit_feedback",
-        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
         "requiredScopes": []
       },
       {
@@ -629,8 +629,8 @@
         "requiredScopes": ["project:write", "team:read", "org:read"]
       },
       {
-        "name": "submit_feedback",
-        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
         "requiredScopes": []
       },
       {
