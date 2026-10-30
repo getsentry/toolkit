@@ -8,10 +8,8 @@
  * `__complete` fast path cannot boot Stricli to walk the route tree, and
  * `src/lib/complete.ts` maps each kind to its completer.
  *
- * {@link parseOrgTarget}, {@link parseOrgProjectTarget}, and
- * {@link parseIssueTarget} return their input unchanged and only mark the
- * kind. Parsers that also parse the value,
- * such as those in `target-positional.ts`, use the same tag.
+ * Commands get the tag from the bound parsers in `target-positional.ts`
+ * and `positional-parse.ts`, which parse the value too.
  */
 
 import { ISSUE_IS_VALUES } from "@sentry/toolkit-core/search-query";
@@ -64,24 +62,6 @@ export function withCompletionTarget<P extends (input: string) => unknown>(
   Object.defineProperty(parse, COMPLETION_TARGET_KEY, { value: kind });
   return parse;
 }
-
-/** Parser for positionals whose leading segment is an organization slug. */
-export const parseOrgTarget = withCompletionTarget(
-  ORG_TARGET,
-  (input: string): string => input,
-);
-
-/** Parser for positionals that start with `org/project`, a project, or an alias. */
-export const parseOrgProjectTarget = withCompletionTarget(
-  ORG_PROJECT_TARGET,
-  (input: string): string => input,
-);
-
-/** Parser for positionals that name an issue (short ID, `org/ID`, ...). */
-export const parseIssueTarget = withCompletionTarget(
-  ISSUE_TARGET,
-  (input: string): string => input,
-);
 
 /**
  * Shared value parsers and what their arguments complete. Listed here, not
