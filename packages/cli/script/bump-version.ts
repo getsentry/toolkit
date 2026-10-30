@@ -3,6 +3,7 @@
  * Version Bump Script
  *
  * Handles version bumping for releases, keeping package.json and plugin.json in sync.
+ * `@sentry/mcp-server` ships with every CLI release, so it takes the same version.
  * Extracted from .craft.yml inline scripts for maintainability.
  *
  * Usage:
@@ -10,11 +11,12 @@
  *   node --experimental-strip-types script/bump-version.ts --post  # Post-release: bump to next dev version
  *
  * Pre-release (--pre):
- *   - Sets package.json version to CRAFT_NEW_VERSION
+ *   - Sets the CLI and @sentry/mcp-server package.json versions to CRAFT_NEW_VERSION
  *   - Updates plugin.json version (strips prerelease suffix)
  *
  * Post-release (--post):
- *   - Bumps package.json to next preminor with -dev prerelease
+ *   - Bumps package.json to next preminor with -dev prerelease, and
+ *     @sentry/mcp-server to match
  *   - Updates plugin.json version
  *   - Commits and pushes if there are changes
  */
@@ -24,6 +26,7 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PLUGIN_PATH = "plugins/sentry-cli/.claude-plugin/plugin.json";
+const MCP_SERVER_PATH = "../mcp-server";
 const SKILL_PATH = "plugins/sentry-cli/skills/sentry-cli";
 const SKILL_VERSION_LINE = /^version: [^\r\n]+$/gm;
 
@@ -94,8 +97,17 @@ function syncSkillVersions(version: string): void {
 /**
  * Execute a shell command with output inherited to stdout/stderr
  */
-function exec(command: string): void {
-  execSync(command, { stdio: "inherit" });
+function exec(command: string, cwd?: string): void {
+  execSync(command, { stdio: "inherit", cwd });
+}
+
+/** Give `@sentry/mcp-server` the CLI's version. */
+function setMcpServerVersion(version: string): void {
+  exec(
+    `npm --no-git-tag-version --allow-same-version version ${version}`,
+    MCP_SERVER_PATH,
+  );
+  console.log(`Updated @sentry/mcp-server to ${version}`);
 }
 
 /**
@@ -112,6 +124,7 @@ function preRelease(): void {
 
   // Update package.json via npm (handles formatting consistently)
   exec(`npm --no-git-tag-version version ${version}`);
+  setMcpServerVersion(version);
 
   // Update plugin.json (strip prerelease suffix for cleaner version)
   const plugin = readPluginJson();
@@ -135,6 +148,7 @@ function postRelease(): void {
     version: string;
   };
   console.log(`package.json bumped to ${pkg.version}`);
+  setMcpServerVersion(pkg.version);
 
   // Update plugin.json
   const plugin = readPluginJson();

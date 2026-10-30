@@ -81,6 +81,15 @@ const cliPkg = JSON.parse(
   await readFile(resolve(CLI_ROOT, "package.json"), "utf-8"),
 ) as { version: string };
 
+// Each CLI release publishes this package at the CLI's version, set by
+// `script/bump-version.ts`.
+if (pkg.version !== cliPkg.version) {
+  console.error(
+    `\nError: @sentry/mcp-server is at ${pkg.version} but the CLI is at ${cliPkg.version}. Both must share one version.\n`,
+  );
+  process.exit(1);
+}
+
 console.log(`\nBundling @sentry/mcp-server v${pkg.version}`);
 
 await mkdir(dirname(OUTFILE), { recursive: true });

@@ -1,7 +1,7 @@
 {
   "name": "@sentry/mcp-server",
   "mcpName": "io.github.getsentry/sentry-mcp",
-  "version": "0.42.0",
+  "version": "0.48.0-dev.0",
   "description": "Sentry MCP server over stdio: the CLI's `sentry mcp` server, bundled without the rest of the CLI",
   "sentryCi": {
     "build": "bundle",
