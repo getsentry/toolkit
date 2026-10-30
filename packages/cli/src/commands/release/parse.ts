@@ -6,6 +6,7 @@
  * slug separators. This module provides version-aware parsing.
  */
 
+import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   type BoundPositional,
@@ -112,7 +113,7 @@ export function releaseParameter(usageHint: string, brief: string) {
     placeholder: "org/version",
     brief,
     parse: boundPositional(
-      "org",
+      ORG_TARGET,
       (raw) => parseReleaseInput(raw, usageHint),
       async (
         { version, orgSlug },

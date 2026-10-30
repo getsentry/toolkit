@@ -17,6 +17,7 @@ import {
 import { looksLikeIssueShortId, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -500,7 +501,7 @@ export const viewCommand = buildCommand({
       placeholder: "org/project/trace-id",
       brief:
         "[<org>/<project>/]<trace-id> - Target (optional) and trace ID (required)",
-      kind: "org/project",
+      kind: ORG_PROJECT_TARGET,
       parse: parseTraceViewInput,
       resolve: resolveTraceViewInput,
     }),

@@ -7,8 +7,15 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  CHOICE_TARGET,
   type CompletionTarget,
   choiceParser,
+  DASHBOARD_TARGET,
+  FILE_TARGET,
+  ISSUE_QUERY_TARGET,
+  ISSUE_TARGET,
+  ORG_PROJECT_TARGET,
+  ORG_TARGET,
   parseFilePath,
   withCompletionTarget,
 } from "../../src/lib/completion-target.js";
@@ -413,9 +420,9 @@ describe("extractCommandCompletions", () => {
   /** A fresh parser tagged with `kind`, as the bound parsers are. */
   const tagged = (kind: CompletionTarget) =>
     withCompletionTarget(kind, (input: string) => input);
-  const orgParser = tagged("org");
-  const orgProjectParser = tagged("org/project");
-  const issueParser = tagged("issue");
+  const orgParser = tagged(ORG_TARGET);
+  const orgProjectParser = tagged(ORG_PROJECT_TARGET);
+  const issueParser = tagged(ISSUE_TARGET);
 
   /** Command whose positionals use the given parsers. */
   function commandWith(...parsers: unknown[]): Command {
@@ -460,17 +467,17 @@ describe("extractCommandCompletions", () => {
 
     expect(extractCommandCompletions(topLevel)).toEqual({
       "issue link": {
-        positionals: ["issue", null],
+        positionals: [ISSUE_TARGET, null],
         variadic: false,
         flags: {},
       },
-      "issue merge": { positionals: ["issue"], variadic: true, flags: {} },
+      "issue merge": { positionals: [ISSUE_TARGET], variadic: true, flags: {} },
       "issue rules view": {
-        positionals: ["org/project"],
+        positionals: [ORG_PROJECT_TARGET],
         variadic: false,
         flags: {},
       },
-      trial: { positionals: [null, "org"], variadic: false, flags: {} },
+      trial: { positionals: [null, ORG_TARGET], variadic: false, flags: {} },
     });
   });
 
@@ -482,7 +489,7 @@ describe("extractCommandCompletions", () => {
           parameters: [
             {
               placeholder: "target",
-              parse: tagged("dashboard"),
+              parse: tagged(DASHBOARD_TARGET),
             },
           ],
         },
@@ -506,19 +513,19 @@ describe("extractCommandCompletions", () => {
 
     expect(extractCommandCompletions(topLevel)).toEqual({
       list: {
-        positionals: ["dashboard"],
+        positionals: [DASHBOARD_TARGET],
         variadic: false,
         flags: {
           "--period": null,
-          "--query": "issue-query",
-          "-q": "issue-query",
+          "--query": ISSUE_QUERY_TARGET,
+          "-q": ISSUE_QUERY_TARGET,
           "-t": null,
         },
       },
       search: {
         positionals: [],
         variadic: false,
-        flags: { "--query": "issue-query" },
+        flags: { "--query": ISSUE_QUERY_TARGET },
       },
     });
   });
@@ -560,12 +567,12 @@ describe("extractCommandCompletions", () => {
       extractCommandCompletions(makeRouteMap([makeEntry("shell", shell)])),
     ).toEqual({
       shell: {
-        positionals: ["choice", "file"],
+        positionals: [CHOICE_TARGET, FILE_TARGET],
         variadic: false,
         flags: {
-          "--format": "choice",
-          "--mode": "choice",
-          "-f": "choice",
+          "--format": CHOICE_TARGET,
+          "--mode": CHOICE_TARGET,
+          "-f": CHOICE_TARGET,
         },
         choices: {
           "--format": ["json", "text"],

@@ -19,6 +19,7 @@ import {
   parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -658,7 +659,7 @@ export const listCommand = buildListCommand("span", {
     positional: boundArguments({
       placeholder: "org/project/trace-id",
       brief: "[<org>/<project>] or [<org>/<project>/]<trace-id>",
-      kind: "org/project",
+      kind: ORG_PROJECT_TARGET,
       parse: parseSpanListInput,
       resolve: resolveSpanListTarget,
     }),

@@ -26,6 +26,7 @@ import {
   parseOrgProjectInput,
 } from "../lib/arg-parsing.js";
 import { buildCommand } from "../lib/command.js";
+import { ORG_PROJECT_OR_DIRECTORY_TARGET } from "../lib/completion-target.js";
 import { refreshToken } from "../lib/db/auth.js";
 import { ContextError, ValidationError } from "../lib/errors.js";
 import { warmOrgDetection } from "../lib/init/org-prefetch.js";
@@ -400,7 +401,7 @@ export const initCommand = buildCommand<
   parameters: {
     positional: boundArguments({
       placeholder: "target/directory",
-      kind: "org-project-or-directory",
+      kind: ORG_PROJECT_OR_DIRECTORY_TARGET,
       brief:
         "Optional target (<org>/<project>, <org>/, or <project>) and directory (default: current directory)",
       parse: parseInitInput,

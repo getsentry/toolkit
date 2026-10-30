@@ -18,6 +18,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -489,7 +490,7 @@ export const viewCommand = buildCommand({
       placeholder: "org/project/log-id",
       brief:
         "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
-      kind: "org/project",
+      kind: ORG_PROJECT_TARGET,
       parse: parseLogViewInput,
       resolve: resolveLogViewInput,
     }),

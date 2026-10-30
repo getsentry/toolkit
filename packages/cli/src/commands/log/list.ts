@@ -21,6 +21,7 @@ import {
   parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   AuthError,
   stringifyUnknown,
@@ -824,7 +825,7 @@ export const listCommand = buildListCommand(
       positional: boundArguments({
         placeholder: "org/project-or-trace-id",
         brief: "[<org>/[<project>/]]<trace-id>, <org>/<project>, or <project>",
-        kind: "org/project",
+        kind: ORG_PROJECT_TARGET,
         parse: parseLogListInput,
         resolve: resolveLogListTarget,
       }),

@@ -26,6 +26,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ApiError,
   AuthError,
@@ -1185,7 +1186,7 @@ export const viewCommand = buildCommand({
       placeholder: "org/project/event-id",
       brief:
         "[<org>/<project>] <event-id> [<event-id>...] - Target (optional) and one or more event IDs",
-      kind: "org/project",
+      kind: ORG_PROJECT_TARGET,
       parse: parseEventViewInput,
       resolve: resolveEventViewInput,
     }),

@@ -18,7 +18,10 @@ import { constantFrom, assert as fcAssert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
 import generatedTargets from "../../src/generated/completion-targets.json";
-import { COMPLETION_VALUES } from "../../src/lib/completion-target.js";
+import {
+  COMPLETION_VALUES,
+  PROJECT_SPEC_TARGET,
+} from "../../src/lib/completion-target.js";
 import { parsePeriod } from "../../src/lib/time-range.js";
 import {
   extractCommandTree,
@@ -427,7 +430,7 @@ describe("complete.ts: generated completion targets", () => {
 
   test("project create completes name:platform specs", () => {
     expect(generatedTargets.commands["project create"]?.positionals).toEqual([
-      "project-spec",
+      PROJECT_SPEC_TARGET,
     ]);
   });
 });

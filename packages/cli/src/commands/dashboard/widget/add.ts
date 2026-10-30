@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import { DASHBOARD_TARGET } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetAdded } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -156,7 +157,7 @@ export const addCommand = buildCommand({
     positional: boundArguments({
       placeholder: "org/project/dashboard/title",
       brief: "[<org/project>] <dashboard> <title>",
-      kind: "dashboard",
+      kind: DASHBOARD_TARGET,
       parse: (args): WidgetAddInput => {
         const { dashboardArgs, title } = parseAddPositionalArgs(args);
         return { ...parseDashboardInput(dashboardArgs, USAGE_HINT), title };

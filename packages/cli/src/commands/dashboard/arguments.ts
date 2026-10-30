@@ -11,6 +11,10 @@ import {
   parseOrgProjectInput,
 } from "../../lib/arg-parsing.js";
 import {
+  DASHBOARD_TARGET,
+  ORG_PROJECT_TARGET,
+} from "../../lib/completion-target.js";
+import {
   parseDashboardArgs,
   parseDashboardListArgs,
 } from "../../lib/dashboard-arguments.js";
@@ -154,7 +158,7 @@ export function dashboardArguments(options: {
   return boundArguments({
     placeholder,
     brief: "[<org/project>] <dashboard-id-or-title>",
-    kind: "dashboard",
+    kind: DASHBOARD_TARGET,
     parse: (args) => parseDashboardInput(args, usageHint),
     resolve: (input: DashboardInput, context: SentryContext) =>
       resolveDashboardInput(input, context.cwd, usageHint),
@@ -199,7 +203,7 @@ export function dashboardListArguments(usageHint: string) {
   return boundArguments({
     placeholder: "org/title-filter",
     brief: "[<org/project>] [<name-glob>]",
-    kind: "org/project",
+    kind: ORG_PROJECT_TARGET,
     parse: parseDashboardListInput,
     resolve: (input: DashboardListInput, context: SentryContext) => {
       applyInputContext(input);

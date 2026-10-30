@@ -214,7 +214,7 @@ const completeDashboards = entityCompleter(
  * The completer of every kind a parser can declare. Its keys are the
  * kinds: {@link CompletionTarget} is derived from them.
  */
-const COMPLETERS = {
+const COMPLETERS = Object.freeze({
   /** Organization slugs only (e.g. `org`, `org/version`, `org/id`). */
   org: (partial) => completeOrgSlugs(partial),
   /** `org/` prefixes, `org/project` pairs, and project aliases. */
@@ -287,7 +287,7 @@ const COMPLETERS = {
    * new things). Declared, so that every positional says how it completes.
    */
   text: () => [],
-} satisfies Record<string, Completer>;
+} satisfies Record<string, Completer>);
 
 /** What shell completion suggests for an argument: a key of {@link COMPLETERS}. */
 export type CompletionTarget = keyof typeof COMPLETERS;

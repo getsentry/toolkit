@@ -13,6 +13,7 @@
 import generatedCommandApi from "../generated/command-api.json";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
+  CHOICE_TARGET,
   type CompletionTarget,
   getCompletionChoices,
   getCompletionTarget,
@@ -440,7 +441,7 @@ function argumentCompletion(
 ): { kind: CompletionTarget | null; values?: readonly string[] } {
   const values = enumValues ?? getCompletionChoices(parse);
   return values
-    ? { kind: "choice", values }
+    ? { kind: CHOICE_TARGET, values }
     : { kind: getCompletionTarget(parse) ?? null };
 }
 
