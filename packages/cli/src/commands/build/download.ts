@@ -17,6 +17,7 @@ import {
   toBinaryDownloadUrl,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { ContextError, ResolutionError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -80,7 +81,7 @@ export const downloadCommand = buildCommand({
       parameters: [
         {
           brief: "ID of the build to download",
-          parse: String,
+          parse: parseText,
           placeholder: "build-id",
         },
       ],

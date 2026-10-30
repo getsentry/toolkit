@@ -12,6 +12,7 @@
 
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
+import { parseCommandPath } from "../lib/completion-target.js";
 import { OutputError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import {
@@ -40,7 +41,7 @@ export const helpCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Command to get help for",
-        parse: String,
+        parse: parseCommandPath,
         placeholder: "command",
       },
     },

@@ -10,6 +10,7 @@
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
 import { normalizeUrl } from "../constants.js";
+import { ValidationError } from "../errors.js";
 import { fuzzyMatch } from "../fuzzy.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { storedCredentialIdentity } from "./identity-hash.js";
@@ -248,6 +249,55 @@ export function splitAccountSelector(
   const who = trimmed.slice(0, colon);
   const server = normalizeHttpOrigin(normalizeUrl(trimmed.slice(colon + 1)));
   return who && server ? { who, server } : undefined;
+}
+
+/**
+ * Parse the optional `email` argument of `sentry auth login`: an email, or
+ * `<email>:<server>` (the notation `sentry org list` shows, e.g.
+ * `jane@acme.com:sentry.acme.com`) to also pick the server like `--url`.
+ * Returns the trimmed argument; {@link splitLoginTarget} splits it.
+ *
+ * @throws {ValidationError} when the value is not an email address, or the
+ *   server part is not a valid URL
+ */
+export function parseLoginEmail(raw: string): string {
+  const target = raw.trim();
+  splitLoginTarget(target, raw);
+  return target;
+}
+
+/**
+ * Split a `sentry auth login` target into its email and, for
+ * `<email>:<server>`, the server's normalized origin. Uses the same
+ * {@link splitAccountSelector} as `--account`, plus an email check.
+ *
+ * @throws {ValidationError} when either part is invalid
+ */
+export function splitLoginTarget(
+  target: string,
+  raw = target,
+): { email: string; url?: string } {
+  const parts = splitAccountSelector(target);
+  if (!(parts && isEmailAddress(parts.who))) {
+    throw new ValidationError(
+      `Expected an email address, or <email>:<server> with a valid server, to log in as; got '${raw}'.`,
+      "email",
+    );
+  }
+  return parts.server
+    ? { email: parts.who, url: parts.server }
+    : { email: parts.who };
+}
+
+/** One `@` with text on both sides, and no whitespace. */
+function isEmailAddress(value: string): boolean {
+  const at = value.indexOf("@");
+  return (
+    at > 0 &&
+    at < value.length - 1 &&
+    value.indexOf("@", at + 1) === -1 &&
+    !/\s/.test(value)
+  );
 }
 
 /**

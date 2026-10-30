@@ -19,6 +19,7 @@ import {
   listSources,
   selectBundledObject,
 } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -132,7 +133,7 @@ export const printSourcesCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],

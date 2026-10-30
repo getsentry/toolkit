@@ -1,6 +1,7 @@
 import type { SentryContext } from "../../context.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { type DocsListResponse, listDocs } from "../../lib/docs-service.js";
 import { ValidationError } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/colors.js";
@@ -67,7 +68,7 @@ export const listCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Documentation keywords",
-        parse: String,
+        parse: parseText,
         placeholder: "keywords",
       },
     },

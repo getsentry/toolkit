@@ -6,7 +6,16 @@
  * cache interaction tests.
  */
 
-import { describe, expect, test } from "vitest";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   completeAliases,
   completeOrgSlashProject,
@@ -15,9 +24,11 @@ import {
   completeProjectSlugs,
   getCompletions,
 } from "../../src/lib/complete.js";
+import { setAuthToken } from "../../src/lib/db/auth.js";
 import { cacheCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setProjectAliases } from "../../src/lib/db/project-aliases.js";
 import { setCachedProject } from "../../src/lib/db/project-cache.js";
+import { setUserInfo } from "../../src/lib/db/user.js";
 import {
   type OrgRegionEntry,
   setOrgRegions,
@@ -722,5 +733,118 @@ describe("getCompletions: dashboards", () => {
         (await getCompletions(command, "acme/")).map((c) => c.value),
       ).toEqual(["acme/12"]);
     }
+  });
+});
+
+/** Values of the completions for `words` and `partial`. */
+async function values(words: string[], partial: string): Promise<string[]> {
+  return (await getCompletions(words, partial)).map((c) => c.value);
+}
+
+describe("getCompletions: paths", () => {
+  // A file, a dotfile, a directory, and a link to it
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "complete-paths-"));
+    writeFileSync(join(dir, "app.wasm"), "");
+    writeFileSync(join(dir, ".env"), "");
+    mkdirSync(join(dir, "dist"));
+    symlinkSync(join(dir, "dist"), join(dir, "out"));
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("file positionals list files and directories, directories with a slash", async () => {
+    expect(await values(["wasm-split"], `${dir}/`)).toEqual([
+      `${dir}/app.wasm`,
+      `${dir}/dist/`,
+      `${dir}/out/`,
+    ]);
+    expect(await values(["wasm-split"], `${dir}/a`)).toEqual([
+      `${dir}/app.wasm`,
+    ]);
+  });
+
+  test("dotfiles are listed only for a partial starting with a dot", async () => {
+    expect(await values(["wasm-split"], `${dir}/.`)).toEqual([`${dir}/.env`]);
+  });
+
+  test("directory positionals list directories only", async () => {
+    expect(await values(["sourcemap", "upload"], `${dir}/`)).toEqual([
+      `${dir}/dist/`,
+      `${dir}/out/`,
+    ]);
+  });
+
+  test("a partial in a missing directory completes nothing", async () => {
+    expect(await values(["wasm-split"], `${dir}/missing/a`)).toEqual([]);
+  });
+});
+
+describe("getCompletions: fixed values", () => {
+  test("choice positionals complete their values by prefix", async () => {
+    expect(await values(["cli", "completion"], "")).toEqual([
+      "bash",
+      "zsh",
+      "fish",
+    ]);
+    expect(await values(["cli", "completion"], "z")).toEqual(["zsh"]);
+    expect(await values(["cli", "upgrade"], "n")).toEqual(["nightly"]);
+  });
+
+  test("a variadic choice positional completes its first word only", async () => {
+    expect(await values(["cli", "defaults"], "tel")).toEqual(["telemetry"]);
+    expect(await values(["cli", "defaults", "telemetry"], "")).toEqual([]);
+  });
+
+  test("enum flags complete their values", async () => {
+    expect(await values(["event", "send", "--level"], "w")).toEqual([
+      "warning",
+    ]);
+  });
+
+  test("text positionals complete nothing", async () => {
+    expect(await getCompletions(["cli", "feedback"], "")).toEqual([]);
+  });
+});
+
+describe("getCompletions: command paths", () => {
+  test("help completes route names one segment per word", async () => {
+    expect(await getCompletions(["help"], "aler")).toEqual([
+      { value: "alert", description: expect.any(String) },
+    ]);
+    expect(await values(["help", "alert"], "")).toEqual(["issues", "metrics"]);
+    expect(await values(["help", "alert", "issues"], "l")).toEqual(["list"]);
+    expect(await values(["help", "alert", "issues", "list"], "")).toEqual([]);
+  });
+
+  test("words naming a nested route group complete its subcommands", async () => {
+    expect(await values(["alert", "issues"], "")).toContain("list");
+    expect(await values(["dashboard", "widget"], "e")).toEqual(["edit"]);
+    // The shell scripts complete the first two levels themselves.
+    expect(await values(["alert"], "")).toEqual([]);
+  });
+});
+
+describe("getCompletions: accounts", () => {
+  function addAccount(host: string, email: string, userId: string): void {
+    setAuthToken(`token-${userId}-${host}`, undefined, undefined, {
+      host,
+      newAccount: true,
+    });
+    setUserInfo({ userId, email });
+  }
+
+  test("completes stored accounts, qualified by server when ambiguous", async () => {
+    addAccount("https://sentry.io", "jane@acme.com", "1");
+    addAccount("https://sentry.io", "bob@other.dev", "2");
+    addAccount("https://sentry.example.com", "bob@other.dev", "3");
+
+    expect(await getCompletions(["auth", "switch"], "jane")).toEqual([
+      { value: "jane@acme.com", description: "sentry.io" },
+    ]);
+    expect((await values(["auth", "logout"], "bob")).sort()).toEqual([
+      "bob@other.dev:sentry.example.com",
+      "bob@other.dev:sentry.io",
+    ]);
   });
 });

@@ -19,6 +19,7 @@ import {
   type FindResult,
   findDebugFiles,
 } from "../../lib/dif/find.js";
+import { parseText } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -144,7 +145,7 @@ export const findCommand = buildCommand({
       parameter: {
         placeholder: "id",
         brief: "Debug identifier(s) to search for",
-        parse: String,
+        parse: parseText,
       },
     },
     flags: {

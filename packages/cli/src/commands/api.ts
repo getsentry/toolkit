@@ -11,6 +11,7 @@ import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../context.js";
 import { appendSearchParams, rawApiRequest } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
+import { parseText } from "../lib/completion-target.js";
 import {
   OutputError,
   stringifyUnknown,
@@ -1612,7 +1613,7 @@ export const apiCommand = buildCommand({
       parameters: [
         {
           brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
-          parse: String,
+          parse: parseText,
           placeholder: "endpoint",
         },
       ],

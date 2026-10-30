@@ -24,6 +24,7 @@ import {
   readFileBytes,
   sendEnvelopeRequest,
 } from "../../lib/envelope/transport.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ConfigError, ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
@@ -204,7 +205,7 @@ built entirely from the file contents.
         brief:
           "Optional DSN/project target followed by JSON event file path(s)",
         placeholder: "target-or-file",
-        parse: String,
+        parse: parseFilePath,
         optional: true,
       },
     },

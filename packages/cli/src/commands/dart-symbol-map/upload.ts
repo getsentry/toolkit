@@ -15,6 +15,7 @@ import { basename } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { uploadDartSymbolMap } from "../../lib/api/dart-symbols.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -195,7 +196,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the dart symbol map JSON file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],

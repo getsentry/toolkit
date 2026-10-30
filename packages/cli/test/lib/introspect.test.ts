@@ -7,12 +7,16 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  CHOICE_TARGET,
   type CompletionTarget,
+  choiceParser,
   DASHBOARD_TARGET,
+  FILE_TARGET,
   ISSUE_QUERY_TARGET,
   ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
+  parseFilePath,
   withCompletionTarget,
 } from "../../src/lib/completion-target.js";
 import type {
@@ -28,6 +32,7 @@ import {
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
+  extractRouteGroups,
   getPositionalString,
   isCommand,
   isRouteMap,
@@ -538,6 +543,75 @@ describe("extractCommandCompletions", () => {
     ]);
 
     expect(extractCommandCompletions(topLevel)).toEqual({});
+  });
+
+  test("lists the values of choice positionals and enum flags", () => {
+    const shell = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [
+            { placeholder: "shell", parse: choiceParser(["bash", "zsh"]) },
+            { placeholder: "out", parse: parseFilePath },
+          ],
+        },
+        flags: {
+          format: { kind: "enum", values: ["json", "text"] },
+          mode: { kind: "parsed", parse: choiceParser(["fast"]) },
+        },
+        aliases: { f: "format" },
+      },
+    });
+
+    expect(
+      extractCommandCompletions(makeRouteMap([makeEntry("shell", shell)])),
+    ).toEqual({
+      shell: {
+        positionals: [CHOICE_TARGET, FILE_TARGET],
+        variadic: false,
+        flags: {
+          "--format": CHOICE_TARGET,
+          "--mode": CHOICE_TARGET,
+          "-f": CHOICE_TARGET,
+        },
+        choices: {
+          "--format": ["json", "text"],
+          "--mode": ["fast"],
+          "-f": ["json", "text"],
+          "0": ["bash", "zsh"],
+        },
+      },
+    });
+  });
+});
+
+describe("extractRouteGroups", () => {
+  test("lists the visible subcommands of every group, nested ones included", () => {
+    const topLevel = makeRouteMap([
+      makeEntry(
+        "alert",
+        makeRouteMap(
+          [
+            makeEntry(
+              "issues",
+              makeRouteMap([
+                makeEntry("list", makeCommand({ brief: "List rules" })),
+                makeEntry("secret", makeCommand(), true),
+              ]),
+            ),
+          ],
+          { brief: "Manage alerts" },
+        ),
+      ),
+      makeEntry("api", makeCommand({ brief: "Call the API" })),
+      makeEntry("internal", makeRouteMap([]), true),
+    ]);
+
+    expect(extractRouteGroups(topLevel)).toEqual({
+      "": { alert: "Manage alerts", api: "Call the API" },
+      alert: { issues: "Test route" },
+      "alert issues": { list: "List rules" },
+    });
   });
 });
 
