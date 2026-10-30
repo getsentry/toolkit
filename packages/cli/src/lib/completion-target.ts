@@ -50,6 +50,13 @@ export const FILE_TARGET = "file";
 /** Completes directory paths only. */
 export const DIRECTORY_TARGET = "directory";
 
+/**
+ * Completes what {@link ORG_PROJECT_TARGET} does, or directories once the
+ * word looks like a path (`./`, `../`, `/`, `~/`), as `sentry init` reads
+ * its `[<target>] [<directory>]` arguments.
+ */
+export const ORG_PROJECT_OR_DIRECTORY_TARGET = "org-project-or-directory";
+
 /** Completes a CLI command path, one route segment per word (`help issue list`). */
 export const COMMAND_PATH_TARGET = "command-path";
 
@@ -74,6 +81,7 @@ export const COMPLETION_TARGETS = [
   ACCOUNT_TARGET,
   FILE_TARGET,
   DIRECTORY_TARGET,
+  ORG_PROJECT_OR_DIRECTORY_TARGET,
   COMMAND_PATH_TARGET,
   CHOICE_TARGET,
   TEXT_TARGET,

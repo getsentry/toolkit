@@ -392,6 +392,7 @@ positional without one. Pick the parser by what the argument takes:
 | Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
 | File or directory path | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
 | Directory | `parseDirectoryPath` | directories only |
+| Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
 | Fixed values | `choiceParser(values)` (take the values from the module that defines them) | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). The parser returns its input, so the command still validates it |
 | Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`) |
 | CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |

@@ -233,6 +233,16 @@ const COMPLETERS: Record<CompletionTarget, Completer> = {
   account: (partial) => completeAccounts(partial),
   file: (partial) => completePaths(partial, { directoriesOnly: false }),
   directory: (partial) => completePaths(partial, { directoriesOnly: true }),
+  "org-project-or-directory": async (partial) => {
+    const { looksLikePath } = await import("./arg-parsing.js");
+    if (!looksLikePath(partial)) {
+      return completeOrgSlashProject(partial);
+    }
+    // `.` and `~` alone name a directory; list inside it so every
+    // suggestion still looks like a path
+    const path = partial === "." || partial === "~" ? `${partial}/` : partial;
+    return completePaths(path, { directoriesOnly: true });
+  },
   "command-path": (partial, slot) =>
     completeSubcommands(slot.positionals.join(" "), partial),
   choice: (partial, slot) =>
