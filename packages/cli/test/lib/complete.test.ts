@@ -790,6 +790,12 @@ describe("getCompletions: paths", () => {
         "./dist/",
         "./out/",
       ]);
+      // After a target, only a directory can follow
+      expect(await values(["init", "acme/"], "d")).toEqual(["./dist/"]);
+      // After a directory, only a target can follow; after both, nothing
+      expect(await values(["init", "./dist"], "ac")).toEqual(["acme/"]);
+      expect(await values(["init", "./dist"], "./")).toEqual([]);
+      expect(await values(["init", "acme/", "./dist"], "")).toEqual([]);
     } finally {
       process.chdir(cwd);
     }
