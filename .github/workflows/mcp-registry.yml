@@ -17,8 +17,10 @@ defaults:
   run:
     shell: bash
 
+# Key on the release tag so a manual retry of `0.48.0` queues behind the
+# `cli@0.48.0` release run instead of racing it to publish the same version.
 concurrency:
-  group: mcp-registry-${{ inputs.version || github.event.release.tag_name }}
+  group: mcp-registry-${{ github.event_name == 'release' && github.event.release.tag_name || format('cli@{0}', inputs.version) }}
   cancel-in-progress: false
 
 jobs:
