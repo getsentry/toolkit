@@ -1,5 +1,6 @@
 import { isatty } from "node:tty";
 import { getCurrentAuthScopes } from "./api/auth.js";
+import { SENTRY_SCOPES } from "./api-scope.js";
 import { assertAutoLoginHostTrusted } from "./auto-auth.js";
 import {
   type AuthSource,
@@ -58,9 +59,50 @@ const defaultRuntime: ScopeRecoveryRuntime = {
 function reauthorize(
   runInteractiveLogin: InteractiveLogin,
   runtime: ScopeRecoveryRuntime,
+  scope?: string,
 ): Promise<LoginResult | null> {
   const accountId = runtime.getReauthorizationAccountId?.();
-  return accountId ? runInteractiveLogin({ accountId }) : runInteractiveLogin();
+  const options: InteractiveLoginOptions = {
+    ...(accountId && { accountId }),
+    ...(scope && { scope }),
+  };
+  return Object.keys(options).length > 0
+    ? runInteractiveLogin(options)
+    : runInteractiveLogin();
+}
+
+const DEFAULT_SCOPE_SET = new Set(OAUTH_SCOPES);
+const KNOWN_SCOPE_SET = new Set<string>(SENTRY_SCOPES);
+
+/**
+ * Scope string for an elevation that needs scopes outside the CLI's defaults.
+ *
+ * Opt-in scopes such as `org:tokens` stay out of {@link OAUTH_SCOPES} because
+ * Sentry rejects the whole device-flow request when it doesn't know one of the
+ * requested scopes, which would break `sentry auth login` on older self-hosted
+ * servers. Keeping the opt-in scopes the grant already holds means elevating
+ * for one action doesn't take away what an earlier elevation added.
+ *
+ * @returns `undefined` when `required` only names default scopes, so the
+ *   device flow requests the defaults as usual
+ */
+function elevationScopeString(
+  granted: ReadonlySet<string>,
+  required: readonly string[],
+): string | undefined {
+  if (required.every((scope) => DEFAULT_SCOPE_SET.has(scope))) {
+    return;
+  }
+  const scopes = new Set<string>(OAUTH_SCOPES);
+  for (const scope of granted) {
+    if (KNOWN_SCOPE_SET.has(scope)) {
+      scopes.add(scope);
+    }
+  }
+  for (const scope of required) {
+    scopes.add(scope);
+  }
+  return [...scopes].join(" ");
 }
 
 async function inspectOAuthScopes(
@@ -202,8 +244,9 @@ export type ScopeElevationResult =
  * Commands that need a default scope older logins may lack call this before
  * any confirmation prompt, so the user authorizes once instead of hitting a
  * 403 and re-running the command (and its prompts) through
- * {@link runWithScopeRecovery}. The device flow requests the CLI's default
- * scopes, so `required` must be a subset of {@link OAUTH_SCOPES}.
+ * {@link runWithScopeRecovery}. When `required` only names default scopes,
+ * the device flow requests the defaults. Otherwise it requests the defaults,
+ * the opt-in scopes the grant already has, and `required`.
  *
  * @param required - Scopes the action needs
  * @param action - Human description for the prompt, e.g. "Removing an integration"
@@ -215,11 +258,12 @@ export async function ensureScopesForAction(
   runtime: ScopeRecoveryRuntime = defaultRuntime,
 ): Promise<ScopeElevationResult> {
   let missing: string[];
+  let granted: Set<string>;
   try {
     if (runtime.getAuthSource() !== "oauth") {
       return "ready";
     }
-    const granted = new Set((await runtime.getAuthScopes()) ?? []);
+    granted = new Set((await runtime.getAuthScopes()) ?? []);
     missing = required.filter((scope) => !granted.has(scope));
   } catch (error) {
     logger.debug("Could not inspect OAuth scopes before action", error);
@@ -236,7 +280,8 @@ export async function ensureScopesForAction(
   runtime.write(
     `${action} needs elevated permissions (${missing.join(", ")}). Starting authorization...\n\n`,
   );
-  return (await reauthorize(runInteractiveLogin, runtime))
+  const scope = elevationScopeString(granted, required);
+  return (await reauthorize(runInteractiveLogin, runtime, scope))
     ? "elevated"
     : "declined";
 }

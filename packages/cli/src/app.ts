@@ -66,6 +66,8 @@ import { listCommand as spanListCommand } from "./commands/span/list.js";
 import { statusRoute } from "./commands/status/index.js";
 import { teamRoute } from "./commands/team/index.js";
 import { listCommand as teamListCommand } from "./commands/team/list.js";
+import { tokenRoute } from "./commands/token/index.js";
+import { listCommand as tokenListCommand } from "./commands/token/list.js";
 import { traceRoute } from "./commands/trace/index.js";
 import { listCommand as traceListCommand } from "./commands/trace/list.js";
 import { trialRoute } from "./commands/trial/index.js";
@@ -112,6 +114,7 @@ const PLURAL_TO_SINGULAR: Record<string, string> = {
   releases: "release",
   repos: "repo",
   teams: "team",
+  tokens: "token",
   logs: "log",
   monitors: "monitor",
   replays: "replay",
@@ -146,6 +149,7 @@ export const routes = buildRouteMap({
     release: releaseRoute,
     repo: repoRoute,
     team: teamRoute,
+    token: tokenRoute,
     integration: integrationRoute,
     issue: issueRoute,
     event: eventRoute,
@@ -185,6 +189,7 @@ export const routes = buildRouteMap({
     releases: releaseListCommand,
     repos: repoListCommand,
     teams: teamListCommand,
+    tokens: tokenListCommand,
     logs: logListCommand,
     monitors: monitorListCommand,
     spans: spanListCommand,
@@ -213,6 +218,7 @@ export const routes = buildRouteMap({
       releases: true,
       repos: true,
       teams: true,
+      tokens: true,
       logs: true,
       monitors: true,
       spans: true,

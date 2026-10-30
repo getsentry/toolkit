@@ -64,6 +64,8 @@ import { downloadCommand as replayDownloadCommand } from "../../src/commands/rep
 import { viewCommand as replayViewCommand } from "../../src/commands/replay/view.js";
 import { listCommand as spanListCommand } from "../../src/commands/span/list.js";
 import { viewCommand as spanViewCommand } from "../../src/commands/span/view.js";
+import { deleteCommand as tokenDeleteCommand } from "../../src/commands/token/delete.js";
+import { listCommand as tokenListCommand } from "../../src/commands/token/list.js";
 import { logsCommand as traceLogsCommand } from "../../src/commands/trace/logs.js";
 import { viewCommand as traceViewCommand } from "../../src/commands/trace/view.js";
 import { listCommand as trialListCommand } from "../../src/commands/trial/list.js";
@@ -877,6 +879,7 @@ describe.each(RELEASE_COMMANDS)("%s", (_name, command) => {
 const ORG_ID_COMMANDS: readonly (readonly [string, unknown, string])[] = [
   ["agent-conversation view", agentConversationViewCommand, "conv-1"],
   ["integration delete", integrationDeleteCommand, "42"],
+  ["token delete", tokenDeleteCommand, "7"],
 ];
 
 /** The org and ID a command parsed from `[<org>/]<id>`. */
@@ -933,6 +936,7 @@ describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
 const ORG_COMMANDS: readonly (readonly [string, unknown, readonly string[]])[] =
   [
     ["org view", orgViewCommand, []],
+    ["token list", tokenListCommand, []],
     ["trial list", trialListCommand, []],
     // The trial name comes first
     ["trial start", trialStartCommand, ["seer"]],

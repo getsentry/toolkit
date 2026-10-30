@@ -83,6 +83,8 @@ const BOUND_TARGET_TYPES = new Set([
   "ReplayArguments",
   "SpanListArguments",
   "SpanViewArguments",
+  "TokenArguments",
+  "TokenCreateTarget",
   "TraceLogsArguments",
   "TraceViewArguments",
   "TrialStartArguments",
