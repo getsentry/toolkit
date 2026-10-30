@@ -50,7 +50,7 @@ const NODE_VERSION = "lts";
 
 /** Files whose lazy relative imports must be included in the native bundle. */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema)|formatters[\\/]json|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema)|formatters[\\/](?:highlight|json)|list-command|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /** Build-time constants injected into the binary */

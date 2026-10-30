@@ -19,10 +19,10 @@
  */
 
 import chalk from "chalk";
-import { highlight as cliHighlight } from "cli-highlight";
 import { marked, type Token, type Tokens } from "marked";
 import stringWidth from "string-width";
 import { COLORS, muted, terminalLink } from "./colors.js";
+import { highlightCode } from "./highlight.js";
 import { isPlainOutput, stripAnsi } from "./plain-detect.js";
 import { type Alignment, renderTextTable } from "./text-table.js";
 
@@ -230,19 +230,6 @@ function renderHtmlToken(raw: string): string {
     }
   }
   return "";
-}
-
-/**
- * Syntax-highlight a code block. Falls back to uniform yellow if the
- * language is unknown or highlighting fails.
- */
-function highlightCode(code: string, language?: string): string {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    return cliHighlight(code, { language, ignoreIllegals: true });
-  } catch {
-    return chalk.hex(COLORS.yellow)(code);
-  }
 }
 
 /**
