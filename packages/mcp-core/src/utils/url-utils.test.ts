@@ -5,6 +5,7 @@ import {
   getEventsExplorerUrl,
   getIssuesSearchUrl,
   getIssueUrl,
+  getLogUrl,
   getMonitorUrl,
   getPreprodSnapshotUrl,
   getReleaseUrl,
@@ -305,6 +306,22 @@ describe("url-utils", () => {
       const result = getTraceUrl("sentry.example.com", "myorg", "abc123");
       expect(result).toBe(
         "https://sentry.example.com/organizations/myorg/explore/traces/trace/abc123",
+      );
+    });
+  });
+
+  describe("getLogUrl", () => {
+    it("pins the log in the logs explorer for SaaS", () => {
+      const result = getLogUrl("us.sentry.io", "myorg", "abc123");
+      expect(result).toBe(
+        "https://myorg.sentry.io/explore/logs/?project=-1&logsPinned=abc123",
+      );
+    });
+
+    it("pins the log in the logs explorer for self-hosted", () => {
+      const result = getLogUrl("sentry.example.com", "myorg", "abc123");
+      expect(result).toBe(
+        "https://sentry.example.com/organizations/myorg/explore/logs/?project=-1&logsPinned=abc123",
       );
     });
   });

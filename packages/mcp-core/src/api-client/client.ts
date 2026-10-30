@@ -49,6 +49,7 @@ import {
   getContinuousProfileUrl as getContinuousProfileUrlUtil,
   getDashboardUrl as getDashboardUrlUtil,
   getIssueUrl as getIssueUrlUtil,
+  getLogUrl as getLogUrlUtil,
   getMonitorUrl as getMonitorUrlUtil,
   getPreprodSnapshotUrl as getPreprodSnapshotUrlUtil,
   getProfileUrl as getProfileUrlUtil,
@@ -913,6 +914,10 @@ export class SentryApiService {
    */
   getTraceUrl(organizationSlug: string, traceId: string): string {
     return getTraceUrlUtil(this.host, organizationSlug, traceId, this.protocol);
+  }
+
+  getLogUrl(organizationSlug: string, logId: string): string {
+    return getLogUrlUtil(this.host, organizationSlug, logId, this.protocol);
   }
 
   getReplayUrl(organizationSlug: string, replayId: string): string {
