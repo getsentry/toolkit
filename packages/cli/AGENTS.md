@@ -421,15 +421,18 @@ parser, and an `entityCompleter` entry in `src/lib/complete.ts`. To add a
 kind that is not an entity, add its entry to `COMPLETERS`
 (`src/lib/complete.ts`), whose keys are the `CompletionTarget` type, a
 `*_TARGET` name for it in `completion-target.ts`, and a pre-tagged parser.
-`pnpm run generate:completions` collects every command's kinds and choice
-values, and every route group's subcommands, into the gitignored
-`src/generated/completion-targets.json` that the `__complete` fast path
-reads. Words that name a nested route group (`alert issues`) complete its
-subcommands; the bash, zsh, and fish scripts embed only the first two
-levels. Completers must stay light (synchronous `node:fs` reads, SQLite,
-no network); ones that need a parser (`arg-parsing.ts`, the search grammar)
-import it when called, so the fast path only loads it for the arguments
-that need it.
+`pnpm run generate:completions` collects every command's kinds, choice
+values, and visible flags (with briefs and aliases), and every route group's
+subcommands, into the gitignored `src/generated/completion-targets.json`
+that the `__complete` fast path reads. Words that name a nested route group
+(`alert issues`) complete its subcommands, and a partial starting with `-`
+completes the command's flags not given yet. The bash, zsh, and fish
+scripts (`src/lib/completions.ts`) embed only the command and subcommand
+names and ask `__complete` for every later word, so every shell completes
+every depth the same way. Completers must stay light (synchronous `node:fs`
+reads, SQLite, no network); ones that need a parser (`arg-parsing.ts`, the
+search grammar) import it when called, so the fast path only loads it for
+the arguments that need it.
 
 ### Multiple Values in Arguments
 
