@@ -4,32 +4,29 @@ How the local stdio MCP server ships.
 
 ## Overview
 
-The stdio MCP server is implemented in the CLI (`packages/cli`) and ships two
-ways:
+The stdio MCP server ships as `@sentry/mcp-server`, released from the
+`packages/mcp-server` Craft workspace. Its source lives in `packages/cli` so it
+shares the CLI's auth, which also exposes it as `sentry mcp` in each CLI
+release.
 
-- `@sentry/mcp-server`, the recommended install: the server bundled into one
-  file (see below), released from the `packages/mcp-server` Craft workspace.
-- `sentry mcp`, the same server as a CLI command, released with every CLI
-  version (the `packages/cli` Craft workspace).
+It bundles `@sentry/mcp-core` (tools, server, and the stdio transport) and
+accepts these credentials:
 
-`sentry mcp` bundles `@sentry/mcp-core` (tools, server, and the stdio
-transport) and uses the CLI's own authentication:
-
-- `sentry auth login` session (refreshed automatically, including after an
-  upstream 401)
+- the shared login from `npx @sentry/mcp-server auth login` or `sentry auth
+  login` (refreshed automatically, including after an upstream 401)
 - `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`, as for every CLI command
 - `--access-token` / `SENTRY_ACCESS_TOKEN`: a static token for the MCP server
   only. It is never refreshed, and org auth tokens (`sntrys_`) are still
   scoped to the host they were issued for.
 
-## `@sentry/mcp-server` package
+## Bundle
 
-`packages/mcp-server` publishes the same server as a single file with no
-runtime dependencies. `packages/cli/script/bundle-mcp-server.ts` bundles
+The package is a single file with no runtime dependencies.
+`packages/cli/script/bundle-mcp-server.ts` bundles
 `packages/cli/src/mcp-server.ts` into `dist/sentry-mcp.cjs`:
 
-- Same flags, environment variables, tools, and self-hosted support as
-  `sentry mcp`, and the same CLI session and credential store.
+- Full flags, environment variables, tools, and self-hosted support, using the
+  CLI's credential store.
 - `sentry-mcp auth login` runs the CLI's device flow with plain-text output.
   Other `auth` subcommands point to `npx -y sentry auth ...`.
 - CLI-only code stays out: commands, the markdown renderer, agent skills,
@@ -83,8 +80,7 @@ Users run the server through npx in their MCP client configuration:
 
 Sign in once with `npx @sentry/mcp-server@latest auth login` (or
 `sentry auth login`), or add `"env": { "SENTRY_ACCESS_TOKEN": "sntryu_..." }`.
-Pin a version with `@sentry/mcp-server@0.42.0`. `npx sentry@latest mcp` runs the
-same server.
+Pin a version with `@sentry/mcp-server@0.42.0`.
 
 ## Testing Before a Release
 

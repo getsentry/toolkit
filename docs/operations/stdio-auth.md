@@ -1,10 +1,11 @@
 # Stdio Authentication
 
-How the local stdio MCP server (`sentry mcp`) authenticates with Sentry.
+How the stdio MCP server (`@sentry/mcp-server`) authenticates with Sentry.
 
-`sentry mcp` has no auth flow of its own. It reuses the Sentry CLI's
-credentials, so `sentry auth login`, `sentry auth logout`, and
-`sentry auth status` manage the MCP server's credentials too.
+The server has no auth flow or token cache of its own. It reuses the Sentry
+CLI's credential store: `npx -y @sentry/mcp-server auth login` runs the CLI's
+device flow, and a login from `sentry auth login` works too. The same server
+also runs as `sentry mcp` in the CLI.
 
 ## Credential Sources
 
@@ -13,10 +14,10 @@ In order of precedence:
 1. **Static token** — `--access-token` flag, then `SENTRY_ACCESS_TOKEN`. The
    token is used as given for the life of the server and is never
    refreshed. Org auth tokens (`sntrys_`) record the Sentry URL they were
-   issued for; `sentry mcp` refuses to send one to a different host
-   (`HostScopeError`). `SENTRY_ACCESS_TOKEN` only affects `sentry mcp`; other
+   issued for; the server refuses to send one to a different host
+   (`HostScopeError`). `SENTRY_ACCESS_TOKEN` only affects the MCP server; other
    CLI commands ignore it.
-2. **CLI credentials** — the stored `sentry auth login` session, or
+2. **Shared login** — the stored account from `auth login`, or
    `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` (see the CLI's
    `SENTRY_FORCE_ENV_TOKEN` rules). These go through the CLI's
    `refreshToken()`, which enforces the same host scoping as every CLI command.
@@ -24,8 +25,8 @@ In order of precedence:
    later calls use the new token, so a long-running server survives token
    rotation without a restart.
 
-When no credential is available and stdin is a TTY, `sentry mcp` starts the
-CLI's interactive login before serving. MCP clients launch the server over
+When no credential is available and stdin is a TTY, the server starts the
+interactive login before serving. MCP clients launch the server over
 pipes, so in that case it exits with an error that names the login command:
 `npx -y @sentry/mcp-server auth login` from `@sentry/mcp-server`, and
 `sentry auth login` from `sentry mcp`. Other auth hints follow the same rule
@@ -33,21 +34,29 @@ pipes, so in that case it exits with an error that names the login command:
 `--url` always names `npx -y sentry auth login --url`, because the
 standalone `auth login` takes no flags.
 
-For self-hosted Sentry, set the host with `--host`/`--url` (or the CLI's
-`SENTRY_HOST`/`SENTRY_URL`). Pair `--host` with `--insecure-http` for instances
+For self-hosted Sentry, set the host with `--host`/`--url` or
+`SENTRY_HOST`/`SENTRY_URL`. Only the environment variables also pick the stored
+account for that server (see [Accounts](#accounts)). Pair `--host` with `--insecure-http` for instances
 that only expose plain HTTP.
 
-## Migration From `@sentry/mcp-server`
+## Accounts
 
-The standalone package's device code flow, bundled client ID, and token cache
-(`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`) are gone. `sentry mcp` does not
-read the old cache. Users who relied on it run `npx -y @sentry/mcp-server auth login` (or
-`sentry auth login`) once, or keep passing `--access-token` /
+The credential store can hold several accounts, but each server process uses
+one: the account resolved at startup. With `SENTRY_HOST`/`SENTRY_URL` set, that
+is a stored account on that server; otherwise it is the active account
+(`sentry auth switch`). Refreshes after a 401 stay on that account, and tool
+calls never pick a different one. To use two accounts at once, configure two
+MCP servers, for example one per host via `SENTRY_HOST`, or one with a static
 `SENTRY_ACCESS_TOKEN`.
 
-`@sentry/mcp-server` now bundles this same server and shares the CLI's
-credential store. `sentry-mcp auth login` runs the CLI's device flow; use
-`npx -y sentry auth logout|status` for the rest.
+## Upgrading From Older `@sentry/mcp-server` Versions
+
+Older releases had their own device code flow, bundled client ID, and token
+cache (`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`). Current releases do not
+read that cache. Run `npx -y @sentry/mcp-server auth login` once, or keep
+passing `--access-token` / `SENTRY_ACCESS_TOKEN`. `auth logout` and
+`auth status` are not part of the package; use `npx -y sentry auth logout` or
+`npx -y sentry auth status`.
 
 ## Key Files
 
