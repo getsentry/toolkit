@@ -52,7 +52,7 @@ describe("alert metrics delete", () => {
   beforeEach(() => {
     getRuleSpy = vi.spyOn(apiClient, "getMetricAlertRule");
     deleteRuleSpy = vi.spyOn(apiClient, "deleteMetricAlertRule");
-    resolveSpy = vi.spyOn(resolveTarget, "resolveOrgOnlyFromArg");
+    resolveSpy = vi.spyOn(resolveTarget, "resolveOrgOnlyTarget");
 
     getRuleSpy.mockResolvedValue(sampleRule);
     deleteRuleSpy.mockResolvedValue(undefined);
@@ -76,7 +76,7 @@ describe("alert metrics delete", () => {
     );
 
     expect(resolveSpy).toHaveBeenCalledWith(
-      "test-org/",
+      { type: "org-all", org: "test-org" },
       getConfigDir(),
       "alert metrics delete",
     );

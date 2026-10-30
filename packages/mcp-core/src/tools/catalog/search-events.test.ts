@@ -2657,6 +2657,65 @@ describe("search_events", () => {
     expect(mockGenerateText).toHaveBeenCalled();
     expect(result).toContain("Connection failed to database");
     expect(result).toContain("🔴 [ERROR]");
+    expect(result).toContain(
+      "- **Log URL**: https://test-org.sentry.io/explore/logs/?project=-1&logsPinned=log1",
+    );
+  });
+
+  it("does not request log IDs for aggregate logs queries", async () => {
+    let eventsRequestUrl: URL | undefined;
+
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse(
+        "logs",
+        "severity:error",
+        ["severity", "count()"],
+        undefined,
+        "-count()",
+      ),
+    );
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          eventsRequestUrl = new URL(request.url);
+          return HttpResponse.json({
+            data: [{ severity: "error", "count()": 3 }],
+          });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        query: "count error logs by severity",
+        dataset: "errors",
+        fields: null,
+        sort: "-count()",
+        period: "14d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+    );
+
+    expect(eventsRequestUrl!.searchParams.getAll("field")).toEqual([
+      "severity",
+      "count()",
+    ]);
+    expect(result).not.toContain("Log URL");
   });
 
   it("should repair direct search params with the agent when available", async () => {
@@ -2722,6 +2781,7 @@ describe("search_events", () => {
       "timestamp",
       "message",
       "severity",
+      "id",
     ]);
     expect(result).toContain("Connection failed to database");
   });

@@ -7,14 +7,16 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  CHOICE_TARGET,
+  type CompletionTarget,
+  choiceParser,
   DASHBOARD_TARGET,
+  FILE_TARGET,
   ISSUE_QUERY_TARGET,
   ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
-  parseIssueTarget,
-  parseOrgProjectTarget,
-  parseOrgTarget,
+  parseFilePath,
   withCompletionTarget,
 } from "../../src/lib/completion-target.js";
 import type {
@@ -30,6 +32,7 @@ import {
   extractFlags,
   extractPositionals,
   extractRouteGroupCommands,
+  extractRouteGroups,
   getPositionalString,
   isCommand,
   isRouteMap,
@@ -414,6 +417,13 @@ describe("extractAllRoutes", () => {
 });
 
 describe("extractCommandCompletions", () => {
+  /** A fresh parser tagged with `kind`, as the bound parsers are. */
+  const tagged = (kind: CompletionTarget) =>
+    withCompletionTarget(kind, (input: string) => input);
+  const orgParser = tagged(ORG_TARGET);
+  const orgProjectParser = tagged(ORG_PROJECT_TARGET);
+  const issueParser = tagged(ISSUE_TARGET);
+
   /** Command whose positionals use the given parsers. */
   function commandWith(...parsers: unknown[]): Command {
     return makeCommand({
@@ -434,24 +444,24 @@ describe("extractCommandCompletions", () => {
       parameters: {
         positional: {
           kind: "array",
-          parameter: { placeholder: "issue", parse: parseIssueTarget },
+          parameter: { placeholder: "issue", parse: issueParser },
         },
       },
     });
     const nested = makeRouteMap([
-      makeEntry("view", commandWith(parseOrgProjectTarget)),
+      makeEntry("view", commandWith(orgProjectParser)),
     ]);
     const topLevel = makeRouteMap([
       makeEntry(
         "issue",
         makeRouteMap([
           makeEntry("merge", variadic),
-          makeEntry("link", commandWith(parseIssueTarget, String)),
+          makeEntry("link", commandWith(issueParser, String)),
           makeEntry("help", commandWith(String)),
           makeEntry("rules", nested),
         ]),
       ),
-      makeEntry("trial", commandWith(String, parseOrgTarget)),
+      makeEntry("trial", commandWith(String, orgParser)),
       makeEntry("api", makeCommand()),
     ]);
 
@@ -479,10 +489,7 @@ describe("extractCommandCompletions", () => {
           parameters: [
             {
               placeholder: "target",
-              parse: withCompletionTarget(
-                DASHBOARD_TARGET,
-                (input: string) => input,
-              ),
+              parse: tagged(DASHBOARD_TARGET),
             },
           ],
         },
@@ -524,7 +531,7 @@ describe("extractCommandCompletions", () => {
   });
 
   test("skips hidden commands, hidden groups, and commands without kinds", () => {
-    const annotated = commandWith(parseOrgTarget);
+    const annotated = commandWith(orgParser);
     const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
     const topLevel = makeRouteMap([
       makeEntry("secret", annotated, true),
@@ -536,6 +543,75 @@ describe("extractCommandCompletions", () => {
     ]);
 
     expect(extractCommandCompletions(topLevel)).toEqual({});
+  });
+
+  test("lists the values of choice positionals and enum flags", () => {
+    const shell = makeCommand({
+      parameters: {
+        positional: {
+          kind: "tuple",
+          parameters: [
+            { placeholder: "shell", parse: choiceParser(["bash", "zsh"]) },
+            { placeholder: "out", parse: parseFilePath },
+          ],
+        },
+        flags: {
+          format: { kind: "enum", values: ["json", "text"] },
+          mode: { kind: "parsed", parse: choiceParser(["fast"]) },
+        },
+        aliases: { f: "format" },
+      },
+    });
+
+    expect(
+      extractCommandCompletions(makeRouteMap([makeEntry("shell", shell)])),
+    ).toEqual({
+      shell: {
+        positionals: [CHOICE_TARGET, FILE_TARGET],
+        variadic: false,
+        flags: {
+          "--format": CHOICE_TARGET,
+          "--mode": CHOICE_TARGET,
+          "-f": CHOICE_TARGET,
+        },
+        choices: {
+          "--format": ["json", "text"],
+          "--mode": ["fast"],
+          "-f": ["json", "text"],
+          "0": ["bash", "zsh"],
+        },
+      },
+    });
+  });
+});
+
+describe("extractRouteGroups", () => {
+  test("lists the visible subcommands of every group, nested ones included", () => {
+    const topLevel = makeRouteMap([
+      makeEntry(
+        "alert",
+        makeRouteMap(
+          [
+            makeEntry(
+              "issues",
+              makeRouteMap([
+                makeEntry("list", makeCommand({ brief: "List rules" })),
+                makeEntry("secret", makeCommand(), true),
+              ]),
+            ),
+          ],
+          { brief: "Manage alerts" },
+        ),
+      ),
+      makeEntry("api", makeCommand({ brief: "Call the API" })),
+      makeEntry("internal", makeRouteMap([]), true),
+    ]);
+
+    expect(extractRouteGroups(topLevel)).toEqual({
+      "": { alert: "Manage alerts", api: "Call the API" },
+      alert: { issues: "Test route" },
+      "alert issues": { list: "List rules" },
+    });
   });
 });
 

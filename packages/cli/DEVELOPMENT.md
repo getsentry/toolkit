@@ -157,3 +157,36 @@ When creating a bound `createSentryClient` instead, register
 Passing an existing client in its constructor config does not transfer
 interceptors. Keep the runtime SDK import outside `sentry-client.ts`, which is
 also loaded synchronously by telemetry's database integration.
+
+### Invocation telemetry
+
+When telemetry is enabled, `is_ci` records `true` or `false` for each invocation,
+independently of the `agent` and `is_tty` tags. CI detection reuses the environment
+variable detector used for VCS metadata collection, including `CI` and known
+provider markers. Telemetry records the detection result without sending raw
+environment variable values. The signals can overlap: an agent running in CI
+retains its agent identity and also has `is_ci:true`.
+
+For command usage widgets, retain the existing base query:
+
+```text
+!span.description:cli-execution !span.description:[sentry.auth.login,sentry.auth.logout,sentry.auth.refresh] span.op:cli.command
+```
+
+Keep the `count(span.duration)` aggregate and append the relevant condition:
+
+| Segment | Additional condition |
+|---------|----------------------|
+| Agent | `!agent:""` |
+| CI | `agent:"" is_ci:true` |
+| Human | `agent:"" is_ci:false` |
+| Unknown | `agent:"" is_ci:""` |
+
+These segments give detected agents priority, including agents running in CI.
+To inspect that subset, append `!agent:"" is_ci:true` to the base query.
+The Human label remains an approximation: no detected CI or agent does not prove
+human execution; local scripts and undetected agents can also fall into this
+segment. Older telemetry without `is_ci` stays Unknown when no agent was detected.
+Do not treat an absent `is_ci` tag as `false`.
+
+Update usage dashboards after releasing the CLI version that emits `is_ci`.

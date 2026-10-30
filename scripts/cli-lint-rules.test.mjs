@@ -154,23 +154,6 @@ tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
     },
     { filename: commands, code: "HEX_ID_RE.test(value);", errors: 1 },
     {
-      // Only tags the positional for completion; func would parse it
-      filename: commands,
-      code: "const issue = { placeholder: 'issue', parse: parseIssueTarget };",
-      errors: 1,
-    },
-    {
-      filename: commands,
-      code: "const dashboard = { parse: parseDashboardTarget };",
-      errors: 1,
-    },
-    {
-      // A ratchet: an allow-listed file that stopped parsing IDs by hand
-      filename: "/repo/packages/cli/src/commands/issue/merge.ts",
-      code: "const issues = issuePositional(USAGE_HINT);",
-      errors: [{ message: /Remove this file from the allow-list \(#1564/ }],
-    },
-    {
       filename: source,
       code: "parseIdArguments(args, { label: 'Thing ID', isId }, options);",
       errors: 1,
@@ -196,11 +179,6 @@ tester.run(
         filename: source,
         code: "const parsed = parseOrgProjectArg(target);",
       },
-      {
-        // On the allow-list, with its follow-up
-        filename: "/repo/packages/cli/src/commands/org/view.ts",
-        code: "const org = { placeholder: 'org', parse: parseOrgTarget };",
-      },
     ],
     invalid: [
       {
@@ -210,12 +188,13 @@ tester.run(
       },
       {
         filename: commands,
-        code: "const org = { placeholder: 'org', parse: parseOrgTarget };",
+        code: "async function* run(flags, issues: IssuesArguments) { return issues.parsed; }",
         errors: 1,
       },
       {
+        // Tagging a raw parser leaves the target for func to parse
         filename: commands,
-        code: "const target = { parse: parseOrgProjectTarget };",
+        code: "const org = { parse: withCompletionTarget(ORG_TARGET, String) };",
         errors: 1,
       },
       {
@@ -227,12 +206,6 @@ tester.run(
         filename: commands,
         code: "const org = await resolveOrgOnlyFromArg(arg, cwd, 'alert metrics view');",
         errors: 1,
-      },
-      {
-        // A ratchet: an allow-listed file that takes a bound target now
-        filename: "/repo/packages/cli/src/commands/org/view.ts",
-        code: "const org = { parse: orgOptionalTarget };",
-        errors: [{ message: /Remove this file from the allow-list/ }],
       },
     ],
   },

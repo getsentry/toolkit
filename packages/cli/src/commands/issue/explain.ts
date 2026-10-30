@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { ApiError, ContextError, stringifyUnknown } from "../../lib/errors.js";
+import { ApiError, stringifyUnknown } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   formatIssueExplain,
@@ -19,12 +19,12 @@ import {
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
+import type { IssueArgument } from "../../lib/issue-arguments.js";
 import { logger } from "../../lib/logger.js";
 import { extractRootCauses } from "../../types/seer.js";
+import { type IssuesArguments, issuesPositional } from "./positional.js";
 import {
-  collectIssueArgs,
   ensureRootCauseAnalysis,
-  issueIdsPositional,
   mapIssueArgsConcurrently,
   resolveOrgAndIssueId,
 } from "./utils.js";
@@ -40,7 +40,7 @@ type ExplainFlags = {
 };
 
 async function analyzeIssue(
-  issueArg: string,
+  issueArg: IssueArgument,
   cwd: string,
   flags: ExplainFlags,
   suppressProgress: boolean,
@@ -69,7 +69,7 @@ async function analyzeIssue(
       );
     }
 
-    return { issue: issueArg, org, issueId, rootCauses };
+    return { issue: issueArg.text, org, issueId, rootCauses };
   } catch (error) {
     if (error instanceof ApiError) {
       throw handleSeerApiError(error.status, error.detail, resolvedOrg);
@@ -139,7 +139,11 @@ export const explainCommand = buildCommand({
     jsonTransform: jsonTransformIssueExplain,
   },
   parameters: {
-    positional: issueIdsPositional,
+    positional: issuesPositional({
+      brief: "One or more issue IDs",
+      usageHint: USAGE_HINT,
+      distinct: true,
+    }),
     flags: {
       force: {
         kind: "boolean",
@@ -150,15 +154,17 @@ export const explainCommand = buildCommand({
     },
     aliases: FRESH_ALIASES,
   },
-  async *func(this: SentryContext, flags: ExplainFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: ExplainFlags,
+    issues: IssuesArguments,
+  ) {
     applyFreshFlag(flags);
     const { cwd } = this;
 
-    const issueArgs = collectIssueArgs(args);
-    const [primaryArg] = issueArgs;
-    if (primaryArg === undefined) {
-      throw new ContextError("Issue ID", USAGE_HINT, []);
-    }
+    // Never empty: the positional requires an issue
+    const issueArgs = await issues.resolved;
+    const primaryArg = issueArgs[0]?.text;
 
     const isBatch = issueArgs.length > 1;
     if (isBatch && !flags.json) {
@@ -169,7 +175,7 @@ export const explainCommand = buildCommand({
       (issueArg) => analyzeIssue(issueArg, cwd, flags, flags.json || isBatch),
       (issueArg, reason) => {
         log.warn(
-          `Failed to analyze issue ${issueArg}: ${stringifyUnknown(reason)}`,
+          `Failed to analyze issue ${issueArg.text}: ${stringifyUnknown(reason)}`,
         );
       },
     );

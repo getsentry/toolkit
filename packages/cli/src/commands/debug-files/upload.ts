@@ -48,6 +48,7 @@ import {
   prepareDifs,
   scanPaths,
 } from "../../lib/dif/scan.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -605,7 +606,7 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Files or directories to scan for debug information files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },

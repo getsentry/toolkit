@@ -11,6 +11,7 @@ import {
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseAccountSelector } from "../../lib/completion-target.js";
 import {
   type AccountSummary,
   getAccountRow,
@@ -116,7 +117,7 @@ export const switchCommand = buildCommand({
         {
           placeholder: "account",
           brief: "Email, username, user ID, or account ID to switch to",
-          parse: String,
+          parse: parseAccountSelector,
           optional: true,
         },
       ],

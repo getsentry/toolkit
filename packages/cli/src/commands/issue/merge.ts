@@ -23,7 +23,6 @@
 import type { SentryContext } from "../../context.js";
 import { type MergeIssuesResult, mergeIssues } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseIssueTarget } from "../../lib/completion-target.js";
 import {
   ApiError,
   CliError,
@@ -32,9 +31,11 @@ import {
 } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import type { IssueArgument } from "../../lib/issue-arguments.js";
 import { logger } from "../../lib/logger.js";
 import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import type { SentryIssue } from "../../types/index.js";
+import { type IssuesArguments, issuesPositional } from "./positional.js";
 import { resolveIssue } from "./utils.js";
 
 const log = logger.withTag("issue.merge");
@@ -42,6 +43,7 @@ const log = logger.withTag("issue.merge");
 const COMMAND = "merge";
 /** Full command path for error messages (this one isn't passed to resolveIssue). */
 const COMMAND_PATH = "issue merge";
+const USAGE_HINT = "sentry issue merge <issue> <issue> [<issue>...]";
 
 type MergeFlags = {
   readonly json: boolean;
@@ -87,7 +89,7 @@ function jsonTransform(result: MergeCommandResult): unknown {
  * Resolve all issue args in parallel and validate they share an org.
  */
 async function resolveAllIssues(
-  args: readonly string[],
+  args: readonly (IssueArgument | string)[],
   cwd: string,
 ): Promise<{ org: string; issues: SentryIssue[] }> {
   const resolved = await Promise.all(
@@ -290,14 +292,13 @@ export const mergeCommand = buildCommand({
     jsonTransform,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "issue",
-        brief: "Issue IDs to merge (2 or more required)",
-        parse: parseIssueTarget,
-      },
-    },
+    // Optional, so a missing issue gets the count error below, which
+    // counts `--into` too
+    positional: issuesPositional({
+      brief: "Issue IDs to merge (2 or more required)",
+      usageHint: USAGE_HINT,
+      optional: true,
+    }),
     flags: {
       into: {
         kind: "parsed",
@@ -311,15 +312,22 @@ export const mergeCommand = buildCommand({
       i: "into",
     },
   },
-  async *func(this: SentryContext, flags: MergeFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: MergeFlags,
+    positionals: IssuesArguments,
+  ) {
     const { cwd } = this;
+    const args = await positionals.resolved;
 
     // --into always designates an issue that participates in the merge (as
     // the preferred parent). Append it to the positional list so the rest of
     // the pipeline sees it as one of the issues to merge. Any duplicate form
     // (same issue passed both as a positional and via --into) is collapsed
     // later by numeric-ID dedupe in resolveAllIssues.
-    const effectiveArgs = flags.into ? [...args, flags.into] : args;
+    const effectiveArgs: readonly (IssueArgument | string)[] = flags.into
+      ? [...args, flags.into]
+      : args;
 
     if (effectiveArgs.length < 2) {
       const hint =

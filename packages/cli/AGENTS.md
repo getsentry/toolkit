@@ -283,6 +283,10 @@ A command that takes one issue declares `issuePositional({ command })` (or
 that resolves it another way (`resolveOrgAndIssueId`, or recovery hints that
 keep its other arguments) passes `requireIssueArgument(target.parsed, ...)`
 instead of the raw string.
+A command that takes several issues (`issue view`, `issue explain`,
+`issue merge`) declares `issuesPositional(...)`: every whitespace-separated
+word is an issue (no search text), parsed before `func` runs, and `func`
+resolves each `IssueArgument` from `await issues.resolved` itself.
 
 ```typescript
 import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
@@ -301,27 +305,33 @@ Reference: `replay/view.ts`, `span/view.ts`, `log/view.ts`, and
 parser from `src/lib/target-positional.ts`, which binds the resolver:
 `orgOptionalTarget` (org, optional project), `projectBoundTarget` (one org and
 project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
-`project view`). `func` takes the matching type (`OrgOptionalTarget`,
-`ProjectBoundTarget`, `OrgProjectTarget<R>`), reads the parsed form as
+`project view`). An org alone (`org view`) uses `orgTarget`; a
+`boundArguments` parser reads one with `parseOrgInput` and resolves it with
+`resolveOrgInput` (see `trial start`). `func` takes the matching type
+(`OrgOptionalTarget`, `ProjectBoundTarget`, `OrgProjectTarget<R>`,
+`OrgTarget`), reads the parsed form as
 `target.parsed` (e.g. `target.parsed.type`), and gets the org and project
 with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
 itself, and an omitted target arrives as auto-detect. The
 `sentry-cli/require-target-resolution` lint rule fails a function that takes
 one of these types and never reads `.resolved`. It also rejects, in commands,
-what leaves a target for `func` to parse: the completion-only parsers
-`parseOrgTarget` and `parseOrgProjectTarget`, `parseOrgProjectArg`, and the
-`resolve*FromArg` helpers. Commands not migrated yet are on
-`UNBOUND_TARGET_PARSING_ALLOWED` in `lint-rules/cli-oxlint-plugin.js`, each
-with its follow-up; the list is a ratchet, so a file that stops using them
-fails until its entry is removed. `AD_HOC_ID_PARSING_ALLOWED` does the same
-for ID positionals, including the completion-only `parseIssueTarget` and
-`parseDashboardTarget`.
+what leaves a target for `func` to parse: `parseOrgProjectArg`, the
+`resolve*FromArg` helpers, and `withCompletionTarget` (the bound parsers tag
+the kind). Neither rule has an allow-list: no command may
+parse a target or an ID by hand.
 
 **Release positionals:** `[<org>/]<version>` uses
 `releaseParameter(USAGE_HINT, brief)` from `src/commands/release/parse.ts`
 inside a tuple positional. `func` takes a `ReleaseTarget` and gets
 `{ version, org, detectedFrom }` from `await target.resolved`; a blank version
 fails the parse.
+
+**Alert rule positionals:** `<org>/<project>/<rule-id-or-name>` (issue
+alerts) and `<org>/<rule-id-or-name>` (metric alerts) use
+`issueRuleParameter` / `metricRuleParameter` from the alert `rule-resolve.ts`
+files inside a tuple positional. Rule names may contain spaces, so they keep
+their own syntax instead of `ID_KINDS`. `func` takes an `AlertRuleArgument`
+and gets `{ ref, target }` from `await rule.resolved`.
 
 List commands take their target from `listTargetPositional()` in
 `src/lib/list-command.ts` (`LIST_TARGET_POSITIONAL`,
@@ -376,36 +386,54 @@ grammar knows no kind of ID: the command's `ID_KINDS` entry tells it what an
 ID looks like, so the syntax cannot drift between commands. It accepts any
 input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 
-**Shell completion:** Target positionals that take an org, project, issue, or
-dashboard are tagged with a completion kind from `src/lib/completion-target.ts`
-(`ORG_PROJECT_TARGET` completes `org/`, `org/project`, and project aliases;
-`ORG_TARGET` org slugs only; `ISSUE_TARGET` adds cached issue short IDs;
-`DASHBOARD_TARGET` cached dashboards). The bound parsers above
-(`boundPositional(kind, …)`, `boundArguments({ kind, … })`) carry the kind, so
-the `target-positional.ts` parsers behind `listTargetPositional`,
-`issuePositional`, and `releaseParameter` complete the right values. The
-completion-only parsers (`parseOrgProjectTarget`, `parseOrgTarget`,
-`parseIssueTarget`) remain for the allow-listed
-commands that still parse in `func`; new commands use a bound parser. Shared value
-parsers are not tagged where they live; `PARSER_TARGETS` in
+**Shell completion:** Every visible positional declares a completion kind,
+a key of `COMPLETERS` in `src/lib/complete.ts`; `test/lib/completion-coverage.test.ts`
+walks the route tree and fails, naming the command and placeholder, for any
+positional without one. Pick the parser by what the argument takes:
+
+| Argument | Parser | Completes |
+|----------|--------|-----------|
+| Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
+| File or directory path | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
+| Directory | `parseDirectoryPath` | directories only |
+| Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
+| Fixed values | `choiceParser(values)` (take the values from the module that defines them) | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). The parser returns its input, so the command still validates it |
+| Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`) |
+| CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |
+| URL | `parseUrl` (the command validates it) | nothing |
+| Free text, IDs with no cache, names of new things | `parseText` | nothing |
+
+Import the pre-tagged parsers; never tag `String` or write
+`withCompletionTarget` in a command (the lint rules above reject it there).
+Org, project, and issue targets stay bound parsers. `enum` flags complete
+their `values` like `choiceParser`.
+
+Shared value parsers are not tagged where they live; `PARSER_TARGETS` in
 `completion-target.ts` lists them instead, so every flag that parses with
-`sanitizeIssueQuery` completes issue search terms
-(`is:unr` → `is:unresolved`) and every flag that parses with `parsePeriod`
-completes relative periods. Fixed values (search keys, period units) come
-from the modules that define them through `COMPLETION_VALUES`.
+`sanitizeIssueQuery` completes issue search terms (`is:unr` →
+`is:unresolved`), every flag that parses with `parsePeriod` completes
+relative periods, and `parseLoginEmail` completes stored accounts. Fixed
+values (search keys, period units) come from the modules that define them
+through `COMPLETION_VALUES`.
 Issue and dashboard suggestions come from the `completion_cache` table. The
 authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
 `src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
 operations it lists (by URL template, type-checked against the SDK), so API
 functions never seed by hand. To complete a new entity type, add it to
 `CompletionEntityKind`, its operations in `completion-seed.ts`, a tagged
-parser, and an `entityCompleter` entry in `src/lib/complete.ts`.
-`pnpm run generate:completions` collects these into the gitignored
-`src/generated/completion-targets.json` that the `__complete` fast path reads.
-Completers that need a parser (`arg-parsing.ts`, the search grammar) import
-it when called, so the fast path only loads it for the arguments that need
-it. `project create` keeps its dedicated `name:platform` completer in
-`src/lib/complete.ts`.
+parser, and an `entityCompleter` entry in `src/lib/complete.ts`. To add a
+kind that is not an entity, add its entry to `COMPLETERS`
+(`src/lib/complete.ts`), whose keys are the `CompletionTarget` type, a
+`*_TARGET` name for it in `completion-target.ts`, and a pre-tagged parser.
+`pnpm run generate:completions` collects every command's kinds and choice
+values, and every route group's subcommands, into the gitignored
+`src/generated/completion-targets.json` that the `__complete` fast path
+reads. Words that name a nested route group (`alert issues`) complete its
+subcommands; the bash, zsh, and fish scripts embed only the first two
+levels. Completers must stay light (synchronous `node:fs` reads, SQLite,
+no network); ones that need a parser (`arg-parsing.ts`, the search grammar)
+import it when called, so the fast path only loads it for the arguments
+that need it.
 
 ### Multiple Values in Arguments
 

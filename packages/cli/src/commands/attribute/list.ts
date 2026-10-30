@@ -21,6 +21,7 @@ import {
   parseAttributeTypes,
 } from "../../lib/attribute-search.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseText } from "../../lib/completion-target.js";
 import { buildDatasetParser, datasetDisplayName } from "../../lib/datasets.js";
 import {
   advancePaginationState,
@@ -283,7 +284,7 @@ export const listCommand = buildListCommand("attribute", {
           placeholder: "filter",
           brief:
             "Text in attribute names and/or has:<key> terms, e.g. 'gen_ai has:http.method'",
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],

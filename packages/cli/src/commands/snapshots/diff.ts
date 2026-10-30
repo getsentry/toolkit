@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -259,12 +260,12 @@ export const diffCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the baseline image directory",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "base-dir",
         },
         {
           brief: "Path to the head image directory",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "head-dir",
         },
       ],

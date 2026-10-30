@@ -10,6 +10,7 @@ import {
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseAccountSelector } from "../../lib/completion-target.js";
 import {
   type AccountSummary,
   getAccountRow,
@@ -135,7 +136,7 @@ export const logoutCommand = buildCommand({
         placeholder: "account",
         brief:
           "Accounts to log out of (email, username, user ID, or account ID; comma-separated), or 'all'",
-        parse: String,
+        parse: parseAccountSelector,
       },
     },
   },

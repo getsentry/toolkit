@@ -71,6 +71,7 @@ import searchAgentConversations from "./search-agent-conversations";
 import addIssueNote from "./add-issue-note";
 import onboardingStatusUpdate from "./onboarding-status-update";
 import searchAttributes from "./search-attributes";
+import submitFeedbackToSentryTeam from "./submit-feedback-to-sentry-team";
 import type { ToolConfig } from "../types";
 
 const legacyGetAIConversationDetails = {
@@ -180,6 +181,7 @@ const catalogTools = {
   search_ai_conversations: legacySearchAIConversations,
   add_issue_note: addIssueNote,
   onboarding_status_update: onboardingStatusUpdate,
+  submit_feedback_to_sentry_team: submitFeedbackToSentryTeam,
 } as const satisfies Record<string, ToolConfig<any>>;
 
 export default catalogTools;

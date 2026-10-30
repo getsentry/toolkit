@@ -16,12 +16,13 @@ import {
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
-  isCi,
   type VcsFlags,
   type VcsInfo,
   vcsInfoToBody,
 } from "../../lib/build/vcs.js";
+import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -369,7 +370,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the folder containing images to upload",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "path",
         },
       ],

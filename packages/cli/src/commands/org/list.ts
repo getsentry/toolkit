@@ -9,6 +9,7 @@ import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { DEFAULT_SENTRY_HOST } from "../../lib/constants.js";
 import {
   type AccountSummary,
@@ -460,7 +461,7 @@ export const listCommand = buildCommand({
           placeholder: "filter",
           brief:
             "Only list organizations whose slug or name fuzzy-matches this text or matches this glob",
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],

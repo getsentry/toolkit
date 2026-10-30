@@ -53,6 +53,7 @@ function createMockContext(cwd = "/tmp") {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd,
+      commandPrefix: ["sentry", "trial", "list"],
     },
     stdoutWrite,
     stderrWrite,

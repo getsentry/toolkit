@@ -9,6 +9,9 @@
  * parser or resolver itself. An omitted target arrives as auto-detect. See
  * `positional-parse.ts` for when parsing and resolution run.
  *
+ * Commands that take an org and nothing else use {@link orgTarget}, or read
+ * one in their own `boundArguments` parser with {@link parseOrgInput}.
+ *
  * List commands use {@link listTarget} instead: `dispatchOrgScopedList`
  * resolves each target mode its own way, so `target.resolved` only applies a
  * pasted URL's server and yields the parsed target.
@@ -21,22 +24,27 @@
  */
 
 import {
+  firstNonBlankLine,
   type ListTarget,
   type ListTargetOptions,
   type ParsedOrgProject,
   parseListTargetInput,
   parseOrgProjectInput,
 } from "./arg-parsing.js";
-import { ORG_PROJECT_TARGET, type ORG_TARGET } from "./completion-target.js";
+import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
+import { ContextError, ValidationError } from "./errors.js";
+import { validateResourceId } from "./input-validation.js";
 import { requireExplicitTarget } from "./mutate-command.js";
 import { type BoundPositional, boundPositional } from "./positional-parse.js";
 import {
+  type ResolvedOrg,
   type ResolvedOrgOptionalTarget,
   type ResolvedProjectBoundTarget,
+  resolveOrg,
   resolveOrgOptionalTarget,
   resolveProjectBoundTarget,
 } from "./resolve-target.js";
-import { applySentryUrlContext } from "./sentry-url-parser.js";
+import { applySentryUrlContext, parseSentryUrl } from "./sentry-url-parser.js";
 
 /** A parsed `[<org>/][<project>]` target that resolves to `R`. */
 export type OrgProjectTarget<R> = BoundPositional<ParsedOrgProject, R>;
@@ -72,7 +80,7 @@ function commandNameOf(context: TargetContext): string {
 
 /**
  * Positional parser for an `[<org>/][<project>]` target with its own
- * resolver. Completes like `parseOrgProjectTarget`. In a destructive command
+ * resolver. Completes `ORG_PROJECT_TARGET`. In a destructive command
  * an auto-detected target fails `requireExplicitTarget` before `func` runs.
  *
  * The parse has no side effects; the server of a pasted Sentry URL is
@@ -122,6 +130,94 @@ export type ProjectBoundTarget = OrgProjectTarget<ResolvedProjectBoundTarget>;
 /** Target for commands that need a single org and project. */
 export const projectBoundTarget = orgProjectTarget((parsed, context) =>
   resolveProjectBoundTarget(parsed, context.cwd, context.commandName),
+);
+
+/** An org argument, parsed: `org` is `undefined` to auto-detect. */
+export type OrgInput = {
+  readonly org?: string;
+  /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+};
+
+/**
+ * Parse an argument that names an org and nothing else, without side
+ * effects: `<org>`, `<org>/`, or a Sentry URL with an org in it. Empty or
+ * omitted means auto-detect. Also reads the target of an org-scoped ID
+ * (`parseIdArguments` with an `orgScoped` kind), which gives `<org>/`.
+ *
+ * @param usageHint - Usage shown when the argument names a project too
+ * @throws {ValidationError} When the argument names a project, a URL has no
+ *   org, or the slug has characters no slug has
+ */
+export function parseOrgInput(
+  raw: string | undefined,
+  usageHint?: string,
+): OrgInput {
+  // Like other targets, only the first non-blank line counts (CLI-1RA)
+  const text = raw ? firstNonBlankLine(raw) : "";
+  if (!text) {
+    return {};
+  }
+  const url = parseSentryUrl(text);
+  if (url) {
+    if (!url.org) {
+      throw new ValidationError(
+        `No organization in URL: ${text}`,
+        "organization",
+      );
+    }
+    return { org: url.org, baseUrl: url.baseUrl };
+  }
+  const org = text.endsWith("/") ? text.slice(0, -1) : text;
+  if (!org || org.includes("/")) {
+    const usage = usageHint ? `\n\nUsage: ${usageHint}` : "";
+    throw new ValidationError(
+      `Expected an organization, not '${text}': this takes no project.${usage}`,
+      "organization",
+    );
+  }
+  validateResourceId(org, "organization slug");
+  return { org };
+}
+
+/**
+ * Resolve a parsed org argument: apply a pasted URL's server, then use the
+ * org, or detect one like {@link resolveOrg}.
+ *
+ * @throws {ContextError} When no org is given and none is detected
+ */
+export async function resolveOrgInput(
+  input: OrgInput,
+  cwd: string,
+  usageHint: string,
+): Promise<ResolvedOrg> {
+  if (input.baseUrl) {
+    applySentryUrlContext(input.baseUrl);
+  }
+  const resolved = await resolveOrg({ org: input.org, cwd });
+  if (!resolved) {
+    throw new ContextError("Organization", usageHint);
+  }
+  return resolved;
+}
+
+/** An org positional ({@link orgTarget}). */
+export type OrgTarget = BoundPositional<OrgInput, ResolvedOrg>;
+
+/**
+ * Positional parser for an org and nothing else (`sentry org view [<org>]`),
+ * parsed with {@link parseOrgInput}; `target.resolved` yields the org and
+ * where it was detected from. Completes org slugs.
+ */
+export const orgTarget = boundPositional(
+  ORG_TARGET,
+  (raw) => parseOrgInput(raw),
+  (input, context: TargetContext) =>
+    resolveOrgInput(
+      input,
+      context.cwd,
+      `sentry ${commandNameOf(context)} <org>`,
+    ),
 );
 
 /**

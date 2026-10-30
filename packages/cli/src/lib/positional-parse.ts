@@ -137,6 +137,7 @@ export type BoundArguments<T, R> = BoundPositional<T, R, readonly string[]>;
  * {@link ArgumentParseError}, which fails like any other argument (exit 252),
  * unless an argument is `help`: then it turns into the command's help.
  *
+ * @param options.kind - What the arguments complete; omit for none
  * @param options.parse - Parses all the arguments, possibly none; may
  *   throw. Must have no side effects
  * @param options.resolve - Resolves the parsed value; gets the command
@@ -145,7 +146,7 @@ export type BoundArguments<T, R> = BoundPositional<T, R, readonly string[]>;
 export function boundArguments<T, R, C>(options: {
   readonly placeholder: string;
   readonly brief: string;
-  readonly kind: CompletionTarget;
+  readonly kind?: CompletionTarget;
   readonly parse: (raw: readonly string[]) => T;
   readonly resolve: (
     value: T,
@@ -160,12 +161,15 @@ export function boundArguments<T, R, C>(options: {
     readonly parse: (input: string) => string;
   };
 } {
+  const identity = (input: string) => input;
   const positional = {
     kind: "array",
     parameter: {
       placeholder: options.placeholder,
       brief: options.brief,
-      parse: withCompletionTarget(options.kind, (input: string) => input),
+      parse: options.kind
+        ? withCompletionTarget(options.kind, identity)
+        : identity,
     },
   } as const;
   argumentParsers.set(positional, function (this: unknown, values) {

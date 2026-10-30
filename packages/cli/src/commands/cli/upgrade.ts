@@ -30,6 +30,7 @@ import {
   type UpgradeSource,
 } from "../../lib/binary.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { CLI_VERSION } from "../../lib/constants.js";
 import {
   backupDatabase,
@@ -1200,7 +1201,7 @@ export const upgradeCommand = buildCommand({
         {
           brief:
             'Specific version (e.g. 0.5.0), "nightly"/"stable" to switch channel, or "undo" to return to the previous version; omit to update within current channel',
-          parse: String,
+          parse: choiceParser([...CHANNEL_VERSIONS, MAGIC_VERSION_FOR_UNDO]),
           placeholder: "version",
           optional: true,
         },

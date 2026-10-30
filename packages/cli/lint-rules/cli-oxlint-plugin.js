@@ -64,19 +64,28 @@ const BOUND_TARGET_TYPES = new Set([
   "ListCommandTarget",
   "OrgOptionalTarget",
   "OrgProjectTarget",
+  "OrgTarget",
   "ProjectBoundTarget",
   "ReleaseTarget",
+  "AlertRuleArgument",
   "BoundArguments",
+  "ConversationArguments",
   "DashboardArguments",
+  "DashboardCreateArguments",
   "DashboardListArguments",
   "EventViewArguments",
+  "InitArguments",
+  "IntegrationArguments",
+  "IssuesArguments",
   "LogListArguments",
   "LogViewArguments",
+  "ProjectCreateArguments",
   "ReplayArguments",
   "SpanListArguments",
   "SpanViewArguments",
   "TraceLogsArguments",
   "TraceViewArguments",
+  "TrialStartArguments",
   "WidgetAddArguments",
 ]);
 
@@ -161,109 +170,47 @@ function regexSource(node) {
 /**
  * Helpers that parse ID positionals by hand. Commands parse IDs with
  * `parseIdArguments()` (src/lib/id-arguments.ts), so every command takes
- * the same forms. `parseIssueTarget` and `parseDashboardTarget` only tag a
- * positional for completion, leaving the parsing to `func`; issues have
- * their own grammar (`issuePositional`, src/lib/issue-arguments.ts).
+ * the same forms; issues take `issuePositional` or `issuesPositional`
+ * (src/commands/issue/positional.ts).
  */
 const AD_HOC_ID_PARSING = new Set([
   "parseSlashSeparatedArg",
   "detectSwappedViewArgs",
   "HEX_ID_RE",
   "SPAN_ID_RE",
-  "parseIssueTarget",
-  "parseDashboardTarget",
-]);
-
-/**
- * Commands still allowed to, each with its follow-up. A ratchet: an entry
- * whose file no longer uses them is reported, so the list only shrinks.
- */
-const AD_HOC_ID_PARSING_ALLOWED = new Map([
-  // Follow-up (#1564): several issues per command (`issue view`,
-  // `issue explain`, `issue merge`) need an array issue positional
-  ["/src/commands/issue/utils.ts", "#1564: array issue positional"],
-  ["/src/commands/issue/merge.ts", "#1564: array issue positional"],
 ]);
 
 /**
  * Helpers that leave a target positional for `func` to parse:
- * `parseOrgTarget` and `parseOrgProjectTarget` only tag it for completion,
- * and the others parse a raw string (applying a pasted URL's server as they
- * go). Commands take targets as bound positionals instead
+ * `withCompletionTarget` tags a parser that can leave the value raw, and the
+ * others parse a raw string (applying a pasted URL's server as they go).
+ * Commands take targets as bound positionals instead
  * (src/lib/target-positional.ts, `boundArguments`), which parse before the
- * command runs and resolve on `target.resolved`.
+ * command runs, carry the completion kind, and resolve on `target.resolved`.
  */
 const UNBOUND_TARGET_PARSING = new Set([
-  "parseOrgTarget",
-  "parseOrgProjectTarget",
+  "withCompletionTarget",
   "parseOrgProjectArg",
   "resolveOrgOnlyFromArg",
   "resolveOrgOptionalFromArg",
   "resolveProjectBoundFromArg",
 ]);
 
-/** Commands still allowed to, each with its follow-up; a ratchet too. */
-const UNBOUND_TARGET_PARSING_ALLOWED = new Map([
-  // Follow-ups (#1564):
-  // `[<org>/[<project>/]]<rule>`, resolving to every matching project
-  ["/src/commands/alert/issues/create.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/delete.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/edit.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/issues/view.ts", "#1564: alert rule target"],
-  // `[<org>/]<rule>`, org-scoped
-  ["/src/commands/alert/metrics/create.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/delete.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/edit.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/list.ts", "#1564: alert rule target"],
-  ["/src/commands/alert/metrics/view.ts", "#1564: alert rule target"],
-  // `[<org>/]<id>` with a non-hex ID, like `releaseParameter`
-  ["/src/commands/agent-conversation/view.ts", "#1564: org-scoped ID"],
-  ["/src/commands/integration/delete.ts", "#1564: org-scoped ID"],
-  // An org slug alone
-  ["/src/commands/org/view.ts", "#1564: org positional"],
-  ["/src/commands/trial/list.ts", "#1564: org positional"],
-  ["/src/commands/trial/start.ts", "#1564: org positional"],
-  // A target followed by other positionals
-  ["/src/commands/dashboard/create.ts", "#1564: target and title"],
-  ["/src/commands/init.ts", "#1564: target and directory"],
-  ["/src/commands/project/create.ts", "#1564: name and platform"],
-]);
-
-/** The follow-up of `file` in an allow-list, if it is on it. */
-function allowedFollowUp(allowed, file) {
-  for (const [path, followUp] of allowed) {
-    if (file.endsWith(path)) return followUp;
-  }
-  return undefined;
+/** Whether `node` uses one of `names`; imports and `typeof` do not. */
+function usesName(node, names) {
+  return (
+    names.has(node.name) &&
+    node.parent?.type !== "ImportSpecifier" &&
+    node.parent?.type !== "TSTypeQuery"
+  );
 }
 
-/**
- * Visitors reporting each reference to one of `names` in a command file,
- * except in files on `allowed`; those are reported instead when they no
- * longer reference any, so the allow-list only shrinks. Imports and
- * `typeof` references are not uses.
- */
-function ratchetedNames(file, names, allowed, report, message) {
+/** Visitors reporting each use of one of `names` in a command file. */
+function bannedNames(file, names, report, message) {
   if (!file.includes("/src/commands/")) return {};
-  const followUp = allowedFollowUp(allowed, file);
-  let used = false;
   return {
     Identifier(node) {
-      if (
-        !names.has(node.name) ||
-        node.parent?.type === "ImportSpecifier" ||
-        node.parent?.type === "TSTypeQuery"
-      )
-        return;
-      used = true;
-      if (followUp === undefined) report(node, message);
-    },
-    "Program:exit"(node) {
-      if (followUp !== undefined && !used)
-        report(
-          node,
-          `Remove this file from the allow-list (${followUp}): it no longer parses its positional by hand.`,
-        );
+      if (usesName(node, names)) report(node, message);
     },
   };
 }
@@ -444,10 +391,9 @@ const rules = {
         FunctionDeclaration: check,
         FunctionExpression: check,
         ArrowFunctionExpression: check,
-        ...ratchetedNames(
+        ...bannedNames(
           file,
           UNBOUND_TARGET_PARSING,
-          UNBOUND_TARGET_PARSING_ALLOWED,
           report,
           "Take the target as a bound positional (src/lib/target-positional.ts, boundArguments) instead of parsing it in func.",
         ),
@@ -460,12 +406,7 @@ const rules = {
       if (!file.includes("/src/") || file.endsWith("/lib/id-arguments.ts"))
         return {};
       return {
-        ...ratchetedNames(
-          file,
-          AD_HOC_ID_PARSING,
-          AD_HOC_ID_PARSING_ALLOWED,
-          report,
-        ),
+        ...bannedNames(file, AD_HOC_ID_PARSING, report),
         CallExpression(node) {
           if (
             ID_ARGUMENT_PARSERS.has(node.callee.name) &&

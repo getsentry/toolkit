@@ -10,6 +10,17 @@
 
 import { ArgumentParseError } from "@stricli/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { viewCommand as agentConversationViewCommand } from "../../src/commands/agent-conversation/view.js";
+import { createCommand as alertIssuesCreateCommand } from "../../src/commands/alert/issues/create.js";
+import { deleteCommand as alertIssuesDeleteCommand } from "../../src/commands/alert/issues/delete.js";
+import { editCommand as alertIssuesEditCommand } from "../../src/commands/alert/issues/edit.js";
+import { viewCommand as alertIssuesViewCommand } from "../../src/commands/alert/issues/view.js";
+import { createCommand as alertMetricsCreateCommand } from "../../src/commands/alert/metrics/create.js";
+import { deleteCommand as alertMetricsDeleteCommand } from "../../src/commands/alert/metrics/delete.js";
+import { editCommand as alertMetricsEditCommand } from "../../src/commands/alert/metrics/edit.js";
+import { listCommand as alertMetricsListCommand } from "../../src/commands/alert/metrics/list.js";
+import { viewCommand as alertMetricsViewCommand } from "../../src/commands/alert/metrics/view.js";
+import { createCommand as dashboardCreateCommand } from "../../src/commands/dashboard/create.js";
 import { listCommand as dashboardListCommand } from "../../src/commands/dashboard/list.js";
 import { restoreCommand as dashboardRestoreCommand } from "../../src/commands/dashboard/restore.js";
 import { revisionsCommand as dashboardRevisionsCommand } from "../../src/commands/dashboard/revisions.js";
@@ -23,16 +34,23 @@ import { resolveCommand as feedbackResolveCommand } from "../../src/commands/fee
 import { spamCommand as feedbackSpamCommand } from "../../src/commands/feedback/spam.js";
 import { unresolveCommand as feedbackUnresolveCommand } from "../../src/commands/feedback/unresolve.js";
 import { viewCommand as feedbackViewCommand } from "../../src/commands/feedback/view.js";
+import { initCommand } from "../../src/commands/init.js";
+import { deleteCommand as integrationDeleteCommand } from "../../src/commands/integration/delete.js";
 import { archiveCommand } from "../../src/commands/issue/archive.js";
 import { eventsCommand as issueEventsCommand } from "../../src/commands/issue/events.js";
+import { explainCommand as issueExplainCommand } from "../../src/commands/issue/explain.js";
 import { linkCommand as issueLinkCommand } from "../../src/commands/issue/link.js";
+import { mergeCommand as issueMergeCommand } from "../../src/commands/issue/merge.js";
 import { planCommand as issuePlanCommand } from "../../src/commands/issue/plan.js";
 import { resolveCommand as issueResolveCommand } from "../../src/commands/issue/resolve.js";
 import { tagsCommand as issueTagsCommand } from "../../src/commands/issue/tags.js";
 import { unlinkCommand as issueUnlinkCommand } from "../../src/commands/issue/unlink.js";
 import { unresolveCommand as issueUnresolveCommand } from "../../src/commands/issue/unresolve.js";
+import { viewCommand as issueViewCommand } from "../../src/commands/issue/view.js";
 import { listCommand as logListCommand } from "../../src/commands/log/list.js";
 import { viewCommand as logViewCommand } from "../../src/commands/log/view.js";
+import { viewCommand as orgViewCommand } from "../../src/commands/org/view.js";
+import { createCommand as projectCreateCommand } from "../../src/commands/project/create.js";
 import { archiveCommand as releaseArchiveCommand } from "../../src/commands/release/archive.js";
 import { createCommand as releaseCreateCommand } from "../../src/commands/release/create.js";
 import { deleteCommand as releaseDeleteCommand } from "../../src/commands/release/delete.js";
@@ -48,7 +66,9 @@ import { listCommand as spanListCommand } from "../../src/commands/span/list.js"
 import { viewCommand as spanViewCommand } from "../../src/commands/span/view.js";
 import { logsCommand as traceLogsCommand } from "../../src/commands/trace/logs.js";
 import { viewCommand as traceViewCommand } from "../../src/commands/trace/view.js";
-import { ContextError } from "../../src/lib/errors.js";
+import { listCommand as trialListCommand } from "../../src/commands/trial/list.js";
+import { startCommand as trialStartCommand } from "../../src/commands/trial/start.js";
+import { ContextError, ValidationError } from "../../src/lib/errors.js";
 import {
   applyBoundPositionals,
   BoundPositional,
@@ -533,6 +553,63 @@ describe("issue arguments", () => {
 });
 
 /**
+ * Commands that take several issues, through `issuesPositional`: each in
+ * any form the single-issue commands take, but no search text.
+ */
+const MULTI_ISSUE_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["issue view", issueViewCommand],
+  ["issue explain", issueExplainCommand],
+  ["issue merge", issueMergeCommand],
+];
+
+/** The issues a multi-issue command parsed. */
+function parseIssues(command: unknown, args: readonly string[]) {
+  const [bound] = bind(command, args);
+  expect(bound).toBeInstanceOf(BoundPositional);
+  return (bound as BoundPositional<readonly { text: string }[], unknown>)
+    .parsed;
+}
+
+describe.each(MULTI_ISSUE_COMMANDS)("%s", (name, command) => {
+  const [[, reference]] = ISSUE_COMMANDS;
+
+  test("reads each issue as issue resolve does", () => {
+    // Search text is one of the single-issue inputs; see below
+    const issues = ISSUE_INPUTS.filter((input) => !input.includes(" "));
+    expect(parseIssues(command, issues)).toEqual(
+      issues.map((input) => parseIssue(reference, input).parsed),
+    );
+  });
+
+  test("splits IDs pasted into one argument", () => {
+    expect(
+      parseIssues(command, ["CLI-1\nCLI-2 CLI-3"]).map(({ text }) => text),
+    ).toEqual(["CLI-1", "CLI-2", "CLI-3"]);
+  });
+
+  test("takes no search text: each word is an issue", () => {
+    expect(parseIssues(command, ["login timeout"])).toHaveLength(2);
+  });
+
+  test("a malformed issue fails to parse, before the command runs", () => {
+    const error = parseError(command, ["CLI-1", "my-org/"]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+  });
+
+  // `issue merge` counts the issues itself, `--into` included
+  test.runIf(name !== "issue merge")(
+    "a missing issue fails to parse, before the command runs",
+    () => {
+      const error = parseError(command, []);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(
+        ContextError,
+      );
+    },
+  );
+});
+
+/**
  * Commands that take one dashboard, through `dashboardArguments` or alike:
  * `[<org/project>] <dashboard-id-or-title>`.
  */
@@ -793,5 +870,333 @@ describe.each(RELEASE_COMMANDS)("%s", (_name, command) => {
 
   test("a blank version fails to parse", () => {
     expect(() => bind(command, ["  "])).toThrow(ContextError);
+  });
+});
+
+/** Commands that take `[<org>/]<id>` with an org-scoped ID that is not hex. */
+const ORG_ID_COMMANDS: readonly (readonly [string, unknown, string])[] = [
+  ["agent-conversation view", agentConversationViewCommand, "conv-1"],
+  ["integration delete", integrationDeleteCommand, "42"],
+];
+
+/** The org and ID a command parsed from `[<org>/]<id>`. */
+function parseOrgId(command: unknown, args: readonly string[]) {
+  const [bound] = bind(command, args);
+  expect(bound).toBeInstanceOf(BoundPositional);
+  const parsed = (bound as BoundPositional<unknown, unknown>).parsed as {
+    readonly org: { readonly org?: string };
+    readonly conversationId?: string;
+    readonly id?: string;
+  };
+  return { org: parsed.org.org, id: parsed.conversationId ?? parsed.id };
+}
+
+describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
+  test("a bare ID auto-detects the org", () => {
+    expect(parseOrgId(command, [id])).toEqual({ org: undefined, id });
+  });
+
+  test("<org>/<id> and <org> <id> name the org", () => {
+    expect(parseOrgId(command, [`my-org/${id}`])).toEqual({
+      org: "my-org",
+      id,
+    });
+    expect(parseOrgId(command, ["my-org", id])).toEqual({ org: "my-org", id });
+  });
+
+  test("a project fails to parse: the ID is org-scoped", () => {
+    const error = parseError(command, [`my-org/web/${id}`]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ValidationError,
+    );
+  });
+
+  test("a missing ID fails to parse, before the command runs", () => {
+    const error = parseError(command, []);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ContextError,
+    );
+  });
+
+  test("a second ID fails to parse rather than being ignored", () => {
+    const error = parseError(command, ["my-org", id, id]);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ValidationError,
+    );
+  });
+});
+
+/** Commands that take an org and nothing else, and where it goes. */
+const ORG_COMMANDS: readonly (readonly [string, unknown, readonly string[]])[] =
+  [
+    ["org view", orgViewCommand, []],
+    ["trial list", trialListCommand, []],
+    // The trial name comes first
+    ["trial start", trialStartCommand, ["seer"]],
+  ];
+
+/** Parse `args` with an org command's positional, run as `sentry <name>`. */
+function bindOrg(name: string, command: unknown, args: readonly string[]) {
+  const [bound] = applyBoundPositionals(args, positionalOf(command), {
+    ...CONTEXT,
+    commandPrefix: ["sentry", ...name.split(" ")],
+  });
+  expect(bound).toBeInstanceOf(BoundPositional);
+  return bound as BoundPositional<unknown, unknown>;
+}
+
+/** The org a command parsed: none to auto-detect, and a URL's server. */
+function orgOf(bound: BoundPositional<unknown, unknown>) {
+  const parsed = bound.parsed as { readonly org?: unknown };
+  // `trial start` has the trial name besides the org
+  return "name" in (bound.parsed as object) ? parsed.org : parsed;
+}
+
+describe.each(ORG_COMMANDS)("%s", (name, command, before) => {
+  test("no org auto-detects it", () => {
+    expect(orgOf(bindOrg(name, command, before))).toEqual({});
+  });
+
+  test.each(["my-org", "my-org/", "my-org\nappended notes"])(
+    "%j names the org",
+    (org) => {
+      expect(orgOf(bindOrg(name, command, [...before, org]))).toEqual({
+        org: "my-org",
+      });
+    },
+  );
+
+  test("a project fails to parse: only an org is taken", () => {
+    expect(() => bindOrg(name, command, [...before, "my-org/web"])).toThrow(
+      /takes no project/,
+    );
+  });
+
+  test("a pasted URL names the org; its server is applied on resolve, not parse", async () => {
+    const bound = bindOrg(name, command, [
+      ...before,
+      `${SERVER}/organizations/acme/`,
+    ]);
+    expect(orgOf(bound)).toEqual({ org: "acme", baseUrl: SERVER });
+    expect(applyUrl).not.toHaveBeenCalled();
+
+    await expect(bound.resolved).rejects.toBeInstanceOf(UrlApplied);
+    expect(applyUrl).toHaveBeenCalledWith(SERVER);
+  });
+});
+
+const ORG_URL = `${SERVER}/organizations/acme/`;
+
+/**
+ * Commands that take an optional `[<org>/][<project>]` target, then other
+ * positionals of their own.
+ */
+const TARGET_THEN_POSITIONALS: readonly {
+  readonly name: string;
+  readonly command: unknown;
+  /** Arguments that name org `acme` */
+  readonly args: readonly string[];
+  /** The org the command parsed */
+  readonly org: (parsed: unknown) => string | undefined;
+  /** Arguments that fail to parse */
+  readonly invalid: readonly string[];
+  /** Whether the target may be a pasted Sentry URL */
+  readonly url: boolean;
+}[] = [
+  {
+    name: "init",
+    command: initCommand,
+    args: ["acme/", "./app"],
+    org: (parsed) => (parsed as { target: ParsedTarget }).target.org,
+    // Two targets, and no directory
+    invalid: ["acme/", "other/"],
+    url: true,
+  },
+  {
+    name: "dashboard create",
+    command: dashboardCreateCommand,
+    args: ["acme/", "My", "Dashboard"],
+    org: (parsed) => (parsed as { target: ParsedTarget }).target.org,
+    // No title
+    invalid: [],
+    url: true,
+  },
+  {
+    name: "project create",
+    command: projectCreateCommand,
+    args: ["acme/web:node", "acme/api:python"],
+    org: (parsed) => (parsed as { explicitOrg?: string }).explicitOrg,
+    // No platform
+    invalid: ["acme/web"],
+    url: false,
+  },
+];
+
+describe.each(TARGET_THEN_POSITIONALS)("$name", (entry) => {
+  test("parses its arguments before the command runs", () => {
+    const [bound] = bind(entry.command, entry.args);
+    expect(bound).toBeInstanceOf(BoundPositional);
+    expect(entry.org((bound as BoundPositional<unknown, unknown>).parsed)).toBe(
+      "acme",
+    );
+  });
+
+  test("invalid arguments fail to parse, before the command runs", () => {
+    expect(parseError(entry.command, entry.invalid)).toBeInstanceOf(
+      ArgumentParseError,
+    );
+  });
+
+  test.runIf(entry.url)(
+    "a pasted URL names the org; its server is applied on resolve, not parse",
+    async () => {
+      const [, ...rest] = entry.args;
+      const [bound] = bind(entry.command, [ORG_URL, ...rest]);
+      // Reading `resolved` starts the resolver, so only read `parsed` first
+      const value = bound as BoundPositional<unknown, unknown>;
+      expect(entry.org(value.parsed)).toBe("acme");
+      expect(value.parsed).toMatchObject({ baseUrl: SERVER });
+      expect(applyUrl).not.toHaveBeenCalled();
+
+      await expect(value.resolved).rejects.toBeInstanceOf(UrlApplied);
+      expect(applyUrl).toHaveBeenCalledWith(SERVER);
+    },
+  );
+});
+
+describe("init target and directory", () => {
+  test.each([
+    [["./app"], { directory: "./app", target: { type: "auto-detect" } }],
+    [
+      ["acme/web"],
+      { target: { type: "explicit", org: "acme", project: "web" } },
+    ],
+    [["acme/", "./app"], { directory: "./app" }],
+    [
+      ["./app", "acme/"],
+      { directory: "./app", warning: expect.stringMatching(REVERSED) },
+    ],
+  ])("tells the target from the directory in %j", (args, expected) => {
+    const [bound] = bind(initCommand, args);
+    expect((bound as BoundPositional<unknown, unknown>).parsed).toMatchObject(
+      expected,
+    );
+  });
+});
+
+/** Commands that take an `<org>/<project>/<rule-id-or-name>` issue alert. */
+const ISSUE_RULE_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["alert issues view", alertIssuesViewCommand],
+  ["alert issues delete", alertIssuesDeleteCommand],
+  ["alert issues edit", alertIssuesEditCommand],
+];
+
+/** Commands that take an `<org>/<rule-id-or-name>` metric alert. */
+const METRIC_RULE_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["alert metrics view", alertMetricsViewCommand],
+  ["alert metrics delete", alertMetricsDeleteCommand],
+  ["alert metrics edit", alertMetricsEditCommand],
+];
+
+/** Alert commands that take only an `[<org>/][<project>]` target. */
+const ALERT_TARGET_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["alert issues create", alertIssuesCreateCommand],
+  ["alert metrics create", alertMetricsCreateCommand],
+  ["alert metrics list", alertMetricsListCommand],
+];
+
+const PROJECT_SETTINGS_URL = `${SERVER}/settings/acme/projects/web/`;
+
+/** The parsed value of a command's first positional. */
+function parsedOf(command: unknown, input: string): unknown {
+  const [bound] = bind(command, [input]);
+  expect(bound).toBeInstanceOf(BoundPositional);
+  return (bound as BoundPositional<unknown, unknown>).parsed;
+}
+
+describe.each(ISSUE_RULE_COMMANDS)("%s", (_name, command) => {
+  test.each([
+    ["42", { ref: "42", target: { type: "auto-detect" } }],
+    [
+      "my-org/web/High error rate",
+      {
+        ref: "High error rate",
+        target: { type: "explicit", org: "my-org", project: "web" },
+      },
+    ],
+    [
+      `${PROJECT_SETTINGS_URL}42`,
+      {
+        ref: "42",
+        target: { type: "explicit", org: "acme", project: "web" },
+      },
+    ],
+  ])("parses %s before the command runs", (input, expected) => {
+    expect(parsedOf(command, input)).toEqual(expected);
+  });
+
+  test.each(["my-org/web", "  "])("%s fails to parse", (input) => {
+    expect(() => bind(command, [input])).toThrow(ValidationError);
+  });
+
+  test("applies a pasted URL's server on resolve, not parse", async () => {
+    const [bound] = bind(command, [`${PROJECT_SETTINGS_URL}42`]);
+    expect(applyUrl).not.toHaveBeenCalled();
+    await expect(
+      (bound as BoundPositional<unknown, unknown>).resolved,
+    ).rejects.toBeInstanceOf(UrlApplied);
+    expect(applyUrl).toHaveBeenCalledWith(SERVER);
+  });
+});
+
+describe.each(METRIC_RULE_COMMANDS)("%s", (_name, command) => {
+  test.each([
+    ["42", { ref: "42", target: { type: "auto-detect" } }],
+    [
+      "my-org/High error rate",
+      { ref: "High error rate", target: { type: "org-all", org: "my-org" } },
+    ],
+  ])("parses %s before the command runs", (input, expected) => {
+    expect(parsedOf(command, input)).toEqual(expected);
+  });
+
+  test.each(["my-org/", "my-org/web/42", "  "])(
+    "%s fails to parse",
+    (input) => {
+      expect(() => bind(command, [input])).toThrow(ValidationError);
+    },
+  );
+});
+
+describe.each(ALERT_TARGET_COMMANDS)("%s", (name, command) => {
+  test.each([
+    ["my-org/", { type: "org-all", org: "my-org" }],
+    ["my-org/web", { type: "explicit", org: "my-org", project: "web" }],
+    ["web", { type: "project-search", projectSlug: "web" }],
+  ])("parses the target %s before the command runs", (input, expected) => {
+    const parsed = parsedOf(command, input);
+    // List targets wrap the parsed target with the name filter
+    const target =
+      command === alertMetricsListCommand
+        ? (parsed as { parsed: unknown }).parsed
+        : parsed;
+    expect(target).toEqual(expected);
+  });
+
+  test("applies a pasted URL's server on resolve, not parse", async () => {
+    // Target resolvers name the running command in usage hints
+    const [bound] = applyBoundPositionals(
+      [PROJECT_SETTINGS_URL],
+      positionalOf(command),
+      { ...CONTEXT, commandPrefix: ["sentry", ...name.split(" ")] },
+    );
+    expect(applyUrl).not.toHaveBeenCalled();
+    await expect(
+      (bound as BoundPositional<unknown, unknown>).resolved,
+    ).rejects.toBeInstanceOf(UrlApplied);
+    expect(applyUrl).toHaveBeenCalledWith(SERVER);
   });
 });

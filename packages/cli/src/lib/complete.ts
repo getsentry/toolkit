@@ -15,12 +15,18 @@
  *   Exit:   0 on success (even if no completions)
  */
 
+import { readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import generatedTargets from "../generated/completion-targets.json";
-import type {
-  CompletionTarget,
-  CompletionValues,
-} from "./completion-target.js";
+import type { CompletionValues } from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
+import {
+  type AccountSummary,
+  accountSelectorOf,
+  accountServerOf,
+  listAccounts,
+} from "./db/accounts.js";
 import { getCredentialContext } from "./db/auth.js";
 import {
   type CachedCompletionEntity,
@@ -108,8 +114,8 @@ export async function handleComplete(args: string[]): Promise<void> {
 
 /**
  * Command path → completion kind of each positional and value-taking flag,
- * and the fixed values completers offer, from
- * `src/generated/completion-targets.json`.
+ * route group path → its subcommands and their briefs, and the fixed
+ * values completers offer, from `src/generated/completion-targets.json`.
  *
  * Generated from the parsers the commands declare (see
  * `completion-target.ts`) by `script/generate-completion-targets.ts`
@@ -118,15 +124,20 @@ export async function handleComplete(args: string[]): Promise<void> {
  */
 const GENERATED = generatedTargets as {
   commands: CommandCompletions;
+  groups: Record<string, Record<string, string>>;
   values: CompletionValues;
 };
 
-/** What the word being completed is, and the positionals typed before it. */
-type CompletionSlot = {
-  kind: CompletionTarget | null;
+/** What a completer reads besides the partial. */
+type CompleterContext = {
   /** Positionals before the word being completed, flags removed. */
   positionals: string[];
+  /** The values a `choice` argument offers. */
+  choices?: readonly string[];
 };
+
+/** What the word being completed is, and the positionals typed before it. */
+type CompletionSlot = CompleterContext & { kind: CompletionTarget | null };
 
 /**
  * Find the argument the word being completed fills.
@@ -160,11 +171,21 @@ function findSlot(words: string[]): CompletionSlot | undefined {
       }
     }
     if (flag !== undefined) {
-      return { kind: command.flags[flag] ?? null, positionals };
+      return {
+        kind: command.flags[flag] ?? null,
+        positionals,
+        choices: command.choices?.[flag],
+      };
     }
-    // A variadic positional is a single parameter that every word fills
+    // A variadic positional is a single parameter that every word fills.
+    // Its choices are for the first word; the rest are the chosen value's
+    // arguments (`cli defaults <key> <value>`).
     const index = command.variadic ? 0 : positionals.length;
-    return { kind: command.positionals[index] ?? null, positionals };
+    const choices =
+      command.variadic && positionals.length > 0
+        ? undefined
+        : command.choices?.[index];
+    return { kind: command.positionals[index] ?? null, positionals, choices };
   }
   return;
 }
@@ -175,7 +196,7 @@ function findSlot(words: string[]): CompletionSlot | undefined {
  */
 type Completer = (
   partial: string,
-  slot: CompletionSlot,
+  slot: CompleterContext,
 ) => Completion[] | Promise<Completion[]>;
 
 /**
@@ -189,16 +210,25 @@ const completeDashboards = entityCompleter(
   { qualify: true },
 );
 
-/** The completer of every kind a parser can declare. */
-const COMPLETERS: Record<CompletionTarget, Completer> = {
+/**
+ * The completer of every kind a parser can declare. Its keys are the
+ * kinds: {@link CompletionTarget} is derived from them.
+ */
+const COMPLETERS = Object.freeze({
+  /** Organization slugs only (e.g. `org`, `org/version`, `org/id`). */
   org: (partial) => completeOrgSlugs(partial),
+  /** `org/` prefixes, `org/project` pairs, and project aliases. */
   "org/project": (partial) => completeOrgSlashProject(partial),
+  /** What `org/project` does plus cached issue short IDs. */
   issue: entityCompleter("issue", completeOrgSlashProject),
-  // Only the first word: in `<org/project> <id-or-title>`, the org of the
-  // second word is for the dashboard grammar to decide, and this
-  // fast path cannot load it
+  /**
+   * `org/` prefixes and cached dashboards (`org/<id>`), in the first word
+   * only: in `<org/project> <id-or-title>`, the org of the second word is
+   * for the dashboard grammar to decide, and this fast path cannot load it.
+   */
   dashboard: (partial, slot) =>
     slot.positionals.length > 0 ? [] : completeDashboards(partial),
+  /** The term at the end of an issue search query (`is:`, `level:`). */
   "issue-query": async (partial) => {
     const { completeSearchQuery } =
       await import("@sentry/toolkit-core/search-query");
@@ -206,8 +236,141 @@ const COMPLETERS: Record<CompletionTarget, Completer> = {
       (value) => ({ value }),
     );
   },
+  /** Relative `--period` values (`24h`, `7d`, a number plus a unit). */
   period: (partial) => completePeriods(partial),
-};
+  /** `project create` `name:platform` specs: `org/` prefixes, then platforms. */
+  "project-spec": (partial) => completeProjectCreateSpec(partial),
+  /** Stored accounts (`sentry auth list`) by email, username, or ID. */
+  account: (partial) => completeAccounts(partial),
+  /** File and directory paths. */
+  file: (partial) => completePaths(partial, { directoriesOnly: false }),
+  /** Directory paths only. */
+  directory: (partial) => completePaths(partial, { directoriesOnly: true }),
+  /**
+   * `sentry init`'s `[<target>] [<directory>]`: what `org/project` does, or
+   * directories once the word looks like a path (`./`, `../`, `/`, `~/`).
+   * At most one of each, in either order.
+   */
+  "org-project-or-directory": async (partial, slot) => {
+    const { looksLikePath } = await import("./arg-parsing.js");
+    const [previous, ...rest] = slot.positionals;
+    if (rest.length > 0) {
+      return [];
+    }
+    const afterTarget = previous !== undefined && !looksLikePath(previous);
+    if (!(afterTarget || looksLikePath(partial))) {
+      return completeOrgSlashProject(partial);
+    }
+    if (previous !== undefined && !afterTarget) {
+      return [];
+    }
+    // Every suggestion must still look like a path: `.` and `~` alone
+    // list inside themselves, and a bare word after a target becomes `./…`
+    const path =
+      partial === "." || partial === "~"
+        ? `${partial}/`
+        : looksLikePath(partial)
+          ? partial
+          : `./${partial}`;
+    return completePaths(path, { directoriesOnly: true });
+  },
+  /** A CLI command path, one route segment per word (`help issue list`). */
+  "command-path": (partial, slot) =>
+    completeSubcommands(slot.positionals.join(" "), partial),
+  /** The values its parser was made with by `choiceParser`. */
+  choice: (partial, slot) =>
+    (slot.choices ?? [])
+      .filter((value) => value.startsWith(partial))
+      .map((value) => ({ value })),
+  /**
+   * Free text with nothing to suggest (messages, queries, URLs, names of
+   * new things). Declared, so that every positional says how it completes.
+   */
+  text: () => [],
+} satisfies Record<string, Completer>);
+
+/** What shell completion suggests for an argument: a key of {@link COMPLETERS}. */
+export type CompletionTarget = keyof typeof COMPLETERS;
+
+/**
+ * Subcommands of the route group `group` (`""` for the top level) whose
+ * names start with the partial, with their briefs.
+ */
+function completeSubcommands(group: string, partial: string): Completion[] {
+  return Object.entries(GENERATED.groups[group] ?? {})
+    .filter(([name]) => name.startsWith(partial))
+    .map(([value, description]) => ({ value, description }));
+}
+
+/**
+ * Complete stored accounts with fuzzy matching, written the way
+ * `auth switch` and `auth logout` take them: the email (else username,
+ * else ID), or `<who>:<server>` when the same user is stored for several
+ * servers.
+ */
+function completeAccounts(partial: string): Completion[] {
+  const accounts = listAccounts();
+  const whoOf = (account: AccountSummary) =>
+    account.email ?? account.username ?? account.id;
+  const counts = new Map<string, number>();
+  for (const account of accounts) {
+    counts.set(whoOf(account), (counts.get(whoOf(account)) ?? 0) + 1);
+  }
+  const servers = new Map(
+    accounts.map((account) => [
+      counts.get(whoOf(account)) === 1
+        ? whoOf(account)
+        : accountSelectorOf(account),
+      accountServerOf(account),
+    ]),
+  );
+  return fuzzyMatch(partial, [...servers.keys()], { mode: "search" }).map(
+    (value) => ({ value, description: servers.get(value) }),
+  );
+}
+
+/**
+ * Complete the entries of the directory a path partial is in whose names
+ * start with its last segment. Directories end in `/`, so the next TAB
+ * goes into them; dotfiles are listed only once the segment starts with
+ * `.`. A leading `~/` is read from the home directory and kept as typed.
+ *
+ * @param options.directoriesOnly - Leave out everything but directories
+ */
+function completePaths(
+  partial: string,
+  options: { directoriesOnly: boolean },
+): Completion[] {
+  const parent = partial.slice(0, partial.lastIndexOf("/") + 1);
+  const name = partial.slice(parent.length);
+  const dir = parent.startsWith("~/")
+    ? join(homedir(), parent.slice(2))
+    : parent || ".";
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) {
+    return [];
+  }
+  const completions: Completion[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (
+      !entry.name.startsWith(name) ||
+      (entry.name.startsWith(".") && !name.startsWith("."))
+    ) {
+      continue;
+    }
+    const isDirectory =
+      entry.isDirectory() ||
+      (entry.isSymbolicLink() &&
+        statSync(join(dir, entry.name), {
+          throwIfNoEntry: false,
+        })?.isDirectory());
+    if (isDirectory) {
+      completions.push({ value: `${parent}${entry.name}/` });
+    } else if (!options.directoriesOnly) {
+      completions.push({ value: `${parent}${entry.name}` });
+    }
+  }
+  return completions.sort((a, b) => a.value.localeCompare(b.value));
+}
 
 const DIGITS_RE = /^\d+$/;
 
@@ -230,7 +393,9 @@ function completePeriods(partial: string): Completion[] {
  * Determine what completions to provide based on the command context.
  *
  * Finds the argument the partial fills (a positional or a flag value) and
- * runs the completer for the kind its parser declares.
+ * runs the completer for the kind its parser declares. Words that name a
+ * nested route group (`alert issues`) complete its subcommands instead;
+ * the shell scripts embed the first two levels themselves.
  *
  * @param precedingWords - Words before the partial (determines context)
  * @param partial - The current partial word being completed
@@ -239,20 +404,13 @@ export async function getCompletions(
   precedingWords: string[],
   partial: string,
 ): Promise<Completion[]> {
-  // Build the command path from preceding words (e.g., "issue list")
-  const cmdPath =
-    precedingWords.length >= 2
-      ? `${precedingWords[0]} ${precedingWords[1]}`
-      : "";
-
-  // `project create` takes `name:platform` specs, not an existing target,
-  // so it keeps a dedicated completer instead of a generated target kind.
-  if (cmdPath === "project create") {
-    return completeProjectCreateSpec(partial);
-  }
-
   const slot = findSlot(precedingWords);
-  return slot?.kind ? await COMPLETERS[slot.kind](partial, slot) : [];
+  if (!slot) {
+    return precedingWords.length >= 2
+      ? completeSubcommands(precedingWords.join(" "), partial)
+      : [];
+  }
+  return slot.kind ? await COMPLETERS[slot.kind](partial, slot) : [];
 }
 
 /**
