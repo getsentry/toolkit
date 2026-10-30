@@ -39,6 +39,12 @@ For self-hosted Sentry, set the host with `--host`/`--url` or
 account for that server (see [Accounts](#accounts)). Pair `--host` with `--insecure-http` for instances
 that only expose plain HTTP.
 
+A repo-local `.sentryclirc` URL is not a trust source. Unless `--host`/`--url`
+is passed, a non-SaaS `[defaults] url` must match a server you are logged in
+to, the same check every CLI command applies. Otherwise the server refuses to
+start (`HostScopeError`) instead of sending any token, including a static one,
+to that host.
+
 ## Accounts
 
 The credential store can hold several accounts, but each server process uses

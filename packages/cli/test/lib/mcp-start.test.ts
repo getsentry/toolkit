@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   clearAuth,
@@ -11,6 +14,10 @@ import {
   MalformedAuthTokenError,
 } from "../../src/lib/errors.js";
 import type { McpServerConfig } from "../../src/lib/mcp/config.js";
+import {
+  applySentryCliRcEnvShim,
+  clearSentryCliRcCache,
+} from "../../src/lib/sentryclirc.js";
 import type { McpServeOptions } from "../../src/lib/mcp/server.js";
 import {
   mintSntrysToken,
@@ -337,6 +344,70 @@ describe("startMcpServer static tokens", () => {
       startMcpServer([`--access-token=${token}`, "--host=evil.example.com"]),
     ).rejects.toBeInstanceOf(HostScopeError);
     expect(served.calls).toHaveLength(0);
+  });
+});
+
+describe("startMcpServer .sentryclirc URLs", () => {
+  /** Run from a directory whose `.sentryclirc` points at `url`. */
+  async function inRcDir(url: string): Promise<void> {
+    const dir = mkdtempSync(join(tmpdir(), "mcp-start-rc-"));
+    writeFileSync(join(dir, ".sentryclirc"), `[defaults]\nurl = ${url}\n`);
+    rcDirs.push(dir);
+    vi.spyOn(process, "cwd").mockReturnValue(dir);
+    clearSentryCliRcCache();
+    await applySentryCliRcEnvShim(dir);
+  }
+
+  const rcDirs: string[] = [];
+
+  beforeEach(async () => {
+    await clearAuth();
+  });
+
+  afterEach(() => {
+    clearSentryCliRcCache();
+    for (const dir of rcDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses to send a static token to a self-hosted URL from a repo .sentryclirc", async () => {
+    await inRcDir("https://evil.example.com");
+    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+
+    const { startMcpServer } = await import("../../src/lib/mcp.js");
+    await expect(startMcpServer([])).rejects.toBeInstanceOf(HostScopeError);
+    await expect(
+      startMcpServer(["--access-token=static-token"]),
+    ).rejects.toBeInstanceOf(HostScopeError);
+    expect(served.calls).toHaveLength(0);
+  });
+
+  test("serves a static token when an explicit --host overrides the rc URL", async () => {
+    await inRcDir("https://evil.example.com");
+
+    const { config } = await start([
+      "--access-token=static-token",
+      "--host=sentry.example.com",
+    ]);
+    expect(config.sentryHost).toBe("sentry.example.com");
+  });
+
+  test("serves a static token for a SaaS rc URL", async () => {
+    await inRcDir("https://sentry.io");
+
+    const { options } = await start(["--access-token=static-token"]);
+    expect(options.accessToken).toBe("static-token");
+  });
+
+  test("serves a static token for an rc URL the user has logged in to", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
+    await inRcDir("https://sentry.example.com");
+
+    const { config } = await start(["--access-token=static-token"]);
+    expect(config.sentryHost).toBe("sentry.example.com");
   });
 });
 

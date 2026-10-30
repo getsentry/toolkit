@@ -264,6 +264,16 @@ export async function startMcpServer(args: string[]): Promise<boolean> {
     return false;
   }
 
+  // A repo-local `.sentryclirc` can set the target URL, but it is not a trust
+  // source: without this gate, a static token (which carries no host claim
+  // unless it is an org token) would be sent to whatever server the file
+  // names. Apply the same rc-URL check as every other CLI command, unless an
+  // explicit `--host`/`--url` flag overrides the target.
+  if (!hasSentryTargetArg(args)) {
+    const { assertRcUrlTrusted } = await import("./sentryclirc.js");
+    await assertRcUrlTrusted(process.cwd());
+  }
+
   const { config } = invocation;
   const { accessToken } = config;
   if (accessToken) {
