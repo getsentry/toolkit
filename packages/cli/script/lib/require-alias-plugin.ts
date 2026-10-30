@@ -10,9 +10,10 @@ import type { Plugin } from "esbuild";
  * a devDependency, not shipped). `node:sqlite` in the same file stays a
  * builtin and is left external by esbuild regardless.
  * `formatters/json` loads its generated parser only when --fields is parsed.
+ * `formatters/highlight` loads cli-highlight only on the first code block.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /** Transform _require() → require() so esbuild resolves lazy relative requires. */
