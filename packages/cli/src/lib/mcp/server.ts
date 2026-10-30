@@ -20,7 +20,6 @@ import { ALL_SKILLS } from "@sentry/mcp-core/skills";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { ServerContext } from "@sentry/mcp-core/types";
-import { LIB_VERSION } from "@sentry/mcp-core/version";
 import {
   captureException,
   consoleLoggingIntegration,
@@ -36,7 +35,7 @@ import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
 import { mergeMcpArgs, parseMcpArgv, parseMcpEnv } from "./args.js";
 import { finalizeMcpConfig, type McpServerConfig } from "./config.js";
-import { buildMcpUsage, buildMcpVersion } from "./usage.js";
+import { buildMcpUsage, buildMcpVersion, MCP_VERSION } from "./usage.js";
 
 /** What a `sentry mcp` invocation asks for. */
 export type McpInvocation =
@@ -245,7 +244,7 @@ export function initMcpTelemetry(
   env: NodeJS.ProcessEnv,
 ): void {
   const scopeContext = {
-    "app.server.version": LIB_VERSION,
+    "app.server.version": MCP_VERSION,
     // Tells `@sentry/mcp-server` installs apart from `sentry mcp`.
     "app.server.distribution": MCP_SERVER_VERSION
       ? "@sentry/mcp-server"

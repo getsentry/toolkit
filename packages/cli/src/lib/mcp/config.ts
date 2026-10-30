@@ -20,6 +20,7 @@ import {
 import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import { ValidationError } from "../errors.js";
 import type { McpMergedArgs } from "./args.js";
+import { MCP_COMMAND } from "./usage.js";
 
 /** Embedded agent providers the MCP server can use. */
 export type McpAgentProvider =
@@ -165,7 +166,7 @@ function resolveAgentProvider(value?: string): McpAgentProvider | undefined {
 export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
   if (input.unknownArgs.length > 0) {
     throw new ValidationError(
-      `Invalid argument(s): ${input.unknownArgs.join(", ")}\nRun \`sentry mcp --help\` for usage.`,
+      `Invalid argument(s): ${input.unknownArgs.join(", ")}\nRun \`${MCP_COMMAND} --help\` for usage.`,
     );
   }
   if (input.insecureHttp && input.url) {

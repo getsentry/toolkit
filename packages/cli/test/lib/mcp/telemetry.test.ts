@@ -1,6 +1,6 @@
 import type { NodeOptions } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { SENTRY_CLI_DSN } from "../../../src/lib/constants.js";
+import { CLI_VERSION, SENTRY_CLI_DSN } from "../../../src/lib/constants.js";
 import type { McpServerConfig } from "../../../src/lib/mcp/config.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
@@ -52,7 +52,10 @@ describe("initMcpTelemetry", () => {
     expect(options.dsn).toBe(SENTRY_CLI_DSN);
     expect(options.enabled).toBe(true);
     expect(options.initialScope).toMatchObject({
-      tags: { "app.server.distribution": "sentry mcp" },
+      tags: {
+        "app.server.distribution": "sentry mcp",
+        "app.server.version": CLI_VERSION,
+      },
     });
   });
 
@@ -76,7 +79,10 @@ describe("initMcpTelemetry", () => {
     vi.resetModules();
     const options = await initOptions();
     expect(options.initialScope).toMatchObject({
-      tags: { "app.server.distribution": "@sentry/mcp-server" },
+      tags: {
+        "app.server.distribution": "@sentry/mcp-server",
+        "app.server.version": "1.2.3",
+      },
     });
   });
 });

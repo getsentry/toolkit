@@ -4,16 +4,20 @@ import type { Skill } from "@sentry/mcp-core/skills";
 import { CLI_VERSION } from "../constants.js";
 import { LOGIN_COMMAND, MCP_SERVER_VERSION } from "../login-command.js";
 
-const COMMAND = MCP_SERVER_VERSION ? "sentry-mcp" : "sentry mcp";
+/** The command that launched this server, for help and error text. */
+export const MCP_COMMAND = MCP_SERVER_VERSION ? "sentry-mcp" : "sentry mcp";
+
+/** The release that is running: the package version or the CLI's. */
+export const MCP_VERSION = MCP_SERVER_VERSION ?? CLI_VERSION;
 
 /** Build the `--version` output. */
 export function buildMcpVersion(): string {
-  return `${COMMAND} ${MCP_SERVER_VERSION ?? CLI_VERSION}`;
+  return `${MCP_COMMAND} ${MCP_VERSION}`;
 }
 
 /** Build the `--help` text. */
 export function buildMcpUsage(allSkills: ReadonlyArray<Skill>): string {
-  return `Usage: ${COMMAND} [--access-token=<token>] [--host=<host>] [--insecure-http]
+  return `Usage: ${MCP_COMMAND} [--access-token=<token>] [--host=<host>] [--insecure-http]
 
 Authentication:
   Uses the active Sentry CLI session by default. Authenticate with \`${LOGIN_COMMAND}\`.
@@ -66,12 +70,12 @@ Environment variables:
   MCP_DISABLE_SKILLS      Disable specific skills (comma-separated)
 
 Examples:
-  ${COMMAND}
-  ${COMMAND} --all-skills
-  ${COMMAND} --skills=inspect,triage
-  ${COMMAND} --host=sentry.example.com
-  ${COMMAND} --host=sentry.internal:9000 --insecure-http
-  ${COMMAND} --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
-  ${COMMAND} --agent-provider=azure-openai --openai-base-url=https://example.openai.azure.com/openai/v1/
-  ${COMMAND} --agent-provider=anthropic`;
+  ${MCP_COMMAND}
+  ${MCP_COMMAND} --all-skills
+  ${MCP_COMMAND} --skills=inspect,triage
+  ${MCP_COMMAND} --host=sentry.example.com
+  ${MCP_COMMAND} --host=sentry.internal:9000 --insecure-http
+  ${MCP_COMMAND} --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
+  ${MCP_COMMAND} --agent-provider=azure-openai --openai-base-url=https://example.openai.azure.com/openai/v1/
+  ${MCP_COMMAND} --agent-provider=anthropic`;
 }

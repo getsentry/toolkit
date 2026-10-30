@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { McpMergedArgs } from "../../../src/lib/mcp/args.js";
 import { finalizeMcpConfig } from "../../../src/lib/mcp/config.js";
 import { ValidationError } from "../../../src/lib/errors.js";
@@ -377,6 +377,24 @@ describe("finalizeMcpConfig", () => {
     expect(() => finalize({ unknownArgs: ["--bogus"] })).toThrow(
       /Invalid argument\(s\): --bogus\nRun `sentry mcp --help`/,
     );
+  });
+
+  it("points @sentry/mcp-server installs at their own --help", async () => {
+    vi.stubGlobal("SENTRY_MCP_SERVER_VERSION", "1.2.3");
+    vi.resetModules();
+    try {
+      const { finalizeMcpConfig: finalizeBundled } =
+        await import("../../../src/lib/mcp/config.js");
+      expect(() =>
+        finalizeBundled({
+          agentProviderFromFlag: false,
+          unknownArgs: ["--bogus"],
+        }),
+      ).toThrow(/Run `sentry-mcp --help`/);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
   });
 
   it("reports invalid input as a CLI validation error", () => {
