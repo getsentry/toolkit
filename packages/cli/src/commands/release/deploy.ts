@@ -8,7 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { parseText } from "../../lib/completion-target.js";
+import { parseText, parseUrl } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   mdKvTable,
@@ -126,19 +126,19 @@ export const deployCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for the deploy",
         optional: true,
       },
       started: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy start time (ISO 8601)",
         optional: true,
       },
       finished: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy finish time (ISO 8601)",
         optional: true,
       },

@@ -11,6 +11,7 @@ import {
 } from "../../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import { choiceParser, parseText } from "../../../lib/completion-target.js";
 import {
   ContextError,
   stringifyUnknown,
@@ -27,6 +28,7 @@ import {
   orgProjectTarget,
 } from "../../../lib/target-positional.js";
 import {
+  ISSUE_MATCH_MODES,
   matchToLogicType,
   parseJsonObjectList,
   parseMatchMode,
@@ -150,19 +152,19 @@ export const createCommand = buildCommand({
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Rule name",
       },
       condition: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Condition object JSON (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Action object JSON (repeatable, or pass one JSON array)",
@@ -175,26 +177,28 @@ export const createCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "Environment filter",
       },
       filter: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Filter object JSON (repeatable, or pass one JSON array)",
       },
       "filter-match": {
         kind: "parsed",
-        parse: (value: string) => parseMatchMode(value, "filter-match"),
+        parse: choiceParser(ISSUE_MATCH_MODES, (value) =>
+          parseMatchMode(value, "filter-match"),
+        ),
         optional: true,
         brief: "Filter match mode: all or any",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "Owner (team:user style value accepted by Sentry API)",
       },

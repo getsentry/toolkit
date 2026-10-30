@@ -13,13 +13,26 @@
  * and `positional-parse.ts`, which parse the value too, or, for arguments
  * that are not Sentry targets, from the pre-tagged parsers here
  * ({@link parseFilePath}, {@link parseText}, {@link choiceParser}, …).
+ * A command's own validating parser keeps its checks when wrapped:
+ * `choiceParser(VALUES, parseSort)`, `textParser(parsePort)`.
  */
 
 import { ISSUE_IS_VALUES } from "@sentry/toolkit-core/search-query";
+import { numberParser } from "@stricli/core";
 import type { CompletionTarget } from "./complete.js";
 import { ISSUE_LEVELS } from "../types/sentry.js";
+import {
+  CURSOR_NAVIGATION,
+  parseCursorFlag,
+  parseLogSort,
+  parseSpanDepth,
+  SPAN_DEPTH_KEYWORDS,
+  VALID_LOG_SORT_DIRECTIONS,
+} from "./arg-parsing.js";
+import { INSTALLATION_METHODS, parseInstallationMethod } from "./binary.js";
 import { parseLoginEmail } from "./db/accounts.js";
-import { sanitizeIssueQuery } from "./search-query.js";
+import { parseReleaseChannel, RELEASE_CHANNELS } from "./db/release-channel.js";
+import { sanitizeIssueQuery, sanitizeQuery } from "./search-query.js";
 import { parsePeriod, UNIT_SECONDS } from "./time-range.js";
 
 /** What shell completion suggests for an argument: a key of the completer map. */
@@ -68,6 +81,12 @@ export const COMMAND_PATH_TARGET = "command-path" satisfies CompletionTarget;
 /** The values its parser was made with by {@link choiceParser}. */
 export const CHOICE_TARGET = "choice" satisfies CompletionTarget;
 
+/** Comma-separated values its parser was made with by {@link choiceListParser}. */
+export const CHOICE_LIST_TARGET = "choice-list" satisfies CompletionTarget;
+
+/** Platform identifiers (`javascript-react`, `python-django`, …). */
+export const PLATFORM_TARGET = "platform" satisfies CompletionTarget;
+
 /** Free text with nothing to suggest. */
 export const TEXT_TARGET = "text" satisfies CompletionTarget;
 
@@ -88,9 +107,27 @@ export function withCompletionTarget<P extends (input: string) => unknown>(
   return parse;
 }
 
+/**
+ * A new parser that calls `parse`, tagged with `kind` and the `values` it
+ * completes. A new function, so tagging never touches a shared parser.
+ */
+function taggedParser<T>(
+  kind: CompletionTarget,
+  parse: (input: string) => T,
+  values?: readonly string[],
+): (input: string) => T {
+  const tagged = withCompletionTarget(kind, (input: string) => parse(input));
+  if (values) {
+    Object.defineProperty(tagged, COMPLETION_CHOICES_KEY, {
+      value: [...values],
+    });
+  }
+  return tagged;
+}
+
 /** A parser that returns its input unchanged, tagged with `kind`. */
 function identityParser(kind: CompletionTarget): (input: string) => string {
-  return withCompletionTarget(kind, (input: string) => input);
+  return taggedParser(kind, (input) => input);
 }
 
 /** Parses a file or directory path; completes paths. */
@@ -114,31 +151,79 @@ export const parseCommandPath = identityParser(COMMAND_PATH_TARGET);
 /** Parses a stored-account selector; completes stored accounts. */
 export const parseAccountSelector = identityParser(ACCOUNT_TARGET);
 
+/** Parses a platform identifier; completes platforms. */
+export const parsePlatform = identityParser(PLATFORM_TARGET);
+
 /**
- * Build a parser that completes `values`. It returns its input unchanged,
- * so the command still validates it: the values are suggestions, and a
- * command may accept others (`cli upgrade 0.5.0` next to `nightly`).
+ * Wrap a command's own parser of free text or numbers; completes nothing.
+ * The value is still parsed and validated by `parse`.
  */
-export function choiceParser(
-  values: readonly string[],
-): (input: string) => string {
-  const parse = identityParser(CHOICE_TARGET);
-  Object.defineProperty(parse, COMPLETION_CHOICES_KEY, { value: [...values] });
-  return parse;
+export function textParser<T>(
+  parse: (input: string) => T,
+): (input: string) => T {
+  return taggedParser(TEXT_TARGET, parse);
 }
 
 /**
- * Shared value parsers and what their arguments complete. Listed here, not
- * tagged where they are defined, so those modules know nothing about
- * completion: every flag that parses with one completes the same way.
+ * Build a parser that completes `values`. Without `parse` it returns its
+ * input unchanged, so the command still validates it: the values are
+ * suggestions, and a command may accept others (`cli upgrade 0.5.0` next
+ * to `nightly`). With `parse`, the command's own parser validates it.
  */
-const PARSER_TARGETS: ReadonlyMap<unknown, CompletionTarget> = new Map<
+export function choiceParser(
+  values: readonly string[],
+): (input: string) => string;
+export function choiceParser<T>(
+  values: readonly string[],
+  parse: (input: string) => T,
+): (input: string) => T;
+export function choiceParser(
+  values: readonly string[],
+  parse: (input: string) => unknown = (input) => input,
+): (input: string) => unknown {
+  return taggedParser(CHOICE_TARGET, parse, values);
+}
+
+/**
+ * Build a parser of a comma-separated list that completes `values`, one
+ * list item at a time, leaving out the ones already in the list
+ * (`--fields id,ti` → `id,title`). Like {@link choiceParser}, it returns
+ * its input unless given the command's own `parse`.
+ */
+export function choiceListParser(
+  values: readonly string[],
+): (input: string) => string;
+export function choiceListParser<T>(
+  values: readonly string[],
+  parse: (input: string) => T,
+): (input: string) => T;
+export function choiceListParser(
+  values: readonly string[],
+  parse: (input: string) => unknown = (input) => input,
+): (input: string) => unknown {
+  return taggedParser(CHOICE_LIST_TARGET, parse, values);
+}
+
+/**
+ * Shared value parsers and what their arguments complete: a kind, or the
+ * fixed values they accept, completed as {@link CHOICE_TARGET}. Listed
+ * here, not tagged where they are defined, so those modules know nothing
+ * about completion: every flag that parses with one completes the same way.
+ */
+const PARSER_TARGETS: ReadonlyMap<
   unknown,
-  CompletionTarget
->([
+  CompletionTarget | readonly string[]
+> = new Map<unknown, CompletionTarget | readonly string[]>([
   [sanitizeIssueQuery, ISSUE_QUERY_TARGET],
+  [sanitizeQuery, TEXT_TARGET],
   [parsePeriod, PERIOD_TARGET],
   [parseLoginEmail, ACCOUNT_TARGET],
+  [numberParser, TEXT_TARGET],
+  [parseCursorFlag, CURSOR_NAVIGATION],
+  [parseLogSort, VALID_LOG_SORT_DIRECTIONS],
+  [parseSpanDepth, SPAN_DEPTH_KEYWORDS],
+  [parseInstallationMethod, INSTALLATION_METHODS],
+  [parseReleaseChannel, RELEASE_CHANNELS],
 ]);
 
 /**
@@ -154,26 +239,33 @@ export function getCompletionTarget(
   if (typeof parse !== "function") {
     return;
   }
+  const listed = PARSER_TARGETS.get(parse);
   return (
     (parse as { [COMPLETION_TARGET_KEY]?: CompletionTarget })[
       COMPLETION_TARGET_KEY
-    ] ?? PARSER_TARGETS.get(parse)
+    ] ?? (typeof listed === "string" ? listed : listed && CHOICE_TARGET)
   );
 }
 
 /**
- * Read the values a {@link choiceParser} parser completes.
+ * Read the values a parser completes: those of a {@link choiceParser} or
+ * {@link choiceListParser} parser, or of a shared parser listed with its
+ * values in {@link PARSER_TARGETS}.
  *
  * @returns The values, or `undefined` for any other parser
  */
 export function getCompletionChoices(
   parse: unknown,
 ): readonly string[] | undefined {
-  return typeof parse === "function"
-    ? (parse as { [COMPLETION_CHOICES_KEY]?: readonly string[] })[
-        COMPLETION_CHOICES_KEY
-      ]
-    : undefined;
+  if (typeof parse !== "function") {
+    return;
+  }
+  const listed = PARSER_TARGETS.get(parse);
+  return (
+    (parse as { [COMPLETION_CHOICES_KEY]?: readonly string[] })[
+      COMPLETION_CHOICES_KEY
+    ] ?? (typeof listed === "string" ? undefined : listed)
+  );
 }
 
 /** Fixed values the completers offer (see {@link COMPLETION_VALUES}). */

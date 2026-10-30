@@ -1,3 +1,8 @@
+import {
+  choiceParser,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { isHostedUiOrigin, LOCAL_SESSION_EVENT } from "./viewer-protocol.js";
 export { isHostedUiOrigin } from "./viewer-protocol.js";
 import { isLoopbackHost } from "./loopback.js";
@@ -1051,13 +1056,13 @@ export const serverCommand = buildCommand({
     flags: {
       port: {
         kind: "parsed",
-        parse: parsePort,
+        parse: textParser(parsePort),
         brief: "Port to listen on",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Hostname to bind to",
         default: "localhost",
       },
@@ -1068,7 +1073,7 @@ export const serverCommand = buildCommand({
       },
       filter: {
         kind: "parsed",
-        parse: parseFilter,
+        parse: choiceParser(FILTER_VALUES, parseFilter),
         brief:
           "Only show items of this type (repeatable: error, transaction, log, ai)",
         variadic: true,
@@ -1076,7 +1081,7 @@ export const serverCommand = buildCommand({
       },
       format: {
         kind: "parsed",
-        parse: parseFormat,
+        parse: choiceParser(FORMAT_VALUES, parseFormat),
         brief: "Output format: human (default) or json (NDJSON on stdout)",
         default: "human",
       },
@@ -1094,7 +1099,7 @@ export const serverCommand = buildCommand({
       "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
       session: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Create a daemon-owned telemetry session with this label",
         optional: true,
       },

@@ -19,7 +19,11 @@ import {
   type FindResult,
   findDebugFiles,
 } from "../../lib/dif/find.js";
-import { parseText } from "../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseDirectoryPath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -151,7 +155,7 @@ export const findCommand = buildCommand({
     flags: {
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(FIND_DIF_TYPES),
         variadic: true,
         brief:
           "Only consider debug files of the given type (repeatable). Default: all",
@@ -169,7 +173,7 @@ export const findCommand = buildCommand({
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         variadic: true,
         brief: "Add a directory to search recursively (repeatable)",
         optional: true,

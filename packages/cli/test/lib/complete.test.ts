@@ -101,8 +101,8 @@ describe("getCompletions: context detection", () => {
 
   test("returns nothing for the value of a flag without a completer", async () => {
     await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
-    expect(await getCompletions(["issue", "list", "--cursor"], "")).toEqual([]);
-    expect(await getCompletions(["issue", "list", "-c"], "")).toEqual([]);
+    expect(await getCompletions(["issue", "list", "--limit"], "")).toEqual([]);
+    expect(await getCompletions(["issue", "list", "-n"], "")).toEqual([]);
     // Once the value is given, the next word is a target again.
     expect(
       (await getCompletions(["issue", "list", "--period", "7d"], "")).length,
@@ -830,6 +830,53 @@ describe("getCompletions: fixed values", () => {
 
   test("text positionals complete nothing", async () => {
     expect(await getCompletions(["cli", "feedback"], "")).toEqual([]);
+  });
+
+  test("flags of shared parsers complete the values those parsers accept", async () => {
+    expect(await values(["issue", "list", "--cursor"], "")).toEqual([
+      "next",
+      "prev",
+      "first",
+    ]);
+    expect(await values(["log", "list", "--sort"], "o")).toEqual(["oldest"]);
+    expect(await values(["trace", "view", "--spans"], "")).toEqual([
+      "all",
+      "no",
+    ]);
+    expect(await values(["cli", "setup", "--channel"], "n")).toEqual([
+      "nightly",
+    ]);
+  });
+
+  test("flags of a command's own parsers complete their values", async () => {
+    expect(await values(["issue", "list", "--sort"], "f")).toEqual(["freq"]);
+    expect(await values(["api", "-X"], "P")).toEqual(["POST", "PUT", "PATCH"]);
+  });
+
+  test("--fields completes the next field of the list", async () => {
+    expect(await values(["issue", "view", "--fields"], "id,ti")).toEqual([
+      "id,title",
+    ]);
+    expect(
+      await values(["issue", "view", "--fields"], "id,title,"),
+    ).not.toContain("id,title,id");
+    expect(await values(["issue", "view", "--fields"], "project.s")).toEqual([
+      "project.slug",
+    ]);
+  });
+
+  test("list flags complete fixed values one item at a time", async () => {
+    expect(
+      await values(["auth", "login", "--scope"], "org:read,org:wr"),
+    ).toEqual(["org:read,org:write"]);
+  });
+
+  test("platform flags complete platforms", async () => {
+    const [best] = await values(["project", "list", "--platform"], "python-dj");
+    expect(best).toBe("python-django");
+    expect(await values(["event", "send", "--platform"], "")).toContain(
+      "javascript",
+    );
   });
 });
 

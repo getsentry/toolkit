@@ -32,7 +32,11 @@ import {
 } from "../../lib/build/vcs.js";
 import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseFilePath } from "../../lib/completion-target.js";
+import {
+  parseFilePath,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -233,20 +237,20 @@ export const uploadCommand = buildCommand({
     flags: {
       "build-configuration": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Build configuration for the upload (defaults to the current version)",
         optional: true,
       },
       "release-notes": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Release notes for the build",
         optional: true,
       },
       "install-group": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Install group(s) for this build (repeatable); builds sharing a group show updates for each other",
         optional: true,
@@ -254,7 +258,7 @@ export const uploadCommand = buildCommand({
       },
       dsym: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "dSYM bundle, directory of bundles, or ZIP for a single IPA (repeatable)",
         optional: true,
@@ -262,52 +266,52 @@ export const uploadCommand = buildCommand({
       },
       "head-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "VCS commit SHA (defaults to the current commit)",
         optional: true,
       },
       "base-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "VCS base commit SHA (defaults to the merge-base with the base ref)",
         optional: true,
       },
       "vcs-provider": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "VCS provider (defaults to the current remote's provider)",
         optional: true,
       },
       "head-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Head repository name, e.g. owner/repo (defaults to the current)",
         optional: true,
       },
       "base-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Base repository name, e.g. owner/repo (for forks)",
         optional: true,
       },
       "head-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Head branch/reference (defaults to the current branch)",
         optional: true,
       },
       "base-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Base branch/reference (defaults to the merge-base tracking ref)",
         optional: true,
       },
       "pr-number": {
         kind: "parsed",
-        parse: parsePrNumber,
+        parse: textParser(parsePrNumber),
         brief:
           "Pull request number (auto-detected in pull_request GitHub Actions runs)",
         optional: true,

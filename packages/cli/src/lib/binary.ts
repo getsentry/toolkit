@@ -167,7 +167,7 @@ export const UPGRADE_SOURCES = [
 export const PRIMARY_UPGRADE_SOURCE = UPGRADE_SOURCES[0];
 
 /** Valid methods that can be specified via --method flag */
-const VALID_METHODS: InstallationMethod[] = [
+export const INSTALLATION_METHODS: readonly InstallationMethod[] = [
   "curl",
   "brew",
   "npm",
@@ -186,9 +186,9 @@ const VALID_METHODS: InstallationMethod[] = [
 export function parseInstallationMethod(value: string): InstallationMethod {
   const normalized = value.toLowerCase() as InstallationMethod;
 
-  if (!VALID_METHODS.includes(normalized)) {
+  if (!INSTALLATION_METHODS.includes(normalized)) {
     throw new Error(
-      `Invalid method: ${value}. Must be one of: ${VALID_METHODS.join(", ")}`,
+      `Invalid method: ${value}. Must be one of: ${INSTALLATION_METHODS.join(", ")}`,
     );
   }
 

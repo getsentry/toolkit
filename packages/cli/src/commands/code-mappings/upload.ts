@@ -23,7 +23,7 @@ import {
   uploadCodeMappings,
 } from "../../lib/api/code-mappings.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseFilePath } from "../../lib/completion-target.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -213,14 +213,14 @@ export const uploadCommand = buildCommand({
     flags: {
       repo: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Repository name (e.g., owner/repo). Auto-detected from git remote if omitted.",
         optional: true,
       },
       "default-branch": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Default branch name. Auto-detected from git remote HEAD if omitted.",
         optional: true,

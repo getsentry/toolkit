@@ -22,6 +22,11 @@ import {
 } from "../lib/api-client.js";
 import { validateLimit } from "../lib/arg-parsing.js";
 import {
+  choiceParser,
+  parseText,
+  textParser,
+} from "../lib/completion-target.js";
+import {
   advancePaginationState,
   buildPaginationContextKey,
   hasPreviousPage,
@@ -767,7 +772,7 @@ export const exploreCommand = buildListCommand("explore", {
     flags: {
       field: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           'API field or aggregate (repeatable). E.g., title, "count()", "p50(span.duration)"',
         variadic: true,
@@ -775,55 +780,56 @@ export const exploreCommand = buildListCommand("explore", {
       },
       metric: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Metric name for --dataset metrics. Auto-resolves type/unit via API.",
         optional: true,
       },
       agg: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Aggregation for --metric (sum, avg, count, p50, p95, etc.)",
         default: "sum",
       },
       dataset: {
         kind: "parsed",
-        parse: DATASETS.parse,
+        parse: choiceParser(DATASETS.names, DATASETS.parse),
         brief: `Dataset to query (${DATASETS.names.join(", ")}; transaction(s) routes to spans)`,
         default: DEFAULT_DATASET,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search query (Sentry search syntax)",
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: 'Sort field (prefix with - for desc, e.g., "-count()")',
         optional: true,
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Environment filter (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         placeholder: "number",
         brief: `Number of table rows (1-${LIST_MAX_LIMIT}, default: ${DEFAULT_LIMIT})`,
         optional: true,
       },
       "time-series": {
         kind: "parsed",
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           value === "" || value === "auto"
             ? "auto"
             : parseTimeSeriesInterval(value),
+        ),
         placeholder: "auto|interval",
         brief:
           "Query time series (default: auto; optional bucket duration, e.g., 15m)",

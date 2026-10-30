@@ -17,7 +17,7 @@ import {
   toBinaryDownloadUrl,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseText } from "../../lib/completion-target.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ResolutionError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -89,7 +89,7 @@ export const downloadCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path (default: preprod_artifact_<build-id>.<ext> in the current directory)",
         optional: true,

@@ -422,8 +422,9 @@ type CommandCompletion = {
    */
   flags: Record<string, CompletionTarget | null>;
   /**
-   * Values of each `choice` argument, keyed by positional index (`"0"`) or
-   * flag spelling (`"--format"`). Omitted when the command has none.
+   * Values of each `choice` and `choice-list` argument, keyed by positional
+   * index (`"0"`) or flag spelling (`"--format"`). Omitted when the command
+   * has none.
    */
   choices?: Record<string, readonly string[]>;
 };
@@ -432,17 +433,19 @@ type CommandCompletion = {
 export type CommandCompletions = Record<string, CommandCompletion>;
 
 /**
- * The kind and, for `choice`, the values of one argument: those of an
- * `enum` flag, or of a `choiceParser` parser.
+ * The kind and, for `choice` and `choice-list`, the values of one
+ * argument: those of an `enum` flag, or the ones its parser completes.
  */
 function argumentCompletion(
   parse: unknown,
   enumValues?: readonly string[],
 ): { kind: CompletionTarget | null; values?: readonly string[] } {
-  const values = enumValues ?? getCompletionChoices(parse);
-  return values
-    ? { kind: CHOICE_TARGET, values }
-    : { kind: getCompletionTarget(parse) ?? null };
+  return enumValues
+    ? { kind: CHOICE_TARGET, values: enumValues }
+    : {
+        kind: getCompletionTarget(parse) ?? null,
+        values: getCompletionChoices(parse),
+      };
 }
 
 /** Sort an object's entries by key, for stable generated output. */

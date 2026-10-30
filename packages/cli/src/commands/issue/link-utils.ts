@@ -1,6 +1,6 @@
 /** Shared arguments for external issue association commands. */
 
-import { parseUrl } from "../../lib/completion-target.js";
+import { parseText, parseUrl } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { issueParameter } from "./positional.js";
 
@@ -23,13 +23,13 @@ export function externalIssuePositionals(command: string) {
 export const EXTERNAL_ISSUE_FLAGS = {
   integration: {
     kind: "parsed",
-    parse: String,
+    parse: parseText,
     brief: "Native integration ID, when multiple installations match",
     optional: true,
   },
   app: {
     kind: "parsed",
-    parse: String,
+    parse: parseText,
     brief: "Sentry App slug (automatically detected for Linear URLs)",
     optional: true,
   },

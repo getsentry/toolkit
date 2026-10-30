@@ -132,7 +132,7 @@ const GENERATED = generatedTargets as {
 type CompleterContext = {
   /** Positionals before the word being completed, flags removed. */
   positionals: string[];
-  /** The values a `choice` argument offers. */
+  /** The values a `choice` or `choice-list` argument offers. */
   choices?: readonly string[];
 };
 
@@ -283,8 +283,16 @@ const COMPLETERS = Object.freeze({
       .filter((value) => value.startsWith(partial))
       .map((value) => ({ value })),
   /**
-   * Free text with nothing to suggest (messages, queries, URLs, names of
-   * new things). Declared, so that every positional says how it completes.
+   * The values its parser was made with by `choiceListParser`, as the next
+   * item of a comma-separated list (`--fields id,ti` → `id,title`).
+   */
+  "choice-list": (partial, slot) => completeListItem(partial, slot.choices),
+  /** Platform identifiers (`javascript-react`, `python-django`, …). */
+  platform: (partial) => completePlatforms(partial).map((value) => ({ value })),
+  /**
+   * Free text or numbers, with nothing to suggest (messages, queries, URLs,
+   * names of new things, limits). Declared, so that every argument says
+   * how it completes.
    */
   text: () => [],
 } satisfies Record<string, Completer>);
@@ -372,6 +380,31 @@ function completePaths(
   return completions.sort((a, b) => a.value.localeCompare(b.value));
 }
 
+/**
+ * Complete the last item of a comma-separated list with the `values` that
+ * start with it and are not in the list yet, keeping the items before it.
+ */
+function completeListItem(
+  partial: string,
+  values: readonly string[] = [],
+): Completion[] {
+  const head = partial.slice(0, partial.lastIndexOf(",") + 1);
+  const item = partial.slice(head.length);
+  const chosen = new Set(head.split(","));
+  return values
+    .filter((value) => value.startsWith(item) && !chosen.has(value))
+    .map((value) => ({ value: `${head}${value}` }));
+}
+
+/**
+ * Platform identifiers matching the partial, best match first: the common
+ * ones for an empty partial, any valid one otherwise.
+ */
+function completePlatforms(partial: string): string[] {
+  const candidates = partial === "" ? COMMON_PLATFORMS : VALID_PLATFORMS;
+  return fuzzyMatch(partial, candidates, { mode: "search" });
+}
+
 const DIGITS_RE = /^\d+$/;
 
 /**
@@ -443,15 +476,10 @@ export function completeProjectCreateSpec(partial: string): Completion[] {
     }
 
     const specPrefix = partial.slice(0, colonIdx + 1);
-    const platformPartial = partial.slice(colonIdx + 1);
-    const candidates =
-      platformPartial === "" ? COMMON_PLATFORMS : VALID_PLATFORMS;
-    return fuzzyMatch(platformPartial, candidates, { mode: "search" }).map(
-      (platform) => ({
-        value: `${specPrefix}${platform}`,
-        description: "Platform",
-      }),
-    );
+    return completePlatforms(partial.slice(colonIdx + 1)).map((platform) => ({
+      value: `${specPrefix}${platform}`,
+      description: "Platform",
+    }));
   }
 
   if (partial.includes("/")) {

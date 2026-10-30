@@ -19,7 +19,7 @@ import type { SentryContext } from "../context.js";
 
 const _require = createRequire(import.meta.url);
 
-import type { ListTargetOptions } from "./arg-parsing.js";
+import { type ListTargetOptions, parseCursorFlag } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
@@ -237,51 +237,6 @@ export function applyFreshFlag(flags: { readonly fresh: boolean }): void {
     disableDsnCache();
     disableOrgCache();
   }
-}
-
-/** Matches strings that are all digits — used to detect invalid cursor values */
-const ALL_DIGITS_RE = /^\d+$/;
-
-/**
- * Navigation keywords accepted by `--cursor`.
- *
- * - `"next"` / `"last"` — advance to the next page
- * - `"prev"` / `"previous"` — go back to the previous page
- * - `"first"` — jump back to the first page
- *
- * `"last"` is a silent alias for `"next"` preserved for muscle-memory compat.
- */
-export const CURSOR_KEYWORDS = new Set([
-  "next",
-  "last",
-  "prev",
-  "previous",
-  "first",
-]);
-
-/**
- * Parse and validate a `--cursor` flag value.
- *
- * Accepts navigation keywords (`"next"`, `"prev"`, `"previous"`, `"first"`,
- * `"last"`) and opaque Sentry cursor strings (e.g. `"1735689600:0:0"`).
- * Rejects bare integers early — they are never valid cursors and would
- * produce a cryptic 400 from the API.
- *
- * Shared by {@link LIST_CURSOR_FLAG} and commands that define their own
- * cursor flag with a custom `brief`.
- *
- * @throws Error when value is a bare integer
- */
-export function parseCursorFlag(value: string): string {
-  if (CURSOR_KEYWORDS.has(value)) {
-    return value;
-  }
-  if (ALL_DIGITS_RE.test(value)) {
-    throw new Error(
-      `'${value}' is not a valid cursor. Cursors look like "1735689600:0:0". Use "next" / "prev" to navigate pages.`,
-    );
-  }
-  return value;
 }
 
 /**

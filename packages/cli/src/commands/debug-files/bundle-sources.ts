@@ -111,7 +111,7 @@ export const bundleSourcesCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path for the source bundle ZIP (default: <path>.src.zip)",
         optional: true,
