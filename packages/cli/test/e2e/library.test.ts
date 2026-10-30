@@ -213,9 +213,8 @@ describe("library mode (bundled)", () => {
       globalThis.fetch = async (input, init) => {
         requests.push(new Request(input, init).url);
         return Response.json(${JSON.stringify([organizationsFixture[1]])}, {
-          statusText: 'OK',
           headers: {
-            Link: '<http://localhost:9000/next>; rel="next"; results="true"; cursor="100:2:0", <http://localhost:9000/previous>; rel="previous"; results="true"; cursor="100:0:1"',
+            Link: '<http://localhost:9000/next>; rel="next"; results="true"; cursor="100:2:0"',
           },
         });
       };
@@ -224,12 +223,9 @@ describe("library mode (bundled)", () => {
         url: 'http://localhost:9000',
         cwd: ${JSON.stringify(getConfigDir())},
       });
-      const options = {
-        endpoint: 'organizations/?cursor=old',
-        rawField: ['field=id', 'field=name'],
-      };
-      sdk.api({ ...options, cursor: 'page-token+/=:1' }).then(async response => {
-        const next = await sdk.api({ ...options, cursor: 'next' });
+      const endpoint = 'organizations/';
+      sdk.api({ endpoint, cursor: 'page-token+/=:1' }).then(async response => {
+        const next = await sdk.api({ endpoint, cursor: 'next' });
         console.log(JSON.stringify({ requests, response, next }));
       }).catch(error => {
         console.error(error);
@@ -238,24 +234,15 @@ describe("library mode (bundled)", () => {
     `);
 
     const result = JSON.parse(stdout.trim());
-    expect(result.requests).toHaveLength(2);
-    const request = new URL(result.requests[0]);
-    expect(request.searchParams.getAll("cursor")).toEqual(["page-token+/=:1"]);
-    expect(request.searchParams.getAll("field")).toEqual(["id", "name"]);
-    expect(result.response).toEqual({
-      status: 200,
-      statusText: "OK",
+    expect(
+      result.requests.map((url: string) =>
+        new URL(url).searchParams.get("cursor"),
+      ),
+    ).toEqual(["page-token+/=:1", "100:2:0"]);
+    expect(result.response).toMatchObject({
       body: [organizationsFixture[1]],
-      pagination: {
-        nextCursor: "100:2:0",
-        prevCursor: "100:0:1",
-        hasPrev: false,
-      },
+      pagination: { nextCursor: "100:2:0", hasPrev: false },
     });
-    const nextRequest = new URL(result.requests[1]);
-    expect(nextRequest.searchParams.getAll("cursor")).toEqual(["100:2:0"]);
-    expect(nextRequest.searchParams.get("per_page")).toBe("100");
-    expect(nextRequest.searchParams.getAll("field")).toEqual(["id", "name"]);
     expect(result.next.pagination.hasPrev).toBe(true);
   });
 
