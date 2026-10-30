@@ -17,6 +17,7 @@ import * as Sentry from "@sentry/node";
 const _require = createRequire(import.meta.url);
 
 import { isMusl } from "./binary.js";
+import { isCi } from "./ci.js";
 import {
   CLI_VERSION,
   getCliEnvironment,
@@ -757,7 +758,10 @@ export function initSentry(
     // Tag whether targeting self-hosted Sentry (not SaaS)
     Sentry.setTag("is_self_hosted", !isSentrySaasUrl(getSentryBaseUrl()));
 
-    // Tag whether running in an interactive terminal or agent/CI environment
+    // CI and agent identity are independent: an agent can run inside CI.
+    Sentry.setTag("is_ci", isCi(getEnv()));
+
+    // Tag whether stdout is a terminal, independently of CI or agent detection.
     Sentry.setTag("is_tty", !!process.stdout.isTTY);
 
     // Tag the C library variant on Linux (musl vs glibc).

@@ -16,11 +16,11 @@ import {
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
-  isCi,
   type VcsFlags,
   type VcsInfo,
   vcsInfoToBody,
 } from "../../lib/build/vcs.js";
+import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
