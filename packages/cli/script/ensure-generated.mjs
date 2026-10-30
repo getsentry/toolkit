@@ -9,8 +9,9 @@
  * step to document or forget.
  *
  * Usage:
- *   node script/ensure-generated.mjs           # everything the CLI imports
- *   node script/ensure-generated.mjs schema    # only the API schema
+ *   node script/ensure-generated.mjs                 # everything the CLI imports
+ *   node script/ensure-generated.mjs schema          # only the API schema
+ *   node script/ensure-generated.mjs schema grammar  # the schema and parsers
  *
  * Plain Node (no tsx) so the check adds no noticeable startup time.
  */
@@ -42,12 +43,18 @@ function run(script) {
   execSync(`pnpm run ${script}`, { stdio: "inherit" });
 }
 
+/** The groups named on the command line, or every group when none are. */
+const groups = process.argv.slice(2);
+function wants(group) {
+  return groups.length === 0 || groups.includes(group);
+}
+
 if (!SCHEMA_OUTPUTS.every(existsSync)) {
   run("generate:schema");
 }
-if (process.argv[2] !== "schema" && !GRAMMAR_OUTPUTS.every(existsSync)) {
+if (wants("grammar") && !GRAMMAR_OUTPUTS.every(existsSync)) {
   run("generate:grammar");
 }
-if (process.argv[2] !== "schema" && !DOCS_OUTPUTS.every(existsSync)) {
+if (wants("docs") && !DOCS_OUTPUTS.every(existsSync)) {
   run("generate:docs");
 }
