@@ -7568,6 +7568,57 @@
     "surface": "direct"
   },
   {
+    "name": "submit_feedback",
+    "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "A short phrase naming what the user asked you to do."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["missing", "broken", "confusing", "idea"],
+          "description": "missing: no tool could do it; broken: a tool failed or returned something wrong; confusing: a tool or its docs were unclear; idea: a suggestion."
+        },
+        "impact": {
+          "type": "string",
+          "enum": ["blocked", "worked_around", "friction"],
+          "description": "blocked: you could not finish; worked_around: you finished another way; friction: you finished, but it was harder than it should be."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "What you tried, including tool calls and any error, and what went wrong."
+        },
+        "toolName": {
+          "description": "The Sentry MCP tool the feedback is about, if any.",
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": ["task", "kind", "impact", "description"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "submitted": {
+          "type": "boolean",
+          "description": "Whether the feedback was sent to the Sentry MCP maintainers."
+        }
+      },
+      "required": ["submitted"],
+      "additionalProperties": false
+    },
+    "requiredScopes": [],
+    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "unlink_issue",
     "description": "Remove an external ticket or GitHub pull request reference from a Sentry issue by URL.\nRemoves only the Sentry association. It does not delete the external ticket or the Sentry issue, or change resolution status.\nSupports native integrations and installed Sentry Apps. Repeating the request is safe: not_linked means the association is absent, whether removed by this call or already absent.\n<examples>\nunlink_issue(organizationSlug='my-org', issueId='PROJECT-123', externalIssueUrl='https://github.com/example/repo/issues/42')\n</examples>",
     "inputSchema": {

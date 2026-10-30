@@ -1,0 +1,102 @@
+import { captureFeedback, getClient } from "@sentry/core";
+import { z } from "zod";
+import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
+import { ALL_SKILLS } from "../../skills";
+import { scrubSensitiveText } from "../../telem/sentry";
+
+export const submitFeedbackOutputSchema = z.object({
+  submitted: z
+    .boolean()
+    .describe("Whether the feedback was sent to the Sentry MCP maintainers."),
+});
+
+export default defineTool({
+  name: "submit_feedback",
+  description: [
+    "Report friction with the Sentry MCP server to its maintainers.",
+    "",
+    "Use this tool when you need to:",
+    "- Report that no Sentry MCP tool could do what the user asked",
+    "- Report a tool that failed, returned wrong data, or was confusing",
+    "- Suggest an improvement to the Sentry MCP tools",
+    "",
+    "<examples>",
+    "submit_feedback(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')",
+    "</examples>",
+    "",
+    "<hints>",
+    "- Call at most once per task, after you finish or give up.",
+    "- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.",
+    "- Do not include secrets, credentials, or personal data.",
+    "</hints>",
+  ].join("\n"),
+  inputSchema: {
+    task: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .describe("A short phrase naming what the user asked you to do."),
+    kind: z
+      .enum(["missing", "broken", "confusing", "idea"])
+      .describe(
+        "missing: no tool could do it; broken: a tool failed or returned something wrong; confusing: a tool or its docs were unclear; idea: a suggestion.",
+      ),
+    impact: z
+      .enum(["blocked", "worked_around", "friction"])
+      .describe(
+        "blocked: you could not finish; worked_around: you finished another way; friction: you finished, but it was harder than it should be.",
+      ),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(4096)
+      .describe(
+        "What you tried, including tool calls and any error, and what went wrong.",
+      ),
+    toolName: z
+      .string()
+      .trim()
+      .max(100)
+      .optional()
+      .describe("The Sentry MCP tool the feedback is about, if any."),
+  },
+  outputSchema: submitFeedbackOutputSchema,
+  skills: ALL_SKILLS,
+  requiredScopes: [],
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    openWorldHint: true,
+  },
+  async handler(params) {
+    // Without a configured DSN (e.g. stdio without SENTRY_DSN) there is
+    // nowhere to send feedback, so report that instead of pretending.
+    if (!getClient()?.getDsn()) {
+      return structuredResult({ submitted: false });
+    }
+
+    captureFeedback({
+      source: "mcp_agent",
+      message: scrubSensitiveText(
+        [
+          `Task: ${params.task}`,
+          params.toolName ? `Tool: ${params.toolName}` : null,
+          "",
+          params.description,
+        ]
+          .filter((line): line is string => line !== null)
+          .join("\n"),
+      ),
+      tags: {
+        "feedback.kind": params.kind,
+        "feedback.impact": params.impact,
+        ...(params.toolName ? { "feedback.tool": params.toolName } : {}),
+      },
+    });
+
+    return structuredResult({ submitted: true });
+  },
+});
