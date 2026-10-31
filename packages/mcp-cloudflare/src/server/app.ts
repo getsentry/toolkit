@@ -1,6 +1,7 @@
 import { logIssue } from "@sentry/mcp-core/telem/logging";
 import { type Context, Hono } from "hono";
 import { csrf } from "hono/csrf";
+import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { generateHomepageMarkdown } from "../homepage-content";
 import { createScopedAuthorizationServerMetadataResponse } from "./authorization-server-metadata";
@@ -136,6 +137,14 @@ const app = new Hono<{
 
 // TODO: propagate the error as sentry isnt injecting into hono
 app.onError((err, c) => {
+  // Middleware such as csrf() throws HTTPException for expected 4xx outcomes;
+  // return its response and only report server errors.
+  if (err instanceof HTTPException) {
+    if (err.status >= 500) {
+      logIssue(err);
+    }
+    return err.getResponse();
+  }
   logIssue(err);
   return c.text("Internal Server Error", 500);
 });

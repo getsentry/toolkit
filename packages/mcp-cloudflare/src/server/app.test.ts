@@ -1,10 +1,61 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import app from "./app";
+import { setSentryUserFromRequest } from "./utils/sentry-user";
+
+const { logIssue } = vi.hoisted(() => ({ logIssue: vi.fn() }));
+
+vi.mock("@sentry/mcp-core/telem/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/mcp-core/telem/logging")>()),
+  logIssue,
+}));
+
+vi.mock("./utils/sentry-user", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./utils/sentry-user")>();
+  return {
+    ...actual,
+    setSentryUserFromRequest: vi.fn(actual.setSentryUserFromRequest),
+  };
+});
 
 // RFC 5737 TEST-NET-1 address; required by the IP-extraction middleware
 const TEST_HEADERS = { "CF-Connecting-IP": "192.0.2.1" } as const;
 
 describe("app", () => {
+  beforeEach(() => {
+    logIssue.mockClear();
+  });
+
+  describe("onError", () => {
+    // Regression: csrf() rejections surfaced as 500s and created Sentry issues.
+    it("returns 403 for a cross-site form POST without reporting an issue", async () => {
+      const res = await app.request("https://mcp.sentry.dev/token", {
+        method: "POST",
+        headers: {
+          ...TEST_HEADERS,
+          Origin: "https://evil.example",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: "grant_type=client_credentials",
+      });
+
+      expect(res.status).toBe(403);
+      expect(logIssue).not.toHaveBeenCalled();
+    });
+
+    it("returns 500 and reports an issue for unexpected errors", async () => {
+      const error = new Error("boom");
+      vi.mocked(setSentryUserFromRequest).mockImplementationOnce(() => {
+        throw error;
+      });
+
+      const res = await app.request("/robots.txt", { headers: TEST_HEADERS });
+
+      expect(res.status).toBe(500);
+      expect(await res.text()).toBe("Internal Server Error");
+      expect(logIssue).toHaveBeenCalledWith(error);
+    });
+  });
+
   describe("GET /", () => {
     it("should return markdown when Accept includes text/markdown", async () => {
       const res = await app.request("https://mcp.sentry.dev/", {
