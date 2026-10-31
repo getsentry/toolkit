@@ -1,6 +1,8 @@
+import { ALL_SKILLS } from "@sentry/mcp-core/skills";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { routes } from "../../src/app.js";
 import { type CliEntry, isMcpInvocation, runCli } from "../../src/cli.js";
+import { MCP_SKILL_NAMES } from "../../src/commands/mcp.js";
 import { ValidationError } from "../../src/lib/errors.js";
 import { routes as mcpServerRoutes } from "../../src/mcp-server-app.js";
 import { SENTRY_CLI } from "../../src/sentry-cli.js";
@@ -177,7 +179,11 @@ describe("running `mcp`", () => {
       expect(stdout).toContain(flag);
     }
     expect(stdout).toContain("SENTRY_ACCESS_TOKEN");
-    expect(stdout).toContain("Available skills:");
+    expect(stdout).toContain(`Available skills: ${ALL_SKILLS.join(", ")}`);
+  });
+
+  test("help lists mcp-core's skills", () => {
+    expect([...MCP_SKILL_NAMES]).toEqual(ALL_SKILLS);
   });
 
   test("rejects unknown flags", async () => {

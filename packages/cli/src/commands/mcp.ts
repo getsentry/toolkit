@@ -7,10 +7,22 @@
  * when the server starts, not for `--help`.
  */
 
-import { ALL_SKILLS } from "@sentry/mcp-core/skills";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import type { McpFlags } from "../lib/mcp/args.js";
+
+/**
+ * mcp-core's `ALL_SKILLS`, copied so the command tree does not import
+ * mcp-core: docs generation and `pnpm run cli` load every command without
+ * building it. A test fails if this list drifts.
+ */
+export const MCP_SKILL_NAMES = [
+  "inspect",
+  "seer",
+  "docs",
+  "triage",
+  "project-management",
+] as const;
 
 /** An optional string flag. */
 function stringFlag(brief: string) {
@@ -49,7 +61,7 @@ export const mcpCommand = buildCommand({
       "  EMBEDDED_AGENT_PROVIDER  openai, azure-openai, anthropic, or openrouter\n" +
       "  MCP_SKILLS               Skills to grant (comma-separated)\n" +
       "  MCP_DISABLE_SKILLS       Skills to remove (comma-separated)\n\n" +
-      `Available skills: ${ALL_SKILLS.join(", ")}`,
+      `Available skills: ${MCP_SKILL_NAMES.join(", ")}`,
     examples: [
       {
         description: "Start the server with the current CLI login",
