@@ -189,7 +189,7 @@ async function confirmRootCauseAndContinue(
       initial: true,
     });
 
-    // consola returns a non-boolean (Symbol(clack:cancel)) when cancelled.
+    // The prompt returns a non-boolean (clack's cancel symbol) when cancelled.
     if (proceed === true) {
       return;
     }

@@ -3,8 +3,8 @@
  *
  * ## Why this exists
  *
- * All human-facing timestamps in the CLI — the `[tag 6:28:59 AM]` log prefix
- * emitted by consola, and every `toLocaleString()`/`toLocaleTimeString()` call
+ * All human-facing timestamps in the CLI — the `[tag 06:28:59]` log prefix
+ * emitted by the logger, and every `toLocaleString()`/`toLocaleTimeString()` call
  * in the formatters — are rendered by the JavaScript runtime using its notion
  * of the "local" timezone. That notion comes from ICU/`process.env.TZ`.
  *
@@ -257,7 +257,7 @@ export function initTimezone(): string | null {
 /**
  * Format a `Date` as a local-time clock string for the log prefix.
  *
- * Renders 24-hour `HH:MM:SS` in the machine's local timezone. Unlike consola's
+ * Renders 24-hour `HH:MM:SS` in the machine's local timezone. Unlike the
  * default `date.toLocaleTimeString()` this does **not** depend on ICU being
  * able to resolve a zone: it derives the local wall-clock time from the UTC
  * time and `getTimezoneOffset()`, which reflects the OS offset even in runtimes

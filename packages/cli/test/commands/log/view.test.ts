@@ -732,8 +732,8 @@ describe("log view --web interactive prompt", () => {
   });
 
   test("aborts when user cancels prompt with Ctrl+C (truthy Symbol)", async () => {
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
-    // Cast needed because the mock is typed as boolean but consola actually
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
+    // Cast needed because the mock is typed as boolean but the prompt actually
     // returns a Symbol on cancel.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel") as unknown as boolean);
     openInBrowserSpy.mockResolvedValue(undefined);

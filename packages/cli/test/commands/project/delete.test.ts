@@ -491,7 +491,7 @@ describe("project delete — interactive confirmation", () => {
   });
 
   test("cancels when user presses Ctrl+C (Symbol)", async () => {
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not a string.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not a string.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel"));
 
     const { context } = createPromptMockContext();

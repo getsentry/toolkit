@@ -3,7 +3,7 @@
  *
  * Tests the `sentry cli setup` command end-to-end through Stricli's run().
  *
- * Status messages go through consola (→ process.stderr). Tests capture stderr
+ * Status messages go through the logger (→ process.stderr). Tests capture stderr
  * via a spy on process.stderr.write and assert on the collected output.
  */
 
@@ -86,11 +86,11 @@ function mockFetch(
 }
 
 /**
- * Create a mock Stricli context and a stderr capture for consola output.
+ * Create a mock Stricli context and a stderr capture for logger output.
  *
  * The context provides process/env stubs for the setup command, while
- * `getOutput()` returns the combined consola output captured from
- * `process.stderr.write` (where consola routes all messages).
+ * `getOutput()` returns the combined logger output captured from
+ * `process.stderr.write` (where the logger routes all messages).
  */
 function createMockContext(
   overrides: Partial<{

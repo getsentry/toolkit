@@ -22,7 +22,7 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
     import("./db/project-root-cache.js"),
   ]);
 
-  // Dynamic import: logger chains into consola
+  // Dynamic import: only boot needs the logger here
   const { logger } = await import("./logger.js");
   const log = logger.withTag("project-context");
 
@@ -41,7 +41,7 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
   // Apply .sentryclirc env shim (token + URL). The URL trust check is
   // deferred to buildCommand's wrapper where commands can opt out via
   // skipRcUrlCheck (used by auth login/logout).
-  // Dynamic import: sentryclirc chains into db/index → sqlite, logger → consola
+  // Dynamic import: sentryclirc chains into db/index → sqlite and the logger
   const { applySentryCliRcEnvShim } = await import("./sentryclirc.js");
   await applySentryCliRcEnvShim(cwd);
 

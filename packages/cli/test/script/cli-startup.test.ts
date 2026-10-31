@@ -22,8 +22,6 @@ const COMPLETION_PACKAGES = new Set([
   "@sentry/toolkit-core/auth-token",
   // `errors.ts` (exit codes)
   "@stricli/core",
-  // `logger.ts`, which the database modules log through
-  "consola",
   // `db/accounts.ts` account IDs
   "uuidv7",
 ]);
