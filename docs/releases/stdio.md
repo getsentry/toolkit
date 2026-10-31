@@ -14,10 +14,11 @@ accepts these credentials:
 
 - the shared login from `npx @sentry/mcp-server auth login` or `sentry auth
   login` (refreshed automatically, including after an upstream 401)
-- `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`, as for every CLI command
-- `--access-token` / `SENTRY_ACCESS_TOKEN`: a static token for the MCP server
-  only. It is never refreshed, and org auth tokens (`sntrys_`) are still
-  scoped to the host they were issued for.
+- `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`, as for every CLI command, with
+  `SENTRY_FORCE_ENV_TOKEN=1` to override a stored login
+- the deprecated `--access-token` / `SENTRY_ACCESS_TOKEN`, as an alias for
+  `SENTRY_AUTH_TOKEN` plus `SENTRY_FORCE_ENV_TOKEN=1`. It prints a deprecation
+  warning on stderr (see `docs/operations/stdio-auth.md`).
 
 ## Bundle
 
@@ -114,7 +115,7 @@ Users run the server through npx in their MCP client configuration:
 ```
 
 Sign in once with `npx @sentry/mcp-server@latest auth login`, or add
-`"env": { "SENTRY_ACCESS_TOKEN": "sntryu_..." }`.
+`"env": { "SENTRY_AUTH_TOKEN": "sntryu_...", "SENTRY_FORCE_ENV_TOKEN": "1" }`.
 Pin a version with `@sentry/mcp-server@0.48.0`.
 
 ## Testing Before a Release

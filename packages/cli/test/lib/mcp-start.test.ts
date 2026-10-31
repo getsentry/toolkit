@@ -259,14 +259,56 @@ describe("serveMcp account pinning", () => {
   });
 });
 
-describe("serveMcp static tokens", () => {
-  test("uses --access-token without a CLI session and never refreshes it", async () => {
+describe("serveMcp deprecated --access-token", () => {
+  const output = { stderr: [] as string[], stdout: [] as string[] };
+
+  beforeEach(async () => {
+    const { resetDeprecationHintForTesting } =
+      await import("../../src/lib/mcp.js");
+    resetDeprecationHintForTesting();
+    output.stderr = [];
+    output.stdout = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      output.stderr.push(String(chunk));
+      return true;
+    });
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      output.stdout.push(String(chunk));
+      return true;
+    });
+  });
+
+  test("serves --access-token as a forced SENTRY_AUTH_TOKEN", async () => {
     await clearAuth();
 
     const { config, options } = await start(["--access-token=static-token"]);
     expect(options.accessToken).toBe("static-token");
-    expect(options.refreshAccessToken).toBeUndefined();
     expect(config.sentryHost).toBe("sentry.io");
+    // The env-token path: a refresh re-reads the same env token.
+    await expect(options.refreshAccessToken?.()).resolves.toBe("static-token");
+    // Mapped in an env copy; the process environment is left alone.
+    expect(process.env.SENTRY_AUTH_TOKEN).toBeUndefined();
+    expect(process.env.SENTRY_FORCE_ENV_TOKEN).toBeUndefined();
+  });
+
+  test("serves the same as SENTRY_AUTH_TOKEN with SENTRY_FORCE_ENV_TOKEN=1", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    const fromEnv = await start([]);
+    const refreshedFromEnv = await fromEnv.options.refreshAccessToken?.();
+    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env.SENTRY_FORCE_ENV_TOKEN;
+
+    served.calls = [];
+    const fromFlag = await start(["--access-token=env-token"]);
+    expect(fromFlag.options.accessToken).toBe(fromEnv.options.accessToken);
+    expect(refreshedFromEnv).toBe("env-token");
+    await expect(fromFlag.options.refreshAccessToken?.()).resolves.toBe(
+      refreshedFromEnv,
+    );
   });
 
   test("uses SENTRY_ACCESS_TOKEN without a CLI session", async () => {
@@ -275,7 +317,6 @@ describe("serveMcp static tokens", () => {
 
     const { options } = await start([]);
     expect(options.accessToken).toBe("env-static-token");
-    expect(options.refreshAccessToken).toBeUndefined();
   });
 
   test("prefers --access-token over SENTRY_ACCESS_TOKEN", async () => {
@@ -285,13 +326,82 @@ describe("serveMcp static tokens", () => {
     expect(options.accessToken).toBe("flag-token");
   });
 
-  test("prefers a static token over the CLI session", async () => {
+  test("overrides a stored login, before and after startup", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",
     });
 
     const { options } = await start(["--access-token=static-token"]);
     expect(options.accessToken).toBe("static-token");
+
+    setAuthToken("other-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    await expect(options.refreshAccessToken?.()).resolves.toBe("static-token");
+  });
+
+  test("overrides SENTRY_AUTH_TOKEN and SENTRY_TOKEN", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-auth-token";
+    process.env.SENTRY_TOKEN = "env-legacy-token";
+
+    const { options } = await start(["--access-token=flag-token"]);
+    expect(options.accessToken).toBe("flag-token");
+    await expect(options.refreshAccessToken?.()).resolves.toBe("flag-token");
+  });
+
+  test("prints a one-time deprecation hint to stderr, never stdout or the token", async () => {
+    await start(["--access-token=sntryu_secret-value"]);
+    served.calls = [];
+    await start(["--access-token=sntryu_secret-value"]);
+
+    expect(output.stdout).toEqual([]);
+    expect(output.stderr).toEqual([
+      "Deprecation warning: --access-token is deprecated; set SENTRY_AUTH_TOKEN " +
+        "(and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login) instead.\n",
+    ]);
+    expect(output.stderr.join("")).not.toContain("secret-value");
+  });
+
+  test("names SENTRY_ACCESS_TOKEN in its hint when that is the source", async () => {
+    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    await start([]);
+
+    expect(output.stdout).toEqual([]);
+    expect(output.stderr.join("")).toContain(
+      "SENTRY_ACCESS_TOKEN is deprecated; set SENTRY_AUTH_TOKEN",
+    );
+    expect(output.stderr.join("")).not.toContain("env-static-token");
+  });
+
+  test("prints no hint without a deprecated token", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    await start([]);
+    expect(output.stderr).toEqual([]);
+  });
+
+  test("keeps the token out of errors", async () => {
+    const malformed = "sntryu_secret has a space";
+    const malformedError = await serve([`--access-token=${malformed}`]).catch(
+      (error: unknown) => error,
+    );
+    expect(malformedError).toBeInstanceOf(MalformedAuthTokenError);
+    expect(String(malformedError)).not.toContain("secret");
+
+    const orgToken = mintSntrysToken({
+      iat: 1,
+      url: "https://sentry.example.com",
+      org: "acme",
+    });
+    const hostError = await serve([
+      `--access-token=${orgToken}`,
+      "--host=evil.example.com",
+    ]).catch((error: unknown) => error);
+    expect(hostError).toBeInstanceOf(HostScopeError);
+    expect(String(hostError)).not.toContain(orgToken);
+    expect(output.stderr.join("")).not.toContain(orgToken);
+    expect(served.calls).toHaveLength(0);
   });
 
   test("normalizes a padded static token", async () => {

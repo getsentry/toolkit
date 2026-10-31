@@ -61,9 +61,10 @@ server) and the Cloudflare worker.
 
 The local stdio MCP server is the `sentry mcp` command in the Sentry CLI.
 
-- `src/lib/mcp.ts` resolves credentials from the CLI session (or a static
-  `--access-token` / `SENTRY_ACCESS_TOKEN`) and lazily loads the host, so normal
-  CLI startup never loads mcp-core or Zod.
+- `src/lib/mcp.ts` resolves credentials from the CLI session or env token
+  (mapping the deprecated `--access-token` / `SENTRY_ACCESS_TOKEN` onto
+  `SENTRY_AUTH_TOKEN` with `SENTRY_FORCE_ENV_TOKEN=1`) and lazily loads the
+  host, so normal CLI startup never loads mcp-core or Zod.
 - `src/lib/mcp/` parses server flags and environment variables, configures the
   embedded agent provider and telemetry, and starts mcp-core's stdio transport.
 
@@ -183,14 +184,15 @@ The MCP server supports multiple transport mechanisms:
 
 ### 3. Authentication Strategy
 
-The MCP server uses Sentry access tokens for authentication:
+The stdio server uses the Sentry CLI's credentials: the stored login from
+`auth login`, or `SENTRY_AUTH_TOKEN` (see `docs/operations/stdio-auth.md`):
 
 ```bash
-# Via command line
-pnpm start:stdio --access-token=<token> --host=<host>
+# With the stored login
+pnpm start:stdio
 
-# Via environment variable
-SENTRY_ACCESS_TOKEN=<token> pnpm start:stdio
+# With a token, over any stored login, on a self-hosted server
+SENTRY_AUTH_TOKEN=<token> SENTRY_FORCE_ENV_TOKEN=1 SENTRY_HOST=<host> pnpm start:stdio
 ```
 
 For web applications using MCP (like the Cloudflare example), they handle their own authentication and pass tokens to the MCP server.

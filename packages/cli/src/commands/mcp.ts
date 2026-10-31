@@ -35,8 +35,8 @@ function booleanFlag(brief: string) {
 }
 
 export const mcpCommand = buildCommand({
-  // The server resolves its own credential: a static token, or the CLI
-  // session, with its own `.sentryclirc` URL check.
+  // The server resolves its own credential (the CLI session or env token),
+  // with its own `.sentryclirc` URL check.
   auth: false,
   skipRcUrlCheck: true,
   docs: {
@@ -44,11 +44,14 @@ export const mcpCommand = buildCommand({
     fullDescription:
       "Serve the Sentry MCP tools over stdio, for MCP clients such as Claude Code, Cursor, or VS Code. " +
       "Uses the current Sentry CLI login, refreshing it as needed, and stays on the account it started with. " +
-      "Log in with 'auth login' first, or pass a token with --access-token or SENTRY_ACCESS_TOKEN.\n\n" +
-      "The token from --access-token or SENTRY_ACCESS_TOKEN is used as given and never refreshed, " +
-      "even when a CLI login exists. An org auth token (sntrys_) only works with the host it was issued for.\n\n" +
+      "Log in with 'auth login' first, or set SENTRY_AUTH_TOKEN. " +
+      "A stored login wins over SENTRY_AUTH_TOKEN unless SENTRY_FORCE_ENV_TOKEN=1 is set. " +
+      "An org auth token (sntrys_) only works with the host it was issued for.\n\n" +
+      "--access-token and SENTRY_ACCESS_TOKEN are deprecated: they act as SENTRY_AUTH_TOKEN " +
+      "with SENTRY_FORCE_ENV_TOKEN=1, sent to the --host/--url target, and print a warning.\n\n" +
       "Environment variables:\n" +
-      "  SENTRY_ACCESS_TOKEN      Static Sentry token (same as --access-token)\n" +
+      "  SENTRY_AUTH_TOKEN        Sentry token (same as for other commands)\n" +
+      "  SENTRY_FORCE_ENV_TOKEN   Set to 1 to use SENTRY_AUTH_TOKEN over a stored login\n" +
       "  SENTRY_HOST, SENTRY_URL  Sentry instance (same as for other commands)\n" +
       "  MCP_URL                  MCP server URL reported in telemetry\n" +
       "  SENTRY_DSN               DSN for the server's own telemetry\n" +
@@ -88,7 +91,7 @@ export const mcpCommand = buildCommand({
   parameters: {
     flags: {
       "access-token": stringFlag(
-        "Use this Sentry token instead of the CLI login (never refreshed)",
+        "Deprecated: set SENTRY_AUTH_TOKEN (and SENTRY_FORCE_ENV_TOKEN=1) instead",
       ),
       host: stringFlag("Sentry host for self-hosted instances"),
       url: stringFlag("Sentry URL (https only; use --host for http)"),

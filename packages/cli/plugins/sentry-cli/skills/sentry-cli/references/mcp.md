@@ -16,7 +16,7 @@ Start a local Sentry MCP server
 Start a local Sentry MCP server
 
 **Flags:**
-- `--access-token <value> - Use this Sentry token instead of the CLI login (never refreshed)`
+- `--access-token <value> - Deprecated: set SENTRY_AUTH_TOKEN (and SENTRY_FORCE_ENV_TOKEN=1) instead`
 - `--host <value> - Sentry host for self-hosted instances`
 - `--url <value> - Sentry URL (https only; use --host for http)`
 - `--insecure-http - Use http:// for a self-hosted --host value`

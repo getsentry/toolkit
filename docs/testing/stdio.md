@@ -56,7 +56,7 @@ pnpm -w run build   # builds mcp-core, which `sentry mcp` imports
 # From the repo root. Uses your CLI login when no token is passed.
 pnpm --silent --dir packages/cli run cli mcp --help
 pnpm --silent --dir packages/cli run cli mcp
-pnpm --silent --dir packages/cli run cli mcp --access-token=YOUR_TOKEN
+SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 pnpm --silent --dir packages/cli run cli mcp
 ```
 
 `--silent` keeps pnpm's banner off stdout, which carries JSON-RPC frames.
@@ -69,7 +69,7 @@ Source runs skip the bundling step, so check the bundle that ships as
 ```bash
 pnpm --filter @sentry/mcp-server run bundle
 node packages/mcp-server/dist/sentry-mcp.cjs mcp --help
-node packages/mcp-server/dist/sentry-mcp.cjs --access-token=YOUR_TOKEN
+SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 node packages/mcp-server/dist/sentry-mcp.cjs
 
 # Or drive it with the test client
 pnpm -w run cli --transport stdio --stdio-bundle --list-tools
@@ -79,7 +79,7 @@ pnpm -w run cli --transport stdio --stdio-bundle --list-tools
 
 ```bash
 npx @sentry/mcp-server@latest
-npx @sentry/mcp-server@latest --access-token=YOUR_TOKEN
+SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 npx @sentry/mcp-server@latest
 ```
 
 To test a local `@sentry/mcp-server` bundle, build it with
@@ -118,9 +118,9 @@ This opens the MCP Inspector at `http://localhost:6274`
     "/absolute/path/to/toolkit/packages/cli",
     "run",
     "cli",
-    "mcp",
-    "--access-token=YOUR_TOKEN"
-  ]
+    "mcp"
+  ],
+  "env": { "SENTRY_AUTH_TOKEN": "YOUR_TOKEN", "SENTRY_FORCE_ENV_TOKEN": "1" }
 }
 ```
 
@@ -129,11 +129,12 @@ This opens the MCP Inspector at `http://localhost:6274`
 ```json
 {
   "command": "npx",
-  "args": [
-    "@sentry/mcp-server@latest",
-    "--access-token=YOUR_TOKEN",
-    "--host=sentry.example.com"
-  ]
+  "args": ["@sentry/mcp-server@latest"],
+  "env": {
+    "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN": "1",
+    "SENTRY_HOST": "sentry.example.com"
+  }
 }
 ```
 
@@ -142,12 +143,12 @@ This opens the MCP Inspector at `http://localhost:6274`
 ```json
 {
   "command": "npx",
-  "args": [
-    "@sentry/mcp-server@latest",
-    "--access-token=YOUR_TOKEN",
-    "--host=sentry.internal:9000",
-    "--insecure-http"
-  ]
+  "args": ["@sentry/mcp-server@latest"],
+  "env": {
+    "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN": "1",
+    "SENTRY_URL": "http://sentry.internal:9000"
+  }
 }
 ```
 
@@ -288,18 +289,20 @@ Create or edit `.cursor/config.json`:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
+      "args": ["@sentry/mcp-server@latest"]
     }
   }
 }
 ```
 
-**2. Use Environment Variables (Recommended):**
+This uses your CLI login (`npx @sentry/mcp-server@latest auth login`).
+
+**2. Or Use a Token:**
 
 Create `.cursor/.env`:
 
 ```bash
-SENTRY_ACCESS_TOKEN=your-token-here
+SENTRY_AUTH_TOKEN=your-token-here
 ```
 
 Update config:
@@ -311,7 +314,8 @@ Update config:
       "command": "npx",
       "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "${SENTRY_ACCESS_TOKEN}"
+        "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}",
+        "SENTRY_FORCE_ENV_TOKEN": "1"
       }
     }
   }
@@ -341,7 +345,11 @@ Add to `.vscode/settings.json`:
   "mcp.servers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
+      "args": ["@sentry/mcp-server@latest"],
+      "env": {
+        "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
+        "SENTRY_FORCE_ENV_TOKEN": "1"
+      }
     }
   }
 }
@@ -359,8 +367,8 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 ### Command-Line Flags
 
 ```bash
-# Authentication (optional with a CLI login)
---access-token=TOKEN              # Static token; never refreshed
+# Authentication: use SENTRY_AUTH_TOKEN (below) or a CLI login
+--access-token=TOKEN              # Deprecated alias for SENTRY_AUTH_TOKEN + SENTRY_FORCE_ENV_TOKEN=1
 
 # Host configuration
 --host=sentry.example.com         # Self-hosted Sentry (hostname only)
@@ -388,10 +396,11 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 
 ```bash
 # Authentication (optional with a CLI login)
-SENTRY_ACCESS_TOKEN=your-token           # Same as --access-token
-SENTRY_AUTH_TOKEN=your-token             # Regular CLI auth, refreshed like any CLI command
+SENTRY_AUTH_TOKEN=your-token             # Used when there is no CLI login
+SENTRY_FORCE_ENV_TOKEN=1                 # Use SENTRY_AUTH_TOKEN over a CLI login
+SENTRY_ACCESS_TOKEN=your-token           # Deprecated, same as --access-token
 
-# Host (self-hosted only)
+# Host (self-hosted only; also scopes SENTRY_AUTH_TOKEN to it)
 SENTRY_HOST=sentry.example.com
 
 # Skills
@@ -417,15 +426,14 @@ pnpm -w run build && pnpm -w run test
 
 # Quick smoke test
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
-  pnpm --silent --dir packages/cli run cli mcp --access-token=TOKEN
+  pnpm --silent --dir packages/cli run cli mcp
 ```
 
 ### 2. Test Against Self-Hosted Sentry
 
 ```bash
-pnpm --silent --dir packages/cli run cli mcp \
-  --access-token=TOKEN \
-  --host=sentry.local.dev
+SENTRY_AUTH_TOKEN=TOKEN SENTRY_FORCE_ENV_TOKEN=1 SENTRY_HOST=sentry.local.dev \
+  pnpm --silent --dir packages/cli run cli mcp
 ```
 
 ### 3. Test Skills
@@ -452,11 +460,11 @@ OPENAI_API_KEY=your-key pnpm --silent --dir packages/cli run cli mcp
 
 ### "Not authenticated"
 
-**Cause:** No CLI login and no static token.
+**Cause:** No CLI login and no `SENTRY_AUTH_TOKEN`.
 
 **Solution:** Run `npx @sentry/mcp-server@latest auth login` (from source:
-`pnpm --silent --dir packages/cli run cli auth login`), or pass
-`--access-token` / `SENTRY_ACCESS_TOKEN`. MCP clients do not give the server a
+`pnpm --silent --dir packages/cli run cli auth login`), or set
+`SENTRY_AUTH_TOKEN` in the client's `env`. MCP clients do not give the server a
 TTY, so log in from a terminal first.
 
 ### "AI-powered search tools unavailable"
@@ -476,7 +484,7 @@ TTY, so log in from a terminal first.
 curl -H "Authorization: Bearer YOUR_TOKEN" https://sentry.io/api/0/
 
 # Check stderr for detailed errors
-pnpm --silent --dir packages/cli run cli mcp --access-token=TOKEN 2>debug.log
+pnpm --silent --dir packages/cli run cli mcp 2>debug.log
 ```
 
 ### "MCP Inspector can't connect to stdio server"
@@ -494,7 +502,7 @@ pnpm -w run tsc
 pnpm -w run lint
 pnpm --dir packages/cli exec vitest run test/lib/mcp test/lib/mcp-start.test.ts
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
-  pnpm --silent --dir packages/cli run cli mcp --access-token=TOKEN
+  pnpm --silent --dir packages/cli run cli mcp
 ```
 
 ## Comparing with Remote

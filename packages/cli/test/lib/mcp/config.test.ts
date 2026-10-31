@@ -11,14 +11,8 @@ function finalize(input: Partial<McpMergedArgs>) {
 }
 
 describe("finalizeMcpConfig", () => {
-  it("returns undefined accessToken when none provided", () => {
-    const cfg = finalize({});
-    expect(cfg.accessToken).toBeUndefined();
-  });
-
   it("normalizes host from URL", () => {
     const cfg = finalize({
-      accessToken: "tok",
       url: "https://sentry.example.com",
     });
     expect(cfg.sentryHost).toBe("sentry.example.com");
@@ -27,7 +21,6 @@ describe("finalizeMcpConfig", () => {
 
   it("uses http protocol for self-hosted hosts when --insecure-http is enabled", () => {
     const cfg = finalize({
-      accessToken: "tok",
       host: "sentry.internal:9000",
       insecureHttp: true,
     });
@@ -37,7 +30,6 @@ describe("finalizeMcpConfig", () => {
 
   it("accepts valid OpenAI base URL", () => {
     const cfg = finalize({
-      accessToken: "tok",
       openaiBaseUrl: "https://api.proxy.example/v1",
     });
     expect(cfg.openaiBaseUrl).toBe(
@@ -48,7 +40,6 @@ describe("finalizeMcpConfig", () => {
   it("rejects invalid OpenAI base URL", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         openaiBaseUrl: "ftp://example.com",
       }),
     ).toThrow(/OPENAI base URL must use http or https scheme/);
@@ -56,7 +47,6 @@ describe("finalizeMcpConfig", () => {
 
   it("accepts azure-openai as a valid explicit provider", () => {
     const cfg = finalize({
-      accessToken: "tok",
       agentProvider: "azure-openai",
     });
     expect(cfg.agentProvider).toBe("azure-openai");
@@ -64,7 +54,6 @@ describe("finalizeMcpConfig", () => {
 
   it("accepts openrouter as a valid explicit provider", () => {
     const cfg = finalize({
-      accessToken: "tok",
       agentProvider: "openrouter",
     });
     expect(cfg.agentProvider).toBe("openrouter");
@@ -73,14 +62,13 @@ describe("finalizeMcpConfig", () => {
   it("rejects invalid explicit provider values", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         agentProvider: "bad-provider",
       }),
     ).toThrow(/Must be "openai", "azure-openai", "anthropic", or "openrouter"/);
   });
 
   it("throws on non-https URL", () => {
-    expect(() => finalize({ accessToken: "tok", url: "http://bad" })).toThrow(
+    expect(() => finalize({ url: "http://bad" })).toThrow(
       /must be a full HTTPS URL/,
     );
   });
@@ -88,7 +76,6 @@ describe("finalizeMcpConfig", () => {
   it("throws when --insecure-http is used with --url", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         url: "https://sentry.example.com",
         insecureHttp: true,
       }),
@@ -101,7 +88,6 @@ describe("finalizeMcpConfig", () => {
     // "must be a full HTTPS URL" error.
     expect(() =>
       finalize({
-        accessToken: "tok",
         url: "http://sentry.internal:9000",
         insecureHttp: true,
       }),
@@ -113,7 +99,6 @@ describe("finalizeMcpConfig", () => {
     (host) => {
       expect(() =>
         finalize({
-          accessToken: "tok",
           host,
           insecureHttp: true,
         }),
@@ -125,7 +110,6 @@ describe("finalizeMcpConfig", () => {
   it("throws on invalid skills", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         skills: "invalid-skill",
       }),
     ).toThrow(/Invalid skills provided: invalid-skill/);
@@ -134,7 +118,6 @@ describe("finalizeMcpConfig", () => {
   it("validates multiple skills and reports all invalid ones", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         skills: "inspect,invalid1,triage,invalid2",
       }),
     ).toThrow(/Invalid skills provided: invalid1, invalid2/);
@@ -142,7 +125,6 @@ describe("finalizeMcpConfig", () => {
 
   it("resolves valid skills in override mode (--skills)", () => {
     const cfg = finalize({
-      accessToken: "tok",
       skills: "inspect,triage",
     });
     expect(cfg.finalSkills.has("inspect")).toBe(true);
@@ -154,7 +136,6 @@ describe("finalizeMcpConfig", () => {
 
   it("allows explicit legacy docs skill grants", () => {
     const cfg = finalize({
-      accessToken: "tok",
       skills: "docs",
     });
     expect(cfg.finalSkills).toEqual(new Set(["docs"]));
@@ -163,7 +144,6 @@ describe("finalizeMcpConfig", () => {
   it("throws on legacy preprod skill in stdio", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         skills: "preprod",
       }),
     ).toThrow(/Invalid skills provided: preprod/);
@@ -172,16 +152,13 @@ describe("finalizeMcpConfig", () => {
   it("throws on empty skills after validation", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         skills: "invalid1,invalid2",
       }),
     ).toThrow(/Invalid skills provided/);
   });
 
   it("grants all active skills when no skills specified", () => {
-    const cfg = finalize({
-      accessToken: "tok",
-    });
+    const cfg = finalize({});
     expect(cfg.finalSkills.size).toBe(4);
     expect(cfg.finalSkills.has("inspect")).toBe(true);
     expect(cfg.finalSkills.has("triage")).toBe(true);
@@ -193,7 +170,6 @@ describe("finalizeMcpConfig", () => {
 
   it("grants all active skills with --all-skills", () => {
     const cfg = finalize({
-      accessToken: "tok",
       allSkills: true,
     });
     expect(cfg.finalSkills.size).toBe(4);
@@ -208,7 +184,6 @@ describe("finalizeMcpConfig", () => {
   // Self-hosted defaults
   it("keeps seer in the default set for regional sentry.io hosts", () => {
     const cfg = finalize({
-      accessToken: "tok",
       host: "us.sentry.io",
     });
     expect(cfg.finalSkills.has("seer")).toBe(true);
@@ -216,7 +191,6 @@ describe("finalizeMcpConfig", () => {
 
   it("excludes seer from the default set on self-hosted hosts", () => {
     const cfg = finalize({
-      accessToken: "tok",
       host: "sentry.example.com",
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
@@ -228,7 +202,6 @@ describe("finalizeMcpConfig", () => {
 
   it("excludes seer from the default set when self-hosted host comes from --url", () => {
     const cfg = finalize({
-      accessToken: "tok",
       url: "https://sentry.example.com",
     });
     expect(cfg.sentryHost).toBe("sentry.example.com");
@@ -237,7 +210,6 @@ describe("finalizeMcpConfig", () => {
 
   it("grants seer on self-hosted hosts when requested with --skills", () => {
     const cfg = finalize({
-      accessToken: "tok",
       host: "sentry.example.com",
       skills: "inspect,seer",
     });
@@ -246,7 +218,6 @@ describe("finalizeMcpConfig", () => {
 
   it("grants seer on self-hosted hosts with --all-skills", () => {
     const cfg = finalize({
-      accessToken: "tok",
       host: "sentry.example.com",
       allSkills: true,
     });
@@ -256,7 +227,6 @@ describe("finalizeMcpConfig", () => {
 
   it("does not fail when --disable-skills=seer is used on a self-hosted host", () => {
     const cfg = finalize({
-      accessToken: "tok",
       host: "sentry.example.com",
       disableSkills: "seer",
     });
@@ -267,7 +237,6 @@ describe("finalizeMcpConfig", () => {
   it("rejects combining --all-skills with --skills", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         allSkills: true,
         skills: "inspect",
       }),
@@ -277,7 +246,6 @@ describe("finalizeMcpConfig", () => {
   // --disable-skills tests
   it("removes disabled skills from default active-skills set", () => {
     const cfg = finalize({
-      accessToken: "tok",
       disableSkills: "seer",
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
@@ -291,7 +259,6 @@ describe("finalizeMcpConfig", () => {
 
   it("removes disabled skills when combined with --skills", () => {
     const cfg = finalize({
-      accessToken: "tok",
       skills: "inspect,triage,seer",
       disableSkills: "seer",
     });
@@ -304,7 +271,6 @@ describe("finalizeMcpConfig", () => {
   it("throws on invalid skill names in --disable-skills", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         disableSkills: "invalid-skill",
       }),
     ).toThrow(/--disable-skills provided: invalid-skill/);
@@ -313,7 +279,6 @@ describe("finalizeMcpConfig", () => {
   it("throws when all skills would be disabled", () => {
     expect(() =>
       finalize({
-        accessToken: "tok",
         skills: "seer",
         disableSkills: "seer",
       }),
@@ -322,7 +287,6 @@ describe("finalizeMcpConfig", () => {
 
   it("supports multiple comma-separated disabled skills", () => {
     const cfg = finalize({
-      accessToken: "tok",
       disableSkills: "seer,docs",
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
@@ -332,7 +296,6 @@ describe("finalizeMcpConfig", () => {
 
   it("silently ignores disabling a skill not in the active set", () => {
     const cfg = finalize({
-      accessToken: "tok",
       skills: "inspect,triage",
       disableSkills: "seer",
     });
@@ -348,7 +311,6 @@ describe("finalizeMcpConfig", () => {
 
   it("keeps the static token, constraints, and embedded agent settings", () => {
     const cfg = finalize({
-      accessToken: "tok",
       mcpUrl: "https://mcp.example.com",
       sentryDsn: "dsn",
       openaiModel: "gpt-test",
@@ -361,7 +323,6 @@ describe("finalizeMcpConfig", () => {
       projectSlug: "web",
     });
     expect(cfg).toMatchObject({
-      accessToken: "tok",
       mcpUrl: "https://mcp.example.com",
       sentryDsn: "dsn",
       openaiModel: "gpt-test",

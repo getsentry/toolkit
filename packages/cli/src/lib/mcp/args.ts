@@ -3,7 +3,9 @@
  *
  * Both accept the flags and environment variables that `@sentry/mcp-server`
  * has always taken, so existing MCP client configurations keep working. Flags win
- * over environment values.
+ * over environment values. The deprecated `--access-token` /
+ * `SENTRY_ACCESS_TOKEN` are not read here: `serveMcp` maps them onto the CLI's
+ * env token (see `lib/mcp.ts`).
  */
 
 /** `sentry mcp` flags, as Stricli parses them (see `commands/mcp.ts`). */
@@ -47,7 +49,6 @@ export function splitInlineFlagValues(args: readonly string[]): string[] {
 
 /** Values read from the environment. */
 export type McpEnvArgs = {
-  accessToken?: string;
   mcpUrl?: string;
   sentryDsn?: string;
   openaiModel?: string;
@@ -59,7 +60,6 @@ export type McpEnvArgs = {
 
 /** Flags merged over environment values, before validation. */
 export type McpMergedArgs = {
-  accessToken?: string;
   host?: string;
   insecureHttp: boolean;
   url?: string;
@@ -88,9 +88,6 @@ export type McpMergedArgs = {
  */
 export function parseMcpEnv(env: NodeJS.ProcessEnv): McpEnvArgs {
   const fromEnv: McpEnvArgs = {};
-  if (env.SENTRY_ACCESS_TOKEN) {
-    fromEnv.accessToken = env.SENTRY_ACCESS_TOKEN;
-  }
   if (env.MCP_URL) {
     fromEnv.mcpUrl = env.MCP_URL;
   }
@@ -118,7 +115,6 @@ export function parseMcpEnv(env: NodeJS.ProcessEnv): McpEnvArgs {
 /** Merge flags over environment values. */
 export function mergeMcpArgs(flags: McpFlags, env: McpEnvArgs): McpMergedArgs {
   return {
-    accessToken: flags["access-token"] ?? env.accessToken,
     url: flags.url,
     host: flags.host,
     insecureHttp: flags["insecure-http"],

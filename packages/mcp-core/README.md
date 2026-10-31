@@ -31,22 +31,22 @@ You can limit which skills are granted using the `--skills` flag:
 
 ```shell
 # Default: active skills (inspect, seer, triage, project-management)
-npx @sentry/mcp-server@latest --access-token=sentry-user-token
+npx @sentry/mcp-server@latest
 
 # Limit to specific skills only
-npx @sentry/mcp-server@latest --access-token=TOKEN --skills=inspect,docs
+npx @sentry/mcp-server@latest --skills=inspect,docs
 
 # Grant all active, non-deprecated skills, overriding MCP_SKILLS
-npx @sentry/mcp-server@latest --access-token=TOKEN --all-skills
+npx @sentry/mcp-server@latest --all-skills
 
 # Self-hosted Sentry
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com
+SENTRY_HOST=sentry.example.com npx @sentry/mcp-server@latest
 
 # Override OpenAI endpoint for AI-powered tools (stdio only)
-npx @sentry/mcp-server@latest --access-token=TOKEN --openai-base-url=https://proxy.example.com/v1
+npx @sentry/mcp-server@latest --openai-base-url=https://proxy.example.com/v1
 
 # Azure OpenAI / Azure-compatible deployment routing (stdio only)
-npx @sentry/mcp-server@latest --access-token=TOKEN --agent-provider=azure-openai --openai-base-url=https://example.openai.azure.com/openai/v1/
+npx @sentry/mcp-server@latest --agent-provider=azure-openai --openai-base-url=https://example.openai.azure.com/openai/v1/
 ```
 
 For Azure OpenAI or Azure-compatible deployment proxies, use the dedicated
@@ -73,7 +73,8 @@ This ensures that only relevant tools are available in constrained contexts. Whe
 You can also use environment variables:
 
 ```shell
-SENTRY_ACCESS_TOKEN=your-token
+SENTRY_AUTH_TOKEN=your-token          # Optional after `auth login`
+SENTRY_FORCE_ENV_TOKEN=1               # Use SENTRY_AUTH_TOKEN over a stored login
 # Optional overrides. Leave unset to use the default SaaS host
 SENTRY_HOST=sentry.example.com         # Self-hosted Sentry hostname
 MCP_SKILLS=inspect,docs,triage         # Limit to specific skills
@@ -120,10 +121,10 @@ If you're currently using scopes:
 
 ```shell
 # OLD (deprecated)
-npx @sentry/mcp-server@latest --access-token=TOKEN --scopes=org:read,event:write
+npx @sentry/mcp-server@latest --scopes=org:read,event:write
 
 # NEW (recommended)
-npx @sentry/mcp-server@latest --access-token=TOKEN --skills=inspect,triage
+npx @sentry/mcp-server@latest --skills=inspect,triage
 ```
 
 The host configuration accepts two distinct formats:

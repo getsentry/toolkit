@@ -30,8 +30,6 @@ export type McpAgentProvider =
 
 /** Validated `sentry mcp` configuration, before credential resolution. */
 export type McpServerConfig = {
-  /** Static token from `--access-token` or `SENTRY_ACCESS_TOKEN`. */
-  accessToken?: string;
   sentryHost: string;
   sentryProtocol: "http" | "https";
   mcpUrl?: string;
@@ -178,7 +176,6 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
   const finalSkills = resolveSkills(input, sentryHost);
 
   return {
-    accessToken: input.accessToken,
     sentryHost,
     sentryProtocol: input.insecureHttp ? "http" : "https",
     mcpUrl: input.mcpUrl,

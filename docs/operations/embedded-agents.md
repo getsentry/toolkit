@@ -83,7 +83,7 @@ export EMBEDDED_AGENT_PROVIDER=openrouter
 #### Method 2: CLI Flag
 
 ```bash
-npx @sentry/mcp-server@latest --agent-provider=openai --access-token=...
+npx @sentry/mcp-server@latest --agent-provider=openai
 ```
 
 #### Method 3: MCP Configuration File
@@ -97,7 +97,8 @@ In your MCP settings (e.g., Claude Desktop config):
       "command": "npx",
       "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "your-token",
+        "SENTRY_AUTH_TOKEN": "your-token",
+        "SENTRY_FORCE_ENV_TOKEN": "1",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -139,7 +140,8 @@ Always set `EMBEDDED_AGENT_PROVIDER` when multiple API keys might be present:
       "command": "npx",
       "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "your-token",
+        "SENTRY_AUTH_TOKEN": "your-token",
+        "SENTRY_FORCE_ENV_TOKEN": "1",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -233,7 +235,7 @@ export OPENROUTER_REASONING_EFFORT=high
 Check which provider is being used:
 
 ```bash
-npx @sentry/mcp-server@latest --access-token=... 2>&1 | grep "Using"
+npx @sentry/mcp-server@latest 2>&1 | grep "Using"
 ```
 
 Expected output:
@@ -290,7 +292,7 @@ export ANTHROPIC_API_KEY=sk-ant-test
 export OPENAI_API_KEY=sk-test
 export EMBEDDED_AGENT_PROVIDER=openai
 
-npx @sentry/mcp-server@latest --access-token=...
+npx @sentry/mcp-server@latest
 ```
 
 Should output:

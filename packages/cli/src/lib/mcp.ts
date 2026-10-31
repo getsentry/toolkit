@@ -7,7 +7,7 @@ import {
   type RefreshTokenResult,
   refreshToken,
 } from "./db/auth.js";
-import { getEnv } from "./env.js";
+import { getEnv, withEnv } from "./env.js";
 import { AuthError, HostScopeError } from "./errors.js";
 import { type McpFlags, mergeMcpArgs, parseMcpEnv } from "./mcp/args.js";
 import { finalizeMcpConfig } from "./mcp/config.js";
@@ -217,27 +217,77 @@ async function resolveMcpCredentialWithLogin(
   }
 }
 
+/** A token from the deprecated `--access-token` flag or `SENTRY_ACCESS_TOKEN`. */
+type DeprecatedAccessToken = {
+  token: string;
+  source: "--access-token" | "SENTRY_ACCESS_TOKEN";
+};
+
+/** The deprecation hint is printed once per process. */
+const deprecationHint = { shown: false };
+
+/** @internal */
+export function resetDeprecationHintForTesting(): void {
+  deprecationHint.shown = false;
+}
+
 /**
- * Validate a static token from `--access-token` / `SENTRY_ACCESS_TOKEN`.
- *
- * The token is used as given and never refreshed. An org auth token
- * (`sntrys_`) records the server it was issued for; refuse to send it to any
- * other host, the same way the CLI scopes its own env tokens.
+ * Read the deprecated `--access-token` / `SENTRY_ACCESS_TOKEN`, flag first.
+ * Blank values count as unset, the same as for `SENTRY_AUTH_TOKEN`.
  */
-export function resolveStaticMcpAccessToken(
-  config: McpTarget & { accessToken: string },
-): string {
-  const token = normalizeAuthToken(config.accessToken);
-  const claimedHost = parseSntrysClaim(token)?.url;
-  const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
-  if (claimedHost && !isHostTrusted(targetUrl, claimedHost)) {
-    throw new HostScopeError(
-      "Cannot start MCP server with the provided access token",
-      targetUrl,
-      claimedHost,
-    );
+function readDeprecatedAccessToken(
+  flags: McpFlags,
+  env: NodeJS.ProcessEnv,
+): DeprecatedAccessToken | undefined {
+  const flag = flags["access-token"];
+  if (flag?.trim()) {
+    return { token: flag, source: "--access-token" };
   }
-  return token;
+  const fromEnv = env.SENTRY_ACCESS_TOKEN;
+  if (fromEnv?.trim()) {
+    return { token: fromEnv, source: "SENTRY_ACCESS_TOKEN" };
+  }
+  return;
+}
+
+/** Tell the user, on stderr, which setting replaces the deprecated one. */
+function warnDeprecatedAccessToken(source: DeprecatedAccessToken["source"]) {
+  if (deprecationHint.shown) {
+    return;
+  }
+  deprecationHint.shown = true;
+  // stderr only: stdout carries the stdio MCP transport. Never the token.
+  process.stderr.write(
+    `Deprecation warning: ${source} is deprecated; set SENTRY_AUTH_TOKEN ` +
+      "(and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login) instead.\n",
+  );
+}
+
+/**
+ * The environment the deprecated token runs under: the same as
+ * `SENTRY_AUTH_TOKEN=<token> SENTRY_FORCE_ENV_TOKEN=1`, so it takes the CLI's
+ * env-token path and wins over any stored login. It also replaces an env
+ * token that is already set, since the flag (or `SENTRY_ACCESS_TOKEN`) is the
+ * more explicit choice for this server.
+ *
+ * The URL is pinned to the MCP target: `--host`/`--url` have always told the
+ * MCP server where to send this token, and the env-token snapshot for this
+ * copy then scopes the token to that server. An org auth token's own URL
+ * claim still wins, so it cannot be sent anywhere else.
+ */
+function deprecatedTokenEnv(
+  env: NodeJS.ProcessEnv,
+  token: string,
+  target: McpTarget,
+): NodeJS.ProcessEnv {
+  const aliased: NodeJS.ProcessEnv = { ...env };
+  delete aliased.SENTRY_ACCESS_TOKEN;
+  delete aliased.SENTRY_TOKEN;
+  aliased.SENTRY_AUTH_TOKEN = token;
+  aliased.SENTRY_FORCE_ENV_TOKEN = "1";
+  delete aliased.SENTRY_HOST;
+  aliased.SENTRY_URL = `${target.sentryProtocol}://${target.sentryHost}`;
+  return aliased;
 }
 
 /**
@@ -250,42 +300,57 @@ export async function serveMcp(flags: McpFlags): Promise<void> {
   const config = finalizeMcpConfig(
     mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env)),
   );
-  const staticToken = config.accessToken
-    ? resolveStaticMcpAccessToken({
-        ...config,
-        accessToken: config.accessToken,
-      })
+  const deprecated = readDeprecatedAccessToken(flags, env);
+  if (deprecated) {
+    warnDeprecatedAccessToken(deprecated.source);
+  }
+  // Validate before anything else: a malformed token fails here, and the
+  // error never repeats it.
+  const deprecatedToken = deprecated
+    ? normalizeAuthToken(deprecated.token)
     : undefined;
 
   // A repo-local `.sentryclirc` can set the target URL, but it is not a trust
-  // source: without this gate, a static token with no host claim would be
-  // sent to whatever server the file names. Apply the same rc-URL check as
-  // every other CLI command, unless an explicit `--host`/`--url` flag
-  // overrides the target, or the token is an org token whose host claim
-  // `resolveStaticMcpAccessToken` already matched against the target.
+  // source: without this gate, a token with no host claim would be sent to
+  // whatever server the file names. Apply the same rc-URL check as every
+  // other CLI command, unless an explicit `--host`/`--url` flag overrides the
+  // target, or the deprecated token is an org token, whose host claim the
+  // credential check below matches against the target. Checked against the
+  // invocation's own credentials, before the deprecated token replaces them.
   if (
-    !(hasSentryTarget(flags) || (staticToken && parseSntrysClaim(staticToken)))
+    !(
+      hasSentryTarget(flags) ||
+      (deprecatedToken && parseSntrysClaim(deprecatedToken))
+    )
   ) {
     const { assertRcUrlTrusted } = await import("./sentryclirc.js");
     await assertRcUrlTrusted(process.cwd());
   }
 
+  const credentialEnv = deprecatedToken
+    ? deprecatedTokenEnv(env, deprecatedToken, config)
+    : env;
+
   // Loaded only now: mcp-core's server, the agent providers, and the MCP
   // telemetry are not needed for --help or setup errors.
   const { serveMcpStdio } = await import("./mcp/server.js");
-  if (staticToken) {
-    await serveMcpStdio(config, { accessToken: staticToken, env });
-    return;
-  }
-
-  const { token, pin } = await resolveMcpCredentialWithLogin(config);
+  const { token, pin } = await withEnv(credentialEnv, () =>
+    resolveMcpCredentialWithLogin(config),
+  );
   await serveMcpStdio(config, {
     accessToken: token,
     // Force a refresh past the usual threshold: the upstream already rejected
     // the current token, so mirror `--follow`'s refresh-on-401 behavior. The
-    // pin keeps the refresh on the startup account.
-    refreshAccessToken: async () =>
-      (await resolveCliMcpCredential(config, { force: true, pin })).token,
+    // pin keeps the refresh on the startup account. Requests can arrive
+    // outside this call's async context, so the credential env is explicit.
+    refreshAccessToken: () =>
+      withEnv(credentialEnv, async () => {
+        const refreshed = await resolveCliMcpCredential(config, {
+          force: true,
+          pin,
+        });
+        return refreshed.token;
+      }),
     env,
   });
 }

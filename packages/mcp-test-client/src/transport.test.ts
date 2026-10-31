@@ -62,18 +62,20 @@ describe("buildStdioServerLaunchConfig", () => {
       },
       {
         PATH: "/usr/bin",
+        SENTRY_ACCESS_TOKEN: "stale-token",
+        SENTRY_TOKEN: "other-token",
       },
     );
 
     expect(launchConfig.args).toEqual([
-      "--access-token=token-123",
       "--host=us.sentry.io",
       "--sentry-dsn=https://dsn.example/1",
       "--experimental",
     ]);
     expect(launchConfig.env).toEqual({
       PATH: "/usr/bin",
-      SENTRY_ACCESS_TOKEN: "token-123",
+      SENTRY_AUTH_TOKEN: "token-123",
+      SENTRY_FORCE_ENV_TOKEN: "1",
       SENTRY_HOST: "us.sentry.io",
       SENTRY_DSN: "https://dsn.example/1",
     });

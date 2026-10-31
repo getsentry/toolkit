@@ -122,20 +122,28 @@ test("rejects the CLI's other commands", () => {
   assert.match(result.stderr, /issue/);
 });
 
-test("serves MCP over stdio with a static token", async () => {
-  // `--sentry-dsn=` (no telemetry) is a form MCP configs have always used.
-  const child = spawn(process.execPath, [bin, "--sentry-dsn="], {
-    env: { ...env, SENTRY_ACCESS_TOKEN: "sntryu_test" },
+/**
+ * Start the server, run initialize + tools/list, and close stdin. Resolves
+ * with the two responses and everything the server wrote to stderr.
+ */
+async function serveStdio(args, extraEnv) {
+  const child = spawn(process.execPath, [bin, ...args], {
+    env: { ...env, ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const byId = new Map();
   let buffer = "";
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
   const responses = new Promise((resolve, reject) => {
     child.on("error", reject);
     child.stdout.on("data", (chunk) => {
       buffer += chunk;
       const parts = buffer.split("\n");
       buffer = parts.pop() ?? "";
+      // Every stdout line must be a JSON-RPC frame.
       for (const message of parts
         .filter(Boolean)
         .map((line) => JSON.parse(line))) {
@@ -174,7 +182,31 @@ test("serves MCP over stdio with a static token", async () => {
     const exited = new Promise((resolve) => child.on("exit", resolve));
     child.stdin.end();
     assert.equal(await exited, 0);
+    return { stderr };
   } finally {
     child.kill();
   }
+}
+
+test("serves MCP over stdio with SENTRY_AUTH_TOKEN", async () => {
+  // `--sentry-dsn=` (no telemetry) is a form MCP configs have always used.
+  const { stderr } = await serveStdio(["--sentry-dsn="], {
+    SENTRY_AUTH_TOKEN: "sntryu_test",
+    SENTRY_FORCE_ENV_TOKEN: "1",
+  });
+  assert.doesNotMatch(stderr, /deprecated/);
+});
+
+test("serves the deprecated --access-token with a hint on stderr", async () => {
+  const token = "sntryu_deprecated_flag_secret";
+  const { stderr } = await serveStdio(
+    [`--access-token=${token}`, "--sentry-dsn="],
+    {},
+  );
+  assert.match(
+    stderr,
+    /--access-token is deprecated; set SENTRY_AUTH_TOKEN \(and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login\) instead\./,
+  );
+  assert.equal(stderr.match(/is deprecated/g)?.length, 1);
+  assert.ok(!stderr.includes(token), "the hint must not echo the token");
 });

@@ -95,7 +95,6 @@ describe("parseMcpEnv", () => {
       SENTRY_DSN: "envdsn",
       MCP_SKILLS: "inspect,triage",
     });
-    expect(env.accessToken).toBe("envtok");
     expect(env.mcpUrl).toBe("envmcp");
     expect(env.sentryDsn).toBe("envdsn");
     expect(env.skills).toBe("inspect,triage");
@@ -126,7 +125,6 @@ describe("mergeMcpArgs", () => {
       "--openai-base-url=https://api.cli/v1",
     ]);
     const merged = mergeMcpArgs(flags, env);
-    expect(merged.accessToken).toBe("clitok");
     expect(merged.host).toBe("clihost");
     expect(merged.insecureHttp).toBe(true);
     expect(merged.mcpUrl).toBe("climcp");
@@ -196,7 +194,6 @@ describe("@sentry/mcp-server flag parity", () => {
       "--experimental",
     ]);
     expect(mergeMcpArgs(flags, {})).toEqual({
-      accessToken: "tok",
       host: "sentry.example.com",
       insecureHttp: true,
       url: "https://sentry.example.com",
@@ -241,7 +238,6 @@ describe("@sentry/mcp-server flag parity", () => {
         MCP_DISABLE_SKILLS: "seer",
       }),
     ).toEqual({
-      accessToken: "envtok",
       mcpUrl: "https://mcp.example.com",
       sentryDsn: "dsn",
       openaiModel: "gpt-test",
@@ -258,12 +254,8 @@ describe("@sentry/mcp-server flag parity", () => {
     );
   });
 
-  it("uses SENTRY_ACCESS_TOKEN when --access-token is absent", async () => {
-    const merged = mergeMcpArgs(
-      await parseMcpFlags([]),
-      parseMcpEnv({ SENTRY_ACCESS_TOKEN: "envtok" }),
-    );
-    expect(merged.accessToken).toBe("envtok");
+  it("leaves the deprecated SENTRY_ACCESS_TOKEN to serveMcp", () => {
+    expect(parseMcpEnv({ SENTRY_ACCESS_TOKEN: "envtok" })).toEqual({});
   });
 
   it("records whether the agent provider came from the flag", async () => {
