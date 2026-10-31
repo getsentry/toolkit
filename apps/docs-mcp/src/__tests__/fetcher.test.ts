@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { buildDocsUrl, fetchDocPage, normalizeDocPath } from "../sentry-docs/fetcher";
+import {
+  buildDocsUrl,
+  fetchDocPage,
+  normalizeDocPath,
+} from "../sentry-docs/fetcher";
 
 describe("normalizeDocPath", () => {
   test.each([
@@ -24,9 +28,18 @@ describe("normalizeDocPath", () => {
 
 describe("normalizeDocPath query strings and fragments", () => {
   test.each([
-    ["https://docs.sentry.io/platforms/javascript/#tracing", "/platforms/javascript"],
-    ["https://docs.sentry.io/platforms/javascript/?platform=node", "/platforms/javascript"],
-    ["https://docs.sentry.io/platforms/javascript?platform=node#tracing", "/platforms/javascript"],
+    [
+      "https://docs.sentry.io/platforms/javascript/#tracing",
+      "/platforms/javascript",
+    ],
+    [
+      "https://docs.sentry.io/platforms/javascript/?platform=node",
+      "/platforms/javascript",
+    ],
+    [
+      "https://docs.sentry.io/platforms/javascript?platform=node#tracing",
+      "/platforms/javascript",
+    ],
     ["/platforms/javascript/#tracing", "/platforms/javascript"],
     ["platforms/javascript?x=1", "/platforms/javascript"],
     ["/platforms/javascript.md#tracing", "/platforms/javascript"],
