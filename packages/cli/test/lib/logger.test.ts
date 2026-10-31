@@ -1,20 +1,20 @@
 /**
- * Unit tests for the logger module.
+ * Unit tests for the CLI's logger configuration.
  *
- * Tests parseLogLevel, getEnvLogLevel, setLogLevel (with withTag propagation),
- * attachSentryReporter, and the logger instance configuration.
+ * Tests getEnvLogLevel, setLogLevel (with withTag propagation),
+ * attachSentryReporter, the library-mode env, and prompts. The logger itself
+ * is tested in packages/cli-logger.
  */
 
 import { createConsolaReporter } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { withEnv } from "../../src/lib/env.js";
 import {
   attachSentryReporter,
   getEnvLogLevel,
   LOG_LEVEL_ENV_VAR,
   LOG_LEVEL_NAMES,
-  type LogObject,
   logger,
-  parseLogLevel,
   printLine,
   setLogLevel,
 } from "../../src/lib/logger.js";
@@ -25,57 +25,6 @@ const clack = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => clack);
-
-describe("parseLogLevel", () => {
-  test("maps known level names to correct numeric values", () => {
-    expect(parseLogLevel("error")).toBe(0);
-    expect(parseLogLevel("warn")).toBe(1);
-    expect(parseLogLevel("log")).toBe(2);
-    expect(parseLogLevel("info")).toBe(3);
-    expect(parseLogLevel("debug")).toBe(4);
-    expect(parseLogLevel("trace")).toBe(5);
-  });
-
-  test("is case-insensitive", () => {
-    expect(parseLogLevel("ERROR")).toBe(0);
-    expect(parseLogLevel("Debug")).toBe(4);
-    expect(parseLogLevel("TRACE")).toBe(5);
-    expect(parseLogLevel("Warn")).toBe(1);
-  });
-
-  test("trims whitespace", () => {
-    expect(parseLogLevel("  debug  ")).toBe(4);
-    expect(parseLogLevel("\ttrace\n")).toBe(5);
-  });
-
-  test("returns default (info=3) for unrecognized values", () => {
-    expect(parseLogLevel("verbose")).toBe(3);
-    expect(parseLogLevel("")).toBe(3);
-    expect(parseLogLevel("unknown")).toBe(3);
-    expect(parseLogLevel("42")).toBe(3);
-  });
-});
-
-describe("LOG_LEVEL_NAMES", () => {
-  test("contains all expected level names with index = numeric level", () => {
-    expect(LOG_LEVEL_NAMES).toEqual([
-      "error", // 0
-      "warn", // 1
-      "log", // 2
-      "info", // 3
-      "debug", // 4
-      "trace", // 5
-    ]);
-  });
-
-  test("all names are valid for parseLogLevel", () => {
-    for (const name of LOG_LEVEL_NAMES) {
-      const level = parseLogLevel(name);
-      expect(level).toBeGreaterThanOrEqual(0);
-      expect(level).toBeLessThanOrEqual(5);
-    }
-  });
-});
 
 describe("LOG_LEVEL_ENV_VAR", () => {
   test("is SENTRY_LOG_LEVEL", () => {
@@ -291,106 +240,25 @@ describe("attachSentryReporter", () => {
   });
 });
 
-describe("reporters", () => {
-  let originalLevel: number;
-  let records: LogObject[];
-  let stderr: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    originalLevel = logger.level;
-    records = [];
-    stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-  });
-
-  afterEach(() => {
-    setLogLevel(originalLevel);
-    stderr.mockRestore();
-  });
-
-  test("receive consola-shaped records that Sentry's reporter reads", () => {
-    // The level and reporter list are shared, so a reporter added through the
-    // root logger also sees records from scoped loggers.
-    logger.addReporter({ log: (logObj) => records.push(logObj) });
-    const scoped = logger.withTag("upgrade").withTag("delta");
-    setLogLevel(3);
-
-    scoped.warn("Patch %s failed", "0.13.0");
-    scoped.debug("dropped above the level");
-
-    expect(records).toEqual([
-      {
-        date: expect.any(Date),
-        args: ["Patch %s failed", "0.13.0"],
-        type: "warn",
-        level: 1,
-        tag: "upgrade:delta",
-      },
-    ]);
-  });
-});
-
 describe("stderr output", () => {
-  const ENV_KEYS = ["CI", "TEST", "NODE_ENV", "NO_COLOR", "FORCE_COLOR"];
-  let savedEnv: Record<string, string | undefined>;
-  let stderr: ReturnType<typeof vi.spyOn>;
-
-  /** Text written to stderr so far. */
-  const written = () =>
-    stderr.mock.calls.map((call) => String(call[0])).join("");
-
-  beforeEach(() => {
-    savedEnv = Object.fromEntries(
-      ENV_KEYS.map((key) => [key, process.env[key]]),
-    );
-    stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-  });
-
-  afterEach(() => {
-    for (const key of ENV_KEYS) {
-      if (savedEnv[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = savedEnv[key];
-      }
+  test("reads the library-mode env instead of process.env", () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      withEnv({ NODE_ENV: "production", NO_COLOR: "1" }, () => {
+        logger.withTag("auth").success("Run `sentry auth status`");
+      });
+      withEnv({ CI: "true" }, () => {
+        logger.withTag("auth").info("Logged in");
+      });
+      expect(stderr.mock.calls.map((call) => String(call[0]))).toEqual([
+        "[auth] ✔ Run sentry auth status\n",
+        "[info] [auth] Logged in\n",
+      ]);
+    } finally {
+      stderr.mockRestore();
     }
-    stderr.mockRestore();
-  });
-
-  test("writes plain [type] [tag] lines in tests and CI", () => {
-    process.env.CI = "true";
-    logger.withTag("auth").info("Logged in as %s", "jane");
-    expect(written()).toBe("[info] [auth] Logged in as jane\n");
-  });
-
-  test("writes an error's message, stack, and cause but not its other properties", () => {
-    process.env.CI = "true";
-    const error = Object.assign(
-      new Error("Request failed", { cause: new Error("socket hang up") }),
-      { response: { headers: { authorization: "Bearer secret" } } },
-    );
-
-    logger.warn("Upload failed:", error);
-
-    const output = written();
-    expect(output).toMatch(/^\[warn\] Upload failed: Request failed\n {2}at /);
-    expect(output).toContain("\n\n  [cause]: socket hang up\n    at ");
-    expect(output).not.toContain("secret");
-  });
-
-  test("writes icons, badges, and inline code in the interactive layout", () => {
-    for (const key of ["CI", "TEST"]) {
-      delete process.env[key];
-    }
-    process.env.NODE_ENV = "production";
-    process.env.NO_COLOR = "1";
-
-    logger.withTag("auth").success("Run `sentry auth status`");
-    logger.warn("Token expires soon");
-
-    // Non-TTY stderr has no columns, so the tag leads the line.
-    expect(written()).toBe(
-      "[auth] ✔ Run sentry auth status\n\n WARN  Token expires soon\n\n",
-    );
   });
 });
 

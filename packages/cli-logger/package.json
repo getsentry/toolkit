@@ -1,0 +1,88 @@
+{
+  "name": "@sentry/cli-logger",
+  "version": "0.1.0",
+  "description": "A small terminal logger with levels, tags, consola-style stderr output, and Sentry log forwarding",
+  "type": "module",
+  "license": "FSL-1.1-Apache-2.0",
+  "author": "Sentry",
+  "homepage": "https://github.com/getsentry/toolkit/tree/main/packages/cli-logger#readme",
+  "keywords": [
+    "sentry",
+    "logger",
+    "cli",
+    "consola"
+  ],
+  "bugs": {
+    "url": "https://github.com/getsentry/toolkit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/toolkit.git",
+    "directory": "packages/cli-logger"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./prompt": {
+      "types": "./src/prompt.ts",
+      "default": "./src/prompt.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "./prompt": {
+        "import": {
+          "types": "./dist/prompt.d.ts",
+          "default": "./dist/prompt.js"
+        },
+        "require": {
+          "types": "./dist/prompt.d.cts",
+          "default": "./dist/prompt.cjs"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "tsc": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@clack/prompts": ">=0.11.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "@clack/prompts": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@clack/prompts": "0.11.0",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

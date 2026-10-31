@@ -10,6 +10,7 @@ on:
         default: mcp
         options:
           - cli
+          - cli-logger
           - mcp
       bump:
         description: Version bump type
@@ -63,6 +64,10 @@ jobs:
             cli)
               workspace=packages/cli
               package_path=packages/cli
+              ;;
+            cli-logger)
+              workspace=packages/cli-logger
+              package_path=packages/cli-logger
               ;;
             mcp)
               workspace=packages/mcp-server
