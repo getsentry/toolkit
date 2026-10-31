@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { fetchDocPage, normalizeDocPath } from "../sentry-docs/fetcher";
+import { buildDocsUrl, fetchDocPage, normalizeDocPath } from "../sentry-docs/fetcher";
 
 describe("normalizeDocPath", () => {
   test.each([
@@ -58,5 +58,15 @@ describe("fetchDocPage", () => {
 
     const request = (fetchMock.mock.calls[0] as unknown as [Request])[0];
     expect(request.url).toBe("https://docs.sentry.io/platforms/javascript.md");
+  });
+});
+
+describe("buildDocsUrl query strings and fragments", () => {
+  test("builds the canonical citation URL without the query string and fragment", () => {
+    expect(
+      buildDocsUrl(
+        "https://docs.sentry.io/platforms/javascript/?platform=node#tracing",
+      ),
+    ).toBe("https://docs.sentry.io/platforms/javascript/");
   });
 });
