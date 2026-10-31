@@ -10,12 +10,16 @@
  * import { buildServer } from "@sentry/mcp-core/server";
  * import { startStdio } from "@sentry/mcp-core/transports/stdio";
  *
- * const server = buildServer({ context });
- * await startStdio(server, context);
+ * const server = buildServer({ context, sdkVersion: "v2" });
+ * const { closed } = await startStdio(server, context);
+ * await closed;
  * ```
+ *
+ * Uses MCP SDK v2, like the Cloudflare worker. Its transport closes when the
+ * client closes stdin, which is what resolves `closed`.
  */
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { startNewTrace, startSpan } from "@sentry/core";
 import { LIB_VERSION } from "../version";
 
@@ -46,6 +50,12 @@ function getStdioSpanAttributes(
   return attributes;
 }
 
+/** A connected stdio server. */
+export type StdioConnection = {
+  /** Resolves when the transport closes, e.g. after the client closes stdin. */
+  closed: Promise<void>;
+};
+
 /**
  * Connect the server to stdio inside a `mcp.server/stdio` span.
  *
@@ -55,7 +65,8 @@ function getStdioSpanAttributes(
 export async function startStdio<Context extends StdioServerContext>(
   server: McpServer,
   context: Context,
-) {
+): Promise<StdioConnection> {
+  const transport = new StdioServerTransport();
   await startNewTrace(async () => {
     return await startSpan(
       {
@@ -63,9 +74,17 @@ export async function startStdio<Context extends StdioServerContext>(
         attributes: getStdioSpanAttributes(context),
       },
       async () => {
-        const transport = new StdioServerTransport();
         await server.connect(transport);
       },
     );
   });
+  // `connect()` installs the server's own close handler; chain onto it.
+  const closed = new Promise<void>((resolve) => {
+    const onServerClose = transport.onclose;
+    transport.onclose = () => {
+      onServerClose?.();
+      resolve();
+    };
+  });
+  return { closed };
 }

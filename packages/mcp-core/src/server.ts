@@ -123,8 +123,9 @@ function structuredOutputToCallToolResult(
  *   constraints: {}
  * };
  *
- * const server = buildServer({ context });
- * await startStdio(server, context);
+ * const server = buildServer({ context, sdkVersion: "v2" });
+ * const { closed } = await startStdio(server, context);
+ * await closed;
  * ```
  *
  */

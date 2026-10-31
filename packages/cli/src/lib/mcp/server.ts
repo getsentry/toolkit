@@ -387,6 +387,7 @@ export function serveMcpStdio(
   const server = buildServer({
     context,
     experimentalMode: config.experimental,
+    sdkVersion: "v2",
   });
   startStdio(server, context).catch((error: unknown) => {
     exitAfterError(error, "Server error:");
