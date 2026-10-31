@@ -16,8 +16,8 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { routes } from "../app.js";
 import { isRouteMap } from "./introspect.js";
+import { getRoutes } from "./route-registry.js";
 import type { ShellType } from "./shell.js";
 
 /** Where completions are installed */
@@ -55,7 +55,7 @@ export function extractCommandTree(): CommandTree {
   const groups: CommandGroup[] = [];
   const standalone: CommandEntry[] = [];
 
-  for (const entry of routes.getAllEntries()) {
+  for (const entry of getRoutes().getAllEntries()) {
     if (entry.hidden) {
       continue;
     }

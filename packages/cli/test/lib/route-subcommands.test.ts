@@ -3,6 +3,8 @@
  */
 
 import { describe, expect, test } from "vitest";
+// Registers the CLI route map that subcommand names are read from.
+import "../../src/app.js";
 import { interceptSubcommand } from "../../src/lib/list-command.js";
 
 function makeStderr(): { write(s: string): void; output: string } {
@@ -18,12 +20,7 @@ function makeStderr(): { write(s: string): void; output: string } {
 }
 
 describe("interceptSubcommand", () => {
-  // Skip: interceptSubcommand relies on require("../app.js") to load the
-  // Stricli route map, which fails under vitest because Node's CJS require
-  // can't resolve .js→.ts for transitive ESM imports. The try-catch in
-  // getSubcommandsForRoute gracefully degrades to empty sets in test.
-  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- require("../app.js") fails in vitest — CJS can't resolve .js→.ts
-  test.skip("returns undefined and writes hint for known subcommand", () => {
+  test("returns undefined and writes hint for known subcommand", () => {
     const stderr = makeStderr();
     const result = interceptSubcommand("list", stderr, "project");
     expect(result).toBeUndefined();
@@ -54,17 +51,13 @@ describe("interceptSubcommand", () => {
     expect(stderr.output).toBe("");
   });
 
-  // Skip: same reason as above — require("../app.js") fails in vitest
-  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- require("../app.js") fails in vitest — CJS can't resolve .js→.ts
-  test.skip("hint includes the route name and subcommand", () => {
+  test("hint includes the route name and subcommand", () => {
     const stderr = makeStderr();
     interceptSubcommand("view", stderr, "issue");
     expect(stderr.output).toContain("sentry issue view");
   });
 
-  // Skip: same reason as above — require("../app.js") fails in vitest
-  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- require("../app.js") fails in vitest — CJS can't resolve .js→.ts
-  test.skip("handles 'explain' and 'plan' subcommands for issue route", () => {
+  test("handles 'explain' and 'plan' subcommands for issue route", () => {
     const stderr1 = makeStderr();
     expect(interceptSubcommand("explain", stderr1, "issue")).toBeUndefined();
     expect(stderr1.output).toContain("sentry issue explain");

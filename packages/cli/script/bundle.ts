@@ -171,7 +171,7 @@ const sentrySourcemapPlugin: Plugin = {
  * `formatters/highlight` loads cli-highlight only on the first code block.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.
