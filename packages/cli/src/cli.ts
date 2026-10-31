@@ -1,9 +1,7 @@
 /**
- * CLI runner with fast-path dispatch.
- *
- * Shell completion (`__complete`) is dispatched before any heavy imports
- * to avoid loading `@sentry/node` (~100ms). All other commands go through
- * the full CLI with telemetry, middleware, and error recovery.
+ * CLI runner: every command goes through the full CLI with telemetry,
+ * middleware, and error recovery. Shell completion (`__complete`) never gets
+ * here: the bin entry points run `lib/complete.ts` without loading this module.
  *
  * The runner does not know which commands exist: each binary passes a
  * {@link CliEntry} that loads its own application. `sentry` (`bin.ts`,
@@ -23,15 +21,13 @@ import { preloadProjectContext } from "./lib/project-context.js";
 import type { CliRoutes } from "./lib/route-registry.js";
 import { initTimezone } from "./lib/timezone.js";
 
-/** What a binary runs: its application, and optionally shell completion. */
+/** What a binary runs: its application. */
 export type CliEntry = {
   /** Load the application. Loading it registers its routes. */
   readonly loadApp: () => Promise<{
     app: CliApplication;
     routes: CliRoutes;
   }>;
-  /** Handle `__complete` without loading the application. */
-  readonly complete?: (completionArgs: string[]) => Promise<void>;
 };
 
 /**
@@ -266,9 +262,6 @@ async function runMcpServer(
 
 /**
  * Full CLI execution with telemetry, middleware, and error recovery.
- *
- * All heavy imports are loaded here (not at module top level) so the
- * `__complete` fast-path can skip them entirely.
  */
 export async function runCli(
   cliArgs: string[],
@@ -707,8 +700,8 @@ export async function runCli(
 /**
  * Top-level CLI dispatch.
  *
- * Reads `process.argv`, dispatches to the completion fast-path or the full
- * CLI runner, and handles fatal errors. Called from `bin.ts`.
+ * Reads `process.argv`, runs the full CLI, and handles fatal errors.
+ * Called from `bin.ts`.
  */
 export async function startCli(entry: CliEntry): Promise<void> {
   const args = process.argv.slice(2);
@@ -717,14 +710,6 @@ export async function startCli(entry: CliEntry): Promise<void> {
   // back to UTC when they cannot resolve the OS zone, which made log
   // timestamps (and all other Date output) appear in the wrong timezone.
   initTimezone();
-
-  // Completions are a fast-path (~1ms) — skip .sentryclirc I/O.
-  if (args[0] === "__complete" && entry.complete) {
-    return await entry.complete(args.slice(1)).catch(() => {
-      // Completions should never crash — silently return no results
-      process.exitCode = 0;
-    });
-  }
 
   // Walk up from CWD once to find project root AND .sentryclirc config.
   // Caches both so later findProjectRoot / loadSentryCliRc calls are hits.

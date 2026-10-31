@@ -8,7 +8,6 @@
 
 // Must stay the first import: later imports can load node:sqlite.
 import "./lib/suppress-sqlite-warning.js";
-import { startCli } from "./cli.js";
 import { wrapCall } from "./lib/react-native/wrap-call.js";
 import { installStreamErrorHandlers } from "./lib/stream-errors.js";
 import { SENTRY_CLI } from "./sentry-cli.js";
@@ -23,7 +22,20 @@ if (process.env.__SENTRY_RN_WRAP_XCODE_CALL === "1") {
 
 installStreamErrorHandlers();
 
-// startCli handles its own errors — this is a safety net for truly unexpected rejections
-startCli(SENTRY_CLI).catch(() => {
-  process.exitCode = 1;
-});
+// Shell completion runs on every TAB press: load only the completion engine,
+// never the full CLI (`@sentry/node`, the command tree).
+if (process.argv[2] === "__complete") {
+  import("./lib/complete.js")
+    .then(({ runCompletion }) => runCompletion(process.argv.slice(3)))
+    .catch(() => {
+      // Completions should never crash — silently return no results
+      process.exitCode = 0;
+    });
+} else {
+  // startCli handles its own errors — this is a safety net for truly unexpected rejections
+  import("./cli.js")
+    .then(({ startCli }) => startCli(SENTRY_CLI))
+    .catch(() => {
+      process.exitCode = 1;
+    });
+}

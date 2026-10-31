@@ -14,11 +14,9 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
   // Snapshot env-token host BEFORE anything mutates env.SENTRY_HOST/URL
   // (the .sentryclirc shim or the default-URL fallback below). Pins the
   // env-token's trust scope to the user's shell, not a repo-local file.
-  // Dynamic import: env-token-host chains into db/auth → telemetry → @sentry/node
   const { captureEnvTokenHost } = await import("./env-token-host.js");
   captureEnvTokenHost();
 
-  // Dynamic import keeps the heavy DSN/DB modules out of the completion fast-path
   const [{ findProjectRoot }, { setCachedProjectRoot }] = await Promise.all([
     import("./dsn/project-root.js"),
     import("./db/project-root-cache.js"),

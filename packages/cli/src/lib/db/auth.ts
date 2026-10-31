@@ -40,7 +40,6 @@ import { AuthError, ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { parseBoolValue } from "../parse-bool.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
-import { withDbSpan } from "../telemetry.js";
 import {
   type AccountRow,
   accountIdentity,
@@ -64,7 +63,7 @@ import {
 } from "./accounts.js";
 import { getAccountScope, resetAccountScopes } from "./account-scope.js";
 import { hashIdentity } from "./identity-hash.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, withDbSpan } from "./index.js";
 import { clearCompletionCache } from "./completion-cache.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";

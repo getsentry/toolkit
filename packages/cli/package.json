@@ -26,6 +26,7 @@
   },
   "files": [
     "dist/bin.cjs",
+    "dist/complete.cjs",
     "dist/index.cjs",
     "dist/index.mjs",
     "dist/index.d.cts",
