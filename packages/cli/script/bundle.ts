@@ -6,6 +6,7 @@ import { build, type Plugin } from "esbuild";
 import pkg from "../package.json";
 import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
 import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
+import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
 import { buildCoreDeclarations, SDK_TYPES_PATH } from "./sdk-declarations.js";
 import { textImportPlugin } from "./text-import-plugin.js";
 
@@ -167,9 +168,10 @@ const sentrySourcemapPlugin: Plugin = {
  * a devDependency, not shipped). `node:sqlite` in the same file stays a
  * builtin and is left external by esbuild regardless.
  * `formatters/json` loads its generated parser only when --fields is parsed.
+ * `formatters/highlight` loads cli-highlight only on the first code block.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/]json|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.
@@ -253,6 +255,7 @@ const zlibNamespaceShimPlugin: Plugin = {
 
 const plugins: Plugin[] = [
   sentrySourcemapPlugin,
+  zodEnglishLocalesPlugin,
   textImportPlugin,
   requireAliasPlugin,
 ];
