@@ -79,7 +79,7 @@ function bundleStartup(
   });
 }
 
-test.each(["bin.ts", "cli.ts", "index.ts"])(
+test.each(["bin.ts", "cli.ts", "index.ts", "mcp-server.ts"])(
   "%s does not eagerly import the Sentry SDK",
   async (entry) => {
     // Traverse the pure predicates' source to catch future SDK imports.
