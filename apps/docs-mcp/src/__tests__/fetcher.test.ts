@@ -50,9 +50,9 @@ describe("normalizeDocPath query strings and fragments", () => {
   });
 
   test("keeps the exact-origin boundary when a query string is present", () => {
-    expect(
-      normalizeDocPath("https://docs.sentry.io.example.com/a?x=1"),
-    ).toBe("/https://docs.sentry.io.example.com/a");
+    expect(normalizeDocPath("https://docs.sentry.io.example.com/a?x=1")).toBe(
+      "/https://docs.sentry.io.example.com/a",
+    );
   });
 });
 
