@@ -2,11 +2,15 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 import app from "./app";
 import { setSentryUserFromRequest } from "./utils/sentry-user";
 
-const { logIssue } = vi.hoisted(() => ({ logIssue: vi.fn() }));
+const { logIssue, logWarn } = vi.hoisted(() => ({
+  logIssue: vi.fn(),
+  logWarn: vi.fn(),
+}));
 
 vi.mock("@sentry/mcp-core/telem/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/mcp-core/telem/logging")>()),
   logIssue,
+  logWarn,
 }));
 
 vi.mock("./utils/sentry-user", async (importOriginal) => {
@@ -23,11 +27,12 @@ const TEST_HEADERS = { "CF-Connecting-IP": "192.0.2.1" } as const;
 describe("app", () => {
   beforeEach(() => {
     logIssue.mockClear();
+    logWarn.mockClear();
   });
 
   describe("onError", () => {
     // Regression: csrf() rejections surfaced as 500s and created Sentry issues.
-    it("returns 403 for a cross-site form POST without reporting an issue", async () => {
+    it("returns 403 for a cross-site form POST and logs it without reporting an issue", async () => {
       const res = await app.request("https://mcp.sentry.dev/token", {
         method: "POST",
         headers: {
@@ -40,6 +45,19 @@ describe("app", () => {
 
       expect(res.status).toBe(403);
       expect(logIssue).not.toHaveBeenCalled();
+      expect(logWarn).toHaveBeenCalledWith("HTTP exception response", {
+        loggerScope: ["cloudflare", "http"],
+        extra: {
+          "http.response.status_code": 403,
+          "http.request.method": "POST",
+          "url.path": "/token",
+          "app.http_exception.reason": "csrf",
+          "http.request.header.origin": "https://evil.example",
+          "http.request.header.sec_fetch_site": "(absent)",
+          "http.request.header.content_type":
+            "application/x-www-form-urlencoded",
+        },
+      });
     });
 
     it("returns 500 and reports an issue for unexpected errors", async () => {
@@ -53,6 +71,7 @@ describe("app", () => {
       expect(res.status).toBe(500);
       expect(await res.text()).toBe("Internal Server Error");
       expect(logIssue).toHaveBeenCalledWith(error);
+      expect(logWarn).not.toHaveBeenCalled();
     });
   });
 
