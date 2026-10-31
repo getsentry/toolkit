@@ -10,6 +10,8 @@ import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+// Registers the CLI route map the completion scripts are generated from.
+import "../../src/app.js";
 import {
   extractCommandTree,
   getCompletionPath,

@@ -225,6 +225,15 @@ export const myRoute = buildRouteMap({
 });
 ```
 
+**Reading the command tree:** code in `src/lib/` reads the top-level route map
+with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
+`app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
+import would pull every command into any bundle built from one of them.
+`app.ts` registers its map with `setRoutes()`; a test that needs the real tree
+imports `src/app.js`. `test/lib/route-registry.test.ts` fails when a module in
+`src/lib/` reaches `app.ts`; the only exception is `sdk-invoke.ts`, the
+library-mode runner that executes the whole application.
+
 ### Positional Arguments
 
 Required identifiers (trace IDs, span IDs) should be **positional args**, not
@@ -433,6 +442,23 @@ every depth the same way. Completers must stay light (synchronous `node:fs`
 reads, SQLite, no network); ones that need a parser (`arg-parsing.ts`, the
 search grammar) import it when called, so the fast path only loads it for
 the arguments that need it.
+
+The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
+and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
+for `__complete` first and call `runCompletion` without loading `cli.ts`;
+the npm package ships it as the separate `dist/complete.cjs` bundle. That
+graph must stay free of `@sentry/node`, telemetry, the API client, and the
+command tree: the database modules get spans and cache metrics through
+`withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
+telemetry lazily and skip it when telemetry is off (`runCompletion` turns it
+off; `dist/complete.cjs` is built with `SENTRY_CLI_COMPLETION_BUILD` set to
+`true`, so the bundle leaves telemetry out), and `logger.ts` takes the Sentry
+reporter from `initSentry`.
+`test/script/cli-startup.test.ts` bundles the graph and fails on any package
+not in its `COMPLETION_PACKAGES` list, naming the importer, or on more source
+modules than `COMPLETION_MODULE_BUDGET`. Defer a heavy dependency with a
+dynamic `import()` in the completer that needs it rather than adding it to
+the list.
 
 ### Multiple Values in Arguments
 

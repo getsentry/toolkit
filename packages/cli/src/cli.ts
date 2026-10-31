@@ -1,9 +1,7 @@
 /**
- * CLI runner with fast-path dispatch.
- *
- * Shell completion (`__complete`) is dispatched before any heavy imports
- * to avoid loading `@sentry/node` (~100ms). All other commands go through
- * the full CLI with telemetry, middleware, and error recovery.
+ * CLI runner: every command goes through the full CLI with telemetry,
+ * middleware, and error recovery. Shell completion (`__complete`) never gets
+ * here: the bin entry points run `lib/complete.ts` without loading this module.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
  * top-level side effects. `bin.ts` remains a thin wrapper that registers
@@ -26,11 +24,9 @@ async function preloadProjectContext(cwd: string): Promise<void> {
   // Snapshot env-token host BEFORE anything mutates env.SENTRY_HOST/URL
   // (the .sentryclirc shim or the default-URL fallback below). Pins the
   // env-token's trust scope to the user's shell, not a repo-local file.
-  // Dynamic import: env-token-host chains into db/auth → telemetry → @sentry/node
   const { captureEnvTokenHost } = await import("./lib/env-token-host.js");
   captureEnvTokenHost();
 
-  // Dynamic import keeps the heavy DSN/DB modules out of the completion fast-path
   const [{ findProjectRoot }, { setCachedProjectRoot }] = await Promise.all([
     import("./lib/dsn/project-root.js"),
     import("./lib/db/project-root-cache.js"),
@@ -65,20 +61,6 @@ async function preloadProjectContext(cwd: string): Promise<void> {
       // DB not available — skip
     }
   }
-}
-
-/**
- * Fast-path: shell completion.
- *
- * Dispatched before importing the full CLI to avoid loading @sentry/node,
- * @stricli/core, and other heavy dependencies. Only loads the lightweight
- * completion engine and SQLite cache modules.
- */
-export async function runCompletion(completionArgs: string[]): Promise<void> {
-  // Disable telemetry so db/index.ts skips the @sentry/node lazy-require (~100ms)
-  getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
-  const { handleComplete } = await import("./lib/complete.js");
-  await handleComplete(completionArgs);
 }
 
 /**
@@ -310,9 +292,6 @@ export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
 
 /**
  * Full CLI execution with telemetry, middleware, and error recovery.
- *
- * All heavy imports are loaded here (not at module top level) so the
- * `__complete` fast-path can skip them entirely.
  */
 export async function runCli(cliArgs: string[]): Promise<void> {
   if (await runMcpCommand(cliArgs)) {
@@ -748,8 +727,8 @@ export async function runCli(cliArgs: string[]): Promise<void> {
 /**
  * Top-level CLI dispatch.
  *
- * Reads `process.argv`, dispatches to the completion fast-path or the full
- * CLI runner, and handles fatal errors. Called from `bin.ts`.
+ * Reads `process.argv`, runs the full CLI, and handles fatal errors.
+ * Called from `bin.ts`.
  */
 export async function startCli(): Promise<void> {
   const args = process.argv.slice(2);
@@ -758,14 +737,6 @@ export async function startCli(): Promise<void> {
   // back to UTC when they cannot resolve the OS zone, which made log
   // timestamps (and all other Date output) appear in the wrong timezone.
   initTimezone();
-
-  // Completions are a fast-path (~1ms) — skip .sentryclirc I/O.
-  if (args[0] === "__complete") {
-    return await runCompletion(args.slice(1)).catch(() => {
-      // Completions should never crash — silently return no results
-      process.exitCode = 0;
-    });
-  }
 
   // Walk up from CWD once to find project root AND .sentryclirc config.
   // Caches both so later findProjectRoot / loadSentryCliRc calls are hits.
