@@ -294,8 +294,12 @@ function deprecatedTokenEnv(
  * Run the local stdio server without introducing a second auth flow.
  *
  * Resolves once the client disconnects.
+ *
+ * @param cwd - The command context's working directory, where a repo-local
+ *   `.sentryclirc` is looked up. Unlike `process.cwd()`, it survives a deleted
+ *   working directory (see `resolveCwd` in `context.ts`).
  */
-export async function serveMcp(flags: McpFlags): Promise<void> {
+export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   const env = getEnv();
   const config = finalizeMcpConfig(
     mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env)),
@@ -324,7 +328,7 @@ export async function serveMcp(flags: McpFlags): Promise<void> {
     )
   ) {
     const { assertRcUrlTrusted } = await import("./sentryclirc.js");
-    await assertRcUrlTrusted(process.cwd());
+    await assertRcUrlTrusted(cwd);
   }
 
   const credentialEnv = deprecatedToken

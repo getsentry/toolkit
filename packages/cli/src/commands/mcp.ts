@@ -128,6 +128,6 @@ export const mcpCommand = buildCommand({
     const { serveMcp } = await import("../lib/mcp.js");
     // Resolves when the client disconnects, so the runner tears down only
     // after the server is done.
-    await serveMcp(flags);
+    await serveMcp(flags, this.cwd);
   },
 });

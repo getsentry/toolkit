@@ -74,8 +74,12 @@ useEnvSandbox([
   "SENTRY_URL",
 ]);
 
+/** The command context's working directory that {@link serve} passes. */
+let workingDir = process.cwd();
+
 beforeEach(async () => {
   served.calls = [];
+  workingDir = process.cwd();
   await resetHostScopingState();
 });
 
@@ -87,7 +91,7 @@ afterEach(async () => {
 /** Run `sentry mcp <args>` up to the (mocked) stdio server. */
 async function serve(args: string[]): Promise<void> {
   const { serveMcp } = await import("../../src/lib/mcp.js");
-  await serveMcp(await parseMcpFlags(args));
+  await serveMcp(await parseMcpFlags(args), workingDir);
 }
 
 async function start(args: string[]): Promise<Served> {
@@ -469,7 +473,7 @@ describe("serveMcp .sentryclirc URLs", () => {
     const dir = mkdtempSync(join(tmpdir(), "mcp-start-rc-"));
     writeFileSync(join(dir, ".sentryclirc"), `[defaults]\nurl = ${url}\n`);
     rcDirs.push(dir);
-    vi.spyOn(process, "cwd").mockReturnValue(dir);
+    workingDir = dir;
     clearSentryCliRcCache();
     await applySentryCliRcEnvShim(dir);
   }
@@ -544,6 +548,18 @@ describe("serveMcp .sentryclirc URLs", () => {
       HostScopeError,
     );
     expect(served.calls).toHaveLength(0);
+  });
+
+  test("starts when the working directory has been deleted", async () => {
+    // `process.cwd()` throws ENOENT once the directory is removed; the command
+    // context falls back to `PWD`, which names a directory that is gone.
+    vi.spyOn(process, "cwd").mockImplementation(() => {
+      throw Object.assign(new Error("uv_cwd"), { code: "ENOENT" });
+    });
+    workingDir = join(tmpdir(), "mcp-start-deleted-worktree");
+
+    const { options } = await start(["--access-token=static-token"]);
+    expect(options.accessToken).toBe("static-token");
   });
 
   test("serves a static token for an rc URL the user has logged in to", async () => {

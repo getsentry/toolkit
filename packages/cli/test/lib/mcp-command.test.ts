@@ -130,6 +130,23 @@ describe("running `mcp`", () => {
     expect(mocks.withTelemetry).not.toHaveBeenCalled();
   });
 
+  test("passes the context's working directory, which survives a deleted one", async () => {
+    vi.spyOn(process, "cwd").mockImplementation(() => {
+      throw Object.assign(new Error("uv_cwd"), { code: "ENOENT" });
+    });
+    const savedPwd = process.env.PWD;
+    process.env.PWD = "/deleted/worktree";
+    try {
+      await runCli(["mcp", "--host=sentry.example.com"], SENTRY_CLI);
+    } finally {
+      process.env.PWD = savedPwd;
+      vi.mocked(process.cwd).mockRestore();
+    }
+
+    expect(mocks.serveMcp).toHaveBeenCalledOnce();
+    expect(mocks.serveMcp.mock.lastCall?.[1]).toBe("/deleted/worktree");
+  });
+
   test("releases the network only after the server returns", async () => {
     let finishServing = () => undefined as void;
     mocks.serveMcp.mockReturnValue(
