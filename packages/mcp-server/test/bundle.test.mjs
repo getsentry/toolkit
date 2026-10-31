@@ -55,14 +55,28 @@ test("the bundle requires only Node.js built-ins", () => {
 test("--version prints the package version", () => {
   const result = run(["--version"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), `sentry-mcp ${version}`);
+  assert.equal(result.stdout.trim(), version);
 });
 
-test("--help names the standalone command", () => {
+test("--help lists only mcp, auth, and help", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /^Usage: sentry-mcp /);
-  assert.match(result.stdout, /`npx -y @sentry\/mcp-server auth login`/);
+  assert.match(result.stdout, /^USAGE\n {2}sentry-mcp mcp /);
+  const commands = result.stdout.split("COMMANDS\n")[1] ?? "";
+  assert.deepEqual(
+    commands
+      .trim()
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/)[0]),
+    ["mcp", "auth", "help"],
+  );
+});
+
+test("mcp --help examples name this binary", () => {
+  const result = run(["mcp", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^ {2}sentry-mcp mcp --all-skills /m);
+  assert.doesNotMatch(result.stdout, /^ {2}sentry mcp/m);
 });
 
 test("a client closing stdout early is a clean exit, not a crash", async () => {
@@ -82,18 +96,33 @@ test("a client closing stdout early is a clean exit, not a crash", async () => {
 test("without credentials, points to its own auth login", () => {
   const result = run([]);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /npx -y @sentry\/mcp-server auth login/);
-  assert.doesNotMatch(result.stderr, /'sentry auth login'/);
+  assert.match(result.stderr, /'sentry-mcp auth login'/);
 });
 
-test("auth subcommands other than login point to the CLI", () => {
+test("under npx, the login hint goes through npx", () => {
+  const result = run([], { npm_command: "exec" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /'npx -y @sentry\/mcp-server auth login'/);
+});
+
+test("runs the CLI's auth commands", () => {
   const result = run(["auth", "status"]);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /npx -y sentry auth status/);
+  assert.match(
+    result.stderr,
+    /Not authenticated\. Run 'sentry-mcp auth login'/,
+  );
+});
+
+test("rejects the CLI's other commands", () => {
+  const result = run(["issue", "list"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /issue/);
 });
 
 test("serves MCP over stdio with a static token", async () => {
-  const child = spawn(process.execPath, [bin], {
+  // `--sentry-dsn=` (no telemetry) is a form MCP configs have always used.
+  const child = spawn(process.execPath, [bin, "--sentry-dsn="], {
     env: { ...env, SENTRY_ACCESS_TOKEN: "sntryu_test" },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -139,6 +168,10 @@ test("serves MCP over stdio with a static token", async () => {
     assert.ok(initialize.result?.serverInfo, JSON.stringify(initialize));
     assert.equal(toolsList.id, 2);
     assert.ok(toolsList.result?.tools.length > 0, JSON.stringify(toolsList));
+    // The server exits once the client closes stdin.
+    const exited = new Promise((resolve) => child.on("exit", resolve));
+    child.stdin.end();
+    assert.equal(await exited, 0);
   } finally {
     child.kill();
   }

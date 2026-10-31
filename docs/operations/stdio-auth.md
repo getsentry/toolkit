@@ -2,8 +2,8 @@
 
 How the stdio MCP server (`@sentry/mcp-server`) authenticates with Sentry.
 
-Sign in once with `npx -y @sentry/mcp-server auth login`. The package ships
-its own OAuth device flow and stores the session in the Sentry CLI's
+Sign in once with `npx -y @sentry/mcp-server auth login`. The package runs
+the Sentry CLI's own `auth` commands and stores the session in the CLI's
 credential store, so the package and the CLI (which runs the same server as
 `sentry mcp`) share one login.
 
@@ -28,9 +28,9 @@ In order of precedence:
 When no credential is available and stdin is a TTY, the server starts the
 interactive login before serving. MCP clients launch the server over pipes,
 so in that case it exits with an error that names the login command for the
-program that is running (`packages/cli/src/lib/login-command.ts`). The one
-exception is confirming a self-hosted host with `--url`: the package's
-`auth login` takes no flags yet, so that hint names the CLI.
+program that is running: `sentry auth login`, `sentry-mcp auth login`, or
+`npx -y @sentry/mcp-server auth login` under npx
+(`packages/cli/src/lib/app-identity.ts`).
 
 For self-hosted Sentry, set the host with `--host`/`--url` or
 `SENTRY_HOST`/`SENTRY_URL`. Only the environment variables also pick the stored
@@ -63,16 +63,16 @@ MCP servers, for example one per host via `SENTRY_HOST`, or one with a static
 Older releases had their own device code flow, bundled client ID, and token
 cache (`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`). Current releases do not
 read that cache. Run `npx -y @sentry/mcp-server auth login` once, or keep
-passing `--access-token` / `SENTRY_ACCESS_TOKEN`. The package does not have
-`auth logout` or `auth status` yet; the CLI's commands work on the same
-session.
+passing `--access-token` / `SENTRY_ACCESS_TOKEN`. `auth status`, `auth list`,
+`auth switch`, and `auth logout` work in the package as in the CLI.
 
 ## Key Files
 
 | File                                        | Purpose                                                        |
 | ------------------------------------------- | -------------------------------------------------------------- |
 | `packages/cli/src/lib/mcp.ts`               | Credential resolution, static-token host check, refresh-on-401 |
-| `packages/cli/src/lib/mcp/server.ts`        | Flag/env parsing, telemetry, and stdio startup                 |
+| `packages/cli/src/commands/mcp.ts`          | `mcp` command flags and help                                   |
+| `packages/cli/src/lib/mcp/server.ts`        | Agent providers, telemetry, and stdio startup                  |
 | `packages/cli/src/lib/db/auth.ts`           | CLI token storage and `refreshToken()`                         |
 | `packages/cli/src/lib/token-host.ts`        | Host-scoping checks                                            |
 | `packages/mcp-core/src/transports/stdio.ts` | stdio transport and per-request auth context                   |

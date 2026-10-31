@@ -18,18 +18,22 @@ Requires Node.js 22.15 or later.
   with the [`sentry` CLI](https://cli.sentry.dev), so an existing
   `sentry auth login` works too.
 - `--access-token` / `SENTRY_ACCESS_TOKEN` passes a static token instead.
-- Each server process uses one account. Log out, check status, or switch
-  accounts with `npx -y sentry auth logout|status|switch`.
+- Each server process uses one account. The package runs the CLI's own
+  `auth` commands, so `npx -y @sentry/mcp-server auth status|list|switch|logout`
+  manages the same login.
 
 ## Options
 
-Run `npx -y @sentry/mcp-server --help` for the flags and environment
+Starting the server is the default command, so `npx -y @sentry/mcp-server`
+and `npx -y @sentry/mcp-server mcp` are the same. Run
+`npx -y @sentry/mcp-server mcp --help` for the flags and environment
 variables. For self-hosted Sentry, pass `--host` or `--url`, or set
 `SENTRY_HOST` / `SENTRY_URL`.
 
 ## Development
 
-The source lives in `packages/cli` so the server shares the CLI's auth.
-`pnpm run bundle` builds `dist/sentry-mcp.cjs` from
-`packages/cli/src/mcp-server.ts`, and `pnpm run test:bundle` smoke-tests the
+The source lives in `packages/cli`: `packages/cli/src/mcp-server.ts` runs the
+CLI's runner with an application of three commands, `mcp`, `auth`, and
+`help` (`packages/cli/src/mcp-server-app.ts`). `pnpm run bundle` builds
+`dist/sentry-mcp.cjs` from it, and `pnpm run test:bundle` smoke-tests the
 result.

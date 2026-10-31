@@ -38,7 +38,7 @@ import {
 import { logger } from "./logger.js";
 import { normalizeHttpOrigin } from "./sentry-urls.js";
 import { getActiveTokenHost } from "./token-host.js";
-import { LOGIN_COMMAND } from "./login-command.js";
+import { getLoginCommand } from "./app-identity.js";
 
 /**
  * Get the Sentry instance URL for OAuth endpoints.
@@ -396,7 +396,7 @@ async function attemptPoll(
       case "expired":
         return {
           status: "error",
-          message: `Device code expired. Please run '${LOGIN_COMMAND}' again.`,
+          message: `Device code expired. Please run '${getLoginCommand()}' again.`,
         };
       case "denied":
         return {
@@ -575,7 +575,7 @@ export async function refreshAccessToken(
     if (rejected) {
       throw new AuthError(
         "expired",
-        `Session expired because the refresh credential was rejected. Run '${LOGIN_COMMAND}' to re-authenticate.`,
+        `Session expired because the refresh credential was rejected. Run '${getLoginCommand()}' to re-authenticate.`,
       );
     }
     throw new ApiError(

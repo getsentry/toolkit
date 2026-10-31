@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   mergeMcpArgs,
-  parseMcpArgv,
   parseMcpEnv,
+  splitInlineFlagValues,
 } from "../../../src/lib/mcp/args.js";
+import { parseMcpFlags } from "./parse-flags.js";
 
-describe("parseMcpArgv", () => {
-  it("parses known flags and short aliases", () => {
-    const parsed = parseMcpArgv([
+describe("sentry mcp flags", () => {
+  it("parses known flags", async () => {
+    const parsed = await parseMcpFlags([
       "--access-token=tok",
       "--host=sentry.io",
       "--insecure-http",
@@ -17,75 +18,72 @@ describe("parseMcpArgv", () => {
       "--openai-base-url=https://api.example.com/v1",
       "--skills=inspect,triage",
       "--all-skills",
-      "-h",
-      "-v",
     ]);
-    expect(parsed.accessToken).toBe("tok");
-    expect(parsed.host).toBe("sentry.io");
-    expect(parsed.insecureHttp).toBe(true);
-    expect(parsed.url).toBe("https://example.com");
-    expect(parsed.mcpUrl).toBe("https://mcp.example.com");
-    expect(parsed.sentryDsn).toBe("dsn");
-    expect(parsed.openaiBaseUrl).toBe("https://api.example.com/v1");
-    expect(parsed.skills).toBe("inspect,triage");
-    expect(parsed.allSkills).toBe(true);
-    expect(parsed.help).toBe(true);
-    expect(parsed.version).toBe(true);
-    expect(parsed.unknownArgs).toEqual([]);
+    expect(parsed).toMatchObject({
+      "access-token": "tok",
+      host: "sentry.io",
+      "insecure-http": true,
+      url: "https://example.com",
+      "mcp-url": "https://mcp.example.com",
+      "sentry-dsn": "dsn",
+      "openai-base-url": "https://api.example.com/v1",
+      skills: "inspect,triage",
+      "all-skills": true,
+    });
   });
 
-  it("parses skills flags", () => {
-    const parsed = parseMcpArgv([
-      "--access-token=tok",
-      "--skills=inspect,triage",
+  it("defaults boolean flags to off", async () => {
+    expect(await parseMcpFlags([])).toMatchObject({
+      "insecure-http": false,
+      "all-skills": false,
+      experimental: false,
+    });
+  });
+
+  it("parses --disable-skills", async () => {
+    const parsed = await parseMcpFlags(["--disable-skills=seer"]);
+    expect(parsed["disable-skills"]).toBe("seer");
+  });
+
+  it.each(["azure-openai", "openrouter"])(
+    "parses --agent-provider=%s",
+    async (provider) => {
+      const parsed = await parseMcpFlags([`--agent-provider=${provider}`]);
+      expect(parsed["agent-provider"]).toBe(provider);
+    },
+  );
+
+  it("accepts empty and multi-line --flag=value forms", async () => {
+    const flags = await parseMcpFlags(["--sentry-dsn=", "--access-token=a\nb"]);
+    expect(flags["sentry-dsn"]).toBe("");
+    expect(flags["access-token"]).toBe("a\nb");
+  });
+
+  it("rejects unknown flags and positionals", async () => {
+    await expect(parseMcpFlags(["--unknown"])).rejects.toThrow(/unknown/);
+    await expect(parseMcpFlags(["extra"])).rejects.toThrow(/extra/);
+  });
+});
+
+describe("splitInlineFlagValues", () => {
+  it("splits only the joined forms Stricli does not read", () => {
+    expect(
+      splitInlineFlagValues([
+        "--sentry-dsn=",
+        "--access-token=tok\n",
+        "--host=sentry.io",
+        "--all-skills",
+        "x=",
+      ]),
+    ).toEqual([
+      "--sentry-dsn",
+      "",
+      "--access-token",
+      "tok\n",
+      "--host=sentry.io",
+      "--all-skills",
+      "x=",
     ]);
-    expect(parsed.accessToken).toBe("tok");
-    expect(parsed.skills).toBe("inspect,triage");
-  });
-
-  it("parses --disable-skills", () => {
-    const parsed = parseMcpArgv([
-      "--access-token=tok",
-      "--disable-skills=seer",
-    ]);
-    expect(parsed.disableSkills).toBe("seer");
-  });
-
-  it("parses --all-skills", () => {
-    const parsed = parseMcpArgv(["--access-token=tok", "--all-skills"]);
-    expect(parsed.accessToken).toBe("tok");
-    expect(parsed.allSkills).toBe(true);
-  });
-
-  it("parses --insecure-http", () => {
-    const parsed = parseMcpArgv([
-      "--access-token=tok",
-      "--host=sentry.internal:9000",
-      "--insecure-http",
-    ]);
-    expect(parsed.host).toBe("sentry.internal:9000");
-    expect(parsed.insecureHttp).toBe(true);
-  });
-
-  it("parses --agent-provider=azure-openai", () => {
-    const parsed = parseMcpArgv([
-      "--access-token=tok",
-      "--agent-provider=azure-openai",
-    ]);
-    expect(parsed.agentProvider).toBe("azure-openai");
-  });
-
-  it("parses --agent-provider=openrouter", () => {
-    const parsed = parseMcpArgv([
-      "--access-token=tok",
-      "--agent-provider=openrouter",
-    ]);
-    expect(parsed.agentProvider).toBe("openrouter");
-  });
-
-  it("collects unknown args", () => {
-    const parsed = parseMcpArgv(["--unknown", "--another=1"]);
-    expect(parsed.unknownArgs.length).toBeGreaterThan(0);
   });
 });
 
@@ -113,13 +111,13 @@ describe("parseMcpEnv", () => {
 });
 
 describe("mergeMcpArgs", () => {
-  it("applies precedence: CLI over env", () => {
+  it("applies precedence: flags over env", async () => {
     const env = parseMcpEnv({
       SENTRY_ACCESS_TOKEN: "envtok",
       MCP_URL: "envmcp",
       SENTRY_DSN: "envdsn",
     });
-    const cli = parseMcpArgv([
+    const flags = await parseMcpFlags([
       "--access-token=clitok",
       "--host=clihost",
       "--insecure-http",
@@ -127,7 +125,7 @@ describe("mergeMcpArgs", () => {
       "--sentry-dsn=clidsn",
       "--openai-base-url=https://api.cli/v1",
     ]);
-    const merged = mergeMcpArgs(cli, env);
+    const merged = mergeMcpArgs(flags, env);
     expect(merged.accessToken).toBe("clitok");
     expect(merged.host).toBe("clihost");
     expect(merged.insecureHttp).toBe(true);
@@ -136,80 +134,49 @@ describe("mergeMcpArgs", () => {
     expect(merged.openaiBaseUrl).toBe("https://api.cli/v1");
   });
 
-  it("applies precedence for skills: CLI over env", () => {
-    const env = parseMcpEnv({
-      SENTRY_ACCESS_TOKEN: "envtok",
-      MCP_SKILLS: "inspect",
-    });
-    const cli = parseMcpArgv([
-      "--access-token=clitok",
-      "--skills=inspect,triage",
-    ]);
-    const merged = mergeMcpArgs(cli, env);
-    expect(merged.skills).toBe("inspect,triage");
+  it("applies precedence for skills: flags over env", async () => {
+    const env = parseMcpEnv({ MCP_SKILLS: "inspect" });
+    const flags = await parseMcpFlags(["--skills=inspect,triage"]);
+    expect(mergeMcpArgs(flags, env).skills).toBe("inspect,triage");
   });
 
-  it("falls back to env when CLI skills not provided", () => {
-    const env = parseMcpEnv({
-      SENTRY_ACCESS_TOKEN: "envtok",
-      MCP_SKILLS: "inspect,triage",
-    });
-    const cli = parseMcpArgv(["--access-token=clitok"]);
-    const merged = mergeMcpArgs(cli, env);
-    expect(merged.skills).toBe("inspect,triage");
+  it("falls back to env when the skills flag is absent", async () => {
+    const env = parseMcpEnv({ MCP_SKILLS: "inspect,triage" });
+    expect(mergeMcpArgs(await parseMcpFlags([]), env).skills).toBe(
+      "inspect,triage",
+    );
   });
 
-  it("lets CLI allSkills override env skills", () => {
-    const env = parseMcpEnv({
-      SENTRY_ACCESS_TOKEN: "envtok",
-      MCP_SKILLS: "inspect",
-    });
-    const cli = parseMcpArgv(["--access-token=clitok", "--all-skills"]);
-    const merged = mergeMcpArgs(cli, env);
+  it("lets --all-skills override env skills", async () => {
+    const env = parseMcpEnv({ MCP_SKILLS: "inspect" });
+    const merged = mergeMcpArgs(await parseMcpFlags(["--all-skills"]), env);
     expect(merged.allSkills).toBe(true);
     expect(merged.skills).toBeUndefined();
   });
 
-  it("applies precedence for disableSkills: CLI over env", () => {
-    const env = parseMcpEnv({
-      SENTRY_ACCESS_TOKEN: "envtok",
-      MCP_DISABLE_SKILLS: "docs",
-    });
-    const cli = parseMcpArgv([
-      "--access-token=clitok",
-      "--disable-skills=seer",
-    ]);
-    const merged = mergeMcpArgs(cli, env);
-    expect(merged.disableSkills).toBe("seer");
+  it("applies precedence for disableSkills: flags over env", async () => {
+    const env = parseMcpEnv({ MCP_DISABLE_SKILLS: "docs" });
+    const flags = await parseMcpFlags(["--disable-skills=seer"]);
+    expect(mergeMcpArgs(flags, env).disableSkills).toBe("seer");
   });
 
-  it("falls back to env when CLI disableSkills not provided", () => {
-    const env = parseMcpEnv({
-      SENTRY_ACCESS_TOKEN: "envtok",
-      MCP_DISABLE_SKILLS: "seer",
-    });
-    const cli = parseMcpArgv(["--access-token=clitok"]);
-    const merged = mergeMcpArgs(cli, env);
-    expect(merged.disableSkills).toBe("seer");
+  it("falls back to env when the disable-skills flag is absent", async () => {
+    const env = parseMcpEnv({ MCP_DISABLE_SKILLS: "seer" });
+    expect(mergeMcpArgs(await parseMcpFlags([]), env).disableSkills).toBe(
+      "seer",
+    );
   });
 
-  it("applies precedence for agentProvider: CLI over env", () => {
-    const env = parseMcpEnv({
-      SENTRY_ACCESS_TOKEN: "envtok",
-      EMBEDDED_AGENT_PROVIDER: "openai",
-    });
-    const cli = parseMcpArgv([
-      "--access-token=clitok",
-      "--agent-provider=azure-openai",
-    ]);
-    const merged = mergeMcpArgs(cli, env);
-    expect(merged.agentProvider).toBe("azure-openai");
+  it("applies precedence for agentProvider: flags over env", async () => {
+    const env = parseMcpEnv({ EMBEDDED_AGENT_PROVIDER: "openai" });
+    const flags = await parseMcpFlags(["--agent-provider=azure-openai"]);
+    expect(mergeMcpArgs(flags, env).agentProvider).toBe("azure-openai");
   });
 });
 
 describe("@sentry/mcp-server flag parity", () => {
-  it("accepts every standalone server flag", () => {
-    const parsed = parseMcpArgv([
+  it("accepts every flag the server has always taken", async () => {
+    const flags = await parseMcpFlags([
       "--access-token=tok",
       "--host=sentry.example.com",
       "--insecure-http",
@@ -227,10 +194,8 @@ describe("@sentry/mcp-server flag parity", () => {
       "--all-skills",
       "--disable-skills=seer",
       "--experimental",
-      "--help",
-      "--version",
     ]);
-    expect(parsed).toEqual({
+    expect(mergeMcpArgs(flags, {})).toEqual({
       accessToken: "tok",
       host: "sentry.example.com",
       insecureHttp: true,
@@ -242,33 +207,28 @@ describe("@sentry/mcp-server flag parity", () => {
       anthropicBaseUrl: "https://anthropic.example.com",
       anthropicModel: "claude-test",
       agentProvider: "anthropic",
+      agentProviderFromFlag: true,
       organizationSlug: "acme",
       projectSlug: "web",
       skills: "inspect",
       allSkills: true,
       disableSkills: "seer",
       experimental: true,
-      help: true,
-      version: true,
-      unknownArgs: [],
     });
   });
 
-  it("accepts space-separated flag values", () => {
-    const parsed = parseMcpArgv(["--access-token", "tok", "--host", "h.test"]);
-    expect(parsed.accessToken).toBe("tok");
-    expect(parsed.host).toBe("h.test");
-  });
-
-  it("reports unknown flags and positionals by their raw spelling", () => {
-    expect(parseMcpArgv(["--bogus=1", "-x", "extra"]).unknownArgs).toEqual([
-      "--bogus",
-      "-x",
-      "extra",
+  it("accepts space-separated flag values", async () => {
+    const flags = await parseMcpFlags([
+      "--access-token",
+      "tok",
+      "--host",
+      "h.test",
     ]);
+    expect(flags["access-token"]).toBe("tok");
+    expect(flags.host).toBe("h.test");
   });
 
-  it("reads every standalone server environment variable", () => {
+  it("reads every server environment variable", () => {
     expect(
       parseMcpEnv({
         SENTRY_ACCESS_TOKEN: "envtok",
@@ -298,21 +258,21 @@ describe("@sentry/mcp-server flag parity", () => {
     );
   });
 
-  it("uses SENTRY_ACCESS_TOKEN when --access-token is absent", () => {
+  it("uses SENTRY_ACCESS_TOKEN when --access-token is absent", async () => {
     const merged = mergeMcpArgs(
-      parseMcpArgv([]),
+      await parseMcpFlags([]),
       parseMcpEnv({ SENTRY_ACCESS_TOKEN: "envtok" }),
     );
     expect(merged.accessToken).toBe("envtok");
   });
 
-  it("records whether the agent provider came from the flag", () => {
+  it("records whether the agent provider came from the flag", async () => {
     const env = parseMcpEnv({ EMBEDDED_AGENT_PROVIDER: "openai" });
-    expect(mergeMcpArgs(parseMcpArgv([]), env).agentProviderFromFlag).toBe(
-      false,
-    );
     expect(
-      mergeMcpArgs(parseMcpArgv(["--agent-provider=openai"]), env)
+      mergeMcpArgs(await parseMcpFlags([]), env).agentProviderFromFlag,
+    ).toBe(false);
+    expect(
+      mergeMcpArgs(await parseMcpFlags(["--agent-provider=openai"]), env)
         .agentProviderFromFlag,
     ).toBe(true);
   });

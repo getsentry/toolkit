@@ -68,7 +68,7 @@ Source runs skip the bundling step, so check the bundle that ships as
 
 ```bash
 pnpm --filter @sentry/mcp-server run bundle
-node packages/mcp-server/dist/sentry-mcp.cjs --help
+node packages/mcp-server/dist/sentry-mcp.cjs mcp --help
 node packages/mcp-server/dist/sentry-mcp.cjs --access-token=YOUR_TOKEN
 
 # Or drive it with the test client

@@ -11,6 +11,7 @@ import "./lib/suppress-sqlite-warning.js";
 import { startCli } from "./cli.js";
 import { wrapCall } from "./lib/react-native/wrap-call.js";
 import { installStreamErrorHandlers } from "./lib/stream-errors.js";
+import { SENTRY_CLI } from "./sentry-cli.js";
 
 // React Native Xcode build wrapper: when the RN build script invokes us in
 // place of NODE_BINARY/HERMES_CLI_PATH (see `react-native xcode`), forward to
@@ -23,6 +24,6 @@ if (process.env.__SENTRY_RN_WRAP_XCODE_CALL === "1") {
 installStreamErrorHandlers();
 
 // startCli handles its own errors — this is a safety net for truly unexpected rejections
-startCli().catch(() => {
+startCli(SENTRY_CLI).catch(() => {
   process.exitCode = 1;
 });

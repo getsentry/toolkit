@@ -126,7 +126,7 @@ Update:
 - `packages/mcp-core/src/internal/agents/provider-factory.ts`
 - `packages/cli/src/lib/mcp/args.ts`
 - `packages/cli/src/lib/mcp/config.ts`
-- `packages/cli/src/lib/mcp/usage.ts`
+- `packages/cli/src/commands/mcp.ts`
 
 Add:
 

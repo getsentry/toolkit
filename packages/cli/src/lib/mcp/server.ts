@@ -1,7 +1,7 @@
 /**
  * stdio MCP server host for `sentry mcp`.
  *
- * Parses the server flags, configures the embedded agent provider and MCP
+ * Configures the embedded agent provider and MCP
  * telemetry, then serves `@sentry/mcp-core` over stdin/stdout. Credentials are
  * resolved by the caller (`lib/mcp.ts`) so this module never owns an auth flow.
  *
@@ -16,7 +16,6 @@ import {
   setProviderBaseUrls,
 } from "@sentry/mcp-core/internal/agents/provider-factory";
 import { buildServer } from "@sentry/mcp-core/server";
-import { ALL_SKILLS } from "@sentry/mcp-core/skills";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { ServerContext } from "@sentry/mcp-core/types";
@@ -29,18 +28,11 @@ import {
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
-import { SENTRY_CLI_DSN } from "../constants.js";
-import { MCP_SERVER_VERSION } from "../login-command.js";
+import { getAppIdentity } from "../app-identity.js";
+import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
-import { mergeMcpArgs, parseMcpArgv, parseMcpEnv } from "./args.js";
-import { finalizeMcpConfig, type McpServerConfig } from "./config.js";
-import { buildMcpUsage, buildMcpVersion, MCP_VERSION } from "./usage.js";
-
-/** What a `sentry mcp` invocation asks for. */
-export type McpInvocation =
-  | { kind: "output"; text: string }
-  | { kind: "serve"; config: McpServerConfig };
+import type { McpServerConfig } from "./config.js";
 
 /** Credential wiring supplied by the CLI host. */
 export type McpServeOptions = {
@@ -54,24 +46,6 @@ export type McpServeOptions = {
 };
 
 const SENTRY_FLUSH_TIMEOUT_MS = 5000;
-
-/** Parse `sentry mcp` arguments into help/version output or a server config. */
-export function parseMcpInvocation(
-  args: string[],
-  env: NodeJS.ProcessEnv,
-): McpInvocation {
-  const cli = parseMcpArgv(args);
-  if (cli.help) {
-    return { kind: "output", text: buildMcpUsage(ALL_SKILLS) };
-  }
-  if (cli.version) {
-    return { kind: "output", text: buildMcpVersion() };
-  }
-  return {
-    kind: "serve",
-    config: finalizeMcpConfig(mergeMcpArgs(cli, parseMcpEnv(env))),
-  };
-}
 
 type ProviderMismatch = { configured: string; availableKey: string };
 
@@ -240,12 +214,11 @@ function configureAgentProvider(
  * @internal Exported for testing
  */
 export function initMcpTelemetry(config: McpServerConfig): void {
+  const { name, packageName } = getAppIdentity();
   const scopeContext = {
-    "app.server.version": MCP_VERSION,
+    "app.server.version": CLI_VERSION,
     // Tells `@sentry/mcp-server` installs apart from `sentry mcp`.
-    "app.server.distribution": MCP_SERVER_VERSION
-      ? "@sentry/mcp-server"
-      : "sentry mcp",
+    "app.server.distribution": name === "sentry" ? "sentry mcp" : packageName,
     "app.transport": "stdio",
     "app.upstream.host": config.sentryHost,
     "app.url.full": config.mcpUrl,
@@ -271,7 +244,7 @@ export function initMcpTelemetry(config: McpServerConfig): void {
       },
     },
     // Always the running release; an env override would misreport it.
-    release: MCP_VERSION,
+    release: CLI_VERSION,
     // Same credential redaction as the CLI's own telemetry.
     transport: (transportOptions) => {
       const transport = makeNodeTransport(transportOptions);
@@ -349,11 +322,11 @@ export function installProcessHandlers(): (
   return exitAfterError;
 }
 
-/** Serve the MCP tools over stdio until the client disconnects. */
-export function serveMcpStdio(
+/** Serve the MCP tools over stdio. Resolves once the client disconnects. */
+export async function serveMcpStdio(
   config: McpServerConfig,
   options: McpServeOptions,
-): void {
+): Promise<void> {
   configureAgentProvider(config, options.env);
   initMcpTelemetry(config);
 
@@ -389,7 +362,14 @@ export function serveMcpStdio(
     experimentalMode: config.experimental,
     sdkVersion: "v2",
   });
-  startStdio(server, context).catch((error: unknown) => {
-    exitAfterError(error, "Server error:");
-  });
+  const connection = await startStdio(server, context).catch(
+    (error: unknown) => {
+      exitAfterError(error, "Server error:");
+      // exitAfterError ends the process; never hand control back.
+      return new Promise<never>(() => undefined);
+    },
+  );
+  await connection.closed;
+  // Send what the session recorded before the caller releases the network.
+  await flush(SENTRY_FLUSH_TIMEOUT_MS);
 }

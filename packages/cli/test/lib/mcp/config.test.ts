@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { McpMergedArgs } from "../../../src/lib/mcp/args.js";
 import { finalizeMcpConfig } from "../../../src/lib/mcp/config.js";
 import { ValidationError } from "../../../src/lib/errors.js";
@@ -6,7 +6,6 @@ import { ValidationError } from "../../../src/lib/errors.js";
 function finalize(input: Partial<McpMergedArgs>) {
   return finalizeMcpConfig({
     agentProviderFromFlag: false,
-    unknownArgs: [],
     ...input,
   });
 }
@@ -21,7 +20,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       url: "https://sentry.example.com",
-      unknownArgs: [],
     });
     expect(cfg.sentryHost).toBe("sentry.example.com");
     expect(cfg.sentryProtocol).toBe("https");
@@ -32,7 +30,6 @@ describe("finalizeMcpConfig", () => {
       accessToken: "tok",
       host: "sentry.internal:9000",
       insecureHttp: true,
-      unknownArgs: [],
     });
     expect(cfg.sentryHost).toBe("sentry.internal:9000");
     expect(cfg.sentryProtocol).toBe("http");
@@ -42,7 +39,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       openaiBaseUrl: "https://api.proxy.example/v1",
-      unknownArgs: [],
     });
     expect(cfg.openaiBaseUrl).toBe(
       new URL("https://api.proxy.example/v1").toString(),
@@ -54,7 +50,6 @@ describe("finalizeMcpConfig", () => {
       finalize({
         accessToken: "tok",
         openaiBaseUrl: "ftp://example.com",
-        unknownArgs: [],
       }),
     ).toThrow(/OPENAI base URL must use http or https scheme/);
   });
@@ -63,7 +58,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       agentProvider: "azure-openai",
-      unknownArgs: [],
     });
     expect(cfg.agentProvider).toBe("azure-openai");
   });
@@ -72,7 +66,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       agentProvider: "openrouter",
-      unknownArgs: [],
     });
     expect(cfg.agentProvider).toBe("openrouter");
   });
@@ -82,15 +75,14 @@ describe("finalizeMcpConfig", () => {
       finalize({
         accessToken: "tok",
         agentProvider: "bad-provider",
-        unknownArgs: [],
       }),
     ).toThrow(/Must be "openai", "azure-openai", "anthropic", or "openrouter"/);
   });
 
   it("throws on non-https URL", () => {
-    expect(() =>
-      finalize({ accessToken: "tok", url: "http://bad", unknownArgs: [] }),
-    ).toThrow(/must be a full HTTPS URL/);
+    expect(() => finalize({ accessToken: "tok", url: "http://bad" })).toThrow(
+      /must be a full HTTPS URL/,
+    );
   });
 
   it("throws when --insecure-http is used with --url", () => {
@@ -99,7 +91,6 @@ describe("finalizeMcpConfig", () => {
         accessToken: "tok",
         url: "https://sentry.example.com",
         insecureHttp: true,
-        unknownArgs: [],
       }),
     ).toThrow(/cannot be used with --url/);
   });
@@ -113,7 +104,6 @@ describe("finalizeMcpConfig", () => {
         accessToken: "tok",
         url: "http://sentry.internal:9000",
         insecureHttp: true,
-        unknownArgs: [],
       }),
     ).toThrow(/cannot be used with --url/);
   });
@@ -126,7 +116,6 @@ describe("finalizeMcpConfig", () => {
           accessToken: "tok",
           host,
           insecureHttp: true,
-          unknownArgs: [],
         }),
       ).toThrow(/only supported for self-hosted Sentry hosts/);
     },
@@ -138,7 +127,6 @@ describe("finalizeMcpConfig", () => {
       finalize({
         accessToken: "tok",
         skills: "invalid-skill",
-        unknownArgs: [],
       }),
     ).toThrow(/Invalid skills provided: invalid-skill/);
   });
@@ -148,7 +136,6 @@ describe("finalizeMcpConfig", () => {
       finalize({
         accessToken: "tok",
         skills: "inspect,invalid1,triage,invalid2",
-        unknownArgs: [],
       }),
     ).toThrow(/Invalid skills provided: invalid1, invalid2/);
   });
@@ -157,7 +144,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       skills: "inspect,triage",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("inspect")).toBe(true);
     expect(cfg.finalSkills.has("triage")).toBe(true);
@@ -170,7 +156,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       skills: "docs",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills).toEqual(new Set(["docs"]));
   });
@@ -180,7 +165,6 @@ describe("finalizeMcpConfig", () => {
       finalize({
         accessToken: "tok",
         skills: "preprod",
-        unknownArgs: [],
       }),
     ).toThrow(/Invalid skills provided: preprod/);
   });
@@ -190,7 +174,6 @@ describe("finalizeMcpConfig", () => {
       finalize({
         accessToken: "tok",
         skills: "invalid1,invalid2",
-        unknownArgs: [],
       }),
     ).toThrow(/Invalid skills provided/);
   });
@@ -198,7 +181,6 @@ describe("finalizeMcpConfig", () => {
   it("grants all active skills when no skills specified", () => {
     const cfg = finalize({
       accessToken: "tok",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.size).toBe(4);
     expect(cfg.finalSkills.has("inspect")).toBe(true);
@@ -213,7 +195,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       allSkills: true,
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.size).toBe(4);
     expect(cfg.finalSkills.has("inspect")).toBe(true);
@@ -229,7 +210,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       host: "us.sentry.io",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("seer")).toBe(true);
   });
@@ -238,7 +218,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       host: "sentry.example.com",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
     expect(cfg.finalSkills.has("inspect")).toBe(true);
@@ -251,7 +230,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       url: "https://sentry.example.com",
-      unknownArgs: [],
     });
     expect(cfg.sentryHost).toBe("sentry.example.com");
     expect(cfg.finalSkills.has("seer")).toBe(false);
@@ -262,7 +240,6 @@ describe("finalizeMcpConfig", () => {
       accessToken: "tok",
       host: "sentry.example.com",
       skills: "inspect,seer",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills).toEqual(new Set(["inspect", "seer"]));
   });
@@ -272,7 +249,6 @@ describe("finalizeMcpConfig", () => {
       accessToken: "tok",
       host: "sentry.example.com",
       allSkills: true,
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("seer")).toBe(true);
     expect(cfg.finalSkills.size).toBe(4);
@@ -283,7 +259,6 @@ describe("finalizeMcpConfig", () => {
       accessToken: "tok",
       host: "sentry.example.com",
       disableSkills: "seer",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
     expect(cfg.finalSkills.size).toBe(3);
@@ -295,7 +270,6 @@ describe("finalizeMcpConfig", () => {
         accessToken: "tok",
         allSkills: true,
         skills: "inspect",
-        unknownArgs: [],
       }),
     ).toThrow(/--all-skills cannot be combined with --skills/);
   });
@@ -305,7 +279,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       disableSkills: "seer",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
     expect(cfg.finalSkills.size).toBe(3);
@@ -321,7 +294,6 @@ describe("finalizeMcpConfig", () => {
       accessToken: "tok",
       skills: "inspect,triage,seer",
       disableSkills: "seer",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
     expect(cfg.finalSkills.size).toBe(2);
@@ -334,7 +306,6 @@ describe("finalizeMcpConfig", () => {
       finalize({
         accessToken: "tok",
         disableSkills: "invalid-skill",
-        unknownArgs: [],
       }),
     ).toThrow(/--disable-skills provided: invalid-skill/);
   });
@@ -345,7 +316,6 @@ describe("finalizeMcpConfig", () => {
         accessToken: "tok",
         skills: "seer",
         disableSkills: "seer",
-        unknownArgs: [],
       }),
     ).toThrow(/All skills have been disabled/);
   });
@@ -354,7 +324,6 @@ describe("finalizeMcpConfig", () => {
     const cfg = finalize({
       accessToken: "tok",
       disableSkills: "seer,docs",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.has("seer")).toBe(false);
     expect(cfg.finalSkills.has("docs")).toBe(false);
@@ -366,35 +335,10 @@ describe("finalizeMcpConfig", () => {
       accessToken: "tok",
       skills: "inspect,triage",
       disableSkills: "seer",
-      unknownArgs: [],
     });
     expect(cfg.finalSkills.size).toBe(2);
     expect(cfg.finalSkills.has("inspect")).toBe(true);
     expect(cfg.finalSkills.has("triage")).toBe(true);
-  });
-
-  it("rejects unknown arguments with a pointer to --help", () => {
-    expect(() => finalize({ unknownArgs: ["--bogus"] })).toThrow(
-      /Invalid argument\(s\): --bogus\nRun `sentry mcp --help`/,
-    );
-  });
-
-  it("points @sentry/mcp-server installs at their own --help", async () => {
-    vi.stubGlobal("SENTRY_MCP_SERVER_VERSION", "1.2.3");
-    vi.resetModules();
-    try {
-      const { finalizeMcpConfig: finalizeBundled } =
-        await import("../../../src/lib/mcp/config.js");
-      expect(() =>
-        finalizeBundled({
-          agentProviderFromFlag: false,
-          unknownArgs: ["--bogus"],
-        }),
-      ).toThrow(/Run `sentry-mcp --help`/);
-    } finally {
-      vi.unstubAllGlobals();
-      vi.resetModules();
-    }
   });
 
   it("reports invalid input as a CLI validation error", () => {

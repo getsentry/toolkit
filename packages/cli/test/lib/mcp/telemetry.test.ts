@@ -84,15 +84,15 @@ describe("initMcpTelemetry", () => {
   });
 
   test("tags @sentry/mcp-server installs", async () => {
-    vi.stubGlobal("SENTRY_MCP_SERVER_VERSION", "1.2.3");
-    vi.resetModules();
+    const { setAppIdentity } = await import("../../../src/lib/app-identity.js");
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
     const options = await initOptions();
     expect(options.initialScope).toMatchObject({
       tags: {
         "app.server.distribution": "@sentry/mcp-server",
-        "app.server.version": "1.2.3",
+        "app.server.version": CLI_VERSION,
       },
     });
-    expect(options.release).toBe("1.2.3");
+    expect(options.release).toBe(CLI_VERSION);
   });
 });

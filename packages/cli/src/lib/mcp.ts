@@ -8,7 +8,9 @@ import {
   refreshToken,
 } from "./db/auth.js";
 import { getEnv } from "./env.js";
-import { AuthError, HostScopeError, ValidationError } from "./errors.js";
+import { AuthError, HostScopeError } from "./errors.js";
+import { type McpFlags, mergeMcpArgs, parseMcpEnv } from "./mcp/args.js";
+import { finalizeMcpConfig } from "./mcp/config.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 
@@ -17,44 +19,39 @@ type McpTarget = {
   sentryProtocol: "http" | "https";
 };
 
-function hasSentryTargetArg(args: readonly string[]): boolean {
-  return args.some(
-    (arg) =>
-      arg === "--host" ||
-      arg.startsWith("--host=") ||
-      arg === "--url" ||
-      arg.startsWith("--url="),
-  );
+function hasSentryTarget(flags: McpFlags): boolean {
+  return flags.host !== undefined || flags.url !== undefined;
 }
 
 /**
  * Translate the CLI's URL setting into MCP's host/protocol flags.
  *
- * The MCP parser intentionally rejects insecure SENTRY_URL values, while the
- * CLI uses them for self-hosted defaults. Passing explicit flags preserves the
- * selected CLI host without letting SENTRY_URL override --insecure-http.
+ * The MCP config intentionally rejects insecure `--url` values, while the
+ * CLI uses them for self-hosted defaults. Setting `--host` (plus
+ * `--insecure-http` for http) keeps the selected CLI host without letting
+ * SENTRY_URL override --insecure-http.
  */
-export function prepareMcpServerArgs(
-  args: readonly string[],
+export function withConfiguredTarget(
+  flags: McpFlags,
   sentryUrl = getConfiguredSentryUrl(),
-): string[] {
-  if (!sentryUrl || hasSentryTargetArg(args)) {
-    return [...args];
+): McpFlags {
+  if (!sentryUrl || hasSentryTarget(flags)) {
+    return flags;
   }
 
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- invalid URLs are passed through to the MCP parser for its normal validation error.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- invalid URLs are passed through as --url for the config's normal validation error.
   try {
     const url = new URL(sentryUrl);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return [...args, `--url=${sentryUrl}`];
+      return { ...flags, url: sentryUrl };
     }
-    return [
-      ...args,
-      `--host=${url.host}`,
-      ...(url.protocol === "http:" ? ["--insecure-http"] : []),
-    ];
+    return {
+      ...flags,
+      host: url.host,
+      "insecure-http": flags["insecure-http"] || url.protocol === "http:",
+    };
   } catch {
-    return [...args, `--url=${sentryUrl}`];
+    return { ...flags, url: sentryUrl };
   }
 }
 
@@ -244,27 +241,15 @@ export function resolveStaticMcpAccessToken(
 }
 
 /**
- * Start the local stdio server without introducing a second auth flow.
+ * Run the local stdio server without introducing a second auth flow.
  *
- * Resolves `true` once the server is running, or `false` when the invocation
- * only printed output (`--help`, `--version`) and the process can exit.
+ * Resolves once the client disconnects.
  */
-export async function startMcpServer(args: string[]): Promise<boolean> {
-  if (args[0] === "auth") {
-    throw new ValidationError(
-      "Use `sentry auth` to manage credentials for `sentry mcp`.",
-    );
-  }
-
+export async function serveMcp(flags: McpFlags): Promise<void> {
   const env = getEnv();
-  const { parseMcpInvocation, serveMcpStdio } = await import("./mcp/server.js");
-  const invocation = parseMcpInvocation(prepareMcpServerArgs(args), env);
-  if (invocation.kind === "output") {
-    process.stdout.write(`${invocation.text}\n`);
-    return false;
-  }
-
-  const { config } = invocation;
+  const config = finalizeMcpConfig(
+    mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env)),
+  );
   const staticToken = config.accessToken
     ? resolveStaticMcpAccessToken({
         ...config,
@@ -279,22 +264,22 @@ export async function startMcpServer(args: string[]): Promise<boolean> {
   // overrides the target, or the token is an org token whose host claim
   // `resolveStaticMcpAccessToken` already matched against the target.
   if (
-    !(
-      hasSentryTargetArg(args) ||
-      (staticToken && parseSntrysClaim(staticToken))
-    )
+    !(hasSentryTarget(flags) || (staticToken && parseSntrysClaim(staticToken)))
   ) {
     const { assertRcUrlTrusted } = await import("./sentryclirc.js");
     await assertRcUrlTrusted(process.cwd());
   }
 
+  // Loaded only now: mcp-core's server, the agent providers, and the MCP
+  // telemetry are not needed for --help or setup errors.
+  const { serveMcpStdio } = await import("./mcp/server.js");
   if (staticToken) {
-    serveMcpStdio(config, { accessToken: staticToken, env });
-    return true;
+    await serveMcpStdio(config, { accessToken: staticToken, env });
+    return;
   }
 
   const { token, pin } = await resolveMcpCredentialWithLogin(config);
-  serveMcpStdio(config, {
+  await serveMcpStdio(config, {
     accessToken: token,
     // Force a refresh past the usual threshold: the upstream already rejected
     // the current token, so mirror `--follow`'s refresh-on-401 behavior. The
@@ -303,5 +288,4 @@ export async function startMcpServer(args: string[]): Promise<boolean> {
       (await resolveCliMcpCredential(config, { force: true, pin })).token,
     env,
   });
-  return true;
 }

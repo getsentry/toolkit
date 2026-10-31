@@ -6,6 +6,7 @@
  * Commands are auto-generated from Stricli's route structure.
  */
 
+import { asRunningAppCommand } from "./app-identity.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
 import { detectAgent } from "./detect-agent.js";
@@ -836,7 +837,7 @@ function formatCommandHuman(cmd: CommandInfo): string {
  */
 function formatGroupHuman(group: RouteInfo): string {
   const lines: string[] = [];
-  lines.push(`sentry ${group.name}`);
+  lines.push(asRunningAppCommand(`sentry ${group.name}`));
   lines.push("");
   lines.push(`  ${group.brief}`);
   lines.push("");

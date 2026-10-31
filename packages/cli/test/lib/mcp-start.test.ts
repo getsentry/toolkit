@@ -25,6 +25,7 @@ import {
   useEnvSandbox,
   useTestConfigDir,
 } from "../helpers.js";
+import { parseMcpFlags } from "./mcp/parse-flags.js";
 
 type Served = { config: McpServerConfig; options: McpServeOptions };
 
@@ -55,9 +56,11 @@ vi.mock("../../src/lib/db/auth.js", async (importOriginal) => {
 
 vi.mock("../../src/lib/mcp/server.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/mcp/server.js")>()),
-  serveMcpStdio: vi.fn((config: McpServerConfig, options: McpServeOptions) => {
-    served.calls.push({ config, options });
-  }),
+  serveMcpStdio: vi.fn(
+    async (config: McpServerConfig, options: McpServeOptions) => {
+      served.calls.push({ config, options });
+    },
+  ),
 }));
 
 useTestConfigDir("mcp-start-");
@@ -81,9 +84,14 @@ afterEach(async () => {
   await resetHostScopingState();
 });
 
+/** Run `sentry mcp <args>` up to the (mocked) stdio server. */
+async function serve(args: string[]): Promise<void> {
+  const { serveMcp } = await import("../../src/lib/mcp.js");
+  await serveMcp(await parseMcpFlags(args));
+}
+
 async function start(args: string[]): Promise<Served> {
-  const { startMcpServer } = await import("../../src/lib/mcp.js");
-  await expect(startMcpServer(args)).resolves.toBe(true);
+  await serve(args);
   expect(served.calls).toHaveLength(1);
   const [call] = served.calls;
   if (!call) {
@@ -92,7 +100,7 @@ async function start(args: string[]): Promise<Served> {
   return call;
 }
 
-describe("startMcpServer credential wiring", () => {
+describe("serveMcp credential wiring", () => {
   test("serves with the CLI session token", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",
@@ -117,7 +125,7 @@ describe("startMcpServer credential wiring", () => {
   });
 });
 
-describe("startMcpServer account pinning", () => {
+describe("serveMcp account pinning", () => {
   const originalFetch = globalThis.fetch;
   const refreshedWith: string[] = [];
 
@@ -251,7 +259,7 @@ describe("startMcpServer account pinning", () => {
   });
 });
 
-describe("startMcpServer static tokens", () => {
+describe("serveMcp static tokens", () => {
   test("uses --access-token without a CLI session and never refreshes it", async () => {
     await clearAuth();
 
@@ -292,10 +300,9 @@ describe("startMcpServer static tokens", () => {
   });
 
   test("rejects a malformed static token", async () => {
-    const { startMcpServer } = await import("../../src/lib/mcp.js");
-    await expect(
-      startMcpServer(["--access-token=has a space"]),
-    ).rejects.toBeInstanceOf(MalformedAuthTokenError);
+    await expect(serve(["--access-token=has a space"])).rejects.toBeInstanceOf(
+      MalformedAuthTokenError,
+    );
     expect(served.calls).toHaveLength(0);
   });
 
@@ -339,15 +346,14 @@ describe("startMcpServer static tokens", () => {
       org: "acme",
     });
 
-    const { startMcpServer } = await import("../../src/lib/mcp.js");
     await expect(
-      startMcpServer([`--access-token=${token}`, "--host=evil.example.com"]),
+      serve([`--access-token=${token}`, "--host=evil.example.com"]),
     ).rejects.toBeInstanceOf(HostScopeError);
     expect(served.calls).toHaveLength(0);
   });
 });
 
-describe("startMcpServer .sentryclirc URLs", () => {
+describe("serveMcp .sentryclirc URLs", () => {
   /** Run from a directory whose `.sentryclirc` points at `url`. */
   async function inRcDir(url: string): Promise<void> {
     const dir = mkdtempSync(join(tmpdir(), "mcp-start-rc-"));
@@ -375,11 +381,10 @@ describe("startMcpServer .sentryclirc URLs", () => {
     await inRcDir("https://evil.example.com");
     process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
 
-    const { startMcpServer } = await import("../../src/lib/mcp.js");
-    await expect(startMcpServer([])).rejects.toBeInstanceOf(HostScopeError);
-    await expect(
-      startMcpServer(["--access-token=static-token"]),
-    ).rejects.toBeInstanceOf(HostScopeError);
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    await expect(serve(["--access-token=static-token"])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
     expect(served.calls).toHaveLength(0);
   });
 
@@ -425,10 +430,9 @@ describe("startMcpServer .sentryclirc URLs", () => {
       org: "acme",
     });
 
-    const { startMcpServer } = await import("../../src/lib/mcp.js");
-    await expect(
-      startMcpServer([`--access-token=${token}`]),
-    ).rejects.toBeInstanceOf(HostScopeError);
+    await expect(serve([`--access-token=${token}`])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
     expect(served.calls).toHaveLength(0);
   });
 
@@ -441,23 +445,4 @@ describe("startMcpServer .sentryclirc URLs", () => {
     const { config } = await start(["--access-token=static-token"]);
     expect(config.sentryHost).toBe("sentry.example.com");
   });
-});
-
-describe("startMcpServer output flags", () => {
-  test.each([["--help"], ["--version"]])(
-    "prints %s to stdout without serving",
-    async (flag) => {
-      const write = vi
-        .spyOn(process.stdout, "write")
-        .mockImplementation(() => true);
-      const { startMcpServer } = await import("../../src/lib/mcp.js");
-
-      await expect(startMcpServer([flag])).resolves.toBe(false);
-
-      expect(served.calls).toHaveLength(0);
-      expect(write).toHaveBeenCalledWith(
-        expect.stringMatching(/^(Usage: sentry mcp|sentry mcp \S+)/),
-      );
-    },
-  );
 });

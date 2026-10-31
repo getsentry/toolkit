@@ -6,15 +6,15 @@ import {
   MalformedAuthTokenError,
 } from "../../src/lib/errors.js";
 import {
-  prepareMcpServerArgs,
   resolveCliMcpCredential,
-  startMcpServer,
+  withConfiguredTarget,
 } from "../../src/lib/mcp.js";
 import {
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
 } from "../helpers.js";
+import { parseMcpFlags } from "./mcp/parse-flags.js";
 
 useTestConfigDir("mcp-auth-");
 useEnvSandbox([
@@ -104,57 +104,68 @@ describe("resolveCliMcpCredential", () => {
       }),
     ).rejects.toBeInstanceOf(MalformedAuthTokenError);
   });
-
-  test("does not expose a second MCP authentication flow", async () => {
-    await expect(startMcpServer(["auth", "login"])).rejects.toThrow(
-      "Use `sentry auth` to manage credentials for `sentry mcp`.",
-    );
-  });
 });
 
-describe("prepareMcpServerArgs", () => {
-  test("uses SENTRY_HOST before SENTRY_URL for self-hosted instances", () => {
+/** Target flags `sentry mcp <args>` hands the server, as `--host`/`--url`. */
+async function targetFlags(args: string[], sentryUrl?: string) {
+  const flags = withConfiguredTarget(await parseMcpFlags(args), sentryUrl);
+  return {
+    host: flags.host,
+    url: flags.url,
+    insecureHttp: flags["insecure-http"],
+  };
+}
+
+describe("withConfiguredTarget", () => {
+  test("uses SENTRY_HOST before SENTRY_URL for self-hosted instances", async () => {
     process.env.SENTRY_HOST = "http://sentry.internal:9000";
     process.env.SENTRY_URL = "https://sentry.example.com";
 
-    expect(prepareMcpServerArgs([])).toEqual([
-      "--host=sentry.internal:9000",
-      "--insecure-http",
-    ]);
+    expect(await targetFlags([])).toEqual({
+      host: "sentry.internal:9000",
+      url: undefined,
+      insecureHttp: true,
+    });
   });
 
-  test("translates an insecure CLI URL into MCP host flags", () => {
-    expect(prepareMcpServerArgs([], "http://sentry.internal:9000")).toEqual([
-      "--host=sentry.internal:9000",
-      "--insecure-http",
-    ]);
+  test("translates an insecure CLI URL into MCP host flags", async () => {
+    expect(await targetFlags([], "http://sentry.internal:9000")).toEqual({
+      host: "sentry.internal:9000",
+      url: undefined,
+      insecureHttp: true,
+    });
   });
 
-  test("translates a secure SENTRY_HOST origin into a host flag", () => {
+  test("translates a secure SENTRY_HOST origin into a host flag", async () => {
     process.env.SENTRY_HOST = "https://sentry.example.com";
 
     // A documented `SENTRY_HOST=https://…` export must not reach the MCP
-    // parser raw (it rejects origins); it becomes a plain --host instead.
-    expect(prepareMcpServerArgs([])).toEqual(["--host=sentry.example.com"]);
+    // config raw (it rejects origins); it becomes a plain --host instead.
+    expect(await targetFlags([])).toEqual({
+      host: "sentry.example.com",
+      url: undefined,
+      insecureHttp: false,
+    });
   });
 
-  test("preserves an explicit MCP target over the CLI URL", () => {
+  test("preserves an explicit MCP target over the CLI URL", async () => {
     expect(
-      prepareMcpServerArgs(
-        ["--host=sentry.example.com"],
-        "http://localhost:9000",
-      ),
-    ).toEqual(["--host=sentry.example.com"]);
+      await targetFlags(["--host=sentry.example.com"], "http://localhost:9000"),
+    ).toEqual({
+      host: "sentry.example.com",
+      url: undefined,
+      insecureHttp: false,
+    });
   });
 
-  test("keeps an explicit --host --insecure-http over the CLI URL", () => {
+  test("keeps an explicit --host --insecure-http over the CLI URL", async () => {
     // The CLI http URL must not sneak in an extra --host that MCP would
     // prefer over the user's explicit insecure target.
     expect(
-      prepareMcpServerArgs(
+      await targetFlags(
         ["--host=localhost:9000", "--insecure-http"],
         "http://sentry.example.com",
       ),
-    ).toEqual(["--host=localhost:9000", "--insecure-http"]);
+    ).toEqual({ host: "localhost:9000", url: undefined, insecureHttp: true });
   });
 });

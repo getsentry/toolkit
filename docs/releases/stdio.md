@@ -25,17 +25,34 @@ The package is a single file with no runtime dependencies.
 `packages/mcp-server/script/bundle.ts` bundles the CLI's
 `packages/cli/src/mcp-server.ts` into `dist/sentry-mcp.cjs`:
 
-- Full flags, environment variables, tools, and self-hosted support, using the
-  CLI's credential store.
-- `sentry-mcp auth login` runs the CLI's device flow with plain-text output.
-  Other `auth` subcommands point to `npx -y sentry auth ...`.
-- CLI-only code stays out: commands, the markdown renderer, agent skills,
-  completions, terminal images, the Ink UI, and debug-file processing. The
-  SQLite WASM fallback is left out too, so the package needs Node.js 22.15+.
-  The bundle script fails if any of these reach the output or the file grows
-  past its size budget. Packages that only those code paths import (Ink,
-  React, the SQLite WASM fallback) resolve to empty stub modules, so the
-  output never `require`s a package the tarball does not ship.
+- The entry runs the CLI's own runner (`packages/cli/src/cli.ts`) with a
+  smaller application, `packages/cli/src/mcp-server-app.ts`: `mcp` (the
+  default command), `auth`, and `help`. So `sentry-mcp` starts the server,
+  `sentry-mcp auth login|status|list|switch|logout` are the CLI's `auth`
+  commands, and flags and `--help` come from the same Stricli definitions as
+  `sentry mcp`. Hints name the package: `sentry-mcp auth login`, or
+  `npx -y @sentry/mcp-server auth login` when npx started it
+  (`packages/cli/src/lib/app-identity.ts`).
+- The runner starts `mcp` without the CLI's telemetry, error recovery, and
+  update check: the server owns stdout and reports its own telemetry. The
+  command resolves when the client closes stdin, and only then does the
+  runner release the network. The server stack (`@sentry/mcp-core`'s server
+  and tools, the agent providers, MCP telemetry) loads only when the server
+  starts, and a bare `--version` returns before the application loads.
+- stdio runs on MCP SDK v2 (`@modelcontextprotocol/server`), like the
+  Cloudflare worker. The bundle stubs SDK v1's `McpServer`, which
+  `buildServer()` still imports for its default, and `zod/v3`, which only v1
+  and an unused `@ai-sdk/provider-utils` Zod 3 path import. Zod keeps only its
+  English locale (`packages/cli/script/lib/zod-locales-plugin.ts`).
+- CLI-only code stays out: the other commands, agent skills, completions,
+  syntax highlighting, the Ink UI, and debug-file processing. Help and `auth`
+  output render code blocks without colors, and account pickers take the
+  account as an argument instead of the Ink picker. The SQLite WASM fallback
+  is left out too, so the package needs Node.js 22.15+. The bundle script
+  fails if any of these reach the output or the file grows past its size
+  budget. Packages that only those code paths import resolve to empty stub
+  modules, so the output never `require`s a package the tarball does not
+  ship.
 
 `pnpm --filter @sentry/mcp-server run bundle` builds it and `run test:bundle`
 smoke-tests the result.
@@ -119,8 +136,10 @@ While iterating, `pnpm -w run cli --transport stdio` (without
 
 ## References
 
-- Command entry: `packages/cli/src/lib/mcp.ts`
-- Host (flags, env, telemetry): `packages/cli/src/lib/mcp/`
+- Command: `packages/cli/src/commands/mcp.ts` (flags and help)
+- Credentials and startup: `packages/cli/src/lib/mcp.ts`
+- Host (env, config, telemetry): `packages/cli/src/lib/mcp/`
 - stdio transport: `packages/mcp-core/src/transports/stdio.ts`
 - `@sentry/mcp-server` entry: `packages/cli/src/mcp-server.ts`
+- `@sentry/mcp-server` application: `packages/cli/src/mcp-server-app.ts`
 - `@sentry/mcp-server` bundle: `packages/mcp-server/script/bundle.ts`

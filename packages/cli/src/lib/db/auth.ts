@@ -68,7 +68,7 @@ import { getDatabase } from "./index.js";
 import { clearCompletionCache } from "./completion-cache.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";
-import { LOGIN_COMMAND } from "../login-command.js";
+import { getLoginCommand } from "../app-identity.js";
 
 /** Refresh when less than 10% of token lifetime remains */
 export const REFRESH_THRESHOLD = 0.1;
@@ -1729,7 +1729,7 @@ export async function refreshToken(
     }
     throw new AuthError(
       "expired",
-      `Session expired and no refresh token available. Run '${LOGIN_COMMAND}'.`,
+      `Session expired and no refresh token available. Run '${getLoginCommand()}'.`,
     );
   }
 

@@ -36,7 +36,7 @@ import {
   getActiveTokenHost,
   isRequestOriginTrustedForCustomHeaders,
 } from "./token-host.js";
-import { URL_LOGIN_COMMAND } from "./login-command.js";
+import { getUrlLoginCommand } from "./app-identity.js";
 
 const log = logger.withTag("custom-headers");
 
@@ -353,7 +353,7 @@ export function applyCustomHeaders(
       untrustedDestinationWarningLogged = true;
       log.warn(
         "Skipping custom headers for request to untrusted host. " +
-          `If this is legitimate, run '${URL_LOGIN_COMMAND} <url>' against the intended instance.`,
+          `If this is legitimate, run '${getUrlLoginCommand()} <url>' against the intended instance.`,
       );
     }
     return;
