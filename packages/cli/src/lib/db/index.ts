@@ -16,6 +16,7 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
+import { createResilientDatabase } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
 import { Database } from "./sqlite.js";
 
@@ -38,9 +39,9 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Probability of running cleanup on write operations */
 const CLEANUP_PROBABILITY = 0.1;
 
-/** Traced database wrapper (returned by getDatabase) */
+/** Wrapped database (returned by getDatabase) */
 let db: Database | null = null;
-/** Raw database without tracing (used for repair operations) */
+/** Raw, unwrapped database (used for repair operations) */
 let rawDb: Database | null = null;
 let dbOpenedPath: string | null = null;
 /**
@@ -223,11 +224,12 @@ export function getDatabase(): Database {
       migrateFromJson(rawDb);
     }
 
-    // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node (~100ms).
-    // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
+    // Both wrappers repair schema errors and skip read-only writes; the traced
+    // one also adds query spans. Lazy-require telemetry to avoid a top-level
+    // import of @sentry/node (~100ms). Shell completions set
+    // SENTRY_CLI_NO_TELEMETRY=1 to skip it.
     if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
-      db = rawDb;
+      db = createResilientDatabase(rawDb);
     } else {
       const { createTracedDatabase } = _require("../telemetry.js") as {
         createTracedDatabase: (d: Database) => Database;
