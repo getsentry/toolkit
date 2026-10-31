@@ -64,7 +64,9 @@ import { trialRoute } from "./commands/trial/index.js";
 import { listCommand as trialListCommand } from "./commands/trial/list.js";
 import { wasmSplitCommand } from "./commands/wasm-split.js";
 import { buildCliApplication } from "./lib/application.js";
+import { setGraphicsBanner } from "./lib/help.js";
 import { buildRouteMap } from "./lib/route-map.js";
+import { graphicsBanner, graphicsBannerExtraRows } from "./lib/sixel.js";
 
 /**
  * Plural alias → singular route name mapping.
@@ -201,4 +203,12 @@ export const routes = buildRouteMap({
 
 export const app = buildCliApplication(routes, {
   pluralAliases: PLURAL_TO_SINGULAR,
+});
+
+// Help shows the kitty/sixel image banner on capable terminals. Registered
+// here rather than imported by `lib/help.ts`, so applications without it
+// (`@sentry/mcp-server`) leave the image code out of their bundle.
+setGraphicsBanner({
+  render: graphicsBanner,
+  extraRows: graphicsBannerExtraRows,
 });

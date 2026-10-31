@@ -23,24 +23,29 @@ const CLI_ROOT = resolve(PACKAGE_ROOT, "../cli");
 const OUTFILE = resolve(PACKAGE_ROOT, "dist/sentry-mcp.cjs");
 
 /**
- * Output is 3,689,911 bytes (3.52 MiB) as of the CLI-runner build. The budget
- * leaves about 240 KB for new tools and commands, not enough for a heavy CLI
- * dependency to slip in unnoticed.
+ * Output is 3,643,699 bytes (3.47 MiB) once help's image banner is left out.
+ * The budget leaves about 290 KB for new tools and commands, not enough for a
+ * heavy CLI dependency to slip in unnoticed.
  */
 const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
 
 /**
  * Inputs that serve the CLI but not this package: commands other than `mcp`,
  * `auth`, and `help`, agent skills, shell completions, syntax highlighting,
- * the Ink UI, `sentry init`, build/sourcemap/debug-file processing, the
+ * the Ink UI, terminal images (the kitty/sixel help banner and dashboards,
+ * and `pngjs`), `sentry init`, build/sourcemap/debug-file processing, the
  * SQLite WASM fallback for Node.js < 22.15, Zod 3, and MCP SDK v1.
+ *
+ * `jpeg-js` is not on the list: mcp-core's snapshot and attachment tools
+ * decode and encode JPEGs with it (`internal/blob-utils.ts`).
  */
 const FORBIDDEN_INPUTS: ReadonlyArray<RegExp> = [
   /[\\/]packages[\\/]cli[\\/]src[\\/](?:app\.ts$|commands[\\/](?!auth[\\/]|help\.ts$|mcp\.ts$))/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:agent-skills|complete|completions)\.ts$/,
-  /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/]formatters[\\/]sixel-dashboard\.ts$/,
+  /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:sixel|sixel-image|kitty-image|formatters[\\/]sixel-dashboard)\.ts$/,
+  /[\\/]packages[\\/]cli[\\/]src[\\/]generated[\\/]banner-image\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:bash-hook|build|dif|init|react-native|snapshots|sourcemap|wasm)[\\/]/,
-  /[\\/]node_modules[\\/](?:cli-highlight|highlight\.js|parse5|ink|ink-spinner|react|react-reconciler|yoga-layout|@sentry[\\/]symbolic|node-sqlite3-wasm)[\\/]/,
+  /[\\/]node_modules[\\/](?:cli-highlight|highlight\.js|parse5|ink|ink-spinner|react|react-reconciler|yoga-layout|@sentry[\\/]symbolic|node-sqlite3-wasm|pngjs)[\\/]/,
   /[\\/]node_modules[\\/](?:zod[\\/]v3|@modelcontextprotocol[\\/]sdk)[\\/]/,
 ];
 
