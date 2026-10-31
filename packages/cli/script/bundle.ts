@@ -7,6 +7,7 @@ import pkg from "../package.json";
 import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
 import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
 import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
+import { zodV3StubPlugin } from "./lib/zod-v3-stub-plugin.js";
 import { buildCoreDeclarations, SDK_TYPES_PATH } from "./sdk-declarations.js";
 import { requireAliasPlugin } from "./lib/require-alias-plugin.js";
 import { textImportPlugin } from "./text-import-plugin.js";
@@ -229,6 +230,7 @@ const zlibNamespaceShimPlugin: Plugin = {
 const plugins: Plugin[] = [
   sentrySourcemapPlugin,
   zodEnglishLocalesPlugin,
+  zodV3StubPlugin,
   textImportPlugin,
   requireAliasPlugin,
 ];

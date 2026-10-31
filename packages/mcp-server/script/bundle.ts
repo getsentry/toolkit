@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { build, type Metafile, type Plugin } from "esbuild";
 import { requireAliasPlugin } from "../../cli/script/lib/require-alias-plugin.js";
 import { zodEnglishLocalesPlugin } from "../../cli/script/lib/zod-locales-plugin.js";
+import { zodV3StubPlugin } from "../../cli/script/lib/zod-v3-stub-plugin.js";
 import { textImportPlugin } from "../../cli/script/text-import-plugin.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,14 +52,11 @@ const NODE_VERSION_CHECK = `{let v=process.versions.node.split(".").map(Number);
  * (Node.js < 22.15, which the version check rejects), the symbolic WASM
  * binary, and the Ink UI. They resolve to an empty module instead of a
  * `require()` of a package the tarball does not ship, so no dangling import
- * reaches the output.
- *
- * Zod 3 is stubbed too: `zod/v3` is only imported by `@ai-sdk/provider-utils`
- * code that never runs for Zod 4 schemas. The CLI's own bundles keep it
- * (`@mastra/schema-compat` uses Zod 3).
+ * reaches the output. `zod/v3` is stubbed by {@link zodV3StubPlugin}, shared
+ * with the CLI bundles.
  */
 const STUBBED_MODULES =
-  /^(?:node-sqlite3-wasm|@sentry\/symbolic\/symbolic_bg\.wasm|ink|ink-spinner|react|react-reconciler|react-devtools-core|yoga-layout|zod\/v3)(?:\/.*)?$/;
+  /^(?:node-sqlite3-wasm|@sentry\/symbolic\/symbolic_bg\.wasm|ink|ink-spinner|react|react-reconciler|react-devtools-core|yoga-layout)(?:\/.*)?$/;
 
 const stubModulesPlugin: Plugin = {
   name: "stub-cli-only-modules",
@@ -139,6 +137,7 @@ const result = await build({
     textImportPlugin,
     requireAliasPlugin,
     zodEnglishLocalesPlugin,
+    zodV3StubPlugin,
   ],
 });
 
