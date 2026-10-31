@@ -16,6 +16,7 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
+import { createResilientDatabase } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
 import { Database } from "./sqlite.js";
 
@@ -38,9 +39,9 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Probability of running cleanup on write operations */
 const CLEANUP_PROBABILITY = 0.1;
 
-/** Traced database wrapper (returned by getDatabase) */
+/** Wrapped database (returned by getDatabase) */
 let db: Database | null = null;
-/** Raw database without tracing (used for repair operations) */
+/** Raw, unwrapped database (used for repair operations) */
 let rawDb: Database | null = null;
 let dbOpenedPath: string | null = null;
 /**
@@ -223,8 +224,11 @@ export function getDatabase(): Database {
       migrateFromJson(rawDb);
     }
 
-    // Wrap with tracing proxy for automatic query instrumentation.
-    db = lazyTelemetry()?.createTracedDatabase(rawDb) ?? rawDb;
+    // Both wrappers repair schema errors and skip read-only writes; the traced
+    // one also adds query spans when telemetry is on.
+    db =
+      lazyTelemetry()?.createTracedDatabase(rawDb) ??
+      createResilientDatabase(rawDb);
     dbOpenedPath = dbPath;
     registerExitHandler();
 
