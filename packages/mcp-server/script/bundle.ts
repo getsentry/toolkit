@@ -23,8 +23,8 @@ const CLI_ROOT = resolve(PACKAGE_ROOT, "../cli");
 const OUTFILE = resolve(PACKAGE_ROOT, "dist/sentry-mcp.cjs");
 
 /**
- * Output is 3,643,699 bytes (3.47 MiB) once help's image banner is left out.
- * The budget leaves about 290 KB for new tools and commands, not enough for a
+ * Output is 3,624,475 bytes (3.46 MiB) once help's image banner is left out.
+ * The budget leaves about 300 KB for new tools and commands, not enough for a
  * heavy CLI dependency to slip in unnoticed.
  */
 const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
