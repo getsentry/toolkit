@@ -238,12 +238,23 @@ export function getDatabase(): Database {
 }
 
 /**
+ * `true` in the npm package's `dist/complete.cjs` (defined in
+ * `script/bundle.ts`), so esbuild drops the telemetry `require` below from
+ * that bundle. Undefined when running from source.
+ */
+declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
+
+/**
  * The telemetry module, required lazily so the database modules never import
  * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
  * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
  */
 function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
-  if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
+  if (
+    (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
+      SENTRY_CLI_COMPLETION_BUILD) ||
+    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
+  ) {
     return;
   }
   return _require("../telemetry.js") as typeof import("../telemetry.js");

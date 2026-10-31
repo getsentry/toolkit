@@ -257,25 +257,6 @@ const plugins: Plugin[] = [
   requireAliasPlugin,
 ];
 
-const TELEMETRY_REQUIRE_RE = /^\.\.\/telemetry\.js$/;
-
-/**
- * Leave telemetry (and `@sentry/node`) out of `dist/complete.cjs`.
- * `runCompletion` turns telemetry off, so the lazy `require` of it in
- * `src/lib/db/index.ts` never runs there; bundling it would only make every
- * TAB press parse the SDK.
- */
-const omitTelemetryPlugin: Plugin = {
-  name: "omit-telemetry",
-  setup(b) {
-    b.onResolve({ filter: TELEMETRY_REQUIRE_RE }, (args) =>
-      args.kind === "require-call"
-        ? { path: args.path, external: true }
-        : undefined,
-    );
-  },
-};
-
 if (process.env.SENTRY_AUTH_TOKEN) {
   console.log("  Sentry auth token found, source maps will be uploaded");
 } else {
@@ -334,6 +315,9 @@ const commonDefine: Record<string, string> = {
   // Tree-shakes the SDK's runtime module hooks, which can't instrument a
   // bundle and would hook the host app in library mode.
   __SENTRY_CHANNEL_INJECTION__: "false",
+  // `true` only in `dist/complete.cjs`: drops the lazy telemetry `require`
+  // (and `@sentry/node`) from `src/lib/db/index.ts` there.
+  SENTRY_CLI_COMPLETION_BUILD: "false",
 };
 
 // In an ESM bundle, `require`, `__dirname`, and `__filename` don't exist, but
@@ -370,8 +354,11 @@ const completeResult = await build({
   format: "cjs",
   outfile: "./dist/complete.cjs",
   inject: ["./script/import-meta-url.js"],
-  define: { ...commonDefine, "import.meta.url": "import_meta_url" },
-  plugins: [...commonBuildOptions.plugins, omitTelemetryPlugin],
+  define: {
+    ...commonDefine,
+    SENTRY_CLI_COMPLETION_BUILD: "true",
+    "import.meta.url": "import_meta_url",
+  },
 });
 
 const esmResult = await build({

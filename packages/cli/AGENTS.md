@@ -442,7 +442,9 @@ graph must stay free of `@sentry/node`, telemetry, the API client, and the
 command tree: the database modules get spans and cache metrics through
 `withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
 telemetry lazily and skip it when telemetry is off (`runCompletion` turns it
-off), and `logger.ts` takes the Sentry reporter from `initSentry`.
+off; `dist/complete.cjs` is built with `SENTRY_CLI_COMPLETION_BUILD` set to
+`true`, so the bundle leaves telemetry out), and `logger.ts` takes the Sentry
+reporter from `initSentry`.
 `test/script/cli-startup.test.ts` bundles the graph and fails on any package
 not in its `COMPLETION_PACKAGES` list, naming the importer, or on more source
 modules than `COMPLETION_MODULE_BUDGET`. Defer a heavy dependency with a
