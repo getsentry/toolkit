@@ -360,7 +360,6 @@ export async function serveMcpStdio(
   const server = buildServer({
     context,
     experimentalMode: config.experimental,
-    sdkVersion: "v2",
   });
   const connection = await startStdio(server, context).catch(
     (error: unknown) => {

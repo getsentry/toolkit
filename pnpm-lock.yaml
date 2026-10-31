@@ -799,9 +799,6 @@ importers:
       '@logtape/sentry':
         specifier: ^1.1.1
         version: 1.1.1(@logtape/logtape@1.1.1)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.0
-        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
@@ -839,6 +836,9 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: ^4.0.11
         version: 4.0.11(zod@4.6.7)
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.0
+        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
@@ -872,9 +872,6 @@ importers:
       '@ai-sdk/openai':
         specifier: 'catalog:'
         version: 3.0.23(zod@4.6.7)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.0
-        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/mcp-core':
         specifier: workspace:*
         version: link:../mcp-core

@@ -464,7 +464,6 @@ async function handleAuthenticatedMcpRequest(
       buildServer({
         context: serverContext,
         experimentalMode: isExperimentalMode,
-        sdkVersion: "v2",
       }),
     {
       route: url.pathname,

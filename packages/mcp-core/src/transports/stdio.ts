@@ -10,7 +10,7 @@
  * import { buildServer } from "@sentry/mcp-core/server";
  * import { startStdio } from "@sentry/mcp-core/transports/stdio";
  *
- * const server = buildServer({ context, sdkVersion: "v2" });
+ * const server = buildServer({ context });
  * const { closed } = await startStdio(server, context);
  * await closed;
  * ```

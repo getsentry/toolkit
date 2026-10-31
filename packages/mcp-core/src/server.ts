@@ -1,4 +1,3 @@
-import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 /**
  * MCP Server Configuration and Request Handling Infrastructure.
  *
@@ -19,8 +18,7 @@ import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/m
  * });
  * ```
  */
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
+import { type CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import {
   getActiveSpan,
   type SpanAttributeValue,
@@ -123,59 +121,29 @@ function structuredOutputToCallToolResult(
  *   constraints: {}
  * };
  *
- * const server = buildServer({ context, sdkVersion: "v2" });
+ * const server = buildServer({ context });
  * const { closed } = await startStdio(server, context);
  * await closed;
  * ```
  *
  */
-type McpServer = LegacyMcpServer | ModernMcpServer;
-
-type BuildServerOptions = {
-  context: ServerContext;
-  experimentalMode?: boolean;
-  tools?: ToolRegistry;
-};
-
-export function buildServer(
-  options: BuildServerOptions & { sdkVersion: "v2" },
-): ModernMcpServer;
-export function buildServer(options: BuildServerOptions): LegacyMcpServer;
 export function buildServer({
   context,
   experimentalMode = false,
   tools: customTools,
-  sdkVersion = "v1",
-}: BuildServerOptions & {
-  sdkVersion?: "v1" | "v2";
+}: {
+  context: ServerContext;
+  experimentalMode?: boolean;
+  tools?: ToolRegistry;
 }): McpServer {
   const contextWithModes: ServerContext = {
     ...context,
     experimentalMode,
   };
-  const serverInfo = {
+  const server = new McpServer({
     name: MCP_SERVER_NAME,
     version: LIB_VERSION,
-  };
-
-  if (sdkVersion === "v2") {
-    const server = new ModernMcpServer(serverInfo);
-    const registrations = configureServer({
-      server,
-      context: contextWithModes,
-      experimentalMode,
-      tools: customTools,
-    });
-    for (const { name, config, handler } of registrations) {
-      server.registerTool(name, config, handler);
-    }
-    if (registrations.length > 0) {
-      server.server.registerCapabilities({ tools: { listChanged: false } });
-    }
-    return wrapMcpServerWithSentry(server);
-  }
-
-  const server = new LegacyMcpServer(serverInfo);
+  });
   const registrations = configureServer({
     server,
     context: contextWithModes,

@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/server";
 import { type Span, setUser, startSpan } from "@sentry/core";
 import {
   issueFixture,
@@ -96,7 +96,7 @@ async function listRegisteredTools(server: ReturnType<typeof buildServer>) {
 }
 
 async function callRegisteredTool(
-  server: ReturnType<typeof buildServer> | ModernMcpServer,
+  server: ReturnType<typeof buildServer>,
   name: string,
   args: Record<string, unknown>,
 ) {
@@ -272,10 +272,9 @@ describe("buildServer", () => {
           handler: async ({ value }) => `v2:${String(value)}`,
         }),
       },
-      sdkVersion: "v2",
     });
 
-    expect(server).toBeInstanceOf(ModernMcpServer);
+    expect(server).toBeInstanceOf(McpServer);
     const registeredTools = (
       server as unknown as {
         _registeredTools: Record<
@@ -295,25 +294,19 @@ describe("buildServer", () => {
     });
   });
 
-  it.each(["v1", "v2"] as const)(
-    "explains how to recover a missing organizationSlug on SDK %s",
-    async (sdkVersion) => {
-      const server =
-        sdkVersion === "v2"
-          ? buildServer({ context: baseContext, sdkVersion })
-          : buildServer({ context: baseContext });
+  it("explains how to recover a missing organizationSlug", async () => {
+    const server = buildServer({ context: baseContext });
 
-      const result = await callRegisteredTool(server, "search_issues", {
-        query: "is:unresolved",
-        period: "1h",
-      });
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
 
-      expect(result).toMatchObject({ isError: true });
-      const text = getTextContent(result);
-      expect(text).toContain("Required. Call `find_organizations()`");
-      expect(text).not.toContain("period");
-    },
-  );
+    expect(result).toMatchObject({ isError: true });
+    const text = getTextContent(result);
+    expect(text).toContain("Required. Call `find_organizations()`");
+    expect(text).not.toContain("period");
+  });
 
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {
@@ -1421,48 +1414,42 @@ describe("buildServer", () => {
       );
     });
 
-    it.each(["v1", "v2"] as const)(
-      "execute_sentry_tool rejects missing skills with unknown capabilities on SDK %s",
-      async (sdkVersion) => {
-        const upstreamRequest = vi.fn(() =>
-          HttpResponse.json(
-            { detail: "You do not have permission to perform this action." },
-            { status: 403 },
-          ),
-        );
-        mswServer.use(
-          http.get(
-            "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
-            upstreamRequest,
-          ),
-        );
-        const context: ServerContext = {
-          ...baseContext,
-          grantedSkills: new Set(["docs"]),
-          constraints: {
-            organizationSlug: "test-org",
-            projectSlug: "test-project",
-            regionUrl: "https://us.sentry.io",
-            projectCapabilities: null,
-          },
-        };
-        const server =
-          sdkVersion === "v2"
-            ? buildServer({ context, sdkVersion })
-            : buildServer({ context });
+    it("execute_sentry_tool rejects missing skills with unknown capabilities", async () => {
+      const upstreamRequest = vi.fn(() =>
+        HttpResponse.json(
+          { detail: "You do not have permission to perform this action." },
+          { status: 403 },
+        ),
+      );
+      mswServer.use(
+        http.get(
+          "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
+          upstreamRequest,
+        ),
+      );
+      const context: ServerContext = {
+        ...baseContext,
+        grantedSkills: new Set(["docs"]),
+        constraints: {
+          organizationSlug: "test-org",
+          projectSlug: "test-project",
+          regionUrl: "https://us.sentry.io",
+          projectCapabilities: null,
+        },
+      };
+      const server = buildServer({ context });
 
-        const result = await callRegisteredTool(server, "execute_sentry_tool", {
-          name: "get_profile_details",
-          arguments: { profileId: "00000000000040008000000000000001" },
-        });
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "get_profile_details",
+        arguments: { profileId: "00000000000040008000000000000001" },
+      });
 
-        expect(result).toMatchObject({ isError: true });
-        expect(getTextContent(result)).toContain(
-          'Tool "get_profile_details" is not available in this session',
-        );
-        expect(upstreamRequest).not.toHaveBeenCalled();
-      },
-    );
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        'Tool "get_profile_details" is not available in this session',
+      );
+      expect(upstreamRequest).not.toHaveBeenCalled();
+    });
 
     it("search_sentry_tools and execute_sentry_tool enforce project capabilities by default", async () => {
       const server = buildServer({

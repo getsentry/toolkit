@@ -2,7 +2,7 @@ import type {
   EmbeddedResource,
   ImageContent,
   TextContent,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/server";
 import { DEFAULT_MAX_INLINE_ATTACHMENT_BYTES } from "../../api-client";
 import { bytesToBase64 } from "../../internal/blob-utils";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";

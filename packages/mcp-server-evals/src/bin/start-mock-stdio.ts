@@ -39,7 +39,6 @@ const context: ServerContext = {
 const server = buildServer({
   context,
   experimentalMode: true,
-  sdkVersion: "v2",
 });
 
 // Run in-process MCP with all skills so MSW mocks apply
