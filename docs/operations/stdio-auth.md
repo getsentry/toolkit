@@ -28,8 +28,7 @@ In order of precedence:
 When no credential is available and stdin is a TTY, the server starts the
 interactive login before serving. MCP clients launch the server over pipes,
 so in that case it exits with an error that names the login command for the
-program that is running: `sentry auth login`, `sentry-mcp auth login`, or
-`npx -y @sentry/mcp-server auth login` under npx
+program that is running, such as `npx -y @sentry/mcp-server auth login`
 (`packages/cli/src/lib/app-identity.ts`).
 
 For self-hosted Sentry, set the host with `--host`/`--url` or
@@ -50,7 +49,7 @@ and refused when it does not.
 The credential store can hold several accounts, but each server process uses
 one: the account resolved at startup. With `SENTRY_HOST`/`SENTRY_URL` set, that
 is a stored account on that server; otherwise it is the active account
-(`sentry auth switch`). Refreshes after a 401 stay on that account, and tool
+(`npx -y @sentry/mcp-server auth switch`). Refreshes after a 401 stay on that account, and tool
 calls never pick a different one, even when another process switches or adds
 accounts. If that account is removed or another user logs in over it, the
 refresh fails and tool calls keep failing until the server restarts. To use
