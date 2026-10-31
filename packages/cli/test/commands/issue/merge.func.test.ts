@@ -472,7 +472,7 @@ describe("mergeCommand.func()", () => {
     // User asked for CLI-B, but Sentry picked CLI-A (e.g. larger by count)
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
 
-    // Warning now goes through log.warn() (consola → process.stderr), not
+    // Warning now goes through log.warn() (logger → process.stderr), not
     // this.stderr.write(). Spy on process.stderr.write to capture it.
     const stderrSpy = vi.spyOn(process.stderr, "write");
     try {

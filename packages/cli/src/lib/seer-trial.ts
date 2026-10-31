@@ -60,7 +60,7 @@ export function isTrialEligible(error: unknown): error is SeerError {
  * 2. Show context message + prompt user for confirmation
  * 3. Start the trial via API
  *
- * Uses consola logger for all output (not raw stderr writes).
+ * Uses the logger for all output (not raw stderr writes).
  *
  * @param orgSlug - Organization slug
  * @param reason - The SeerError reason (for context message)

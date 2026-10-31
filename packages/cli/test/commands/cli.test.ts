@@ -3,7 +3,7 @@
  *
  * Tests for the sentry cli command group.
  *
- * Progress messages go through consola (→ process.stderr). Final results are
+ * Progress messages go through the logger (→ process.stderr). Final results are
  * returned as structured data and rendered to stdout by the output system.
  * Tests capture both stderr (progress) and stdout (results) to verify behavior.
  */
@@ -16,7 +16,7 @@ import { extractInputUrl } from "../../src/lib/fetch-input.js";
 
 /**
  * Create a mock context with a process.stderr.write spy for capturing
- * consola output, plus stdout capture for structured output.
+ * logger output, plus stdout capture for structured output.
  */
 function createMockContext(overrides: Partial<{ execPath: string }> = {}): {
   context: Record<string, unknown>;
@@ -29,7 +29,7 @@ function createMockContext(overrides: Partial<{ execPath: string }> = {}): {
   const stdoutChunks: string[] = [];
   const errors: string[] = [];
 
-  // Capture consola output (routed to process.stderr)
+  // Capture logger output (routed to process.stderr)
   const origWrite = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((chunk: string | Uint8Array) => {
     stderrChunks.push(String(chunk));

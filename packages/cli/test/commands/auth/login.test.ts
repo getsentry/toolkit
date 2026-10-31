@@ -915,7 +915,7 @@ describe("login re-authentication interactive prompt", () => {
   test("cancel (Ctrl+C): returns without re-auth", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel"));
 
     const context = createPromptContext();

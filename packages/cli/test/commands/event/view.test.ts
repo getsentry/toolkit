@@ -1135,7 +1135,7 @@ describe("viewCommand.func", () => {
       "test-org/test-proj",
     );
 
-    // Command should complete without error (warning goes to consola, not stdout)
+    // Command should complete without error (warning goes to the logger, not stdout)
     expect(getEventSpy).toHaveBeenCalled();
   });
 

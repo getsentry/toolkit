@@ -88,7 +88,7 @@ function createContext() {
     },
     stderr: {
       write: vi.fn((_s: string) => {
-        /* consola routes here — not used for structured output */
+        /* the logger routes here — not used for structured output */
       }),
     },
     process: { exitCode: 0 },

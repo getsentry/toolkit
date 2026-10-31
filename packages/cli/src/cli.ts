@@ -41,7 +41,7 @@ async function preloadProjectContext(cwd: string): Promise<void> {
   // Apply .sentryclirc env shim (token + URL). The URL trust check is
   // deferred to buildCommand's wrapper where commands can opt out via
   // skipRcUrlCheck (used by auth login/logout).
-  // Dynamic import: sentryclirc chains into db/index → sqlite, logger → consola
+  // Dynamic import: sentryclirc chains into db/index → sqlite and the logger
   const { applySentryCliRcEnvShim } = await import("./lib/sentryclirc.js");
   await applySentryCliRcEnvShim(cwd);
 
