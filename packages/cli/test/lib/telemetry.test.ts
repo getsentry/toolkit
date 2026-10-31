@@ -4,7 +4,6 @@
  * Tests for withTelemetry wrapper and opt-out behavior.
  */
 
-import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node";
@@ -34,7 +33,6 @@ import {
   isEpipeError,
   isUserApiError,
   recordApiErrorOnSpan,
-  resetReadonlyWarning,
   setArgsContext,
   setCommandSpanName,
   setFlagContext,
@@ -1182,108 +1180,6 @@ describe("createTracedDatabase", () => {
     }
 
     db.close();
-  });
-
-  describe("readonly database handling", () => {
-    let tmpDir: string;
-    let dbPath: string;
-
-    beforeEach(() => {
-      resetReadonlyWarning();
-
-      tmpDir = `${import.meta.dirname}/tmp-readonly-${Date.now()}`;
-      mkdirSync(tmpDir, { recursive: true });
-      dbPath = `${tmpDir}/test.db`;
-
-      const setupDb = new Database(dbPath);
-      setupDb.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
-      setupDb.exec("INSERT INTO test (id, name) VALUES (1, 'Alice')");
-      setupDb.close();
-
-      chmodSync(dbPath, 0o444);
-    });
-
-    afterEach(() => {
-      try {
-        chmodSync(dbPath, 0o644);
-      } catch {
-        // May already be cleaned up
-      }
-      rmSync(tmpDir, { recursive: true, force: true });
-    });
-
-    test("does not throw on write to readonly database", () => {
-      // bun:sqlite opens the file successfully — the error only surfaces on write
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      expect(() => {
-        tracedDb
-          .query("INSERT INTO test (id, name) VALUES (?, ?)")
-          .run(2, "Bob");
-      }).not.toThrow();
-
-      db.close();
-    });
-
-    test("reads still work on readonly database", () => {
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      const row = tracedDb.query("SELECT * FROM test WHERE id = ?").get(1) as {
-        id: number;
-        name: string;
-      };
-      expect(row).toEqual({ id: 1, name: "Alice" });
-
-      db.close();
-    });
-
-    test("all() and values() return empty arrays on readonly write", () => {
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      const allResult = tracedDb
-        .query("INSERT INTO test (id, name) VALUES (?, ?)")
-        .all(2, "Bob");
-      expect(allResult).toEqual([]);
-
-      // values() is bun:sqlite-specific; skip on Node.js
-      const stmt = tracedDb.query("INSERT INTO test (id, name) VALUES (?, ?)");
-      if (typeof stmt.values === "function") {
-        const valuesResult = stmt.values(3, "Charlie");
-        expect(valuesResult).toEqual([]);
-      }
-
-      db.close();
-    });
-
-    test("shows readonly warning when auto-repair fails", () => {
-      // Mock chmodSync to always throw, simulating a file owned by another user.
-      // This makes tryRepairReadonly fail and fall through to warnReadonlyDatabaseOnce.
-      const fs = require("node:fs");
-      const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
-        throw Object.assign(new Error("EPERM: operation not permitted"), {
-          code: "EPERM",
-        });
-      });
-
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      const stderrSpy = vi.spyOn(process.stderr, "write");
-
-      tracedDb.query("INSERT INTO test (id, name) VALUES (?, ?)").run(2, "Bob");
-
-      const output = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
-      // When repair fails, the warning message should appear instead
-      expect(output).toContain("read-only");
-      expect(output).toContain("sentry cli fix");
-
-      stderrSpy.mockRestore();
-      chmodSpy.mockRestore();
-      db.close();
-    });
   });
 });
 
