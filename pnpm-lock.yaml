@@ -537,9 +537,6 @@ importers:
       cli-highlight:
         specifier: ^2.1.11
         version: 2.1.11
-      consola:
-        specifier: ^3.4.2
-        version: 3.4.2
       esbuild:
         specifier: ^0.28.1
         version: 0.28.1
@@ -5860,10 +5857,6 @@ packages:
   common-ancestor-path@2.0.0:
     resolution: {integrity: sha512-dnN3ibLeoRf2HNC+OlCiNc5d2zxbLJXOtiZUudNFSXZrNSydxcCsSpRzXwfu7BBWCIfHPw+xTayeBvJCP/D8Ng==}
     engines: {node: '>= 18'}
-
-  consola@3.4.2:
-    resolution: {integrity: sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA==}
-    engines: {node: ^14.18.0 || >=16.10.0}
 
   content-disposition@2.0.1:
     resolution: {integrity: sha512-e+H0ZXHSWYrENhQzw1LPuP4oF5MzVKmDU6d3hxlvaPEYLLg62MxtQNPRx4SYSuYJSBUgnQIG4HIN2tEtNv7Dog==}
@@ -14164,8 +14157,6 @@ snapshots:
   commander@9.5.0: {}
 
   common-ancestor-path@2.0.0: {}
-
-  consola@3.4.2: {}
 
   content-disposition@2.0.1: {}
 

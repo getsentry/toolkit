@@ -786,7 +786,7 @@ export function initSentry(
         });
     }
 
-    // Wire up consola → Sentry log forwarding now that the client is active
+    // Wire up logger → Sentry log forwarding now that the client is active
     attachSentryReporter(Sentry.createConsolaReporter());
 
     // End healthy sessions and flush events when the event loop drains.

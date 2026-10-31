@@ -959,7 +959,7 @@ describe("listCommand.func — trace mode org resolution failure", () => {
 
 /**
  * Collect all output written to a `process.stderr.write` spy.
- * Handles both string and Buffer arguments from consola/logger.
+ * Handles both string and Buffer arguments from the logger.
  */
 function collectProcessStderr(
   spy: ReturnType<typeof spyOn<typeof process.stderr, "write">>,

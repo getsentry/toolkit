@@ -271,7 +271,7 @@ function formatIdList(ids: string[]): string {
 
 /**
  * Warn about IDs that weren't found in the API response.
- * Uses the consola logger for structured output to stderr.
+ * Uses the logger for structured output to stderr.
  *
  * @param logIds - All requested IDs
  * @param logs - Logs actually returned by the API
@@ -310,7 +310,7 @@ async function handleWebOpen(orgSlug: string, logIds: string[]): Promise<void> {
       type: "confirm",
       initial: false,
     });
-    // consola prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
     // Strictly check for `true` to avoid opening tabs on cancel.
     if (confirmed !== true) {
       return;

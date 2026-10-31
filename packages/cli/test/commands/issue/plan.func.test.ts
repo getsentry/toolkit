@@ -130,7 +130,7 @@ describe("issue plan waiting-for-user-response", () => {
   test("throws when the user cancels the prompt", async () => {
     vi.mocked(isatty).mockReturnValue(true);
     analyzeSpy.mockResolvedValue(waitingState([sampleCause(0, "A cause")]));
-    // consola returns a cancel symbol (non-boolean) when cancelled.
+    // The prompt returns a cancel symbol (non-boolean) when cancelled.
     promptSpy.mockResolvedValue(Symbol("clack:cancel"));
 
     await expect(runPlan(createMockContext())).rejects.toBeInstanceOf(CliError);
