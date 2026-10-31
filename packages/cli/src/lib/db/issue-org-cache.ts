@@ -24,8 +24,7 @@
  * deletion, which we already handle via 404 eviction.
  */
 
-import { recordCacheHit } from "../telemetry.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, recordCacheHit } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 type IssueOrgRow = {
