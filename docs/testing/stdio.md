@@ -381,7 +381,7 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 
 # Help
 --help                            # Show all options
---version                         # Show version
+--version, -v                     # Show version (-v alone; elsewhere it is --verbose)
 ```
 
 ### Environment Variables

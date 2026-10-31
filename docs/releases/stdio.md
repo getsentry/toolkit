@@ -38,7 +38,8 @@ The package is a single file with no runtime dependencies.
   command resolves when the client closes stdin, and only then does the
   runner release the network. The server stack (`@sentry/mcp-core`'s server
   and tools, the agent providers, MCP telemetry) loads only when the server
-  starts, and a bare `--version` returns before the application loads.
+  starts, and a bare `--version` (or a lone `-v`, as in the old package)
+  returns before the application loads.
 - stdio runs on MCP SDK v2 (`@modelcontextprotocol/server`), like the
   Cloudflare worker. The bundle stubs SDK v1's `McpServer`, which
   `buildServer()` still imports for its default, and `zod/v3`, which only v1

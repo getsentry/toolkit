@@ -27,8 +27,10 @@ setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
 getEnv().SENTRY_CLI_NO_UPDATE_CHECK = "1";
 
 // MCP clients and install checks run a bare `--version`; answer it without
-// loading the application and the CLI telemetry it brings.
-if (process.argv.length === 3 && process.argv[2] === "--version") {
+// loading the application and the CLI telemetry it brings. A lone `-v` keeps
+// the old package's meaning; anywhere else it is the CLI's `--verbose`.
+const versionArg = process.argv.length === 3 ? process.argv[2] : undefined;
+if (versionArg === "--version" || versionArg === "-v") {
   process.stdout.write(`${CLI_VERSION}\n`);
 } else {
   startCli({ loadApp: () => import("./mcp-server-app.js") }).catch(() => {

@@ -52,11 +52,13 @@ test("the bundle requires only Node.js built-ins", () => {
   assert.deepEqual([...new Set(external)], []);
 });
 
-test("--version prints the package version", () => {
-  const result = run(["--version"]);
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), version);
-});
+for (const flag of ["--version", "-v"]) {
+  test(`${flag} prints the package version`, () => {
+    const result = run([flag]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), version);
+  });
+}
 
 test("--help lists only mcp, auth, and help", () => {
   const result = run(["--help"]);
