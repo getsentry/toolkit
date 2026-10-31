@@ -39,7 +39,7 @@ export type CliEntry = {
  * Superset of `SENSITIVE_FLAGS` in `telemetry.ts` — includes `auth-token`
  * because raw argv may use either form before Stricli parses to camelCase.
  */
-const SENSITIVE_ARGV_FLAGS = new Set(["token", "auth-token"]);
+const SENSITIVE_ARGV_FLAGS = new Set(["token", "auth-token", "access-token"]);
 
 /**
  * Check whether an argv token is a sensitive flag that needs value redaction.
