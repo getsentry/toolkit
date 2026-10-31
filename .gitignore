@@ -78,8 +78,6 @@ coverage
 .env.sentry-build-plugin
 
 # Generated files
-packages/mcp-server/src/toolDefinitions.json
-packages/mcp-server/src/skillDefinitions.json
 packages/mcp-server-evals/eval-results.json
 apps/cli-docs/.astro
 apps/cli-docs/src/content/docs/commands/

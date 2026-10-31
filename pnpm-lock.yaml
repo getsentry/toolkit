@@ -474,9 +474,9 @@ importers:
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
-      '@sentry/mcp-server':
+      '@sentry/mcp-core':
         specifier: workspace:*
-        version: link:../mcp-server
+        version: link:../mcp-core
       '@sentry/node':
         specifier: 'catalog:'
         version: 11.6.0(@babel/core@7.28.0)(rollup@4.62.4)
@@ -799,9 +799,6 @@ importers:
       '@logtape/sentry':
         specifier: ^1.1.1
         version: 1.1.1(@logtape/logtape@1.1.1)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.0
-        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
@@ -839,6 +836,9 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: ^4.0.11
         version: 4.0.11(zod@4.6.7)
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.0
+        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
@@ -856,50 +856,13 @@ importers:
         version: 2.8.3
 
   packages/mcp-server:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.0
-        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      '@sentry/core':
-        specifier: 'catalog:'
-        version: 11.6.0
-      '@sentry/node':
-        specifier: 'catalog:'
-        version: 11.6.0(@babel/core@7.28.0)(rollup@4.62.4)
-      dotenv:
-        specifier: 'catalog:'
-        version: 16.6.1
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
     devDependencies:
-      '@sentry/mcp-core':
-        specifier: workspace:*
-        version: link:../mcp-core
-      '@sentry/mcp-server-mocks':
-        specifier: workspace:*
-        version: link:../mcp-server-mocks
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
-      '@sentry/toolkit-core':
-        specifier: workspace:*
-        version: link:../toolkit-core
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.16.0
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.12.9(typescript@5.9.3)
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
       tsx:
         specifier: 'catalog:'
         version: 4.20.3
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.16.0)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.16.0)(typescript@5.9.3))(vite@8.3.3(@types/node@22.16.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
 
   packages/mcp-server-evals:
     dependencies:
@@ -909,15 +872,9 @@ importers:
       '@ai-sdk/openai':
         specifier: 'catalog:'
         version: 3.0.23(zod@4.6.7)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.0
-        version: 1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/mcp-core':
         specifier: workspace:*
         version: link:../mcp-core
-      '@sentry/mcp-server':
-        specifier: workspace:*
-        version: link:../mcp-server
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks

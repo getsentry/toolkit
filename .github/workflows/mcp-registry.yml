@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Existing stable release (e.g. 0.40.0)
+        description: Existing stable @sentry/mcp-server version (e.g. 0.48.0)
         required: true
         type: string
 
@@ -17,15 +17,17 @@ defaults:
   run:
     shell: bash
 
+# Key on the release tag so a manual retry of `0.48.0` queues behind the
+# `cli@0.48.0` release run instead of racing it to publish the same version.
 concurrency:
-  group: mcp-registry-${{ inputs.version || github.event.release.tag_name }}
+  group: mcp-registry-${{ github.event_name == 'release' && github.event.release.tag_name || format('cli@{0}', inputs.version) }}
   cancel-in-progress: false
 
 jobs:
   publish:
     if: >-
       (github.repository == 'getsentry/sentry-mcp' || github.repository == 'getsentry/toolkit') &&
-      ((github.event_name == 'release' && !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'cli@')) ||
+      ((github.event_name == 'release' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'cli@')) ||
        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -33,7 +35,8 @@ jobs:
       contents: read
       id-token: write
     env:
-      VERSION: ${{ inputs.version || github.event.release.tag_name }}
+      INPUT_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
       # Use the maintained manifest on main, including for older releases.
       - uses: actions/checkout@v4
@@ -41,13 +44,27 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Prepare metadata
+      # Each CLI release (`cli@<version>`) publishes @sentry/mcp-server at the
+      # same version. Releases before that used bare `<version>` tags.
+      - name: Resolve release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          gh release view "$VERSION" --repo getsentry/sentry-mcp --json isDraft,isPrerelease \
+          if [[ -n "$RELEASE_TAG" ]]; then
+            tag="$RELEASE_TAG"
+          elif gh release view "cli@$INPUT_VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            tag="cli@$INPUT_VERSION"
+          else
+            tag="$INPUT_VERSION"
+          fi
+          version="${tag#cli@}"
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease \
             | jq -e '(.isDraft | not) and (.isPrerelease | not)'
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Prepare metadata
+        run: |
           jq --arg version "$VERSION" '.version = $version | .packages[0].version = $version' \
             server.json > "$RUNNER_TEMP/server.json"
 

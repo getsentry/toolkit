@@ -70,3 +70,31 @@ test("CI lint checks formatting for commits that skip the pre-commit hook", () =
   assert.match(scripts.lint, /pnpm run lint:format/);
   assert.match(workflow, /^\s*- run: pnpm run lint$/m);
 });
+
+test("mcp-core and toolkit-core cannot import the CLI", () => {
+  const { overrides } = readRootJson(".oxlintrc.json");
+  const { scripts } = readRootJson("package.json");
+  // Oxlint replaces a rule's options per override, so the last override that
+  // configures no-restricted-imports for a path must carry the CLI ban.
+  for (const glob of [
+    "packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}",
+    "packages/toolkit-core/src/**/*.ts",
+  ]) {
+    const override = overrides.findLast(
+      ({ files, rules }) =>
+        files.includes(glob) && rules?.["no-restricted-imports"],
+    );
+    const [level, { paths, patterns }] =
+      override.rules["no-restricted-imports"];
+    assert.equal(level, "error", glob);
+    assert.ok(
+      paths.some(({ name }) => name === "sentry"),
+      glob,
+    );
+    assert.ok(
+      patterns.some(({ group }) => group.includes("sentry/**")),
+      glob,
+    );
+  }
+  assert.match(scripts.lint, /pnpm run lint:deps/);
+});

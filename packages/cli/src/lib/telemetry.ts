@@ -851,7 +851,7 @@ export function setOrgProjectContext(orgs: string[], projects: string[]): void {
  * Flag names whose values must never be sent to telemetry.
  * Values for these flags are replaced with "[REDACTED]" regardless of content.
  */
-const SENSITIVE_FLAGS = new Set(["token"]);
+const SENSITIVE_FLAGS = new Set(["token", "access-token"]);
 
 /**
  * Convert a flag value to a telemetry tag string.

@@ -15,7 +15,6 @@
  */
 
 import { basename } from "node:path";
-import { isatty } from "node:tty";
 import pLimit from "p-limit";
 import type {
   CachedProject,
@@ -74,7 +73,7 @@ import {
   withAuthGuard,
 } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
-import { interactivePromptsAllowed } from "./interactive-prompts.js";
+import { canShowSelectPrompt, selectWithFilter } from "./select-prompt.js";
 import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
 import { CONFIG_FILENAME, loadSentryCliRc } from "./sentryclirc.js";
@@ -1805,7 +1804,7 @@ function canPromptForTarget(override?: boolean): boolean {
   if (override !== undefined) {
     return override;
   }
-  return interactivePromptsAllowed() && isatty(0) && isatty(1);
+  return canShowSelectPrompt();
 }
 
 /**
@@ -1821,7 +1820,6 @@ async function promptSelect(
   if (options.length === 1 && sole) {
     return sole.value;
   }
-  const { selectWithFilter } = await import("./init/ui/ink-ui.js");
   return await selectWithFilter({ message, options });
 }
 

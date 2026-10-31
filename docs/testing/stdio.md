@@ -4,7 +4,7 @@ Complete playbook for building, running, and testing the stdio MCP server.
 
 ## Overview
 
-The stdio transport runs the MCP server as a subprocess that communicates via stdin/stdout pipes. This is the standard way IDEs and local tools integrate with MCP servers.
+The stdio transport runs the MCP server as a subprocess that communicates via stdin/stdout pipes. This is the standard way IDEs and local tools integrate with MCP servers. The stdio server is implemented in the Sentry CLI (`packages/cli`) on top of `@sentry/mcp-core`. It is published as `@sentry/mcp-server` and is also available as `sentry mcp`.
 
 **When to use stdio:**
 
@@ -24,7 +24,8 @@ The stdio transport runs the MCP server as a subprocess that communicates via st
 
 - Node.js 22.13+
 - pnpm installed
-- Sentry access token with appropriate scopes
+- A Sentry login (`pnpm --filter sentry run cli auth login`) or a Sentry access
+  token with appropriate scopes
 
 ### Required Scopes
 
@@ -40,88 +41,50 @@ For full functionality, create a Sentry User Auth Token with:
 
 For read-only testing, use just: `org:read`, `project:read`, `team:read`, `event:read`
 
-## Build Process
-
-### 1. Initial Setup
-
-```bash
-# Clone and install dependencies
-cd sentry-mcp
-pnpm install
-
-# Set up environment (optional for stdio)
-make setup-env
-```
-
-### 2. Build the Package
-
-```bash
-# Build all packages (includes mcp-server)
-pnpm -w run build
-
-# Or build just mcp-server
-cd packages/mcp-server
-pnpm build
-```
-
-The build process:
-
-1. Generates tool definitions (`pnpm run generate-definitions`)
-2. Compiles TypeScript to JavaScript
-3. Creates both ESM and CJS outputs
-4. Generates type declarations
-5. Makes the CLI executable
-
-**Output location:** `packages/mcp-server/dist/`
-
-### 3. Verify Build
-
-```bash
-# Check the built executable exists
-ls -la packages/mcp-server/dist/index.js
-
-# Test the CLI help
-node packages/mcp-server/dist/index.js --help
-```
-
 ## Running Stdio Locally
 
-### Option 1: Using pnpm start (Development)
-
-Best for active development with TypeScript sources:
+### 1. Setup
 
 ```bash
-cd packages/mcp-server
-pnpm start --access-token=YOUR_TOKEN
+pnpm install
+pnpm -w run build   # builds mcp-core, which `sentry mcp` imports
 ```
 
-This uses `tsx` to run TypeScript directly without building.
-
-### Option 2: Using the Built Package (Production-like)
-
-Test the actual build output:
+### 2. Run From Source
 
 ```bash
-# From repo root
-node packages/mcp-server/dist/index.js --access-token=YOUR_TOKEN
-
-# Or use the workspace command
-pnpm -w run mcp-server --access-token=YOUR_TOKEN
+# From the repo root. Uses your CLI login when no token is passed.
+pnpm --silent --dir packages/cli run cli mcp --help
+pnpm --silent --dir packages/cli run cli mcp
+SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 pnpm --silent --dir packages/cli run cli mcp
 ```
 
-### Option 3: Using npx (End-user Experience)
+`--silent` keeps pnpm's banner off stdout, which carries JSON-RPC frames.
 
-Test the published package experience:
+### 3. Run the Built Package
+
+Source runs skip the bundling step, so check the bundle that ships as
+`@sentry/mcp-server` before a release:
 
 ```bash
-# Latest from npm
-npx @sentry/mcp-server@latest --access-token=YOUR_TOKEN
+pnpm --filter @sentry/mcp-server run bundle
+node packages/mcp-server/dist/sentry-mcp.cjs mcp --help
+SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 node packages/mcp-server/dist/sentry-mcp.cjs
 
-# Test local build (after packing)
-cd packages/mcp-server
-pnpm pack
-npx ./sentry-mcp-server-*.tgz --access-token=YOUR_TOKEN
+# Or drive it with the test client
+pnpm -w run cli --transport stdio --stdio-bundle --list-tools
 ```
+
+### 4. Run the Published Package
+
+```bash
+npx @sentry/mcp-server@latest
+SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 npx @sentry/mcp-server@latest
+```
+
+To test a local `@sentry/mcp-server` bundle, build it with
+`pnpm --filter @sentry/mcp-server run bundle`, then run
+`node packages/mcp-server/dist/sentry-mcp.cjs`.
 
 ## Testing with MCP Inspector
 
@@ -130,8 +93,8 @@ The MCP Inspector is the best tool for interactive testing of the stdio transpor
 ### 1. Start the Inspector
 
 ```bash
-# From repo root
-pnpm inspector
+# From repo root; launches `sentry mcp` from source
+pnpm inspector:stdio
 ```
 
 This opens the MCP Inspector at `http://localhost:6274`
@@ -150,23 +113,14 @@ This opens the MCP Inspector at `http://localhost:6274`
 {
   "command": "pnpm",
   "args": [
+    "--silent",
     "--dir",
-    "/absolute/path/to/sentry-mcp/packages/mcp-server",
-    "start",
-    "--access-token=YOUR_TOKEN"
-  ]
-}
-```
-
-**For built package:**
-
-```json
-{
-  "command": "node",
-  "args": [
-    "/absolute/path/to/sentry-mcp/packages/mcp-server/dist/index.js",
-    "--access-token=YOUR_TOKEN"
-  ]
+    "/absolute/path/to/toolkit/packages/cli",
+    "run",
+    "cli",
+    "mcp"
+  ],
+  "env": { "SENTRY_AUTH_TOKEN": "YOUR_TOKEN", "SENTRY_FORCE_ENV_TOKEN": "1" }
 }
 ```
 
@@ -175,11 +129,12 @@ This opens the MCP Inspector at `http://localhost:6274`
 ```json
 {
   "command": "npx",
-  "args": [
-    "@sentry/mcp-server@latest",
-    "--access-token=YOUR_TOKEN",
-    "--host=sentry.example.com"
-  ]
+  "args": ["@sentry/mcp-server@latest"],
+  "env": {
+    "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN": "1",
+    "SENTRY_HOST": "sentry.example.com"
+  }
 }
 ```
 
@@ -188,12 +143,12 @@ This opens the MCP Inspector at `http://localhost:6274`
 ```json
 {
   "command": "npx",
-  "args": [
-    "@sentry/mcp-server@latest",
-    "--access-token=YOUR_TOKEN",
-    "--host=sentry.internal:9000",
-    "--insecure-http"
-  ]
+  "args": ["@sentry/mcp-server@latest"],
+  "env": {
+    "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN": "1",
+    "SENTRY_URL": "http://sentry.internal:9000"
+  }
 }
 ```
 
@@ -334,18 +289,20 @@ Create or edit `.cursor/config.json`:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
+      "args": ["@sentry/mcp-server@latest"]
     }
   }
 }
 ```
 
-**2. Use Environment Variables (Recommended):**
+This uses your CLI login (`npx @sentry/mcp-server@latest auth login`).
+
+**2. Or Use a Token:**
 
 Create `.cursor/.env`:
 
 ```bash
-SENTRY_ACCESS_TOKEN=your-token-here
+SENTRY_AUTH_TOKEN=your-token-here
 ```
 
 Update config:
@@ -357,7 +314,8 @@ Update config:
       "command": "npx",
       "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "${SENTRY_ACCESS_TOKEN}"
+        "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}",
+        "SENTRY_FORCE_ENV_TOKEN": "1"
       }
     }
   }
@@ -387,7 +345,11 @@ Add to `.vscode/settings.json`:
   "mcp.servers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server@latest", "--access-token=YOUR_TOKEN"]
+      "args": ["@sentry/mcp-server@latest"],
+      "env": {
+        "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
+        "SENTRY_FORCE_ENV_TOKEN": "1"
+      }
     }
   }
 }
@@ -400,42 +362,50 @@ Add to `.vscode/settings.json`:
 
 ## Configuration Options
 
+Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
+
 ### Command-Line Flags
 
 ```bash
-# Basic usage
---access-token=TOKEN              # Sentry access token (required)
+# Authentication: use SENTRY_AUTH_TOKEN (below) or a CLI login
+--access-token=TOKEN              # Deprecated alias for SENTRY_AUTH_TOKEN + SENTRY_FORCE_ENV_TOKEN=1
 
 # Host configuration
 --host=sentry.example.com         # Self-hosted Sentry (hostname only)
+--url=https://sentry.example.com  # Self-hosted Sentry (full URL)
+--insecure-http                   # Allow http:// for --host
 
 # Skills management
 --skills=inspect,docs,triage      # Limit to specific skills (default: all available)
+--disable-skills=seer             # Remove skills from the default set
 
 # AI features (optional)
+--agent-provider=openai           # openai, azure-openai, or anthropic
 --openai-base-url=URL             # Custom OpenAI endpoint
 
 # Sentry reporting
 --sentry-dsn=DSN                  # Custom Sentry DSN for telemetry
 --sentry-dsn=                     # Disable telemetry
 
-
 # Help
 --help                            # Show all options
---version                         # Show version
+--version, -v                     # Show version (-v alone; elsewhere it is --verbose)
 ```
 
 ### Environment Variables
 
 ```bash
-# Authentication
-SENTRY_ACCESS_TOKEN=your-token
+# Authentication (optional with a CLI login)
+SENTRY_AUTH_TOKEN=your-token             # Used when there is no CLI login
+SENTRY_FORCE_ENV_TOKEN=1                 # Use SENTRY_AUTH_TOKEN over a CLI login
+SENTRY_ACCESS_TOKEN=your-token           # Deprecated, same as --access-token
 
-# Host (self-hosted only)
+# Host (self-hosted only; also scopes SENTRY_AUTH_TOKEN to it)
 SENTRY_HOST=sentry.example.com
 
 # Skills
 MCP_SKILLS=inspect,docs,triage           # Limit to specific skills
+MCP_DISABLE_SKILLS=seer
 
 # AI features
 OPENAI_API_KEY=your-key                  # For AI-powered search tools like search_errors/search_traces/search_issues
@@ -455,93 +425,51 @@ SENTRY_DSN=your-dsn
 pnpm -w run build && pnpm -w run test
 
 # Quick smoke test
-cd packages/mcp-server
-pnpm start --access-token=TOKEN &
-sleep 2
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | pnpm start --access-token=TOKEN
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
+  pnpm --silent --dir packages/cli run cli mcp
 ```
 
 ### 2. Test Against Self-Hosted Sentry
 
 ```bash
-# Development server
-pnpm start \
-  --access-token=TOKEN \
-  --host=sentry.local.dev
-
-# Built package
-node dist/index.js \
-  --access-token=TOKEN \
-  --host=sentry.local.dev
+SENTRY_AUTH_TOKEN=TOKEN SENTRY_FORCE_ENV_TOKEN=1 SENTRY_HOST=sentry.local.dev \
+  pnpm --silent --dir packages/cli run cli mcp
 ```
 
 ### 3. Test Skills
 
 ```bash
-# Test with all skills (default)
-pnpm start --access-token=TOKEN
-
 # Test with specific skills only
-pnpm start --access-token=TOKEN --skills=inspect,docs
+pnpm --silent --dir packages/cli run cli mcp --skills=inspect,docs
 
 # Test read-only skills
-pnpm start --access-token=TOKEN --skills=inspect,seer,docs
+pnpm --silent --dir packages/cli run cli mcp --skills=inspect,seer,docs
 ```
 
 ### 4. Test AI-Powered Tools
 
 ```bash
-# With OpenAI API key
-OPENAI_API_KEY=your-key pnpm start --access-token=TOKEN
+OPENAI_API_KEY=your-key pnpm --silent --dir packages/cli run cli mcp
 
-# Test the dataset search tools and search_issues work
 # In MCP Inspector:
 # - Call search_errors(query="errors in production")
 # - Call search_issues(query="unresolved crashes")
 ```
 
-### "Command not found: npx @sentry/mcp-server"
+## Troubleshooting
 
-**Cause:** Package not published or not in npm registry.
+### "Not authenticated"
 
-**Solution:**
+**Cause:** No CLI login and no `SENTRY_AUTH_TOKEN`.
 
-```bash
-# Use local build instead
-cd packages/mcp-server
-pnpm build
-node dist/index.js --access-token=TOKEN
-```
-
-### "Missing required parameter: access-token"
-
-**Cause:** No authentication provided.
-
-**Solution:**
-
-```bash
-# Option 1: CLI flag
-pnpm start --access-token=YOUR_TOKEN
-
-# Option 2: Environment variable
-export SENTRY_ACCESS_TOKEN=YOUR_TOKEN
-pnpm start
-```
+**Solution:** Run `npx @sentry/mcp-server@latest auth login` (from source:
+`pnpm --silent --dir packages/cli run cli auth login`), or set
+`SENTRY_AUTH_TOKEN` in the client's `env`. MCP clients do not give the server a
+TTY, so log in from a terminal first.
 
 ### "AI-powered search tools unavailable"
 
-**Cause:** Missing `OPENAI_API_KEY`.
-
-**Solution:**
-
-```bash
-# Set the API key
-export OPENAI_API_KEY=your-openai-key
-pnpm start --access-token=TOKEN
-
-# Or disable warning by acknowledging it
-# (All other tools will work normally)
-```
+**Cause:** Missing `OPENAI_API_KEY`. All other tools work normally.
 
 ### "Cannot connect to Sentry API"
 
@@ -551,164 +479,52 @@ pnpm start --access-token=TOKEN
 2. Wrong host configuration
 3. Network issues
 
-**Solution:**
-
 ```bash
 # Test token manually
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  https://sentry.io/api/0/
+curl -H "Authorization: Bearer YOUR_TOKEN" https://sentry.io/api/0/
 
-# For self-hosted, verify host
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  https://your-sentry-host.com/api/0/
-
-# Check logs for detailed error
-pnpm start --access-token=TOKEN 2>&1 | tee debug.log
+# Check stderr for detailed errors
+pnpm --silent --dir packages/cli run cli mcp 2>debug.log
 ```
 
 ### "MCP Inspector can't connect to stdio server"
 
-**Causes:**
-
-1. Incorrect command path
-2. Missing dependencies
-3. Process exits immediately
-
-**Solution:**
-
-```bash
-# Test command manually first
-pnpm start --access-token=TOKEN
-
-# If it works, use absolute paths in Inspector
-which node  # Get absolute path to node
-pwd         # Get absolute path to project
-
-# Use absolute paths in Inspector config
-{
-  "command": "/usr/local/bin/node",
-  "args": ["/absolute/path/to/sentry-mcp/packages/mcp-server/dist/index.js"]
-}
-```
-
-### "Permission denied" errors
-
-**Cause:** Built executable not marked as executable.
-
-**Solution:**
-
-```bash
-chmod +x packages/mcp-server/dist/index.js
-```
-
-### "Module not found" errors after build
-
-**Cause:** Missing dependencies in built output.
-
-**Solution:**
-
-```bash
-# Clean and rebuild
-cd packages/mcp-server
-rm -rf dist
-pnpm build
-
-# Verify dependencies are bundled
-ls -lh dist/
-```
+Run the command manually first. If it works, use absolute paths in the
+Inspector config, and keep `--silent` so pnpm prints nothing on stdout.
 
 ## Quality Checks
 
 Before committing changes that affect stdio:
 
 ```bash
-# 1. Build successfully
 pnpm -w run build
-
-# 2. Type check
 pnpm -w run tsc
-
-# 3. Lint
 pnpm -w run lint
-
-# 4. Unit tests pass
-cd packages/mcp-server
-pnpm test
-
-# 5. Smoke test stdio works
+pnpm --dir packages/cli exec vitest run test/lib/mcp test/lib/mcp-start.test.ts
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
-  node dist/index.js --access-token=TOKEN
+  pnpm --silent --dir packages/cli run cli mcp
 ```
 
 ## Comparing with Remote
 
-To verify stdio behaves the same as remote:
-
-**Test with both transports:**
-
 ```bash
 # 1. Test stdio locally
-pnpm start --access-token=TOKEN
-# Use MCP Inspector to test tools
+pnpm -w run cli --transport stdio "who am I"
 
 # 2. Test remote
 pnpm -w run cli --mcp-host=https://mcp.sentry.dev "who am I"
-
-# 3. Compare results
-# Both should return same data, same tool list
 ```
 
 **Key differences to expect:**
 
-- **Authentication:** Stdio uses access tokens, remote uses OAuth
+- **Authentication:** Stdio uses CLI credentials or a static token, remote uses OAuth
 - **Constraints:** Remote supports URL-based org/project constraints
 - **Tools:** Both should have same tool count and functionality
-- **Performance:** Stdio has no network overhead (faster)
-
-## Advanced Testing
-
-### Testing Custom Builds
-
-```bash
-# Pack the local build
-cd packages/mcp-server
-pnpm pack
-
-# Install globally for testing
-npm install -g ./sentry-mcp-server-*.tgz
-
-# Test as end-user would
-sentry-mcp --access-token=TOKEN
-```
-
-### Testing with Different Node Versions
-
-```bash
-# Using nvm
-nvm install 20
-nvm use 20
-pnpm start --access-token=TOKEN
-
-nvm install 22
-nvm use 22
-pnpm start --access-token=TOKEN
-```
-
-### Performance Testing
-
-```bash
-# Time tool execution
-time node dist/index.js --access-token=TOKEN <<EOF
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"execute_sentry_tool","arguments":{"name":"whoami","arguments":{}}}}
-EOF
-
-# Memory usage
-/usr/bin/time -v node dist/index.js --access-token=TOKEN
-```
 
 ## References
 
-- stdio transport: `packages/mcp-server/src/transports/stdio.ts`
-- CLI entry point: `packages/mcp-server/src/index.ts`
-- Package README: `packages/mcp-server/README.md`
+- Command entry: `packages/cli/src/lib/mcp.ts`
+- Server host: `packages/cli/src/lib/mcp/server.ts`
+- stdio transport: `packages/mcp-core/src/transports/stdio.ts`
+- Authentication: [stdio authentication](../operations/stdio-auth.md)
 - MCP Inspector: https://modelcontextprotocol.io/docs/tools/inspector

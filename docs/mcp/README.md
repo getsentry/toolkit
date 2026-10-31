@@ -1,6 +1,6 @@
 # Sentry MCP Documentation
 
-MCP spans `packages/mcp-core/`, `packages/mcp-server/`, and
+MCP spans `packages/mcp-core/`, `packages/mcp-server/` (built from `packages/cli/`), and
 `packages/mcp-cloudflare/`, with mocks, evals, and a test client in neighboring
 packages. Its guides stay in root `docs/` because no single MCP package owns
 them. The [Toolkit index](../README.md) also links the CLI and shared guides.

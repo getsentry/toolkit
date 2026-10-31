@@ -22,8 +22,10 @@
  * @module
  */
 
+import { startCli } from "./cli.js";
 import { buildInvoker, buildRunner } from "./lib/sdk-invoke.js";
 import { createSDKMethods } from "./sdk.generated.js";
+import { SENTRY_CLI } from "./sentry-cli.js";
 
 export type { AsyncChannel } from "./lib/async-channel.js";
 // Re-export public types and error class from the shared module.
@@ -64,4 +66,7 @@ export function createSentrySDK(
 export default createSentrySDK;
 
 // CLI runner — internal, used by dist/bin.cjs wrapper
-export { startCli as _cli } from "./cli.js";
+/** @internal Run the full `sentry` CLI on `process.argv`. */
+export function _cli(): Promise<void> {
+  return startCli(SENTRY_CLI);
+}

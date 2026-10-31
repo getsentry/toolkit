@@ -37,6 +37,8 @@ import { gzip } from "node:zlib";
 import { build as esbuild } from "esbuild";
 import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
 import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
+import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
+import { zodV3StubPlugin } from "./lib/zod-v3-stub-plugin.js";
 import { textImportPlugin } from "./text-import-plugin.js";
 
 const gzipAsync = promisify(gzip);
@@ -50,7 +52,7 @@ const NODE_VERSION = "lts";
 
 /** Files whose lazy relative imports must be included in the native bundle. */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema)|formatters[\\/]json|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /** Build-time constants injected into the binary */
@@ -160,6 +162,8 @@ async function bundleJs(): Promise<boolean> {
       },
       plugins: [
         textImportPlugin,
+        zodEnglishLocalesPlugin,
+        zodV3StubPlugin,
         // Transform _require() → require() so esbuild resolves lazy relative
         // requires at bundle time. In tsx dev mode, _require is a file-local
         // createRequire(import.meta.url) that resolves relative to the file.

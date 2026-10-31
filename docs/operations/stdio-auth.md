@@ -1,141 +1,120 @@
 # Stdio Authentication
 
-How the stdio transport authenticates with Sentry, including the device code flow, token caching, and the relationship between the bundled client ID and the Cloudflare OAuth app.
+How the stdio MCP server (`@sentry/mcp-server`) authenticates with Sentry.
 
-## Authentication Methods
+Sign in once with `npx -y @sentry/mcp-server auth login`. The package runs
+the Sentry CLI's own `auth` commands and stores the session in the CLI's
+credential store, so the package and the CLI (which runs the same server as
+`sentry mcp`) share one login.
 
-The stdio transport supports two authentication methods, in order of precedence:
+## Credential Sources
 
-1. **Explicit token** — `--access-token` flag or `SENTRY_ACCESS_TOKEN` env var. Works for all Sentry hosts. This is the only method available for self-hosted instances.
-   For self-hosted deployments that only expose plain HTTP, pair `--access-token` with `--host` and `--insecure-http`.
+The server uses the CLI's credential resolution, so the rules match every
+other `sentry` command:
 
-2. **Device code flow** — OAuth Device Authorization Grant (RFC 8628). Only available for sentry.io (including regional subdomains like `us.sentry.io`). Requires an interactive terminal (TTY). Falls back to cached tokens in non-interactive contexts.
+1. **Stored login** — the account from `auth login`. It wins by default
+   because it can be refreshed.
+2. **`SENTRY_AUTH_TOKEN`** (or the legacy `SENTRY_TOKEN`) — used when there is
+   no stored login. Set `SENTRY_FORCE_ENV_TOKEN=1` to use it even when a stored
+   login exists.
 
-## Device Code Flow
+Both go through the CLI's `refreshToken()`, which enforces the same host
+scoping as every CLI command. When a tool call gets a 401 from Sentry, the
+server forces a refresh and later calls use the new token, so a long-running
+server survives token rotation without a restart. An env token is never
+refreshed; the forced refresh re-reads it.
 
-When no token is provided and the host is sentry.io, the CLI initiates the device code flow:
-
-```
-CLI                          Sentry (sentry.io)
- │                                │
- │  POST /oauth/device/code/      │
- │  (client_id, scope)            │
- │──────────────────────────────>│
- │                                │
- │  device_code, user_code,       │
- │  verification_uri_complete     │
- │<──────────────────────────────│
- │                                │
- │  Display code to user          │
- │  Open browser to verify URL    │
- │                                │
- │  POST /oauth/token/            │  (poll every N seconds)
- │  (device_code, client_id)      │
- │──────────────────────────────>│
- │                                │
- │  authorization_pending         │  (user hasn't authorized yet)
- │<──────────────────────────────│
- │                                │
- │  ... poll again ...            │
- │                                │
- │  access_token, refresh_token   │  (user authorized)
- │<──────────────────────────────│
- │                                │
- │  Cache token to disk           │
- │  Start MCP server              │
-```
-
-### OAuth Endpoints
-
-All OAuth requests target `sentry.io` directly (via `OAUTH_HOST` constant), regardless of regional subdomain configuration. The device code and token endpoints live on the main domain only.
-
-### Scopes
-
-The device code flow requests the same scopes as the Cloudflare OAuth app:
-
-```
-org:read project:write team:write event:write alerts:write
-```
-
-These are defined once in `packages/mcp-core/src/scopes.ts` and shared by both transports.
-
-## Client ID
-
-A bundled `DEFAULT_SENTRY_CLIENT_ID` ships in `packages/mcp-server/src/auth/constants.ts`. This is a public OAuth application registered on sentry.io specifically for the stdio device code flow. It has no client secret — device code flow doesn't use one.
-
-The Cloudflare deployment uses a separate OAuth application (configured via `SENTRY_CLIENT_ID` + `SENTRY_CLIENT_SECRET` env vars) because it uses the authorization code grant which requires a secret.
-
-Both transports use the `SENTRY_CLIENT_ID` env var name for overriding, but they're separate deployments with separate values:
-
-| Transport  | Default client ID              | Grant type             | Client secret                  |
-| ---------- | ------------------------------ | ---------------------- | ------------------------------ |
-| stdio      | Bundled in `auth/constants.ts` | Device code (RFC 8628) | None (public client)           |
-| Cloudflare | `SENTRY_CLIENT_ID` env var     | Authorization code     | `SENTRY_CLIENT_SECRET` env var |
-
-## Token Cache
-
-Tokens are cached at `~/.sentry/mcp.json` to avoid re-authentication on every server start.
-
-### File Format
+To run the server with a token instead of a login, configure the MCP client
+with environment variables:
 
 ```json
 {
-  "sentry.io:client-id-here": {
-    "access_token": "...",
-    "refresh_token": "...",
-    "expires_at": "2026-04-25T...",
-    "sentry_host": "sentry.io",
-    "client_id": "...",
-    "user_email": "user@example.com",
-    "scope": "org:read project:write team:write event:write alerts:write"
+  "command": "npx",
+  "args": ["-y", "@sentry/mcp-server@latest"],
+  "env": {
+    "SENTRY_AUTH_TOKEN": "sntryu_...",
+    "SENTRY_FORCE_ENV_TOKEN": "1"
   }
 }
 ```
 
-Cache entries are keyed by `{host}:{clientId}` so different hosts or client IDs don't collide.
+Org auth tokens (`sntrys_`) record the Sentry URL they were issued for; the
+server refuses to send one to a different host (`HostScopeError`).
 
-### Security
+### Deprecated: `--access-token` and `SENTRY_ACCESS_TOKEN`
 
-- File permissions: `0o600` (owner read/write only)
-- Directory permissions: `0o700`
-- Writes are atomic (temp file + rename)
-- Tokens are treated as expired 5 minutes before actual expiry
+Older `@sentry/mcp-server` releases took a static token from `--access-token`
+or `SENTRY_ACCESS_TOKEN`. Both still work, as an alias: the server runs as if
+`SENTRY_AUTH_TOKEN=<token>` and `SENTRY_FORCE_ENV_TOKEN=1` were set, so the
+token wins over a stored login and takes the same env-token path. It also
+replaces any `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` already in the environment,
+because the flag is the more explicit choice. `--access-token` wins over
+`SENTRY_ACCESS_TOKEN`. Unlike a plain env token, the alias is sent to the
+`--host`/`--url` target, as the old static token was (an org token's own URL
+claim still has to match it).
 
-### Override
+Either one prints a single deprecation warning to stderr (stdout carries the
+MCP protocol), without the token:
 
-Set `SENTRY_MCP_AUTH_CACHE` to override the cache file path (primarily for testing).
-
-## Non-Interactive Contexts
-
-When stderr is not a TTY (CI, piped stdio, MCP inspector), the device code flow is not started — it would hang waiting for a human. Instead:
-
-1. If a cached token exists, it's used silently.
-2. If no cached token exists, the process exits with an error directing the user to run `sentry-mcp auth login` interactively first.
-
-## Auth CLI Commands
-
-The CLI exposes auth management as subcommands:
-
-```bash
-sentry-mcp auth login          # Force device code flow (always re-authenticates)
-sentry-mcp auth logout         # Clear cached token
-sentry-mcp auth status         # Show current auth state
+```
+Deprecation warning: --access-token is deprecated; set SENTRY_AUTH_TOKEN (and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login) instead.
 ```
 
-These commands support `--host` and `--url` flags with the same precedence as the main server: `--url` beats `--host`, CLI beats env vars.
+The flag value is redacted from the CLI's telemetry like `--token`.
+
+### Interactive Login and Self-Hosted Servers
+
+When no credential is available and stdin is a TTY, the server starts the
+interactive login before serving. MCP clients launch the server over pipes,
+so in that case it exits with an error that names the login command for the
+program that is running, such as `npx -y @sentry/mcp-server auth login`
+(`packages/cli/src/lib/app-identity.ts`).
+
+For self-hosted Sentry, set `SENTRY_HOST`/`SENTRY_URL`. Those also pick the
+stored account for that server (see [Accounts](#accounts)) and scope
+`SENTRY_AUTH_TOKEN` to it; `--host`/`--url` alone set the target but do not
+scope an env token, so the server refuses to start (`HostScopeError`). A plain
+HTTP instance takes an `http://` `SENTRY_URL`, or `--host` with
+`--insecure-http`.
+
+A repo-local `.sentryclirc` URL is not a trust source. Unless `--host`/`--url`
+is passed, a non-SaaS `[defaults] url` must match a server you are logged in
+to, the same check every CLI command applies. Otherwise the server refuses to
+start (`HostScopeError`) instead of sending any token to that host. An org
+auth token (`sntrys_`) passed through the deprecated alias is the exception:
+it names the server it was issued for, so it is served when that server
+matches the target and refused when it does not.
+
+## Accounts
+
+The credential store can hold several accounts, but each server process uses
+one: the account resolved at startup. With `SENTRY_HOST`/`SENTRY_URL` set, that
+is a stored account on that server; otherwise it is the active account
+(`npx -y @sentry/mcp-server auth switch`). Refreshes after a 401 stay on that account, and tool
+calls never pick a different one, even when another process switches or adds
+accounts. If that account is removed or another user logs in over it, the
+refresh fails and tool calls keep failing until the server restarts. To use
+two accounts at once, configure two
+MCP servers, for example one per host via `SENTRY_HOST`, or one with
+`SENTRY_AUTH_TOKEN` and `SENTRY_FORCE_ENV_TOKEN=1`.
+
+## Upgrading From Older `@sentry/mcp-server` Versions
+
+Older releases had their own device code flow, bundled client ID, and token
+cache (`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`). Current releases do not
+read that cache. Run `npx -y @sentry/mcp-server auth login` once, or set
+`SENTRY_AUTH_TOKEN` (with `SENTRY_FORCE_ENV_TOKEN=1` to override a stored
+login). `--access-token` / `SENTRY_ACCESS_TOKEN` keep working but are
+deprecated (see above). `auth status`, `auth list`,
+`auth switch`, and `auth logout` work in the package as in the CLI.
 
 ## Key Files
 
-| File                                               | Purpose                                                   |
-| -------------------------------------------------- | --------------------------------------------------------- |
-| `packages/mcp-server/src/auth/constants.ts`        | Bundled client ID, OAuth endpoints, scopes                |
-| `packages/mcp-server/src/auth/device-code-flow.ts` | RFC 8628 implementation (request, poll, browser open)     |
-| `packages/mcp-server/src/auth/token-cache.ts`      | Persistent token storage at `~/.sentry/mcp.json`          |
-| `packages/mcp-server/src/auth/resolve-token.ts`    | Orchestration: cache check → TTY check → device code flow |
-| `packages/mcp-server/src/auth/types.ts`            | Zod schemas for API responses, `CachedToken` type         |
-| `packages/mcp-server/src/cli/commands/auth.ts`     | `auth login/logout/status` subcommands                    |
-| `packages/mcp-core/src/scopes.ts`                  | Shared OAuth scope definitions                            |
-
-## Token Refresh
-
-Not implemented. Sentry access tokens last 30 days. When a cached token expires, it's cleared and a new device code flow is triggered. This matches the Cloudflare transport's approach (see `packages/mcp-cloudflare/src/server/oauth/helpers.ts`).
+| File                                        | Purpose                                                       |
+| ------------------------------------------- | ------------------------------------------------------------- |
+| `packages/cli/src/lib/mcp.ts`               | Credential resolution, `--access-token` alias, refresh-on-401 |
+| `packages/cli/src/commands/mcp.ts`          | `mcp` command flags and help                                  |
+| `packages/cli/src/lib/mcp/server.ts`        | Agent providers, telemetry, and stdio startup                 |
+| `packages/cli/src/lib/db/auth.ts`           | CLI token storage and `refreshToken()`                        |
+| `packages/cli/src/lib/token-host.ts`        | Host-scoping checks                                           |
+| `packages/mcp-core/src/transports/stdio.ts` | stdio transport and per-request auth context                  |

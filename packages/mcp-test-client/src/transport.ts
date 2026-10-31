@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { MCPConfig, RequestedTransportMode } from "./types.js";
 
 export function resolveTransportMode(options: {
@@ -22,9 +23,6 @@ export function buildStdioServerLaunchConfig(
 } {
   const args: string[] = [];
 
-  if (config.accessToken) {
-    args.push(`--access-token=${config.accessToken}`);
-  }
   if (config.host) {
     args.push(`--host=${config.host}`);
   }
@@ -42,8 +40,14 @@ export function buildStdioServerLaunchConfig(
     }
   }
 
+  // The server's own env token, forced over any stored CLI login. Never on
+  // argv, where other processes can read it, and never through the deprecated
+  // SENTRY_ACCESS_TOKEN alias the server would warn about.
+  delete env.SENTRY_ACCESS_TOKEN;
   if (config.accessToken) {
-    env.SENTRY_ACCESS_TOKEN = config.accessToken;
+    delete env.SENTRY_TOKEN;
+    env.SENTRY_AUTH_TOKEN = config.accessToken;
+    env.SENTRY_FORCE_ENV_TOKEN = "1";
   }
   if (config.host) {
     env.SENTRY_HOST = config.host;
@@ -53,4 +57,22 @@ export function buildStdioServerLaunchConfig(
   }
 
   return { args, env };
+}
+
+/**
+ * The process that serves stdio: `sentry mcp` from the workspace CLI source,
+ * or the built `@sentry/mcp-server` bundle, which is what the package ships.
+ */
+export function buildStdioServerCommand(
+  config: Pick<MCPConfig, "useBundle">,
+  packagesDir: string,
+): { command: string; args: string[]; bundlePath?: string } {
+  if (config.useBundle) {
+    const bundlePath = join(packagesDir, "mcp-server/dist/sentry-mcp.cjs");
+    return { command: process.execPath, args: [bundlePath], bundlePath };
+  }
+  return {
+    command: "pnpm",
+    args: ["--silent", "--dir", join(packagesDir, "cli"), "run", "cli", "mcp"],
+  };
 }

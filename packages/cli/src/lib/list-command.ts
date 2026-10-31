@@ -13,12 +13,8 @@
  *   buildOrgListCommand
  */
 
-import { createRequire } from "node:module";
 import type { Aliases, Command, CommandContext } from "@stricli/core";
 import type { SentryContext } from "../context.js";
-
-const _require = createRequire(import.meta.url);
-
 import type { ListTargetOptions } from "./arg-parsing.js";
 import {
   buildCommand,
@@ -27,10 +23,6 @@ import {
 } from "./command.js";
 import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
-import { logger } from "./logger.js";
-
-const log = logger.withTag("list-command");
-
 import { disableDsnCache } from "./dsn/index.js";
 import { warning } from "./formatters/colors.js";
 import {
@@ -51,6 +43,7 @@ import {
   skippedArgument,
 } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
+import { type CliRoutes, findRoutes } from "./route-registry.js";
 import { type ListCommandTarget, listTarget } from "./target-positional.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
@@ -445,7 +438,8 @@ export const LIST_BASE_ALIASES: Aliases<string> = { n: "limit", c: "cursor" };
 // Level B: subcommand interception for plural aliases
 // ---------------------------------------------------------------------------
 
-let _subcommandsByRoute: Map<string, Set<string>> | undefined;
+/** Subcommand names by route group, per registered route map. */
+const subcommandsByRoutes = new WeakMap<CliRoutes, Map<string, Set<string>>>();
 
 /**
  * Entry shape returned by Stricli's getAllEntries().
@@ -475,39 +469,32 @@ function collectChildNames(parent: {
 /**
  * Get the subcommand names for a given singular route (e.g. "project" → {"list", "view"}).
  *
- * Lazily walks the Stricli route map on first call. Uses `require()` to break
- * the circular dependency: list-command → app → commands → list-command.
+ * Walks the registered route map once and caches the result for it. With no
+ * route map registered (a command's `func` called directly, as in unit
+ * tests), there are no subcommands to intercept.
  */
 function getSubcommandsForRoute(routeName: string): Set<string> {
-  if (!_subcommandsByRoute) {
-    _subcommandsByRoute = new Map();
-
-    try {
-      const { routes } = _require("../app.js") as {
-        routes: { getAllEntries: () => readonly RouteEntry[] };
-      };
-
-      for (const entry of routes.getAllEntries()) {
-        const target = entry.target as unknown as Record<string, unknown>;
-        if (typeof target?.getAllEntries === "function") {
-          _subcommandsByRoute.set(
-            entry.name.original,
-            collectChildNames(
-              target as { getAllEntries: () => readonly RouteEntry[] },
-            ),
-          );
-        }
-      }
-    } catch (error) {
-      // In test environments (vitest), require("../app.js") may fail because
-      // Node's ESM resolver can't resolve .js→.ts for transitive imports.
-      // Gracefully degrade: interceptSubcommand will treat all targets as
-      // plain values (no subcommand interception).
-      log.debug("Failed to load app routes for subcommand detection", error);
-    }
+  const routes = findRoutes();
+  if (!routes) {
+    return new Set();
   }
-
-  return _subcommandsByRoute.get(routeName) ?? new Set();
+  let byRoute = subcommandsByRoutes.get(routes);
+  if (!byRoute) {
+    byRoute = new Map();
+    for (const entry of routes.getAllEntries()) {
+      const target = entry.target as unknown as Record<string, unknown>;
+      if (typeof target?.getAllEntries === "function") {
+        byRoute.set(
+          entry.name.original,
+          collectChildNames(
+            target as { getAllEntries: () => readonly RouteEntry[] },
+          ),
+        );
+      }
+    }
+    subcommandsByRoutes.set(routes, byRoute);
+  }
+  return byRoute.get(routeName) ?? new Set();
 }
 
 /**

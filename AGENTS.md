@@ -12,6 +12,7 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 
 - **MCP tool count**: Target ≤20, hard limit 25 (AI agents have limited tool slots).
 - **Quality gate**: `pnpm run tsc && pnpm run lint && pnpm run test` must pass before committing.
+- **Dependency direction**: `sentry` (cli) → `@sentry/mcp-core` → `@sentry/toolkit-core`, and `@sentry/mcp-cloudflare` → `@sentry/mcp-core`; never the reverse. mcp-core and toolkit-core never import the CLI. Inject CLI-only capabilities (SQLite cache, local-file DSN detection, file uploads) through interfaces defined in mcp-core or toolkit-core. `pnpm run lint` enforces this; see docs/architecture/overview.md#package-dependency-direction.
 
 ## Repository Structure
 
@@ -69,7 +70,7 @@ toolkit/
 
 - docs/architecture/overview.md — MCP system design
 - docs/operations/security.md — Authentication and security patterns
-- docs/operations/stdio-auth.md — Device code flow, token caching, client ID architecture
+- docs/operations/stdio-auth.md — stdio auth: shared CLI login and static tokens
 - docs/operations/oauth-signout-playbook.md — Remote OAuth diagnostic runbook
 - docs/operations/embedded-agents.md — LLM provider configuration for AI-powered tools
 - docs/operations/github-actions.md — MCP deployment workflows
@@ -97,7 +98,7 @@ toolkit/
 
 **MCP releases:**
 
-- docs/releases/stdio.md — npm package release
+- docs/releases/stdio.md — `@sentry/mcp-server` release and the MCP registry
 - docs/releases/cloudflare.md — Cloudflare deployment
 
 ## Commands

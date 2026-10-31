@@ -81,10 +81,9 @@ describe("static tool catalog capabilities", () => {
   });
 
   it("does not advertise or acknowledge modern tool-list subscriptions", async () => {
-    const handler = createMcpHandler(
-      () => buildServer({ context, tools, sdkVersion: "v2" }),
-      { keepAliveMs: 0 },
-    );
+    const handler = createMcpHandler(() => buildServer({ context, tools }), {
+      keepAliveMs: 0,
+    });
     try {
       const discovery = await handler.fetch(modernRequest("server/discover"));
       expect(discovery.status).toBe(200);

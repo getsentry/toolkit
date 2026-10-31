@@ -66,6 +66,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     selfHosted: true,
     devGuide: "Force env token to take priority over stored OAuth token",
   },
+  {
+    name: "SENTRY_ACCESS_TOKEN",
+    description:
+      "Deprecated. Auth token for `@sentry/mcp-server` and `sentry mcp` only (the env form of the deprecated `--access-token` flag). It acts as `SENTRY_AUTH_TOKEN` with `SENTRY_FORCE_ENV_TOKEN=1` and prints a deprecation warning; set those instead. Other commands ignore it.",
+    example: "sntryu_YOUR_TOKEN_HERE",
+  },
   // -- Targeting --
   {
     name: "SENTRY_ORG",

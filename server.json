@@ -20,7 +20,13 @@
           "isRequired": true,
           "format": "string",
           "isSecret": true,
-          "name": "SENTRY_ACCESS_TOKEN"
+          "name": "SENTRY_AUTH_TOKEN"
+        },
+        {
+          "description": "Set to 1 to use SENTRY_AUTH_TOKEN even when a Sentry CLI login is stored",
+          "format": "string",
+          "default": "1",
+          "name": "SENTRY_FORCE_ENV_TOKEN"
         }
       ]
     }
