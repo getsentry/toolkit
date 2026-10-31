@@ -68,6 +68,22 @@ let warnReadonlyDatabaseOnce: () => void = warnReadonlyDatabase;
 let repairAttempted = false;
 
 /**
+ * Whether read-only writes are skipped without touching permissions or
+ * writing to stderr. Set by {@link silenceReadonlyHandling}.
+ */
+let silent = false;
+
+/**
+ * Skip read-only writes silently for the rest of this process: no permission
+ * repair and no stderr warning. Used by shell completion, where each TAB press
+ * is a new process and any stderr output would land in the user's prompt. The
+ * next normal command still repairs and warns.
+ */
+export function silenceReadonlyHandling(): void {
+  silent = true;
+}
+
+/**
  * Chmod a path, ignoring ENOENT (file doesn't exist yet).
  * Re-throws any other error so permission failures aren't silently masked.
  */
@@ -167,6 +183,7 @@ function tryRepairReadonly(): boolean {
  */
 export function resetReadonlyWarning(): void {
   repairAttempted = false;
+  silent = false;
   warnReadonlyDatabaseOnce = warnReadonlyDatabase;
 }
 
@@ -180,10 +197,10 @@ const WRAPPED_STATEMENT_METHODS = ["get", "run", "all", "values"] as const;
  *
  * First tries to repair file permissions via {@link tryRepairReadonly}. If that
  * fails (or was already attempted), falls back to a one-shot warning directing
- * the user to `sentry cli fix`.
+ * the user to `sentry cli fix`. Does neither after {@link silenceReadonlyHandling}.
  */
 function handleReadonlyError(method: string | symbol): unknown {
-  if (!tryRepairReadonly()) {
+  if (!(silent || tryRepairReadonly())) {
     warnReadonlyDatabaseOnce();
   }
   if (method === "all" || method === "values") {

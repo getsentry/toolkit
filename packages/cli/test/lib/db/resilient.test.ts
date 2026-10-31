@@ -9,6 +9,7 @@ import { getDatabase, getRawDatabase } from "../../../src/lib/db/index.js";
 import {
   createResilientDatabase,
   resetReadonlyWarning,
+  silenceReadonlyHandling,
 } from "../../../src/lib/db/resilient.js";
 import {
   generatePreMigrationTableDDL,
@@ -149,5 +150,49 @@ describe("createResilientDatabase: readonly database", () => {
     stderrSpy.mockRestore();
     chmodSpy.mockRestore();
     db.close();
+  });
+});
+
+describe("createResilientDatabase: silenced read-only handling", () => {
+  /** A database whose writes always fail as read-only, independent of OS permissions. */
+  function readonlyDatabase(): Database {
+    const stmt = {
+      run: () => {
+        throw new Error("attempt to write a readonly database");
+      },
+    };
+    return { query: () => stmt } as unknown as Database;
+  }
+
+  function stderrDuringWrite(): string {
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      createResilientDatabase(readonlyDatabase())
+        .query("INSERT INTO test VALUES (1)")
+        .run();
+      return stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  }
+
+  beforeEach(() => {
+    resetReadonlyWarning();
+  });
+
+  afterEach(() => {
+    resetReadonlyWarning();
+  });
+
+  test("writes to stderr by default", () => {
+    expect(stderrDuringWrite()).not.toBe("");
+  });
+
+  test("skips the write without stderr output once silenced", () => {
+    silenceReadonlyHandling();
+
+    expect(stderrDuringWrite()).toBe("");
   });
 });
