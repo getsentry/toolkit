@@ -366,10 +366,8 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 # Authentication: use SENTRY_AUTH_TOKEN (below) or a CLI login
 --access-token=TOKEN              # Deprecated alias for SENTRY_AUTH_TOKEN
 
-# Host configuration
---host=sentry.example.com         # Self-hosted Sentry (hostname only)
---url=https://sentry.example.com  # Self-hosted Sentry (full URL)
---insecure-http                   # Allow http:// for --host
+# Host configuration: set SENTRY_HOST or SENTRY_URL (http:// for plain
+# HTTP). --host, --url, and --insecure-http still work but are deprecated.
 
 # Constraints (the CLI's --org/--project; --organization-slug and
 # --project-slug still work but are deprecated)

@@ -47,6 +47,14 @@ function booleanFlag(brief: string) {
   return { kind: "boolean", brief, default: false } as const;
 }
 
+/** A hidden boolean flag kept so existing MCP client configurations keep working. */
+function deprecatedBooleanFlag(replacement: string) {
+  return {
+    ...booleanFlag(`Deprecated: use ${replacement} instead`),
+    hidden: true,
+  } as const;
+}
+
 export const mcpCommand = buildCommand({
   // The server resolves its own credential (the CLI session or env token),
   // with its own `.sentryclirc` URL check.
@@ -61,10 +69,12 @@ export const mcpCommand = buildCommand({
       "SENTRY_AUTH_TOKEN, when set, wins over a stored login. " +
       "An org auth token (sntrys_) only works with the host it was issued for.\n\n" +
       "--access-token and SENTRY_ACCESS_TOKEN are deprecated: they act as SENTRY_AUTH_TOKEN, " +
-      "sent to the --host/--url target, and print a warning.\n\n" +
+      "sent to the configured Sentry instance, and print a warning. " +
+      "--host, --url, and --insecure-http are deprecated too: set SENTRY_HOST or SENTRY_URL " +
+      "(an http:// URL for a self-hosted instance over plain HTTP).\n\n" +
       "Environment variables:\n" +
       "  SENTRY_AUTH_TOKEN        Sentry token (same as for other commands)\n" +
-      "  SENTRY_HOST, SENTRY_URL  Sentry instance (same as for other commands)\n" +
+      "  SENTRY_HOST, SENTRY_URL  Sentry instance (same as for other commands; http:// for plain HTTP)\n" +
       "  MCP_URL                  MCP server URL reported in telemetry\n" +
       "  SENTRY_DSN               DSN for the server's own telemetry\n" +
       "  OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY\n" +
@@ -91,10 +101,6 @@ export const mcpCommand = buildCommand({
         command: "sentry mcp --skills inspect,triage",
       },
       {
-        description: "Use a self-hosted instance over plain HTTP",
-        command: "sentry mcp --host sentry.internal:9000 --insecure-http",
-      },
-      {
         description: "Pick the LLM provider for AI-powered search",
         command: "sentry mcp --agent-provider anthropic",
       },
@@ -103,11 +109,9 @@ export const mcpCommand = buildCommand({
   parameters: {
     flags: {
       "access-token": stringFlag("Deprecated: set SENTRY_AUTH_TOKEN instead"),
-      host: stringFlag("Sentry host for self-hosted instances"),
-      url: stringFlag("Sentry URL (https only; use --host for http)"),
-      "insecure-http": booleanFlag(
-        "Use http:// for a self-hosted --host value",
-      ),
+      host: deprecatedStringFlag("SENTRY_HOST"),
+      url: deprecatedStringFlag("SENTRY_URL"),
+      "insecure-http": deprecatedBooleanFlag("an http:// SENTRY_URL"),
       // The CLI's own --org/--project, which this command owns instead of
       // mapping them onto SENTRY_ORG/SENTRY_PROJECT.
       org: {

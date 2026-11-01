@@ -16,15 +16,20 @@ Point your MCP client at the installed Sentry CLI:
 }
 ```
 
-For a self-hosted instance, first authenticate the CLI against that host. You can also override the target for this MCP server invocation:
+For a self-hosted instance, first authenticate the CLI against that host. You can also pick the instance for this MCP server with `SENTRY_HOST` or `SENTRY_URL` (an `http://` URL for plain HTTP), the same as for other commands:
 
 ```json
 {
   "mcpServers": {
     "sentry": {
       "command": "sentry",
-      "args": ["mcp", "--host=sentry.example.com"]
+      "args": ["mcp"],
+      "env": {
+        "SENTRY_HOST": "sentry.example.com"
+      }
     }
   }
 }
 ```
+
+`--host`, `--url`, and `--insecure-http` still work but are deprecated.

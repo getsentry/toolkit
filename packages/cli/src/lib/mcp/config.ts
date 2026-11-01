@@ -163,14 +163,14 @@ function resolveAgentProvider(value?: string): McpAgentProvider | undefined {
 export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
   if (input.insecureHttp && input.url) {
     throw new ValidationError(
-      "--insecure-http cannot be used with --url. Use --host for insecure self-hosted instances.",
+      "--insecure-http cannot be used with --url. For plain HTTP, set an http:// SENTRY_URL instead.",
     );
   }
 
   const sentryHost = resolveHost(input.url, input.host);
   if (input.insecureHttp && isSentryHost(sentryHost)) {
     throw new ValidationError(
-      "--insecure-http is only supported for self-hosted Sentry hosts.",
+      "Plain HTTP is only supported for self-hosted Sentry hosts.",
     );
   }
   const finalSkills = resolveSkills(input, sentryHost);

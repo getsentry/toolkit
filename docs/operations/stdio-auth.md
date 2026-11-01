@@ -49,9 +49,9 @@ or `SENTRY_ACCESS_TOKEN`. Both still work, as an alias: the server runs as if
 and takes the same env-token path. It also
 replaces any `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` already in the environment,
 because the flag is the more explicit choice. `--access-token` wins over
-`SENTRY_ACCESS_TOKEN`. Unlike a plain env token, the alias is sent to the
-`--host`/`--url` target, as the old static token was (an org token's own URL
-claim still has to match it).
+`SENTRY_ACCESS_TOKEN`. Like a plain env token, the alias is sent to the
+configured Sentry instance (an org token's own URL claim still has to match
+it).
 
 Either one prints a single deprecation warning to stderr (stdout carries the
 MCP protocol), without the token:
@@ -70,12 +70,20 @@ so in that case it exits with an error that names the login command for the
 program that is running, such as `npx -y @sentry/mcp-server auth login`
 (`packages/cli/src/lib/app-identity.ts`).
 
-For self-hosted Sentry, set `SENTRY_HOST`/`SENTRY_URL`. Those also pick the
-stored account for that server (see [Accounts](#accounts)) and scope
-`SENTRY_AUTH_TOKEN` to it; `--host`/`--url` alone set the target but do not
-scope an env token, so the server refuses to start (`HostScopeError`). A plain
-HTTP instance takes an `http://` `SENTRY_URL`, or `--host` with
-`--insecure-http`.
+For self-hosted Sentry, set `SENTRY_HOST`/`SENTRY_URL`, the same as for every
+other CLI command. They pick the stored account for that server (see
+[Accounts](#accounts)), scope `SENTRY_AUTH_TOKEN` to it, and point the
+interactive login at it. A plain HTTP instance takes an `http://`
+`SENTRY_URL`.
+
+### Deprecated: `--host`, `--url`, and `--insecure-http`
+
+Older releases picked the instance with `--host`/`--url`, and plain HTTP with
+`--insecure-http`. They still work, hidden from help, as an alias: the server
+runs as if `SENTRY_URL` were set to that target (`http://` with
+`--insecure-http`), so the credential check, the env token's host scope, and
+the interactive login all use it. Each prints a deprecation warning to
+stderr.
 
 A repo-local `.sentryclirc` URL is not a trust source. Unless `--host`/`--url`
 is passed, a non-SaaS `[defaults] url` must match a server you are logged in

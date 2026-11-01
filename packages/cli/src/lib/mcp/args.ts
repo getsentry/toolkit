@@ -13,8 +13,11 @@ import { ValidationError } from "../errors.js";
 /** `sentry mcp` flags, as Stricli parses them (see `commands/mcp.ts`). */
 export type McpFlags = {
   readonly "access-token"?: string;
+  /** Deprecated: `SENTRY_HOST`. */
   readonly host?: string;
+  /** Deprecated: `SENTRY_URL`. */
   readonly url?: string;
+  /** Deprecated: an `http://` `SENTRY_URL`. */
   readonly "insecure-http": boolean;
   readonly "mcp-url"?: string;
   readonly "sentry-dsn"?: string;
@@ -35,19 +38,25 @@ export type McpFlags = {
   readonly "project-slug"?: string;
 };
 
-/** Deprecated flags and the CLI-wide flag that replaces each. */
-const DEPRECATED_SCOPE_FLAGS = [
-  ["organization-slug", "org"],
-  ["project-slug", "project"],
+/**
+ * Deprecated flags and what replaces each: a CLI-wide flag, or the
+ * environment variable every other command reads the Sentry instance from.
+ */
+const DEPRECATED_FLAGS = [
+  ["organization-slug", "--org"],
+  ["project-slug", "--project"],
+  ["host", "SENTRY_HOST"],
+  ["url", "SENTRY_URL"],
+  ["insecure-http", "an http:// SENTRY_URL"],
 ] as const;
 
-/** The deprecated scope flags `flags` uses, with their replacements. */
-export function deprecatedScopeFlags(
+/** The deprecated flags `flags` uses, with their replacements. */
+export function deprecatedFlags(
   flags: McpFlags,
 ): { flag: string; replacement: string }[] {
-  return DEPRECATED_SCOPE_FLAGS.filter(([old]) => flags[old] !== undefined).map(
-    ([flag, replacement]) => ({ flag, replacement }),
-  );
+  return DEPRECATED_FLAGS.filter(
+    ([old]) => flags[old] !== undefined && flags[old] !== false,
+  ).map(([flag, replacement]) => ({ flag, replacement }));
 }
 
 /** A scope flag's value, from its CLI-wide name or its deprecated alias. */

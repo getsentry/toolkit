@@ -21,11 +21,9 @@ export function buildStdioServerLaunchConfig(
   args: string[];
   env: Record<string, string>;
 } {
+  // The host goes through SENTRY_HOST below; the server's --host is deprecated.
   const args: string[] = [];
 
-  if (config.host) {
-    args.push(`--host=${config.host}`);
-  }
   if (config.sentryDsn) {
     args.push(`--sentry-dsn=${config.sentryDsn}`);
   }

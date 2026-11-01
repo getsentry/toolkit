@@ -44,7 +44,7 @@ describe("buildStdioServerLaunchConfig", () => {
       },
     );
 
-    expect(launchConfig.args).toEqual(["--host=sentry.io"]);
+    expect(launchConfig.args).toEqual([]);
     expect(launchConfig.env).toEqual({
       PATH: "/usr/bin",
       HOME: "/tmp/home",
@@ -68,7 +68,6 @@ describe("buildStdioServerLaunchConfig", () => {
     );
 
     expect(launchConfig.args).toEqual([
-      "--host=us.sentry.io",
       "--sentry-dsn=https://dsn.example/1",
       "--experimental",
     ]);

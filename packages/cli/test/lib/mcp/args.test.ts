@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ValidationError } from "../../../src/lib/errors.js";
 import {
-  deprecatedScopeFlags,
+  deprecatedFlags,
   mergeMcpArgs,
   parseMcpEnv,
   splitInlineFlagValues,
@@ -279,7 +279,7 @@ describe("sentry mcp scope flags", () => {
       organizationSlug: "acme",
       projectSlug: "web",
     });
-    expect(deprecatedScopeFlags(flags)).toEqual([]);
+    expect(deprecatedFlags(flags)).toEqual([]);
   });
 
   it("keeps --organization-slug and --project-slug as deprecated aliases", async () => {
@@ -291,9 +291,9 @@ describe("sentry mcp scope flags", () => {
       organizationSlug: "acme",
       projectSlug: "web",
     });
-    expect(deprecatedScopeFlags(flags)).toEqual([
-      { flag: "organization-slug", replacement: "org" },
-      { flag: "project-slug", replacement: "project" },
+    expect(deprecatedFlags(flags)).toEqual([
+      { flag: "organization-slug", replacement: "--org" },
+      { flag: "project-slug", replacement: "--project" },
     ]);
   });
 
@@ -308,5 +308,29 @@ describe("sentry mcp scope flags", () => {
   it("rejects a new flag and its alias with different values", async () => {
     const flags = await parseMcpFlags(["--project=web", "--project-slug=api"]);
     expect(() => mergeMcpArgs(flags, {})).toThrow(ValidationError);
+  });
+});
+
+describe("sentry mcp target flags", () => {
+  it("keeps --host, --url, and --insecure-http as deprecated aliases", async () => {
+    const flags = await parseMcpFlags([
+      "--host=sentry.example.com",
+      "--insecure-http",
+      "--url=https://sentry.example.com",
+    ]);
+    expect(mergeMcpArgs(flags, {})).toMatchObject({
+      host: "sentry.example.com",
+      insecureHttp: true,
+      url: "https://sentry.example.com",
+    });
+    expect(deprecatedFlags(flags)).toEqual([
+      { flag: "host", replacement: "SENTRY_HOST" },
+      { flag: "url", replacement: "SENTRY_URL" },
+      { flag: "insecure-http", replacement: "an http:// SENTRY_URL" },
+    ]);
+  });
+
+  it("reports nothing without the deprecated flags", async () => {
+    expect(deprecatedFlags(await parseMcpFlags([]))).toEqual([]);
   });
 });

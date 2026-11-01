@@ -10,7 +10,7 @@ import {
 import { getEnv, withEnv } from "./env.js";
 import { AuthError, HostScopeError } from "./errors.js";
 import {
-  deprecatedScopeFlags,
+  deprecatedFlags,
   type McpFlags,
   mergeMcpArgs,
   parseMcpEnv,
@@ -295,6 +295,28 @@ function deprecatedTokenEnv(
 }
 
 /**
+ * The environment with the deprecated `--host`/`--url`/`--insecure-http`
+ * target applied as `SENTRY_URL`, the setting they stand in for. The
+ * credential check, an env token's host scope, and the fallback login all read
+ * the instance from there, so they agree with the server's target.
+ */
+function withTargetEnv(
+  env: NodeJS.ProcessEnv,
+  flags: McpFlags,
+  target: McpTarget,
+): NodeJS.ProcessEnv {
+  if (!(hasSentryTarget(flags) || flags["insecure-http"])) {
+    return env;
+  }
+  const targeted: NodeJS.ProcessEnv = {
+    ...env,
+    SENTRY_URL: `${target.sentryProtocol}://${target.sentryHost}`,
+  };
+  delete targeted.SENTRY_HOST;
+  return targeted;
+}
+
+/**
  * The environment a `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) runs under: forced
  * over any stored login, as if `SENTRY_FORCE_ENV_TOKEN=1` were set. An MCP
  * client passes the token in its server config to pick the account, so a
@@ -321,10 +343,10 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   const config = finalizeMcpConfig(
     mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env)),
   );
-  for (const { flag, replacement } of deprecatedScopeFlags(flags)) {
+  for (const { flag, replacement } of deprecatedFlags(flags)) {
     // stderr only: stdout carries the stdio MCP transport.
     process.stderr.write(
-      `Deprecation warning: --${flag} is deprecated; use --${replacement} instead.\n`,
+      `Deprecation warning: --${flag} is deprecated; use ${replacement} instead.\n`,
     );
   }
   const deprecated = readDeprecatedAccessToken(flags, env);
@@ -354,9 +376,10 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
     await assertRcUrlTrusted(cwd);
   }
 
+  const targetEnv = withTargetEnv(env, flags, config);
   const credentialEnv = deprecatedToken
-    ? deprecatedTokenEnv(env, deprecatedToken, config)
-    : preferEnvToken(env);
+    ? deprecatedTokenEnv(targetEnv, deprecatedToken, config)
+    : preferEnvToken(targetEnv);
 
   // Loaded only now: mcp-core's server, the agent providers, and the MCP
   // telemetry are not needed for --help or setup errors.

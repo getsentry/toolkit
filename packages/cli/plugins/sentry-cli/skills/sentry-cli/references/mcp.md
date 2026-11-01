@@ -17,9 +17,6 @@ Start a local Sentry MCP server
 
 **Flags:**
 - `--access-token <value> - Deprecated: set SENTRY_AUTH_TOKEN instead`
-- `--host <value> - Sentry host for self-hosted instances`
-- `--url <value> - Sentry URL (https only; use --host for http)`
-- `--insecure-http - Use http:// for a self-hosted --host value`
 - `--org <value> - Limit every call to this organization`
 - `--project <value> - Limit calls to this project`
 - `--skills <value> - Skills to grant, comma-separated (default: active skills; seer is left out on self-hosted)`
@@ -45,9 +42,6 @@ sentry mcp --all-skills
 
 # Grant only some skills
 sentry mcp --skills inspect,triage
-
-# Use a self-hosted instance over plain HTTP
-sentry mcp --host sentry.internal:9000 --insecure-http
 
 # Pick the LLM provider for AI-powered search
 sentry mcp --agent-provider anthropic

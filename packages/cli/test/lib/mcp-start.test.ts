@@ -411,6 +411,21 @@ describe("serveMcp deprecated --access-token", () => {
     ]);
   });
 
+  test("warns about deprecated target flags and still serves them", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    const { config } = await start([
+      "--host=sentry.internal:9000",
+      "--insecure-http",
+    ]);
+    expect(config.sentryHost).toBe("sentry.internal:9000");
+    expect(config.sentryProtocol).toBe("http");
+    expect(output.stdout).toEqual([]);
+    expect(output.stderr).toEqual([
+      "Deprecation warning: --host is deprecated; use SENTRY_HOST instead.\n",
+      "Deprecation warning: --insecure-http is deprecated; use an http:// SENTRY_URL instead.\n",
+    ]);
+  });
+
   test("prints no hint without a deprecated token", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",
