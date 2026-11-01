@@ -197,8 +197,15 @@ async function serveStdio(args, extraEnv, { deletedCwd } = {}) {
     assert.ok(initialize.result?.serverInfo, JSON.stringify(initialize));
     assert.equal(toolsList.id, 2);
     assert.ok(toolsList.result?.tools.length > 0, JSON.stringify(toolsList));
-    // The server exits once the client closes stdin.
-    const exited = new Promise((resolve) => child.on("exit", resolve));
+    // The server exits once the client closes stdin. A leftover timer, such
+    // as a second Sentry client's runtime metrics, would keep it alive.
+    const exited = new Promise((resolve, reject) => {
+      child.on("exit", resolve);
+      setTimeout(
+        () => reject(new Error("server did not exit after stdin closed")),
+        15_000,
+      ).unref();
+    });
     child.stdin.end();
     assert.equal(await exited, 0);
     return { stderr };
@@ -209,9 +216,9 @@ async function serveStdio(args, extraEnv, { deletedCwd } = {}) {
 
 test("serves MCP over stdio with SENTRY_AUTH_TOKEN", async () => {
   // `--sentry-dsn=` (no telemetry) is a form MCP configs have always used.
+  // Without a stored login, the env token needs no SENTRY_FORCE_ENV_TOKEN.
   const { stderr } = await serveStdio(["--sentry-dsn="], {
     SENTRY_AUTH_TOKEN: "sntryu_test",
-    SENTRY_FORCE_ENV_TOKEN: "1",
   });
   assert.doesNotMatch(stderr, /deprecated/);
 });
@@ -236,8 +243,16 @@ test(
   async () => {
     await serveStdio(
       [],
-      { SENTRY_AUTH_TOKEN: "sntryu_test", SENTRY_FORCE_ENV_TOKEN: "1" },
+      { SENTRY_AUTH_TOKEN: "sntryu_test" },
       { deletedCwd: mkdtempSync(join(tmpdir(), "sentry-mcp-cwd-")) },
     );
   },
 );
+
+test("exits after the client disconnects with telemetry on", async () => {
+  // An explicit DSN turns on the server's telemetry despite the CLI opt-out.
+  // Nothing listens on port 9, so no event leaves the machine.
+  await serveStdio(["--sentry-dsn=http://public@127.0.0.1:9/1"], {
+    SENTRY_AUTH_TOKEN: "sntryu_test",
+  });
+});
