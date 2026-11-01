@@ -352,8 +352,10 @@ const COMPLETERS = Object.freeze({
   team: flagEntityCompleter("team"),
   /** Cached teams as the `team:<id>` actor an owner flag takes. */
   owner: flagEntityCompleter("owner"),
+  /** Project slugs of the org typed, else of every org. */
+  project: projectCompleter({ list: false }),
   /** Comma-separated project slugs of the org typed, else of every org. */
-  "project-list": (partial, slot) => completeProjectList(partial, slot),
+  "project-list": projectCompleter({ list: true }),
   /** Comma-separated cached alert (workflow) IDs, described by name. */
   "workflow-list": flagEntityCompleter("workflow", { list: true }),
   /** Cached monitor slugs in the first word; the command to run after it. */
@@ -375,6 +377,8 @@ const COMPLETERS = Object.freeze({
   },
   /** Cached public DSNs, described by the client key name. */
   dsn: flagEntityCompleter("dsn"),
+  /** Cached tag keys of issues, described by their labels. */
+  "tag-key": flagEntityCompleter("tag-key"),
   /** Servers of stored accounts. */
   "account-server": (partial) => completeAccountServers(partial),
   /**
@@ -835,25 +839,27 @@ function flagEntityCompleter(
 }
 
 /**
- * Complete a comma-separated list of project slugs: those of the org the
- * target names, else of every cached org, leaving out those already given.
+ * Build the completer of project slugs: those of the org the target names,
+ * else of every cached org, each once.
+ *
+ * @param options.list - The value is a comma-separated list: complete its
+ *   last item, leaving out those already in it
  */
-async function completeProjectList(
-  partial: string,
-  slot: CompleterContext,
-): Promise<Completion[]> {
-  const { head, item, chosen } = splitListItem(partial, true);
-  const names = new Map<string, string>();
-  for (const org of await flagOrgs(slot.positionals)) {
-    for (const { projectSlug, projectName } of getCachedProjectsForOrg(org)) {
-      if (!(chosen.has(projectSlug) || names.has(projectSlug))) {
-        names.set(projectSlug, projectName);
+function projectCompleter(options: { list: boolean }): Completer {
+  return async (partial, slot) => {
+    const { head, item, chosen } = splitListItem(partial, options.list);
+    const names = new Map<string, string>();
+    for (const org of await flagOrgs(slot.positionals)) {
+      for (const { projectSlug, projectName } of getCachedProjectsForOrg(org)) {
+        if (!(chosen.has(projectSlug) || names.has(projectSlug))) {
+          names.set(projectSlug, projectName);
+        }
       }
     }
-  }
-  return fuzzyMatch(item, [...names.keys()], { mode: "search" }).map(
-    (slug) => ({ value: `${head}${slug}`, description: names.get(slug) }),
-  );
+    return fuzzyMatch(item, [...names.keys()], { mode: "search" }).map(
+      (slug) => ({ value: `${head}${slug}`, description: names.get(slug) }),
+    );
+  };
 }
 
 const completeMonitors = flagEntityCompleter("monitor");

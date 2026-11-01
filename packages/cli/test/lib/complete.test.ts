@@ -1077,6 +1077,22 @@ describe("getCompletions: flag values that name cached entities", () => {
     expect(
       await values(["release", "create", "acme/1.0.0", "--project"], "cli,"),
     ).toEqual(["cli,web"]);
+    // The hidden --project every command takes completes one slug
+    expect(await values(["issue", "list", "acme/", "--project"], "w")).toEqual([
+      "web",
+    ]);
+  });
+
+  test("issue tags completes the tag keys seen on issues", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("tag-key", "acme", [
+      { value: "browser.name", label: "Browser.Name" },
+      { value: "release", label: "Release" },
+    ]);
+
+    expect(
+      await getCompletions(["issue", "tags", "acme/CLI-1A"], "brow"),
+    ).toEqual([{ value: "browser.name", description: "Browser.Name" }]);
   });
 });
 
@@ -1178,6 +1194,12 @@ describe("getCompletions: fixed values from the modules that validate them", () 
       "p95",
       "p99",
     ]);
+    expect(
+      await values(["dashboard", "widget", "add", "--query"], "count"),
+    ).toEqual(["count", "count_unique", "count_if", "count_at_least"]);
+    expect(
+      await values(["dashboard", "widget", "edit", "--sort"], "ep"),
+    ).toEqual(["eps", "epm"]);
   });
 
   test("event send --user offers the keys with their own User field", async () => {

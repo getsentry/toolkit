@@ -43,6 +43,7 @@ import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   choiceListParser,
   ORG_TARGET,
+  parseProjectSlug,
   parseText,
   withCompletionTarget,
 } from "./completion-target.js";
@@ -306,7 +307,7 @@ const ORG_FLAG = {
  */
 const PROJECT_FLAG = {
   kind: "parsed" as const,
-  parse: parseText,
+  parse: parseProjectSlug,
   brief: "Project slug",
   optional: true as const,
   hidden: true as const,

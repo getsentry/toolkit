@@ -34,6 +34,7 @@ import {
   WIDGET_TYPES,
   type WidgetLayoutFlags,
   type WidgetLayoutMode,
+  AGGREGATE_FUNCTION_NAMES,
 } from "../../../types/dashboard.js";
 import {
   type DashboardInput,
@@ -190,7 +191,7 @@ export const addCommand = buildCommand({
       },
       query: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
         brief: "Aggregate expression (e.g. count, p95:span.duration)",
         variadic: true,
         optional: true,
@@ -210,7 +211,7 @@ export const addCommand = buildCommand({
       },
       sort: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
         brief: "Order by (prefix - for desc, e.g. -count)",
         optional: true,
       },

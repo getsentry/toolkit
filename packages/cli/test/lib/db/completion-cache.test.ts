@@ -117,6 +117,33 @@ describe("completion seeding from API responses", () => {
     ]);
   });
 
+  test("issue details store their tag keys, scoped and unscoped", async () => {
+    await seedCompletions(
+      `${API}/issues/123/`,
+      json({
+        shortId: "CLI-1A",
+        tags: [
+          { key: "browser.name", name: "Browser.Name" },
+          { name: "No key" },
+        ],
+      }),
+    );
+    await seedCompletions(
+      "https://sentry.io/api/0/issues/456/",
+      json({
+        shortId: "CLI-2B",
+        permalink: "https://acme.sentry.io/issues/456/",
+        tags: [{ key: "release", name: "Release" }],
+      }),
+    );
+    await seedCompletions(`${API}/issues/`, json([{ shortId: "CLI-3C" }]));
+
+    expect(getCachedCompletionEntities("tag-key", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "release", label: "Release" },
+      { orgSlug: "acme", value: "browser.name", label: "Browser.Name" },
+    ]);
+  });
+
   test("dashboards are stored by numeric ID only", async () => {
     await seedCompletions(
       `${API}/dashboards/`,

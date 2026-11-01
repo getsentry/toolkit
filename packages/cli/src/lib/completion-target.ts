@@ -107,6 +107,9 @@ export const TEAM_TARGET = "team" satisfies CompletionTarget;
 /** Cached teams as `team:<id>` owner actors. */
 export const OWNER_TARGET = "owner" satisfies CompletionTarget;
 
+/** Cached project slugs. */
+export const PROJECT_TARGET = "project" satisfies CompletionTarget;
+
 /** Comma-separated project slugs. */
 export const PROJECT_LIST_TARGET = "project-list" satisfies CompletionTarget;
 
@@ -129,6 +132,9 @@ export const APP_LINK_FIELD_TARGET =
 
 /** Cached public DSNs. */
 export const DSN_TARGET = "dsn" satisfies CompletionTarget;
+
+/** Cached tag keys of issues. */
+export const TAG_KEY_TARGET = "tag-key" satisfies CompletionTarget;
 
 /** Servers of stored accounts. */
 export const ACCOUNT_SERVER_TARGET =
@@ -247,6 +253,9 @@ export const parseTeam = identityParser(TEAM_TARGET);
 /** Parses an owner actor (`team:<id>`, `user:<id>`); completes cached teams. */
 export const parseOwner = identityParser(OWNER_TARGET);
 
+/** Parses a project slug; completes cached projects. */
+export const parseProjectSlug = identityParser(PROJECT_TARGET);
+
 /** Parses comma-separated project slugs; completes cached projects. */
 export const parseProjectList = identityParser(PROJECT_LIST_TARGET);
 
@@ -267,6 +276,9 @@ export const parseAppLinkField = identityParser(APP_LINK_FIELD_TARGET);
 
 /** Parses a DSN; completes cached client-key DSNs. */
 export const parseDsn = identityParser(DSN_TARGET);
+
+/** Parses an issue tag key; completes cached tag keys. */
+export const parseTagKey = identityParser(TAG_KEY_TARGET);
 
 /** Parses an `issue archive --until` condition; completes its grammar. */
 export const parseArchiveUntil = identityParser(ARCHIVE_UNTIL_TARGET);

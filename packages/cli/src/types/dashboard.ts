@@ -294,6 +294,18 @@ export const ERROR_AGGREGATE_FUNCTIONS = [
 
 export type ErrorAggregateFunction = (typeof ERROR_AGGREGATE_FUNCTIONS)[number];
 
+/**
+ * The function names `--query` and `--sort` complete: those of every
+ * dataset's aggregates and their aliases, as {@link parseAggregate} reads
+ * them (`count`, then `p95:span.duration` once a field follows). A word
+ * starting with `-` completes flag names, so a descending sort's `-` is
+ * typed after the name is completed.
+ */
+export const AGGREGATE_FUNCTION_NAMES: readonly string[] = [
+  ...ERROR_AGGREGATE_FUNCTIONS,
+  ...Object.keys(AGGREGATE_ALIASES),
+];
+
 /** Valibot schema for validating a span aggregate function name */
 export const SpanAggregateFunctionSchema = picklist(SPAN_AGGREGATE_FUNCTIONS);
 

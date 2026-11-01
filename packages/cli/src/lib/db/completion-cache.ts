@@ -38,6 +38,7 @@ import { runUpsert } from "./utils.js";
  * - `app-link-field`: `name=` of a field of a Sentry App's issue-link
  *   form, and `name=value` for its fixed choices, with the app
  * - `dsn`: public DSN of a client key, with the key name
+ * - `tag-key`: key of a tag seen on an issue, with its label
  */
 export type CompletionEntityKind =
   | "issue"
@@ -51,7 +52,8 @@ export type CompletionEntityKind =
   | "integration"
   | "sentry-app"
   | "app-link-field"
-  | "dsn";
+  | "dsn"
+  | "tag-key";
 
 /** Most recently seen entries kept per kind and org. */
 export const MAX_ENTITIES_PER_ORG = 500;

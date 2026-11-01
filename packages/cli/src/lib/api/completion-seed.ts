@@ -218,6 +218,21 @@ function appLinkFieldEntities(body: unknown): CompletionEntity[] {
   });
 }
 
+/**
+ * Keys of the tags an issue's details list (`tags`: the issue's tag keys,
+ * as `issue tags <issue> <key>` takes them), described by their labels.
+ */
+function tagKeyEntities(body: unknown): CompletionEntity[] {
+  const tags = objectField(body, "tags");
+  return Array.isArray(tags) ? fieldEntities("key", "name")(tags) : [];
+}
+
+/** The organization of an issue, from its permalink. */
+function permalinkOrg(body: unknown): string | undefined {
+  const permalink = stringField(body, "permalink");
+  return permalink ? parseSentryUrl(permalink)?.org : undefined;
+}
+
 /** Public DSNs of client keys, described by the key name. */
 function dsnEntities(body: unknown): CompletionEntity[] {
   return items(body).flatMap((key) => {
@@ -246,6 +261,11 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     extract: issueEntities,
   },
   {
+    kind: "tag-key",
+    url: "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/" satisfies GetOrganizationIssueData["url"],
+    extract: tagKeyEntities,
+  },
+  {
     kind: "issue",
     url: "/api/0/organizations/{organization_id_or_slug}/shortids/{issue_id}/" satisfies ResolveOrganizationShortIdData["url"],
     extract: (body) =>
@@ -262,10 +282,13 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     kind: "issue",
     url: "/api/0/issues/{issue_id}/",
     extract: issueEntities,
-    org: (body) => {
-      const permalink = stringField(body, "permalink");
-      return permalink ? parseSentryUrl(permalink)?.org : undefined;
-    },
+    org: permalinkOrg,
+  },
+  {
+    kind: "tag-key",
+    url: "/api/0/issues/{issue_id}/",
+    extract: tagKeyEntities,
+    org: permalinkOrg,
   },
   {
     kind: "dashboard",
