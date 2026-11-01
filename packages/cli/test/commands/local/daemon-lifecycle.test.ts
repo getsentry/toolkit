@@ -1,5 +1,5 @@
 /** Daemon identity and process invocation regression coverage. */
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -7,9 +7,14 @@ import { useTestConfigDir } from "../../helpers.js";
 import {
   readLocalDaemonState,
   getRunningLocalDaemon,
+  requestLocalDaemon,
   writeLocalDaemonState,
   runLocalDaemonForeground,
 } from "../../../src/commands/local/daemon.js";
+import {
+  LOCAL_SESSION_SNAPSHOT_FILENAME,
+  readLocalSessionSnapshot,
+} from "../../../src/commands/local/session-snapshot.js";
 
 const getConfigDir = useTestConfigDir("local-daemon-lifecycle-");
 afterEach(() => {
@@ -152,22 +157,83 @@ describe("Local daemon discovery", () => {
   });
 });
 
-test("closes the listener when discovery persistence fails", async () => {
+/** A loopback port nothing listens on. */
+async function freePort(): Promise<number> {
   const reserve = createServer();
   await new Promise<void>((resolve) => reserve.listen(0, "127.0.0.1", resolve));
   const address = reserve.address();
   if (!address || typeof address === "string")
     throw new Error("Expected a TCP address");
   await new Promise<void>((resolve) => reserve.close(() => resolve()));
+  return address.port;
+}
+
+/** Poll `read` until it returns a value `done` accepts. */
+async function eventually<T>(
+  read: () => T | Promise<T>,
+  done: (value: T) => boolean,
+): Promise<T> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const value = await read();
+    if (done(value)) return value;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("Timed out waiting for the Local daemon");
+}
+
+test("mirrors its sessions to the completion snapshot and removes it on shutdown", async () => {
+  vi.stubGlobal(
+    "fetch",
+    (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+  );
+  const running = runLocalDaemonForeground({
+    host: "127.0.0.1",
+    port: await freePort(),
+  });
+  const state = await eventually(
+    () => readLocalDaemonState(getConfigDir()),
+    (value) => value !== undefined,
+  );
+  if (!state) throw new Error("Expected daemon discovery state");
+
+  const created = await requestLocalDaemon(state, "/sessions", {
+    body: JSON.stringify({ cwd: "/work/web", label: "web" }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  const { id } = (await created.json()) as { id: string };
+  await eventually(
+    () => readLocalSessionSnapshot(getConfigDir()),
+    (sessions) => sessions.length === 1,
+  );
+  expect(readLocalSessionSnapshot(getConfigDir())).toEqual([
+    { id, label: "web", state: "open" },
+  ]);
+
+  await requestLocalDaemon(state, `/sessions/${id}/close`, { method: "POST" });
+  await eventually(
+    () => readLocalSessionSnapshot(getConfigDir()),
+    (sessions) => sessions[0]?.state === "retained",
+  );
+
+  await requestLocalDaemon(state, "/daemon/stop", { method: "POST" });
+  await running;
+  await expect(
+    readFile(join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME)),
+  ).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("closes the listener when discovery persistence fails", async () => {
+  const port = await freePort();
   await mkdir(join(getConfigDir(), "local-control-plane.json"));
   await expect(
-    runLocalDaemonForeground({ host: "127.0.0.1", port: address.port }),
+    runLocalDaemonForeground({ host: "127.0.0.1", port }),
   ).rejects.toThrow();
   const replacement = createServer();
   try {
     await new Promise<void>((resolve, reject) => {
       replacement.once("error", reject);
-      replacement.listen(address.port, "127.0.0.1", resolve);
+      replacement.listen(port, "127.0.0.1", resolve);
     });
   } finally {
     await new Promise<void>((resolve) => replacement.close(() => resolve()));

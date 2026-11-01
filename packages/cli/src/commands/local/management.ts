@@ -5,6 +5,7 @@ import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
+  parseLocalSession,
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
@@ -76,7 +77,7 @@ const SESSION_REFERENCE_POSITIONAL = {
   kind: "array",
   parameter: {
     brief: "Session ID or unique name",
-    parse: parseText,
+    parse: parseLocalSession,
     placeholder: "session",
   },
 } as const;
@@ -301,7 +302,7 @@ function buildTelemetryViewCommand(
         kind: "array",
         parameter: {
           brief: `Session and ${kind} ID`,
-          parse: parseText,
+          parse: parseLocalSession,
           placeholder: `session ${kind}`,
         },
       },

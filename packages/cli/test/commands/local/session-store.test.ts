@@ -128,6 +128,39 @@ describe("LocalSessionStore", () => {
     expect(() => store.resolve(session.id)).toThrow(/not found/i);
   });
 
+  test("reports the sessions after each create, close, and expiry, not on activity or reset", () => {
+    let now = 1000;
+    const onChange = vi.fn();
+    const store = createLocalSessionStore({ now: () => now, onChange });
+    const session = store.create({ label: "web", cwd: "/work/web" });
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: session.id, state: "open" }),
+    ]);
+    store.create({ clientId: "retry", label: "api", cwd: "/work/api" });
+    store.create({ clientId: "retry", label: "api", cwd: "/work/api" });
+    expect(onChange).toHaveBeenCalledTimes(2);
+
+    store.recordActivity(session.id);
+    store.reset(session.id);
+    expect(onChange).toHaveBeenCalledTimes(2);
+
+    store.close(session.id);
+    store.close(session.id);
+    expect(onChange).toHaveBeenCalledTimes(3);
+    expect(onChange.mock.lastCall?.[0]).toContainEqual(
+      expect.objectContaining({ id: session.id, state: "retained" }),
+    );
+
+    expect(store.pruneExpired()).toEqual([]);
+    expect(onChange).toHaveBeenCalledTimes(3);
+    now += 3 * 60 * 60 * 1000;
+    expect(store.pruneExpired()).toEqual([session.id]);
+    expect(onChange).toHaveBeenCalledTimes(4);
+    expect(onChange.mock.lastCall?.[0]).toEqual([
+      expect.objectContaining({ label: "api" }),
+    ]);
+  });
+
   test("does not extend the expiry of a closed session after activity", () => {
     let now = 1000;
     const store = createLocalSessionStore({ now: () => now });
