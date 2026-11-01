@@ -10,7 +10,7 @@ import type { LocalSession } from "../../src/commands/local/session-store.js";
 import { getCompletions } from "../../src/lib/complete.js";
 import { useTestConfigDir } from "../helpers.js";
 
-const getConfigDir = useTestConfigDir("test-complete-local-session-");
+useTestConfigDir("test-complete-local-session-");
 
 const WEB = "0190a6e1-0000-7000-8000-00000000000a";
 const API = "0190a6e1-0000-7000-8000-00000000000b";
@@ -35,7 +35,7 @@ function session(
 }
 
 function writeSessions(pid = process.pid) {
-  return writeLocalSessionSnapshot(getConfigDir(), pid, [
+  writeLocalSessionSnapshot(pid, [
     session(WEB, "web"),
     session(API, "api"),
     session(API_RETRY, "api", "retained"),
@@ -45,7 +45,7 @@ function writeSessions(pid = process.pid) {
 
 describe("getCompletions: Local sessions", () => {
   test("session IDs by label and state, then labels only one session has", async () => {
-    await writeSessions();
+    writeSessions();
     expect(await getCompletions(["local", "session", "view"], "")).toEqual([
       { value: WEB, description: "web (open)" },
       { value: API, description: "api (open)" },
@@ -66,7 +66,7 @@ describe("getCompletions: Local sessions", () => {
   });
 
   test("the telemetry ID after the session completes nothing", async () => {
-    await writeSessions();
+    writeSessions();
     expect(
       (await getCompletions(["local", "envelope", "view"], "")).length,
     ).toBeGreaterThan(0);
@@ -81,7 +81,7 @@ describe("getCompletions: Local sessions", () => {
   test("nothing without a running daemon", async () => {
     expect(await getCompletions(["local", "session", "view"], "")).toEqual([]);
     const { pid } = spawnSync(process.execPath, ["-e", ""]);
-    await writeSessions(pid);
+    writeSessions(pid);
     expect(await getCompletions(["local", "session", "view"], "")).toEqual([]);
   });
 });

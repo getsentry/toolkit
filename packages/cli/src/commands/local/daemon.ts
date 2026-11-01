@@ -520,14 +520,12 @@ export async function runLocalDaemonForeground({
   const releaseOwnership = await claimDaemonOwnership(directory);
   let listening: Awaited<ReturnType<typeof tryListen>> | undefined;
   let ownedState: LocalDaemonState | undefined;
-  // Serialized, so an older list never replaces a newer one
-  let snapshotWrites = Promise.resolve();
   const snapshotSessions = (sessions: readonly LocalSession[]) => {
-    snapshotWrites = snapshotWrites
-      .then(() => writeLocalSessionSnapshot(directory, process.pid, sessions))
-      .catch((error: unknown) => {
-        logger.debug("Could not write the Local session snapshot", error);
-      });
+    try {
+      writeLocalSessionSnapshot(process.pid, sessions);
+    } catch (error) {
+      logger.debug("Could not write the Local session snapshot", error);
+    }
   };
   try {
     const token = randomBytes(32).toString("base64url");
@@ -601,10 +599,11 @@ export async function runLocalDaemonForeground({
         await removeLocalDaemonState(directory);
       }
       if (ownedState) {
-        await snapshotWrites;
-        await removeLocalSessionSnapshot(directory).catch((error: unknown) => {
+        try {
+          removeLocalSessionSnapshot();
+        } catch (error) {
           logger.debug("Could not remove the Local session snapshot", error);
-        });
+        }
       }
     } finally {
       await releaseOwnership();

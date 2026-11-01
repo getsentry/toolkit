@@ -203,16 +203,16 @@ test("mirrors its sessions to the completion snapshot and removes it on shutdown
   });
   const { id } = (await created.json()) as { id: string };
   await eventually(
-    () => readLocalSessionSnapshot(getConfigDir()),
+    () => readLocalSessionSnapshot(),
     (sessions) => sessions.length === 1,
   );
-  expect(readLocalSessionSnapshot(getConfigDir())).toEqual([
+  expect(readLocalSessionSnapshot()).toEqual([
     { id, label: "web", state: "open" },
   ]);
 
   await requestLocalDaemon(state, `/sessions/${id}/close`, { method: "POST" });
   await eventually(
-    () => readLocalSessionSnapshot(getConfigDir()),
+    () => readLocalSessionSnapshot(),
     (sessions) => sessions[0]?.state === "retained",
   );
 

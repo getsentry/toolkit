@@ -28,7 +28,6 @@ import {
   listAccounts,
 } from "./db/accounts.js";
 import { getCredentialContext } from "./db/auth.js";
-import { getConfigDir } from "./db/index.js";
 import {
   type CachedCompletionEntity,
   type CompletionEntityKind,
@@ -909,7 +908,7 @@ function completeBindHosts(partial: string): Completion[] {
 async function completeLocalSessions(partial: string): Promise<Completion[]> {
   const { readLocalSessionSnapshot } =
     await import("../commands/local/session-snapshot.js");
-  const sessions = readLocalSessionSnapshot(getConfigDir());
+  const sessions = readLocalSessionSnapshot();
   const labelCounts = new Map<string, number>();
   for (const { label } of sessions) {
     labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
@@ -928,9 +927,10 @@ async function completeLocalSessions(partial: string): Promise<Completion[]> {
       completions.set(label, `${state} session ${id}`);
     }
   }
-  return [...completions]
-    .filter(([value]) => value.startsWith(partial))
-    .map(([value, description]) => ({ value, description }));
+  return Array.from(completions, ([value, description]) => ({
+    value,
+    description,
+  })).filter(({ value }) => value.startsWith(partial));
 }
 
 /** Servers of stored accounts, described by the accounts on each. */

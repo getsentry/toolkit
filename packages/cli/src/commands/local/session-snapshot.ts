@@ -3,7 +3,8 @@
  *
  * Sessions live only in the daemon's memory, and `sentry __complete` makes
  * no network requests, so the daemon mirrors each session's ID, label, and
- * state to an owner-only file next to its discovery state. The file holds no
+ * state to an owner-only file in the CLI's config directory, next to its
+ * discovery state and `cli.db`. The file holds no
  * capabilities and no telemetry. It is ignored once the daemon that wrote it
  * has exited, and a stale entry only suggests a session the command then
  * reports as not found.
@@ -12,9 +13,16 @@
  * nothing the completion fast path has not loaded already.
  */
 
-import { readFileSync } from "node:fs";
-import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { getConfigDir } from "../../lib/db/index.js";
 import { logger } from "../../lib/logger.js";
 import type { LocalSession } from "./session-store.js";
 
@@ -26,20 +34,21 @@ export type LocalSessionSnapshotEntry = Pick<
   "id" | "label" | "state" | "expiresAt"
 >;
 
-function snapshotPath(directory: string): string {
-  return join(directory, LOCAL_SESSION_SNAPSHOT_FILENAME);
+function snapshotPath(): string {
+  return join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME);
 }
 
 /**
  * Atomically replace the snapshot with `sessions`, written by daemon `pid`,
  * with owner-only access. Only the fields of
- * {@link LocalSessionSnapshotEntry} are written.
+ * {@link LocalSessionSnapshotEntry} are written. Synchronous, so each write
+ * lands before the next starts: the file is small, and sessions change
+ * only when one is created, closed, or expires.
  */
-export async function writeLocalSessionSnapshot(
-  directory: string,
+export function writeLocalSessionSnapshot(
   pid: number,
   sessions: readonly LocalSession[],
-): Promise<void> {
+): void {
   const snapshot = {
     pid,
     sessions: sessions.map(({ id, label, state, expiresAt }) => ({
@@ -49,23 +58,21 @@ export async function writeLocalSessionSnapshot(
       expiresAt,
     })),
   };
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const path = snapshotPath(directory);
+  mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
+  const path = snapshotPath();
   const temporaryPath = `${path}.${pid}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(snapshot)}\n`, {
+  writeFileSync(temporaryPath, `${JSON.stringify(snapshot)}\n`, {
     encoding: "utf8",
     mode: 0o600,
   });
   // `mode` does not apply to a file left over from an interrupted write
-  await chmod(temporaryPath, 0o600);
-  await rename(temporaryPath, path);
+  chmodSync(temporaryPath, 0o600);
+  renameSync(temporaryPath, path);
 }
 
 /** Remove the snapshot when the daemon shuts down. */
-export async function removeLocalSessionSnapshot(
-  directory: string,
-): Promise<void> {
-  await rm(snapshotPath(directory), { force: true });
+export function removeLocalSessionSnapshot(): void {
+  rmSync(snapshotPath(), { force: true });
 }
 
 /** Whether `pid` may name a running process: only `ESRCH` rules it out. */
@@ -98,12 +105,11 @@ function isEntry(value: unknown): value is LocalSessionSnapshotEntry {
  * entries. An absent, unreadable, or malformed file has none.
  */
 export function readLocalSessionSnapshot(
-  directory: string,
   now = Date.now(),
 ): LocalSessionSnapshotEntry[] {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(snapshotPath(directory), "utf8"));
+    parsed = JSON.parse(readFileSync(snapshotPath(), "utf8"));
   } catch (error) {
     logger.debug("Could not read the Local session snapshot", error);
     return [];

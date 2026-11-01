@@ -1,9 +1,8 @@
 /** The session snapshot the Local daemon keeps for shell completion. */
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   LOCAL_SESSION_SNAPSHOT_FILENAME,
   readLocalSessionSnapshot,
@@ -14,22 +13,9 @@ import {
   createLocalSessionStore,
   type LocalSession,
 } from "../../../src/commands/local/session-store.js";
+import { useTestConfigDir } from "../../helpers.js";
 
-const directories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
-
-async function snapshotDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "sentry-local-sessions-"));
-  directories.push(directory);
-  return directory;
-}
+const getConfigDir = useTestConfigDir("sentry-local-sessions-");
 
 /** The PID of a process that has exited. */
 function exitedPid(): number {
@@ -50,16 +36,15 @@ const SESSION: LocalSession = {
 
 describe("Local session snapshot", () => {
   test("holds only IDs, labels, and states, in an owner-only file", async () => {
-    const directory = await snapshotDirectory();
     const store = createLocalSessionStore();
     const session = store.create({ label: "web", cwd: "/work/web" });
     const capabilities = store.getCapabilities(session.id);
     // A caller passing the stored session still writes no capability
-    await writeLocalSessionSnapshot(directory, process.pid, [
+    writeLocalSessionSnapshot(process.pid, [
       { ...session, ...capabilities } as LocalSession,
     ]);
 
-    const path = join(directory, LOCAL_SESSION_SNAPSHOT_FILENAME);
+    const path = join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME);
     const text = await readFile(path, "utf8");
     expect(text).not.toContain(capabilities.ingest);
     expect(text).not.toContain(capabilities.stream);
@@ -68,36 +53,34 @@ describe("Local session snapshot", () => {
       // oxlint-disable-next-line no-bitwise -- verifying permission bits
       expect((await stat(path)).mode & 0o777).toBe(0o600);
     }
-    expect(readLocalSessionSnapshot(directory)).toEqual([
+    expect(readLocalSessionSnapshot()).toEqual([
       { id: session.id, label: "web", state: "open" },
     ]);
 
-    await removeLocalSessionSnapshot(directory);
-    expect(readLocalSessionSnapshot(directory)).toEqual([]);
+    removeLocalSessionSnapshot();
+    expect(readLocalSessionSnapshot()).toEqual([]);
   });
 
   test("is ignored once the daemon that wrote it has exited", async () => {
-    const directory = await snapshotDirectory();
-    await writeLocalSessionSnapshot(directory, exitedPid(), [SESSION]);
-    expect(readLocalSessionSnapshot(directory)).toEqual([]);
+    writeLocalSessionSnapshot(exitedPid(), [SESSION]);
+    expect(readLocalSessionSnapshot()).toEqual([]);
   });
 
   test("leaves out retained sessions past their expiry", async () => {
-    const directory = await snapshotDirectory();
-    await writeLocalSessionSnapshot(directory, process.pid, [
+    writeLocalSessionSnapshot(process.pid, [
       SESSION,
       { ...SESSION, id: "kept", state: "retained", expiresAt: 5000 },
       { ...SESSION, id: "expired", state: "retained", expiresAt: 4000 },
     ]);
-    expect(
-      readLocalSessionSnapshot(directory, 4000).map(({ id }) => id),
-    ).toEqual([SESSION.id, "kept"]);
+    expect(readLocalSessionSnapshot(4000).map(({ id }) => id)).toEqual([
+      SESSION.id,
+      "kept",
+    ]);
   });
 
   test("an absent or malformed file, or malformed entries, complete nothing", async () => {
-    const directory = await snapshotDirectory();
-    const path = join(directory, LOCAL_SESSION_SNAPSHOT_FILENAME);
-    expect(readLocalSessionSnapshot(directory)).toEqual([]);
+    const path = join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME);
+    expect(readLocalSessionSnapshot()).toEqual([]);
     for (const content of [
       "not json",
       "null",
@@ -106,7 +89,7 @@ describe("Local session snapshot", () => {
       JSON.stringify({ pid: process.pid, sessions: {} }),
     ]) {
       await writeFile(path, content);
-      expect(readLocalSessionSnapshot(directory)).toEqual([]);
+      expect(readLocalSessionSnapshot()).toEqual([]);
     }
     await writeFile(
       path,
@@ -122,7 +105,7 @@ describe("Local session snapshot", () => {
         ],
       }),
     );
-    expect(readLocalSessionSnapshot(directory)).toEqual([
+    expect(readLocalSessionSnapshot()).toEqual([
       { id: "d", label: "web", state: "open" },
     ]);
   });

@@ -113,9 +113,9 @@ export function createLocalSessionStore({
   };
 
   const list = () =>
-    [...sessions.values()]
-      .map(toPublicSession)
-      .sort((left, right) => right.lastActivityAt - left.lastActivityAt);
+    Array.from(sessions.values(), toPublicSession).sort(
+      (left, right) => right.lastActivityAt - left.lastActivityAt,
+    );
   const changed = () => onChange?.(list());
 
   const resolveStored = (reference: string): StoredSession => {
