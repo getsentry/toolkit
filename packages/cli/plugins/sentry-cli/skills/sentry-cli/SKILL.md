@@ -46,7 +46,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `token delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -651,6 +651,16 @@ Work with Sentry teams
 - `sentry team list [<org/project>]` — List teams
 
 → Full flags and examples: `references/team.md`
+
+### Token
+
+Manage org auth tokens
+
+- `sentry token list [<org>]` — List org auth tokens
+- `sentry token create <org/name>` — Create an org auth token
+- `sentry token delete [<org>/]<token-id>` — Revoke an org auth token
+
+→ Full flags and examples: `references/token.md`
 
 ### Integration
 

@@ -118,7 +118,7 @@ Top-level layout:
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
-  `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
+  `team`, `token`, `trace`, `trial`) plus standalone command files (`api.ts`,
   `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).

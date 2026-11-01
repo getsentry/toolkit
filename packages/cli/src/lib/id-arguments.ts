@@ -276,6 +276,22 @@ export const ID_KINDS = {
     fromUrl: () => undefined,
     orgScoped: true,
   },
+  token: {
+    label: "Token ID",
+    isId: isAllDigits,
+    mayBeId: () => true,
+    validate: (value) => {
+      if (!isAllDigits(value)) {
+        throw new ValidationError(
+          `Invalid token ID '${value}'. Use the numeric ID from 'sentry token list'.`,
+          "token-id",
+        );
+      }
+      return value;
+    },
+    fromUrl: () => undefined,
+    orgScoped: true,
+  },
 } as const satisfies Record<string, IdKind>;
 
 /** How a command takes its IDs. */
