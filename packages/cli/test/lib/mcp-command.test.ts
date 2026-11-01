@@ -130,6 +130,48 @@ describe("running `mcp`", () => {
     expect(mocks.withTelemetry).not.toHaveBeenCalled();
   });
 
+  test("ignores --json and --fields before `mcp`", async () => {
+    for (const leading of [
+      ["--json"],
+      ["--no-json"],
+      ["--fields", "id,title"],
+      ["--fields=id"],
+      ["--json", "--fields", "id"],
+    ]) {
+      mocks.serveMcp.mockClear();
+      process.exitCode = originalExitCode;
+
+      await runCli(
+        [...leading, "mcp", "--host=sentry.example.com"],
+        SENTRY_CLI,
+      );
+
+      expect(stderr).toBe("");
+      expect(mocks.serveMcp).toHaveBeenCalledOnce();
+      expect(mocks.serveMcp.mock.lastCall?.[0]).toMatchObject({
+        host: "sentry.example.com",
+      });
+    }
+  });
+
+  test("ignores --json and --fields before the default command", async () => {
+    await runCli(["--json", "--fields", "id", "--all-skills"], MCP_SERVER);
+
+    expect(stderr).toBe("");
+    expect(mocks.serveMcp).toHaveBeenCalledOnce();
+    expect(mocks.serveMcp.mock.lastCall?.[0]).toMatchObject({
+      "all-skills": true,
+    });
+  });
+
+  test("rejects --json after `mcp`, where flags are the server's", async () => {
+    await runCli(["mcp", "--json"], SENTRY_CLI);
+
+    expect(mocks.serveMcp).not.toHaveBeenCalled();
+    expect(stderr).toContain("--json");
+    expect(process.exitCode).toBeLessThan(0);
+  });
+
   test("passes the context's working directory, which survives a deleted one", async () => {
     vi.spyOn(process, "cwd").mockImplementation(() => {
       throw Object.assign(new Error("uv_cwd"), { code: "ENOENT" });

@@ -233,6 +233,36 @@ export function isMcpInvocation(
 }
 
 /**
+ * Global output flags that `mcp` does not declare: it has no `output` config,
+ * so `buildCommand` does not inject them, and stdout carries JSON-RPC.
+ */
+const MCP_IGNORED_OUTPUT_FLAGS = new Set(["--json", "--no-json", "--fields"]);
+
+/**
+ * Drop global output flags placed before the command, so `sentry --json mcp`
+ * starts the server instead of failing to parse. Flags after `mcp` belong to
+ * the server and are kept.
+ */
+function dropLeadingOutputFlags(cliArgs: readonly string[]): string[] {
+  const kept: string[] = [];
+  let index = 0;
+  while (index < cliArgs.length) {
+    const token = cliArgs[index] ?? "";
+    const nextIndex = token.startsWith("-")
+      ? skipLeadingGlobalFlag(cliArgs, index)
+      : undefined;
+    if (nextIndex === undefined) {
+      break;
+    }
+    if (!MCP_IGNORED_OUTPUT_FLAGS.has(token.split("=", 1)[0] ?? token)) {
+      kept.push(...cliArgs.slice(index, nextIndex));
+    }
+    index = nextIndex;
+  }
+  return [...kept, ...cliArgs.slice(index)];
+}
+
+/**
  * Run the stdio MCP server. The `mcp` command resolves once the client
  * disconnects, so the teardown below never runs under a live server.
  */
@@ -246,7 +276,11 @@ async function runMcpServer(
   const { error } = await import("./lib/formatters/colors.js");
   const { splitInlineFlagValues } = await import("./lib/mcp/args.js");
   try {
-    await run(app, splitInlineFlagValues(cliArgs), buildContext(process));
+    await run(
+      app,
+      splitInlineFlagValues(dropLeadingOutputFlags(cliArgs)),
+      buildContext(process),
+    );
   } catch (err) {
     // Auth errors escape Stricli for the CLI's login middleware, which the
     // server does not use: it runs its own login fallback in a terminal.
