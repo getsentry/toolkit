@@ -7,7 +7,12 @@
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { choiceParser, parseText } from "../../../lib/completion-target.js";
+import {
+  aggregateShorthandParser,
+  choiceParser,
+  fieldParser,
+  parseText,
+} from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetEdited } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -29,7 +34,6 @@ import {
   validateWidgetLayout,
   WIDGET_TYPES,
   type WidgetLayoutFlags,
-  AGGREGATE_FUNCTION_NAMES,
 } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import {
@@ -39,6 +43,7 @@ import {
   resolveWidgetIndex,
   validateSortReferencesAggregate,
   validateWidgetEnums,
+  WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
 
@@ -268,7 +273,7 @@ export const editCommand = buildCommand({
       },
       query: {
         kind: "parsed",
-        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
+        parse: aggregateShorthandParser(WIDGET_FIELD_COMPLETION),
         brief: "Aggregate expression (e.g. count, p95:span.duration)",
         variadic: true,
         optional: true,
@@ -281,14 +286,14 @@ export const editCommand = buildCommand({
       },
       "group-by": {
         kind: "parsed",
-        parse: parseText,
+        parse: fieldParser(WIDGET_FIELD_COMPLETION),
         brief: "Group-by column (repeatable)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
+        parse: aggregateShorthandParser(WIDGET_FIELD_COMPLETION),
         brief: "Order by (prefix - for desc, e.g. -count)",
         optional: true,
       },

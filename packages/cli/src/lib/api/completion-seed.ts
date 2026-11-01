@@ -7,7 +7,9 @@
  * `src/lib/sentry-client.ts` is offered to {@link seedCompletions},
  * which matches its path against {@link COMPLETION_SOURCES}: the
  * `@sentry/api` operations that return a completed entity (issues,
- * dashboards, environments, releases, teams, …), by their URL templates.
+ * dashboards, environments, releases, teams, attribute keys, …), by their
+ * URL templates and, where a parameter picks what the response holds (the
+ * `dataset` of attribute keys), their query.
  * Any command that lists or fetches them therefore seeds the cache, without
  * the API functions having to remember to.
  *
@@ -35,6 +37,7 @@ import type {
   ListOrganizationSentryAppComponentsData,
   ListOrganizationSentryAppInstallationsData,
   ListOrganizationTeamsData,
+  ListOrganizationTraceItemAttributesData,
   ListOrganizationWorkflowsData,
   ListProjectEnvironmentsData,
   ListProjectKeysData,
@@ -62,6 +65,11 @@ type CompletionSource = {
    * parameter; `{organization_id_or_slug}` names the organization).
    */
   url: string;
+  /**
+   * Query parameters the request must have, for an operation whose
+   * parameters decide what its response holds (`dataset=spans`).
+   */
+  query?: Readonly<Record<string, string>>;
   /** Entities in the parsed JSON body, in display order. */
   extract: (body: unknown) => CompletionEntity[];
   /** Organization of a body whose path names none (unscoped endpoints). */
@@ -242,6 +250,36 @@ function dsnEntities(body: unknown): CompletionEntity[] {
 }
 
 /**
+ * Attribute keys of a trace item dataset, the form `--field` and `--query`
+ * take (`tags[cart.total,number]` for a custom number), described by their
+ * type, after their display name when it differs.
+ */
+function attributeEntities(body: unknown): CompletionEntity[] {
+  return items(body).flatMap((attribute) => {
+    const value = stringField(attribute, "key");
+    const name = stringField(attribute, "name");
+    const type = stringField(attribute, "attributeType");
+    return value
+      ? [{ value, label: name && name !== value ? `${name} (${type})` : type }]
+      : [];
+  });
+}
+
+/** Entity kind of the attribute keys of each trace item dataset. */
+const ATTRIBUTE_KINDS = {
+  spans: "span-attribute",
+  logs: "log-attribute",
+  tracemetrics: "metric-attribute",
+} as const satisfies Partial<
+  Record<
+    NonNullable<
+      NonNullable<ListOrganizationTraceItemAttributesData["query"]>["dataset"]
+    >,
+    CompletionEntityKind
+  >
+>;
+
+/**
  * Operations that return completed entities. Each `satisfies` ties a
  * template to the generated `url` of an `@sentry/api` operation, so an
  * endpoint the SDK renames or drops fails type checking. A template serves
@@ -390,6 +428,12 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/keys/" satisfies ListProjectKeysData["url"],
     extract: dsnEntities,
   },
+  ...Object.entries(ATTRIBUTE_KINDS).map(([dataset, kind]) => ({
+    kind,
+    url: "/api/0/organizations/{organization_id_or_slug}/trace-items/attributes/" satisfies ListOrganizationTraceItemAttributesData["url"],
+    query: { dataset },
+    extract: attributeEntities,
+  })),
 ];
 
 /** Path parameter in an `@sentry/api` URL template. */
@@ -421,16 +465,20 @@ type SourceMatch = { source: CompletionSource; orgSlug?: string };
  * and `--owner` actors).
  */
 function matchSources(url: string): SourceMatch[] {
-  let pathname: string;
+  let parsed: URL;
   try {
-    pathname = new URL(url).pathname;
+    parsed = new URL(url);
   } catch (error) {
     log.debug(`Not seeding completions from unparsable URL '${url}'`, error);
     return [];
   }
   return SOURCE_PATTERNS.flatMap(({ source, pattern }) => {
-    const match = pattern.exec(pathname);
-    if (!match) {
+    const match = pattern.exec(parsed.pathname);
+    const query = Object.entries(source.query ?? {});
+    if (
+      !match ||
+      query.some(([name, value]) => parsed.searchParams.get(name) !== value)
+    ) {
       return [];
     }
     const org = match[1];
