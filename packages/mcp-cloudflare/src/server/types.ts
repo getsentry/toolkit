@@ -33,9 +33,9 @@ export type WorkerProps = {
   /**
    * Scopes Sentry actually granted on the upstream access token, as returned
    * in the `scope` field of Sentry's OAuth token response. Unlike
-   * `grantedScopes` (derived from selected skills), this reflects what the
-   * stored Sentry token can really do. Absent on grants created before this
-   * field existed.
+   * `grantedScopes` (derived from selected skills), these describe the token,
+   * not the MCP session's permissions. Absent on older grants or when Sentry
+   * omitted `scope`.
    */
   upstreamScopes?: string[];
   /** Primary authorization method - array of skill strings */
@@ -60,6 +60,7 @@ export type WorkerProps = {
 export interface Env {
   NODE_ENV: string;
   ASSETS: Fetcher;
+  LOADER: WorkerLoader;
   OAUTH_KV: KVNamespace;
   MCP_CACHE: KVNamespace;
   COOKIE_SECRET: string;

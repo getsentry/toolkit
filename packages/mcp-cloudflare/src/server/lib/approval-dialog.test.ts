@@ -13,7 +13,8 @@ function skillInputAttributes(html: string, skillId: string): string {
       `<input type="checkbox" name="skill" value="${skillId}"([^>]*)>`,
     ),
   );
-  return match?.[1] ?? "";
+  expect(match, `Missing skill checkbox: ${skillId}`).not.toBeNull();
+  return match![1];
 }
 
 function expectSkillChecked(html: string, skillId: string): void {
@@ -71,7 +72,7 @@ describe("approval-dialog", () => {
       expect(html).not.toContain("history.back");
     });
 
-    it("selects all approvable skills when no remembered defaults are provided", async () => {
+    it("leaves API Write unchecked for new approvals and explains its independent authority", async () => {
       const response = await renderApprovalDialog(
         new Request("https://example.com/oauth/authorize"),
         {
@@ -87,6 +88,37 @@ describe("approval-dialog", () => {
       expectSkillChecked(html, "seer");
       expectSkillChecked(html, "triage");
       expectSkillChecked(html, "project-management");
+      expectSkillChecked(html, "api-read");
+      expectSkillUnchecked(html, "api-write");
+      expect(html).toContain('id="skill-name-api-write">API Write</span>');
+      expect(skillInputAttributes(html, "api-write")).toContain(
+        'aria-describedby="skill-description-api-write api-write-help"',
+      );
+      expect(html).toContain(
+        "API Write allows issue changes even when <b>Triage Issues</b> is unchecked.",
+      );
+      expect(html).toContain(
+        "It also allows project and team changes when <b>Manage Projects &amp; Teams</b> is unchecked.",
+      );
+    });
+
+    it("preserves an explicit remembered API Write selection without selecting Triage", async () => {
+      const response = await renderApprovalDialog(
+        new Request("https://example.com/oauth/authorize"),
+        {
+          client: mockClient,
+          server: { name: "Test Server" },
+          state: { oauthReqInfo: { clientId: "test-client" } },
+          cookieSecret: TEST_SECRET,
+          defaultSkills: ["api-write"],
+        },
+      );
+      const html = await response.text();
+
+      expectSkillChecked(html, "api-write");
+      expectSkillUnchecked(html, "triage");
+      expectSkillUnchecked(html, "project-management");
+      expect(html).toContain("Includes API Read.");
     });
 
     it("uses remembered skill defaults when provided", async () => {
@@ -106,6 +138,10 @@ describe("approval-dialog", () => {
       expectSkillUnchecked(html, "seer");
       expectSkillChecked(html, "triage");
       expectSkillChecked(html, "project-management");
+      expect(html).toContain('value="api-read"');
+      expect(html).toContain('value="api-write"');
+      expectSkillUnchecked(html, "api-read");
+      expectSkillUnchecked(html, "api-write");
     });
 
     it("ignores unknown and deprecated remembered skill defaults", async () => {
@@ -183,11 +219,36 @@ describe("approval-dialog", () => {
 
       const html = await response.text();
 
-      expect(html).toContain("Session scope");
-      expect(html).toContain("This session will be limited to the");
-      expect(html).toContain(">sentry</strong> organization");
+      expect(html).toContain('aria-label="Organization scope"');
       expect(html).toContain(
-        "The permissions below apply only within this scope.",
+        'Only <strong class="scope-token">sentry</strong>',
+      );
+      expect(html).toContain(
+        "Every permission below, including API Write, is limited to this organization.",
+      );
+      expect(html).toContain("Your Sentry permissions still apply.");
+      expect(html).toContain('value="api-read"');
+      expect(html).toContain('value="api-write"');
+    });
+
+    it("explains that an unconstrained connection can access every organization authorized by its token", async () => {
+      const response = await renderApprovalDialog(
+        new Request("https://example.com/oauth/authorize"),
+        {
+          client: mockClient,
+          server: { name: "Sentry MCP" },
+          state: { oauthReqInfo: { clientId: "test-client" } },
+          cookieSecret: TEST_SECRET,
+        },
+      );
+      const html = await response.text();
+
+      expect(html).toContain("All authorized organizations");
+      expect(html).toContain(
+        "This connection can access any organization allowed by its Sentry token.",
+      );
+      expect(html).toContain(
+        "The permissions below, including API Write, apply across those organizations.",
       );
     });
 
@@ -210,6 +271,8 @@ describe("approval-dialog", () => {
 
       expect(html).toContain(">javascript</strong> project");
       expect(html).toContain(">sentry</strong> organization");
+      expect(html).not.toContain('name="skill" value="api-read"');
+      expect(html).not.toContain('name="skill" value="api-write"');
     });
   });
 
@@ -391,6 +454,89 @@ describe("approval-dialog", () => {
       );
       expect(remembered).toEqual(["triage", "project-management"]);
     });
+
+    it.each([{ apiSkills: ["api-read", "api-write"] }, { apiSkills: [] }])(
+      "preserves hidden API preferences through project consent ($apiSkills)",
+      async ({ apiSkills }) => {
+        let preferenceCookie = "";
+        const clientId = "test-client";
+        const render = async (projectSlug: string | null = null) => {
+          const defaultSkills = await getRememberedSkillsForClient(
+            preferenceCookie,
+            clientId,
+            TEST_SECRET,
+          );
+          const response = await renderApprovalDialog(
+            new Request("https://example.com/oauth/authorize"),
+            {
+              client: mockClient,
+              server: { name: "Sentry MCP" },
+              scope: { organizationSlug: "example", projectSlug },
+              state: {
+                oauthReqInfo: {
+                  clientId,
+                  resource: `https://example.com/mcp/example${projectSlug ? `/${projectSlug}` : ""}`,
+                },
+              },
+              cookieSecret: TEST_SECRET,
+              defaultSkills,
+            },
+          );
+          return await response.text();
+        };
+        const approve = async (html: string, skills: string[]) => {
+          const formData = new FormData();
+          formData.append(
+            "state",
+            html.match(/name="state" value="([^"]+)"/)![1],
+          );
+          formData.append("decision", "approve");
+          for (const skill of skills) formData.append("skill", skill);
+          const result = await parseRedirectApproval(
+            new Request("https://example.com/oauth/authorize", {
+              method: "POST",
+              headers: { Cookie: preferenceCookie },
+              body: formData,
+            }),
+            TEST_SECRET,
+          );
+          preferenceCookie = extractCookiePair(
+            result.headers.get("Set-Cookie") ?? "",
+            SKILL_PREFERENCES_COOKIE_NAME,
+          );
+          return result;
+        };
+
+        await approve(await render(), ["inspect", "triage", ...apiSkills]);
+        const projectHtml = await render("backend");
+        expect(projectHtml).not.toContain('name="skill" value="api-read"');
+        expect(projectHtml).not.toContain('name="skill" value="api-write"');
+
+        const projectApproval = await approve(projectHtml, ["inspect"]);
+        expect(projectApproval.skills).toEqual(["inspect"]);
+        expect(
+          await getRememberedSkillsForClient(
+            preferenceCookie,
+            clientId,
+            TEST_SECRET,
+          ),
+        ).toEqual(["inspect", ...apiSkills]);
+
+        const organizationHtml = await render();
+        expectSkillChecked(organizationHtml, "inspect");
+        expectSkillUnchecked(organizationHtml, "triage");
+        for (const skill of ["api-read", "api-write"]) {
+          if (apiSkills.includes(skill))
+            expectSkillChecked(organizationHtml, skill);
+          else expectSkillUnchecked(organizationHtml, skill);
+        }
+
+        await approve(organizationHtml, ["inspect"]);
+        const afterUnchecking = await render();
+        expectSkillUnchecked(afterUnchecking, "api-read");
+        expectSkillUnchecked(afterUnchecking, "api-write");
+      },
+    );
 
     it("should keep only the ten newest skill preference clients", async () => {
       let preferenceCookie = "";

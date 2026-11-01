@@ -1556,7 +1556,15 @@
       "required": ["name"]
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -2654,7 +2662,15 @@
       "additionalProperties": false
     },
     "requiredScopes": ["org:read"],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -2733,7 +2749,15 @@
       "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -5524,7 +5548,15 @@
       "additionalProperties": false
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "catalog"
   },
   {
@@ -6077,7 +6109,15 @@
       "required": ["organizationSlug", "runToken", "update"]
     },
     "requiredScopes": ["org:read"],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "catalog"
   },
   {
@@ -7484,7 +7524,15 @@
       "additionalProperties": false
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -9057,7 +9105,15 @@
       "additionalProperties": false
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "catalog"
   }
 ]

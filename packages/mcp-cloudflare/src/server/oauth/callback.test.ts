@@ -676,7 +676,8 @@ describe("oauth callback routes", () => {
           expires_at: new Date(Date.now() + 3600_000).toISOString(),
           token_type: "bearer",
           user: { id: "user-123", name: "Test User" },
-          scope: "team:write org:read event:write  project:write alerts:write",
+          scope:
+            " team:write org:read\tevent:write  project:write alerts:write org:read ",
         },
         null,
       ]);

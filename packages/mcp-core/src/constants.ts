@@ -9,6 +9,10 @@
  */
 export const MCP_SERVER_NAME = "Sentry MCP" as const;
 
+/** Bound HTTP tool input before schema validation expands nested arguments. */
+export const MAX_MCP_TOOL_INPUT_ELEMENTS = 10_000;
+export const MAX_MCP_REQUEST_BODY_SIZE = 1024 * 1024;
+
 /**
  * Supported issue-search windows exposed by search_issues.
  * Intentionally bounded for query performance; lower-level API methods still accept arbitrary Sentry statsPeriod strings.

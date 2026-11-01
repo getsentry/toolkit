@@ -3,7 +3,8 @@
   "sentryCi": {
     "roles": [
       "cloudflare"
-    ]
+    ],
+    "typecheck": "tsc:ci"
   },
   "version": "0.42.0",
   "private": true,
@@ -25,9 +26,12 @@
     "preview": "vite preview",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
-    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "test:code-mode": "vitest run --config=src/code-mode/vitest.config.ts",
+    "tsc:code-mode": "tsc --project src/code-mode/tsconfig.json",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml && pnpm run test:code-mode",
     "test:watch": "vitest",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc --noEmit",
+    "tsc:ci": "tsc -b && pnpm run tsc:code-mode"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.13.15",

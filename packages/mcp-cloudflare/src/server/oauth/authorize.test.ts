@@ -1,6 +1,7 @@
 import { AuthorizationError } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SCOPES } from "../../constants";
 import { SKILL_PREFERENCES_COOKIE_NAME } from "../lib/approval-dialog";
 import type { Env } from "../types";
 import oauthRoute from "./index";
@@ -26,7 +27,8 @@ function skillInputAttributes(html: string, skillId: string): string {
       `<input type="checkbox" name="skill" value="${skillId}"([^>]*)>`,
     ),
   );
-  return match?.[1] ?? "";
+  expect(match).not.toBeNull();
+  return match![1];
 }
 
 function expectSkillChecked(html: string, skillId: string): void {
@@ -262,6 +264,7 @@ describe("oauth authorize routes", () => {
       expectSkillUnchecked(html, "seer");
       expectSkillChecked(html, "triage");
       expectSkillChecked(html, "project-management");
+      expectSkillUnchecked(html, "api-write");
     });
 
     it("does not reuse remembered skills for a different client ID", async () => {
@@ -304,9 +307,10 @@ describe("oauth authorize routes", () => {
       expectSkillChecked(html, "seer");
       expectSkillChecked(html, "triage");
       expectSkillChecked(html, "project-management");
+      expectSkillUnchecked(html, "api-write");
     });
 
-    it("ignores tampered remembered skill cookies and falls back to all approvable skills", async () => {
+    it("ignores tampered remembered skill cookies and falls back to initial defaults", async () => {
       mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
         clientId: "test-client",
         redirectUri: "https://example.com/callback",
@@ -340,7 +344,95 @@ describe("oauth authorize routes", () => {
       expectSkillChecked(html, "seer");
       expectSkillChecked(html, "triage");
       expectSkillChecked(html, "project-management");
+      expectSkillUnchecked(html, "api-write");
     });
+  });
+
+  describe("Code Mode consent", () => {
+    it.each([
+      { name: "initial read-only Code Mode defaults", explicitWrite: false },
+      { name: "explicit API Write without Triage", explicitWrite: true },
+    ])(
+      "preserves $name through approval and the next prompt",
+      async ({ explicitWrite }) => {
+        const resource = "http://localhost/mcp/test-org";
+        mockOAuthProvider.parseAuthRequest.mockResolvedValue({
+          clientId: "test-client",
+          redirectUri: "https://example.com/callback",
+          scope: ["read"],
+          state: "original-state",
+        });
+        mockOAuthProvider.lookupClient.mockResolvedValue({
+          clientId: "test-client",
+          clientName: "Test Client",
+          redirectUris: ["https://example.com/callback"],
+        });
+        const url = new URL("http://localhost/oauth/authorize");
+        url.searchParams.set("resource", resource);
+
+        const prompt = await app.fetch(new Request(url), testEnv as Env);
+        expect(prompt.status).toBe(200);
+        const html = await prompt.text();
+        expect(html).toContain('value="api-read"');
+        expect(html).toContain('value="api-write"');
+        expectSkillChecked(html, "api-read");
+        expectSkillUnchecked(html, "api-write");
+        const state = html.match(/name="state" value="([^"]+)"/)?.[1];
+        expect(state).toBeDefined();
+        const initialSkills = [
+          ...html.matchAll(
+            /<input type="checkbox" name="skill" value="([^"]+)"([^>]*)>/g,
+          ),
+        ]
+          .filter((match) => /\bchecked\b/.test(match[2]))
+          .map((match) => match[1]);
+        const selectedSkills = explicitWrite ? ["api-write"] : initialSkills;
+        const form = new FormData();
+        form.set("state", state!);
+        form.set("decision", "approve");
+        for (const skill of selectedSkills) form.append("skill", skill);
+
+        const approval = await app.fetch(
+          new Request(url, {
+            method: "POST",
+            body: form,
+          }),
+          testEnv as Env,
+        );
+        expect(approval.status).toBe(302);
+        const upstream = new URL(approval.headers.get("Location")!);
+        const approvedState = await verifyAndParseState(
+          upstream.searchParams.get("state")!,
+          testEnv.COOKIE_SECRET!,
+        );
+        expect(approvedState.req.skills).toEqual(selectedSkills);
+        expect(approvedState.req.resource).toBe(resource);
+        expect(upstream.searchParams.get("scope")?.split(" ")).toEqual(
+          Object.keys(SCOPES),
+        );
+
+        const cookie = extractCookiePair(
+          approval.headers.get("Set-Cookie") ?? "",
+          SKILL_PREFERENCES_COOKIE_NAME,
+        );
+        const remembered = await app.fetch(
+          new Request(url, {
+            headers: { Cookie: cookie },
+          }),
+          testEnv as Env,
+        );
+        expect(remembered.status).toBe(200);
+        const rememberedHtml = await remembered.text();
+        const renderedSkills = [
+          ...rememberedHtml.matchAll(
+            /<input type="checkbox" name="skill" value="([^"]+)"([^>]*)>/g,
+          ),
+        ]
+          .filter((match) => /\bchecked\b/.test(match[2]))
+          .map((match) => match[1]);
+        expect(renderedSkills).toEqual(selectedSkills);
+      },
+    );
   });
 
   describe("POST /oauth/authorize", () => {
@@ -841,7 +933,10 @@ describe("oauth authorize routes", () => {
 
         expect(response.status).toBe(200);
         const html = await response.text();
-        expect(html).toContain(">test-org</strong> organization");
+        expect(html).toContain('aria-label="Organization scope"');
+        expect(html).toContain(
+          'Only <strong class="scope-token">test-org</strong>',
+        );
       });
 
       it("should allow request with project-scoped resource parameter", async () => {
@@ -851,25 +946,36 @@ describe("oauth authorize routes", () => {
           scope: ["read"],
           resource: "http://localhost/mcp/test-org/test-project",
         });
-        mockOAuthProvider.lookupClient.mockResolvedValueOnce({
+        mockOAuthProvider.lookupClient.mockResolvedValue({
           clientId: "test-client",
           clientName: "Test Client",
           redirectUris: ["https://example.com/callback"],
         });
 
+        const preferenceCookie = await createSkillPreferenceCookie(
+          app,
+          testEnv,
+          "test-client",
+          ["api-write"],
+        );
         const url = new URL("http://localhost/oauth/authorize");
         url.searchParams.set(
           "resource",
           "http://localhost/mcp/test-org/test-project",
         );
 
-        const request = new Request(url, { method: "GET" });
+        const request = new Request(url, {
+          method: "GET",
+          headers: { Cookie: preferenceCookie },
+        });
         const response = await app.fetch(request, testEnv as Env);
 
         expect(response.status).toBe(200);
         const html = await response.text();
         expect(html).toContain(">test-project</strong> project");
         expect(html).toContain(">test-org</strong> organization");
+        expect(html).not.toContain('name="skill" value="api-read"');
+        expect(html).not.toContain('name="skill" value="api-write"');
       });
 
       it("should reject request with invalid resource hostname", async () => {

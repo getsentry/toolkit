@@ -22,6 +22,7 @@
     "binding": "CF_VERSION_METADATA",
   },
   "vars": {},
+  "worker_loaders": [{ "binding": "LOADER" }],
   "unsafe": {
     "bindings": [
       {

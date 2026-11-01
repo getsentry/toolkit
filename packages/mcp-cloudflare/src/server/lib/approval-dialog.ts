@@ -6,6 +6,8 @@ import skillDefinitions, {
   type SkillDefinition,
 } from "@sentry/mcp-core/skillDefinitions";
 import { logError, logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
+import { CODE_MODE_SKILLS } from "../../code-mode/definitions";
+import { parseResourceMcpConstraints } from "../oauth/resource-scope";
 import {
   type OAuthState,
   signState,
@@ -304,12 +306,24 @@ async function createSkillPreferencesSetCookie(
   clientId: string,
   skills: string[],
   cookieSecret: string,
+  resource?: string,
 ): Promise<string> {
   const preferences = await getSkillPreferencesFromCookie(
     request.headers.get("Cookie"),
     cookieSecret,
   );
-  const filteredSkills = filterApprovableSkillIds(skills);
+  // Hidden project permissions retain their preferences, never their grant.
+  const rememberedApiSkills = parseResourceMcpConstraints(resource)?.projectSlug
+    ? (preferences.clients
+        .find(([id]) => id === clientId)?.[1]
+        .filter((skill) =>
+          CODE_MODE_SKILLS.some((apiSkill) => apiSkill === skill),
+        ) ?? [])
+    : [];
+  const filteredSkills = filterApprovableSkillIds([
+    ...skills,
+    ...rememberedApiSkills,
+  ]);
   const clients = preferences.clients.filter(([id]) => id !== clientId);
 
   if (filteredSkills.length > 0) {
@@ -384,7 +398,8 @@ export interface ApprovalDialogOptions {
    */
   cookieSecret: string;
   /**
-   * Skill IDs to preselect. When omitted, all approvable skills are selected.
+   * Remembered skill IDs to preselect. New approvals select all approvable
+   * skills except API Write, which requires an explicit choice.
    */
   defaultSkills?: string[];
 }
@@ -463,28 +478,48 @@ export async function renderApprovalDialog(
     cookieSecret,
     defaultSkills,
   } = options;
+  const approvableSkills = APPROVABLE_SKILLS.filter(
+    (skill) =>
+      !scope?.projectSlug ||
+      !CODE_MODE_SKILLS.some((codeModeSkill) => codeModeSkill === skill.id),
+  );
   const defaultSkillIds =
     defaultSkills === undefined
-      ? new Set(APPROVABLE_SKILLS.map((skill) => skill.id))
+      ? new Set(
+          approvableSkills
+            .filter((skill) => skill.id !== "api-write")
+            .map((skill) => skill.id),
+        )
       : new Set(filterApprovableSkillIds(defaultSkills));
 
   // Use static skill definitions bundled at build time
   // Generate HTML for all approvable skills.
-  const skillsHtml = APPROVABLE_SKILLS.map(
-    (skill) => `
+  const skillsHtml = approvableSkills
+    .map(
+      (skill) => `
     <label class="permission-item">
-      <input type="checkbox" name="skill" value="${sanitizeHtml(skill.id)}"${defaultSkillIds.has(skill.id) ? " checked" : ""}>
+      <input type="checkbox" name="skill" value="${sanitizeHtml(skill.id)}"${defaultSkillIds.has(skill.id) ? " checked" : ""} aria-labelledby="skill-name-${sanitizeHtml(skill.id)}" aria-describedby="skill-description-${sanitizeHtml(skill.id)}${skill.id === "api-write" ? " api-write-help" : ""}">
       <span class="permission-checkbox"></span>
       <div class="permission-content">
         <div class="permission-header">
-          <span class="permission-name">${sanitizeHtml(skill.name)}</span>
-          ${skill.toolCount !== undefined ? `<span class="permission-tool-count">${sanitizeHtml(String(skill.toolCount))} ${skill.toolCount === 1 ? "tool" : "tools"}</span>` : ""}
+          <span class="permission-name" id="skill-name-${sanitizeHtml(skill.id)}">${sanitizeHtml(skill.name)}</span>
+          ${skill.toolCount !== undefined && !CODE_MODE_SKILLS.some((codeModeSkill) => codeModeSkill === skill.id) ? `<span class="permission-tool-count">${sanitizeHtml(String(skill.toolCount))} ${skill.toolCount === 1 ? "tool" : "tools"}</span>` : ""}
         </div>
-        <div class="permission-description">${sanitizeHtml(skill.description)}</div>
+        <div class="permission-description" id="skill-description-${sanitizeHtml(skill.id)}">${sanitizeHtml(skill.description)}</div>
+        ${
+          skill.id === "api-write"
+            ? `<div class="permission-note" id="api-write-help">
+          <strong>These permissions add up.</strong>
+          <p>API Write allows issue changes even when <b>Triage Issues</b> is unchecked.</p>
+          <p>It also allows project and team changes when <b>Manage Projects &amp; Teams</b> is unchecked. Your Sentry permissions and the organization scope above still apply.</p>
+        </div>`
+            : ""
+        }
       </div>
     </label>
   `,
-  ).join("");
+    )
+    .join("");
 
   // Encode state for form submission (HMAC-signed to prevent tampering)
   const encodedState = await encodeState(state, cookieSecret);
@@ -530,19 +565,21 @@ export async function renderApprovalDialog(
       `
     : "";
 
-  const scopeHtml = scope
+  const scopeHtml = scope?.projectSlug
     ? `
       <section class="scope-banner" role="note" aria-label="Session scope">
         <div class="scope-label">Session scope</div>
-        <p class="scope-message">${
-          scope.projectSlug
-            ? `This session will be limited to the <strong class="scope-token">${sanitizeHtml(scope.projectSlug)}</strong> project in the <strong class="scope-token">${sanitizeHtml(scope.organizationSlug)}</strong> organization.`
-            : `This session will be limited to the <strong class="scope-token">${sanitizeHtml(scope.organizationSlug)}</strong> organization.`
-        }</p>
-        <p class="scope-help">The permissions below apply only within this scope.</p>
+        <p class="scope-message">This session will be limited to the <strong class="scope-token">${sanitizeHtml(scope.projectSlug)}</strong> project in the <strong class="scope-token">${sanitizeHtml(scope.organizationSlug)}</strong> organization.</p>
+        <p class="scope-help">The permissions below apply only within this scope. Your Sentry permissions still apply.</p>
       </section>
     `
-    : "";
+    : `
+      <section class="scope-banner" role="note" aria-label="Organization scope">
+        <div class="scope-label">Organization scope</div>
+        <p class="scope-message">${scope ? `Only <strong class="scope-token">${sanitizeHtml(scope.organizationSlug)}</strong>` : "<strong>All authorized organizations</strong>"}</p>
+        <p class="scope-help">${scope ? "Every permission below, including API Write, is limited to this organization. Your Sentry permissions still apply." : "This connection can access any organization allowed by its Sentry token. The permissions below, including API Write, apply across those organizations."}</p>
+      </section>
+    `;
 
   // Generate HTML for the approval dialog
   const htmlContent = `
@@ -886,6 +923,48 @@ export async function renderApprovalDialog(
             line-height: 1.5;
           }
 
+          .permission-note {
+            margin-top: 12px;
+            padding: 12px 14px;
+            border: 1px solid rgba(242, 185, 94, 0.35);
+            border-radius: var(--radius-sm);
+            background: rgba(242, 185, 94, 0.06);
+            font-size: 0.8125rem;
+            line-height: 1.55;
+            color: oklch(0.86 0.07 75);
+          }
+
+          .permission-note > strong {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+          }
+
+          .permission-note p {
+            margin: 0;
+          }
+
+          .permission-note p + p {
+            margin-top: 5px;
+          }
+
+          .permission-item:has(input[value="api-write"]) {
+            border: 1px solid var(--border-default);
+            border-left-width: 3px;
+            border-radius: var(--radius-sm);
+            margin-top: var(--space-md);
+            padding: var(--space-md);
+          }
+
+          .permission-item:has(input[value="api-write"]:checked) {
+            border-color: var(--purple-primary);
+          }
+
+          .permission-item:has(input:focus-visible) {
+            outline: 2px solid var(--purple-light);
+            outline-offset: 3px;
+          }
+
           /* Two-column layout for wider screens */
           .approval-grid {
             display: flex;
@@ -971,6 +1050,10 @@ export async function renderApprovalDialog(
 
             .permission-item {
               padding: var(--space-sm);
+            }
+
+            .permission-item:has(input[value="api-write"]) {
+              padding: 12px;
             }
 
             .permission-header {
@@ -1150,6 +1233,7 @@ export async function parseRedirectApproval(
       clientId,
       skills,
       cookieSecret,
+      state.oauthReqInfo.resource,
     ),
   );
 

@@ -2,6 +2,7 @@ import {
   ACTIVE_SKILLS,
   ALL_SKILLS,
   parseSkills,
+  SKILLS,
   type Skill,
 } from "@sentry/mcp-core/skills";
 import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
@@ -13,12 +14,31 @@ import {
 import { DEFAULT_SENTRY_CLIENT_ID } from "../auth/constants";
 import type { MergedArgs, PartiallyResolvedConfig } from "./types";
 
+const STDIO_SKILLS = ALL_SKILLS.filter((skill) => !SKILLS[skill].hostedOnly);
+const ACTIVE_STDIO_SKILLS = ACTIVE_SKILLS.filter(
+  (skill) => !SKILLS[skill].hostedOnly,
+);
+
 export function formatInvalidSkills(
   invalid: string[],
   source?: string,
 ): string {
   const prefix = source ? `${source} provided` : "Invalid skills provided";
-  return `Error: ${prefix}: ${invalid.join(", ")}\nAvailable skills: ${ALL_SKILLS.join(", ")}`;
+  return `Error: ${prefix}: ${invalid.join(", ")}\nAvailable skills: ${STDIO_SKILLS.join(", ")}`;
+}
+
+function parseStdioSkills(input: unknown, source?: string): Set<Skill> {
+  const { valid, invalid } = parseSkills(input);
+  if (invalid.length > 0) {
+    throw new Error(formatInvalidSkills(invalid, source));
+  }
+  const hostedSkills = [...valid].filter((skill) => SKILLS[skill].hostedOnly);
+  if (hostedSkills.length > 0) {
+    throw new Error(
+      `Error: These skills are available only on the hosted MCP: ${hostedSkills.join(", ")}. They cannot be used with stdio.`,
+    );
+  }
+  return valid;
 }
 
 /**
@@ -77,20 +97,17 @@ export function finalize(input: MergedArgs): PartiallyResolvedConfig {
   }
 
   if (input.allSkills) {
-    finalSkills = new Set<Skill>(ACTIVE_SKILLS);
+    finalSkills = new Set<Skill>(ACTIVE_STDIO_SKILLS);
   } else if (input.skills) {
     // Override: use only the specified skills
-    const { valid, invalid } = parseSkills(input.skills);
-    if (invalid.length > 0) {
-      throw new Error(formatInvalidSkills(invalid));
-    }
+    const valid = parseStdioSkills(input.skills);
     if (valid.size === 0) {
       throw new Error("Error: Invalid skills provided. No valid skills found.");
     }
     finalSkills = valid;
   } else {
     // Default: grant all active skills when no flag is provided (see comment block above for rationale)
-    finalSkills = new Set<Skill>(ACTIVE_SKILLS);
+    finalSkills = new Set<Skill>(ACTIVE_STDIO_SKILLS);
 
     // Seer is a sentry.io service. Self-hosted Sentry ships without it, and its
     // autofix endpoints answer 500 when the Seer backend is not configured, so
@@ -105,12 +122,10 @@ export function finalize(input: MergedArgs): PartiallyResolvedConfig {
 
   // Disable-skills: remove specific skills from the active set
   if (input.disableSkills) {
-    const { valid: skillsToDisable, invalid } = parseSkills(
+    const skillsToDisable = parseStdioSkills(
       input.disableSkills,
+      "--disable-skills",
     );
-    if (invalid.length > 0) {
-      throw new Error(formatInvalidSkills(invalid, "--disable-skills"));
-    }
     for (const skill of skillsToDisable) {
       finalSkills.delete(skill);
     }
