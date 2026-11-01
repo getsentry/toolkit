@@ -25,6 +25,7 @@ export { jsonReporter, type StreamReporterOptions } from "./reporters/json.js";
 export { logfmtReporter } from "./reporters/logfmt.js";
 export { type SentryLogger, sentryReporter } from "./reporters/sentry.js";
 export type {
+  LogAttributePrimitive,
   LogAttributes,
   LogAttributeValue,
   LogEnv,

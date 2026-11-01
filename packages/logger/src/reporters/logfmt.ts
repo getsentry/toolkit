@@ -1,7 +1,11 @@
 /** logfmt lines (`key=value key="quoted value"`), one per log call. */
 
-import { recordFields } from "../fields.js";
-import type { LogAttributeValue, Reporter } from "../types.js";
+import { flattenAttribute, recordFields } from "../fields.js";
+import type {
+  LogAttributePrimitive,
+  LogAttributeValue,
+  Reporter,
+} from "../types.js";
 import type { StreamReporterOptions } from "./json.js";
 
 /** Values that need quotes: empty, or holding a space, `=`, `"`, `\`, or a control character. */
@@ -36,7 +40,7 @@ function formatKey(key: string): string {
     : key;
 }
 
-function formatValue(value: LogAttributeValue): string {
+function formatValue(value: LogAttributePrimitive): string {
   const text = String(value);
   if (!NEEDS_QUOTES.test(text)) {
     return text;
@@ -55,6 +59,8 @@ function formatValue(value: LogAttributeValue): string {
  * ```text
  * time=2026-01-15T14:28:59.000Z level=info tag=auth msg="Logged in" user=jane
  * ```
+ *
+ * Object attributes expand into dotted keys (`http.status_code=404`).
  */
 export function logfmtReporter(options: StreamReporterOptions = {}): Reporter {
   return {
@@ -62,7 +68,16 @@ export function logfmtReporter(options: StreamReporterOptions = {}): Reporter {
       const fields = recordFields(record);
       let line = "";
       for (const key of Object.keys(fields)) {
-        line += `${line ? " " : ""}${formatKey(key)}=${formatValue(fields[key] as LogAttributeValue)}`;
+        const value = fields[key] as LogAttributeValue;
+        if (typeof value !== "object") {
+          line += `${line ? " " : ""}${formatKey(key)}=${formatValue(value)}`;
+          continue;
+        }
+        const flat: Record<string, LogAttributePrimitive> = {};
+        flattenAttribute(flat, key, value);
+        for (const flatKey of Object.keys(flat)) {
+          line += `${line ? " " : ""}${formatKey(flatKey)}=${formatValue(flat[flatKey] as LogAttributePrimitive)}`;
+        }
       }
       (options.stream ?? process.stderr).write(`${line}\n`);
     },

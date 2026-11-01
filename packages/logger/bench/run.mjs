@@ -24,6 +24,7 @@ const groups = [
   ["fancy line, colors", ["formatWrite", "fancyColor"]],
   ["JSON line", ["jsonWrite", "json"]],
   ["logfmt line", ["jsonWrite", "logfmt"]],
+  ["logfmt line, nested attribute", ["jsonWrite", "logfmtNested"]],
   ["Sentry structured log", ["formatSentry", "sentry"]],
 ];
 
@@ -37,6 +38,7 @@ const labels = {
   jsonWrite: "baseline: toISOString + JSON.stringify + write",
   json: "jsonReporter",
   logfmt: "logfmtReporter",
+  logfmtNested: "logfmtReporter",
   formatSentry: "baseline: util.format + Sentry.logger.info",
   sentry: "sentryReporter",
 };
@@ -110,6 +112,12 @@ async function setUp(name) {
     }
     case "logfmt": {
       const log = logger(logfmtReporter({ stream }));
+      return () => log.info("Logged in as %s", "jane");
+    }
+    case "logfmtNested": {
+      const log = createLogger({ reporters: [logfmtReporter({ stream })] })
+        .withTag("bench")
+        .withAttributes({ user: "jane", http: { status_code: 200 } });
       return () => log.info("Logged in as %s", "jane");
     }
     case "formatSentry":
@@ -194,7 +202,7 @@ if (caseName) {
     group: "startup",
     baseline: `${empty.toFixed(1)} ms (import node:util, node:path)`,
     logger: `${loaded.toFixed(1)} ms (import + createLogger())`,
-    overhead: `+${(loaded - empty).toFixed(1)} ms`,
+    overhead: `${loaded >= empty ? "+" : ""}${(loaded - empty).toFixed(1)} ms`,
   });
 
   console.log(`Node ${process.version}, ${process.platform}-${process.arch}`);

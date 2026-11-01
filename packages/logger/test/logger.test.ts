@@ -344,6 +344,57 @@ describe("logfmtReporter", () => {
   });
 });
 
+describe("nested attributes", () => {
+  const record = (attributes: LogRecord["attributes"]): LogRecord => ({
+    date: DATE,
+    args: ["hi"],
+    type: "info",
+    level: 3,
+    tag: "",
+    attributes,
+  });
+
+  test("logfmt expands objects into dotted keys", () => {
+    const stream = memoryStream();
+    logfmtReporter({ stream }).log(
+      record({
+        http: { method: "GET", response: { status_code: 404 } },
+        empty: {},
+        after: 1,
+      }),
+    );
+
+    expect(stream.text()).toBe(
+      "time=2024-01-15T14:28:59.000Z level=info msg=hi http.method=GET http.response.status_code=404 after=1\n",
+    );
+  });
+
+  test("objects nested more than five levels deep are cut off", () => {
+    const cycle: Record<string, unknown> = { ok: true };
+    cycle.self = cycle;
+    const stream = memoryStream();
+    logfmtReporter({ stream }).log(
+      record({
+        a: { b: { c: { d: { e: { f: { g: 1 } } } } } },
+        cycle,
+      } as never),
+    );
+
+    expect(stream.text()).toBe(
+      "time=2024-01-15T14:28:59.000Z level=info msg=hi a.b.c.d.e.f=[Object] cycle.ok=true cycle.self.ok=true cycle.self.self.ok=true cycle.self.self.self.ok=true cycle.self.self.self.self.ok=true cycle.self.self.self.self.self=[Object]\n",
+    );
+  });
+
+  test("JSON keeps objects nested", () => {
+    const stream = memoryStream();
+    jsonReporter({ stream }).log(record({ http: { status_code: 404 } }));
+
+    expect(stream.text()).toBe(
+      '{"time":"2024-01-15T14:28:59.000Z","level":"info","msg":"hi","http":{"status_code":404}}\n',
+    );
+  });
+});
+
 describe("sentryReporter", () => {
   function fakeSentryLogger() {
     const calls: [string, string, Record<string, unknown> | undefined][] = [];
@@ -391,6 +442,20 @@ describe("sentryReporter", () => {
         { "logger.type": "trace", "sentry.origin": "auto.log.sentry_logger" },
       ],
     ]);
+  });
+
+  test("expands object attributes into dotted keys", () => {
+    const { calls, sentryLogger } = fakeSentryLogger();
+    createLogger({ reporters: [sentryReporter(sentryLogger)] })
+      .withAttributes({ http: { status_code: 404, route: "/auth" } })
+      .info("hi");
+
+    expect(calls[0]?.[2]).toEqual({
+      "http.status_code": 404,
+      "http.route": "/auth",
+      "logger.type": "info",
+      "sentry.origin": "auto.log.sentry_logger",
+    });
   });
 
   test("sends an error's message and cause without its stack", () => {

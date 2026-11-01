@@ -19,8 +19,16 @@ export const LOG_TYPE_LEVELS = {
 /** A log method name, such as `info` or `success`. */
 export type LogType = keyof typeof LOG_TYPE_LEVELS;
 
-/** A structured attribute value. */
-export type LogAttributeValue = string | number | boolean;
+/** A structured attribute value that is not an object. */
+export type LogAttributePrimitive = string | number | boolean;
+
+/**
+ * A structured attribute value: a primitive, or an object of them. Reporters
+ * that need flat fields (logfmt, Sentry) expand objects into dotted keys.
+ */
+export type LogAttributeValue =
+  | LogAttributePrimitive
+  | { readonly [key: string]: LogAttributeValue };
 
 /** Structured attributes attached to log records. */
 export type LogAttributes = Readonly<Record<string, LogAttributeValue>>;

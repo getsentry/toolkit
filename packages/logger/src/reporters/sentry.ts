@@ -4,8 +4,14 @@
  * `@sentry/bun`, `@sentry/browser`, ...), and this reporter calls it.
  */
 
+import { flattenAttribute } from "../fields.js";
 import { formatMessage } from "../message.js";
-import type { LogAttributeValue, LogType, Reporter } from "../types.js";
+import type {
+  LogAttributePrimitive,
+  LogAttributeValue,
+  LogType,
+  Reporter,
+} from "../types.js";
 
 /** Sentry severities the reporter uses. */
 type SentrySeverity = "trace" | "debug" | "info" | "warn" | "error";
@@ -13,7 +19,7 @@ type SentrySeverity = "trace" | "debug" | "info" | "warn" | "error";
 /** The part of the Sentry SDK's `logger` that the reporter calls. */
 export type SentryLogger = Record<
   SentrySeverity,
-  (message: string, attributes?: Record<string, LogAttributeValue>) => void
+  (message: string, attributes?: Record<string, LogAttributePrimitive>) => void
 >;
 
 /** Sentry severity for each log type. */
@@ -38,8 +44,8 @@ const ORIGIN = "auto.log.sentry_logger";
  *
  * The message is the formatted arguments; errors contribute their message
  * and causes, not their stacks. The record's attributes are sent as log
- * attributes, with `logger.tag` (when set), `logger.type`, and
- * `sentry.origin`.
+ * attributes, objects expanded into dotted keys, with `logger.tag` (when
+ * set), `logger.type`, and `sentry.origin`.
  *
  * ```ts
  * import * as Sentry from "@sentry/node";
@@ -50,14 +56,22 @@ const ORIGIN = "auto.log.sentry_logger";
 export function sentryReporter(sentryLogger: SentryLogger): Reporter {
   return {
     log(record) {
+      const attributes: Record<string, LogAttributePrimitive> = {};
+      for (const key of Object.keys(record.attributes)) {
+        flattenAttribute(
+          attributes,
+          key,
+          record.attributes[key] as LogAttributeValue,
+        );
+      }
+      if (record.tag) {
+        attributes["logger.tag"] = record.tag;
+      }
+      attributes["logger.type"] = record.type;
+      attributes["sentry.origin"] = ORIGIN;
       sentryLogger[SEVERITIES[record.type]](
         formatMessage(record.args, { stack: false }),
-        {
-          ...record.attributes,
-          ...(record.tag && { "logger.tag": record.tag }),
-          "logger.type": record.type,
-          "sentry.origin": ORIGIN,
-        },
+        attributes,
       );
     },
   };

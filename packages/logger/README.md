@@ -60,9 +60,12 @@ const log = logger.withTag("auth").withAttributes({ user: "jane" });
 log.withTag("token").info("Refreshed"); // tag "auth:token", user "jane"
 ```
 
-Attribute values are strings, numbers, or booleans. The JSON and logfmt
-reporters write them as fields, and the Sentry reporter sends them as log
-attributes.
+Attribute values are strings, numbers, booleans, or objects of them. The JSON
+reporter writes objects nested. The logfmt and Sentry reporters expand them
+into dotted keys, so `{ http: { status_code: 404 } }` becomes
+`http.status_code=404`. Expansion stops five levels down, where an object is
+written as `[Object]`. Scopes merge attributes shallowly: a nested object from
+`withAttributes()` replaces the one with the same key from the parent.
 
 ### Levels
 
@@ -164,7 +167,8 @@ logger.addReporter(sentryReporter(Sentry.logger));
 ```
 
 Each call is sent at the matching Sentry severity (`fail` as `error`; `log`,
-`success`, and `start` as `info`) with the record's attributes plus
+`success`, and `start` as `info`) with the record's attributes (objects
+expanded into dotted keys) plus
 `logger.tag` (when set), `logger.type`, and
 `sentry.origin: "auto.log.sentry_logger"`. Errors contribute their message and
 causes, not their stacks.
@@ -195,7 +199,8 @@ Medians from one run on Node 22, linux-x64:
 | Fancy line with colors and the time      | 70 ns (`util.format` + write)                     | 1.7 µs  |
 | JSON line                                | 1.5 µs (`toISOString` + `JSON.stringify` + write) | 1.0 µs  |
 | logfmt line                              | 1.5 µs (`toISOString` + `JSON.stringify` + write) | 1.7 µs  |
-| Sentry structured log                    | 78 ns (`util.format` + `Sentry.logger.info`)      | 314 ns  |
+| logfmt line with a nested attribute      | 1.5 µs (same as above)                            | 1.8 µs  |
+| Sentry structured log                    | 78 ns (`util.format` + `Sentry.logger.info`)      | 291 ns  |
 | Startup                                  | 28.0 ms (import `node:util`, `node:path`)         | 28.3 ms |
 
 Calls below the level cost nothing measurable. A call that is recorded

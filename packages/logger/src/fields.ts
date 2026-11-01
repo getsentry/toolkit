@@ -1,8 +1,12 @@
-/** The flat fields that the JSON and logfmt reporters write. */
+/** The fields that the JSON and logfmt reporters write, and dotted-key expansion. */
 
 import { LOG_LEVEL_NAMES } from "./levels.js";
 import { formatMessage } from "./message.js";
-import type { LogAttributeValue, LogRecord } from "./types.js";
+import type {
+  LogAttributePrimitive,
+  LogAttributeValue,
+  LogRecord,
+} from "./types.js";
 
 /** Field names the reporters own. Attributes with these names are dropped. */
 const BUILT_IN_FIELDS = new Set(["time", "level", "type", "tag", "msg"]);
@@ -54,18 +58,58 @@ export function recordFields(
     if (BUILT_IN_FIELDS.has(key)) {
       continue;
     }
-    const value = attributes[key] as LogAttributeValue;
-    if (key === "__proto__") {
-      // Assigning `__proto__` would set the prototype instead of a field.
-      Object.defineProperty(fields, key, {
-        value,
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    } else {
-      fields[key] = value;
-    }
+    setField(fields, key, attributes[key] as LogAttributeValue);
   }
   return fields;
+}
+
+/** Set `target[key]`, as an own field even when `key` is `__proto__`. */
+function setField<T>(target: Record<string, T>, key: string, value: T): void {
+  if (key === "__proto__") {
+    // Assigning `__proto__` would set the prototype instead of a field.
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  } else {
+    target[key] = value;
+  }
+}
+
+/**
+ * How many levels of nested objects expand into dotted keys. An object nested
+ * deeper is written as {@link TRUNCATED}, which also stops reference cycles.
+ */
+const MAX_ATTRIBUTE_DEPTH = 5;
+
+/** The value written in place of an object nested too deeply. */
+const TRUNCATED = "[Object]";
+
+/**
+ * Add `value` to `target` under `key`, expanding objects into dotted keys:
+ * `{ http: { status_code: 404 } }` becomes `http.status_code: 404`. Empty
+ * objects add nothing.
+ */
+export function flattenAttribute(
+  target: Record<string, LogAttributePrimitive>,
+  key: string,
+  value: LogAttributeValue,
+  depth = 1,
+): void {
+  if (typeof value !== "object" || value === null) {
+    setField(target, key, value);
+  } else if (depth > MAX_ATTRIBUTE_DEPTH) {
+    setField(target, key, TRUNCATED);
+  } else {
+    for (const child of Object.keys(value)) {
+      flattenAttribute(
+        target,
+        `${key}.${child}`,
+        value[child] as LogAttributeValue,
+        depth + 1,
+      );
+    }
+  }
 }
