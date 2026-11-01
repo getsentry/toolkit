@@ -270,6 +270,53 @@ describe("jsonReporter", () => {
       '{"time":"2024-01-15T14:28:59.000Z","level":"info","msg":"no tag"}\n',
     ]);
   });
+
+  test("writes the same time as toISOString() within and across seconds", () => {
+    const stream = memoryStream();
+    const reporter = jsonReporter({ stream });
+    const times = [
+      0,
+      DATE.getTime() + 7,
+      DATE.getTime() + 42,
+      DATE.getTime() + 999,
+      DATE.getTime() + 1000,
+      DATE.getTime() - 1,
+      -1,
+      -1001,
+      Date.UTC(-1, 0, 1, 0, 0, 0, 5),
+      Date.UTC(20000, 11, 31, 23, 59, 59, 250),
+    ];
+    for (const time of times) {
+      reporter.log({
+        date: new Date(time),
+        args: [],
+        type: "info",
+        level: 3,
+        tag: "",
+        attributes: {},
+      });
+    }
+
+    expect(stream.chunks.map((chunk) => JSON.parse(chunk).time)).toEqual(
+      times.map((time) => new Date(time).toISOString()),
+    );
+  });
+
+  test("keeps a __proto__ attribute as a field", () => {
+    const stream = memoryStream();
+    jsonReporter({ stream }).log({
+      date: DATE,
+      args: ["hi"],
+      type: "info",
+      level: 3,
+      tag: "",
+      attributes: JSON.parse('{"__proto__":"x","after":1}'),
+    });
+
+    expect(stream.text()).toBe(
+      '{"time":"2024-01-15T14:28:59.000Z","level":"info","msg":"hi","__proto__":"x","after":1}\n',
+    );
+  });
 });
 
 describe("logfmtReporter", () => {

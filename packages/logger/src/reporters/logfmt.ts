@@ -26,7 +26,15 @@ const ESCAPES: Record<string, string> = {
  * go-logfmt and node-logfmt.
  */
 // oxlint-disable-next-line no-control-regex -- control characters must be replaced
-const INVALID_KEY_CHARACTERS = /[\s="\x00-\x1f\x7f]/g;
+const INVALID_KEY_CHARACTER = /[\s="\x00-\x1f\x7f]/;
+const INVALID_KEY_CHARACTERS = new RegExp(INVALID_KEY_CHARACTER.source, "g");
+
+/** `key` with invalid characters replaced by `_`. Most keys need no replacing. */
+function formatKey(key: string): string {
+  return INVALID_KEY_CHARACTER.test(key)
+    ? key.replace(INVALID_KEY_CHARACTERS, "_")
+    : key;
+}
 
 function formatValue(value: LogAttributeValue): string {
   const text = String(value);
@@ -51,12 +59,11 @@ function formatValue(value: LogAttributeValue): string {
 export function logfmtReporter(options: StreamReporterOptions = {}): Reporter {
   return {
     log(record) {
-      const line = recordFields(record)
-        .map(
-          ([key, value]) =>
-            `${key.replace(INVALID_KEY_CHARACTERS, "_")}=${formatValue(value)}`,
-        )
-        .join(" ");
+      const fields = recordFields(record);
+      let line = "";
+      for (const key of Object.keys(fields)) {
+        line += `${line ? " " : ""}${formatKey(key)}=${formatValue(fields[key] as LogAttributeValue)}`;
+      }
       (options.stream ?? process.stderr).write(`${line}\n`);
     },
   };

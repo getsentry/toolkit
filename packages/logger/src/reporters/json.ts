@@ -19,7 +19,7 @@ export type StreamReporterOptions = {
 export function jsonReporter(options: StreamReporterOptions = {}): Reporter {
   return {
     log(record) {
-      const line = JSON.stringify(Object.fromEntries(recordFields(record)));
+      const line = JSON.stringify(recordFields(record));
       (options.stream ?? process.stderr).write(`${line}\n`);
     },
   };

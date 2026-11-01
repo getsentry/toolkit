@@ -98,10 +98,6 @@ const TYPE_ICONS: Record<LogType, readonly [string, string]> = {
   trace: ["→", "→"],
 };
 
-/** Matches SGR escape sequences, to measure the visible width of a line. */
-// oxlint-disable-next-line no-control-regex -- matching ANSI escapes requires ESC
-const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
-
 /** Inline `code` spans, rendered in cyan without their backticks. */
 const CODE_SPAN_PATTERN = /`([^`]+)`/g;
 
@@ -147,11 +143,62 @@ function supportsUnicode(env: LogEnv): boolean {
 }
 
 /**
- * Approximate visible width of a line: its length without ANSI escapes. Wide
- * characters count as one column, which only shifts the right-aligned tag.
+ * Approximate visible width of a line: its length without SGR escapes
+ * (`ESC [ digits-and-semicolons m`). Wide characters count as one column,
+ * which only shifts the right-aligned tag. A loop rather than a regex replace,
+ * which was the most expensive step of a colored line.
  */
 function visibleWidth(text: string): number {
-  return text.replace(ANSI_PATTERN, "").length;
+  if (!text.includes("\x1b")) {
+    return text.length;
+  }
+  let width = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 0x1b && text.charCodeAt(i + 1) === 0x5b) {
+      let end = i + 2;
+      let code = text.charCodeAt(end);
+      while ((code >= 0x30 && code <= 0x39) || code === 0x3b) {
+        code = text.charCodeAt(++end);
+      }
+      if (code === 0x6d) {
+        i = end;
+        continue;
+      }
+    }
+    width++;
+  }
+  return width;
+}
+
+/** Wrap `text` in the SGR codes for `style`, when colors are on and there is text. */
+function paint(color: boolean, style: AnsiStyle, text: string): string {
+  if (!(color && text)) {
+    return text;
+  }
+  const [open, close] = ANSI_CODES[style];
+  return `\x1b[${open}m${text}\x1b[${close}m`;
+}
+
+/** Render inline `code` and ` _underline_ ` spans. */
+function markup(color: boolean, text: string): string {
+  let marked = text;
+  if (marked.includes("`")) {
+    marked = marked.replace(CODE_SPAN_PATTERN, (_, code: string) =>
+      paint(color, "cyan", code),
+    );
+  }
+  if (marked.includes("_")) {
+    marked = marked.replace(
+      UNDERLINE_PATTERN,
+      (_, word: string) => ` ${paint(color, "underline", word)} `,
+    );
+  }
+  return marked;
+}
+
+/** `a` and `b` joined by a space, leaving out the empty ones. */
+function joinWords(a: string, b: string): string {
+  return a && b ? `${a} ${b}` : a || b;
 }
 
 /** Render `record` as terminal lines, without a trailing newline. */
@@ -163,49 +210,42 @@ function formatRecord(
 ): string {
   const message = formatMessage(record.args, { stack: true });
   if (!useFancyLayout(env)) {
-    return [`[${record.type}]`, record.tag && `[${record.tag}]`, message]
-      .filter(Boolean)
-      .join(" ");
+    return joinWords(
+      joinWords(`[${record.type}]`, record.tag && `[${record.tag}]`),
+      message,
+    );
   }
 
   const color = useColor(env, stream);
-  const paint = (style: AnsiStyle, text: string): string => {
-    if (!(color && text)) {
-      return text;
-    }
-    const [open, close] = ANSI_CODES[style];
-    return `\x1b[${open}m${text}\x1b[${close}m`;
-  };
-  const markup = (text: string): string =>
-    text
-      .replace(CODE_SPAN_PATTERN, (_, code: string) => paint("cyan", code))
-      .replace(
-        UNDERLINE_PATTERN,
-        (_, word: string) => ` ${paint("underline", word)} `,
-      );
-
-  const [firstLine = "", ...additional] = message.split("\n");
+  const newline = message.indexOf("\n");
+  const firstLine = newline === -1 ? message : message.slice(0, newline);
   const badge = BADGE_BACKGROUNDS[record.level];
   const type = badge
-    ? paint(badge, paint("black", ` ${record.type.toUpperCase()} `))
+    ? paint(
+        color,
+        badge,
+        paint(color, "black", ` ${record.type.toUpperCase()} `),
+      )
     : paint(
+        color,
         TYPE_COLORS[record.type],
         TYPE_ICONS[record.type][supportsUnicode(env) ? 0 : 1],
       );
 
   const columns = stream.columns || 0;
-  const tag = record.tag ? paint("gray", record.tag) : "";
-  const date = columns ? paint("gray", formatTime(record.date)) : "";
-  const left = [type, markup(firstLine)].filter(Boolean).join(" ");
-  const right = [tag, date].filter(Boolean).join(" ");
-  const space = columns - visibleWidth(left) - visibleWidth(right) - 2;
+  const tag = record.tag ? paint(color, "gray", record.tag) : "";
+  const date = columns ? paint(color, "gray", formatTime(record.date)) : "";
+  const left = joinWords(type, markup(color, firstLine));
+  const right = joinWords(tag, date);
+  const space =
+    columns >= 80 ? columns - visibleWidth(left) - visibleWidth(right) - 2 : 0;
 
   let line =
-    space > 0 && columns >= 80
+    space > 0
       ? left + " ".repeat(space) + right
-      : (right ? `${paint("gray", `[${right}]`)} ` : "") + left;
-  if (additional.length > 0) {
-    line += markup(`\n${additional.join("\n")}`);
+      : (right ? `${paint(color, "gray", `[${right}]`)} ` : "") + left;
+  if (newline !== -1) {
+    line += markup(color, message.slice(newline));
   }
   return badge ? `\n${line}\n` : line;
 }

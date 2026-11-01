@@ -181,6 +181,31 @@ const records: LogRecord[] = [];
 const logger = createLogger({ reporters: [{ log: (r) => records.push(r) }] });
 ```
 
+## Performance
+
+`pnpm --filter @sentry/logger run bench` times each reporter against the
+cheapest code that does the same job, each case in its own Node process.
+Medians from one run on Node 22, linux-x64:
+
+| Case                                     | Baseline                                          | Logger  |
+| ---------------------------------------- | ------------------------------------------------- | ------- |
+| Call below the level (`debug` at `info`) | 11 ns (no-op function call)                       | 1 ns    |
+| Call that reaches a no-op reporter       | 11 ns (no-op function call)                       | 104 ns  |
+| Fancy line in CI                         | 70 ns (`util.format` + write)                     | 316 ns  |
+| Fancy line with colors and the time      | 70 ns (`util.format` + write)                     | 1.7 µs  |
+| JSON line                                | 1.5 µs (`toISOString` + `JSON.stringify` + write) | 1.0 µs  |
+| logfmt line                              | 1.5 µs (`toISOString` + `JSON.stringify` + write) | 1.7 µs  |
+| Sentry structured log                    | 78 ns (`util.format` + `Sentry.logger.info`)      | 314 ns  |
+| Startup                                  | 28.0 ms (import `node:util`, `node:path`)         | 28.3 ms |
+
+Calls below the level cost nothing measurable. A call that is recorded
+allocates its record and `Date`, about 100 ns. Formatting costs
+hundreds of nanoseconds, or about 1.7 µs for a colored line that also renders
+the local time and right-aligns it. On the same machine, writing one line to
+`process.stderr` (a file) takes about 1.2 µs, so formatting costs the same
+order as the write it feeds. Results vary by machine; compare runs on the same
+one.
+
 ## Development
 
 The package lives in [getsentry/toolkit](https://github.com/getsentry/toolkit)
