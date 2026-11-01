@@ -19,6 +19,7 @@
 
 import { ISSUE_IS_VALUES } from "@sentry/toolkit-core/search-query";
 import { numberParser } from "@stricli/core";
+import { getAllEndpoints } from "./api-schema.js";
 import type { CompletionTarget } from "./complete.js";
 import { ISSUE_LEVELS } from "../types/sentry.js";
 import {
@@ -90,6 +91,71 @@ export const PLATFORM_TARGET = "platform" satisfies CompletionTarget;
 /** Free text with nothing to suggest. */
 export const TEXT_TARGET = "text" satisfies CompletionTarget;
 
+/** Cached environment names. */
+export const ENVIRONMENT_TARGET = "environment" satisfies CompletionTarget;
+
+/** Comma-separated cached environment names. */
+export const ENVIRONMENT_LIST_TARGET =
+  "environment-list" satisfies CompletionTarget;
+
+/** Cached release versions. */
+export const RELEASE_TARGET = "release" satisfies CompletionTarget;
+
+/** Cached team slugs. */
+export const TEAM_TARGET = "team" satisfies CompletionTarget;
+
+/** Cached teams as `team:<id>` owner actors. */
+export const OWNER_TARGET = "owner" satisfies CompletionTarget;
+
+/** Comma-separated project slugs. */
+export const PROJECT_LIST_TARGET = "project-list" satisfies CompletionTarget;
+
+/** Comma-separated cached alert (workflow) IDs. */
+export const WORKFLOW_LIST_TARGET = "workflow-list" satisfies CompletionTarget;
+
+/** `monitor run`'s cached monitor slug, then the command to run. */
+export const MONITOR_COMMAND_TARGET =
+  "monitor-command" satisfies CompletionTarget;
+
+/** Cached native integration IDs. */
+export const INTEGRATION_TARGET = "integration" satisfies CompletionTarget;
+
+/** Cached installed Sentry App slugs. */
+export const SENTRY_APP_TARGET = "sentry-app" satisfies CompletionTarget;
+
+/** Cached Sentry App issue-link form fields, as `name=value`. */
+export const APP_LINK_FIELD_TARGET =
+  "app-link-field" satisfies CompletionTarget;
+
+/** Cached public DSNs. */
+export const DSN_TARGET = "dsn" satisfies CompletionTarget;
+
+/** Servers of stored accounts. */
+export const ACCOUNT_SERVER_TARGET =
+  "account-server" satisfies CompletionTarget;
+
+/** `issue archive --until` conditions. */
+export const ARCHIVE_UNTIL_TARGET = "archive-until" satisfies CompletionTarget;
+
+/** API paths relative to `/api/0/`, from the API schema. */
+export const API_ENDPOINT_TARGET = "api-endpoint" satisfies CompletionTarget;
+
+/** Refs git resolves locally (`main`, `v1.0.0`, `origin/main`). */
+export const GIT_REF_TARGET = "git-ref" satisfies CompletionTarget;
+
+/** Branch and tag names as the git remote knows them. */
+export const VCS_REF_TARGET = "vcs-ref" satisfies CompletionTarget;
+
+/** Full SHAs of recent commits. */
+export const GIT_COMMIT_TARGET = "git-commit" satisfies CompletionTarget;
+
+/** `owner/repo` names of the git remotes. */
+export const GIT_REPO_TARGET = "git-repo" satisfies CompletionTarget;
+
+/** Comma-separated `REPO@SHA` / `REPO@PREV..SHA` commits. */
+export const REPO_COMMIT_LIST_TARGET =
+  "repo-commit-list" satisfies CompletionTarget;
+
 const COMPLETION_TARGET_KEY = Symbol("completionTarget");
 
 const COMPLETION_CHOICES_KEY = Symbol("completionChoices");
@@ -154,6 +220,75 @@ export const parseAccountSelector = identityParser(ACCOUNT_TARGET);
 /** Parses a platform identifier; completes platforms. */
 export const parsePlatform = identityParser(PLATFORM_TARGET);
 
+// Parsers of values that name something the user does not make up. Each
+// returns its input unchanged: the command (or the API) validates it.
+
+/** Parses an organization slug; completes cached organizations. */
+export const parseOrgSlug = identityParser(ORG_TARGET);
+
+/** Parses an issue reference the command resolves; completes issues. */
+export const parseIssueReference = identityParser(ISSUE_TARGET);
+
+/** Parses a relative period the API validates; completes periods. */
+export const parseRelativePeriod = identityParser(PERIOD_TARGET);
+
+/** Parses an environment name; completes cached environments. */
+export const parseEnvironment = identityParser(ENVIRONMENT_TARGET);
+
+/** Parses comma-separated environment names; completes cached ones. */
+export const parseEnvironmentList = identityParser(ENVIRONMENT_LIST_TARGET);
+
+/** Parses a release version; completes cached releases. */
+export const parseRelease = identityParser(RELEASE_TARGET);
+
+/** Parses a team slug; completes cached teams. */
+export const parseTeam = identityParser(TEAM_TARGET);
+
+/** Parses an owner actor (`team:<id>`, `user:<id>`); completes cached teams. */
+export const parseOwner = identityParser(OWNER_TARGET);
+
+/** Parses comma-separated project slugs; completes cached projects. */
+export const parseProjectList = identityParser(PROJECT_LIST_TARGET);
+
+/** Parses comma-separated alert (workflow) IDs; completes cached ones. */
+export const parseWorkflowList = identityParser(WORKFLOW_LIST_TARGET);
+
+/** Parses `monitor run`'s words; completes a cached monitor slug first. */
+export const parseMonitorCommand = identityParser(MONITOR_COMMAND_TARGET);
+
+/** Parses a native integration ID; completes cached integrations. */
+export const parseIntegration = identityParser(INTEGRATION_TARGET);
+
+/** Parses an installed Sentry App slug; completes cached installations. */
+export const parseSentryApp = identityParser(SENTRY_APP_TARGET);
+
+/** Parses a Sentry App link form `name=value`; completes cached fields. */
+export const parseAppLinkField = identityParser(APP_LINK_FIELD_TARGET);
+
+/** Parses a DSN; completes cached client-key DSNs. */
+export const parseDsn = identityParser(DSN_TARGET);
+
+/** Parses an `issue archive --until` condition; completes its grammar. */
+export const parseArchiveUntil = identityParser(ARCHIVE_UNTIL_TARGET);
+
+/** Parses an `api` endpoint; completes API schema paths. */
+export const parseApiEndpoint = identityParser(API_ENDPOINT_TARGET);
+
+/** Parses a local git ref; completes branches, tags, and remote branches. */
+export const parseGitRef = identityParser(GIT_REF_TARGET);
+
+/** Parses a branch or tag name sent to Sentry; completes them from git. */
+export const parseVcsRef = identityParser(VCS_REF_TARGET);
+
+/** Parses a commit SHA; completes recent commits. */
+export const parseGitCommit = identityParser(GIT_COMMIT_TARGET);
+
+/** Parses an `owner/repo` name; completes those of the git remotes. */
+export const parseGitRepo = identityParser(GIT_REPO_TARGET);
+
+/** Parses `REPO@SHA` commits; completes remotes, then recent commits. */
+export const parseRepoCommitList = identityParser(REPO_COMMIT_LIST_TARGET);
+
 /**
  * Wrap a command's own parser of free text or numbers; completes nothing.
  * The value is still parsed and validated by `parse`.
@@ -162,6 +297,18 @@ export function textParser<T>(
   parse: (input: string) => T,
 ): (input: string) => T {
   return taggedParser(TEXT_TARGET, parse);
+}
+
+/**
+ * Wrap a command's own parser of a value that completes `kind`, such as a
+ * validating URL parser whose values are stored accounts' servers. The
+ * value is still parsed and validated by `parse`.
+ */
+export function completingParser<T>(
+  kind: CompletionTarget,
+  parse: (input: string) => T,
+): (input: string) => T {
+  return taggedParser(kind, parse);
 }
 
 /**
@@ -268,6 +415,9 @@ export function getCompletionChoices(
   );
 }
 
+/** The prefix `api` adds to an endpoint, left out of {@link COMPLETION_VALUES}. */
+const API_PATH_PREFIX = /^\/api\/0\//;
+
 /** Fixed values the completers offer (see {@link COMPLETION_VALUES}). */
 export type CompletionValues = {
   /** Issue search keys with a fixed set of values, for {@link ISSUE_QUERY_TARGET} */
@@ -276,6 +426,8 @@ export type CompletionValues = {
   periodUnits: readonly string[];
   /** Relative periods offered for {@link PERIOD_TARGET}, with descriptions */
   periodPresets: Readonly<Record<string, string>>;
+  /** API schema paths without `/api/0/`, for {@link API_ENDPOINT_TARGET} */
+  apiPaths: readonly string[];
 };
 
 /**
@@ -296,4 +448,9 @@ export const COMPLETION_VALUES: CompletionValues = {
     "30d": "Last 30 days",
     "90d": "Last 90 days",
   },
+  apiPaths: [
+    ...new Set(
+      getAllEndpoints().map(({ path }) => path.replace(API_PATH_PREFIX, "")),
+    ),
+  ],
 };

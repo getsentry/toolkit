@@ -8,6 +8,7 @@
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  choiceListParser,
   parseDirectoryPath,
   parseFilePath,
   parseText,
@@ -22,10 +23,11 @@ import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
-  type InjectResult,
   injectDirectory,
+  type InjectResult,
 } from "../../lib/sourcemap/inject.js";
 
 /** Result type for the inject command output. */
@@ -108,7 +110,7 @@ export const injectCommand = buildCommand({
     flags: {
       ext: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,

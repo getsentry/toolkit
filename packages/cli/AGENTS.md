@@ -419,10 +419,14 @@ takes:
 | Fixed values | `choiceParser(values)`, or `choiceParser(values, parse)` to keep a command's own validating parser (`choiceParser(VALID_SORT_VALUES, parseSort)`). Take the values from the module that defines them | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). Without `parse` the parser returns its input, so the command still validates it |
 | Comma-separated fixed values (`--scope`, `--features`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
 | Platform | `parsePlatform` | platform identifiers, common ones first |
+| Something that already exists in Sentry, as a flag value (`--environment`, `--release`, `--team`, `--owner`, `--integration`, `--app`, `--dsn`, `--workflow`, `--project` lists) | `parseEnvironment`, `parseEnvironmentList`, `parseRelease`, `parseTeam`, `parseOwner` (`team:<id>`), `parseIntegration`, `parseSentryApp`, `parseAppLinkField` (`name=value`), `parseDsn`, `parseWorkflowList`, `parseProjectList` | cached entities of the org the command's target names, else of every org, each once; the `*List` parsers complete the last item of a comma-separated list |
+| Issue as a flag value (`issue merge --into`) | `parseIssueReference` | what `ISSUE_TARGET` completes |
+| Git ref, commit, or repository (`--base-ref`, `--head-sha`, `--repo`, `--commit REPO@SHA`, `set-commits --from`) | `parseVcsRef` (branch and tag names as the remote knows them), `parseGitRef` (refs git resolves locally), `parseGitCommit`, `parseGitRepo` (`owner/repo` of the remotes), `parseRepoCommitList` | read from git in the shell's directory; nothing outside a work tree |
+| A structured value with its own grammar (`issue archive --until`, `api <endpoint>`) | `parseArchiveUntil`, `parseApiEndpoint` | the grammar: `forever`, `auto`, `10x`, `10x/5m`, …; API schema paths one segment at a time, with cached orgs and projects for their placeholders |
 | Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`, `org list --account`) |
 | CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |
 | URL | `parseUrl` (the command validates it) | nothing |
-| Free text, IDs with no cache, names of new things | `parseText` | nothing |
+| Free text, IDs with no cache, names of new things | `parseText` | nothing. Before reaching for it, check whether the value is really free: a value with a fixed set (in the module that validates it), a grammar, or a source (cache, git, schema) gets a kind that completes it |
 | Numbers and other values a command parses itself (`parsePort`, `parseLimit`) | `textParser(parse)` | nothing |
 
 Import the pre-tagged parsers; never tag `String` or write
@@ -445,13 +449,17 @@ nothing, and `parseLoginEmail` completes stored accounts. Fixed values
 through `COMPLETION_VALUES`. A new shared parser goes in `PARSER_TARGETS`;
 its module must not import `completion-target.ts`, or the two would load
 in a cycle.
-Issue and dashboard suggestions come from the `completion_cache` table. The
+Cached entities (issues, dashboards, environments, releases, teams,
+monitors, alert workflows, integrations, Sentry Apps and their issue-link
+form fields, DSNs) come from the `completion_cache` table. The
 authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
 `src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
 operations it lists (by URL template, type-checked against the SDK), so API
 functions never seed by hand. To complete a new entity type, add it to
-`CompletionEntityKind`, its operations in `completion-seed.ts`, a tagged
-parser, and an `entityCompleter` entry in `src/lib/complete.ts`. To add a
+`CompletionEntityKind`, its operations in `completion-seed.ts` (one
+response may seed several kinds), a tagged parser, and an `entityCompleter`
+(target positionals) or `flagEntityCompleter` (flag values) entry in
+`src/lib/complete.ts`. To add a
 kind that is not an entity, add its entry to `COMPLETERS`
 (`src/lib/complete.ts`), whose keys are the `CompletionTarget` type, a
 `*_TARGET` name for it in `completion-target.ts`, and a pre-tagged parser.

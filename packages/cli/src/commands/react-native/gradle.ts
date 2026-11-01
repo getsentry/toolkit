@@ -18,7 +18,11 @@ import {
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { parseFilePath, parseText } from "../../lib/completion-target.js";
+import {
+  parseFilePath,
+  parseRelease,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -162,7 +166,7 @@ export const gradleCommand = buildCommand({
       },
       release: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseRelease,
         brief: "Release version to publish to",
         optional: true,
       },

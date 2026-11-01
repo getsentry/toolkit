@@ -14,7 +14,11 @@ import {
   type ReleaseSortValue,
 } from "../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
-import { choiceParser, parseText } from "../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseEnvironmentList,
+  parseRelativePeriod,
+} from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -693,14 +697,14 @@ export const listCommand = buildListCommand("release", {
       },
       environment: {
         kind: "parsed" as const,
-        parse: parseText,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true as const,
         optional: true as const,
       },
       period: {
         kind: "parsed" as const,
-        parse: parseText,
+        parse: parseRelativePeriod,
         brief: "Health stats period (e.g., 24h, 7d, 14d, 90d)",
         default: "90d",
       },

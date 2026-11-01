@@ -11,7 +11,12 @@ import {
   updateIssueAlertRule,
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { choiceParser, parseText } from "../../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseText,
+} from "../../../lib/completion-target.js";
 import {
   ContextError,
   stringifyUnknown,
@@ -245,7 +250,7 @@ export const editCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
@@ -266,7 +271,7 @@ export const editCommand = buildCommand({
       },
       owner: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },

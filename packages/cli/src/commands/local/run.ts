@@ -68,6 +68,7 @@ import {
   createLocalRetentionBuffer,
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
+import { LOOPBACK_HOSTS } from "./loopback.js";
 
 type RunFlags = {
   readonly port: number;
@@ -460,7 +461,7 @@ export const runCommand = buildCommand({
       },
       host: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceParser(LOOPBACK_HOSTS),
         brief: "Hostname for the local server",
         default: "localhost",
       },

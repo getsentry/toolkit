@@ -18,7 +18,11 @@ import {
   waitForSnapshotArchive,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDirectoryPath, parseText } from "../../lib/completion-target.js";
+import {
+  parseDirectoryPath,
+  parseText,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import { getDefaultProject } from "../../lib/db/defaults.js";
 import {
   ApiError,
@@ -193,7 +197,7 @@ export const downloadCommand = buildCommand({
       },
       branch: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseVcsRef,
         brief: "Git branch filter (only with --app-id)",
         optional: true,
       },

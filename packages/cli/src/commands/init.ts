@@ -29,6 +29,7 @@ import { buildCommand } from "../lib/command.js";
 import {
   choiceListParser,
   ORG_PROJECT_OR_DIRECTORY_TARGET,
+  parseTeam,
   parseText,
 } from "../lib/completion-target.js";
 import { refreshToken } from "../lib/db/auth.js";
@@ -428,7 +429,7 @@ export const initCommand = buildCommand<
       },
       team: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseTeam,
         brief: "Team slug to create the project under",
         optional: true,
       },

@@ -8,7 +8,14 @@ import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { choiceParser, parseText } from "../../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseProjectList,
+  parseText,
+  parseWorkflowList,
+} from "../../../lib/completion-target.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -24,6 +31,7 @@ import {
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
+  METRIC_TIME_WINDOW_VALUES,
   normalizeProjectList,
   parseJsonObjectList,
   parseWorkflowIds,
@@ -146,7 +154,7 @@ export const createCommand = buildCommand({
       },
       "time-window": {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(METRIC_TIME_WINDOW_VALUES, numberParser),
         brief: "Evaluation window in minutes",
       },
       trigger: {
@@ -158,26 +166,26 @@ export const createCommand = buildCommand({
       },
       project: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseProjectList,
         variadic: true,
         optional: true,
         brief: "Project slug filter (repeatable or comma-separated)",
       },
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment filter",
       },
       owner: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value accepted by Sentry API",
       },
       workflow: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseWorkflowList,
         variadic: true,
         optional: true,
         brief: "Alert (workflow) id to notify (repeatable or comma-separated)",

@@ -19,7 +19,12 @@ import { createEventEnvelope, makeDsn, serializeEnvelope } from "@sentry/core";
 import type { SentryContext } from "../context.js";
 import { buildBashErrorEvent } from "../lib/bash-hook/traceback.js";
 import { buildCommand } from "../lib/command.js";
-import { parseFilePath, parseText } from "../lib/completion-target.js";
+import {
+  parseDsn,
+  parseFilePath,
+  parseRelease,
+  parseText,
+} from "../lib/completion-target.js";
 import { parseKeyValue } from "../lib/envelope/event-builder.js";
 import { requireDsn, sendEnvelopeRequest } from "../lib/envelope/transport.js";
 import { ValidationError } from "../lib/errors.js";
@@ -288,13 +293,13 @@ export const bashHookCommand = buildCommand({
       },
       release: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseRelease,
         brief: "Set the release version for the event",
         optional: true,
       },
       dsn: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseDsn,
         brief: "DSN to send events to (overrides SENTRY_DSN env var)",
         optional: true,
       },

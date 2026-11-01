@@ -10,7 +10,7 @@ import { description, object, pipe } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { getIssueTag } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseText } from "../../lib/completion-target.js";
+import { parseEnvironment, parseText } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatIssueTags } from "../../lib/formatters/issue-tags.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -104,7 +104,7 @@ export const tagsCommand = buildCommand({
     flags: {
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironment,
         brief: "Filter to one environment (default: all environments)",
         optional: true,
       },

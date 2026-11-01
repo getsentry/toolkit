@@ -22,6 +22,7 @@ import {
 import { buildCommand } from "../lib/command.js";
 import {
   choiceParser,
+  parseApiEndpoint,
   parseFilePath,
   parseText,
 } from "../lib/completion-target.js";
@@ -1697,7 +1698,7 @@ export const apiCommand = buildCommand({
       parameters: [
         {
           brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
-          parse: parseText,
+          parse: parseApiEndpoint,
           placeholder: "endpoint",
         },
       ],

@@ -11,6 +11,7 @@ import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  choiceListParser,
   parseDirectoryPath,
   parseFilePath,
   parseText,
@@ -25,6 +26,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   assertDirectoryReadable,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   resolveDirectorySourcemaps,
 } from "../../lib/sourcemap/inject.js";
 
@@ -151,7 +153,7 @@ export const resolveCommand = buildCommand({
     flags: {
       ext: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,

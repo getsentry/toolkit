@@ -36,6 +36,9 @@ import {
 } from "../../lib/envelope/transport.js";
 import {
   choiceParser,
+  parseDsn,
+  parseEnvironment,
+  parseMonitorCommand,
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
@@ -202,20 +205,20 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       kind: "array",
       parameter: {
         brief: "Monitor slug followed by the command to run",
-        parse: parseText,
+        parse: parseMonitorCommand,
         placeholder: "monitor-slug command",
       },
     },
     flags: {
       dsn: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseDsn,
         brief: "DSN to send check-ins to (overrides SENTRY_DSN env var)",
         optional: true,
       },
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironment,
         brief: "Environment of the monitor",
         default: "production",
       },

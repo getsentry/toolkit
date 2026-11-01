@@ -25,6 +25,9 @@ const METRIC_TIME_WINDOWS = new Set([
   1, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440,
 ]);
 
+/** The `--time-window` values a metric alert accepts, offered by completion. */
+export const METRIC_TIME_WINDOW_VALUES = [...METRIC_TIME_WINDOWS].map(String);
+
 /** Parse and validate an "all" | "any" match mode flag. Returns `undefined` when absent. */
 export function parseMatchMode(
   value: string | undefined,

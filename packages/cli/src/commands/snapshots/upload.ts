@@ -16,6 +16,7 @@ import {
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
+  VCS_PROVIDERS,
   type VcsFlags,
   type VcsInfo,
   vcsInfoToBody,
@@ -23,9 +24,13 @@ import {
 import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  choiceParser,
   parseDirectoryPath,
   parseFilePath,
+  parseGitCommit,
+  parseGitRepo,
   parseText,
+  parseVcsRef,
   textParser,
 } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
@@ -415,45 +420,45 @@ export const uploadCommand = buildCommand({
       },
       "head-sha": {
         kind: "parsed",
-        parse: parseText,
+        parse: parseGitCommit,
         brief: "VCS commit SHA (defaults to the current commit)",
         optional: true,
       },
       "base-sha": {
         kind: "parsed",
-        parse: parseText,
+        parse: parseGitCommit,
         brief:
           "VCS base commit SHA (defaults to the merge-base with the base ref)",
         optional: true,
       },
       "vcs-provider": {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceParser(VCS_PROVIDERS),
         brief: "VCS provider (defaults to the current remote's provider)",
         optional: true,
       },
       "head-repo-name": {
         kind: "parsed",
-        parse: parseText,
+        parse: parseGitRepo,
         brief:
           "Head repository name, e.g. owner/repo (defaults to the current)",
         optional: true,
       },
       "base-repo-name": {
         kind: "parsed",
-        parse: parseText,
+        parse: parseGitRepo,
         brief: "Base repository name, e.g. owner/repo (for forks)",
         optional: true,
       },
       "head-ref": {
         kind: "parsed",
-        parse: parseText,
+        parse: parseVcsRef,
         brief: "Head branch/reference (defaults to the current branch)",
         optional: true,
       },
       "base-ref": {
         kind: "parsed",
-        parse: parseText,
+        parse: parseVcsRef,
         brief:
           "Base branch/reference (defaults to the merge-base tracking ref)",
         optional: true,

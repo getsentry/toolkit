@@ -26,6 +26,8 @@ import {
   type DashboardWidget,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
+  GRID_COLUMN_POSITIONS,
+  GRID_WIDTHS,
   prepareDashboardForUpdate,
   validateWidgetLayout,
   WIDGET_LAYOUT_MODES,
@@ -220,7 +222,7 @@ export const addCommand = buildCommand({
       },
       col: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_COLUMN_POSITIONS, numberParser),
         brief: "Grid column position (0-based, 0–5)",
         optional: true,
       },
@@ -232,7 +234,7 @@ export const addCommand = buildCommand({
       },
       width: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_WIDTHS, numberParser),
         brief: "Widget width in grid columns (1–6)",
         optional: true,
       },

@@ -11,8 +11,9 @@ import {
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  ACCOUNT_SERVER_TARGET,
+  completingParser,
   parseAccountSelector,
-  textParser,
 } from "../../lib/completion-target.js";
 import {
   type AccountSummary,
@@ -127,7 +128,7 @@ export const logoutCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: textParser(parseLoginUrl),
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Only match accounts on this server (disambiguates the same email on several servers)",
         optional: true,

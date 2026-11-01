@@ -10,7 +10,14 @@ import {
   putMetricAlertRule,
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { choiceParser, parseText } from "../../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseProjectList,
+  parseText,
+  parseWorkflowList,
+} from "../../../lib/completion-target.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -21,6 +28,7 @@ import {
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
+  METRIC_TIME_WINDOW_VALUES,
   normalizeMetricDataset,
   normalizeProjectList,
   parseJsonObjectList,
@@ -247,7 +255,7 @@ export const editCommand = buildCommand({
       },
       "time-window": {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(METRIC_TIME_WINDOW_VALUES, numberParser),
         optional: true,
         brief: "Evaluation window in minutes",
       },
@@ -260,26 +268,26 @@ export const editCommand = buildCommand({
       },
       project: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseProjectList,
         variadic: true,
         optional: true,
         brief: "Project slug filter (repeatable or comma-separated)",
       },
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
       owner: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },
       workflow: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseWorkflowList,
         variadic: true,
         optional: true,
         brief:

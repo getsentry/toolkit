@@ -18,8 +18,10 @@ import {
 } from "../../lib/api/sourcemaps.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  choiceListParser,
   parseDirectoryPath,
   parseFilePath,
+  parseRelease,
   parseText,
 } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
@@ -30,10 +32,11 @@ import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
-  type InjectResult,
   injectDirectory,
+  type InjectResult,
 } from "../../lib/sourcemap/inject.js";
 
 /** Result type for the upload command. */
@@ -267,7 +270,7 @@ export const uploadCommand = buildCommand({
     flags: {
       release: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseRelease,
         brief: "Release version to associate with the upload",
         optional: true,
       },
@@ -287,7 +290,7 @@ export const uploadCommand = buildCommand({
       },
       ext: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,

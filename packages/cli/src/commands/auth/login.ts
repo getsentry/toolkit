@@ -10,9 +10,10 @@ import {
 import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
+  ACCOUNT_SERVER_TARGET,
   choiceListParser,
+  completingParser,
   parseText,
-  textParser,
 } from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
@@ -565,7 +566,7 @@ export const loginCommand = buildCommand({
       },
       url: {
         kind: "parsed",
-        parse: textParser(parseLoginUrl),
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Sentry instance URL to authenticate against (e.g. https://sentry.example.com). " +
           "Required for self-hosted; defaults to SaaS (https://sentry.io).",

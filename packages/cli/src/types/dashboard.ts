@@ -521,6 +521,17 @@ export function prepareWidgetQueries(
 /** Sentry dashboard grid column count */
 export const GRID_COLUMNS = 6;
 
+/** The values `--col` accepts: each 0-based grid column. */
+export const GRID_COLUMN_POSITIONS = Array.from(
+  { length: GRID_COLUMNS },
+  (_, column) => String(column),
+);
+
+/** The values `--width` accepts: 1 to {@link GRID_COLUMNS} columns. */
+export const GRID_WIDTHS = Array.from({ length: GRID_COLUMNS }, (_, column) =>
+  String(column + 1),
+);
+
 /**
  * Controls how the auto-placer positions new widgets in the grid.
  *

@@ -11,7 +11,7 @@ import { listOrganizationsUncached } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   parseAccountSelector,
-  parseText,
+  parseOrgSlug,
 } from "../../lib/completion-target.js";
 import { DEFAULT_SENTRY_HOST } from "../../lib/constants.js";
 import {
@@ -464,7 +464,7 @@ export const listCommand = buildCommand({
           placeholder: "filter",
           brief:
             "Only list organizations whose slug or name fuzzy-matches this text or matches this glob",
-          parse: parseText,
+          parse: parseOrgSlug,
           optional: true,
         },
       ],

@@ -131,6 +131,123 @@ describe("completion seeding from API responses", () => {
     ]);
   });
 
+  test("team lists are stored as slugs and as team:<id> owners", async () => {
+    await seedCompletions(
+      `${API}/teams/`,
+      json([{ id: "7", slug: "backend", name: "Backend" }]),
+    );
+
+    expect(getCachedCompletionEntities("team", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "backend", label: "Backend" },
+    ]);
+    expect(getCachedCompletionEntities("owner", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "team:7", label: "#backend" },
+    ]);
+  });
+
+  test("environments, releases, monitors, and workflows keep the value their flags read", async () => {
+    await seedCompletions(
+      "https://us.sentry.io/api/0/projects/acme/cli/environments/",
+      json([{ id: "1", name: "production" }]),
+    );
+    await seedCompletions(
+      `${API}/releases/`,
+      json([{ version: "cli@1.2.0+abc", shortVersion: "1.2.0" }]),
+    );
+    await seedCompletions(
+      `${API}/monitors/nightly/`,
+      json({ slug: "nightly", name: "Nightly job" }),
+    );
+    await seedCompletions(
+      `${API}/workflows/`,
+      json([{ id: "42", name: "Page on-call" }]),
+    );
+
+    expect(getCachedCompletionEntities("environment", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "production", label: undefined },
+    ]);
+    expect(getCachedCompletionEntities("release", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "cli@1.2.0+abc", label: "1.2.0" },
+    ]);
+    expect(getCachedCompletionEntities("monitor", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "nightly", label: "Nightly job" },
+    ]);
+    expect(getCachedCompletionEntities("workflow", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "42", label: "Page on-call" },
+    ]);
+  });
+
+  test("integrations by ID and installed Sentry Apps by slug", async () => {
+    await seedCompletions(
+      `${API}/integrations/`,
+      json([{ id: "99", name: "acme-jira", provider: { name: "Jira" } }]),
+    );
+    await seedCompletions(
+      `${API}/sentry-app-installations/`,
+      json([{ app: { slug: "linear", name: "Linear" } }]),
+    );
+
+    expect(getCachedCompletionEntities("integration", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "99", label: "Jira: acme-jira" },
+    ]);
+    expect(getCachedCompletionEntities("sentry-app", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "linear", label: "Linear" },
+    ]);
+  });
+
+  test("Sentry App issue-link forms are stored as name= and their fixed choices", async () => {
+    await seedCompletions(
+      `${API}/sentry-app-components/?filter=issue-link`,
+      json([
+        {
+          type: "issue-link",
+          sentryApp: { slug: "tracker" },
+          schema: {
+            link: {
+              uri: "/link",
+              required_fields: [
+                {
+                  name: "priority",
+                  type: "select",
+                  choices: [
+                    ["high", "High"],
+                    [2, "Low"],
+                  ],
+                },
+              ],
+              optional_fields: [{ name: "note", type: "text" }],
+            },
+          },
+        },
+        { type: "alert-rule-action", schema: { link: {} } },
+      ]),
+    );
+
+    expect(getCachedCompletionEntities("app-link-field", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "priority=", label: "tracker, required" },
+      { orgSlug: "acme", value: "priority=high", label: "tracker, required" },
+      { orgSlug: "acme", value: "priority=2", label: "tracker, required" },
+      { orgSlug: "acme", value: "note=", label: "tracker" },
+    ]);
+  });
+
+  test("client keys are stored by public DSN", async () => {
+    await seedCompletions(
+      "https://us.sentry.io/api/0/projects/acme/cli/keys/",
+      json([
+        { name: "Default", dsn: { public: "https://k@o1.ingest.sentry.io/1" } },
+      ]),
+    );
+
+    expect(getCachedCompletionEntities("dsn", ["acme"])).toEqual([
+      {
+        orgSlug: "acme",
+        value: "https://k@o1.ingest.sentry.io/1",
+        label: "Default",
+      },
+    ]);
+  });
+
   test("ignores other endpoints, failed responses, and bodies that are not JSON", async () => {
     const issue = { shortId: "CLI-1A", title: "Boom" };
     await seedCompletions(`${API}/issues/123/events/`, json([issue]));

@@ -6,9 +6,9 @@
  * response that passes through the authenticated fetch in
  * `src/lib/sentry-client.ts` is offered to {@link seedCompletions},
  * which matches its path against {@link COMPLETION_SOURCES}: the
- * `@sentry/api` operations that return issues or dashboards, by their URL
- * templates. Any command that
- * lists or fetches issues or dashboards therefore seeds the cache, without
+ * `@sentry/api` operations that return a completed entity (issues,
+ * dashboards, environments, releases, teams, …), by their URL templates.
+ * Any command that lists or fetches them therefore seeds the cache, without
  * the API functions having to remember to.
  *
  * To complete a new entity type, add its kind to `db/completion-cache.ts` and
@@ -22,8 +22,24 @@
 import type {
   GetOrganizationDashboardData,
   GetOrganizationIssueData,
+  GetOrganizationMonitorData,
+  GetOrganizationReleaseData,
+  GetOrganizationWorkflowData,
+  GetProjectMonitorData,
   ListOrganizationDashboardsData,
+  ListOrganizationEnvironmentsData,
+  ListOrganizationIntegrationsData,
   ListOrganizationIssuesData,
+  ListOrganizationMonitorsData,
+  ListOrganizationReleasesData,
+  ListOrganizationSentryAppComponentsData,
+  ListOrganizationSentryAppInstallationsData,
+  ListOrganizationTeamsData,
+  ListOrganizationWorkflowsData,
+  ListProjectEnvironmentsData,
+  ListProjectKeysData,
+  ListProjectReleasesData,
+  ListProjectTeamsData,
   ResolveOrganizationShortIdData,
 } from "@sentry/api";
 import {
@@ -88,8 +104,130 @@ function dashboardEntities(body: unknown): CompletionEntity[] {
   });
 }
 
+/** An object property of an untyped JSON value. */
+function objectField(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)[key]
+    : undefined;
+}
+
 /**
- * Operations that return issues or dashboards. Each `satisfies` ties a
+ * Entities read from one string property of each item, with another as
+ * description when it differs (`name` next to a team's `slug`).
+ */
+function fieldEntities(
+  valueKey: string,
+  labelKey?: string,
+): (body: unknown) => CompletionEntity[] {
+  return (body) =>
+    items(body).flatMap((item) => {
+      const value = stringField(item, valueKey);
+      const label = labelKey ? stringField(item, labelKey) : undefined;
+      return value
+        ? [{ value, label: label && label !== value ? label : undefined }]
+        : [];
+    });
+}
+
+/** Integrations by ID, the form `--integration` takes, described by name. */
+function integrationEntities(body: unknown): CompletionEntity[] {
+  return items(body).flatMap((integration) => {
+    const value = stringField(integration, "id");
+    const provider = stringField(objectField(integration, "provider"), "name");
+    const name = stringField(integration, "name");
+    return value
+      ? [{ value, label: [provider, name].filter(Boolean).join(": ") }]
+      : [];
+  });
+}
+
+/** Installed Sentry Apps by slug, the form `--app` takes. */
+function sentryAppEntities(body: unknown): CompletionEntity[] {
+  return items(body).flatMap((installation) => {
+    const app = objectField(installation, "app");
+    const value = stringField(app, "slug");
+    const name = stringField(app, "name");
+    return value
+      ? [{ value, label: name && name !== value ? name : undefined }]
+      : [];
+  });
+}
+
+/** Teams as the `team:<id>` actor that `--owner` takes, described by slug. */
+function teamOwnerEntities(body: unknown): CompletionEntity[] {
+  return items(body).flatMap((team) => {
+    const id = stringField(team, "id");
+    const slug = stringField(team, "slug");
+    return id ? [{ value: `team:${id}`, label: slug && `#${slug}` }] : [];
+  });
+}
+
+/** A choice of a form field: `[value, label]`. */
+function choiceValue(choice: unknown): string | undefined {
+  const value = Array.isArray(choice) ? choice[0] : undefined;
+  return typeof value === "string" || typeof value === "number"
+    ? String(value)
+    : undefined;
+}
+
+/**
+ * The fields of the issue-link forms of installed Sentry Apps, the
+ * `name=value` pairs `issue link --field` takes: `name=` for each field,
+ * then `name=value` for each fixed choice of a select field. Choices an
+ * app loads from its own server (`uri`) are not in the response.
+ */
+function appLinkFieldEntities(body: unknown): CompletionEntity[] {
+  return items(body).flatMap((component) => {
+    if (stringField(component, "type") !== "issue-link") {
+      return [];
+    }
+    const app = stringField(objectField(component, "sentryApp"), "slug");
+    const link = objectField(objectField(component, "schema"), "link");
+    return (["required_fields", "optional_fields"] as const).flatMap(
+      (group) => {
+        const fields = objectField(link, group);
+        if (!Array.isArray(fields)) {
+          return [];
+        }
+        const label = [
+          app,
+          group === "required_fields" ? "required" : undefined,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return fields.flatMap((field) => {
+          const name = stringField(field, "name");
+          if (!name) {
+            return [];
+          }
+          const choices =
+            objectField(field, "choices") ?? objectField(field, "options");
+          const values = Array.isArray(choices)
+            ? choices.flatMap((choice) => {
+                const value = choiceValue(choice);
+                return value === undefined ? [] : [`${name}=${value}`];
+              })
+            : [];
+          return [`${name}=`, ...values].map((value) => ({
+            value,
+            label: label || undefined,
+          }));
+        });
+      },
+    );
+  });
+}
+
+/** Public DSNs of client keys, described by the key name. */
+function dsnEntities(body: unknown): CompletionEntity[] {
+  return items(body).flatMap((key) => {
+    const value = stringField(objectField(key, "dsn"), "public");
+    return value ? [{ value, label: stringField(key, "name") }] : [];
+  });
+}
+
+/**
+ * Operations that return completed entities. Each `satisfies` ties a
  * template to the generated `url` of an `@sentry/api` operation, so an
  * endpoint the SDK renames or drops fails type checking. A template serves
  * every method on it (e.g. `getOrganizationIssue` and
@@ -139,6 +277,96 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     url: "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/" satisfies GetOrganizationDashboardData["url"],
     extract: dashboardEntities,
   },
+  {
+    kind: "environment",
+    url: "/api/0/organizations/{organization_id_or_slug}/environments/" satisfies ListOrganizationEnvironmentsData["url"],
+    extract: fieldEntities("name"),
+  },
+  {
+    kind: "environment",
+    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/environments/" satisfies ListProjectEnvironmentsData["url"],
+    extract: fieldEntities("name"),
+  },
+  {
+    kind: "release",
+    url: "/api/0/organizations/{organization_id_or_slug}/releases/" satisfies ListOrganizationReleasesData["url"],
+    extract: fieldEntities("version", "shortVersion"),
+  },
+  {
+    kind: "release",
+    url: "/api/0/organizations/{organization_id_or_slug}/releases/{version}/" satisfies GetOrganizationReleaseData["url"],
+    extract: fieldEntities("version", "shortVersion"),
+  },
+  {
+    kind: "release",
+    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/releases/" satisfies ListProjectReleasesData["url"],
+    extract: fieldEntities("version", "shortVersion"),
+  },
+  {
+    kind: "team",
+    url: "/api/0/organizations/{organization_id_or_slug}/teams/" satisfies ListOrganizationTeamsData["url"],
+    extract: fieldEntities("slug", "name"),
+  },
+  {
+    kind: "team",
+    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/teams/" satisfies ListProjectTeamsData["url"],
+    extract: fieldEntities("slug", "name"),
+  },
+  {
+    kind: "owner",
+    url: "/api/0/organizations/{organization_id_or_slug}/teams/" satisfies ListOrganizationTeamsData["url"],
+    extract: teamOwnerEntities,
+  },
+  {
+    kind: "owner",
+    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/teams/" satisfies ListProjectTeamsData["url"],
+    extract: teamOwnerEntities,
+  },
+  {
+    kind: "monitor",
+    url: "/api/0/organizations/{organization_id_or_slug}/monitors/" satisfies ListOrganizationMonitorsData["url"],
+    extract: fieldEntities("slug", "name"),
+  },
+  {
+    kind: "monitor",
+    url: "/api/0/organizations/{organization_id_or_slug}/monitors/{monitor_id_or_slug}/" satisfies GetOrganizationMonitorData["url"],
+    extract: fieldEntities("slug", "name"),
+  },
+  {
+    kind: "monitor",
+    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/monitors/{monitor_id_or_slug}/" satisfies GetProjectMonitorData["url"],
+    extract: fieldEntities("slug", "name"),
+  },
+  {
+    kind: "workflow",
+    url: "/api/0/organizations/{organization_id_or_slug}/workflows/" satisfies ListOrganizationWorkflowsData["url"],
+    extract: fieldEntities("id", "name"),
+  },
+  {
+    kind: "workflow",
+    url: "/api/0/organizations/{organization_id_or_slug}/workflows/{workflow_id}/" satisfies GetOrganizationWorkflowData["url"],
+    extract: fieldEntities("id", "name"),
+  },
+  {
+    kind: "integration",
+    url: "/api/0/organizations/{organization_id_or_slug}/integrations/" satisfies ListOrganizationIntegrationsData["url"],
+    extract: integrationEntities,
+  },
+  {
+    kind: "sentry-app",
+    url: "/api/0/organizations/{organization_id_or_slug}/sentry-app-installations/" satisfies ListOrganizationSentryAppInstallationsData["url"],
+    extract: sentryAppEntities,
+  },
+  {
+    kind: "app-link-field",
+    url: "/api/0/organizations/{organization_id_or_slug}/sentry-app-components/" satisfies ListOrganizationSentryAppComponentsData["url"],
+    extract: appLinkFieldEntities,
+  },
+  {
+    kind: "dsn",
+    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/keys/" satisfies ListProjectKeysData["url"],
+    extract: dsnEntities,
+  },
 ];
 
 /** Path parameter in an `@sentry/api` URL template. */
@@ -161,25 +389,30 @@ const SOURCE_PATTERNS = COMPLETION_SOURCES.map((source) => ({
   pattern: templatePattern(source.url),
 }));
 
-/** The source for a URL and the organization it names, if any. */
-function matchSource(
-  url: string,
-): { source: CompletionSource; orgSlug?: string } | undefined {
+/** A source matching a request URL, with the organization its path names. */
+type SourceMatch = { source: CompletionSource; orgSlug?: string };
+
+/**
+ * The sources for a URL and the organization each names, if any. One
+ * response can hold several kinds (a team list gives both `--team` slugs
+ * and `--owner` actors).
+ */
+function matchSources(url: string): SourceMatch[] {
   let pathname: string;
   try {
     pathname = new URL(url).pathname;
   } catch (error) {
     log.debug(`Not seeding completions from unparsable URL '${url}'`, error);
-    return;
+    return [];
   }
-  for (const { source, pattern } of SOURCE_PATTERNS) {
+  return SOURCE_PATTERNS.flatMap(({ source, pattern }) => {
     const match = pattern.exec(pathname);
-    if (match) {
-      const org = match[1];
-      return { source, orgSlug: org ? decodeURIComponent(org) : undefined };
+    if (!match) {
+      return [];
     }
-  }
-  return;
+    const org = match[1];
+    return [{ source, orgSlug: org ? decodeURIComponent(org) : undefined }];
+  });
 }
 
 /**
@@ -200,41 +433,43 @@ export async function seedCompletions(
   response: Response,
 ): Promise<Response> {
   if (response.ok && response.headers.get("Content-Type")?.includes("json")) {
-    const match = matchSource(url);
-    if (match) {
-      await seedFromBody(url, response, match);
+    const matches = matchSources(url);
+    if (matches.length > 0) {
+      await seedFromBody(url, response, matches);
     }
   }
   return response;
 }
 
-/** Store the entities of a response whose URL matched `match`. */
+/** Store the entities of a response whose URL matched `matches`. */
 async function seedFromBody(
   url: string,
   response: Response,
-  { source, orgSlug: pathOrg }: { source: CompletionSource; orgSlug?: string },
+  matches: readonly SourceMatch[],
 ): Promise<void> {
   let body: unknown;
   try {
     body = await response.clone().json();
   } catch (error) {
-    log.debug(`Not seeding ${source.kind} completions from '${url}'`, error);
+    log.debug(`Not seeding completions from '${url}'`, error);
     return;
   }
-  const orgSlug = pathOrg ?? source.org?.(body);
-  if (!orgSlug) {
-    log.debug(
-      `Not seeding ${source.kind} completions without an org: '${url}'`,
-    );
-    return;
-  }
-  try {
-    cacheCompletionEntities(source.kind, orgSlug, source.extract(body));
-  } catch (error) {
-    log.debug(
-      `Failed to cache ${source.kind} completions for '${orgSlug}'`,
-      error,
-    );
-    reportCliError(error);
+  for (const { source, orgSlug: pathOrg } of matches) {
+    const orgSlug = pathOrg ?? source.org?.(body);
+    if (!orgSlug) {
+      log.debug(
+        `Not seeding ${source.kind} completions without an org: '${url}'`,
+      );
+      continue;
+    }
+    try {
+      cacheCompletionEntities(source.kind, orgSlug, source.extract(body));
+    } catch (error) {
+      log.debug(
+        `Failed to cache ${source.kind} completions for '${orgSlug}'`,
+        error,
+      );
+      reportCliError(error);
+    }
   }
 }

@@ -119,6 +119,19 @@ function readGithubEventSha(
   }
 }
 
+/**
+ * The VCS providers Sentry accepts for preprod uploads, by integration
+ * slug (`SUPPORTED_VCS_PROVIDERS` in getsentry/sentry's
+ * `organization_preprod_artifact_assemble.py`), offered by `--vcs-provider`.
+ */
+export const VCS_PROVIDERS = [
+  "github",
+  "github_enterprise",
+  "gitlab",
+  "bitbucket",
+  "bitbucket_server",
+];
+
 /** Extract a provider name (e.g. `github`) from a git remote URL's host. */
 function providerFromRemoteUrl(url: string): string | undefined {
   let host: string | undefined;

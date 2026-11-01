@@ -23,6 +23,7 @@ import {
 import { validateLimit } from "../lib/arg-parsing.js";
 import {
   choiceParser,
+  parseEnvironmentList,
   parseText,
   textParser,
 } from "../lib/completion-target.js";
@@ -59,7 +60,7 @@ import {
   targetPatternExplanation,
 } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
-import { resolveMetricField } from "../lib/metrics-transform.js";
+import { resolveMetricField, VALID_AGGS } from "../lib/metrics-transform.js";
 import { withProgress } from "../lib/polling.js";
 import {
   DEFAULT_REPLAY_EXPLORE_FIELDS,
@@ -787,7 +788,7 @@ export const exploreCommand = buildListCommand("explore", {
       },
       agg: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceParser([...VALID_AGGS]),
         brief: "Aggregation for --metric (sum, avg, count, p50, p95, etc.)",
         default: "sum",
       },
@@ -811,7 +812,7 @@ export const exploreCommand = buildListCommand("explore", {
       },
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironmentList,
         brief: "Environment filter (repeatable, comma-separated)",
         variadic: true,
         optional: true,

@@ -13,7 +13,7 @@ import {
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
   choiceParser,
-  parseText,
+  parseEnvironmentList,
   textParser,
 } from "../../lib/completion-target.js";
 import {
@@ -343,7 +343,7 @@ export const listCommand = buildListCommand("replay", {
       },
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true,
         optional: true,

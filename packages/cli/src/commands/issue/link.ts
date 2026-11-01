@@ -2,7 +2,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseText } from "../../lib/completion-target.js";
+import { parseAppLinkField } from "../../lib/completion-target.js";
 import { formatIssueLinkResult } from "../../lib/formatters/issue-links.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { linkExternalIssue } from "../../lib/issue-links.js";
@@ -72,7 +72,7 @@ export const linkCommand = buildCommand({
       "dry-run": DRY_RUN_FLAG,
       field: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseAppLinkField,
         brief: "Additional Sentry App link form field (name=value, repeatable)",
         variadic: true,
         optional: true,

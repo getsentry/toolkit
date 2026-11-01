@@ -11,7 +11,12 @@ import {
 } from "../../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { choiceParser, parseText } from "../../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseText,
+} from "../../../lib/completion-target.js";
 import {
   ContextError,
   stringifyUnknown,
@@ -177,7 +182,7 @@ export const createCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment filter",
       },
@@ -198,7 +203,7 @@ export const createCommand = buildCommand({
       },
       owner: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseOwner,
         optional: true,
         brief: "Owner (team:user style value accepted by Sentry API)",
       },

@@ -14,6 +14,7 @@ import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   buildEventFromFlags,
+  KNOWN_USER_FIELDS,
   type SendEventFlags,
 } from "../../lib/envelope/event-builder.js";
 import {
@@ -25,13 +26,19 @@ import {
   sendEnvelopeRequest,
 } from "../../lib/envelope/transport.js";
 import {
+  choiceParser,
+  parseEnvironment,
   parseFilePath,
   parsePlatform,
+  parseRelease,
   parseText,
 } from "../../lib/completion-target.js";
 import { ConfigError, ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+
+/** `--user` keys with their own User field, offered as `<key>:` prefixes. */
+const USER_FIELD_PREFIXES = [...KNOWN_USER_FIELDS].map((key) => `${key}:`);
 
 const log = logger.withTag("event.send");
 
@@ -237,7 +244,7 @@ built entirely from the file contents.
       },
       release: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseRelease,
         brief: "Release version",
         optional: true,
       },
@@ -249,7 +256,7 @@ built entirely from the file contents.
       },
       env: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseEnvironment,
         brief: "Environment name (e.g. production, staging)",
         optional: true,
       },
@@ -275,7 +282,7 @@ built entirely from the file contents.
       },
       user: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceParser(USER_FIELD_PREFIXES),
         brief:
           "User info as KEY:VALUE — id, email, username, ip_address, or custom",
         variadic: true,

@@ -5,7 +5,7 @@ import {
 } from "../../lib/completion-target.js";
 import { isHostedUiOrigin, LOCAL_SESSION_EVENT } from "./viewer-protocol.js";
 export { isHostedUiOrigin } from "./viewer-protocol.js";
-import { isLoopbackHost } from "./loopback.js";
+import { isLoopbackHost, LOOPBACK_HOSTS } from "./loopback.js";
 /**
  * sentry local serve
  *
@@ -1062,7 +1062,7 @@ export const serverCommand = buildCommand({
       },
       host: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceParser(LOOPBACK_HOSTS),
         brief: "Hostname to bind to",
         default: "localhost",
       },
