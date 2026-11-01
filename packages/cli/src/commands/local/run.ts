@@ -22,16 +22,23 @@ import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseText } from "../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseBindHost,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
-  printLocalViewerHint,
+  FILTER_VALUES,
   type FilterValue,
-  type FormatValue,
+  FORMAT_VALUES,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
+  type FormatValue,
+  printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
 import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
@@ -448,19 +455,19 @@ export const runCommand = buildCommand({
     flags: {
       port: {
         kind: "parsed",
-        parse: parsePort,
+        parse: textParser(parsePort),
         brief: "Port for the local server",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
-        parse: String,
+        parse: parseBindHost,
         brief: "Hostname for the local server",
         default: "localhost",
       },
       filter: {
         kind: "parsed",
-        parse: parseFilter,
+        parse: choiceParser(FILTER_VALUES, parseFilter),
         brief:
           "Only show items of this type (repeatable: error, transaction, log, ai)",
         variadic: true,
@@ -473,14 +480,14 @@ export const runCommand = buildCommand({
       },
       timeout: {
         kind: "parsed",
-        parse: parseTimeout,
+        parse: textParser(parseTimeout),
         brief:
           "Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode)",
         default: "0",
       },
       format: {
         kind: "parsed",
-        parse: parseFormat,
+        parse: choiceParser(FORMAT_VALUES, parseFormat),
         brief: "Output format: human (default) or json (NDJSON on stdout)",
         default: "human",
       },
@@ -497,7 +504,7 @@ export const runCommand = buildCommand({
       "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
       session: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Create a daemon-owned telemetry session with this label",
         optional: true,
       },

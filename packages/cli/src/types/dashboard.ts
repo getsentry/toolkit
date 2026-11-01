@@ -294,6 +294,18 @@ export const ERROR_AGGREGATE_FUNCTIONS = [
 
 export type ErrorAggregateFunction = (typeof ERROR_AGGREGATE_FUNCTIONS)[number];
 
+/**
+ * The function names `--query` and `--sort` complete: those of every
+ * dataset's aggregates and their aliases, as {@link parseAggregate} reads
+ * them (`count`, then `p95:span.duration` once a field follows). A word
+ * starting with `-` completes flag names, so a descending sort's `-` is
+ * typed after the name is completed.
+ */
+export const AGGREGATE_FUNCTION_NAMES: readonly string[] = [
+  ...ERROR_AGGREGATE_FUNCTIONS,
+  ...Object.keys(AGGREGATE_ALIASES),
+];
+
 /** Valibot schema for validating a span aggregate function name */
 export const SpanAggregateFunctionSchema = picklist(SPAN_AGGREGATE_FUNCTIONS);
 
@@ -521,6 +533,17 @@ export function prepareWidgetQueries(
 /** Sentry dashboard grid column count */
 export const GRID_COLUMNS = 6;
 
+/** The values `--col` accepts: each 0-based grid column. */
+export const GRID_COLUMN_POSITIONS = Array.from(
+  { length: GRID_COLUMNS },
+  (_, column) => String(column),
+);
+
+/** The values `--width` accepts: 1 to {@link GRID_COLUMNS} columns. */
+export const GRID_WIDTHS = Array.from({ length: GRID_COLUMNS }, (_, column) =>
+  String(column + 1),
+);
+
 /**
  * Controls how the auto-placer positions new widgets in the grid.
  *
@@ -529,7 +552,10 @@ export const GRID_COLUMNS = 6;
  * - `dense` — First-fit packing: scan top-to-bottom, left-to-right
  *   and place in the first available gap. Produces compact layouts.
  */
-export type WidgetLayoutMode = "sequential" | "dense";
+export type WidgetLayoutMode = (typeof WIDGET_LAYOUT_MODES)[number];
+
+/** The {@link WidgetLayoutMode} values, which `--layout` accepts. */
+export const WIDGET_LAYOUT_MODES = ["sequential", "dense"] as const;
 
 /** Default widget dimensions by displayType */
 const DEFAULT_WIDGET_SIZE: Partial<

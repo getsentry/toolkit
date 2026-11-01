@@ -25,6 +25,7 @@ import {
   formatProjectTarget,
   type ParsedOrgProject,
 } from "../../lib/arg-parsing.js";
+import { parsePlatform } from "../../lib/completion-target.js";
 import { getDefaultOrganization } from "../../lib/db/defaults.js";
 import {
   advancePaginationState,
@@ -927,7 +928,7 @@ export const listCommand = buildListCommand("project", {
       limit: buildListLimitFlag("projects"),
       platform: {
         kind: "parsed",
-        parse: String,
+        parse: parsePlatform,
         brief: "Filter by platform (e.g., javascript, python)",
         optional: true,
       },

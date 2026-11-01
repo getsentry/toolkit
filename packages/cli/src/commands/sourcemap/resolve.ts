@@ -10,7 +10,12 @@
 import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDirectoryPath } from "../../lib/completion-target.js";
+import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownCell,
@@ -21,6 +26,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   assertDirectoryReadable,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   resolveDirectorySourcemaps,
 } from "../../lib/sourcemap/inject.js";
 
@@ -147,20 +153,20 @@ export const resolveCommand = buildCommand({
     flags: {
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },

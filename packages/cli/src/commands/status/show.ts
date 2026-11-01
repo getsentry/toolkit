@@ -12,6 +12,7 @@ import {
   SENTRY_STATUS_PAGE_URL,
 } from "../../lib/api/status-page.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseUrl } from "../../lib/completion-target.js";
 import { formatSentryStatus } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 
@@ -53,7 +54,7 @@ export const showCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "Status page base URL to query",
         default: SENTRY_STATUS_PAGE_URL,
       },

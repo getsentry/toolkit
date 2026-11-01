@@ -8,6 +8,11 @@ import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  parseProjectList,
+  parseUrl,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
+import {
   colorTag,
   escapeMarkdownInline,
   mdKvTable,
@@ -120,7 +125,7 @@ export const createCommand = buildCommand({
     flags: {
       project: {
         kind: "parsed",
-        parse: String,
+        parse: parseProjectList,
         brief: "Associate with project(s), comma-separated",
         optional: true,
       },
@@ -131,13 +136,13 @@ export const createCommand = buildCommand({
       },
       ref: {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Git ref (branch or tag name)",
         optional: true,
       },
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL to the release source",
         optional: true,
       },

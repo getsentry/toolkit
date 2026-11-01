@@ -12,6 +12,11 @@ import {
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
+  choiceParser,
+  parseEnvironmentList,
+  textParser,
+} from "../../lib/completion-target.js";
+import {
   advancePaginationState,
   buildPaginationContextKey,
   hasPreviousPage,
@@ -326,7 +331,7 @@ export const listCommand = buildListCommand("replay", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of replays (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -338,14 +343,14 @@ export const listCommand = buildListCommand("replay", {
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(Object.keys(SORT_MAP), parseSort),
         brief:
           "Sort by: date, oldest, duration, errors, activity, or a raw replay sort field",
         default: "date",

@@ -24,6 +24,7 @@ import {
   COMPLETION_VALUES,
   PROJECT_SPEC_TARGET,
 } from "../../src/lib/completion-target.js";
+import { getApiCompletionPaths } from "../../src/lib/api-schema.js";
 import { parsePeriod } from "../../src/lib/time-range.js";
 import {
   extractCommandTree,
@@ -528,7 +529,7 @@ describe("complete.ts: generated completion targets", () => {
     expect(generatedTargets).toEqual({
       commands,
       groups,
-      values: COMPLETION_VALUES,
+      values: { ...COMPLETION_VALUES, apiPaths: getApiCompletionPaths() },
     });
   });
 

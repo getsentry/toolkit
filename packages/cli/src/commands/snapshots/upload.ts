@@ -16,13 +16,23 @@ import {
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
+  VCS_PROVIDERS,
   type VcsFlags,
   type VcsInfo,
   vcsInfoToBody,
 } from "../../lib/build/vcs.js";
 import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDirectoryPath } from "../../lib/completion-target.js";
+import {
+  choiceParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseGitCommit,
+  parseGitRepo,
+  parseText,
+  parseVcsRef,
+  textParser,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -378,12 +388,12 @@ export const uploadCommand = buildCommand({
     flags: {
       "app-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "The application identifier",
       },
       "diff-threshold": {
         kind: "parsed",
-        parse: parseDiffThreshold,
+        parse: textParser(parseDiffThreshold),
         brief:
           "Only report an image as changed when its difference exceeds this fraction (0.0–1.0, e.g. 0.01 = 1%)",
         optional: true,
@@ -396,66 +406,66 @@ export const uploadCommand = buildCommand({
       },
       "all-image-file-names": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Comma-separated list of all image names in the full suite (for selective uploads; implies --selective)",
         optional: true,
       },
       "all-image-file-names-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Path to a file listing all image names, one per line (for selective uploads; implies --selective)",
         optional: true,
       },
       "head-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief: "VCS commit SHA (defaults to the current commit)",
         optional: true,
       },
       "base-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief:
           "VCS base commit SHA (defaults to the merge-base with the base ref)",
         optional: true,
       },
       "vcs-provider": {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VCS_PROVIDERS),
         brief: "VCS provider (defaults to the current remote's provider)",
         optional: true,
       },
       "head-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief:
           "Head repository name, e.g. owner/repo (defaults to the current)",
         optional: true,
       },
       "base-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief: "Base repository name, e.g. owner/repo (for forks)",
         optional: true,
       },
       "head-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Head branch/reference (defaults to the current branch)",
         optional: true,
       },
       "base-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief:
           "Base branch/reference (defaults to the merge-base tracking ref)",
         optional: true,
       },
       "pr-number": {
         kind: "parsed",
-        parse: parsePrNumber,
+        parse: textParser(parsePrNumber),
         brief:
           "Pull request number (auto-detected in pull_request GitHub Actions runs)",
         optional: true,

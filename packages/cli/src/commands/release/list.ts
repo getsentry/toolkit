@@ -15,6 +15,11 @@ import {
 } from "../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
+  choiceParser,
+  parseEnvironmentList,
+  parseRelativePeriod,
+} from "../../lib/completion-target.js";
+import {
   colorTag,
   escapeMarkdownInline,
 } from "../../lib/formatters/markdown.js";
@@ -76,6 +81,9 @@ const SORT_ALIASES: Record<string, ReleaseSortValue> = {
 };
 
 const DEFAULT_SORT: ReleaseSortValue = "date";
+
+/** Release statuses `--status` filters by. */
+const RELEASE_STATUSES = ["open", "archived"];
 
 function parseSortFlag(value: string): ReleaseSortValue {
   if (VALID_SORT_VALUES.includes(value as ReleaseSortValue)) {
@@ -682,27 +690,27 @@ export const listCommand = buildListCommand("release", {
       limit: buildListLimitFlag("releases"),
       sort: {
         kind: "parsed" as const,
-        parse: parseSortFlag,
+        parse: choiceParser(VALID_SORT_VALUES, parseSortFlag),
         brief:
           "Sort: date, sessions, users, crash_free_sessions (cfs), crash_free_users (cfu)",
         default: DEFAULT_SORT,
       },
       environment: {
         kind: "parsed" as const,
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true as const,
         optional: true as const,
       },
       period: {
         kind: "parsed" as const,
-        parse: String,
+        parse: parseRelativePeriod,
         brief: "Health stats period (e.g., 24h, 7d, 14d, 90d)",
         default: "90d",
       },
       status: {
         kind: "parsed" as const,
-        parse: String,
+        parse: choiceParser(RELEASE_STATUSES),
         brief: "Filter by status: open (default) or archived",
         default: "open",
       },

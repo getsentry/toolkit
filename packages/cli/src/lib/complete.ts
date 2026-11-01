@@ -16,7 +16,7 @@
  */
 
 import { readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import generatedTargets from "../generated/completion-targets.json";
 import type { CompletionValues } from "./completion-target.js";
@@ -39,6 +39,7 @@ import { getCachedProjectsForOrg } from "./db/project-cache.js";
 import { getCachedOrganizations } from "./db/regions.js";
 import { silenceReadonlyHandling } from "./db/resilient.js";
 import { getEnv } from "./env.js";
+import type { GitCompletion } from "./git.js";
 import { ValidationError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
 import type { CommandCompletions } from "./introspect.js";
@@ -149,7 +150,7 @@ const GENERATED = generatedTargets as {
 type CompleterContext = {
   /** Positionals before the word being completed, flags removed. */
   positionals: string[];
-  /** The values a `choice` argument offers. */
+  /** The values a `choice` or `choice-list` argument offers. */
   choices?: readonly string[];
 };
 
@@ -335,8 +336,89 @@ const COMPLETERS = Object.freeze({
       .filter((value) => value.startsWith(partial))
       .map((value) => ({ value })),
   /**
-   * Free text with nothing to suggest (messages, queries, URLs, names of
-   * new things). Declared, so that every positional says how it completes.
+   * The values its parser was made with by `choiceListParser`, as the next
+   * item of a comma-separated list (`--fields id,ti` → `id,title`).
+   */
+  "choice-list": (partial, slot) => completeListItem(partial, slot.choices),
+  /** Platform identifiers (`javascript-react`, `python-django`, …). */
+  platform: (partial) => completePlatforms(partial).map((value) => ({ value })),
+  /** Cached environment names. */
+  environment: flagEntityCompleter("environment"),
+  /** Comma-separated cached environment names. */
+  "environment-list": flagEntityCompleter("environment", { list: true }),
+  /** Cached release versions. */
+  release: flagEntityCompleter("release"),
+  /** Cached team slugs. */
+  team: flagEntityCompleter("team"),
+  /** Cached teams as the `team:<id>` actor an owner flag takes. */
+  owner: flagEntityCompleter("owner"),
+  /** Project slugs of the org typed, else of every org. */
+  project: projectCompleter({ list: false }),
+  /** Comma-separated project slugs of the org typed, else of every org. */
+  "project-list": projectCompleter({ list: true }),
+  /** Comma-separated cached alert (workflow) IDs, described by name. */
+  "workflow-list": flagEntityCompleter("workflow", { list: true }),
+  /** Cached monitor slugs in the first word; the command to run after it. */
+  "monitor-command": (partial, slot) =>
+    slot.positionals.length > 0 ? [] : completeMonitors(partial, slot),
+  /** Cached native integration IDs, described by provider and name. */
+  integration: flagEntityCompleter("integration"),
+  /** Cached slugs of installed Sentry Apps. */
+  "sentry-app": flagEntityCompleter("sentry-app"),
+  /**
+   * `name=` of cached Sentry App issue-link form fields, then, once the
+   * name is typed, that field's fixed choices (`priority=high`).
+   */
+  "app-link-field": async (partial, slot) => {
+    const fields = await completeAppLinkFields(partial, slot);
+    return partial.includes("=")
+      ? fields.filter(({ value }) => value.startsWith(partial))
+      : fields;
+  },
+  /** Cached public DSNs, described by the client key name. */
+  dsn: flagEntityCompleter("dsn"),
+  /** Loopback hosts, every interface, then the addresses of local adapters. */
+  "bind-host": (partial) => completeBindHosts(partial),
+  /** Cached tag keys of issues, described by their labels. */
+  "tag-key": flagEntityCompleter("tag-key"),
+  /** Servers of stored accounts. */
+  "account-server": (partial) => completeAccountServers(partial),
+  /**
+   * `issue archive --until` conditions: `forever`, `auto`, durations, and
+   * `<n>x` / `<n>u` counts, alone or as `<count>/<window>`.
+   */
+  "archive-until": (partial) => completeArchiveUntil(partial),
+  /** API paths relative to `/api/0/`, one segment at a time. */
+  "api-endpoint": (partial) => completeApiEndpoint(partial),
+  /** Refs git resolves locally: branches, tags, remote-tracking branches. */
+  "git-ref": async (partial) => {
+    const { listLocalRefs } = await import("./git.js");
+    return completeGit(partial, listLocalRefs());
+  },
+  /** Branch and tag names as the remote knows them (`origin/main` → `main`). */
+  "vcs-ref": async (partial) => {
+    const { listVcsRefs } = await import("./git.js");
+    return completeGit(partial, listVcsRefs());
+  },
+  /** Full SHAs of the latest commits of `HEAD`, described by subject. */
+  "git-commit": async (partial) => {
+    const { listRecentCommits } = await import("./git.js");
+    return completeGit(partial, listRecentCommits());
+  },
+  /** `owner/repo` names of the git remotes. */
+  "git-repo": async (partial) => {
+    const { listRemoteRepositories } = await import("./git.js");
+    return completeGit(partial, listRemoteRepositories());
+  },
+  /**
+   * Comma-separated `REPO@SHA` or `REPO@PREV..SHA` commits: remote
+   * `owner/repo` names, then the latest commits of `HEAD`.
+   */
+  "repo-commit-list": (partial) => completeRepoCommitList(partial),
+  /**
+   * Free text or numbers, with nothing to suggest (messages, queries, URLs,
+   * names of new things, limits). Declared, so that every argument says
+   * how it completes.
    */
   text: () => [],
 } satisfies Record<string, Completer>);
@@ -424,6 +506,31 @@ function completePaths(
   return completions.sort((a, b) => a.value.localeCompare(b.value));
 }
 
+/**
+ * Complete the last item of a comma-separated list with the `values` that
+ * start with it and are not in the list yet, keeping the items before it.
+ */
+function completeListItem(
+  partial: string,
+  values: readonly string[] = [],
+): Completion[] {
+  const head = partial.slice(0, partial.lastIndexOf(",") + 1);
+  const item = partial.slice(head.length);
+  const chosen = new Set(head.split(","));
+  return values
+    .filter((value) => value.startsWith(item) && !chosen.has(value))
+    .map((value) => ({ value: `${head}${value}` }));
+}
+
+/**
+ * Platform identifiers matching the partial, best match first: the common
+ * ones for an empty partial, any valid one otherwise.
+ */
+function completePlatforms(partial: string): string[] {
+  const candidates = partial === "" ? COMMON_PLATFORMS : VALID_PLATFORMS;
+  return fuzzyMatch(partial, candidates, { mode: "search" });
+}
+
 const DIGITS_RE = /^\d+$/;
 
 /**
@@ -499,15 +606,10 @@ export function completeProjectCreateSpec(partial: string): Completion[] {
     }
 
     const specPrefix = partial.slice(0, colonIdx + 1);
-    const platformPartial = partial.slice(colonIdx + 1);
-    const candidates =
-      platformPartial === "" ? COMMON_PLATFORMS : VALID_PLATFORMS;
-    return fuzzyMatch(platformPartial, candidates, { mode: "search" }).map(
-      (platform) => ({
-        value: `${specPrefix}${platform}`,
-        description: "Platform",
-      }),
-    );
+    return completePlatforms(partial.slice(colonIdx + 1)).map((platform) => ({
+      value: `${specPrefix}${platform}`,
+      description: "Platform",
+    }));
   }
 
   if (partial.includes("/")) {
@@ -669,6 +771,292 @@ export function completeAliases(partial: string): Completion[] {
       description: entry ? `${entry.orgSlug}/${entry.projectSlug}` : undefined,
     };
   });
+}
+
+/**
+ * The org named by the first positional that names one (`my-org/`,
+ * `my-org/project`, `my-org/CLI-1`), read like an entity target. Flag
+ * values are scoped to it, since they belong to the command's target.
+ */
+async function positionalOrg(
+  positionals: readonly string[],
+): Promise<string | undefined> {
+  for (const word of positionals) {
+    const scope = await parseTargetScope(word);
+    if (scope?.org) {
+      return scope.org;
+    }
+  }
+  return;
+}
+
+/** The orgs whose entities a flag value completes. */
+async function flagOrgs(positionals: readonly string[]): Promise<string[]> {
+  const org = await positionalOrg(positionals);
+  return org ? [org] : getCompletionOrganizations().map(({ slug }) => slug);
+}
+
+/**
+ * A partial split at its last comma, for values of a comma-separated list:
+ * the items before it, kept as typed, and the one being completed.
+ */
+function splitListItem(
+  partial: string,
+  list: boolean,
+): { head: string; item: string; chosen: Set<string> } {
+  const head = list ? partial.slice(0, partial.lastIndexOf(",") + 1) : "";
+  return {
+    head,
+    item: partial.slice(head.length),
+    chosen: new Set(head.split(",")),
+  };
+}
+
+/**
+ * Build the completer of a flag (or positional) whose value is a cached
+ * entity written bare, as an API filter or body field takes it
+ * (`--environment production`, `--team backend`).
+ *
+ * The entities are those of the org the command's target names (see
+ * {@link positionalOrg}), else of every cached org, each value once.
+ *
+ * @param kind - Entity type to complete
+ * @param options.list - The value is a comma-separated list: complete its
+ *   last item, leaving out those already in it
+ */
+function flagEntityCompleter(
+  kind: CompletionEntityKind,
+  options: { list?: boolean } = {},
+): Completer {
+  return async (partial, slot) => {
+    const { head, item, chosen } = splitListItem(partial, !!options.list);
+    const seen = new Set(chosen);
+    return matchCachedEntities(kind, item, await flagOrgs(slot.positionals))
+      .filter(({ value }) => !seen.has(value) && !!seen.add(value))
+      .map(({ value, label }) => ({
+        value: `${head}${value}`,
+        description: label,
+      }));
+  };
+}
+
+/**
+ * Build the completer of project slugs: those of the org the target names,
+ * else of every cached org, each once.
+ *
+ * @param options.list - The value is a comma-separated list: complete its
+ *   last item, leaving out those already in it
+ */
+function projectCompleter(options: { list: boolean }): Completer {
+  return async (partial, slot) => {
+    const { head, item, chosen } = splitListItem(partial, options.list);
+    const names = new Map<string, string>();
+    for (const org of await flagOrgs(slot.positionals)) {
+      for (const { projectSlug, projectName } of getCachedProjectsForOrg(org)) {
+        if (!(chosen.has(projectSlug) || names.has(projectSlug))) {
+          names.set(projectSlug, projectName);
+        }
+      }
+    }
+    return fuzzyMatch(item, [...names.keys()], { mode: "search" }).map(
+      (slug) => ({ value: `${head}${slug}`, description: names.get(slug) }),
+    );
+  };
+}
+
+const completeMonitors = flagEntityCompleter("monitor");
+
+const completeAppLinkFields = flagEntityCompleter("app-link-field");
+
+/** IPv6 link-local addresses, which cannot be bound without a zone. */
+const LINK_LOCAL_IPV6_RE = /^fe80:/i;
+
+/**
+ * Hosts a Local server can bind: the loopback hosts (the only ones that
+ * keep its UI actions), `0.0.0.0` for every interface, then the address of
+ * each network adapter, described by the adapter's name.
+ */
+function completeBindHosts(partial: string): Completion[] {
+  const hosts = new Map<string, string>(
+    GENERATED.values.loopbackHosts.map((host) => [host, "loopback"]),
+  );
+  hosts.set("0.0.0.0", "every IPv4 interface");
+  for (const [name, addresses] of Object.entries(networkInterfaces())) {
+    for (const { address, family } of addresses ?? []) {
+      if (!(hosts.has(address) || LINK_LOCAL_IPV6_RE.test(address))) {
+        hosts.set(address, `${name} (${family})`);
+      }
+    }
+  }
+  return [...hosts]
+    .filter(([host]) => host.startsWith(partial))
+    .map(([value, description]) => ({ value, description }));
+}
+
+/** Servers of stored accounts, described by the accounts on each. */
+function completeAccountServers(partial: string): Completion[] {
+  const accounts = new Map<string, string[]>();
+  for (const account of listAccounts()) {
+    if (account.host) {
+      const who = account.email ?? account.username ?? account.id;
+      accounts.set(account.host, [...(accounts.get(account.host) ?? []), who]);
+    }
+  }
+  return [...accounts]
+    .filter(([server]) => server.startsWith(partial))
+    .map(([value, who]) => ({ value, description: who.join(", ") }));
+}
+
+/** Count suffixes of `--until`: events and users. */
+const UNTIL_COUNTS: Readonly<Record<string, string>> = {
+  x: "more events",
+  u: "more users",
+};
+
+/** A `--until` count alone (`10x`), which can still take a `/<window>`. */
+const UNTIL_COUNT_RE = /^\d+[xu]$/i;
+
+/**
+ * Complete an `issue archive --until` condition. A bare number completes
+ * to each count (`10x`, `10u`) and duration (`10m`, `10h`, …); a count
+ * offers its `/` window, which completes like a duration. Anything else
+ * completes the keywords and the duration presets that start with it.
+ */
+function completeArchiveUntil(partial: string): Completion[] {
+  const slash = partial.indexOf("/");
+  if (slash !== -1) {
+    const head = partial.slice(0, slash + 1);
+    return completePeriods(partial.slice(slash + 1)).map(
+      ({ value, description }) => ({
+        value: `${head}${value}`,
+        description: description && `Within the ${description.toLowerCase()}`,
+      }),
+    );
+  }
+  if (DIGITS_RE.test(partial)) {
+    return [
+      ...Object.entries(UNTIL_COUNTS).map(([suffix, what]) => ({
+        value: `${partial}${suffix}`,
+        description: `Until ${partial} ${what}`,
+      })),
+      ...completePeriods(partial).map(({ value }) => ({
+        value,
+        description: `For ${value}`,
+      })),
+    ];
+  }
+  if (UNTIL_COUNT_RE.test(partial)) {
+    return [
+      { value: partial },
+      { value: `${partial}/`, description: "Within a time window" },
+    ];
+  }
+  return [
+    { value: "forever", description: "Never unarchive" },
+    { value: "auto", description: "Until Sentry detects escalation" },
+    ...completePeriods(partial),
+  ].filter(({ value }) => value.startsWith(partial.toLowerCase()));
+}
+
+/** Placeholder segment of an API path template (`{organization_id_or_slug}`). */
+const PATH_PARAM_RE = /^\{(\w+)\}$/;
+
+/** Prefixes `api` strips from an endpoint, kept as typed. */
+const API_PREFIX_RE = /^\/?(?:api\/0\/)?/;
+
+/**
+ * Complete an `api` endpoint one path segment at a time from the API
+ * schema's paths. A literal segment completes as itself; an organization
+ * or project placeholder completes to the cached orgs or that org's
+ * projects; any other placeholder (`{issue_id}`) is typed by the user, so
+ * the paths after it match whatever was typed there.
+ */
+function completeApiEndpoint(partial: string): Completion[] {
+  const prefix = API_PREFIX_RE.exec(partial)?.[0] ?? "";
+  const typed = partial.slice(prefix.length).split("/");
+  const segment = typed.pop() ?? "";
+  const done = typed.join("/");
+  const head = `${prefix}${done ? `${done}/` : ""}`;
+  const next = new Map<string, string | undefined>();
+  const add = (value: string, description?: string) => {
+    if (value.startsWith(segment) && !next.has(value)) {
+      next.set(value, description);
+    }
+  };
+  for (const path of GENERATED.values.apiPaths) {
+    const template = path.split("/");
+    // Paths end in `/`, so the last element is empty
+    if (template.length - 1 <= typed.length) {
+      continue;
+    }
+    const matches = typed.every((word, index) => {
+      const part = template[index] ?? "";
+      return PATH_PARAM_RE.test(part) ? word !== "" : part === word;
+    });
+    const part = template[typed.length] ?? "";
+    const param = PATH_PARAM_RE.exec(part)?.[1];
+    if (!matches) {
+      continue;
+    }
+    if (param === "organization_id_or_slug") {
+      for (const { value, description } of completeOrgSlugs("")) {
+        add(value, description);
+      }
+    } else if (param === "project_id_or_slug") {
+      const org = typed[template.indexOf("{organization_id_or_slug}")];
+      for (const { projectSlug, projectName } of org
+        ? getCachedProjectsForOrg(org)
+        : []) {
+        add(projectSlug, projectName);
+      }
+    } else if (!param) {
+      add(part);
+    }
+  }
+  return [...next].map(([value, description]) => ({
+    value: `${head}${value}/`,
+    description,
+  }));
+}
+
+/** Git names that start with the partial, described by their commit subject. */
+function completeGit(
+  partial: string,
+  names: readonly GitCompletion[],
+): Completion[] {
+  return names
+    .filter(({ name }) => name.startsWith(partial))
+    .map(({ name, subject }) => ({
+      value: name,
+      description: subject || undefined,
+    }));
+}
+
+/**
+ * Complete the last commit of a `--commit` list: a remote `owner/repo`
+ * with `@`, then a commit SHA after `@` or after `..` in a range.
+ */
+async function completeRepoCommitList(partial: string): Promise<Completion[]> {
+  const { listRecentCommits, listRemoteRepositories } =
+    await import("./git.js");
+  const { head, item } = splitListItem(partial, true);
+  const at = item.indexOf("@");
+  if (at === -1) {
+    return completeGit(item, listRemoteRepositories()).map(
+      ({ value, description }) => ({
+        value: `${head}${value}@`,
+        description,
+      }),
+    );
+  }
+  const range = item.indexOf("..", at);
+  const sha = range === -1 ? at + 1 : range + 2;
+  return completeGit(item.slice(sha), listRecentCommits()).map(
+    ({ value, description }) => ({
+      value: `${head}${item.slice(0, sha)}${value}`,
+      description,
+    }),
+  );
 }
 
 /** Most cached-entity suggestions returned for one completion. */

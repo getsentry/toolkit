@@ -19,7 +19,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
-import { parseFilePath } from "../lib/completion-target.js";
+import {
+  parseFilePath,
+  parseText,
+  parseUrl,
+} from "../lib/completion-target.js";
 import { ValidationError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { formatBuildId, uuidToBytes } from "../lib/wasm/build-id.js";
@@ -113,13 +117,13 @@ export const wasmSplitCommand = buildCommand({
     flags: {
       out: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the output wasm file (default: modify input in place)",
         optional: true,
       },
       "debug-out": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Path to the output debug wasm file (default: debug data stays in the input)",
         optional: true,
@@ -144,13 +148,13 @@ export const wasmSplitCommand = buildCommand({
       },
       "build-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Explicit build id to use, as a UUID",
         optional: true,
       },
       "external-dwarf-url": {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for browsers to fetch the separate DWARF debug symbol file",
         optional: true,
       },

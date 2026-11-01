@@ -26,8 +26,12 @@ import {
   resolveUploadWait,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
-import { buildCommand } from "../../lib/command.js";
-import { parseText } from "../../lib/completion-target.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseText,
+  parseUrl,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -459,19 +463,19 @@ export const xcodeCommand = buildCommand({
       },
       "fetch-from": {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: `Packager URL to fetch from (default: ${DEFAULT_PACKAGER_URL})`,
         optional: true,
       },
       "build-script": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the react-native-xcode.sh build script",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         brief: "Distribution(s) to publish (repeatable)",
         optional: true,
@@ -483,7 +487,7 @@ export const xcodeCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait for processing, but at most this many seconds",
         optional: true,
       },

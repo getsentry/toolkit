@@ -12,6 +12,7 @@ import {
   findEndpointsByIdentifier,
   findEndpointsByPath,
   getAllEndpoints,
+  getAllResources,
   getEndpointsByResource,
   getResourceSummaries,
   parseEndpointQuery,
@@ -20,7 +21,7 @@ import {
   searchEndpoints,
 } from "../lib/api-schema.js";
 import { buildCommand } from "../lib/command.js";
-import { parseText } from "../lib/completion-target.js";
+import { choiceParser, parseText } from "../lib/completion-target.js";
 import { OutputError, ResolutionError } from "../lib/errors.js";
 import { bold, cyan, muted, yellow } from "../lib/formatters/colors.js";
 import { filterFields } from "../lib/formatters/json.js";
@@ -508,7 +509,7 @@ export const schemaCommand = buildCommand({
       },
       search: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search endpoints by keyword",
         optional: true,
       },
@@ -519,7 +520,8 @@ export const schemaCommand = buildCommand({
       parameter: {
         brief:
           "API concept, CLI command path, exact operation ID, or METHOD /path",
-        parse: parseText,
+        // The first word completes the API resources; the rest are free
+        parse: choiceParser(getAllResources()),
         placeholder: "query",
       },
     },
