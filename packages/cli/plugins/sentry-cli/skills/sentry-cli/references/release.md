@@ -30,6 +30,33 @@ List releases with adoption and health metrics
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open, archived) |
+| `ref` | string \| null | VCS reference |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | Creation date (ISO 8601) |
+| `dateReleased` | string \| null | Release date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `lastEvent` | string \| null | Last event date (ISO 8601) |
+| `newGroups` | number | Number of new issues |
+| `commitCount` | number | Number of commits |
+| `deployCount` | number | Number of deploys |
+| `lastCommit` | object \| null | Most recent commit |
+| `lastDeploy` | object \| null | Most recent deploy |
+| `authors` | array | Commit authors |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage per project |
+| `orgSlug` | string | Organization slug |
+| `targetProject` | string | Project slug, when listing several |
+
 **Examples:**
 
 ```bash
@@ -70,6 +97,31 @@ View release details with health metrics
 
 **Flags:**
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open, archived) |
+| `ref` | string \| null | VCS reference |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | Creation date (ISO 8601) |
+| `dateReleased` | string \| null | Release date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `lastEvent` | string \| null | Last event date (ISO 8601) |
+| `newGroups` | number | Number of new issues |
+| `commitCount` | number | Number of commits |
+| `deployCount` | number | Number of deploys |
+| `lastCommit` | object \| null | Most recent commit |
+| `lastDeploy` | object \| null | Most recent deploy |
+| `authors` | array | Commit authors |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage per project |
 
 **Examples:**
 
@@ -150,6 +202,34 @@ Finalize a release
 - `--url <value> - URL for the release`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open, archived) |
+| `ref` | string \| null | VCS reference |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | Creation date (ISO 8601) |
+| `dateReleased` | string \| null | Release date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `lastEvent` | string \| null | Last event date (ISO 8601) |
+| `newGroups` | number | Number of new issues |
+| `commitCount` | number | Number of commits |
+| `deployCount` | number | Number of deploys |
+| `lastCommit` | object \| null | Most recent commit |
+| `lastDeploy` | object \| null | Most recent deploy |
+| `authors` | array | Commit authors |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage per project |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `org` | string | Organization slug (--dry-run) |
+| `released` | string | Release date to set (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -183,6 +263,15 @@ Delete a release
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `deleted` | boolean | Whether the release was deleted |
+| `org` | string | Organization slug |
+| `version` | string | Release version |
+| `dryRun` | boolean | True when --dry-run made no change |
+
 **Examples:**
 
 ```bash
@@ -209,6 +298,33 @@ Archive a release
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open, archived) |
+| `ref` | string \| null | VCS reference |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | Creation date (ISO 8601) |
+| `dateReleased` | string \| null | Release date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `lastEvent` | string \| null | Last event date (ISO 8601) |
+| `newGroups` | number | Number of new issues |
+| `commitCount` | number | Number of commits |
+| `deployCount` | number | Number of deploys |
+| `lastCommit` | object \| null | Most recent commit |
+| `lastDeploy` | object \| null | Most recent deploy |
+| `authors` | array | Commit authors |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage per project |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `org` | string | Organization slug (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -234,6 +350,33 @@ Restore an archived release
 
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open, archived) |
+| `ref` | string \| null | VCS reference |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | Creation date (ISO 8601) |
+| `dateReleased` | string \| null | Release date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `lastEvent` | string \| null | Last event date (ISO 8601) |
+| `newGroups` | number | Number of new issues |
+| `commitCount` | number | Number of commits |
+| `deployCount` | number | Number of deploys |
+| `lastCommit` | object \| null | Most recent commit |
+| `lastDeploy` | object \| null | Most recent deploy |
+| `authors` | array | Commit authors |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage per project |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `org` | string | Organization slug (--dry-run) |
 
 **Examples:**
 
@@ -267,6 +410,19 @@ Create a deploy for a release
 - `-t, --time <value> - Deploy duration in seconds (sets started = now - time, finished = now)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Deploy ID |
+| `environment` | string | Environment |
+| `name` | string \| null | Name |
+| `url` | string \| null | Deploy URL |
+| `dateStarted` | string \| null | Start date (ISO 8601) |
+| `dateFinished` | string | Finish date (ISO 8601) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `version` | string | Release version (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -295,6 +451,17 @@ List deploys for a release
 | Argument | Description |
 |----------|-------------|
 | `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Deploy ID |
+| `environment` | string | Environment |
+| `name` | string \| null | Name |
+| `url` | string \| null | Deploy URL |
+| `dateStarted` | string \| null | Start date (ISO 8601) |
+| `dateFinished` | string | Finish date (ISO 8601) |
 
 **Examples:**
 
@@ -327,6 +494,31 @@ Set commits for a release
 - `--path <value> - Filter commits to these paths (comma-separated). Implies --local.`
 - `--from <value> - Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.`
 - `--initial-depth <value> - Number of commits to read with --local - (default: "20")`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open, archived) |
+| `ref` | string \| null | VCS reference |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | Creation date (ISO 8601) |
+| `dateReleased` | string \| null | Release date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `lastEvent` | string \| null | Last event date (ISO 8601) |
+| `newGroups` | number | Number of new issues |
+| `commitCount` | number | Number of commits |
+| `deployCount` | number | Number of deploys |
+| `lastCommit` | object \| null | Most recent commit |
+| `lastDeploy` | object \| null | Most recent deploy |
+| `authors` | array | Commit authors |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage per project |
 
 **Examples:**
 

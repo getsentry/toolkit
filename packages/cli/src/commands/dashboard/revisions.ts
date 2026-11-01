@@ -26,7 +26,10 @@ import {
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
-import type { DashboardRevision } from "../../types/dashboard.js";
+import {
+  type DashboardRevision,
+  DashboardRevisionSchema,
+} from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
@@ -137,6 +140,7 @@ export const revisionsCommand = buildCommand({
   output: {
     human: formatRevisionsHuman,
     jsonTransform: jsonTransformRevisions,
+    schema: DashboardRevisionSchema,
   },
   parameters: {
     positional: dashboardArguments({

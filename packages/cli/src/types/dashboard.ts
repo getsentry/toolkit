@@ -14,6 +14,7 @@ import {
 import {
   array,
   boolean,
+  description,
   getDotPath,
   type InferOutput,
   looseObject,
@@ -23,6 +24,7 @@ import {
   object,
   optional,
   picklist,
+  pipe,
   record,
   safeParse,
   string,
@@ -1076,3 +1078,16 @@ export const DashboardRevisionSchema = looseObject({
 });
 
 export type DashboardRevision = InferOutput<typeof DashboardRevisionSchema>;
+
+/**
+ * JSON output of `dashboard widget add` and `dashboard widget edit`, for
+ * `--fields`: the saved dashboard, the added or edited widget, and its URL.
+ */
+export const DashboardWidgetChangeOutputSchema = object({
+  dashboard: pipe(DashboardDetailSchema, description("The saved dashboard")),
+  widget: pipe(
+    DashboardWidgetSchema,
+    description("The added or edited widget"),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+});

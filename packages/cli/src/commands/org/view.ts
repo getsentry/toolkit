@@ -17,6 +17,7 @@ import {
 } from "../../lib/list-command.js";
 import { buildOrgUrl } from "../../lib/sentry-web-urls.js";
 import { type OrgTarget, orgTarget } from "../../lib/target-positional.js";
+import { SentryOrganizationSchema } from "../../types/index.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -45,7 +46,7 @@ export const viewCommand = buildCommand({
       },
     ],
   },
-  output: { human: formatOrgDetails },
+  output: { human: formatOrgDetails, schema: SentryOrganizationSchema },
   parameters: {
     positional: {
       kind: "tuple",
