@@ -191,8 +191,8 @@ The stdio server uses the Sentry CLI's credentials: the stored login from
 # With the stored login
 pnpm start:stdio
 
-# With a token, over any stored login, on a self-hosted server
-SENTRY_AUTH_TOKEN=<token> SENTRY_FORCE_ENV_TOKEN=1 SENTRY_HOST=<host> pnpm start:stdio
+# With a token and no stored login, on a self-hosted server
+SENTRY_AUTH_TOKEN=<token> SENTRY_HOST=<host> pnpm start:stdio
 ```
 
 For web applications using MCP (like the Cloudflare example), they handle their own authentication and pass tokens to the MCP server.

@@ -56,7 +56,7 @@ pnpm -w run build   # builds mcp-core, which `sentry mcp` imports
 # From the repo root. Uses your CLI login when no token is passed.
 pnpm --silent --dir packages/cli run cli mcp --help
 pnpm --silent --dir packages/cli run cli mcp
-SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 pnpm --silent --dir packages/cli run cli mcp
+SENTRY_AUTH_TOKEN=YOUR_TOKEN pnpm --silent --dir packages/cli run cli mcp
 ```
 
 `--silent` keeps pnpm's banner off stdout, which carries JSON-RPC frames.
@@ -69,7 +69,7 @@ Source runs skip the bundling step, so check the bundle that ships as
 ```bash
 pnpm --filter @sentry/mcp-server run bundle
 node packages/mcp-server/dist/sentry-mcp.cjs mcp --help
-SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 node packages/mcp-server/dist/sentry-mcp.cjs
+SENTRY_AUTH_TOKEN=YOUR_TOKEN node packages/mcp-server/dist/sentry-mcp.cjs
 
 # Or drive it with the test client
 pnpm -w run cli --transport stdio --stdio-bundle --list-tools
@@ -79,7 +79,7 @@ pnpm -w run cli --transport stdio --stdio-bundle --list-tools
 
 ```bash
 npx @sentry/mcp-server@latest
-SENTRY_AUTH_TOKEN=YOUR_TOKEN SENTRY_FORCE_ENV_TOKEN=1 npx @sentry/mcp-server@latest
+SENTRY_AUTH_TOKEN=YOUR_TOKEN npx @sentry/mcp-server@latest
 ```
 
 To test a local `@sentry/mcp-server` bundle, build it with
@@ -120,7 +120,7 @@ This opens the MCP Inspector at `http://localhost:6274`
     "cli",
     "mcp"
   ],
-  "env": { "SENTRY_AUTH_TOKEN": "YOUR_TOKEN", "SENTRY_FORCE_ENV_TOKEN": "1" }
+  "env": { "SENTRY_AUTH_TOKEN": "YOUR_TOKEN" }
 }
 ```
 
@@ -132,7 +132,6 @@ This opens the MCP Inspector at `http://localhost:6274`
   "args": ["@sentry/mcp-server@latest"],
   "env": {
     "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
-    "SENTRY_FORCE_ENV_TOKEN": "1",
     "SENTRY_HOST": "sentry.example.com"
   }
 }
@@ -146,7 +145,6 @@ This opens the MCP Inspector at `http://localhost:6274`
   "args": ["@sentry/mcp-server@latest"],
   "env": {
     "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
-    "SENTRY_FORCE_ENV_TOKEN": "1",
     "SENTRY_URL": "http://sentry.internal:9000"
   }
 }
@@ -314,8 +312,7 @@ Update config:
       "command": "npx",
       "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}",
-        "SENTRY_FORCE_ENV_TOKEN": "1"
+        "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}"
       }
     }
   }
@@ -347,8 +344,7 @@ Add to `.vscode/settings.json`:
       "command": "npx",
       "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
-        "SENTRY_FORCE_ENV_TOKEN": "1"
+        "SENTRY_AUTH_TOKEN": "YOUR_TOKEN"
       }
     }
   }
@@ -432,7 +428,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
 ### 2. Test Against Self-Hosted Sentry
 
 ```bash
-SENTRY_AUTH_TOKEN=TOKEN SENTRY_FORCE_ENV_TOKEN=1 SENTRY_HOST=sentry.local.dev \
+SENTRY_AUTH_TOKEN=TOKEN SENTRY_HOST=sentry.local.dev \
   pnpm --silent --dir packages/cli run cli mcp
 ```
 

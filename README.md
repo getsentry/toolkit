@@ -63,7 +63,7 @@ Launch the transport:
 ```shell
 npx @sentry/mcp-server@latest auth login   # once, to sign in
 npx @sentry/mcp-server@latest              # uses that login
-SENTRY_AUTH_TOKEN=sentry-user-token SENTRY_FORCE_ENV_TOKEN=1 npx @sentry/mcp-server@latest
+SENTRY_AUTH_TOKEN=sentry-user-token npx @sentry/mcp-server@latest
 ```
 
 `--access-token` / `SENTRY_ACCESS_TOKEN` from older releases still work but are
@@ -157,7 +157,6 @@ MCP_DISABLE_SKILLS=          # Disable specific skills (comma-separated, e.g. 'p
       "args": ["@sentry/mcp-server@latest"],
       "env": {
         "SENTRY_AUTH_TOKEN": "your-token",
-        "SENTRY_FORCE_ENV_TOKEN": "1",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -181,7 +180,6 @@ self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
       "args": ["@sentry/mcp-server@latest"],
       "env": {
         "SENTRY_AUTH_TOKEN": "your-token",
-        "SENTRY_FORCE_ENV_TOKEN": "1",
         "SENTRY_HOST": "sentry.example.com",
         "MCP_SKILLS": "inspect,seer"
       }

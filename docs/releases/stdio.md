@@ -115,7 +115,7 @@ Users run the server through npx in their MCP client configuration:
 ```
 
 Sign in once with `npx @sentry/mcp-server@latest auth login`, or add
-`"env": { "SENTRY_AUTH_TOKEN": "sntryu_...", "SENTRY_FORCE_ENV_TOKEN": "1" }`.
+`"env": { "SENTRY_AUTH_TOKEN": "sntryu_..." }`.
 Pin a version with `@sentry/mcp-server@0.48.0`.
 
 ## Testing Before a Release

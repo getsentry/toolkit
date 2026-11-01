@@ -17,16 +17,16 @@ Requires Node.js 22.15 or later.
 - `npx -y @sentry/mcp-server auth login` signs in once. The login is shared
   with the [`sentry` CLI](https://cli.sentry.dev), so an existing
   `sentry auth login` works too.
-- To use a token instead, set `SENTRY_AUTH_TOKEN` in the client's `env`, with
-  `SENTRY_FORCE_ENV_TOKEN=1` so it wins over a stored login:
+- To use a token instead, set `SENTRY_AUTH_TOKEN` in the client's `env`. It is
+  used when no login is stored; add `SENTRY_FORCE_ENV_TOKEN=1` only to use it
+  over a stored login:
 
   ```json
   {
     "command": "npx",
     "args": ["-y", "@sentry/mcp-server@latest"],
     "env": {
-      "SENTRY_AUTH_TOKEN": "sntryu_...",
-      "SENTRY_FORCE_ENV_TOKEN": "1"
+      "SENTRY_AUTH_TOKEN": "sntryu_..."
     }
   }
   ```

@@ -98,7 +98,6 @@ In your MCP settings (e.g., Claude Desktop config):
       "args": ["@sentry/mcp-server@latest"],
       "env": {
         "SENTRY_AUTH_TOKEN": "your-token",
-        "SENTRY_FORCE_ENV_TOKEN": "1",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -141,7 +140,6 @@ Always set `EMBEDDED_AGENT_PROVIDER` when multiple API keys might be present:
       "args": ["@sentry/mcp-server@latest"],
       "env": {
         "SENTRY_AUTH_TOKEN": "your-token",
-        "SENTRY_FORCE_ENV_TOKEN": "1",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }

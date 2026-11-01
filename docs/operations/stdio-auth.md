@@ -32,8 +32,7 @@ with environment variables:
   "command": "npx",
   "args": ["-y", "@sentry/mcp-server@latest"],
   "env": {
-    "SENTRY_AUTH_TOKEN": "sntryu_...",
-    "SENTRY_FORCE_ENV_TOKEN": "1"
+    "SENTRY_AUTH_TOKEN": "sntryu_..."
   }
 }
 ```

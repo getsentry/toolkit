@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
@@ -23,6 +26,10 @@ async function getAvailableTools(): Promise<string[]> {
   // token below, and could be scoped to another host than sentry.io.
   const { SENTRY_ACCESS_TOKEN: _deprecatedToken, ...env } = process.env;
 
+  // An empty config dir: no stored login replaces the mock token, so it needs
+  // no SENTRY_FORCE_ENV_TOKEN, and the developer's own login is never read.
+  const configDir = mkdtempSync(join(tmpdir(), "sentry-mcp-evals-"));
+
   // Run `sentry mcp` from the workspace CLI source.
   const transport = new Experimental_StdioMCPTransport({
     command: "pnpm",
@@ -30,7 +37,7 @@ async function getAvailableTools(): Promise<string[]> {
     env: {
       ...env,
       SENTRY_AUTH_TOKEN: "mocked-access-token",
-      SENTRY_FORCE_ENV_TOKEN: "1",
+      SENTRY_CONFIG_DIR: configDir,
       SENTRY_HOST: "sentry.io",
     },
   });
@@ -51,6 +58,7 @@ async function getAvailableTools(): Promise<string[]> {
 
   // Clean up
   await client.close();
+  rmSync(configDir, { recursive: true, force: true });
 
   return cachedTools;
 }
