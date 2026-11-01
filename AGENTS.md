@@ -12,6 +12,7 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 
 - **MCP tool count**: Target ≤20, hard limit 25 (AI agents have limited tool slots).
 - **Quality gate**: `pnpm run tsc && pnpm run lint && pnpm run test` must pass before committing.
+- **Package CI**: Put checks for one workspace package in its `package.json` scripts and `sentryCi`, which `test.yml` runs per project. Do not add a workflow for them. See docs/operations/github-actions.md#package-ci-checks.
 
 ## Repository Structure
 
@@ -73,7 +74,7 @@ toolkit/
 - docs/operations/stdio-auth.md — Device code flow, token caching, client ID architecture
 - docs/operations/oauth-signout-playbook.md — Remote OAuth diagnostic runbook
 - docs/operations/embedded-agents.md — LLM provider configuration for AI-powered tools
-- docs/operations/github-actions.md — MCP deployment workflows
+- docs/operations/github-actions.md — CI matrix, `package.json#sentryCi`, and MCP deployment workflows
 - docs/operations/logging.md — Logging guidance
 - docs/operations/monitoring.md — Monitoring guidance
 - docs/operations/token-cost-tracking.md — Tool definition token cost tracking
