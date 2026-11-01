@@ -73,8 +73,7 @@ This ensures that only relevant tools are available in constrained contexts. Whe
 You can also use environment variables:
 
 ```shell
-SENTRY_AUTH_TOKEN=your-token          # Optional after `auth login`
-SENTRY_FORCE_ENV_TOKEN=1               # Use SENTRY_AUTH_TOKEN over a stored login
+SENTRY_AUTH_TOKEN=your-token          # Optional after `auth login`; wins over it
 # Optional overrides. Leave unset to use the default SaaS host
 SENTRY_HOST=sentry.example.com         # Self-hosted Sentry hostname
 MCP_SKILLS=inspect,docs,triage         # Limit to specific skills

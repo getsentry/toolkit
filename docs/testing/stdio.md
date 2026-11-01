@@ -364,7 +364,7 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 
 ```bash
 # Authentication: use SENTRY_AUTH_TOKEN (below) or a CLI login
---access-token=TOKEN              # Deprecated alias for SENTRY_AUTH_TOKEN + SENTRY_FORCE_ENV_TOKEN=1
+--access-token=TOKEN              # Deprecated alias for SENTRY_AUTH_TOKEN
 
 # Host configuration
 --host=sentry.example.com         # Self-hosted Sentry (hostname only)
@@ -397,8 +397,7 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 
 ```bash
 # Authentication (optional with a CLI login)
-SENTRY_AUTH_TOKEN=your-token             # Used when there is no CLI login
-SENTRY_FORCE_ENV_TOKEN=1                 # Use SENTRY_AUTH_TOKEN over a CLI login
+SENTRY_AUTH_TOKEN=your-token             # Used over any CLI login
 SENTRY_ACCESS_TOKEN=your-token           # Deprecated, same as --access-token
 
 # Host (self-hosted only; also scopes SENTRY_AUTH_TOKEN to it)

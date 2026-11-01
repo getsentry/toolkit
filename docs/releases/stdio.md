@@ -14,10 +14,10 @@ accepts these credentials:
 
 - the shared login from `npx @sentry/mcp-server auth login` or `sentry auth
   login` (refreshed automatically, including after an upstream 401)
-- `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`, as for every CLI command, with
-  `SENTRY_FORCE_ENV_TOKEN=1` to override a stored login
+- `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN`, which win over a stored login (other
+  CLI commands need `SENTRY_FORCE_ENV_TOKEN=1` for that)
 - the deprecated `--access-token` / `SENTRY_ACCESS_TOKEN`, as an alias for
-  `SENTRY_AUTH_TOKEN` plus `SENTRY_FORCE_ENV_TOKEN=1`. It prints a deprecation
+  `SENTRY_AUTH_TOKEN`. It prints a deprecation
   warning on stderr (see `docs/operations/stdio-auth.md`).
 
 ## Bundle

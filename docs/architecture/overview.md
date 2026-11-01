@@ -62,8 +62,8 @@ server) and the Cloudflare worker.
 The local stdio MCP server is the `sentry mcp` command in the Sentry CLI.
 
 - `src/lib/mcp.ts` resolves credentials from the CLI session or env token
-  (mapping the deprecated `--access-token` / `SENTRY_ACCESS_TOKEN` onto
-  `SENTRY_AUTH_TOKEN` with `SENTRY_FORCE_ENV_TOKEN=1`) and lazily loads the
+  (an env token wins over a stored login; the deprecated `--access-token` /
+  `SENTRY_ACCESS_TOKEN` map onto `SENTRY_AUTH_TOKEN`) and lazily loads the
   host, so normal CLI startup never loads mcp-core or Zod.
 - `src/lib/mcp/` parses server flags and environment variables, configures the
   embedded agent provider and telemetry, and starts mcp-core's stdio transport.
@@ -191,7 +191,7 @@ The stdio server uses the Sentry CLI's credentials: the stored login from
 # With the stored login
 pnpm start:stdio
 
-# With a token and no stored login, on a self-hosted server
+# With a token, over any stored login, on a self-hosted server
 SENTRY_AUTH_TOKEN=<token> SENTRY_HOST=<host> pnpm start:stdio
 ```
 

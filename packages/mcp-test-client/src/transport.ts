@@ -40,14 +40,13 @@ export function buildStdioServerLaunchConfig(
     }
   }
 
-  // The server's own env token, forced over any stored CLI login. Never on
+  // The server's own env token, which it uses over any stored CLI login. Never on
   // argv, where other processes can read it, and never through the deprecated
   // SENTRY_ACCESS_TOKEN alias the server would warn about.
   delete env.SENTRY_ACCESS_TOKEN;
   if (config.accessToken) {
     delete env.SENTRY_TOKEN;
     env.SENTRY_AUTH_TOKEN = config.accessToken;
-    env.SENTRY_FORCE_ENV_TOKEN = "1";
   }
   if (config.host) {
     env.SENTRY_HOST = config.host;

@@ -115,6 +115,29 @@ describe("serveMcp credential wiring", () => {
     expect(options.refreshAccessToken).toBeDefined();
   });
 
+  test("serves SENTRY_AUTH_TOKEN over a stored login", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+
+    const { options } = await start([]);
+    expect(options.accessToken).toBe("env-token");
+    // Refreshes stay on the env token, and the process env is left alone.
+    await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
+    expect(process.env.SENTRY_FORCE_ENV_TOKEN).toBeUndefined();
+  });
+
+  test("serves the legacy SENTRY_TOKEN over a stored login", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    process.env.SENTRY_TOKEN = "legacy-env-token";
+
+    const { options } = await start([]);
+    expect(options.accessToken).toBe("legacy-env-token");
+  });
+
   test("refreshes the CLI session token after an upstream 401", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",
@@ -360,8 +383,7 @@ describe("serveMcp deprecated --access-token", () => {
 
     expect(output.stdout).toEqual([]);
     expect(output.stderr).toEqual([
-      "Deprecation warning: --access-token is deprecated; set SENTRY_AUTH_TOKEN " +
-        "(and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login) instead.\n",
+      "Deprecation warning: --access-token is deprecated; set SENTRY_AUTH_TOKEN instead.\n",
     ]);
     expect(output.stderr.join("")).not.toContain("secret-value");
   });

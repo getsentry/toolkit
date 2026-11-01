@@ -231,7 +231,7 @@ test("serves the deprecated --access-token with a hint on stderr", async () => {
   );
   assert.match(
     stderr,
-    /--access-token is deprecated; set SENTRY_AUTH_TOKEN \(and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login\) instead\./,
+    /--access-token is deprecated; set SENTRY_AUTH_TOKEN instead\./,
   );
   assert.equal(stderr.match(/is deprecated/g)?.length, 1);
   assert.ok(!stderr.includes(token), "the hint must not echo the token");

@@ -58,13 +58,12 @@ export const mcpCommand = buildCommand({
       "Serve the Sentry MCP tools over stdio, for MCP clients such as Claude Code, Cursor, or VS Code. " +
       "Uses the current Sentry CLI login, refreshing it as needed, and stays on the account it started with. " +
       "Log in with 'auth login' first, or set SENTRY_AUTH_TOKEN. " +
-      "A stored login wins over SENTRY_AUTH_TOKEN unless SENTRY_FORCE_ENV_TOKEN=1 is set. " +
+      "SENTRY_AUTH_TOKEN, when set, wins over a stored login. " +
       "An org auth token (sntrys_) only works with the host it was issued for.\n\n" +
-      "--access-token and SENTRY_ACCESS_TOKEN are deprecated: they act as SENTRY_AUTH_TOKEN " +
-      "with SENTRY_FORCE_ENV_TOKEN=1, sent to the --host/--url target, and print a warning.\n\n" +
+      "--access-token and SENTRY_ACCESS_TOKEN are deprecated: they act as SENTRY_AUTH_TOKEN, " +
+      "sent to the --host/--url target, and print a warning.\n\n" +
       "Environment variables:\n" +
       "  SENTRY_AUTH_TOKEN        Sentry token (same as for other commands)\n" +
-      "  SENTRY_FORCE_ENV_TOKEN   Set to 1 to use SENTRY_AUTH_TOKEN over a stored login\n" +
       "  SENTRY_HOST, SENTRY_URL  Sentry instance (same as for other commands)\n" +
       "  MCP_URL                  MCP server URL reported in telemetry\n" +
       "  SENTRY_DSN               DSN for the server's own telemetry\n" +

@@ -9,14 +9,15 @@ credential store, so the package and the CLI (which runs the same server as
 
 ## Credential Sources
 
-The server uses the CLI's credential resolution, so the rules match every
-other `sentry` command:
+The server uses the CLI's credential resolution, with one difference: an env
+token wins over a stored login, as if `SENTRY_FORCE_ENV_TOKEN=1` were set. An
+MCP client passes the token in its server config to pick the account, so a
+stored login must not silently replace it.
 
-1. **Stored login** — the account from `auth login`. It wins by default
-   because it can be refreshed.
-2. **`SENTRY_AUTH_TOKEN`** (or the legacy `SENTRY_TOKEN`) — used when there is
-   no stored login. Set `SENTRY_FORCE_ENV_TOKEN=1` to use it even when a stored
-   login exists.
+1. **`SENTRY_AUTH_TOKEN`** (or the legacy `SENTRY_TOKEN`) — used when set, even
+   when a stored login exists.
+2. **Stored login** — the account from `auth login`, used when no env token is
+   set.
 
 Both go through the CLI's `refreshToken()`, which enforces the same host
 scoping as every CLI command. When a tool call gets a 401 from Sentry, the
@@ -44,8 +45,8 @@ server refuses to send one to a different host (`HostScopeError`).
 
 Older `@sentry/mcp-server` releases took a static token from `--access-token`
 or `SENTRY_ACCESS_TOKEN`. Both still work, as an alias: the server runs as if
-`SENTRY_AUTH_TOKEN=<token>` and `SENTRY_FORCE_ENV_TOKEN=1` were set, so the
-token wins over a stored login and takes the same env-token path. It also
+`SENTRY_AUTH_TOKEN=<token>` were set, so the token wins over a stored login
+and takes the same env-token path. It also
 replaces any `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` already in the environment,
 because the flag is the more explicit choice. `--access-token` wins over
 `SENTRY_ACCESS_TOKEN`. Unlike a plain env token, the alias is sent to the
@@ -56,7 +57,7 @@ Either one prints a single deprecation warning to stderr (stdout carries the
 MCP protocol), without the token:
 
 ```
-Deprecation warning: --access-token is deprecated; set SENTRY_AUTH_TOKEN (and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login) instead.
+Deprecation warning: --access-token is deprecated; set SENTRY_AUTH_TOKEN instead.
 ```
 
 The flag value is redacted from the CLI's telemetry like `--token`.
@@ -95,15 +96,14 @@ accounts. If that account is removed or another user logs in over it, the
 refresh fails and tool calls keep failing until the server restarts. To use
 two accounts at once, configure two
 MCP servers, for example one per host via `SENTRY_HOST`, or one with
-`SENTRY_AUTH_TOKEN` and `SENTRY_FORCE_ENV_TOKEN=1`.
+`SENTRY_AUTH_TOKEN`.
 
 ## Upgrading From Older `@sentry/mcp-server` Versions
 
 Older releases had their own device code flow, bundled client ID, and token
 cache (`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`). Current releases do not
 read that cache. Run `npx -y @sentry/mcp-server auth login` once, or set
-`SENTRY_AUTH_TOKEN` (with `SENTRY_FORCE_ENV_TOKEN=1` to override a stored
-login). `--access-token` / `SENTRY_ACCESS_TOKEN` keep working but are
+`SENTRY_AUTH_TOKEN`. `--access-token` / `SENTRY_ACCESS_TOKEN` keep working but are
 deprecated (see above). `auth status`, `auth list`,
 `auth switch`, and `auth logout` work in the package as in the CLI.
 

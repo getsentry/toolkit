@@ -45,7 +45,7 @@ While this repository is focused on acting as an MCP service, we also support a 
 
 **Note:** The AI-powered search tools (`search_errors`, `search_traces`, `search_logs`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
 
-The `stdio` transport ships as [`@sentry/mcp-server`](https://www.npmjs.com/package/@sentry/mcp-server). Sign in once with `npx @sentry/mcp-server@latest auth login`, or set `SENTRY_AUTH_TOKEN` (plus `SENTRY_FORCE_ENV_TOKEN=1` to override a stored login). The login is shared with the [`sentry` CLI](https://cli.sentry.dev), so an existing `sentry auth login` works too.
+The `stdio` transport ships as [`@sentry/mcp-server`](https://www.npmjs.com/package/@sentry/mcp-server). Sign in once with `npx @sentry/mcp-server@latest auth login`, or set `SENTRY_AUTH_TOKEN`, which the server uses over a stored login. The login is shared with the [`sentry` CLI](https://cli.sentry.dev), so an existing `sentry auth login` works too.
 
 To use a token, create a User Auth Token in Sentry with the necessary scopes. As of writing this is:
 
@@ -67,8 +67,7 @@ SENTRY_AUTH_TOKEN=sentry-user-token npx @sentry/mcp-server@latest
 ```
 
 `--access-token` / `SENTRY_ACCESS_TOKEN` from older releases still work but are
-deprecated: they act as `SENTRY_AUTH_TOKEN` with `SENTRY_FORCE_ENV_TOKEN=1` and
-print a warning on stderr. See
+deprecated: they act as `SENTRY_AUTH_TOKEN` and print a warning on stderr. See
 [docs/operations/stdio-auth.md](docs/operations/stdio-auth.md).
 
 Need to connect to a self-hosted deployment? Set <code>SENTRY_HOST</code>
@@ -128,8 +127,7 @@ tools with `?skills=inspect,triage` or `?disable-skills=seer`.
 #### Environment Variables
 
 ```shell
-SENTRY_AUTH_TOKEN=           # Optional after `auth login`: Sentry auth token
-SENTRY_FORCE_ENV_TOKEN=      # Set to 1 to use SENTRY_AUTH_TOKEN over a stored login
+SENTRY_AUTH_TOKEN=           # Optional after `auth login`; wins over a stored login
 
 # LLM Provider Configuration (required for AI-powered search tools)
 EMBEDDED_AGENT_PROVIDER=     # Required when multiple provider keys are set: 'openai', 'azure-openai', 'anthropic', or 'openrouter'

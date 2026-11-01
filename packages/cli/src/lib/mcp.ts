@@ -263,8 +263,7 @@ function warnDeprecatedAccessToken(source: DeprecatedAccessToken["source"]) {
   deprecationHint.shown = true;
   // stderr only: stdout carries the stdio MCP transport. Never the token.
   process.stderr.write(
-    `Deprecation warning: ${source} is deprecated; set SENTRY_AUTH_TOKEN ` +
-      "(and SENTRY_FORCE_ENV_TOKEN=1 to override a stored login) instead.\n",
+    `Deprecation warning: ${source} is deprecated; set SENTRY_AUTH_TOKEN instead.\n`,
   );
 }
 
@@ -293,6 +292,19 @@ function deprecatedTokenEnv(
   delete aliased.SENTRY_HOST;
   aliased.SENTRY_URL = `${target.sentryProtocol}://${target.sentryHost}`;
   return aliased;
+}
+
+/**
+ * The environment a `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) runs under: forced
+ * over any stored login, as if `SENTRY_FORCE_ENV_TOKEN=1` were set. An MCP
+ * client passes the token in its server config to pick the account, so a
+ * stored CLI login must not silently replace it. Other commands keep
+ * preferring the stored login.
+ */
+function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()
+    ? { ...env, SENTRY_FORCE_ENV_TOKEN: "1" }
+    : env;
 }
 
 /**
@@ -344,7 +356,7 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
 
   const credentialEnv = deprecatedToken
     ? deprecatedTokenEnv(env, deprecatedToken, config)
-    : env;
+    : preferEnvToken(env);
 
   // Loaded only now: mcp-core's server, the agent providers, and the MCP
   // telemetry are not needed for --help or setup errors.

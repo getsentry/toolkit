@@ -75,7 +75,6 @@ describe("buildStdioServerLaunchConfig", () => {
     expect(launchConfig.env).toEqual({
       PATH: "/usr/bin",
       SENTRY_AUTH_TOKEN: "token-123",
-      SENTRY_FORCE_ENV_TOKEN: "1",
       SENTRY_HOST: "us.sentry.io",
       SENTRY_DSN: "https://dsn.example/1",
     });
