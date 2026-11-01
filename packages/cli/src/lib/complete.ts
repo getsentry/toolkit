@@ -45,7 +45,7 @@ import { silenceReadonlyHandling } from "./db/resilient.js";
 import { getEnv } from "./env.js";
 import type { GitCompletion } from "./git.js";
 import { ValidationError } from "./errors.js";
-import { fuzzyMatch } from "./fuzzy.js";
+import { fuzzyMatch, fuzzyMatchSegments } from "./fuzzy.js";
 import type { CommandCompletions } from "./introspect.js";
 import { COMMON_PLATFORMS, VALID_PLATFORMS } from "./platforms.js";
 
@@ -940,9 +940,11 @@ function datasetFieldsOf(slot: CompleterContext): DatasetFields[] {
 }
 
 /**
- * The fields of `datasets` that match the partial: cached entities of the
- * org the command's target names (else of every org), then fixed fields,
- * each once.
+ * The fields of `datasets` that match the partial, one `.` segment at a
+ * time ({@link fuzzyMatchSegments}: `span.d` finds `span.duration`, never
+ * `span.op`): cached entities of the org the command's target names (else
+ * of every org), most recently seen first when nothing is typed, then
+ * fixed fields, each once.
  */
 async function matchFields(
   partial: string,
@@ -950,32 +952,48 @@ async function matchFields(
   datasets: readonly DatasetFields[],
 ): Promise<Completion[]> {
   const found = new Map<string, string | undefined>();
+  const add = (value: string, description?: string) => {
+    if (!found.has(value)) {
+      found.set(value, description);
+    }
+  };
   const orgs = datasets.some(({ entity }) => entity)
     ? await flagOrgs(slot.positionals)
     : [];
   for (const { entity, fields = [] } of datasets) {
-    const cached = entity ? matchCachedEntities(entity, partial, orgs) : [];
-    for (const { value, label } of cached) {
-      if (!found.has(value)) {
-        found.set(value, label);
+    const labels = new Map<string, string | undefined>();
+    for (const { value, label } of entity
+      ? getCachedCompletionEntities(entity, orgs)
+      : []) {
+      if (!labels.has(value)) {
+        labels.set(value, label);
       }
     }
-    for (const value of fuzzyMatch(partial, fields, { mode: "search" })) {
-      if (!found.has(value)) {
-        found.set(value, undefined);
-      }
+    const cached =
+      partial === ""
+        ? [...labels.keys()]
+        : fuzzyMatchSegments(partial, [...labels.keys()]);
+    for (const value of cached.slice(0, MAX_ENTITY_COMPLETIONS)) {
+      add(value, labels.get(value));
+    }
+    for (const value of fuzzyMatchSegments(partial, fields)) {
+      add(value);
     }
   }
   return [...found].map(([value, description]) => ({ value, description }));
 }
 
-/** The aggregate function names of `datasets`, each once. */
-function functionsOf(datasets: readonly DatasetFields[]): string[] {
-  return [...new Set(datasets.flatMap(({ functions = [] }) => functions))];
+/** The aggregate function names, or whole aggregates, of `datasets`, each once. */
+function unionOf(
+  datasets: readonly DatasetFields[],
+  key: "functions" | "aggregates",
+): string[] {
+  return [...new Set(datasets.flatMap((dataset) => dataset[key] ?? []))];
 }
 
 /**
- * Complete an aggregate call. Before the `(`, the function names that
+ * Complete an aggregate call: first the whole aggregates of the dataset
+ * that start with the partial. Before the `(`, the function names that
  * start with the partial, as `fn()`; a name typed in full also completes
  * `fn(field)` for each field, so the shell inserts `fn(` and lists them.
  * After the `(`, `fn(field)` for the fields that match.
@@ -989,7 +1007,10 @@ async function completeAggregates(
   options: { fields: boolean },
 ): Promise<Completion[]> {
   const datasets = datasetFieldsOf(slot);
-  const functions = functionsOf(datasets);
+  const functions = unionOf(datasets, "functions");
+  const fixed = unionOf(datasets, "aggregates")
+    .filter((value) => value.startsWith(partial))
+    .map((value) => ({ value }));
   const calls = async (name: string, argument: string) => [
     ...(argument === "" ? [{ value: `${name}()` }] : []),
     ...(await matchFields(argument, slot, datasets)).map(
@@ -999,13 +1020,17 @@ async function completeAggregates(
   const open = partial.indexOf("(");
   if (open !== -1) {
     const name = partial.slice(0, open);
-    return functions.includes(name)
-      ? await calls(name, partial.slice(open + 1))
-      : [];
+    return [
+      ...fixed,
+      ...(functions.includes(name)
+        ? await calls(name, partial.slice(open + 1))
+        : []),
+    ];
   }
   const names = functions.filter((name) => name.startsWith(partial));
   return [
     ...(options.fields ? await matchFields(partial, slot, datasets) : []),
+    ...fixed,
     ...(names.includes(partial) ? await calls(partial, "") : []),
     ...names
       .filter((name) => name !== partial)
@@ -1024,7 +1049,7 @@ async function completeShorthandAggregates(
   slot: CompleterContext,
 ): Promise<Completion[]> {
   const datasets = datasetFieldsOf(slot);
-  const functions = functionsOf(datasets);
+  const functions = unionOf(datasets, "functions");
   const colon = partial.indexOf(":");
   if (colon === -1) {
     return functions

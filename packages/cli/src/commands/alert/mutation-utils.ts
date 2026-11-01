@@ -2,10 +2,9 @@
  * Shared validation and parsing helpers for alert mutation commands (create/edit).
  */
 
-import {
-  DATASET_FIELDS,
-  type DatasetCompletion,
-  type DatasetFields,
+import type {
+  DatasetCompletion,
+  DatasetFields,
 } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
@@ -20,18 +19,78 @@ export const ISSUE_MATCH_MODES = ["all", "any"] as const;
 /** Deprecated dataset names that now route to `spans` with `is_transaction:true`. */
 const TRANSACTION_DATASET_NAMES = new Set(["transaction", "transactions"]);
 
+/*
+ * Aggregates metric alerts accept, from getsentry/sentry (`@sentry/api`
+ * types detector `data_sources` as `Array<unknown>`, so it has none):
+ * - Spans and logs (EAP) skip column checks for the functions in
+ *   `EAP_FUNCTIONS` (`sentry.incidents.logic`); the subscription then
+ *   resolves them with the dataset's EAP definitions, so logs, which have
+ *   no formulas (`sentry.search.eap.ourlogs.aggregates`), take only the
+ *   plain aggregates.
+ * - Errors take a function of no column or of `user`, `release`, `dist`
+ *   (`SUPPORTED_COLUMNS`, `TRANSLATABLE_COLUMNS` in the same module).
+ * - Crash rate takes only `percentage(sessions_crashed|users_crashed,
+ *   sessions|users)` (`CRASH_RATE_ALERT_AGGREGATE_RE` in
+ *   `sentry.snuba.entity_subscription`).
+ */
+
+/** `EAP_FUNCTIONS` that logs also define. */
+const LOG_ALERT_FUNCTIONS = [
+  "count",
+  "count_unique",
+  "avg",
+  "p50",
+  "p75",
+  "p90",
+  "p95",
+  "p99",
+  "max",
+  "min",
+  "sum",
+] as const;
+
+/** `EAP_FUNCTIONS`, all of which spans define. */
+const SPAN_ALERT_FUNCTIONS = [
+  ...LOG_ALERT_FUNCTIONS,
+  "p100",
+  "epm",
+  "eps",
+  "failure_count",
+  "failure_rate",
+  "apdex",
+  "user_misery",
+] as const;
+
+const ERROR_ALERT_FIELDS: DatasetFields = {
+  aggregates: [
+    "count()",
+    "count_unique(user)",
+    "count_unique(release)",
+    "count_unique(dist)",
+  ],
+};
+
+const CRASH_RATE_ALERT_FIELDS: DatasetFields = {
+  aggregates: [
+    "percentage(sessions_crashed,sessions)",
+    "percentage(users_crashed,users)",
+  ],
+};
+
 /**
- * What `--aggregate` completes, by the dataset `--dataset` names. Crash
- * rate (`metrics`, `sessions`) aggregates are not fields of a dataset, so
- * nothing completes for them; without `--dataset`, every dataset's.
+ * What `--aggregate` completes, by the dataset `--dataset` names: the
+ * aggregates metric alerts accept on it, narrower than a widget's. Without
+ * `--dataset`, every dataset's.
  */
 export const METRIC_ALERT_FIELD_COMPLETION: DatasetCompletion = {
   datasets: {
-    errors: DATASET_FIELDS.errors,
-    events: DATASET_FIELDS.errors,
-    spans: DATASET_FIELDS.spans,
-    logs: DATASET_FIELDS.logs,
-  } satisfies Partial<Record<MetricAlertDataset, DatasetFields>>,
+    errors: ERROR_ALERT_FIELDS,
+    events: ERROR_ALERT_FIELDS,
+    spans: { entity: "span-attribute", functions: SPAN_ALERT_FUNCTIONS },
+    logs: { entity: "log-attribute", functions: LOG_ALERT_FUNCTIONS },
+    metrics: CRASH_RATE_ALERT_FIELDS,
+    sessions: CRASH_RATE_ALERT_FIELDS,
+  } satisfies Record<MetricAlertDataset, DatasetFields>,
   aliases: {
     ...METRIC_ALERT_DATASET_ALIASES,
     ...Object.fromEntries(

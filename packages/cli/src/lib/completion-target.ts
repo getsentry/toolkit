@@ -195,6 +195,8 @@ export type DatasetFields = {
   fields?: readonly string[];
   /** Its aggregate function names */
   functions?: readonly string[];
+  /** Whole aggregates it takes that are not a function of one field */
+  aggregates?: readonly string[];
 };
 
 /**
