@@ -80,6 +80,39 @@ export type FuzzyMatchOptions = {
 };
 
 /**
+ * Score one candidate as {@link fuzzyMatch} ranks it: lower is better.
+ *
+ * @returns The score, or `undefined` when the candidate does not match
+ */
+function matchScore(
+  partial: string,
+  candidate: string,
+  search: boolean,
+): number | undefined {
+  const lowerPartial = partial.toLowerCase();
+  const lowerCandidate = candidate.toLowerCase();
+  if (lowerCandidate === lowerPartial) {
+    return EXACT_SCORE;
+  }
+  if (lowerCandidate.startsWith(lowerPartial)) {
+    return PREFIX_SCORE;
+  }
+  if (lowerCandidate.includes(lowerPartial)) {
+    return CONTAINS_SCORE;
+  }
+  if (search && partial.length < 3) {
+    return;
+  }
+  const dist = editDistance(
+    lowerPartial,
+    lowerCandidate,
+    search ? Math.floor(partial.length / 3) : undefined,
+  );
+  const threshold = Math.max(2, Math.floor(partial.length / 3));
+  return dist <= threshold ? FUZZY_BASE_SCORE + dist : undefined;
+}
+
+/**
  * Rank candidates by relevance to a partial input string.
  *
  * Scoring strategy (ordered by priority):
@@ -115,29 +148,12 @@ export function fuzzyMatch(
     return opts?.maxResults ? sorted.slice(0, opts.maxResults) : sorted;
   }
 
-  const lowerPartial = partial.toLowerCase();
-  const threshold = Math.max(2, Math.floor(partial.length / 3));
   const search = opts?.mode === "search";
   const scored: { candidate: string; score: number }[] = [];
-
   for (const candidate of candidates) {
-    const lowerCandidate = candidate.toLowerCase();
-
-    if (lowerCandidate === lowerPartial) {
-      scored.push({ candidate, score: EXACT_SCORE });
-    } else if (lowerCandidate.startsWith(lowerPartial)) {
-      scored.push({ candidate, score: PREFIX_SCORE });
-    } else if (lowerCandidate.includes(lowerPartial)) {
-      scored.push({ candidate, score: CONTAINS_SCORE });
-    } else if (!search || partial.length >= 3) {
-      const dist = editDistance(
-        lowerPartial,
-        lowerCandidate,
-        search ? Math.floor(partial.length / 3) : undefined,
-      );
-      if (dist <= threshold) {
-        scored.push({ candidate, score: FUZZY_BASE_SCORE + dist });
-      }
+    const score = matchScore(partial, candidate, search);
+    if (score !== undefined) {
+      scored.push({ candidate, score });
     }
   }
 
@@ -147,4 +163,56 @@ export function fuzzyMatch(
 
   const results = scored.map((s) => s.candidate);
   return opts?.maxResults ? results.slice(0, opts.maxResults) : results;
+}
+
+/**
+ * Rank candidates made of `.`-joined segments (`span.duration`)
+ * by an unfinished input, one segment at a time: the input's Nth segment
+ * is matched against the candidate's Nth, as {@link fuzzyMatch} matches in
+ * search mode. A candidate needs a segment for each one typed, and can
+ * have more after them, so `span.d` finds `span.duration` and
+ * `span.description` but never `span.op`, and `span` finds every `span.*`.
+ *
+ * When `partial` is empty, all candidates are returned (sorted
+ * alphabetically).
+ *
+ * @param partial - The partial input to match against
+ * @param candidates - The list of candidate strings
+ * @returns Candidates sorted by their summed segment scores, then
+ *   alphabetically
+ */
+export function fuzzyMatchSegments(
+  partial: string,
+  candidates: readonly string[],
+): string[] {
+  if (partial === "") {
+    return [...candidates].sort();
+  }
+  const typed = partial.split(".");
+  const scored: { candidate: string; score: number }[] = [];
+  for (const candidate of candidates) {
+    const segments = candidate.split(".");
+    if (segments.length < typed.length) {
+      continue;
+    }
+    let score = 0;
+    for (const [index, segment] of typed.entries()) {
+      const segmentScore =
+        segment === ""
+          ? PREFIX_SCORE
+          : matchScore(segment, segments[index] ?? "", true);
+      if (segmentScore === undefined) {
+        score = Number.POSITIVE_INFINITY;
+        break;
+      }
+      score += segmentScore;
+    }
+    if (Number.isFinite(score)) {
+      scored.push({ candidate, score });
+    }
+  }
+  scored.sort(
+    (a, b) => a.score - b.score || a.candidate.localeCompare(b.candidate),
+  );
+  return scored.map((s) => s.candidate);
 }

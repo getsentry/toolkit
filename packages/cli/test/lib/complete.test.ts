@@ -1318,7 +1318,27 @@ describe("getCompletions: fields and aggregates of the --dataset given", () => {
     );
   });
 
-  test("alert --aggregate completes calls, not bare fields", async () => {
+  test("inside fn(, fields match one segment at a time", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("span-attribute", "acme", [
+      { value: "span.op", label: "string" },
+      { value: "span.duration", label: "number" },
+    ]);
+    const field = ["explore", "acme/", "-d", "spans", "-F"];
+
+    // The typed segment never matches past the candidate's: `d` is not `op`
+    expect(await values(field, "avg(span.d")).toEqual(["avg(span.duration)"]);
+    // A typo within the segment being typed still matches
+    expect(await values(field, "avg(span.duraton")).toEqual([
+      "avg(span.duration)",
+    ]);
+    expect((await values(field, "avg(span.")).sort()).toEqual([
+      "avg(span.duration)",
+      "avg(span.op)",
+    ]);
+  });
+
+  test("alert --aggregate completes the calls metric alerts accept", async () => {
     await seedFields();
     const create = ["alert", "metrics", "create", "acme/", "--dataset", "span"];
 
@@ -1328,16 +1348,50 @@ describe("getCompletions: fields and aggregates of the --dataset given", () => {
       "p95()",
       "p99()",
     ]);
+    expect(await values([...create, "--aggregate"], "fail")).toEqual([
+      "failure_count()",
+      "failure_rate()",
+    ]);
     expect(await values([...create, "--aggregate"], "avg(span.d")).toEqual([
       "avg(span.duration)",
     ]);
-    // Crash rate aggregates are not fields of a dataset
-    expect(
-      await values(
-        ["alert", "metrics", "create", "--dataset", "sessions", "--aggregate"],
-        "",
-      ),
-    ).toEqual([]);
+    // Not an alert function, though widgets take it
+    expect(await values([...create, "--aggregate"], "any")).toEqual([]);
+  });
+
+  test("alert --aggregate narrows to each dataset's aggregates", async () => {
+    await seedFields();
+    const aggregate = (dataset: string) => [
+      "alert",
+      "metrics",
+      "create",
+      "acme/",
+      "--dataset",
+      dataset,
+      "--aggregate",
+    ];
+
+    // Logs have no formulas: no epm, failure_rate, or p100
+    expect(await values(aggregate("logs"), "p10")).toEqual([]);
+    expect(await values(aggregate("log"), "e")).toEqual([]);
+    // Errors take no column but user, release, dist, not their tag keys
+    expect(await values(aggregate("errors"), "")).toEqual([
+      "count()",
+      "count_unique(user)",
+      "count_unique(release)",
+      "count_unique(dist)",
+    ]);
+    expect(await values(aggregate("errors"), "count_unique(u")).toEqual([
+      "count_unique(user)",
+    ]);
+    // Crash rate takes only crash-free percentages
+    expect(await values(aggregate("sessions"), "")).toEqual([
+      "percentage(sessions_crashed,sessions)",
+      "percentage(users_crashed,users)",
+    ]);
+    expect(await values(aggregate("metrics"), "percentage(u")).toEqual([
+      "percentage(users_crashed,users)",
+    ]);
   });
 
   test("dashboard widgets complete shorthand aggregates and group-by columns", async () => {

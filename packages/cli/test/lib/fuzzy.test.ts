@@ -8,7 +8,11 @@
 
 import { array, assert as fcAssert, property, string } from "fast-check";
 import { describe, expect, test } from "vitest";
-import { fuzzyMatch, levenshtein } from "../../src/lib/fuzzy.js";
+import {
+  fuzzyMatch,
+  fuzzyMatchSegments,
+  levenshtein,
+} from "../../src/lib/fuzzy.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 // Short strings to keep Levenshtein computation fast in property tests
@@ -187,6 +191,56 @@ describe("fuzzyMatch: search mode", () => {
     expect(
       fuzzyMatch("frone", ["team-frontend-web"], { mode: "search" }),
     ).toEqual([]);
+  });
+});
+
+describe("fuzzyMatchSegments", () => {
+  const fields = [
+    "span.op",
+    "span.duration",
+    "span.description",
+    "http.method",
+    "span",
+  ];
+
+  test("matches the typed segment within the candidate's, never past it", () => {
+    expect(fuzzyMatchSegments("span.d", fields)).toEqual([
+      "span.description",
+      "span.duration",
+    ]);
+    expect(fuzzyMatchSegments("span.d", ["span.op"])).toEqual([]);
+  });
+
+  test("tolerates a typo within a segment", () => {
+    expect(fuzzyMatchSegments("span.duraton", fields)).toEqual([
+      "span.duration",
+    ]);
+    expect(fuzzyMatchSegments("spn.duration", fields)).toEqual([
+      "span.duration",
+    ]);
+  });
+
+  test("a segment typed in full matches the candidates under it", () => {
+    expect(fuzzyMatchSegments("span", fields)).toEqual([
+      "span",
+      "span.description",
+      "span.duration",
+      "span.op",
+    ]);
+    expect(fuzzyMatchSegments("span.", fields)).toEqual([
+      "span.description",
+      "span.duration",
+      "span.op",
+    ]);
+  });
+
+  test("needs a candidate segment for each typed one", () => {
+    expect(fuzzyMatchSegments("span.op.x", fields)).toEqual([]);
+    expect(fuzzyMatchSegments("duration", fields)).toEqual([]);
+  });
+
+  test("returns every candidate, sorted, for an empty partial", () => {
+    expect(fuzzyMatchSegments("", ["b.a", "a.b"])).toEqual(["a.b", "b.a"]);
   });
 });
 
