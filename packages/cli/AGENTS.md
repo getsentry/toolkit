@@ -395,9 +395,20 @@ input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 value-taking flag declares a completion kind, a key of `COMPLETERS` in
 `src/lib/complete.ts`; `test/lib/completion-coverage.test.ts` walks the
 route tree and fails, naming the command and the placeholder or flag, for
-any without one. There is no allow-list: a flag with nothing to suggest
-says so with `parseText` or `textParser`. Pick the parser by what the
-argument takes:
+any without one. The `sentry-cli/require-completion-parser` lint rule
+rejects, in `src/commands/` and `src/lib/`, the parsers that cannot carry a
+kind: built-ins (`parse: String`, `Number`, `Boolean`, `Date`, `parseInt`,
+`JSON.parse`, …), inline functions (`parse: (value) => …`), and
+`boundArguments` without a `kind`. A flag with nothing to suggest says so
+with `parseText` or `textParser(parse)`. The rare parameter that must stay
+without a kind goes in `lint-rules/completion-exemptions.json` with its
+file, command, parameter (`--flag` or `<placeholder>`), and reason; both the
+lint rule and the coverage test read it, and the test fails on an entry
+that no longer needs exempting. An `oxlint-disable-next-line
+sentry-cli/require-completion-parser -- reason` comment silences only the
+lint rule; the coverage test cannot see comments, so the parameter still
+needs a kind or an allow-list entry. Pick the parser by what the argument
+takes:
 
 | Argument | Parser | Completes |
 |----------|--------|-----------|
