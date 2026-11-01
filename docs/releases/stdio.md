@@ -78,26 +78,19 @@ The other `mcp-*` packages are private and keep their own versions.
 
 ## MCP Registry
 
-The **Publish MCP Registry** workflow publishes `server.json` on stable
-`cli@<version>` releases using GitHub Actions OIDC; no registry secret is
-needed. It reads the manifest from `main` and sets both
-versions from the release, so there is no extra version bump to maintain. The
-listing points at the `@sentry/mcp-server` npm package, plus the hosted
-endpoint. npm verifies ownership through `mcpName` in
+Craft's `mcp-registry` target (Craft 3.5.0+) publishes `server.json` with every
+CLI release, after the npm targets. It sets both versions in the manifest to
+the release version, so there is no extra version bump to maintain, and it
+authenticates with GitHub Actions OIDC from getsentry/publish; no registry
+secret is needed. The listing points at the `@sentry/mcp-server` npm package,
+plus the hosted endpoint. The registry checks ownership through `mcpName` in
 `packages/mcp-server/package.json`.
 
-Craft publishes GitHub before npm. The workflow waits for the npm package before
-publishing the listing. Check this Actions run separately from the Craft release.
-To retry or publish an existing release (CLI release tags, or the bare tags
-used up to 0.42.0):
-
-```bash
-gh workflow run mcp-registry.yml --repo getsentry/toolkit --ref main -f version=0.48.0
-```
-
-An identical active listing is safe to rerun. Different metadata for an existing
-version fails verification because registry versions are immutable; publish those
-changes with the next release. Registry failures do not undo the npm release.
+The registry rejects a version npm does not serve yet. If that happens, rerun
+the publish once the package is on npm; targets that already finished are
+skipped. An identical active listing is a no-op, so reruns are safe. Different
+metadata for an existing version fails because registry versions are
+immutable; publish those changes with the next release.
 
 ## User Installation
 

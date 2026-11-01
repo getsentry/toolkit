@@ -1,4 +1,4 @@
-minVersion: "2.33.0"
+minVersion: "3.5.0"
 workspaces:
   packages/cli:
     changelog:
@@ -35,6 +35,10 @@ workspaces:
       - name: npm
         id: "@sentry/mcp-server"
         includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
+      # Lists that npm package in the MCP Registry. After the npm targets: the
+      # registry checks that npm serves the version.
+      - name: mcp-registry
+        manifest: server.json
       - name: github
         tagPrefix: "cli@"
       - name: vercel
