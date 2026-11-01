@@ -19,6 +19,12 @@ import { createEventEnvelope, makeDsn, serializeEnvelope } from "@sentry/core";
 import type { SentryContext } from "../context.js";
 import { buildBashErrorEvent } from "../lib/bash-hook/traceback.js";
 import { buildCommand } from "../lib/command.js";
+import {
+  parseDsn,
+  parseFilePath,
+  parseRelease,
+  parseText,
+} from "../lib/completion-target.js";
 import { parseKeyValue } from "../lib/envelope/event-builder.js";
 import { requireDsn, sendEnvelopeRequest } from "../lib/envelope/transport.js";
 import { ValidationError } from "../lib/errors.js";
@@ -274,26 +280,26 @@ export const bashHookCommand = buildCommand({
       },
       cli: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Override the sentry-cli command path in the generated script",
         optional: true,
       },
       tag: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a tag as KEY:VALUE to the event (repeatable)",
         variadic: true,
         optional: true,
       },
       release: {
         kind: "parsed",
-        parse: String,
+        parse: parseRelease,
         brief: "Set the release version for the event",
         optional: true,
       },
       dsn: {
         kind: "parsed",
-        parse: String,
+        parse: parseDsn,
         brief: "DSN to send events to (overrides SENTRY_DSN env var)",
         optional: true,
       },
@@ -307,14 +313,14 @@ export const bashHookCommand = buildCommand({
       },
       traceback: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Internal: path to the traceback file",
         optional: true,
         hidden: true as const,
       },
       log: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Internal: path to the log file",
         optional: true,
         hidden: true as const,

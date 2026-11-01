@@ -17,7 +17,12 @@ import {
   resolveUploadWait,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseRelease,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -151,23 +156,23 @@ export const gradleCommand = buildCommand({
     flags: {
       sourcemap: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the sourcemap to upload",
       },
       bundle: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the bundle to upload",
       },
       release: {
         kind: "parsed",
-        parse: String,
+        parse: parseRelease,
         brief: "Release version to publish to",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         brief: "Distribution(s) to publish (repeatable; requires --release)",
         optional: true,
@@ -179,7 +184,7 @@ export const gradleCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait for processing, but at most this many seconds",
         optional: true,
       },

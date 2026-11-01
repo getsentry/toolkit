@@ -14,12 +14,14 @@ import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { textParser } from "../../lib/completion-target.js";
 import { getDefaultUrl } from "../../lib/db/defaults.js";
 import { HostScopeError, ValidationError } from "../../lib/errors.js";
 import { success, warning } from "../../lib/formatters/colors.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import { DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import { normalizeUserInputToOrigin } from "../../lib/sentry-urls.js";
 import type {
@@ -229,7 +231,7 @@ async function confirmImport(): Promise<boolean> {
   if (!isatty(0)) {
     return false;
   }
-  const confirmed = await log.prompt("Import these settings to the new CLI?", {
+  const confirmed = await prompt("Import these settings to the new CLI?", {
     type: "confirm",
     initial: true,
   });
@@ -305,7 +307,7 @@ export const importCommand = buildCommand({
       "dry-run": DRY_RUN_FLAG,
       url: {
         kind: "parsed",
-        parse: parseImportUrl,
+        parse: textParser(parseImportUrl),
         brief: "Explicitly trust this URL (bypasses same-file trust check)",
         optional: true,
       },

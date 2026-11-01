@@ -9,6 +9,7 @@
 
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
+import { parseText } from "../lib/completion-target.js";
 import type { McpFlags } from "../lib/mcp/args.js";
 
 /**
@@ -26,7 +27,7 @@ export const MCP_SKILL_NAMES = [
 
 /** An optional string flag. */
 function stringFlag(brief: string) {
-  return { kind: "parsed", parse: String, brief, optional: true } as const;
+  return { kind: "parsed", parse: parseText, brief, optional: true } as const;
 }
 
 /** A boolean flag that defaults to off. */

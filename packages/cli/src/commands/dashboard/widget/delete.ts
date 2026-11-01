@@ -13,6 +13,7 @@
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { numberParser } from "../../../lib/command.js";
+import { parseText } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -100,7 +101,7 @@ export const deleteCommand = buildDeleteCommand(
         },
         title: {
           kind: "parsed",
-          parse: String,
+          parse: parseText,
           brief: "Widget title to match",
           optional: true,
         },

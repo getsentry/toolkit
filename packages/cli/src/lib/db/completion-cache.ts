@@ -2,10 +2,11 @@
  * Entities seen during normal CLI usage, kept for shell completion.
  *
  * The `__complete` fast path makes no API calls, so it can only suggest what
- * earlier commands already fetched. The API layer records issue short IDs and
- * dashboards here as they are listed or viewed; `src/lib/complete.ts` reads
- * them back. Entries are best-effort hints: a stale one at worst suggests an
- * issue that was since merged or a dashboard that was deleted.
+ * earlier commands already fetched. The API layer records the entities of
+ * {@link CompletionEntityKind} here as they are listed or viewed;
+ * `src/lib/complete.ts` reads them back. Entries are best-effort hints: a
+ * stale one at worst suggests an issue that was since merged or a release
+ * that was deleted.
  *
  * This module is imported by the `__complete` fast path, so it must not pull
  * in the Sentry SDK; best-effort error reporting for writes lives in
@@ -21,10 +22,38 @@ import { runUpsert } from "./utils.js";
 
 /**
  * Entity types stored for shell completion, named after the completion
- * kind of the arguments that take them: issues by short ID, dashboards by
- * numeric ID, both with the title as description.
+ * kind of the arguments that take them. Each is stored as the value those
+ * arguments read, with a description:
+ *
+ * - `issue`: short ID, with the title
+ * - `dashboard`: numeric ID, with the title
+ * - `environment`: name
+ * - `release`: version, with the short version
+ * - `team`: slug, with the name
+ * - `owner`: `team:<id>` actor, with the team slug
+ * - `monitor`: slug, with the name
+ * - `workflow`: alert (workflow) ID, with the name
+ * - `integration`: native integration ID, with provider and name
+ * - `sentry-app`: installed Sentry App slug, with the name
+ * - `app-link-field`: `name=` of a field of a Sentry App's issue-link
+ *   form, and `name=value` for its fixed choices, with the app
+ * - `dsn`: public DSN of a client key, with the key name
+ * - `tag-key`: key of a tag seen on an issue, with its label
  */
-export type CompletionEntityKind = "issue" | "dashboard";
+export type CompletionEntityKind =
+  | "issue"
+  | "dashboard"
+  | "environment"
+  | "release"
+  | "team"
+  | "owner"
+  | "monitor"
+  | "workflow"
+  | "integration"
+  | "sentry-app"
+  | "app-link-field"
+  | "dsn"
+  | "tag-key";
 
 /** Most recently seen entries kept per kind and org. */
 export const MAX_ENTITIES_PER_ORG = 500;

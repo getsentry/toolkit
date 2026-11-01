@@ -10,21 +10,32 @@ import {
   putMetricAlertRule,
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import {
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseProjectList,
+  parseText,
+  parseWorkflowList,
+} from "../../../lib/completion-target.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import {
   METRIC_ALERT_DATASET_BRIEF,
+  METRIC_ALERT_DATASET_NAMES,
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
+  METRIC_TIME_WINDOW_VALUES,
   normalizeMetricDataset,
   normalizeProjectList,
   parseJsonObjectList,
   parseStatusFlag,
   parseWorkflowIds,
   resolveMetricDataset,
+  RULE_STATUSES,
   statusToMetricValue,
   validateMetricDataset,
   validateMetricTimeWindow,
@@ -214,69 +225,69 @@ export const editCommand = buildCommand({
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "New rule name",
       },
       status: {
         kind: "parsed",
-        parse: parseStatusFlag,
+        parse: choiceParser(RULE_STATUSES, parseStatusFlag),
         optional: true,
         brief: "active or disabled",
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "Metric query filter",
       },
       aggregate: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "Aggregate expression",
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(METRIC_ALERT_DATASET_NAMES),
         optional: true,
         brief: METRIC_ALERT_DATASET_BRIEF,
       },
       "time-window": {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(METRIC_TIME_WINDOW_VALUES, numberParser),
         optional: true,
         brief: "Evaluation window in minutes",
       },
       trigger: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Trigger object JSON (repeatable, or pass one JSON array)",
       },
       project: {
         kind: "parsed",
-        parse: String,
+        parse: parseProjectList,
         variadic: true,
         optional: true,
         brief: "Project slug filter (repeatable or comma-separated)",
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },
       workflow: {
         kind: "parsed",
-        parse: String,
+        parse: parseWorkflowList,
         variadic: true,
         optional: true,
         brief:

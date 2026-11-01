@@ -11,7 +11,7 @@ import { ResolutionError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
 
 /** Valid tracemetrics aggregation functions. */
-const VALID_AGGS = new Set([
+export const VALID_AGGS = new Set([
   "sum",
   "avg",
   "count",

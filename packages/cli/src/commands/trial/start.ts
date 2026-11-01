@@ -25,6 +25,7 @@ import { ContextError, ValidationError } from "../../lib/errors.js";
 import { success } from "../../lib/formatters/colors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger as log } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   type BoundArguments,
   boundArguments,
@@ -230,7 +231,7 @@ async function promptOpenBrowser(url: string): Promise<boolean> {
 
   // Prompt to open browser if interactive TTY (stdin for input, stderr for display)
   if (isatty(0) && isatty(2)) {
-    const confirmed = await logger.prompt("Open in browser?", {
+    const confirmed = await prompt("Open in browser?", {
       type: "confirm",
       initial: true,
     });

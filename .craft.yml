@@ -110,3 +110,14 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
+  # No preReleaseCommand: Craft bumps package.json through the npm target.
+  packages/logger:
+    changelog:
+      policy: auto
+    releaseBranchPrefix: "release/{{workspaceName}}"
+    targets:
+      - name: github
+        tagPrefix: "{{workspaceName}}@"
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
+      - name: npm
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'

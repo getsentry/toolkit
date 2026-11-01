@@ -12,6 +12,12 @@ import {
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseText,
+} from "../../../lib/completion-target.js";
+import {
   ContextError,
   stringifyUnknown,
   ValidationError,
@@ -19,10 +25,12 @@ import {
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
+  ISSUE_MATCH_MODES,
   matchToLogicType,
   parseJsonObjectList,
   parseMatchMode,
   parseStatusFlag,
+  RULE_STATUSES,
   triggerLogicType,
   validateIssueRuleArrays,
 } from "../mutation-utils.js";
@@ -210,26 +218,26 @@ export const editCommand = buildCommand({
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "New rule name",
       },
       status: {
         kind: "parsed",
-        parse: parseStatusFlag,
+        parse: choiceParser(RULE_STATUSES, parseStatusFlag),
         optional: true,
         brief: "Rule status: active or disabled",
       },
       condition: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Condition object JSON (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Action object JSON (repeatable, or pass one JSON array)",
@@ -242,26 +250,28 @@ export const editCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
       filter: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Filter object JSON (repeatable, or pass one JSON array)",
       },
       "filter-match": {
         kind: "parsed",
-        parse: (value: string) => parseMatchMode(value, "filter-match"),
+        parse: choiceParser(ISSUE_MATCH_MODES, (value) =>
+          parseMatchMode(value, "filter-match"),
+        ),
         optional: true,
         brief: "Filter match mode: all or any",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },

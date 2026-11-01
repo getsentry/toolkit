@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import { choiceParser, parseText } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetEdited } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -15,7 +16,10 @@ import {
   type DashboardDetail,
   type DashboardWidget,
   type DashboardWidgetQuery,
+  DISPLAY_TYPES,
   FALLBACK_LAYOUT,
+  GRID_COLUMN_POSITIONS,
+  GRID_WIDTHS,
   parseAggregate,
   parseSortExpression,
   parseWidgetInput,
@@ -23,7 +27,9 @@ import {
   prepareWidgetQueries,
   validateAggregateNames,
   validateWidgetLayout,
+  WIDGET_TYPES,
   type WidgetLayoutFlags,
+  AGGREGATE_FUNCTION_NAMES,
 } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import {
@@ -236,53 +242,53 @@ export const editCommand = buildCommand({
       },
       title: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Widget title to match",
         optional: true,
       },
       "new-title": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "New widget title",
         optional: true,
       },
       display: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(DISPLAY_TYPES),
         brief:
           "Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)",
         optional: true,
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(WIDGET_TYPES),
         brief:
           "Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue",
         optional: true,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
         brief: "Aggregate expression (e.g. count, p95:span.duration)",
         variadic: true,
         optional: true,
       },
       where: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search conditions filter (e.g. is:unresolved)",
         optional: true,
       },
       "group-by": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Group-by column (repeatable)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
         brief: "Order by (prefix - for desc, e.g. -count)",
         optional: true,
       },
@@ -294,7 +300,7 @@ export const editCommand = buildCommand({
       },
       col: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_COLUMN_POSITIONS, numberParser),
         brief: "Grid column position (0-based, 0–5)",
         optional: true,
       },
@@ -306,7 +312,7 @@ export const editCommand = buildCommand({
       },
       width: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_WIDTHS, numberParser),
         brief: "Widget width in grid columns (1–6)",
         optional: true,
       },

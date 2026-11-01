@@ -10,6 +10,7 @@ on:
         default: cli
         options:
           - cli
+          - logger
       bump:
         description: Version bump type
         required: true
@@ -64,6 +65,10 @@ jobs:
             cli)
               workspace=packages/cli
               package_path=packages/cli
+              ;;
+            logger)
+              workspace=packages/logger
+              package_path=packages/logger
               ;;
             *)
               echo "::error::Unsupported product: $PRODUCT"

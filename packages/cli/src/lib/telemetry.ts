@@ -40,6 +40,7 @@ import {
 } from "./error-reporting.js";
 import { ApiError, isUserError } from "./errors.js";
 import { attachSentryReporter, logger } from "./logger.js";
+import { sentryReporter } from "@sentry/logger";
 import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
 import { redactTelemetryEnvelope } from "./telemetry/credential-redaction.js";
 import { makeCompressedTransport } from "./telemetry/zstd-transport.js";
@@ -786,7 +787,7 @@ export function initSentry(
     }
 
     // Wire up logger → Sentry log forwarding now that the client is active
-    attachSentryReporter(Sentry.createConsolaReporter());
+    attachSentryReporter(sentryReporter(Sentry.logger));
 
     // End healthy sessions and flush events when the event loop drains.
     // The SDK's processSessionIntegration starts a session during init and

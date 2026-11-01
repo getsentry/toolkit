@@ -96,8 +96,9 @@ function shellVarName(s: string): string {
  *
  * Completes the command and a group's subcommand from static word lists,
  * and every later word with `sentry __complete`. Suggestions are escaped
- * for the shell, and a single suggestion ending in `/` (a directory,
- * `org/`) takes no trailing space so the next TAB continues it.
+ * for the shell, and a single suggestion that continues (a directory,
+ * `org/`, `name=`, `repo@`, `id:`) takes no trailing space so the next TAB
+ * continues it.
  */
 export function generateBashCompletion(binaryName: string): string {
   const { groups, standalone } = extractCommandTree();
@@ -171,7 +172,8 @@ ${subVars}
     fi
     COMPREPLY+=("\${line}")
   done < <(${binaryName} __complete "\${args[@]}" "\${partial}" 2>/dev/null)
-  if [[ \${#COMPREPLY[@]} -eq 1 && "\${COMPREPLY[0]}" == */ ]]; then
+  # A value that continues (\`org/\`, \`name=\`, \`repo@\`, \`id:\`) takes no space
+  if [[ \${#COMPREPLY[@]} -eq 1 && "\${COMPREPLY[0]}" == *[/=@:] ]]; then
     compopt -o nospace
   fi
 }
@@ -185,7 +187,8 @@ complete -F _${binaryName}_completions ${binaryName}
  *
  * Completes the command and a group's subcommand from static arrays, and
  * every later word with `sentry __complete`, showing its descriptions.
- * Suggestions ending in `/` (directories, `org/`) take no trailing space.
+ * Suggestions that continue (`org/`, directories, `name=`, `repo@`, `id:`)
+ * take no trailing space.
  */
 export function generateZshCompletion(binaryName: string): string {
   const { groups, standalone } = extractCommandTree();
@@ -235,7 +238,7 @@ ${subArrays}
   local value desc ret=1
   while IFS=$'\\t' read -r value desc; do
     value="\${value//:/\\\\:}"
-    if [[ $value == */ ]]; then
+    if [[ $value == *[/=@:] ]]; then
       slashed+=("\${value}\${desc:+:$desc}")
     else
       values+=("\${value}\${desc:+:$desc}")

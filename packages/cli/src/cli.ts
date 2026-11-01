@@ -440,10 +440,11 @@ export async function runCli(
   async function promptImportConsent(): Promise<
     "accepted" | "declined" | "cancelled"
   > {
-    const { logger: logModule } = await import("./lib/logger.js");
-    const confirmed = await logModule
-      .withTag("import")
-      .prompt("Import from .sentryclirc?", { type: "confirm", initial: true });
+    const { prompt } = await import("./lib/prompt.js");
+    const confirmed = await prompt("Import from .sentryclirc?", {
+      type: "confirm",
+      initial: true,
+    });
     if (confirmed === true) {
       return "accepted";
     }

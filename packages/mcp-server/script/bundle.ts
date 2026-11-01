@@ -31,7 +31,8 @@ const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
 
 /**
  * Inputs that serve the CLI but not this package: commands other than `mcp`,
- * `auth`, and `help`, agent skills, shell completions, syntax highlighting,
+ * `auth`, and `help` (flag completion reads `local/loopback.ts`, a leaf module
+ * of host constants), agent skills, shell completions, syntax highlighting,
  * the Ink UI, terminal images (the kitty/sixel help banner and dashboards,
  * and `pngjs`), `sentry init`, build/sourcemap/debug-file processing, the
  * SQLite WASM fallback for Node.js < 22.15, Zod 3, and MCP SDK v1.
@@ -40,7 +41,7 @@ const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
  * decode and encode JPEGs with it (`internal/blob-utils.ts`).
  */
 const FORBIDDEN_INPUTS: ReadonlyArray<RegExp> = [
-  /[\\/]packages[\\/]cli[\\/]src[\\/](?:app\.ts$|commands[\\/](?!auth[\\/]|help\.ts$|mcp\.ts$))/,
+  /[\\/]packages[\\/]cli[\\/]src[\\/](?:app\.ts$|commands[\\/](?!auth[\\/]|help\.ts$|mcp\.ts$|local[\\/]loopback\.ts$))/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:agent-skills|complete|completions)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:sixel|sixel-image|kitty-image|formatters[\\/]sixel-dashboard)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]generated[\\/]banner-image\.ts$/,

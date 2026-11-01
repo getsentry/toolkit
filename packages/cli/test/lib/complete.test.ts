@@ -101,8 +101,8 @@ describe("getCompletions: context detection", () => {
 
   test("returns nothing for the value of a flag without a completer", async () => {
     await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
-    expect(await getCompletions(["issue", "list", "--cursor"], "")).toEqual([]);
-    expect(await getCompletions(["issue", "list", "-c"], "")).toEqual([]);
+    expect(await getCompletions(["issue", "list", "--limit"], "")).toEqual([]);
+    expect(await getCompletions(["issue", "list", "-n"], "")).toEqual([]);
     // Once the value is given, the next word is a target again.
     expect(
       (await getCompletions(["issue", "list", "--period", "7d"], "")).length,
@@ -831,6 +831,53 @@ describe("getCompletions: fixed values", () => {
   test("text positionals complete nothing", async () => {
     expect(await getCompletions(["cli", "feedback"], "")).toEqual([]);
   });
+
+  test("flags of shared parsers complete the values those parsers accept", async () => {
+    expect(await values(["issue", "list", "--cursor"], "")).toEqual([
+      "next",
+      "prev",
+      "first",
+    ]);
+    expect(await values(["log", "list", "--sort"], "o")).toEqual(["oldest"]);
+    expect(await values(["trace", "view", "--spans"], "")).toEqual([
+      "all",
+      "no",
+    ]);
+    expect(await values(["cli", "setup", "--channel"], "n")).toEqual([
+      "nightly",
+    ]);
+  });
+
+  test("flags of a command's own parsers complete their values", async () => {
+    expect(await values(["issue", "list", "--sort"], "f")).toEqual(["freq"]);
+    expect(await values(["api", "-X"], "P")).toEqual(["POST", "PUT", "PATCH"]);
+  });
+
+  test("--fields completes the next field of the list", async () => {
+    expect(await values(["issue", "view", "--fields"], "id,ti")).toEqual([
+      "id,title",
+    ]);
+    expect(
+      await values(["issue", "view", "--fields"], "id,title,"),
+    ).not.toContain("id,title,id");
+    expect(await values(["issue", "view", "--fields"], "project.s")).toEqual([
+      "project.slug",
+    ]);
+  });
+
+  test("list flags complete fixed values one item at a time", async () => {
+    expect(
+      await values(["auth", "login", "--scope"], "org:read,org:wr"),
+    ).toEqual(["org:read,org:write"]);
+  });
+
+  test("platform flags complete platforms", async () => {
+    const [best] = await values(["project", "list", "--platform"], "python-dj");
+    expect(best).toBe("python-django");
+    expect(await values(["event", "send", "--platform"], "")).toContain(
+      "javascript",
+    );
+  });
 });
 
 describe("getCompletions: command paths", () => {
@@ -914,6 +961,259 @@ describe("getCompletions: accounts", () => {
     expect((await values(["auth", "logout"], "bob")).sort()).toEqual([
       "bob@other.dev:sentry.example.com",
       "bob@other.dev:sentry.io",
+    ]);
+  });
+});
+
+describe("getCompletions: flag values that name cached entities", () => {
+  test("completes a flag from the org the target names, else every org", async () => {
+    await seedOrgs([
+      { slug: "acme", name: "Acme" },
+      { slug: "beta", name: "Beta" },
+    ]);
+    cacheCompletionEntities("environment", "acme", [{ value: "production" }]);
+    cacheCompletionEntities("environment", "beta", [
+      { value: "staging" },
+      { value: "production" },
+    ]);
+    const create = ["alert", "metrics", "create"];
+
+    expect(await values([...create, "acme/cli", "--environment"], "")).toEqual([
+      "production",
+    ]);
+    expect((await values([...create, "--environment"], "")).sort()).toEqual([
+      "production",
+      "staging",
+    ]);
+  });
+
+  test("completes the last item of a comma-separated list", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("environment", "acme", [
+      { value: "production" },
+      { value: "staging" },
+    ]);
+
+    expect(
+      await values(["release", "list", "--environment"], "production,"),
+    ).toEqual(["production,staging"]);
+  });
+
+  test("completes owners as team actors, matched by team slug", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("owner", "acme", [
+      { value: "team:7", label: "#backend" },
+      { value: "team:9", label: "#frontend" },
+    ]);
+
+    expect(
+      await getCompletions(["alert", "issues", "create", "--owner"], "back"),
+    ).toEqual([{ value: "team:7", description: "#backend" }]);
+  });
+
+  test("issue link completes integrations, apps, and app form fields", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("integration", "acme", [
+      { value: "99", label: "Jira: acme-jira" },
+    ]);
+    cacheCompletionEntities("sentry-app", "acme", [
+      { value: "linear", label: "Linear" },
+    ]);
+    cacheCompletionEntities("app-link-field", "acme", [
+      { value: "priority=", label: "tracker, required" },
+      { value: "priority=high", label: "tracker, required" },
+    ]);
+
+    expect(
+      await getCompletions(["issue", "link", "--integration"], "jira"),
+    ).toEqual([{ value: "99", description: "Jira: acme-jira" }]);
+    expect(await values(["issue", "unlink", "--app"], "")).toEqual(["linear"]);
+    expect(await values(["issue", "link", "--field"], "prio")).toContain(
+      "priority=",
+    );
+    expect(await values(["issue", "link", "--field"], "priority=h")).toEqual([
+      "priority=high",
+    ]);
+  });
+
+  test("issue merge --into completes issues", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("issue", "acme", [{ value: "CLI-1A" }]);
+
+    expect(
+      await values(["issue", "merge", "CLI-1A", "CLI-2B", "--into"], "CLI"),
+    ).toContain("CLI-1A");
+  });
+
+  test("monitor run completes a monitor slug, then nothing for the command", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("monitor", "acme", [
+      { value: "nightly", label: "Nightly job" },
+    ]);
+
+    expect(await values(["monitor", "run"], "")).toEqual(["nightly"]);
+    expect(await values(["monitor", "run", "nightly", "--"], "")).toEqual([]);
+  });
+
+  test("completes comma-separated project slugs of the target org", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    await seedProjects([
+      {
+        orgId: "1",
+        projectId: "10",
+        orgSlug: "acme",
+        projectSlug: "cli",
+        projectName: "CLI",
+      },
+      {
+        orgId: "1",
+        projectId: "11",
+        orgSlug: "acme",
+        projectSlug: "web",
+        projectName: "Web",
+      },
+    ]);
+
+    expect(
+      await values(["release", "create", "acme/1.0.0", "--project"], "cli,"),
+    ).toEqual(["cli,web"]);
+    // The hidden --project every command takes completes one slug
+    expect(await values(["issue", "list", "acme/", "--project"], "w")).toEqual([
+      "web",
+    ]);
+  });
+
+  test("issue tags completes the tag keys seen on issues", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("tag-key", "acme", [
+      { value: "browser.name", label: "Browser.Name" },
+      { value: "release", label: "Release" },
+    ]);
+
+    expect(
+      await getCompletions(["issue", "tags", "acme/CLI-1A"], "brow"),
+    ).toEqual([{ value: "browser.name", description: "Browser.Name" }]);
+  });
+});
+
+describe("getCompletions: issue archive --until", () => {
+  const until = (partial: string) =>
+    values(["issue", "archive", "CLI-1", "--until"], partial);
+
+  test("offers the keywords and duration presets", async () => {
+    expect(await until("")).toEqual(
+      expect.arrayContaining(["forever", "auto", "1h", "7d"]),
+    );
+    expect(await until("f")).toEqual(["forever"]);
+  });
+
+  test("completes a number to counts and durations", async () => {
+    expect(await until("10")).toEqual([
+      "10x",
+      "10u",
+      "10s",
+      "10m",
+      "10h",
+      "10d",
+      "10w",
+    ]);
+  });
+
+  test("offers a count's window, which completes like a duration", async () => {
+    expect(await until("10x")).toEqual(["10x", "10x/"]);
+    expect(await until("10x/")).toEqual(
+      expect.arrayContaining(["10x/1h", "10x/24h"]),
+    );
+    expect(await until("10u/5")).toEqual(
+      expect.arrayContaining(["10u/5m", "10u/5h"]),
+    );
+  });
+});
+
+describe("getCompletions: api endpoints", () => {
+  test("completes API paths one segment at a time", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+
+    expect(await values(["api"], "organiz")).toEqual(["organizations/"]);
+    expect(await getCompletions(["api"], "organizations/")).toEqual([
+      { value: "organizations/acme/", description: "Acme" },
+    ]);
+    const orgPaths = await values(["api"], "organizations/acme/iss");
+    expect(orgPaths).toContain("organizations/acme/issues/");
+    expect(
+      orgPaths.every((path) => path.startsWith("organizations/acme/iss")),
+    ).toBe(true);
+  });
+
+  test("keeps the /api/0/ prefix as typed", async () => {
+    expect(await values(["api"], "/api/0/organiz")).toEqual([
+      "/api/0/organizations/",
+    ]);
+  });
+});
+
+describe("getCompletions: account servers", () => {
+  test("completes the servers of stored accounts", async () => {
+    setAuthToken("token-1", undefined, undefined, {
+      host: "https://sentry.example.com",
+      newAccount: true,
+    });
+    setUserInfo({ userId: "1", email: "jane@acme.com" });
+
+    expect(
+      await getCompletions(["auth", "switch", "--url"], "https://sentry.ex"),
+    ).toEqual([
+      { value: "https://sentry.example.com", description: "jane@acme.com" },
+    ]);
+  });
+});
+
+describe("getCompletions: fixed values from the modules that validate them", () => {
+  test("metric alert windows, grid positions, providers, and aggregations", async () => {
+    expect(
+      await values(["alert", "metrics", "create", "--time-window"], "1"),
+    ).toEqual(["1", "10", "15", "120", "1440"]);
+    expect(await values(["dashboard", "widget", "add", "--col"], "")).toEqual([
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+    ]);
+    expect(
+      await values(["dashboard", "widget", "edit", "--width"], "6"),
+    ).toEqual(["6"]);
+    expect(await values(["build", "upload", "--vcs-provider"], "git")).toEqual([
+      "github",
+      "github_enterprise",
+      "gitlab",
+    ]);
+    expect(await values(["explore", "--agg"], "p9")).toEqual([
+      "p90",
+      "p95",
+      "p99",
+    ]);
+    expect(
+      await values(["dashboard", "widget", "add", "--query"], "count"),
+    ).toEqual(["count", "count_unique", "count_if", "count_at_least"]);
+    expect(
+      await values(["dashboard", "widget", "edit", "--sort"], "ep"),
+    ).toEqual(["eps", "epm"]);
+  });
+
+  test("event send --user offers the keys with their own User field", async () => {
+    expect(await values(["event", "send", "--user"], "")).toEqual([
+      "id:",
+      "email:",
+      "ip_address:",
+      "username:",
+    ]);
+  });
+
+  test("sourcemap --ext completes the default extensions as a list", async () => {
+    expect(await values(["sourcemap", "inject", "--ext"], ".js,.m")).toEqual([
+      ".js,.mjs",
     ]);
   });
 });

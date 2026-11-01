@@ -4,8 +4,8 @@
  * Tests for the project delete command in src/commands/project/delete.ts.
  * Uses spyOn to mock api-client and resolve-target for the func() body
  * without real HTTP calls or database access. The interactive type-out
- * confirmation tests use vi.mock() on node:tty and the logger module
- * to control the prompt.
+ * confirmation tests use vi.mock() on node:tty and the prompt module
+ * to control the answer.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -28,13 +28,12 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger to intercept the .prompt() call made by the module-scoped
-  // `log = logger.withTag("project.delete")` inside delete.ts.
+  // Stub the logger module-scoped as `log = logger.withTag("project.delete")`
+  // in delete.ts; the prompt module is mocked with `_mockPrompt` below.
   const _mockPrompt = vi.fn((): Promise<string | symbol> =>
     Promise.resolve("acme-corp/my-app"),
   );
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
@@ -42,7 +41,6 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     success: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     info: vi.fn(_noop),
     warn: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -64,6 +62,8 @@ vi.mock("node:tty", () => ({
   ...ttyExports,
   default: ttyExports,
 }));
+
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
 
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,
@@ -411,8 +411,8 @@ describe("project delete", () => {
  * Tests for the interactive type-out confirmation prompt.
  *
  * These rely on `vi.mock()` at the top of this file to stub `node:tty`
- * (so `isatty(0)` returns true) and the logger (so `.prompt()` returns a
- * controllable value).
+ * (so `isatty(0)` returns true) and the prompt module (so `prompt()`
+ * returns a controllable value).
  */
 describe("project delete — interactive confirmation", () => {
   let getProjectSpy: ReturnType<typeof spyOn>;

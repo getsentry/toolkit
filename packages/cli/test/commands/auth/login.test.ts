@@ -7,8 +7,8 @@
  * calls or database access.
  *
  * The interactive TTY prompt tests use vi.mock() at the top of this file
- * to stub node:tty (so isatty(0) returns true) and the logger module (so
- * `.prompt()` is controllable).
+ * to stub node:tty (so isatty(0) returns true) and the prompt module (so
+ * `prompt()` is controllable).
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -31,13 +31,12 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger module to intercept the .prompt() call made by the
-  // module-scoped `log = logger.withTag("auth.login")` in login.ts.
+  // Stub the logger module-scoped as `log = logger.withTag("auth.login")` in
+  // login.ts; the prompt module is mocked with `_mockPrompt` below.
   const _mockPrompt = vi.fn((): Promise<boolean | symbol> =>
     Promise.resolve(true),
   );
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
@@ -45,7 +44,6 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     success: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     info: vi.fn(_noop),
     warn: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -67,6 +65,8 @@ vi.mock("node:tty", () => ({
   ...ttyExports,
   default: ttyExports,
 }));
+
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
 
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,
@@ -806,7 +806,7 @@ describe("loginCommand.func --token path", () => {
  * Tests for the interactive TTY re-authentication prompt.
  *
  * Uses the module-level `vi.mock()` on node:tty (so `isatty(0)` returns
- * true) and the logger (so `.prompt()` is controllable).
+ * true) and the prompt module (so `prompt()` is controllable).
  */
 describe("login re-authentication interactive prompt", () => {
   let isAuthenticatedSpy: ReturnType<typeof spyOn>;

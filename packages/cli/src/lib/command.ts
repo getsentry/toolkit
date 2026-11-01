@@ -41,6 +41,13 @@ import type { Writer } from "../types/index.js";
 import { asRunningAppCommand } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
+import {
+  choiceListParser,
+  ORG_TARGET,
+  parseProjectSlug,
+  parseText,
+  withCompletionTarget,
+} from "./completion-target.js";
 import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { AuthError, CliError, OutputError } from "./errors.js";
@@ -50,6 +57,7 @@ import {
   ClearScreen,
   CommandOutput,
   type CommandReturn,
+  extractSchemaFieldPaths,
   extractSchemaFields,
   formatSchemaForHelp,
   type HumanRenderer,
@@ -266,7 +274,7 @@ export const JSON_FLAG = {
  */
 export const FIELDS_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseText,
   brief:
     "Comma-separated fields to include in JSON output (dot.notation supported)",
   optional: true as const,
@@ -286,7 +294,7 @@ export const FIELDS_FLAG = {
  */
 const ORG_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: withCompletionTarget(ORG_TARGET, (input: string) => input),
   brief: "Organization slug",
   optional: true as const,
   hidden: true as const,
@@ -300,7 +308,7 @@ const ORG_FLAG = {
  */
 const PROJECT_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseProjectSlug,
   brief: "Project slug",
   optional: true as const,
   hidden: true as const,
@@ -405,7 +413,8 @@ export function applyOrgProjectFlags(
 
 /**
  * Build the `--fields` flag definition, enriched with available field names
- * when a schema is registered on the output config.
+ * when a schema is registered on the output config. Its values complete
+ * every field path of the schema, one list item at a time.
  */
 // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
 function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
@@ -419,6 +428,7 @@ function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
   const fieldNames = schemaFields.map((f) => f.name).join(", ");
   return {
     ...FIELDS_FLAG,
+    parse: choiceListParser(extractSchemaFieldPaths(outputConfig.schema)),
     brief: `${FIELDS_FLAG.brief}. Available: ${fieldNames}`,
   };
 }

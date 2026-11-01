@@ -13,7 +13,7 @@
  */
 
 import { ValidationError } from "../errors.js";
-import { CURSOR_KEYWORDS } from "../list-command.js";
+import { CURSOR_KEYWORDS } from "../arg-parsing.js";
 import type { ResolvedTarget } from "../resolve-target.js";
 import { getApiBaseUrl } from "../sentry-client.js";
 import { getDatabase } from "./index.js";

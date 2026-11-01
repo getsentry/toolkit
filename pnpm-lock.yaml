@@ -474,6 +474,9 @@ importers:
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
+      '@sentry/logger':
+        specifier: workspace:*
+        version: link:../logger
       '@sentry/mcp-core':
         specifier: workspace:*
         version: link:../mcp-core
@@ -633,6 +636,21 @@ importers:
       yauzl:
         specifier: 3.4.0
         version: 3.4.0
+
+  packages/logger:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.16.0
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.12.9(typescript@5.9.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.16.0)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.16.0)(typescript@5.9.3))(vite@8.3.3(@types/node@22.16.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/mcp-cloudflare:
     dependencies:
@@ -13283,7 +13301,7 @@ snapshots:
 
   '@types/node-fetch@2.6.13':
     dependencies:
-      '@types/node': 24.13.5
+      '@types/node': 22.20.3
       form-data: 4.0.6
 
   '@types/node@18.19.130':
@@ -13338,7 +13356,7 @@ snapshots:
 
   '@types/sax@1.2.7':
     dependencies:
-      '@types/node': 24.13.5
+      '@types/node': 22.20.3
 
   '@types/semver@7.8.0': {}
 

@@ -9,7 +9,8 @@ import {
   metricAlertSource,
 } from "../../types/metric-alert.js";
 
-const ISSUE_MATCH_MODES = new Set(["all", "any"]);
+/** Match modes of an issue alert's filter group. */
+export const ISSUE_MATCH_MODES = ["all", "any"] as const;
 /** Deprecated dataset names that now route to `spans` with `is_transaction:true`. */
 const TRANSACTION_DATASET_NAMES = new Set(["transaction", "transactions"]);
 
@@ -24,6 +25,9 @@ const METRIC_TIME_WINDOWS = new Set([
   1, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440,
 ]);
 
+/** The `--time-window` values a metric alert accepts, offered by completion. */
+export const METRIC_TIME_WINDOW_VALUES = [...METRIC_TIME_WINDOWS].map(String);
+
 /** Parse and validate an "all" | "any" match mode flag. Returns `undefined` when absent. */
 export function parseMatchMode(
   value: string | undefined,
@@ -33,8 +37,8 @@ export function parseMatchMode(
     return;
   }
   const normalized = value.trim().toLowerCase();
-  if (ISSUE_MATCH_MODES.has(normalized)) {
-    return normalized as "all" | "any";
+  if ((ISSUE_MATCH_MODES as readonly string[]).includes(normalized)) {
+    return normalized as (typeof ISSUE_MATCH_MODES)[number];
   }
   throw new ValidationError(
     `${field} must be 'all' or 'any' (got ${JSON.stringify(value)}).`,
@@ -72,16 +76,19 @@ export function triggerLogicType(): "any-short" {
   return "any-short";
 }
 
+/** Statuses `--status` sets on an alert rule. */
+export const RULE_STATUSES = ["active", "disabled"] as const;
+
 /** Parse and validate an "active" | "disabled" status flag. Returns `undefined` when absent. */
 export function parseStatusFlag(
   value: string | undefined,
-): "active" | "disabled" | undefined {
+): (typeof RULE_STATUSES)[number] | undefined {
   if (value === undefined || value === "") {
     return;
   }
   const normalized = value.trim().toLowerCase();
-  if (normalized === "active" || normalized === "disabled") {
-    return normalized;
+  if ((RULE_STATUSES as readonly string[]).includes(normalized)) {
+    return normalized as (typeof RULE_STATUSES)[number];
   }
   throw new ValidationError(
     `Status must be 'active' or 'disabled' (got ${JSON.stringify(value)}).`,

@@ -7,7 +7,12 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDirectoryPath } from "../../lib/completion-target.js";
+import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
 import {
   colorTag,
   mdKvTable,
@@ -18,10 +23,11 @@ import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
-  type InjectResult,
   injectDirectory,
+  type InjectResult,
 } from "../../lib/sourcemap/inject.js";
 
 /** Result type for the inject command output. */
@@ -104,20 +110,20 @@ export const injectCommand = buildCommand({
     flags: {
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },
