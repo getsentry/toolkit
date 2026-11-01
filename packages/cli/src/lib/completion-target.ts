@@ -162,6 +162,9 @@ export const ARCHIVE_UNTIL_TARGET = "archive-until" satisfies CompletionTarget;
 /** Addresses a Local server can bind: loopback, then this machine's adapters. */
 export const BIND_HOST_TARGET = "bind-host" satisfies CompletionTarget;
 
+/** The running Local daemon's session IDs and unique labels. */
+export const LOCAL_SESSION_TARGET = "local-session" satisfies CompletionTarget;
+
 /** API paths relative to `/api/0/`, from the API schema. */
 export const API_ENDPOINT_TARGET = "api-endpoint" satisfies CompletionTarget;
 
@@ -349,6 +352,12 @@ export const parseArchiveUntil = identityParser(ARCHIVE_UNTIL_TARGET);
  * every interface (`0.0.0.0`) and the addresses of this machine's adapters.
  */
 export const parseBindHost = identityParser(BIND_HOST_TARGET);
+
+/**
+ * Parses a Local session ID or label, which the daemon resolves; completes
+ * the running daemon's sessions.
+ */
+export const parseLocalSession = identityParser(LOCAL_SESSION_TARGET);
 
 /** Parses an `api` endpoint; completes API schema paths. */
 export const parseApiEndpoint = identityParser(API_ENDPOINT_TARGET);

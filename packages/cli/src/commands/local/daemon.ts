@@ -21,7 +21,7 @@ import type { Server } from "node:http";
 import { join } from "node:path";
 import { isSea } from "../../lib/react-native/wrap-call.js";
 import { setTimeout as sleep } from "node:timers/promises";
-import { getConfigDir } from "../../lib/db/index.js";
+import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { formatLocalServerUrl } from "./ui.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -34,6 +34,11 @@ import {
   PORT_RETRY_TIMEOUT_MS,
   tryListen,
 } from "./server.js";
+import {
+  removeLocalSessionSnapshot,
+  writeLocalSessionSnapshot,
+} from "./session-snapshot.js";
+import { createLocalSessionStore, type LocalSession } from "./session-store.js";
 
 export const LOCAL_DAEMON_STATE_FILENAME = "local-control-plane.json";
 export const LOCAL_DAEMON_PROTOCOL_VERSION = 1;
@@ -424,8 +429,7 @@ export async function ensureLocalDaemon({
     throw new Error("The Local control-plane port must be non-zero.");
   const running = await getRunningLocalDaemon();
   if (running) return running;
-  const directory = getConfigDir();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directory = ensureConfigDir();
   let lock: Awaited<ReturnType<typeof open>>;
   try {
     lock = await open(startupLockPath(directory), "wx", 0o600);
@@ -510,11 +514,17 @@ export async function runLocalDaemonForeground({
   if (port === 0) {
     throw new Error("The Local control-plane port must be non-zero.");
   }
-  const directory = getConfigDir();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directory = ensureConfigDir();
   const releaseOwnership = await claimDaemonOwnership(directory);
   let listening: Awaited<ReturnType<typeof tryListen>> | undefined;
   let ownedState: LocalDaemonState | undefined;
+  const snapshotSessions = (sessions: readonly LocalSession[]) => {
+    try {
+      writeLocalSessionSnapshot(process.pid, sessions);
+    } catch (error) {
+      logger.debug("Could not write the Local session snapshot", error);
+    }
+  };
   try {
     const token = randomBytes(32).toString("base64url");
     let stop: (() => void) | undefined;
@@ -526,6 +536,8 @@ export async function runLocalDaemonForeground({
       host,
       port,
       onStop: () => stop?.(),
+      // For shell completion, which cannot ask the daemon
+      sessionStore: createLocalSessionStore({ onChange: snapshotSessions }),
     });
     listening = await tryListen(controlPlane.app, port, host);
     const state: LocalDaemonState = {
@@ -537,6 +549,8 @@ export async function runLocalDaemonForeground({
     };
     ownedState = state;
     await writeLocalDaemonState(directory, state);
+    // Replaces the sessions of a daemon that exited without removing them
+    snapshotSessions(controlPlane.sessionStore.list());
 
     let idleTimer: ReturnType<typeof setTimeout> | undefined;
     const pruneSessions = () => {
@@ -581,6 +595,13 @@ export async function runLocalDaemonForeground({
         current.token === ownedState.token
       ) {
         await removeLocalDaemonState(directory);
+      }
+      if (ownedState) {
+        try {
+          removeLocalSessionSnapshot();
+        } catch (error) {
+          logger.debug("Could not remove the Local session snapshot", error);
+        }
       }
     } finally {
       await releaseOwnership();

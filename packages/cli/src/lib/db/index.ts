@@ -148,8 +148,11 @@ export function getDbPath(): string {
   return join(getConfigDir(), DB_FILENAME);
 }
 
-function ensureConfigDir(): void {
-  mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
+/** Create the config directory, owner-only, if needed, and return its path. */
+export function ensureConfigDir(): string {
+  const directory = getConfigDir();
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return directory;
 }
 
 function setDbPermissions(): void {

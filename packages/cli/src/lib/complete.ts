@@ -418,6 +418,12 @@ const COMPLETERS = Object.freeze({
   dsn: flagEntityCompleter("dsn"),
   /** Loopback hosts, every interface, then the addresses of local adapters. */
   "bind-host": (partial) => completeBindHosts(partial),
+  /**
+   * The running Local daemon's sessions, in the first word: in
+   * `<session> <envelope>`, the second word is an ID only the daemon knows.
+   */
+  "local-session": (partial, slot) =>
+    slot.positionals.length > 0 ? [] : completeLocalSessions(partial),
   /** Cached tag keys of issues, described by their labels. */
   "tag-key": flagEntityCompleter("tag-key"),
   /**
@@ -1067,6 +1073,40 @@ function completeBindHosts(partial: string): Completion[] {
   return [...hosts]
     .filter(([host]) => host.startsWith(partial))
     .map(([value, description]) => ({ value, description }));
+}
+
+/**
+ * Sessions of the running Local daemon, from the snapshot it keeps for
+ * completion: their IDs, described by label and state, then the labels
+ * only one session has, which the commands take too. A label with
+ * whitespace is left out, since it would not stay one word.
+ */
+async function completeLocalSessions(partial: string): Promise<Completion[]> {
+  const { readLocalSessionSnapshot } =
+    await import("../commands/local/session-snapshot.js");
+  const sessions = readLocalSessionSnapshot();
+  const labelCounts = new Map<string, number>();
+  for (const { label } of sessions) {
+    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  }
+  const completions = new Map<string, string>();
+  for (const { id, label, state } of sessions) {
+    completions.set(id, label ? `${label} (${state})` : state);
+  }
+  for (const { id, label, state } of sessions) {
+    if (
+      label &&
+      labelCounts.get(label) === 1 &&
+      !WHITESPACE_RE.test(label) &&
+      !completions.has(label)
+    ) {
+      completions.set(label, `${state} session ${id}`);
+    }
+  }
+  return Array.from(completions, ([value, description]) => ({
+    value,
+    description,
+  })).filter(({ value }) => value.startsWith(partial));
 }
 
 /** Servers of stored accounts, described by the accounts on each. */
