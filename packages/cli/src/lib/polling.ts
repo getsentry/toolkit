@@ -120,7 +120,7 @@ export async function poll<T>(options: PollOptions<T>): Promise<T> {
 /**
  * Start an animated spinner that writes progress to stdout.
  *
- * Uses stdout so the spinner doesn't collide with consola log messages
+ * Uses stdout so the spinner doesn't collide with logger messages
  * on stderr. The spinner is erased before command output is written,
  * and is suppressed entirely in JSON mode and when stdout is not a TTY.
  *
@@ -188,7 +188,7 @@ export type WithProgressOptions = {
  *
  * The spinner uses the same braille frames as the Seer polling spinner,
  * giving a consistent look across all CLI commands. Progress output goes
- * to stdout so it doesn't collide with consola log messages on stderr.
+ * to stdout so it doesn't collide with logger messages on stderr.
  *
  * The spinner is suppressed when:
  * - `options.json` is true (JSON mode — no ANSI noise for agents/CI)

@@ -9,6 +9,8 @@
  */
 
 import { describe, expect, test } from "vitest";
+// Registers the CLI route map the help output is built from.
+import "../../src/app.js";
 import {
   isRecoverableUnknownCommand,
   isVersionRequest,

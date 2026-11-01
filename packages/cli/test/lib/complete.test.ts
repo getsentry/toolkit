@@ -898,6 +898,49 @@ describe("getCompletions: command paths", () => {
   });
 });
 
+describe("getCompletions: flag names", () => {
+  test("a partial starting with - completes the command's flags with their briefs", async () => {
+    expect(await getCompletions(["issue", "list"], "--li")).toEqual([
+      { value: "--limit", description: "Maximum number of issues to list" },
+    ]);
+    const all = await values(["issue", "list"], "-");
+    // Booleans and aliases too, but not hidden flags
+    expect(all).toEqual(expect.arrayContaining(["--json", "--limit", "-n"]));
+    expect(all).not.toContain("--log-level");
+    expect(await values(["issue", "list"], "--")).not.toContain("-n");
+  });
+
+  test("nested commands complete their own flags", async () => {
+    expect(await values(["alert", "issues", "list"], "--li")).toEqual([
+      "--limit",
+    ]);
+    expect(await values(["dashboard", "widget", "add"], "--q")).toEqual([
+      "--query",
+    ]);
+  });
+
+  test("flags already given are left out, by any spelling", async () => {
+    for (const given of [["--limit", "5"], ["-n", "5"], ["--limit=5"]]) {
+      const remaining = await values(["issue", "list", ...given], "-");
+      expect(remaining).not.toContain("--limit");
+      expect(remaining).not.toContain("-n");
+    }
+    expect(await values(["issue", "list", "--json"], "--j")).toEqual([]);
+  });
+
+  test("variadic flags may be given again", async () => {
+    expect(
+      await values(["alert", "issues", "create", "--action", "{}"], "--act"),
+    ).toEqual(["--action"]);
+  });
+
+  test("a flag after one that takes a value is a flag, not its value", async () => {
+    expect(await values(["issue", "list", "--limit"], "--j")).toEqual([
+      "--json",
+    ]);
+  });
+});
+
 describe("getCompletions: accounts", () => {
   function addAccount(host: string, email: string, userId: string): void {
     setAuthToken(`token-${userId}-${host}`, undefined, undefined, {

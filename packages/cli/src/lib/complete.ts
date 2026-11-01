@@ -37,6 +37,8 @@ import { queueCompletionTelemetry } from "./db/completion-telemetry.js";
 import { getProjectAliases } from "./db/project-aliases.js";
 import { getCachedProjectsForOrg } from "./db/project-cache.js";
 import { getCachedOrganizations } from "./db/regions.js";
+import { silenceReadonlyHandling } from "./db/resilient.js";
+import { getEnv } from "./env.js";
 import { ValidationError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
 import type { CommandCompletions } from "./introspect.js";
@@ -65,15 +67,30 @@ type Completion = {
 };
 
 /**
- * Main entry point for `sentry __complete`.
+ * Run `sentry __complete`.
  *
- * Called from the cli.ts fast-path. Parses the shell words to determine
- * what kind of completion is needed, queries the cache, and writes
- * results to stdout.
+ * `src/bin.ts` and the npm package's `dist/bin.cjs` (`dist/complete.cjs`)
+ * call this before anything else of the CLI loads, so a TAB press loads only
+ * this module's imports. `test/script/cli-startup.test.ts` keeps them free of
+ * `@sentry/node`, the API client, and the command tree.
+ *
+ * @param args - The words after `__complete`
+ */
+export async function runCompletion(args: string[]): Promise<void> {
+  // Keeps the database modules from requiring telemetry and `@sentry/node`
+  getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
+  // A read-only cli.db must not print a warning on every TAB press
+  silenceReadonlyHandling();
+  await handleComplete(args);
+}
+
+/**
+ * Complete the shell words in `args`: parses them to determine what kind of
+ * completion is needed, queries the cache, and writes results to stdout.
  *
  * @param args - The words after `__complete` (COMP_WORDS[1:] from the shell)
  */
-export async function handleComplete(args: string[]): Promise<void> {
+async function handleComplete(args: string[]): Promise<void> {
   const startMs = performance.now();
 
   // The last word is the partial being completed (may be empty)
@@ -137,7 +154,33 @@ type CompleterContext = {
 };
 
 /** What the word being completed is, and the positionals typed before it. */
-type CompletionSlot = CompleterContext & { kind: CompletionTarget | null };
+type CompletionSlot = CompleterContext & {
+  kind: CompletionTarget | null;
+  /** The flags the word can name if it starts with `-`. */
+  flagNames: Completion[];
+};
+
+/** A flag's spelling without the value given with `=` (`--period=7d`). */
+const FLAG_VALUE_RE = /=.*$/s;
+
+/**
+ * The command's visible flags and their aliases, with their briefs, except
+ * those already in `words`. Variadic flags may be given again.
+ */
+function remainingFlagNames(
+  command: CommandCompletions[string],
+  words: readonly string[],
+): Completion[] {
+  const given = new Set(words.map((word) => word.replace(FLAG_VALUE_RE, "")));
+  return Object.entries(command.flagNames ?? {}).flatMap(
+    ([name, { brief, aliases = [], variadic }]) => {
+      const spellings = [name, ...aliases];
+      return !variadic && spellings.some((spelling) => given.has(spelling))
+        ? []
+        : spellings.map((value) => ({ value, description: brief }));
+    },
+  );
+}
 
 /**
  * Find the argument the word being completed fills.
@@ -148,7 +191,9 @@ type CompletionSlot = CompleterContext & { kind: CompletionTarget | null };
  * `--period=7d` is a single word. Other `-`-prefixed words are flags, and
  * like Stricli's scanner, a flag ends the one before it instead of becoming
  * its value: an `inferEmpty` flag such as `--time-series` then takes an
- * empty value, and any other flag would be a usage error anyway.
+ * empty value, and any other flag would be a usage error anyway. For the
+ * same reason, a word starting with `-` names a flag even after one that
+ * takes a value.
  *
  * @returns The slot, or `undefined` when the words name no command with
  *   completion metadata
@@ -170,11 +215,13 @@ function findSlot(words: string[]): CompletionSlot | undefined {
         positionals.push(word);
       }
     }
+    const flagNames = remainingFlagNames(command, words.slice(length));
     if (flag !== undefined) {
       return {
         kind: command.flags[flag] ?? null,
         positionals,
         choices: command.choices?.[flag],
+        flagNames,
       };
     }
     // A variadic positional is a single parameter that every word fills.
@@ -185,7 +232,12 @@ function findSlot(words: string[]): CompletionSlot | undefined {
       command.variadic && positionals.length > 0
         ? undefined
         : command.choices?.[index];
-    return { kind: command.positionals[index] ?? null, positionals, choices };
+    return {
+      kind: command.positionals[index] ?? null,
+      positionals,
+      choices,
+      flagNames,
+    };
   }
   return;
 }
@@ -426,9 +478,10 @@ function completePeriods(partial: string): Completion[] {
  * Determine what completions to provide based on the command context.
  *
  * Finds the argument the partial fills (a positional or a flag value) and
- * runs the completer for the kind its parser declares. Words that name a
- * nested route group (`alert issues`) complete its subcommands instead;
- * the shell scripts embed the first two levels themselves.
+ * runs the completer for the kind its parser declares. A partial starting
+ * with `-` completes the command's flag names instead. Words that name a
+ * nested route group (`alert issues`) complete its subcommands; the shell
+ * scripts embed the first two levels themselves.
  *
  * @param precedingWords - Words before the partial (determines context)
  * @param partial - The current partial word being completed
@@ -442,6 +495,9 @@ export async function getCompletions(
     return precedingWords.length >= 2
       ? completeSubcommands(precedingWords.join(" "), partial)
       : [];
+  }
+  if (partial.startsWith("-")) {
+    return slot.flagNames.filter(({ value }) => value.startsWith(partial));
   }
   return slot.kind ? await COMPLETERS[slot.kind](partial, slot) : [];
 }

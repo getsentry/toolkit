@@ -33,6 +33,7 @@ import { CommandOutput } from "../lib/formatters/output.js";
 import { fuzzyMatch } from "../lib/fuzzy.js";
 import { getCommandApiReferences, type RouteMap } from "../lib/introspect.js";
 import { filterByName, isGlobFilter } from "../lib/list-filter.js";
+import { getRoutes } from "../lib/route-registry.js";
 
 // ---------------------------------------------------------------------------
 // Output data types
@@ -543,9 +544,8 @@ export const schemaCommand = buildCommand({
       });
     }
 
-    const { routes } = await import("../app.js");
     const references = getCommandApiReferences(
-      routes as unknown as RouteMap,
+      getRoutes() as unknown as RouteMap,
       parseEndpointQuery(query).text,
     );
 

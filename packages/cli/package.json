@@ -26,6 +26,7 @@
   },
   "files": [
     "dist/bin.cjs",
+    "dist/complete.cjs",
     "dist/index.cjs",
     "dist/index.mjs",
     "dist/index.d.cts",
@@ -124,7 +125,6 @@
     "binpatch": "^0.4.2",
     "chalk": "^5.6.2",
     "cli-highlight": "^2.1.11",
-    "consola": "^3.4.2",
     "esbuild": "^0.28.1",
     "fast-check": "^4.8.0",
     "fflate": "^0.8.3",

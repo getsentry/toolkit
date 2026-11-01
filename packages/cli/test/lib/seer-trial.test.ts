@@ -178,7 +178,7 @@ describe("promptAndStartTrial", () => {
 
   test("returns false when user cancels with Ctrl+C (Symbol)", async () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_SEER_TRIAL]);
-    // consola returns Symbol(clack:cancel) on Ctrl+C
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C
     loggerPromptSpy.mockResolvedValue(Symbol("clack:cancel"));
 
     const result = await promptAndStartTrial("test-org", "no_budget");

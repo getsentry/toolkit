@@ -22,25 +22,16 @@
 
 import { pathToFileURL } from "node:url";
 
-import {
-  getAgentProvider,
-  getResolvedProviderType,
-  setAgentProvider,
-  setProviderBaseUrls,
-} from "@sentry/mcp-core/internal/agents/provider-factory";
-import { buildServer } from "@sentry/mcp-core/server";
+// Keep static imports light: `--help`, `--version`, and argument errors must
+// not load the tools, the AI SDK, or the Sentry SDK. The server stack is
+// imported in runMcpServer() once the server is about to start.
 import { SKILLS } from "@sentry/mcp-core/skills";
-import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { LIB_VERSION } from "@sentry/mcp-core/version";
-import * as Sentry from "@sentry/node";
-import { resolveAccessToken } from "./auth/resolve-token";
-import { authCommand } from "./cli/commands/auth";
 import { printCliLine } from "./cli/output";
 import { merge, parseArgv, parseEnv } from "./cli/parse";
 import { finalize } from "./cli/resolve";
 import type { PartiallyResolvedConfig } from "./cli/types";
 import { buildUsage } from "./cli/usage";
-import { startStdio } from "./transports/stdio";
 
 const defaultPackageName = "@sentry/mcp-server";
 const allSkills = Object.keys(SKILLS) as ReadonlyArray<
@@ -95,6 +86,7 @@ export async function runMcpServer(
         new Error("Use `sentry auth` to manage credentials for `sentry mcp`."),
       );
     }
+    const { authCommand } = await import("./cli/commands/auth");
     await authCommand(rawArgs.slice(1));
     return;
   }
@@ -130,10 +122,31 @@ export async function runMcpServer(
           ...partialCfg,
           accessToken,
         }))
-      : resolveAccessToken(partialCfg)
+      : import("./auth/resolve-token").then(({ resolveAccessToken }) =>
+          resolveAccessToken(partialCfg),
+        )
   ).catch((err) => {
     die(err);
   });
+
+  const [
+    {
+      getAgentProvider,
+      getResolvedProviderType,
+      setAgentProvider,
+      setProviderBaseUrls,
+    },
+    { buildServer },
+    { sentryBeforeSend },
+    Sentry,
+    { startStdio },
+  ] = await Promise.all([
+    import("@sentry/mcp-core/internal/agents/provider-factory"),
+    import("@sentry/mcp-core/server"),
+    import("@sentry/mcp-core/telem/sentry"),
+    import("@sentry/node"),
+    import("./transports/stdio"),
+  ]);
 
   // Configure embedded agent provider
   if (cfg.agentProvider) {

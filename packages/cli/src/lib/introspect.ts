@@ -427,6 +427,20 @@ type CommandCompletion = {
    * has none.
    */
   choices?: Record<string, readonly string[]>;
+  /**
+   * Every visible flag by its `--name` spelling, booleans included, for
+   * completing flag names. Omitted when the command has none.
+   */
+  flagNames?: Record<string, FlagName>;
+};
+
+/** What flag-name completion shows for one flag. */
+type FlagName = {
+  brief: string;
+  /** Its one-letter spellings (`-n`). */
+  aliases?: string[];
+  /** Whether it may be given more than once. */
+  variadic?: true;
 };
 
 /** {@link CommandCompletion} per command path (without the `sentry` prefix). */
@@ -484,6 +498,15 @@ function getCommandCompletion(command: Command): CommandCompletion {
       }
     }
   }
+  const flagNames: Record<string, FlagName> = {};
+  for (const [name, def] of Object.entries(flags)) {
+    if (!def.hidden) {
+      flagNames[`--${name}`] = {
+        brief: def.brief ?? "",
+        ...(def.variadic ? { variadic: true } : {}),
+      };
+    }
+  }
   for (const [alias, name] of Object.entries(aliases)) {
     const kind = flagKinds[`--${name}`];
     if (kind !== undefined) {
@@ -493,6 +516,10 @@ function getCommandCompletion(command: Command): CommandCompletion {
     if (values) {
       choices[`-${alias}`] = values;
     }
+    const flagName = flagNames[`--${name}`];
+    if (flagName) {
+      flagName.aliases = [...(flagName.aliases ?? []), `-${alias}`].sort();
+    }
   }
   return {
     positionals,
@@ -501,12 +528,15 @@ function getCommandCompletion(command: Command): CommandCompletion {
     ...(Object.keys(choices).length > 0
       ? { choices: sortedByKey(choices) }
       : {}),
+    ...(Object.keys(flagNames).length > 0
+      ? { flagNames: sortedByKey(flagNames) }
+      : {}),
   };
 }
 
 /**
  * Collect the completion metadata of every visible command that completes
- * at least one positional or flag value.
+ * at least one positional or flag value, or has a visible flag.
  *
  * Paths are space-separated route segments without the binary name (e.g.
  * `"issue list"`); nested groups contribute their full path. Sorted for
@@ -534,7 +564,7 @@ export function extractCommandCompletions(
         ...completion.positionals,
         ...Object.values(completion.flags),
       ];
-      if (kinds.some((kind) => kind !== null)) {
+      if (completion.flagNames || kinds.some((kind) => kind !== null)) {
         result[segments.join(" ")] = completion;
       }
     }

@@ -244,7 +244,7 @@ describe("viewCommand.func", () => {
     });
 
     test("still outputs found logs when some IDs are missing", async () => {
-      // Only ID1 found, ID2 and ID3 missing — warning goes through consola
+      // Only ID1 found, ID2 and ID3 missing — warning goes through the logger
       getLogsSpy.mockResolvedValue([makeSampleLog(ID1)]);
 
       const { context, stdoutWrite } = createMockContext();

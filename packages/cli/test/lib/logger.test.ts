@@ -5,17 +5,26 @@
  * attachSentryReporter, and the logger instance configuration.
  */
 
+import { createConsolaReporter } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   attachSentryReporter,
   getEnvLogLevel,
   LOG_LEVEL_ENV_VAR,
   LOG_LEVEL_NAMES,
+  type LogObject,
   logger,
   parseLogLevel,
   printLine,
   setLogLevel,
 } from "../../src/lib/logger.js";
+
+const clack = vi.hoisted(() => ({
+  confirm: vi.fn(),
+  text: vi.fn(),
+}));
+
+vi.mock("@clack/prompts", () => clack);
 
 describe("parseLogLevel", () => {
   test("maps known level names to correct numeric values", () => {
@@ -48,7 +57,7 @@ describe("parseLogLevel", () => {
 });
 
 describe("LOG_LEVEL_NAMES", () => {
-  test("contains all expected level names with index = consola numeric level", () => {
+  test("contains all expected level names with index = numeric level", () => {
     expect(LOG_LEVEL_NAMES).toEqual([
       "error", // 0
       "warn", // 1
@@ -184,7 +193,7 @@ describe("setLogLevel", () => {
 });
 
 describe("logger instance", () => {
-  test("is a consola instance with expected methods", () => {
+  test("exposes the log methods", () => {
     expect(typeof logger.info).toBe("function");
     expect(typeof logger.debug).toBe("function");
     expect(typeof logger.warn).toBe("function");
@@ -271,13 +280,150 @@ describe("attachSentryReporter", () => {
   test("can be called without error", () => {
     // attachSentryReporter is idempotent and safe to call even when
     // Sentry is not initialized (it catches errors internally)
-    expect(() => attachSentryReporter()).not.toThrow();
+    expect(() => attachSentryReporter(createConsolaReporter())).not.toThrow();
   });
 
   test("is idempotent (second call is a no-op)", () => {
     // First call may or may not succeed depending on Sentry state
-    attachSentryReporter();
+    attachSentryReporter(createConsolaReporter());
     // Second call should be a no-op due to internal guard
-    expect(() => attachSentryReporter()).not.toThrow();
+    expect(() => attachSentryReporter(createConsolaReporter())).not.toThrow();
+  });
+});
+
+describe("reporters", () => {
+  let originalLevel: number;
+  let records: LogObject[];
+  let stderr: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    originalLevel = logger.level;
+    records = [];
+    stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    setLogLevel(originalLevel);
+    stderr.mockRestore();
+  });
+
+  test("receive consola-shaped records that Sentry's reporter reads", () => {
+    // The level and reporter list are shared, so a reporter added through the
+    // root logger also sees records from scoped loggers.
+    logger.addReporter({ log: (logObj) => records.push(logObj) });
+    const scoped = logger.withTag("upgrade").withTag("delta");
+    setLogLevel(3);
+
+    scoped.warn("Patch %s failed", "0.13.0");
+    scoped.debug("dropped above the level");
+
+    expect(records).toEqual([
+      {
+        date: expect.any(Date),
+        args: ["Patch %s failed", "0.13.0"],
+        type: "warn",
+        level: 1,
+        tag: "upgrade:delta",
+      },
+    ]);
+  });
+});
+
+describe("stderr output", () => {
+  const ENV_KEYS = ["CI", "TEST", "NODE_ENV", "NO_COLOR", "FORCE_COLOR"];
+  let savedEnv: Record<string, string | undefined>;
+  let stderr: ReturnType<typeof vi.spyOn>;
+
+  /** Text written to stderr so far. */
+  const written = () =>
+    stderr.mock.calls.map((call) => String(call[0])).join("");
+
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(
+      ENV_KEYS.map((key) => [key, process.env[key]]),
+    );
+    stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedEnv[key];
+      }
+    }
+    stderr.mockRestore();
+  });
+
+  test("writes plain [type] [tag] lines in tests and CI", () => {
+    process.env.CI = "true";
+    logger.withTag("auth").info("Logged in as %s", "jane");
+    expect(written()).toBe("[info] [auth] Logged in as jane\n");
+  });
+
+  test("writes an error's message, stack, and cause but not its other properties", () => {
+    process.env.CI = "true";
+    const error = Object.assign(
+      new Error("Request failed", { cause: new Error("socket hang up") }),
+      { response: { headers: { authorization: "Bearer secret" } } },
+    );
+
+    logger.warn("Upload failed:", error);
+
+    const output = written();
+    expect(output).toMatch(/^\[warn\] Upload failed: Request failed\n {2}at /);
+    expect(output).toContain("\n\n  [cause]: socket hang up\n    at ");
+    expect(output).not.toContain("secret");
+  });
+
+  test("writes icons, badges, and inline code in the interactive layout", () => {
+    for (const key of ["CI", "TEST"]) {
+      delete process.env[key];
+    }
+    process.env.NODE_ENV = "production";
+    process.env.NO_COLOR = "1";
+
+    logger.withTag("auth").success("Run `sentry auth status`");
+    logger.warn("Token expires soon");
+
+    // Non-TTY stderr has no columns, so the tag leads the line.
+    expect(written()).toBe(
+      "[auth] ✔ Run sentry auth status\n\n WARN  Token expires soon\n\n",
+    );
+  });
+});
+
+describe("prompt", () => {
+  test("returns clack's cancel symbol instead of the initial value on Ctrl+C", async () => {
+    const cancel = Symbol("clack:cancel");
+    clack.confirm.mockResolvedValue(cancel);
+
+    const answer = await logger.prompt("Import from .sentryclirc?", {
+      type: "confirm",
+      initial: true,
+    });
+
+    expect(clack.confirm).toHaveBeenCalledWith({
+      message: "Import from .sentryclirc?",
+      initialValue: true,
+    });
+    expect(answer).toBe(cancel);
+  });
+
+  test("passes text prompt options through to clack", async () => {
+    clack.text.mockResolvedValue("my-project");
+
+    const answer = await logger
+      .withTag("delete")
+      .prompt("Type the project slug:", { type: "text", placeholder: "slug" });
+
+    expect(clack.text).toHaveBeenCalledWith({
+      message: "Type the project slug:",
+      placeholder: "slug",
+      initialValue: undefined,
+      defaultValue: undefined,
+    });
+    expect(answer).toBe("my-project");
   });
 });

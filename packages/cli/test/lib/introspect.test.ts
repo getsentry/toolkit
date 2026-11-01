@@ -527,16 +527,43 @@ describe("extractCommandCompletions", () => {
           "-q": ISSUE_QUERY_TARGET,
           "-t": null,
         },
+        flagNames: {
+          "--period": { brief: "", aliases: ["-t"] },
+          "--query": { brief: "", aliases: ["-q"] },
+          "--web": { brief: "", aliases: ["-w"] },
+        },
       },
       search: {
         positionals: [],
         variadic: false,
         flags: { "--query": ISSUE_QUERY_TARGET },
+        flagNames: { "--query": { brief: "" } },
       },
     });
   });
 
-  test("skips hidden commands, hidden groups, and commands without kinds", () => {
+  test("lists every visible flag's name, brief, aliases, and repeatability", () => {
+    const create = makeCommand({
+      parameters: {
+        flags: {
+          json: { kind: "boolean", brief: "Output as JSON" },
+          tag: { kind: "parsed", brief: "A tag", variadic: true },
+          debug: { kind: "boolean", brief: "Internal", hidden: true },
+        },
+        aliases: { t: "tag", d: "debug" },
+      },
+    });
+
+    expect(
+      extractCommandCompletions(makeRouteMap([makeEntry("create", create)]))
+        .create?.flagNames,
+    ).toEqual({
+      "--json": { brief: "Output as JSON" },
+      "--tag": { brief: "A tag", aliases: ["-t"], variadic: true },
+    });
+  });
+
+  test("skips hidden commands, hidden groups, and commands with nothing to complete", () => {
     const annotated = commandWith(orgParser);
     const hiddenGroup = makeRouteMap([makeEntry("list", annotated)]);
     const topLevel = makeRouteMap([
@@ -544,7 +571,9 @@ describe("extractCommandCompletions", () => {
       makeEntry("internal", hiddenGroup, true),
       makeEntry(
         "plain",
-        makeCommand({ parameters: { flags: { period: { kind: "parsed" } } } }),
+        makeCommand({
+          parameters: { flags: { period: { kind: "parsed", hidden: true } } },
+        }),
       ),
     ]);
 
@@ -586,6 +615,10 @@ describe("extractCommandCompletions", () => {
           "-f": ["json", "text"],
           "0": ["bash", "zsh"],
         },
+        flagNames: {
+          "--format": { brief: "", aliases: ["-f"] },
+          "--mode": { brief: "" },
+        },
       },
     });
   });
@@ -617,6 +650,12 @@ describe("extractCommandCompletions", () => {
         choices: {
           "--fields": ["id", "title"],
           "--sort": ["newest", "oldest"],
+        },
+        flagNames: {
+          "--fields": { brief: "" },
+          "--limit": { brief: "" },
+          "--port": { brief: "" },
+          "--sort": { brief: "" },
         },
       },
     });

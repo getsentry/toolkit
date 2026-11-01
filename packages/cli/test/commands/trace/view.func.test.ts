@@ -717,7 +717,7 @@ describe("viewCommand.func", () => {
       "test-org/test-project",
     );
 
-    // Command should complete (warning goes to consola, not stdout)
+    // Command should complete (warning goes to the logger, not stdout)
     expect(getDetailedTraceSpy).toHaveBeenCalled();
   });
 

@@ -16,6 +16,7 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
+import { createResilientDatabase } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
 import { Database } from "./sqlite.js";
 
@@ -38,9 +39,9 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Probability of running cleanup on write operations */
 const CLEANUP_PROBABILITY = 0.1;
 
-/** Traced database wrapper (returned by getDatabase) */
+/** Wrapped database (returned by getDatabase) */
 let db: Database | null = null;
-/** Raw database without tracing (used for repair operations) */
+/** Raw, unwrapped database (used for repair operations) */
 let rawDb: Database | null = null;
 let dbOpenedPath: string | null = null;
 /**
@@ -223,17 +224,11 @@ export function getDatabase(): Database {
       migrateFromJson(rawDb);
     }
 
-    // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node (~100ms).
-    // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
-    if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
-      db = rawDb;
-    } else {
-      const { createTracedDatabase } = _require("../telemetry.js") as {
-        createTracedDatabase: (d: Database) => Database;
-      };
-      db = createTracedDatabase(rawDb);
-    }
+    // Both wrappers repair schema errors and skip read-only writes; the traced
+    // one also adds query spans when telemetry is on.
+    db =
+      lazyTelemetry()?.createTracedDatabase(rawDb) ??
+      createResilientDatabase(rawDb);
     dbOpenedPath = dbPath;
     registerExitHandler();
 
@@ -244,6 +239,40 @@ export function getDatabase(): Database {
     rawDb = null;
     throw error;
   }
+}
+
+/**
+ * `true` in the npm package's `dist/complete.cjs` (defined in
+ * `script/bundle.ts`), so esbuild drops the telemetry `require` below from
+ * that bundle. Undefined when running from source.
+ */
+declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
+
+/**
+ * The telemetry module, required lazily so the database modules never import
+ * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
+ * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
+ */
+function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
+  if (
+    (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
+      SENTRY_CLI_COMPLETION_BUILD) ||
+    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
+  ) {
+    return;
+  }
+  return _require("../telemetry.js") as typeof import("../telemetry.js");
+}
+
+/** Run a database operation in a `db.operation` span (telemetry's `withDbSpan`). */
+export function withDbSpan<T>(operation: string, fn: () => T): T {
+  const telemetry = lazyTelemetry();
+  return telemetry ? telemetry.withDbSpan(operation, fn) : fn();
+}
+
+/** Record a cache hit or miss (telemetry's `recordCacheHit`). */
+export function recordCacheHit(cacheName: string, hit: boolean): void {
+  lazyTelemetry()?.recordCacheHit(cacheName, hit);
 }
 
 /** Close the database connection (used for testing). */

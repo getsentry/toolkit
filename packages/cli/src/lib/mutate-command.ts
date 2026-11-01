@@ -208,7 +208,7 @@ export async function confirmByTyping(
     placeholder: expected,
   });
 
-  // consola prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
+  // The prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
   // Check type to avoid treating cancel as a valid response.
   if (typeof response !== "string") {
     return false;
