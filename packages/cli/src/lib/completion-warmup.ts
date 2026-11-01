@@ -8,14 +8,17 @@
  * (see `api/completion-seed.ts`), so without a warm-up field completion
  * offers nothing until the user runs `sentry attribute list`.
  *
- * `auth login` and `cli setup` (which `cli upgrade` runs) call
- * {@link warmAttributeCompletions}. It requests each dataset of a few orgs in
- * parallel and lets the fetch layer store the keys. It is best-effort: it
+ * `cli setup` (which `cli upgrade` runs) calls
+ * {@link warmAttributeCompletions}; `auth login` and the login at the end of
+ * a fresh install call {@link warmCachesAfterLogin}. The warm-up requests
+ * each dataset of a few orgs in parallel and lets the fetch layer store the
+ * keys. It is best-effort: it
  * never throws or prompts, logs only at debug level, and gives up after
  * {@link WARMUP_TIMEOUT_MS} so the command never looks stuck.
  */
 
 import { ATTRIBUTE_KINDS } from "./api/completion-seed.js";
+import { listOrganizationsUncached } from "./api-client.js";
 import { listTraceItemAttributes } from "./api/traces.js";
 import { hasStoredAuthCredentials } from "./db/auth.js";
 import {
@@ -149,4 +152,45 @@ export async function warmAttributeCompletions(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Warm the caches the next commands read, after a successful login.
+ *
+ * First the org + region cache, so the first real command doesn't pay the
+ * cold-start cost of `getUserRegions()` + fan-out to each region's org list
+ * endpoint (~800ms on a typical SaaS account). Then, with the account's orgs
+ * known, the attribute keys that field completion offers (see
+ * {@link warmAttributeCompletions}).
+ *
+ * Login has already printed success, so each step gets
+ * {@link WARMUP_TIMEOUT_MS}. An org list that takes longer is left to finish
+ * in the background and the attribute warm-up is skipped.
+ *
+ * Never throws: each cache is populated lazily by the next command that
+ * needs it anyway.
+ */
+export async function warmCachesAfterLogin(): Promise<void> {
+  const listed = listOrganizationsUncached().then(
+    () => true,
+    (error: unknown) => {
+      log.debug("Could not warm the org cache after login", error);
+      return false;
+    },
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => {
+      log.debug("Org list is still loading; not warming attribute keys");
+      resolve(false);
+    }, WARMUP_TIMEOUT_MS);
+  });
+  try {
+    if (!(await Promise.race([listed, timedOut]))) {
+      return;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  await warmAttributeCompletions();
 }

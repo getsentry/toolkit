@@ -5,6 +5,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as apiClient from "../../src/lib/api-client.js";
 import { getCompletions } from "../../src/lib/complete.js";
 import {
   MAX_RECENT_ORGS,
@@ -12,6 +14,7 @@ import {
   RECENT_ORG_WINDOW_MS,
   WARMUP_TIMEOUT_MS,
   warmAttributeCompletions,
+  warmCachesAfterLogin,
 } from "../../src/lib/completion-warmup.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import {
@@ -246,5 +249,55 @@ describe("warmAttributeCompletions", () => {
       expect(elapsed).toBeLessThan(WARMUP_TIMEOUT_MS + 1000);
       expect(aborted).toHaveLength(3);
     });
+  });
+});
+
+describe("warmCachesAfterLogin", () => {
+  beforeEach(() => {
+    setAuthToken("test-token");
+    mockAttributes(async () => Response.json([]));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("lists orgs, then warms the orgs that list cached", async () => {
+    vi.spyOn(apiClient, "listOrganizationsUncached").mockImplementation(
+      async () => {
+        seedOrgs("acme");
+        return [];
+      },
+    );
+
+    await warmCachesAfterLogin();
+
+    expect(new Set(requests.map((r) => r.org))).toEqual(new Set(["acme"]));
+    expect(requests).toHaveLength(3);
+  });
+
+  test("skips the attribute warm-up when the org list fails", async () => {
+    vi.spyOn(apiClient, "listOrganizationsUncached").mockRejectedValue(
+      new Error("offline"),
+    );
+    seedOrgs("acme");
+
+    await expect(warmCachesAfterLogin()).resolves.toBeUndefined();
+    expect(requests).toEqual([]);
+  });
+
+  test("skips the attribute warm-up when the org list stalls", async () => {
+    vi.spyOn(apiClient, "listOrganizationsUncached").mockReturnValue(
+      new Promise(() => {
+        // never settles
+      }),
+    );
+    seedOrgs("acme");
+
+    const started = Date.now();
+    await expect(warmCachesAfterLogin()).resolves.toBeUndefined();
+
+    expect(Date.now() - started).toBeLessThan(WARMUP_TIMEOUT_MS + 1000);
+    expect(requests).toEqual([]);
   });
 });

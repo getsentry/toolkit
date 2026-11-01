@@ -43,6 +43,15 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => ({
   ensureCurrentOAuthScopes: vi.fn(),
 }));
 
+vi.mock("../../../src/lib/completion-warmup.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/completion-warmup.js")
+  >()),
+  warmCachesAfterLogin: vi.fn(async () => {
+    // no-op: covered by test/lib/completion-warmup.test.ts
+  }),
+}));
+
 vi.mock("../../../src/lib/windows-path.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../../src/lib/windows-path.js")
@@ -51,6 +60,7 @@ vi.mock("../../../src/lib/windows-path.js", async (importOriginal) => ({
 }));
 
 import { app } from "../../../src/app.js";
+import { warmCachesAfterLogin } from "../../../src/lib/completion-warmup.js";
 import type { SentryContext } from "../../../src/context.js";
 import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
 import {
@@ -965,6 +975,7 @@ describe("sentry cli setup", () => {
         existingBinary?: boolean;
         install?: boolean;
         method?: string;
+        completions?: boolean;
       } = {},
     ) {
       const sourcePath = join(testDir, "sentry-download");
@@ -1002,7 +1013,7 @@ describe("sentry cli setup", () => {
               "--method",
               options.method ?? "curl",
               "--no-modify-path",
-              "--no-completions",
+              ...(options.completions ? [] : ["--no-completions"]),
               "--no-agent-skills",
               ...(options.flags ?? []),
             ],
@@ -1029,6 +1040,25 @@ describe("sentry cli setup", () => {
       expect(fixture.context.process.exitCode).toBe(0);
       expect(fixture.getOutput()).toContain("Authenticated with Sentry.");
     });
+
+    test.each([
+      [true, 1],
+      [false, 0],
+    ])(
+      "warms caches for the new login when completions=%s",
+      async (completions, calls) => {
+        vi.mocked(interactiveLogin.runInteractiveLogin).mockResolvedValue({
+          method: "oauth",
+          configPath: getConfigDir(),
+        });
+        vi.mocked(warmCachesAfterLogin).mockClear();
+
+        await createInstall({ completions }).run();
+
+        expect(interactiveLogin.runInteractiveLogin).toHaveBeenCalledOnce();
+        expect(warmCachesAfterLogin).toHaveBeenCalledTimes(calls);
+      },
+    );
 
     test.each([0, 1, 2])("skips login when fd %i is not a TTY", async (fd) => {
       vi.mocked(isatty).mockImplementation((candidate) => candidate !== fd);

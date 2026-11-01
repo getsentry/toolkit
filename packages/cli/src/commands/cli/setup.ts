@@ -31,6 +31,7 @@ import {
 import {
   SETUP_REFRESH_AFTER_MS,
   warmAttributeCompletions,
+  warmCachesAfterLogin,
 } from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
 import { getAuthConfig } from "../../lib/db/auth.js";
@@ -848,6 +849,10 @@ export const setupCommand = buildCommand({
         const result = await runInteractiveLogin();
         if (result) {
           log.success("Authenticated with Sentry.");
+          // The warm-up above ran before this login stored a token.
+          if (!flags["no-completions"]) {
+            await warmCachesAfterLogin();
+          }
         } else {
           log.info("Run 'sentry auth login' to authenticate later.");
         }
