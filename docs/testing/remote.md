@@ -647,7 +647,7 @@ pnpm dev
 # Example: Don't query all projects repeatedly
 
 # For testing, use mocked responses instead
-cd packages/mcp-server
+cd packages/mcp-core
 pnpm test
 ```
 

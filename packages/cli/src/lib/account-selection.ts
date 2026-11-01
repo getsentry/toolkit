@@ -4,7 +4,6 @@
  * and keep the default URL pointed at the active account's server.
  */
 
-import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import {
   type AccountSummary,
@@ -16,7 +15,7 @@ import {
 import { getDefaultUrl, setDefaultUrl } from "./db/defaults.js";
 import { ContextError, ResolutionError } from "./errors.js";
 import { formatAccountLabel } from "./formatters/accounts.js";
-import { interactivePromptsAllowed } from "./interactive-prompts.js";
+import { canShowSelectPrompt, selectWithFilter } from "./select-prompt.js";
 import { logger } from "./logger.js";
 
 const log = logger.withTag("auth.accounts");
@@ -112,14 +111,13 @@ export async function promptForAccount(
   message: string,
   command: string,
 ): Promise<AccountSummary | undefined> {
-  if (!(interactivePromptsAllowed() && isatty(0) && isatty(1))) {
+  if (!canShowSelectPrompt()) {
     throw new ContextError(
       "Account",
       `${command} <email|username|account-id>`,
       accounts.map(describeAccount),
     );
   }
-  const { selectWithFilter } = await import("./init/ui/ink-ui.js");
   const selected = await selectWithFilter({
     message,
     options: accounts.map((a) => ({

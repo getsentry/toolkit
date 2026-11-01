@@ -7,7 +7,9 @@ import pkg from "../package.json";
 import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
 import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
 import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
+import { zodV3StubPlugin } from "./lib/zod-v3-stub-plugin.js";
 import { buildCoreDeclarations, SDK_TYPES_PATH } from "./sdk-declarations.js";
+import { requireAliasPlugin } from "./lib/require-alias-plugin.js";
 import { textImportPlugin } from "./text-import-plugin.js";
 
 const VERSION = pkg.version;
@@ -159,39 +161,11 @@ const sentrySourcemapPlugin: Plugin = {
 };
 
 // Always inject debug IDs (even without auth token); upload is gated inside the plugin
-/**
- * Files that use `_require()` for lazy imports. The `require-alias` plugin
- * rewrites `_require(` → `require(` in these so esbuild resolves them at
- * bundle time. `db/sqlite` is included so the WASM SQLite fallback
- * (`node-sqlite3-wasm`) is actually inlined into the npm bundle — otherwise
- * it stays a runtime `require()` that fails in a real install (the driver is
- * a devDependency, not shipped). `node:sqlite` in the same file stays a
- * builtin and is left external by esbuild regardless.
- * `formatters/json` loads its generated parser only when --fields is parsed.
- * `formatters/highlight` loads cli-highlight only on the first code block.
- */
-const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
-const REQUIRE_ALIAS_RE = /\b_require\(/g;
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.
 // binpatch) import from "zlib", which esbuild also treats as external builtin.
 const NODE_ZLIB_RE = /^(?:node:)?zlib$/;
 const ANY_RE = /.*/;
-
-/** Transform _require() → require() so esbuild resolves lazy relative requires. */
-const requireAliasPlugin: Plugin = {
-  name: "require-alias",
-  setup(b) {
-    b.onLoad({ filter: REQUIRE_ALIAS_FILTER }, async (args) => {
-      const source = await readFile(args.path, "utf-8");
-      return {
-        contents: source.replace(REQUIRE_ALIAS_RE, "require("),
-        loader: args.path.endsWith(".tsx") ? "tsx" : "ts",
-      };
-    });
-  },
-};
 
 /**
  * ESM-only: make `node:zlib` imports resolve through a namespace shim so that
@@ -256,6 +230,7 @@ const zlibNamespaceShimPlugin: Plugin = {
 const plugins: Plugin[] = [
   sentrySourcemapPlugin,
   zodEnglishLocalesPlugin,
+  zodV3StubPlugin,
   textImportPlugin,
   requireAliasPlugin,
 ];

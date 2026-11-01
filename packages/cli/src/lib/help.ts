@@ -6,6 +6,7 @@
  * Commands are auto-generated from Stricli's route structure.
  */
 
+import { asRunningAppCommand } from "./app-identity.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
 import { detectAgent } from "./detect-agent.js";
@@ -29,7 +30,6 @@ import {
   resolveCommandPath,
 } from "./introspect.js";
 import { getRoutes } from "./route-registry.js";
-import { graphicsBanner, graphicsBannerExtraRows } from "./sixel.js";
 
 const TAGLINE = "The command-line interface for Sentry";
 
@@ -282,6 +282,28 @@ function formatEnvVars(): string {
   }).join("\n");
 }
 
+/**
+ * Renders the help banner as a terminal image (kitty or sixel).
+ *
+ * The full CLI registers one from `app.ts` with {@link setGraphicsBanner}.
+ * Applications that don't, such as `@sentry/mcp-server`, show the block-art
+ * banner instead and leave the image code (`sixel.ts`, `pngjs`, `jpeg-js`)
+ * out of their bundle.
+ */
+export type GraphicsBanner = {
+  /** The image for `columns`, or undefined when the terminal can't show it. */
+  render: (columns: number) => string | undefined;
+  /** Rows the image occupies beyond its lines of text. */
+  extraRows: () => number;
+};
+
+let graphicsBanner: GraphicsBanner | undefined;
+
+/** Register the image banner for {@link printCustomHelp}. */
+export function setGraphicsBanner(banner: GraphicsBanner | undefined): void {
+  graphicsBanner = banner;
+}
+
 /** Options for {@link printCustomHelp}. */
 type CustomHelpOptions = {
   /**
@@ -311,13 +333,14 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
     // Prefer a real kitty/sixel image on capable terminals; otherwise fall back
     // to the block-art banner sized to the terminal width (returns "" only when
     // the terminal is too narrow for even the compact mark).
-    const image = graphicsBanner(cols);
+    const graphics = graphicsBanner;
+    const image = graphics?.render(cols);
     const banner = image ?? formatBanner(cols);
     if (banner) {
       header.push("");
       header.push(banner);
       header.push("");
-      imageExtraRows = image ? graphicsBannerExtraRows() : 0;
+      imageExtraRows = image && graphics ? graphics.extraRows() : 0;
     }
   }
 
@@ -836,7 +859,7 @@ function formatCommandHuman(cmd: CommandInfo): string {
  */
 function formatGroupHuman(group: RouteInfo): string {
   const lines: string[] = [];
-  lines.push(`sentry ${group.name}`);
+  lines.push(asRunningAppCommand(`sentry ${group.name}`));
   lines.push("");
   lines.push(`  ${group.brief}`);
   lines.push("");

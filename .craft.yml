@@ -3,9 +3,11 @@ workspaces:
   packages/cli:
     changelog:
       policy: auto
-      # The CLI release also ships the documentation workspace.
+      # The CLI release also ships the documentation workspace and
+      # @sentry/mcp-server.
       includePaths:
         - apps/cli-docs
+        - packages/mcp-server
       aiSummary:
         llm:
           model: gpt-5.6-luna-utility
@@ -24,10 +26,19 @@ workspaces:
           Build:
             - "/^sentry-.*$/"
             - "npm-package"
+            - "mcp-server-npm-package"
             - "vercel"
     targets:
       - name: npm
         includeNames: '/^sentry-\d.*\.tgz$/'
+      # The standalone MCP server, published at the CLI's version.
+      - name: npm
+        id: "@sentry/mcp-server"
+        includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
+      # Lists that npm package in the MCP Registry. After the npm targets: the
+      # registry checks that npm serves the version.
+      - name: mcp-registry
+        manifest: server.json
       - name: github
         tagPrefix: "cli@"
       - name: vercel
@@ -114,16 +125,3 @@ workspaces:
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
       - name: npm
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
-  packages/mcp-server:
-    changelogPolicy: none
-    preReleaseCommand: >-
-      bash -c 'set -e; for package in packages/mcp-* packages/smoke-tests; do
-      (cd "$package" && npm version "$CRAFT_NEW_VERSION" --no-git-tag-version);
-      done'
-    releaseBranchPrefix: release/mcp
-    targets:
-      - name: github
-        includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
-      - name: npm
-        id: "@sentry/mcp-server"
-        includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'

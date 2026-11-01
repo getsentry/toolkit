@@ -7,11 +7,10 @@ on:
         description: Product to release
         required: true
         type: choice
-        default: mcp
+        default: cli
         options:
           - cli
           - logger
-          - mcp
       bump:
         description: Version bump type
         required: true
@@ -60,6 +59,8 @@ jobs:
         env:
           PRODUCT: ${{ inputs.product }}
         run: |
+          # Each product maps to a `.craft.yml` workspace. The `cli` release
+          # also publishes @sentry/mcp-server at the same version.
           case "$PRODUCT" in
             cli)
               workspace=packages/cli
@@ -68,10 +69,6 @@ jobs:
             logger)
               workspace=packages/logger
               package_path=packages/logger
-              ;;
-            mcp)
-              workspace=packages/mcp-server
-              package_path=packages/mcp-server
               ;;
             *)
               echo "::error::Unsupported product: $PRODUCT"

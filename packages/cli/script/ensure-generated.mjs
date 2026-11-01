@@ -40,7 +40,9 @@ const DOCS_OUTPUTS = [
 
 function run(script) {
   console.error(`Missing generated files; running \`pnpm run ${script}\`...`);
-  execSync(`pnpm run ${script}`, { stdio: "inherit" });
+  // Send generator output to stderr: `pnpm run cli mcp` serves JSON-RPC on
+  // stdout, so nothing else may write there.
+  execSync(`pnpm run ${script}`, { stdio: ["inherit", 2, "inherit"] });
 }
 
 /** The groups named on the command line, or every group when none are. */

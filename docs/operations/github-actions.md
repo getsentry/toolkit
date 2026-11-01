@@ -130,8 +130,8 @@ other fields are:
 - `roles`: names that `node scripts/ci-projects.mjs --roles NAME` resolves to
   the package name and path, so a specialized workflow need not hard-code them.
 
-For example, `@sentry/logger` and `@sentry/mcp-server` check their packed
-tarballs from a clean consumer project:
+For example, `@sentry/logger` checks its packed tarball from a clean consumer
+project:
 
 ```json
 {

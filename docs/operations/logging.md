@@ -16,7 +16,7 @@ Log levels are controlled by:
 
 **Important**: We use a custom LogTape sink that calls `Sentry.logger.*` methods to send logs to Sentry's Logs product. The `@logtape/sentry` package uses `captureException/captureMessage` which creates Issues instead of Logs.
 
-Implementation: `packages/mcp-server/src/telem/logging.ts`
+Implementation: `packages/mcp-core/src/telem/logging.ts`
 
 ## Stdio Transport Invariant: Logs MUST Go to Stderr
 
@@ -37,7 +37,7 @@ Regression history: #922 — LogTape's default level map sent `info`/`debug` rec
 ### logInfo() - Routine telemetry
 
 ```typescript
-import { logInfo } from "@sentry/mcp-server/telem/logging";
+import { logInfo } from "@sentry/mcp-core/telem/logging";
 
 logInfo("MCP server started", {
   loggerScope: ["server", "lifecycle"],
@@ -48,7 +48,7 @@ logInfo("MCP server started", {
 ### logWarn() - Operational warnings
 
 ```typescript
-import { logWarn } from "@sentry/mcp-server/telem/logging";
+import { logWarn } from "@sentry/mcp-core/telem/logging";
 
 logWarn("Rate limit approaching", {
   loggerScope: ["api", "rate-limit"],
@@ -59,7 +59,7 @@ logWarn("Rate limit approaching", {
 ### logError() - Operational errors (no Sentry issue)
 
 ```typescript
-import { logError } from "@sentry/mcp-server/telem/logging";
+import { logError } from "@sentry/mcp-core/telem/logging";
 
 logError(error, {
   loggerScope: ["tools", "fetch-trace"],
@@ -70,7 +70,7 @@ logError(error, {
 ### logIssue() - System errors (creates Sentry issue)
 
 ```typescript
-import { logIssue } from "@sentry/mcp-server/telem/logging";
+import { logIssue } from "@sentry/mcp-core/telem/logging";
 
 const eventId = logIssue(error, {
   loggerScope: ["oauth", "token-refresh"],
@@ -156,7 +156,7 @@ app.use(createRequestLogger(["cloudflare", "http"]));
 
 ## References
 
-- Implementation: `packages/mcp-server/src/telem/logging.ts`
+- Implementation: `packages/mcp-core/src/telem/logging.ts`
 - Error handling patterns: [Error Handling](../contributing/error-handling.md)
 - Monitoring and tracing: [Monitoring](monitoring.md)
 - LogTape docs: https://logtape.org/

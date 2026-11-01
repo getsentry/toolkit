@@ -57,6 +57,10 @@ program
   .option("--sentry-dsn <dsn>", "Sentry DSN for error reporting")
   .option("--experimental", "Enable experimental tools (/mcp?experimental=1)")
   .option(
+    "--stdio-bundle",
+    "Run the built @sentry/mcp-server bundle instead of `sentry mcp` from CLI source",
+  )
+  .option(
     "--list-tools",
     "Connect to the MCP server, list available tools, and exit without using an LLM",
   )
@@ -136,6 +140,7 @@ program
           host: sentryHost,
           sentryDsn: sentryDsn,
           useExperimental: options.experimental,
+          useBundle: options.stdioBundle,
         });
       } else {
         connection = await connectToRemoteMCPServer({

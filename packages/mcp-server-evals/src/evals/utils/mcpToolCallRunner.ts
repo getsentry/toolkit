@@ -25,7 +25,6 @@ export function McpToolCallTaskRunner(
       args: ["--filter", "@sentry/mcp-server-evals", "start"],
       env: {
         ...process.env,
-        SENTRY_ACCESS_TOKEN: "mocked-access-token",
         SENTRY_HOST: "sentry.io",
       },
     });

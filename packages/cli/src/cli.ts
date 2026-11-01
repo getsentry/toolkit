@@ -3,72 +3,39 @@
  * middleware, and error recovery. Shell completion (`__complete`) never gets
  * here: the bin entry points run `lib/complete.ts` without loading this module.
  *
+ * The runner does not know which commands exist: each binary passes a
+ * {@link CliEntry} that loads its own application. `sentry` (`bin.ts`,
+ * `index.ts`) runs every command; `@sentry/mcp-server` (`mcp-server.ts`) runs
+ * `mcp`, `auth`, and `help`, so its bundle leaves the rest out.
+ *
  * Extracted from `bin.ts` so the logic is testable and reusable without
  * top-level side effects. `bin.ts` remains a thin wrapper that registers
  * stream error handlers and calls `startCli()`.
  */
 
+import type { CliApplication } from "./lib/application.js";
 import { redactCredentialText } from "./lib/credential-redaction.js";
-import { getEnv } from "./lib/env.js";
 import { CliError, formatError } from "./lib/errors.js";
 import { buildTopLevelFlags } from "./lib/global-flags.js";
+import { preloadProjectContext } from "./lib/project-context.js";
+import type { CliRoutes } from "./lib/route-registry.js";
 import { initTimezone } from "./lib/timezone.js";
 
-/**
- * Preload project context: walk up from `cwd` once, finding both the
- * project root (for DSN detection) and `.sentryclirc` config (for
- * org/project defaults and env shim). Caches both results so later calls
- * to `findProjectRoot` and `loadSentryCliRc` are cache hits.
- */
-async function preloadProjectContext(cwd: string): Promise<void> {
-  // Snapshot env-token host BEFORE anything mutates env.SENTRY_HOST/URL
-  // (the .sentryclirc shim or the default-URL fallback below). Pins the
-  // env-token's trust scope to the user's shell, not a repo-local file.
-  const { captureEnvTokenHost } = await import("./lib/env-token-host.js");
-  captureEnvTokenHost();
-
-  const [{ findProjectRoot }, { setCachedProjectRoot }] = await Promise.all([
-    import("./lib/dsn/project-root.js"),
-    import("./lib/db/project-root-cache.js"),
-  ]);
-
-  const result = await findProjectRoot(cwd);
-  await setCachedProjectRoot(cwd, {
-    projectRoot: result.projectRoot,
-    reason: result.reason,
-  });
-
-  // Apply .sentryclirc env shim (token + URL). The URL trust check is
-  // deferred to buildCommand's wrapper where commands can opt out via
-  // skipRcUrlCheck (used by auth login/logout).
-  // Dynamic import: sentryclirc chains into db/index → sqlite and the logger
-  const { applySentryCliRcEnvShim } = await import("./lib/sentryclirc.js");
-  await applySentryCliRcEnvShim(cwd);
-
-  // Apply persistent URL default (lower priority than env vars and .sentryclirc).
-  const env = getEnv();
-  if (!(env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim())) {
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    try {
-      const { getDefaultUrl } = await import("./lib/db/defaults.js");
-      const url = getDefaultUrl();
-      if (url) {
-        env.SENTRY_URL = url;
-        const { markPersistedDefaultUrl } = await import("./lib/constants.js");
-        markPersistedDefaultUrl(url);
-      }
-    } catch {
-      // DB not available — skip
-    }
-  }
-}
+/** What a binary runs: its application. */
+export type CliEntry = {
+  /** Load the application. Loading it registers its routes. */
+  readonly loadApp: () => Promise<{
+    app: CliApplication;
+    routes: CliRoutes;
+  }>;
+};
 
 /**
  * Flags whose values must never be sent to telemetry.
  * Superset of `SENSITIVE_FLAGS` in `telemetry.ts` — includes `auth-token`
  * because raw argv may use either form before Stricli parses to camelCase.
  */
-const SENSITIVE_ARGV_FLAGS = new Set(["token", "auth-token"]);
+const SENSITIVE_ARGV_FLAGS = new Set(["token", "auth-token", "access-token"]);
 
 /**
  * Check whether an argv token is a sensitive flag that needs value redaction.
@@ -213,12 +180,7 @@ type ErrorMiddleware = (
   retryArgs: string[],
 ) => Promise<void>;
 
-/**
- * Return MCP's arguments when it is the command after leading global flags.
- *
- * MCP owns stdout for JSON-RPC, so CLI-level output flags are deliberately
- * ignored before it starts. Flags after `mcp` belong to the MCP server.
- */
+/** Index of the first token after a leading global flag, if `index` is one. */
 function skipLeadingGlobalFlag(
   cliArgs: readonly string[],
   index: number,
@@ -238,69 +200,115 @@ function skipLeadingGlobalFlag(
     : index + 2;
 }
 
-export function getMcpArgs(cliArgs: readonly string[]): string[] | undefined {
+/**
+ * Whether `cliArgs` runs the `mcp` command: `mcp` after any leading global
+ * flags, or no command at all when `mcp` is the default (`@sentry/mcp-server`).
+ *
+ * The stdio server owns stdout for JSON-RPC and reports its own telemetry, so
+ * the runner starts it without the CLI's telemetry, recovery middleware, and
+ * update check.
+ */
+export function isMcpInvocation(
+  routes: CliRoutes,
+  cliArgs: readonly string[],
+): boolean {
+  const mcp = routes.getRoutingTargetForInput("mcp");
+  if (!mcp) {
+    return false;
+  }
+  const isDefault = routes.getDefaultCommand() === mcp;
   for (let index = 0; index < cliArgs.length;) {
     const token = cliArgs[index] ?? "";
-    if (token === "--") {
-      return;
-    }
     if (!token.startsWith("-")) {
-      return token === "mcp" ? cliArgs.slice(index + 1) : undefined;
+      return token === "mcp";
     }
-
     const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
     if (nextIndex === undefined) {
-      return;
+      // `--` or a flag that only a command takes: the default command's.
+      return isDefault;
     }
     index = nextIndex;
   }
-
-  return;
+  return isDefault;
 }
 
-/** Run MCP and return whether the current invocation was handled by it. */
-export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
-  const mcpArgs = getMcpArgs(cliArgs);
-  if (!mcpArgs) {
-    return false;
+/**
+ * Global output flags that `mcp` does not declare: it has no `output` config,
+ * so `buildCommand` does not inject them, and stdout carries JSON-RPC.
+ */
+const MCP_IGNORED_OUTPUT_FLAGS = new Set(["--json", "--no-json", "--fields"]);
+
+/**
+ * Drop global output flags placed before the command, so `sentry --json mcp`
+ * starts the server instead of failing to parse. Flags after `mcp` belong to
+ * the server and are kept.
+ */
+function dropLeadingOutputFlags(cliArgs: readonly string[]): string[] {
+  const kept: string[] = [];
+  let index = 0;
+  while (index < cliArgs.length) {
+    const token = cliArgs[index] ?? "";
+    const nextIndex = token.startsWith("-")
+      ? skipLeadingGlobalFlag(cliArgs, index)
+      : undefined;
+    if (nextIndex === undefined) {
+      break;
+    }
+    if (!MCP_IGNORED_OUTPUT_FLAGS.has(token.split("=", 1)[0] ?? token)) {
+      kept.push(...cliArgs.slice(index, nextIndex));
+    }
+    index = nextIndex;
   }
+  return [...kept, ...cliArgs.slice(index)];
+}
 
-  const [{ startMcpServer }, { getExitCode }] = await Promise.all([
-    import("./lib/mcp.js"),
-    import("./lib/errors.js"),
-  ]);
-
+/**
+ * Run the stdio MCP server. The `mcp` command resolves once the client
+ * disconnects, so the teardown below never runs under a live server.
+ */
+async function runMcpServer(
+  app: CliApplication,
+  cliArgs: string[],
+): Promise<void> {
+  const { run } = await import("@stricli/core");
+  const { buildContext } = await import("./context.js");
+  const { getExitCode } = await import("./lib/errors.js");
+  const { error } = await import("./lib/formatters/colors.js");
+  const { splitInlineFlagValues } = await import("./lib/mcp/args.js");
   try {
-    await startMcpServer(mcpArgs);
-  } catch (mcpError) {
-    process.stderr.write(`${formatError(mcpError)}\n`);
-    process.exitCode = getExitCode(mcpError);
-    // MCP setup errors are terminal, unlike a running stdio server. Clean up
-    // network resources only on this error path so successful servers retain
-    // their dispatcher and are not force-exited on macOS.
-    const [{ scheduleForceExit }, { closeGlobalDispatcher }] =
-      await Promise.all([
-        import("./lib/force-exit.js"),
-        import("./lib/close-dispatcher.js"),
-      ]);
+    await run(
+      app,
+      splitInlineFlagValues(dropLeadingOutputFlags(cliArgs)),
+      buildContext(process),
+    );
+  } catch (err) {
+    // Auth errors escape Stricli for the CLI's login middleware, which the
+    // server does not use: it runs its own login fallback in a terminal.
+    process.stderr.write(`${error("Error:")} ${formatError(err)}\n`);
+    process.exitCode = getExitCode(err);
+  } finally {
+    const { scheduleForceExit } = await import("./lib/force-exit.js");
+    const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
     scheduleForceExit();
     await closeGlobalDispatcher();
   }
-
-  return true;
 }
 
 /**
  * Full CLI execution with telemetry, middleware, and error recovery.
  */
-export async function runCli(cliArgs: string[]): Promise<void> {
-  if (await runMcpCommand(cliArgs)) {
+export async function runCli(
+  cliArgs: string[],
+  entry: CliEntry,
+): Promise<void> {
+  const { app, routes } = await entry.loadApp();
+  if (isMcpInvocation(routes, cliArgs)) {
+    await runMcpServer(app, cliArgs);
     return;
   }
 
   const { isatty } = await import("node:tty");
   const { ExitCode, run } = await import("@stricli/core");
-  const { app } = await import("./app.js");
   const { buildContext } = await import("./context.js");
   const { AuthError, OutputError, getExitCode } =
     await import("./lib/errors.js");
@@ -606,7 +614,6 @@ export async function runCli(cliArgs: string[]): Promise<void> {
   async function reportUnknownCommand(argv: string[]): Promise<void> {
     const Sentry = await import("@sentry/node");
     const { resolveCommandPath } = await import("./lib/introspect.js");
-    const { routes } = await import("./app.js");
     const { getDefaultOrganization } = await import("./lib/db/defaults.js");
 
     // Strip flags so resolveCommandPath only sees command path segments
@@ -731,7 +738,7 @@ export async function runCli(cliArgs: string[]): Promise<void> {
  * Reads `process.argv`, runs the full CLI, and handles fatal errors.
  * Called from `bin.ts`.
  */
-export async function startCli(): Promise<void> {
+export async function startCli(entry: CliEntry): Promise<void> {
   const args = process.argv.slice(2);
 
   // Repair the timezone before anything formats a Date. SEA binaries can fall
@@ -755,7 +762,7 @@ export async function startCli(): Promise<void> {
     // Gracefully degrade: project context is optional.
   }
 
-  return await runCli(args).catch((err) => {
+  return await runCli(args, entry).catch((err) => {
     process.stderr.write(`Fatal: ${redactCredentialText(String(err))}\n`);
     process.exitCode = 1;
   });
