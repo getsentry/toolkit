@@ -7,14 +7,23 @@
  * - **Project mode** (no trace ID): lists spans across the entire project
  * - **Trace mode** (trace ID provided): lists spans within a specific trace
  *
- * Disambiguation uses {@link isTraceId} to detect 32-char hex trace IDs.
+ * Disambiguation uses {@link parseDualModeInput}: trace mode when the
+ * arguments name a trace ID.
  */
 
 import type { SentryContext } from "../../context.js";
 import type { SpanSortValue } from "../../lib/api/traces.js";
 import { listSpans } from "../../lib/api-client.js";
-import { validateLimit } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import {
+  type ParsedOrgProject,
+  parseOrgProjectInput,
+  validateLimit,
+} from "../../lib/arg-parsing.js";
+import {
+  choiceParser,
+  ORG_PROJECT_TARGET,
+  textParser,
+} from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -43,10 +52,15 @@ import {
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
 import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
   resolveLogProjectId,
-  resolveProjectBoundFromArg,
+  resolveProjectBoundTarget,
 } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -54,9 +68,11 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import {
-  type ParsedTraceTarget,
-  parseDualModeArgs,
+  applyTraceTargetInput,
+  parseDualModeInput,
+  type ResolvedTraceOrgProject,
   resolveTraceOrgProject,
+  type TraceTargetInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 import { SpanListItemSchema } from "../../types/index.js";
@@ -92,6 +108,7 @@ const KNOWN_SPAN_FIELDS = new Set([
   "trace",
   // Output aliases (from spanListItemToFlatSpan)
   "span_id",
+  "trace_id",
   "parent_span_id",
   "op",
   "duration_ms",
@@ -142,7 +159,7 @@ function extractExtraApiFields(
     expanded.delete(known);
   }
 
-  return expanded.size > 0 ? Array.from(expanded) : undefined;
+  return expanded.size > 0 ? [...expanded] : undefined;
 }
 
 /** Accepted values for the --sort flag (matches trace list) */
@@ -187,16 +204,66 @@ export function parseSort(value: string): SpanSortValue {
   return value as SpanSortValue;
 }
 
+/** What `span list` lists, as parsed: a project's spans or a trace's. */
+type SpanListInput =
+  | {
+      readonly mode: "project";
+      readonly target: ParsedOrgProject;
+      /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+      readonly baseUrl?: string;
+    }
+  | { readonly mode: "trace"; readonly trace: TraceTargetInput };
+
+/** What `span list` lists, resolved. */
+type SpanListTarget =
+  | { readonly mode: "project"; readonly org: string; readonly project: string }
+  | ({ readonly mode: "trace" } & ResolvedTraceOrgProject);
+
+/** The arguments of `span list`. */
+type SpanListArguments = BoundArguments<SpanListInput, SpanListTarget>;
+
 /**
- * Disambiguate span list positional arguments.
+ * Disambiguate span list positional arguments with
+ * {@link parseDualModeInput}, without side effects. Both modes need a
+ * project, so `<x>/<trace-id>` names project `<x>`.
  *
- * Thin wrapper around {@link parseDualModeArgs} that binds the
- * trace-mode usage hint for span list.
+ * @internal Exported for testing
  */
-export function parseSpanListArgs(
-  args: string[],
-): ReturnType<typeof parseDualModeArgs> {
-  return parseDualModeArgs(args, TRACE_USAGE_HINT);
+export function parseSpanListInput(args: readonly string[]): SpanListInput {
+  const input = parseDualModeInput(args, TRACE_USAGE_HINT, {
+    needsProject: true,
+  });
+  if (input.mode === "trace") {
+    return input;
+  }
+  const { parsed, baseUrl } = parseOrgProjectInput(input.target);
+  return { mode: "project", target: parsed, baseUrl };
+}
+
+/** Resolve `span list` arguments to the project, or the trace and project. */
+async function resolveSpanListTarget(
+  input: SpanListInput,
+  context: SentryContext,
+): Promise<SpanListTarget> {
+  if (input.mode === "trace") {
+    const parsed = applyTraceTargetInput(input.trace);
+    warnIfNormalized(parsed, "span.list");
+    const resolved = await resolveTraceOrgProject(
+      parsed,
+      context.cwd,
+      TRACE_USAGE_HINT,
+    );
+    return { mode: "trace", ...resolved };
+  }
+  if (input.baseUrl) {
+    applySentryUrlContext(input.baseUrl);
+  }
+  const { org, project } = await resolveProjectBoundTarget(
+    input.target,
+    context.cwd,
+    COMMAND_NAME,
+  );
+  return { mode: "project", org, project };
 }
 
 // ---------------------------------------------------------------------------
@@ -305,7 +372,13 @@ function formatSpanListHuman(data: SpanListData): string {
   } else {
     parts.push(`Spans in ${data.org}/${data.project}:\n\n`);
   }
-  parts.push(formatSpanTable(data.flatSpans, data.extraAttributes));
+  // If trace mode is active, the trace ID is already in the header
+  // so skip rendering the trace ID column
+  parts.push(
+    formatSpanTable(data.flatSpans, data.extraAttributes, {
+      showTraceId: !data.traceId,
+    }),
+  );
   return parts.join("\n");
 }
 
@@ -341,7 +414,6 @@ function jsonTransformSpanList(data: SpanListData, fields?: string[]): unknown {
 
 /** Shared context passed to mode handlers from the Stricli command function. */
 type ModeContext = {
-  cwd: string;
   flags: ListFlags;
   /** Parsed time range from the --period flag */
   timeRange: TimeRange;
@@ -352,20 +424,14 @@ type ModeContext = {
 /**
  * Handle trace mode: list spans within a specific trace.
  *
- * Resolves the trace target, builds a query prefixed with `trace:{id}`,
- * and returns the result with a trace-specific header and hints.
+ * Builds a query prefixed with `trace:{id}` and returns the result with a
+ * trace-specific header and hints.
  */
 async function handleTraceMode(
-  parsed: ParsedTraceTarget,
+  { traceId, org, project }: ResolvedTraceOrgProject,
   ctx: ModeContext,
 ): Promise<{ output: SpanListData; hint?: string }> {
-  const { flags, cwd, extraApiFields, timeRange } = ctx;
-  warnIfNormalized(parsed, "span.list");
-  const { traceId, org, project } = await resolveTraceOrgProject(
-    parsed,
-    cwd,
-    TRACE_USAGE_HINT,
-  );
+  const { flags, extraApiFields, timeRange } = ctx;
   const queryParts = [`trace:${traceId}`];
   if (flags.query) {
     queryParts.push(translateSpanQuery(flags.query));
@@ -442,19 +508,13 @@ async function handleTraceMode(
 /**
  * Handle project mode: list spans across the entire project.
  *
- * Resolves the org/project target and queries the spans dataset
- * without a trace ID filter.
+ * Queries the spans dataset without a trace ID filter.
  */
 async function handleProjectMode(
-  target: string | undefined,
+  { org, project }: { readonly org: string; readonly project: string },
   ctx: ModeContext,
 ): Promise<{ output: SpanListData; hint?: string }> {
-  const { flags, cwd, extraApiFields, timeRange } = ctx;
-  const { org, project } = await resolveProjectBoundFromArg(
-    target,
-    cwd,
-    COMMAND_NAME,
-  );
+  const { flags, extraApiFields, timeRange } = ctx;
   // Resolve slug → numeric ID so the Events query scopes via the `project`
   // param. `project:<slug>` only matches actively-selected projects (#1317).
   const projectId = await resolveLogProjectId(org, project);
@@ -542,28 +602,57 @@ export const listCommand = buildListCommand("span", {
     brief: "List spans in a project or trace",
     fullDescription:
       "List spans from a Sentry project, or within a specific trace.\n\n" +
-      "Project mode (no trace ID):\n" +
-      "  sentry span list                        # auto-detect from DSN or config\n" +
-      "  sentry span list <org>/<project>        # explicit org and project\n" +
-      "  sentry span list <project>              # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
-      "Trace mode (provide a 32-char trace ID):\n" +
-      "  sentry span list <trace-id>                      # auto-detect org/project\n" +
-      "  sentry span list <org>/<project>/<trace-id>      # explicit\n" +
-      "  sentry span list <project> <trace-id>            # find project + trace\n\n" +
-      "Pagination:\n" +
-      "  sentry span list -c next                # fetch next page (project mode)\n" +
-      "  sentry span list -c prev                # fetch previous page\n" +
-      "  sentry span list <trace-id> -c next     # fetch next page (trace mode)\n\n" +
-      "Examples:\n" +
-      "  sentry span list                        # List recent spans in project\n" +
-      '  sentry span list -q "op:db"             # Find all DB spans\n' +
-      '  sentry span list -q "duration:>100ms"   # Slow spans\n' +
-      "  sentry span list --period 24h           # Last 24 hours only\n" +
-      "  sentry span list --sort duration        # Sort by slowest first\n" +
-      "  sentry span list <trace-id>             # Spans in a specific trace\n" +
-      '  sentry span list <trace-id> -q "op:db"  # DB spans in a trace\n\n' +
+      "Pass a 32-character trace ID to list the spans in one trace.\n\n" +
       "Alias: `sentry spans` → `sentry span list`",
+    examples: [
+      {
+        description: "List recent spans in the current project",
+        command: "sentry span list",
+      },
+      {
+        description: "Find all DB spans",
+        command: 'sentry span list -q "op:db"',
+      },
+      {
+        description: "Slow spans in the last 24 hours",
+        command: 'sentry span list -q "duration:>100ms" --period 24h',
+      },
+      {
+        description: "Sort by slowest first",
+        command: "sentry span list --sort duration",
+      },
+      {
+        description: "List spans within a specific trace",
+        command: "sentry span list abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Show only spans from one project within a trace",
+        command:
+          "sentry span list my-org/cli-server/abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter a trace's spans to several projects",
+        command:
+          'sentry span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry span list -c next",
+      },
+      {
+        description: "List spans in an explicit project",
+        command: "sentry span list my-org/cli-server",
+      },
+      {
+        description: "Find a project across organizations, then list a trace",
+        command: "sentry span list cli-server abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Fetch the next page of a trace",
+        command: "sentry span list abc123def456abc123def456abc12345 -c next",
+      },
+    ],
   },
   output: {
     human: formatSpanListHuman,
@@ -571,18 +660,17 @@ export const listCommand = buildListCommand("span", {
     schema: SpanListItemSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/trace-id",
-        brief: "[<org>/<project>] or [<org>/<project>/]<trace-id>",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/trace-id",
+      brief: "[<org>/<project>] or [<org>/<project>/]<trace-id>",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseSpanListInput,
+      resolve: resolveSpanListTarget,
+    }),
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of spans (<=${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -595,7 +683,7 @@ export const listCommand = buildListCommand("span", {
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief: `Sort order: ${VALID_SORT_VALUES.join(", ")}`,
         default: DEFAULT_SORT,
       },
@@ -608,22 +696,20 @@ export const listCommand = buildListCommand("span", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, ...args: string[]) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: SpanListArguments,
+  ) {
     const timeRange = flags.period;
-    const parsed = parseSpanListArgs(args);
     const extraApiFields = extractExtraApiFields(flags.fields);
-    const modeCtx: ModeContext = {
-      cwd,
-      flags,
-      timeRange,
-      extraApiFields,
-    };
+    const modeCtx: ModeContext = { flags, timeRange, extraApiFields };
 
+    const resolved = await target.resolved;
     const { output, hint } =
-      parsed.mode === "trace"
-        ? await handleTraceMode(parsed.parsed, modeCtx)
-        : await handleProjectMode(parsed.target, modeCtx);
+      resolved.mode === "trace"
+        ? await handleTraceMode(resolved, modeCtx)
+        : await handleProjectMode(resolved, modeCtx);
 
     yield new CommandOutput(output);
     return { hint };

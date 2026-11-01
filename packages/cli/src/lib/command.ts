@@ -31,6 +31,7 @@
  */
 
 import {
+  ArgumentScannerError,
   type Command,
   type CommandContext,
   buildCommand as stricliCommand,
@@ -38,6 +39,14 @@ import {
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
 import { appendCacheHint } from "./cache-hint.js";
+import { type CommandExample, exampleSteps } from "./command-example.js";
+import {
+  choiceListParser,
+  ORG_TARGET,
+  parseProjectSlug,
+  parseText,
+  withCompletionTarget,
+} from "./completion-target.js";
 import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { AuthError, CliError, OutputError } from "./errors.js";
@@ -47,6 +56,7 @@ import {
   ClearScreen,
   CommandOutput,
   type CommandReturn,
+  extractSchemaFieldPaths,
   extractSchemaFields,
   formatSchemaForHelp,
   type HumanRenderer,
@@ -65,6 +75,12 @@ import {
   parseLogLevel,
   setLogLevel,
 } from "./logger.js";
+import {
+  applyBoundPositionals,
+  checkDestructive,
+  isHelpArgument,
+  rawPositional,
+} from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
 import { applyTipsPreference } from "./tips.js";
 
@@ -94,12 +110,6 @@ type BaseArgs = readonly unknown[];
  */
 type StricliBuilderArgs<CONTEXT extends CommandContext> =
   import("@stricli/core").CommandBuilderArguments<BaseFlags, BaseArgs, CONTEXT>;
-
-/** A runnable example stored with its command for generated documentation. */
-export type CommandExample = {
-  readonly description: string;
-  readonly command: string;
-};
 
 /**
  * Native Stricli documentation plus canonical examples for generated docs.
@@ -192,6 +202,18 @@ type LocalCommandBuilderArguments<
    * repo-local `.sentryclirc` URL mismatches the current token.
    */
   readonly skipRcUrlCheck?: boolean;
+  /**
+   * Mark the command as destructive or irreversible. Defaults to `false`.
+   *
+   * Destructive commands are listed in the agent Safety Rules (generated from
+   * this flag), so agents ask the user before running them, and their bound
+   * target positionals refuse an auto-detected target.
+   * `buildDeleteCommand` sets this automatically, and `check:destructive`
+   * fails CI when a command that sends an HTTP DELETE lacks it. Set it
+   * explicitly for irreversible operations that use other verbs (e.g.
+   * `issue merge`, `trial start`).
+   */
+  readonly destructive?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -251,7 +273,7 @@ export const JSON_FLAG = {
  */
 export const FIELDS_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseText,
   brief:
     "Comma-separated fields to include in JSON output (dot.notation supported)",
   optional: true as const,
@@ -271,7 +293,7 @@ export const FIELDS_FLAG = {
  */
 const ORG_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: withCompletionTarget(ORG_TARGET, (input: string) => input),
   brief: "Organization slug",
   optional: true as const,
   hidden: true as const,
@@ -285,7 +307,7 @@ const ORG_FLAG = {
  */
 const PROJECT_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseProjectSlug,
   brief: "Project slug",
   optional: true as const,
   hidden: true as const,
@@ -390,7 +412,8 @@ export function applyOrgProjectFlags(
 
 /**
  * Build the `--fields` flag definition, enriched with available field names
- * when a schema is registered on the output config.
+ * when a schema is registered on the output config. Its values complete
+ * every field path of the schema, one list item at a time.
  */
 // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
 function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
@@ -404,6 +427,7 @@ function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
   const fieldNames = schemaFields.map((f) => f.name).join(", ");
   return {
     ...FIELDS_FLAG,
+    parse: choiceListParser(extractSchemaFieldPaths(outputConfig.schema)),
     brief: `${FIELDS_FLAG.brief}. Available: ${fieldNames}`,
   };
 }
@@ -442,7 +466,14 @@ function prepareNativeDocs(
     return nativeDocs;
   }
   const rendered = examples
-    .map(({ description, command }) => `  ${command} # ${description}`)
+    .map((example) => {
+      const steps = exampleSteps(example);
+      return steps.length === 1
+        ? `  ${steps[0]} # ${example.description}`
+        : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(
+            "\n",
+          );
+    })
     .join("\n");
   return {
     ...nativeDocs,
@@ -666,19 +697,23 @@ export function buildCommand<
   async function maybeRecoverWithHelp(
     err: unknown,
     stdout: Writer,
-    ctx: { commandPrefix?: readonly string[]; stderr: Writer },
+    ctx: {
+      commandPrefix?: readonly string[];
+      directInvoke?: boolean;
+      stderr: Writer;
+    },
     args: unknown[],
   ): Promise<boolean> {
-    if (!(err instanceof CliError) || err instanceof OutputError) {
+    const recoverable =
+      (err instanceof CliError && !(err instanceof OutputError)) ||
+      err instanceof ArgumentScannerError;
+    if (!recoverable) {
       return false;
     }
-    if (
-      args.length === 0 ||
-      !args.some((a) => a === "help" || a === "--h" || a === "-help")
-    ) {
+    if (!args.flatMap(rawPositional).some(isHelpArgument)) {
       return false;
     }
-    if (!ctx.commandPrefix) {
+    if (!ctx.commandPrefix || ctx.directInvoke) {
       return false;
     }
     const pathSegments = ctx.commandPrefix.slice(1); // strip "sentry" prefix
@@ -703,8 +738,34 @@ export function buildCommand<
   const wrappedFunc = async function (
     this: CONTEXT,
     flags: Record<string, unknown>,
-    ...args: unknown[]
+    ...positionalArgs: unknown[]
   ) {
+    // Callers that skip Stricli's scanner (SDK invoke, tests) pass raw
+    // strings, and omitted optional positionals are undefined; give bound
+    // positionals the value Stricli would. `boundArguments` positionals are
+    // parsed here for every caller.
+    let args: unknown[];
+    let argumentError: ArgumentScannerError | undefined;
+    try {
+      args = applyBoundPositionals(
+        positionalArgs,
+        existingParams.positional,
+        this,
+      );
+    } catch (error) {
+      // Next to a `help` argument, fail where it can turn into the help
+      if (
+        !(
+          error instanceof ArgumentScannerError &&
+          positionalArgs.some(isHelpArgument)
+        )
+      ) {
+        throw error;
+      }
+      argumentError = error;
+      args = positionalArgs;
+    }
+
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
       flags.verbose as boolean,
@@ -722,7 +783,7 @@ export function buildCommand<
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
-      setArgsContext(args);
+      setArgsContext(args.flatMap(rawPositional));
     }
 
     // Environment-based JSON mode (used by library entry point)
@@ -785,6 +846,10 @@ export function buildCommand<
     // `sentry issue list help`). Without this, the auth prompt would fire
     // before the help-recovery path could show the command's help text.
     try {
+      if (argumentError) {
+        throw argumentError;
+      }
+
       // A usable stored account defers the check: the command's target may
       // select it even when the account in effect is logged out.
       if (requiresAuth && !getAuthConfig() && !hasUsableStoredAccount()) {
@@ -796,6 +861,12 @@ export function buildCommand<
       if (!skipRcUrlCheck && "cwd" in this) {
         const { assertRcUrlTrusted } = await import("./sentryclirc.js");
         await assertRcUrlTrusted(this.cwd as string);
+      }
+
+      // Bound target positionals of destructive commands refuse to
+      // auto-detect, whether `func` reads `parsed` or `resolved`
+      if (builderArgs.destructive) {
+        checkDestructive(args);
       }
 
       // Execution phase: core command logic, API calls, org/project resolution
@@ -881,6 +952,9 @@ export function buildCommand<
   if (builderArgs.docs.examples?.length) {
     (cmd as unknown as Record<string, unknown>).__examples =
       builderArgs.docs.examples;
+  }
+  if (builderArgs.destructive) {
+    (cmd as unknown as Record<string, unknown>).__destructive = true;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

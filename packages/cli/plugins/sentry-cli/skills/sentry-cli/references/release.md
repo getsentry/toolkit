@@ -15,6 +15,12 @@ Work with Sentry releases
 
 List releases with adoption and health metrics
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of releases to list - (default: "25")`
 - `-s, --sort <value> - Sort: date, sessions, users, crash_free_sessions (cfs), crash_free_users (cfu) - (default: "date")`
@@ -24,16 +30,72 @@ List releases with adoption and health metrics
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
+**Examples:**
+
+```bash
+# List releases (project auto-detected)
+sentry release list
+
+# List all releases in an organization
+sentry release list my-org/
+
+# List releases for one project
+sentry release list my-org/my-project
+
+# Sort by crash-free sessions
+sentry release list --sort cfs
+
+# Filter by environment
+sentry release list --environment production
+
+# Show the last 7 days of health data
+sentry release list --period 7d
+
+# Output as JSON
+sentry release list --json
+
+# Fetch the next page
+sentry release list my-org/ -c next
+```
+
 ### `sentry release view <org/version>`
 
 View release details with health metrics
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to view |
+
 **Flags:**
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**Examples:**
+
+```bash
+# View release details
+sentry release view 1.0.0
+
+# View a release in an explicit organization
+sentry release view my-org/1.0.0
+
+# View a release whose version contains a package name
+sentry release view "sentry-cli@0.24.0"
+
+# Output as JSON
+sentry release view 1.0.0 --json
+```
 
 ### `sentry release create <org/version>`
 
 Create a release
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to create |
 
 **Flags:**
 - `-p, --project <value> - Associate with project(s), comma-separated`
@@ -42,41 +104,161 @@ Create a release
 - `--url <value> - URL to the release source`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**Examples:**
+
+```bash
+# Create a release
+sentry release create 1.0.0
+
+# Create a release in an explicit organization
+sentry release create my-org/1.0.0
+
+# Create and finalize a release
+sentry release create 1.0.0 --finalize
+
+# Create a release for specific projects
+sentry release create 1.0.0 --project proj-a,proj-b
+
+# Typical CI release: create, associate commits, finalize, and record a deploy
+sentry release create my-org/1.0.0 --project my-project
+sentry release set-commits my-org/1.0.0 --auto
+sentry release finalize my-org/1.0.0
+sentry release deploy my-org/1.0.0 production
+
+# Create a release from a proposed version
+sentry release create "$(sentry release propose-version --json | jq -r .version)"
+
+# Set the release ref and URL
+sentry release create 1.0.0 --ref main --url https://github.com/org/repo/releases/tag/1.0.0
+
+# Preview without creating
+sentry release create 1.0.0 --dry-run
+```
+
 ### `sentry release finalize <org/version>`
 
 Finalize a release
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to finalize |
 
 **Flags:**
 - `--released <value> - Custom release timestamp (ISO 8601). Defaults to now.`
 - `--url <value> - URL for the release`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**Examples:**
+
+```bash
+# Finalize a release
+sentry release finalize 1.0.0
+
+# Finalize a release in an explicit organization
+sentry release finalize my-org/1.0.0
+
+# Set a custom release timestamp
+sentry release finalize 1.0.0 --released 2025-01-01T00:00:00Z
+
+# Preview without finalizing
+sentry release finalize 1.0.0 --dry-run
+```
+
 ### `sentry release delete <org/version>`
 
 Delete a release
+
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to delete |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**Examples:**
+
+```bash
+# Delete a release (prompts for confirmation)
+sentry release delete my-org/1.0.0
+
+# Skip confirmation
+sentry release delete my-org/1.0.0 --yes
+
+# Preview without deleting
+sentry release delete my-org/1.0.0 --dry-run
+```
+
 ### `sentry release archive <org/version>`
 
 Archive a release
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to archive |
+
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
+
+**Examples:**
+
+```bash
+# Archive a release (hide it from the default list, but keep it)
+sentry release archive 1.0.0
+
+# Archive a release in an explicit organization
+sentry release archive my-org/1.0.0
+
+# Preview without archiving
+sentry release archive my-org/1.0.0 --dry-run
+```
 
 ### `sentry release restore <org/version>`
 
 Restore an archived release
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version to restore |
+
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
+
+**Examples:**
+
+```bash
+# Restore a previously archived release
+sentry release restore 1.0.0
+
+# Restore a release in an explicit organization
+sentry release restore my-org/1.0.0
+
+# Preview without restoring
+sentry release restore 1.0.0 --dry-run
+```
 
 ### `sentry release deploy <org/version> <environment> [<name>]`
 
 Create a deploy for a release
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
+| `<environment>` | Deploy environment (e.g. production) |
+| `[<name>]` | Optional deploy name (quote multi-word names, e.g. "Deploy #42") |
 
 **Flags:**
 - `--url <value> - URL for the deploy`
@@ -85,13 +267,57 @@ Create a deploy for a release
 - `-t, --time <value> - Deploy duration in seconds (sets started = now - time, finished = now)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**Examples:**
+
+```bash
+# Create a deploy
+sentry release deploy 1.0.0 production
+
+# Create a named deploy in an explicit organization
+sentry release deploy my-org/1.0.0 staging "Deploy #42"
+
+# Attach a deploy URL
+sentry release deploy 1.0.0 production --url https://example.com
+
+# Record a deploy duration in seconds
+sentry release deploy 1.0.0 production --time 120
+
+# Preview without creating
+sentry release deploy 1.0.0 production --dry-run
+```
+
 ### `sentry release deploys <org/version>`
 
 List deploys for a release
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
+
+**Examples:**
+
+```bash
+# List deploys for a release
+sentry release deploys 1.0.0
+
+# List deploys for a release in an explicit organization
+sentry release deploys my-org/1.0.0
+
+# Output as JSON
+sentry release deploys 1.0.0 --json
+```
+
 ### `sentry release set-commits <org/version>`
 
 Set commits for a release
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
 
 **Flags:**
 - `--auto - Auto-discover commits via repository integration (needs local git checkout)`
@@ -102,6 +328,31 @@ Set commits for a release
 - `--from <value> - Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.`
 - `--initial-depth <value> - Number of commits to read with --local - (default: "20")`
 
+**Examples:**
+
+```bash
+# Associate commits using the repository integration
+sentry release set-commits 1.0.0 --auto
+
+# Set commits from local git history
+sentry release set-commits my-org/1.0.0 --local
+
+# Read up to 50 local commits
+sentry release set-commits 1.0.0 --local --initial-depth 50
+
+# Only include commits that touch specific paths
+sentry release set-commits 1.0.0 --path apps/mobile,packages/shared-ui
+
+# Read local commits since a previous release tag
+sentry release set-commits 1.0.0 --from v0.9.0
+
+# Set an explicit commit range
+sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456
+
+# Clear the release's commits
+sentry release set-commits 1.0.0 --clear
+```
+
 ### `sentry release propose-version`
 
 Propose a release version
@@ -109,60 +360,14 @@ Propose a release version
 **Examples:**
 
 ```bash
-# List releases (auto-detect org)
-sentry release list
-
-# List releases in a specific org
-sentry release list my-org/
-
-# View release details
-sentry release view 1.0.0
-sentry release view my-org/1.0.0
-
-# Create and finalize a release
-sentry release create 1.0.0 --finalize
-
-# Create a release, then finalize separately
-sentry release create 1.0.0
-sentry release set-commits 1.0.0 --auto
-sentry release finalize 1.0.0
-
-# Set commits from local git history
-sentry release set-commits 1.0.0 --local
-
-# Create a deploy
-sentry release deploy 1.0.0 production
-sentry release deploy 1.0.0 staging "Deploy #42"
-
 # Propose a version from git HEAD
-sentry release create $(sentry release propose-version)
-
-# List deploys for a release
-sentry release deploys 1.0.0
-sentry release deploys my-org/1.0.0
-
-# Archive a release (hide it from the default list, but keep it)
-sentry release archive 1.0.0
-sentry release archive my-org/1.0.0 --dry-run   # Preview without archiving
-
-# Restore a previously archived release
-sentry release restore 1.0.0
-sentry release restore my-org/1.0.0
-
-# Delete a release
-sentry release delete my-org/1.0.0
-sentry release delete my-org/1.0.0 --yes        # Skip confirmation
-sentry release delete my-org/1.0.0 --dry-run    # Preview without deleting
+sentry release propose-version
 
 # Output as JSON
-sentry release list --json
-sentry release view 1.0.0 --json
+sentry release propose-version --json
 
-# Full release workflow with explicit org
-sentry release create my-org/1.0.0 --project my-project
-sentry release set-commits my-org/1.0.0 --auto
-sentry release finalize my-org/1.0.0
-sentry release deploy my-org/1.0.0 production
+# Create a release named after the proposed version
+sentry release create "$(sentry release propose-version --json | jq -r .version)"
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

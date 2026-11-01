@@ -23,6 +23,11 @@ import {
   uploadCodeMappings,
 } from "../../lib/api/code-mappings.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseGitRepo,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -174,12 +179,26 @@ export const uploadCommand = buildCommand({
       "and stack trace linking.\n\n" +
       "The input file must be a JSON array of objects with `stackRoot` and " +
       "`sourceRoot` fields.\n\n" +
-      "Usage:\n" +
-      "  sentry code-mappings upload mappings.json\n" +
-      "  sentry code-mappings upload mappings.json --repo owner/repo\n" +
-      "  sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop\n" +
-      "  sentry code-mappings upload mappings.json --json\n\n" +
       "Requires an Organization Token with `org:ci` scope.",
+    examples: [
+      {
+        description: "Upload code mappings from a JSON file",
+        command: "sentry code-mappings upload mappings.json",
+      },
+      {
+        description: "Specify the repository explicitly",
+        command: "sentry code-mappings upload mappings.json --repo owner/repo",
+      },
+      {
+        description: "Specify the repository and default branch",
+        command:
+          "sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry code-mappings upload mappings.json --json",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -190,7 +209,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the code mappings JSON file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -198,14 +217,14 @@ export const uploadCommand = buildCommand({
     flags: {
       repo: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief:
           "Repository name (e.g., owner/repo). Auto-detected from git remote if omitted.",
         optional: true,
       },
       "default-branch": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief:
           "Default branch name. Auto-detected from git remote HEAD if omitted.",
         optional: true,

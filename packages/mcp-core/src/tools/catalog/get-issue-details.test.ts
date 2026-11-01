@@ -3048,7 +3048,8 @@ describe("selected event package versions", () => {
       },
       baseContext,
     );
-    expect(String(result).match(/- example: 1/g)).toHaveLength(1);
+    const text = typeof result === "string" ? result : getTextContent(result);
+    expect(text.match(/- example: 1/g)).toHaveLength(1);
     expect(result).toContain("Example: Not listed");
     expect(result).toContain("constructor: Not listed");
   });
@@ -3056,7 +3057,7 @@ describe("selected event package versions", () => {
   it("caps versions and keeps package data inside list entries", async () => {
     mockPackages({
       example: "v".repeat(300),
-      "<script>\n# heading": "`value`\n# heading",
+      "<script>\n# heading": "`value`\n# heading [link](url) | &lt;",
     });
     const result = await getIssueDetails.handler(
       { ...params, packageNames: ["example", "<script>\n# heading"] },
@@ -3065,6 +3066,10 @@ describe("selected event package versions", () => {
     expect(result).toContain("v".repeat(256));
     expect(result).not.toContain("v".repeat(257));
     expect(result).toContain("truncated");
+    expect(result).toContain("\\<script\\>");
+    expect(result).toContain(
+      "\\`value\\` # heading \\[link\\](url) \\| &amp;lt;",
+    );
     expect(result).not.toContain("<script>");
     expect(result).not.toContain("\n# heading");
   });
@@ -3114,7 +3119,8 @@ describe("selected event package versions", () => {
       .object(getIssueDetails.inputSchema)
       .parse({ ...params, packageNames });
     const result = await getIssueDetails.handler(input, baseContext);
-    expect(String(result).match(/: v{256}/g)).toHaveLength(10);
+    const text = typeof result === "string" ? result : getTextContent(result);
+    expect(text.match(/: v{256}/g)).toHaveLength(10);
     expect(result).not.toContain("truncated");
   });
 

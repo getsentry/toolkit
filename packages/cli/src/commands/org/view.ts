@@ -8,8 +8,6 @@ import type { SentryContext } from "../../context.js";
 import { getOrganization } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
-import { ContextError } from "../../lib/errors.js";
 import { formatOrgDetails } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
@@ -17,8 +15,8 @@ import {
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
 import { buildOrgUrl } from "../../lib/sentry-web-urls.js";
+import { type OrgTarget, orgTarget } from "../../lib/target-positional.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -36,6 +34,16 @@ export const viewCommand = buildCommand({
       "  1. Positional argument <org-slug>\n" +
       "  2. Config defaults\n" +
       "  3. SENTRY_DSN environment variable or source code detection",
+    examples: [
+      {
+        description: "View organization details",
+        command: "sentry org view my-org",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry org view my-org -w",
+      },
+    ],
   },
   output: { human: formatOrgDetails },
   parameters: {
@@ -45,7 +53,7 @@ export const viewCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (optional if auto-detected)",
-          parse: parseOrgTarget,
+          parse: orgTarget,
           optional: true,
         },
       ],
@@ -60,15 +68,9 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, orgSlug?: string) {
+  async *func(this: SentryContext, flags: ViewFlags, target: OrgTarget) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-
-    const resolved = await resolveOrg({ org: orgSlug, cwd });
-
-    if (!resolved) {
-      throw new ContextError("Organization", "sentry org view <org-slug>");
-    }
+    const resolved = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(buildOrgUrl(resolved.org), "organization");

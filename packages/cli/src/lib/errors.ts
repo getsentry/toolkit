@@ -23,6 +23,7 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   buildBillingUrl,
@@ -71,6 +72,8 @@ export const EXIT = {
   API: 30,
   /** Operation timed out */
   TIMEOUT: 31,
+  /** Rate limited by the Sentry API — wait before retrying */
+  RATE_LIMITED: 32,
 
   // 40–49: Feature / billing (HTTP 402/451 family)
   /** Seer not enabled for the organization */
@@ -141,7 +144,7 @@ export class HostScopeError extends CliError {
   constructor(
     sourceOrMessage: string,
     destinationUrl?: string,
-    tokenHost?: string | undefined,
+    tokenHost?: string,
   ) {
     if (destinationUrl === undefined) {
       super(sourceOrMessage, EXIT.AUTH_HOST_SCOPE);
@@ -209,6 +212,37 @@ export class ApiError extends CliError {
       msg += `\n  ${this.detail}`;
     }
     return msg;
+  }
+}
+
+/**
+ * The Sentry API rejected a request with 429 and the CLI could not wait it
+ * out (the wait exceeds the cap, or retries ran out).
+ *
+ * @param endpoint - API path that was rate limited
+ * @param retryAfterMs - Server-requested wait, when known
+ * @param serverDetail - The API's `detail` message, when present
+ */
+export class RateLimitError extends ApiError {
+  /** Distinct exit code so scripts and agents can back off without parsing stderr. */
+  override readonly exitCode: number = EXIT.RATE_LIMITED;
+  readonly retryAfterMs?: number;
+
+  constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
+    const seconds = Math.max(1, Math.ceil((retryAfterMs ?? 0) / 1000));
+    const wait =
+      retryAfterMs === undefined
+        ? "a few seconds"
+        : `${seconds} second${seconds === 1 ? "" : "s"}`;
+    const advice = `Retry in ${wait}; do not repeat the request before then. Make fewer requests in parallel.`;
+    super(
+      "Rate limited by the Sentry API",
+      429,
+      serverDetail ? `${serverDetail}\n  ${advice}` : advice,
+      endpoint,
+    );
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -788,6 +822,7 @@ export function stringifyUnknown(value: unknown): string {
     try {
       return JSON.stringify(value);
     } catch {
+      // oxlint-disable-next-line typescript/no-base-to-string -- keep custom toString() output when JSON fails
       return String(value);
     }
   }
@@ -811,11 +846,17 @@ export function formatError(error: unknown): string {
  * Get process exit code for an error.
  *
  * @param error - Any thrown value
- * @returns Exit code (from CliError.exitCode or 1 for other errors)
+ * @returns Exit code (from CliError.exitCode, Stricli's `InvalidArgument`
+ *   for an argument error the command wrapper threw, or 1 for other errors)
  */
 export function getExitCode(error: unknown): number {
   if (error instanceof CliError) {
     return error.exitCode;
+  }
+  // `boundArguments` positionals parse in the command wrapper, after
+  // Stricli's scanner; their errors exit like the scanner's
+  if (error instanceof ArgumentScannerError) {
+    return ExitCode.InvalidArgument;
   }
   return 1;
 }
@@ -910,6 +951,12 @@ export function toSearchQueryError(
  * `TypeError: "fetch failed"` for every such failure (the real errno is in
  * `cause`).
  *
+ * When the connection drops *after* response headers arrive (e.g. `read
+ * ETIMEDOUT` while streaming the body), undici instead aborts the body stream
+ * with `TypeError: "terminated"` (CLI-2AD). `sentry-client.ts` already retries
+ * finite GET bodies, so one that still escapes is the same class of
+ * environmental failure and is matched too.
+ *
  * This reflects the user's environment, not a CLI bug, so it is treated as a
  * user error (no upgrade nudge) and is not reported to Sentry — the same
  * rationale as dropping EPIPE/EBADF OS noise in `beforeSend`.
@@ -921,7 +968,10 @@ export function toSearchQueryError(
  * CLI bug" treatment for `status === 0` check it explicitly.
  */
 export function isNetworkError(error: unknown): boolean {
-  return error instanceof TypeError && error.message === "fetch failed";
+  return (
+    error instanceof TypeError &&
+    (error.message === "fetch failed" || error.message === "terminated")
+  );
 }
 
 /**

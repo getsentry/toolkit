@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { getProject, listConversations } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseText, textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -24,16 +25,17 @@ import {
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
-  LIST_TARGET_POSITIONAL,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
+import { toNumericId } from "../../lib/resolve-target.js";
 import {
-  resolveOrgOptionalFromArg,
-  toNumericId,
-} from "../../lib/resolve-target.js";
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -86,7 +88,6 @@ type ConversationListResult = {
   project?: string;
 };
 
-const COMMAND_NAME = "agent-conversation list";
 const PAGINATION_KEY = "agent-conversation-list";
 const DEFAULT_PERIOD = "7d";
 
@@ -133,11 +134,6 @@ export const listCommand = buildListCommand("agent-conversation", {
       "Sort by one canonical conversation.* field. Prefix the field with - for descending order. " +
       "The default is -conversation.age, and conversation ID ascending breaks ties. " +
       "conversation.timeSpan measures elapsed time; conversation.generationDuration sums model call duration.\n\n" +
-      "Target patterns:\n" +
-      "  sentry agent-conversation list              # Auto-detect organization\n" +
-      "  sentry agent-conversation list <org>/       # All projects in an organization\n" +
-      "  sentry agent-conversation list <org>/<proj> # One project\n" +
-      "  sentry agent-conversation list <project>    # Find project across organizations\n\n" +
       targetPatternExplanation(),
     examples: [
       {
@@ -199,17 +195,27 @@ export const listCommand = buildListCommand("agent-conversation", {
     schema: ConversationListItemSchema,
   },
   parameters: {
-    positional: LIST_TARGET_POSITIONAL,
+    positional: {
+      kind: "tuple",
+      parameters: [
+        {
+          placeholder: "org/project",
+          brief: ORG_ALL_TARGET_BRIEF,
+          parse: orgOptionalTarget,
+          optional: true,
+        },
+      ],
+    },
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of conversations (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Any matching span selects its conversation; totals include all spans in selected projects and time range",
         optional: true,
@@ -230,10 +236,12 @@ export const listCommand = buildListCommand("agent-conversation", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const { cwd } = this;
-
-    const resolved = await resolveOrgOptionalFromArg(target, cwd, COMMAND_NAME);
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: OrgOptionalTarget,
+  ) {
+    const resolved = await target.resolved;
     const { org, project } = resolved;
     let projectId: number | undefined;
     if (project) {

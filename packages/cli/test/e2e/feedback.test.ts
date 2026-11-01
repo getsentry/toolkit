@@ -285,7 +285,8 @@ describe("sentry feedback list", () => {
         "--json",
       ]);
       expect(firstPage.exitCode, firstPage.stderr + firstPage.stdout).toBe(0);
-      expect(JSON.parse(firstPage.stdout).nextCursor).toBe(
+      // paginate() wraps the server cursor with the walk's page size.
+      expect(JSON.parse(firstPage.stdout).nextCursor).toContain(
         `feedback-limit-${limit}-next`,
       );
     }

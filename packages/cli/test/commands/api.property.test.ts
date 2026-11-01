@@ -15,7 +15,6 @@ import {
   oneof,
   property,
   record,
-  string,
   stringMatching,
   tuple,
   uniqueArray,
@@ -31,8 +30,6 @@ import {
   parseFieldValue,
   parseMethod,
   resolveBody,
-  resolveEffectiveHeaders,
-  resolveRequestUrl,
   setNestedValue,
 } from "../../src/commands/api.js";
 import { ValidationError } from "../../src/lib/errors.js";
@@ -143,7 +140,7 @@ const plainStringArb = stringMatching(/^[a-zA-Z][a-zA-Z0-9 ]{0,20}$/).filter(
 
 describe("normalizeEndpoint properties", () => {
   test("result never has leading slash (except for root)", async () => {
-    await fcAssert(
+    fcAssert(
       property(endpointArb, (endpoint) => {
         const result = normalizeEndpoint(endpoint);
         // Root "/" is the only case where leading slash is allowed
@@ -156,7 +153,7 @@ describe("normalizeEndpoint properties", () => {
   });
 
   test("result always has trailing slash before query string", async () => {
-    await fcAssert(
+    fcAssert(
       property(endpointArb, (endpoint) => {
         const result = normalizeEndpoint(endpoint);
         const queryIdx = result.indexOf("?");
@@ -174,7 +171,7 @@ describe("normalizeEndpoint properties", () => {
   });
 
   test("query string is always preserved unchanged", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(simplePathArb, queryStringArb), ([path, query]) => {
         const input = path + query;
         const result = normalizeEndpoint(input);
@@ -187,7 +184,7 @@ describe("normalizeEndpoint properties", () => {
   });
 
   test("idempotent: normalizing twice equals normalizing once", async () => {
-    await fcAssert(
+    fcAssert(
       property(endpointArb, (endpoint) => {
         const once = normalizeEndpoint(endpoint);
         const twice = normalizeEndpoint(once);
@@ -198,7 +195,7 @@ describe("normalizeEndpoint properties", () => {
   });
 
   test("leading slash is always stripped", async () => {
-    await fcAssert(
+    fcAssert(
       property(simplePathArb, (path) => {
         const withLeading = `/${path}`;
         const withoutLeading = path;
@@ -213,7 +210,7 @@ describe("normalizeEndpoint properties", () => {
   });
 
   test("api/0/ prefix is always stripped (CLI-K1)", async () => {
-    await fcAssert(
+    fcAssert(
       property(simplePathArb, (path) => {
         const withPrefix = `api/0/${path}`;
         const withoutPrefix = path;
@@ -228,7 +225,7 @@ describe("normalizeEndpoint properties", () => {
   });
 
   test("result never starts with api/0/ (CLI-K1)", async () => {
-    await fcAssert(
+    fcAssert(
       property(endpointArb, (endpoint) => {
         const result = normalizeEndpoint(endpoint);
         expect(result.startsWith("api/0/")).toBe(false);
@@ -240,7 +237,7 @@ describe("normalizeEndpoint properties", () => {
 
 describe("parseMethod properties", () => {
   test("valid methods always succeed and return uppercase", async () => {
-    await fcAssert(
+    fcAssert(
       property(validMethodArb, (method) => {
         const result = parseMethod(method);
         expect(result).toBe(method.toUpperCase() as typeof result);
@@ -253,7 +250,7 @@ describe("parseMethod properties", () => {
   });
 
   test("invalid methods always throw", async () => {
-    await fcAssert(
+    fcAssert(
       property(invalidMethodArb, (method) => {
         expect(() => parseMethod(method)).toThrow(/Invalid method/);
       }),
@@ -262,7 +259,7 @@ describe("parseMethod properties", () => {
   });
 
   test("result is always uppercase", async () => {
-    await fcAssert(
+    fcAssert(
       property(validMethodArb, (method) => {
         const result = parseMethod(method);
         expect(result).toBe((result as string).toUpperCase() as typeof result);
@@ -274,7 +271,7 @@ describe("parseMethod properties", () => {
 
 describe("parseFieldKey properties", () => {
   test("first segment is always the base key", async () => {
-    await fcAssert(
+    fcAssert(
       property(nestedFieldKeyArb, (key) => {
         const segments = parseFieldKey(key);
         // First segment should be the base (before any brackets)
@@ -290,7 +287,7 @@ describe("parseFieldKey properties", () => {
   });
 
   test("key starting with bracket always throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(fieldKeyBaseArb, (key) => {
         expect(() => parseFieldKey(`[${key}]`)).toThrow(
           /Invalid field key format/,
@@ -301,7 +298,7 @@ describe("parseFieldKey properties", () => {
   });
 
   test("segment count equals bracket count plus one", async () => {
-    await fcAssert(
+    fcAssert(
       property(nestedFieldKeyArb, (key) => {
         const segments = parseFieldKey(key);
         const bracketCount = (key.match(/\[/g) || []).length;
@@ -314,7 +311,7 @@ describe("parseFieldKey properties", () => {
 
 describe("setNestedValue security properties", () => {
   test("__proto__ at any depth throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(fieldKeyBaseArb, (key) => {
         const obj: Record<string, unknown> = {};
 
@@ -338,7 +335,7 @@ describe("setNestedValue security properties", () => {
   });
 
   test("constructor at any depth throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(fieldKeyBaseArb, (key) => {
         const obj: Record<string, unknown> = {};
 
@@ -355,7 +352,7 @@ describe("setNestedValue security properties", () => {
   });
 
   test("prototype at any depth throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(fieldKeyBaseArb, (key) => {
         const obj: Record<string, unknown> = {};
 
@@ -395,7 +392,7 @@ describe("setNestedValue security properties", () => {
 
 describe("setNestedValue behavior properties", () => {
   test("simple key sets top-level value", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(fieldKeyBaseArb, plainStringArb), ([key, value]) => {
         const obj: Record<string, unknown> = {};
         setNestedValue(obj, key, value);
@@ -406,7 +403,7 @@ describe("setNestedValue behavior properties", () => {
   });
 
   test("nested key creates nested structure", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(fieldKeyBaseArb, fieldKeyBaseArb, plainStringArb),
         ([base, nested, value]) => {
@@ -423,7 +420,7 @@ describe("setNestedValue behavior properties", () => {
   });
 
   test("array push syntax creates array", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(fieldKeyBaseArb, plainStringArb), ([key, value]) => {
         const obj: Record<string, unknown> = {};
         setNestedValue(obj, `${key}[]`, value);
@@ -436,7 +433,7 @@ describe("setNestedValue behavior properties", () => {
   });
 
   test("multiple array pushes append to array", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(fieldKeyBaseArb, plainStringArb, plainStringArb),
         ([key, value1, value2]) => {
@@ -456,7 +453,7 @@ describe("setNestedValue behavior properties", () => {
   });
 
   test("empty brackets in middle of path throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(fieldKeyBaseArb, fieldKeyBaseArb), ([base, end]) => {
         const obj: Record<string, unknown> = {};
         expect(() => setNestedValue(obj, `${base}[][${end}]`, "value")).toThrow(
@@ -470,7 +467,7 @@ describe("setNestedValue behavior properties", () => {
 
 describe("parseFieldValue properties", () => {
   test("valid JSON is parsed correctly", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonValueArb, (jsonStr) => {
         const result = parseFieldValue(jsonStr);
         const expected = JSON.parse(jsonStr);
@@ -481,7 +478,7 @@ describe("parseFieldValue properties", () => {
   });
 
   test("non-JSON strings are returned as-is", async () => {
-    await fcAssert(
+    fcAssert(
       property(plainStringArb, (str) => {
         const result = parseFieldValue(str);
         expect(result).toBe(str);
@@ -553,7 +550,7 @@ function captureStderr(fn: () => void): string {
 
 describe("property: normalizeFields JSON guard", () => {
   test("JSON objects pass through unchanged — no colon mangling", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonObjectStringArb, (json) => {
         const output = captureStderr(() => {
           const result = normalizeFields([json]);
@@ -566,7 +563,7 @@ describe("property: normalizeFields JSON guard", () => {
   });
 
   test("JSON arrays pass through unchanged", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonArrayStringArb, (json) => {
         const output = captureStderr(() => {
           const result = normalizeFields([json]);
@@ -581,7 +578,7 @@ describe("property: normalizeFields JSON guard", () => {
 
 describe("property: parseDataBody", () => {
   test("round-trip: stringify(obj) → parseDataBody returns equivalent object", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonObjectArb, (obj) => {
         const result = parseDataBody(JSON.stringify(obj));
         expect(result).toEqual(obj);
@@ -591,7 +588,7 @@ describe("property: parseDataBody", () => {
   });
 
   test("non-JSON strings are returned as-is", async () => {
-    await fcAssert(
+    fcAssert(
       property(plainStringArb, (s) => {
         const result = parseDataBody(s);
         expect(result).toBe(s);
@@ -603,7 +600,7 @@ describe("property: parseDataBody", () => {
 
 describe("property: extractJsonBody", () => {
   test("key=value fields are never extracted as body", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         array(keyValueFieldArb, { minLength: 1, maxLength: 5 }),
         (fields) => {
@@ -620,7 +617,7 @@ describe("property: extractJsonBody", () => {
   });
 
   test("single JSON object is always extracted as body", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonObjectStringArb, (json) => {
         const output = captureStderr(() => {
           const result = extractJsonBody([json]);
@@ -634,7 +631,7 @@ describe("property: extractJsonBody", () => {
   });
 
   test("count invariant: |remaining| + (body ? 1 : 0) === |input|", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(
           oneof(jsonObjectStringArb, keyValueFieldArb, bareFieldArb),
@@ -655,7 +652,7 @@ describe("property: extractJsonBody", () => {
   });
 
   test("two JSON objects always throws ValidationError", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonObjectStringArb, jsonObjectStringArb, (a, b) => {
         expect(() => extractJsonBody([a, b])).toThrow(ValidationError);
       }),
@@ -666,7 +663,7 @@ describe("property: extractJsonBody", () => {
 
 describe("property: buildFromFields", () => {
   test("GET never produces a body from JSON extraction", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonObjectStringArb, (json) => {
         const output = captureStderr(() => {
           // GET with a JSON field: should NOT extract body (throws instead)
@@ -682,7 +679,7 @@ describe("property: buildFromFields", () => {
   });
 
   test("PUT with only JSON body returns that body exactly", async () => {
-    await fcAssert(
+    fcAssert(
       property(jsonObjectStringArb, (json) => {
         captureStderr(() => {
           const result = buildFromFields("PUT", { "raw-field": [json] });
@@ -696,7 +693,7 @@ describe("property: buildFromFields", () => {
 
   test("PUT: JSON body + non-conflicting fields → merged body has all keys", async () => {
     // Generate JSON body keys and separate field keys that don't overlap
-    await fcAssert(
+    fcAssert(
       property(
         uniqueArray(fieldKeyBaseArb, { minLength: 2, maxLength: 6 }),
         (keys) => {
@@ -734,7 +731,7 @@ describe("property: buildFromFields", () => {
   });
 
   test("PUT: JSON body + conflicting field key → throws ValidationError", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         record({
           key: fieldKeyBaseArb,
@@ -758,7 +755,7 @@ describe("property: buildFromFields", () => {
   });
 
   test("PUT with only key=value fields: no hint emitted (no JSON extraction)", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         array(keyValueFieldArb, { minLength: 1, maxLength: 5 }),
         (fields) => {
@@ -820,133 +817,6 @@ describe("property: resolveBody", () => {
           ).rejects.toThrow(ValidationError);
         },
       ),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-});
-
-// Dry-run property tests
-
-/** Arbitrary for HTTP methods */
-
-/** Arbitrary for clean API endpoint paths (no query string, for dry-run tests) */
-const dryRunEndpointArb = stringMatching(
-  /^[a-z][a-z0-9-]*\/[a-z0-9-]*\/$/,
-).filter((s) => s.length > 3 && s.length < 80);
-
-/** Arbitrary for query param values */
-const paramValueArb = stringMatching(/^[a-zA-Z0-9_-]+$/).filter(
-  (s) => s.length > 0 && s.length < 40,
-);
-
-/** Arbitrary for query param maps */
-const paramsArb = dictionary(
-  stringMatching(/^[a-zA-Z][a-zA-Z0-9_]*$/).filter(
-    (s) => s.length > 0 && s.length < 20,
-  ),
-  paramValueArb,
-  { minKeys: 0, maxKeys: 3 },
-);
-
-describe("property: resolveRequestUrl", () => {
-  test("always contains /api/0/ prefix", () => {
-    fcAssert(
-      property(dryRunEndpointArb, (endpoint) => {
-        const url = resolveRequestUrl(endpoint);
-        expect(url).toContain("/api/0/");
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("always contains the endpoint path", () => {
-    fcAssert(
-      property(dryRunEndpointArb, (endpoint) => {
-        const url = resolveRequestUrl(endpoint);
-        const normalized = endpoint.startsWith("/")
-          ? endpoint.slice(1)
-          : endpoint;
-        expect(url).toContain(normalized);
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("includes query string when params provided", () => {
-    fcAssert(
-      property(dryRunEndpointArb, paramsArb, (endpoint, params) => {
-        const url = resolveRequestUrl(endpoint, params);
-        if (Object.keys(params).length > 0) {
-          expect(url).toContain("?");
-          for (const key of Object.keys(params)) {
-            expect(url).toContain(key);
-          }
-        }
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-});
-
-describe("property: resolveEffectiveHeaders", () => {
-  /** Arbitrary for custom header entries (non-content-type keys) */
-  const headerKeyArb = stringMatching(/^X-[A-Za-z]{1,10}$/);
-  const headerValueArb = string({ minLength: 1, maxLength: 20 });
-  const customHeadersArb = dictionary(headerKeyArb, headerValueArb, {
-    minKeys: 0,
-    maxKeys: 3,
-  });
-
-  test("preserves all custom headers", () => {
-    fcAssert(
-      property(customHeadersArb, (custom) => {
-        const result = resolveEffectiveHeaders(custom, undefined);
-        for (const [key, value] of Object.entries(custom)) {
-          expect(result[key]).toBe(value);
-        }
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("auto-adds Content-Type for object bodies without it", () => {
-    fcAssert(
-      property(customHeadersArb, jsonValue(), (custom, body) => {
-        // Ensure body is a non-null object (not string/number/boolean/null)
-        if (body === null || body === undefined || typeof body !== "object") {
-          return;
-        }
-        const result = resolveEffectiveHeaders(custom, body);
-        expect(result["Content-Type"]).toBe("application/json");
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("never adds Content-Type for string bodies", () => {
-    fcAssert(
-      property(customHeadersArb, string(), (custom, body) => {
-        const result = resolveEffectiveHeaders(custom, body);
-        // Should not have auto-added Content-Type (only custom headers)
-        if (!custom["Content-Type"]) {
-          expect(result["Content-Type"]).toBeUndefined();
-        }
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("does not override explicit Content-Type", () => {
-    const contentTypeArb = constantFrom(
-      "text/plain",
-      "text/xml",
-      "application/x-www-form-urlencoded",
-    );
-    fcAssert(
-      property(contentTypeArb, jsonValue(), (ct, body) => {
-        const result = resolveEffectiveHeaders({ "Content-Type": ct }, body);
-        expect(result["Content-Type"]).toBe(ct);
-      }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });

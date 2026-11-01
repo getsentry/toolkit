@@ -5,6 +5,7 @@
  * rejection, --into parent selection, and API call shape.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { mergeCommand } from "../../../src/commands/issue/merge.js";
 
@@ -42,6 +43,7 @@ import {
   AuthError,
   ResolutionError,
 } from "../../../src/lib/errors.js";
+import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
@@ -60,6 +62,20 @@ function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
     project: { id: "1", slug: "cli", name: "cli" },
     ...overrides,
   } as SentryIssue;
+}
+
+/**
+ * Wrap a `resolveIssue` mock written for issue arguments as typed:
+ * positionals arrive parsed, `--into` as typed.
+ */
+function byText<T>(
+  resolve: (options: { issueArg: string }) => T,
+): (options: { issueArg: string | IssueArgument }) => T {
+  return ({ issueArg, ...rest }) =>
+    resolve({
+      ...rest,
+      issueArg: typeof issueArg === "string" ? issueArg : issueArg.text,
+    });
 }
 
 function createMockContext() {
@@ -113,6 +129,39 @@ describe("mergeCommand.func()", () => {
     expect(mergeSpy).not.toHaveBeenCalled();
   });
 
+  test("a malformed issue fails to parse, before any issue is resolved", async () => {
+    const { context } = createMockContext();
+    const func = await mergeCommand.loader();
+    const err = await func
+      .call(context, { json: false }, "CLI-A", "my-org/")
+      .catch((e: Error) => e);
+
+    expect(err).toBeInstanceOf(ArgumentParseError);
+    expect(resolveIssueSpy).not.toHaveBeenCalled();
+    expect(mergeSpy).not.toHaveBeenCalled();
+  });
+
+  test("merges issues pasted into one argument", async () => {
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "my-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
+        }),
+      ),
+    );
+    mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
+
+    const { context } = createMockContext();
+    const func = await mergeCommand.loader();
+    await func.call(context, { json: true }, "CLI-A\nCLI-B");
+
+    expect(mergeSpy).toHaveBeenCalledWith("my-org", ["10A", "10B"]);
+  });
+
   test("rejects when 0 positionals + --into (still needs at least 1 positional)", async () => {
     const { context } = createMockContext();
     const func = await mergeCommand.loader();
@@ -126,14 +175,16 @@ describe("mergeCommand.func()", () => {
   });
 
   test("accepts 1 positional + --into as a valid 2-issue merge (CLI-1AE fix)", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     // Sentry honors the --into preference in this case
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
@@ -175,18 +226,20 @@ describe("mergeCommand.func()", () => {
     // One issue resolves without org (e.g. bare numeric ID, no DSN match),
     // the other has a known org — without the guard, the merge would
     // silently proceed to the known org and fail with a confusing API error.
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) => {
-      if (issueArg === "CLI-A") {
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) => {
+        if (issueArg === "CLI-A") {
+          return Promise.resolve({
+            org: "my-org",
+            issue: makeMockIssue({ shortId: "CLI-A", id: "10A" }),
+          });
+        }
         return Promise.resolve({
-          org: "my-org",
-          issue: makeMockIssue({ shortId: "CLI-A", id: "10A" }),
+          org: undefined,
+          issue: makeMockIssue({ shortId: "NO-ORG", id: "999" }),
         });
-      }
-      return Promise.resolve({
-        org: undefined,
-        issue: makeMockIssue({ shortId: "NO-ORG", id: "999" }),
-      });
-    });
+      }),
+    );
 
     const { context } = createMockContext();
     const func = await mergeCommand.loader();
@@ -200,11 +253,13 @@ describe("mergeCommand.func()", () => {
   });
 
   test("rejects cross-org merges with a friendly message", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: issueArg === "CLI-A" ? "org-one" : "org-two",
-        issue: makeMockIssue({ shortId: issueArg, id: issueArg }),
-      }),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: issueArg === "CLI-A" ? "org-one" : "org-two",
+          issue: makeMockIssue({ shortId: issueArg, id: issueArg }),
+        }),
+      ),
     );
 
     const { context } = createMockContext();
@@ -218,14 +273,16 @@ describe("mergeCommand.func()", () => {
   });
 
   test("calls mergeIssues with the resolved numeric IDs", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B", "10C"] });
 
@@ -237,14 +294,16 @@ describe("mergeCommand.func()", () => {
   });
 
   test("--into pins the parent by short ID", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A", "10C"] });
 
@@ -270,27 +329,29 @@ describe("mergeCommand.func()", () => {
     // on the direct-match fast path, so the command falls back to
     // resolveIssue and then matches by numeric ID.
     let callIdx = 0;
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) => {
-      callIdx += 1;
-      // Positional args resolve to CLI-A / CLI-B
-      if (issueArg === "CLI-A" || issueArg === "CLI-B") {
-        return Promise.resolve({
-          org: "test-org",
-          issue: makeMockIssue({
-            shortId: issueArg,
-            id: issueArg.replace("CLI-", "10"),
-          }),
-        });
-      }
-      // --into 'f-g' resolves (alias lookup) to CLI-B
-      if (issueArg === "f-g") {
-        return Promise.resolve({
-          org: "test-org",
-          issue: makeMockIssue({ shortId: "CLI-B", id: "10B" }),
-        });
-      }
-      return Promise.reject(new Error(`unexpected issueArg: ${issueArg}`));
-    });
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) => {
+        callIdx += 1;
+        // Positional args resolve to CLI-A / CLI-B
+        if (issueArg === "CLI-A" || issueArg === "CLI-B") {
+          return Promise.resolve({
+            org: "test-org",
+            issue: makeMockIssue({
+              shortId: issueArg,
+              id: issueArg.replace("CLI-", "10"),
+            }),
+          });
+        }
+        // --into 'f-g' resolves (alias lookup) to CLI-B
+        if (issueArg === "f-g") {
+          return Promise.resolve({
+            org: "test-org",
+            issue: makeMockIssue({ shortId: "CLI-B", id: "10B" }),
+          });
+        }
+        return Promise.reject(new Error(`unexpected issueArg: ${issueArg}`));
+      }),
+    );
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
 
     const { context } = createMockContext();
@@ -305,15 +366,17 @@ describe("mergeCommand.func()", () => {
   });
 
   test("--into accepts org-qualified short ID", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          // resolveIssue returns bare short ID even if arg was org-qualified
-          shortId: issueArg.split("/").pop() as string,
-          id: (issueArg.split("/").pop() as string).replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            // resolveIssue returns bare short ID even if arg was org-qualified
+            shortId: issueArg.split("/").pop() as string,
+            id: (issueArg.split("/").pop() as string).replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A", "10C"] });
 
@@ -336,14 +399,16 @@ describe("mergeCommand.func()", () => {
     // `sentry issue merge CLI-A CLI-B --into CLI-C` should merge all three,
     // with CLI-C (the --into target) as the preferred parent. Previously the
     // --into value was dropped whenever 2+ positionals were given.
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     mergeSpy.mockResolvedValue({ parent: "10C", children: ["10A", "10B"] });
 
@@ -360,14 +425,16 @@ describe("mergeCommand.func()", () => {
   });
 
   test("JSON output maps numeric IDs back to short IDs with URL", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
 
@@ -391,19 +458,21 @@ describe("mergeCommand.func()", () => {
   });
 
   test("warns when --into preference is overridden by Sentry", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     // User asked for CLI-B, but Sentry picked CLI-A (e.g. larger by count)
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
 
-    // Warning now goes through log.warn() (consola → process.stderr), not
+    // Warning now goes through log.warn() (logger → process.stderr), not
     // this.stderr.write(). Spy on process.stderr.write to capture it.
     const stderrSpy = vi.spyOn(process.stderr, "write");
     try {
@@ -425,14 +494,16 @@ describe("mergeCommand.func()", () => {
   });
 
   test("does not warn when --into preference was honored", async () => {
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     // User asked for CLI-B, Sentry agreed.
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
@@ -483,21 +554,23 @@ describe("mergeCommand.func()", () => {
     // "not found", which would be misleading during an outage or expired
     // token.
     let callIdx = 0;
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) => {
-      callIdx += 1;
-      if (callIdx <= 2) {
-        // First two calls resolve positional args normally
-        return Promise.resolve({
-          org: "test-org",
-          issue: makeMockIssue({
-            shortId: issueArg,
-            id: issueArg.replace("CLI-", "10"),
-          }),
-        });
-      }
-      // Resolving the --into target throws an auth error
-      return Promise.reject(new AuthError("invalid"));
-    });
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) => {
+        callIdx += 1;
+        if (callIdx <= 2) {
+          // First two calls resolve positional args normally
+          return Promise.resolve({
+            org: "test-org",
+            issue: makeMockIssue({
+              shortId: issueArg,
+              id: issueArg.replace("CLI-", "10"),
+            }),
+          });
+        }
+        // Resolving the --into target throws an auth error
+        return Promise.reject(new AuthError("invalid"));
+      }),
+    );
 
     const { context } = createMockContext();
     const func = await mergeCommand.loader();
@@ -512,19 +585,21 @@ describe("mergeCommand.func()", () => {
 
   test("--into propagates 5xx ApiError instead of masking", async () => {
     let callIdx = 0;
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) => {
-      callIdx += 1;
-      if (callIdx <= 2) {
-        return Promise.resolve({
-          org: "test-org",
-          issue: makeMockIssue({
-            shortId: issueArg,
-            id: issueArg.replace("CLI-", "10"),
-          }),
-        });
-      }
-      return Promise.reject(new ApiError("Internal error", 500));
-    });
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) => {
+        callIdx += 1;
+        if (callIdx <= 2) {
+          return Promise.resolve({
+            org: "test-org",
+            issue: makeMockIssue({
+              shortId: issueArg,
+              id: issueArg.replace("CLI-", "10"),
+            }),
+          });
+        }
+        return Promise.reject(new ApiError("Internal error", 500));
+      }),
+    );
 
     const { context } = createMockContext();
     const func = await mergeCommand.loader();
@@ -540,24 +615,26 @@ describe("mergeCommand.func()", () => {
     // --into is now always part of the merge set, so a value that doesn't
     // resolve fails during resolveAllIssues with the underlying not-found
     // error rather than being silently dropped.
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) => {
-      if (issueArg === "XYZ") {
-        return Promise.reject(
-          new ResolutionError(
-            "Issue 'XYZ'",
-            "not found",
-            "sentry issue view XYZ",
-          ),
-        );
-      }
-      return Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg,
-          id: issueArg.replace("CLI-", "10"),
-        }),
-      });
-    });
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) => {
+        if (issueArg === "XYZ") {
+          return Promise.reject(
+            new ResolutionError(
+              "Issue 'XYZ'",
+              "not found",
+              "sentry issue view XYZ",
+            ),
+          );
+        }
+        return Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg,
+            id: issueArg.replace("CLI-", "10"),
+          }),
+        });
+      }),
+    );
 
     const { context } = createMockContext();
     const func = await mergeCommand.loader();
@@ -575,14 +652,16 @@ describe("mergeCommand.func()", () => {
     // uppercase. The lowercase form resolves to the same numeric ID as the
     // `CLI-B` positional, so numeric dedupe collapses them and orderForMerge
     // still puts CLI-B (10B) at the front as the preferred parent.
-    resolveIssueSpy.mockImplementation(({ issueArg }: { issueArg: string }) =>
-      Promise.resolve({
-        org: "test-org",
-        issue: makeMockIssue({
-          shortId: issueArg.toUpperCase(),
-          id: issueArg.toUpperCase().replace("CLI-", "10"),
+    resolveIssueSpy.mockImplementation(
+      byText(({ issueArg }: { issueArg: string }) =>
+        Promise.resolve({
+          org: "test-org",
+          issue: makeMockIssue({
+            shortId: issueArg.toUpperCase(),
+            id: issueArg.toUpperCase().replace("CLI-", "10"),
+          }),
         }),
-      }),
+      ),
     );
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
 

@@ -37,6 +37,7 @@ import { gzip } from "node:zlib";
 import { build as esbuild } from "esbuild";
 import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
 import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
+import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
 import { textImportPlugin } from "./text-import-plugin.js";
 
 const gzipAsync = promisify(gzip);
@@ -48,9 +49,9 @@ const VERSION: string = pkg.version;
 /** Node version for SEA binaries. "lts" resolves to the latest LTS via fossilize. */
 const NODE_VERSION = "lts";
 
-/** Files that use _require() for lazy relative imports (circular dep breaking). */
+/** Files whose lazy relative imports must be included in the native bundle. */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema)|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /** Build-time constants injected into the binary */
@@ -154,9 +155,13 @@ async function bundleJs(): Promise<boolean> {
         SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
         "process.env.NODE_ENV": JSON.stringify("production"),
         __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
+        // Tree-shakes the SDK's runtime module hooks, which can't instrument a
+        // bundle and would hook the host app in library mode.
+        __SENTRY_CHANNEL_INJECTION__: "false",
       },
       plugins: [
         textImportPlugin,
+        zodEnglishLocalesPlugin,
         // Transform _require() → require() so esbuild resolves lazy relative
         // requires at bundle time. In tsx dev mode, _require is a file-local
         // createRequire(import.meta.url) that resolves relative to the file.
@@ -418,7 +423,7 @@ async function compileAllTargets(
       successes += 1;
     } catch (error) {
       console.error(
-        `  Post-processing ${getPackageName(target)} failed: ${error}`,
+        `  Post-processing ${getPackageName(target)} failed: ${String(error)}`,
       );
       failures += 1;
     }

@@ -15,6 +15,7 @@ import {
   fetchRecentReleases,
   type GitHubRelease,
 } from "../../src/lib/delta-upgrade.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import {
   buildChangelogSummary,
   type ChangeCategory,
@@ -316,7 +317,7 @@ describe("fetchChangelog source affinity", () => {
   test("fetches stable releases only from the explicitly selected Toolkit source", async () => {
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
-      requestedUrls.push(String(input));
+      requestedUrls.push(extractInputUrl(input));
       return new Response(
         JSON.stringify([
           makeRelease(
@@ -403,7 +404,7 @@ describe("fetchChangelog source affinity", () => {
   test("rejects raw prefetched Toolkit releases without fetching", async () => {
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
-      requestedUrls.push(String(input));
+      requestedUrls.push(extractInputUrl(input));
       return new Response("Unexpected", { status: 500 });
     });
 
@@ -457,7 +458,7 @@ describe("fetchChangelog source affinity", () => {
   test("fetches stable releases only from the explicitly selected legacy source", async () => {
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
-      requestedUrls.push(String(input));
+      requestedUrls.push(extractInputUrl(input));
       return new Response(
         JSON.stringify([
           makeRelease(
@@ -485,7 +486,7 @@ describe("fetchChangelog source affinity", () => {
   test("fetches nightly commits only from the explicitly selected Toolkit source", async () => {
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
-      requestedUrls.push(String(input));
+      requestedUrls.push(extractInputUrl(input));
       return new Response(
         JSON.stringify([
           { commit: { message: "fix: keep nightly stages affine" } },

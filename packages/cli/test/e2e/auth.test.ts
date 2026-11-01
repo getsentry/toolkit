@@ -60,7 +60,7 @@ describe("sentry auth status", () => {
 
     const result = await ctx.run(["auth", "status"]);
 
-    // Status messages go to stderr via consola
+    // Status messages go to stderr via the logger
     const output = result.stdout + result.stderr;
     expect(output).toContain("Authenticated");
     expect(result.exitCode).toBe(0);
@@ -72,7 +72,7 @@ describe("sentry auth status", () => {
     const result = await ctx.run(["auth", "status"]);
 
     expect(result.exitCode).toBe(0);
-    // Status messages go to stderr via consola
+    // Status messages go to stderr via the logger
     const output = result.stdout + result.stderr;
     expect(output).toContain("Authenticated");
     expect(output).toContain("Access verified");
@@ -90,7 +90,7 @@ describe("sentry auth login --token", () => {
       ctx.serverUrl,
     ]);
 
-    // Login messages go to stderr via consola
+    // Login messages go to stderr via the logger
     const output = result.stdout + result.stderr;
     expect(output).toContain("Authenticated");
     expect(result.exitCode).toBe(0);
@@ -233,7 +233,7 @@ describe("sentry auth logout", () => {
     const result = await ctx.run(["auth", "logout"]);
 
     expect(result.exitCode).toBe(0);
-    // Logout messages go to stderr via consola
+    // Logout messages go to stderr via the logger
     const logoutOutput = result.stdout + result.stderr;
     expect(logoutOutput).toMatch(/logged out/i);
 
@@ -252,7 +252,7 @@ describe("sentry auth logout", () => {
 });
 
 describe("command error redaction", () => {
-  test("redacts unexpected command errors handled inside Stricli", async () => {
+  test("rejects a malformed custom header value as a config error without leaking it", async () => {
     const result = await runCli(["auth", "whoami", "--json"], {
       env: {
         SENTRY_CONFIG_DIR: testConfigDir,
@@ -266,9 +266,13 @@ describe("command error redaction", () => {
     });
     const output = result.stdout + result.stderr;
 
-    expect(result.exitCode).toBe(EXIT.GENERAL);
-    expect(output).toContain("Unexpected error: TypeError:");
-    expect(output).toContain("[REDACTED]");
+    // Previously this reached undici's Headers.set and surfaced as a redacted
+    // "Unexpected error: TypeError"; values are now validated up front (CLI-31G).
+    expect(result.exitCode).toBe(EXIT.CONFIG);
+    expect(output).toContain(
+      "Invalid value for header 'X-Proxy' in SENTRY_CUSTOM_HEADERS",
+    );
+    expect(output).not.toContain("Unexpected error");
     expect(output).not.toContain("SYNTHETIC-PREFIX");
     expect(output).not.toContain("SYNTHETIC-SECRET-TAIL");
   });

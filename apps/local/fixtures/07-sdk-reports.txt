@@ -1,0 +1,5 @@
+{"event_id": "199741d5b434c4a604635de1884cec77", "sent_at": "2024-10-27T03:33:20Z", "sdk": {"name": "sentry.javascript.node", "version": "10.0.0"}}
+{"type": "session", "length": 100}
+{"sid":"dddddddddddddddddddddddddddddddd","started":"2024-10-27T03:33:20Z","status":"ok","errors":0}
+{"type": "client_report", "length": 108}
+{"timestamp":1730000000,"discarded_events":[{"reason":"sample_rate","category":"transaction","quantity":3}]}

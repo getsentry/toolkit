@@ -150,7 +150,7 @@ describe("agent-skills", () => {
       // makes this a real guard rather than a tautology.
       const writeTargets = vi
         .mocked(writeFile)
-        .mock.calls.map((call) => String(call[0]));
+        .mock.calls.map((call) => call[0] as string);
       expect(writeTargets.length).toBeGreaterThan(0);
       expect(writeTargets.every((target) => target.endsWith(".tmp"))).toBe(
         true,

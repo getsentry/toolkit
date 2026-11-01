@@ -11,6 +11,7 @@ import {
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { UserInputError } from "./errors";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
@@ -44,6 +45,7 @@ vi.mock("@sentry/core", () => ({
   ),
   captureException: vi.fn(),
   captureMessage: vi.fn(),
+  getClient: vi.fn(),
 }));
 
 vi.mock("@sentry/core/server", () => ({
@@ -96,7 +98,7 @@ async function listRegisteredTools(server: ReturnType<typeof buildServer>) {
 }
 
 async function callRegisteredTool(
-  server: ReturnType<typeof buildServer>,
+  server: ReturnType<typeof buildServer> | ModernMcpServer,
   name: string,
   args: Record<string, unknown>,
 ) {
@@ -121,7 +123,6 @@ async function callRegisteredTool(
 const DEFAULT_DIRECT_TOOL_NAMES = [
   "analyze_issue_with_seer",
   "execute_sentry_tool",
-  "find_dropped_events",
   "find_organizations",
   "find_projects",
   "get_sentry_resource",
@@ -228,7 +229,7 @@ describe("buildServer", () => {
       tools: {
         v2_tool: createMockTool("v2_tool", {
           inputSchema: { value: z.string() },
-          handler: async ({ value }) => `v2:${value}`,
+          handler: async ({ value }) => `v2:${String(value)}`,
         }),
       },
       sdkVersion: "v2",
@@ -253,6 +254,69 @@ describe("buildServer", () => {
       content: [{ type: "text", text: "v2:ok" }],
     });
   });
+
+  it.each(["v1", "v2"] as const)(
+    "explains how to recover a missing organizationSlug on SDK %s",
+    async (sdkVersion) => {
+      const server =
+        sdkVersion === "v2"
+          ? buildServer({ context: baseContext, sdkVersion })
+          : buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_issues", {
+        query: "is:unresolved",
+        period: "1h",
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      const text = getTextContent(result);
+      expect(text).toContain("Required. Call `find_organizations()`");
+      expect(text).not.toContain("period");
+    },
+  );
+
+  it.each(["v1", "v2"] as const)(
+    "caps tool input elements on SDK %s",
+    async (sdkVersion) => {
+      const handler = vi.fn(
+        async ({ items }: Record<string, unknown>) =>
+          `count:${(items as string[]).length}`,
+      );
+      const createServer = () => {
+        const tools = {
+          list_tool: createMockTool("list_tool", {
+            inputSchema: { items: z.array(z.string()) },
+            handler,
+          }),
+        };
+        return sdkVersion === "v2"
+          ? buildServer({ context: baseContext, tools, sdkVersion })
+          : buildServer({ context: baseContext, tools });
+      };
+
+      // The `items` key counts as one element, so this lands exactly on the cap.
+      const atLimit = Array.from(
+        { length: MAX_TOOL_INPUT_ELEMENTS - 1 },
+        () => "x",
+      );
+      const accepted = await callRegisteredTool(createServer(), "list_tool", {
+        items: atLimit,
+      });
+      expect(accepted.isError).toBeFalsy();
+      expect(getTextContent(accepted)).toBe(
+        `count:${MAX_TOOL_INPUT_ELEMENTS - 1}`,
+      );
+
+      const rejected = await callRegisteredTool(createServer(), "list_tool", {
+        items: [...atLimit, "x"],
+      });
+      expect(rejected).toMatchObject({ isError: true });
+      expect(getTextContent(rejected)).toContain(
+        `Invalid arguments for tool list_tool: arguments contain more than the maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
+      );
+      expect(handler).toHaveBeenCalledTimes(1);
+    },
+  );
 
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {
@@ -1360,6 +1424,49 @@ describe("buildServer", () => {
       );
     });
 
+    it.each(["v1", "v2"] as const)(
+      "execute_sentry_tool rejects missing skills with unknown capabilities on SDK %s",
+      async (sdkVersion) => {
+        const upstreamRequest = vi.fn(() =>
+          HttpResponse.json(
+            { detail: "You do not have permission to perform this action." },
+            { status: 403 },
+          ),
+        );
+        mswServer.use(
+          http.get(
+            "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
+            upstreamRequest,
+          ),
+        );
+        const context: ServerContext = {
+          ...baseContext,
+          grantedSkills: new Set(["docs"]),
+          constraints: {
+            organizationSlug: "test-org",
+            projectSlug: "test-project",
+            regionUrl: "https://us.sentry.io",
+            projectCapabilities: null,
+          },
+        };
+        const server =
+          sdkVersion === "v2"
+            ? buildServer({ context, sdkVersion })
+            : buildServer({ context });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name: "get_profile_details",
+          arguments: { profileId: "00000000000040008000000000000001" },
+        });
+
+        expect(result).toMatchObject({ isError: true });
+        expect(getTextContent(result)).toContain(
+          'Tool "get_profile_details" is not available in this session',
+        );
+        expect(upstreamRequest).not.toHaveBeenCalled();
+      },
+    );
+
     it("search_sentry_tools and execute_sentry_tool enforce project capabilities by default", async () => {
       const server = buildServer({
         context: {
@@ -1451,6 +1558,50 @@ describe("buildServer", () => {
         "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
       );
     });
+
+    it.each([
+      ["get_issue_activity", {}],
+      ["add_issue_note", { text: "Investigating after the latest deploy." }],
+    ] as const)(
+      "execute_sentry_tool preserves attribution for %s",
+      async (name, args) => {
+        mswServer.use(
+          http.post(
+            "*/api/0/organizations/:org/issues/:issueId/notes/",
+            ({ params }) => {
+              expect(params.org).toBe("sentry-mcp-evals");
+              return HttpResponse.json({
+                id: "activity-1",
+                commentId: "comment-1",
+                type: "note",
+                source: "mcp:claude",
+                user: { name: "Jane Developer" },
+                data: { text: "Investigating after the latest deploy." },
+              });
+            },
+          ),
+        );
+        const server = buildServer({
+          context: {
+            ...baseContext,
+            constraints: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlug: null,
+            },
+          },
+        });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name,
+          arguments: { issueId: "CLOUDFLARE-MCP-41", ...args },
+        });
+
+        expect(result.isError).not.toBe(true);
+        expect(getTextContent(result)).toContain(
+          "Jane Developer (Claude via MCP)",
+        );
+      },
+    );
 
     it.each(["get_sentry_resource", "get_issue_details"])(
       "dispatches package selection through %s",

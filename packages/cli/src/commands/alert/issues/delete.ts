@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteIssueAlertRule } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { ContextError, ValidationError } from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
@@ -17,7 +16,8 @@ import {
   requireExplicitTarget,
 } from "../../../lib/mutate-command.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
-import { parseIssueRuleArg, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
 
 const USAGE_HINT =
   "sentry alert issues delete <org>/<project>/<rule-id-or-name>";
@@ -51,11 +51,21 @@ export const deleteCommand = buildDeleteCommand({
     fullDescription:
       "Permanently remove an issue alert rule from a project. This cannot be undone.\n\n" +
       "You will be asked to type org/project/rule-id to confirm, unless you pass " +
-      "--yes or --force, or use --dry-run to preview only.\n\n" +
-      "Examples:\n" +
-      "  sentry alert issues delete my-org/my-app/12345\n" +
-      "  sentry alert issues delete my-org/my-app/'My Rule' --yes\n" +
-      "  sentry alert issues delete my-org/my-app/12345 --dry-run",
+      "--yes or --force, or use --dry-run to preview only.",
+    examples: [
+      {
+        description: "Delete an issue alert rule (prompts for confirmation)",
+        command: "sentry alert issues delete my-org/my-project/12345",
+      },
+      {
+        description: "Delete a rule selected by name without prompting",
+        command: "sentry alert issues delete my-org/my-project/'My Rule' --yes",
+      },
+      {
+        description: "Preview the deletion",
+        command: "sentry alert issues delete my-org/my-project/12345 --dry-run",
+      },
+    ],
   },
   output: {
     human: formatDeleted,
@@ -80,18 +90,17 @@ export const deleteCommand = buildDeleteCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        issueRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
     requireExplicitTarget(parsed, "Issue alert target", USAGE_HINT);
     if (parsed.type !== "explicit") {
       throw new ValidationError(

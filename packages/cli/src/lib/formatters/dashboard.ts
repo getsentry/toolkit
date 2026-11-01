@@ -19,6 +19,7 @@ import type {
   TimeseriesResult,
   WidgetDataResult,
 } from "../../types/dashboard.js";
+import { stringifyUnknown } from "../errors.js";
 import { encodeImageToKitty } from "../kitty-image.js";
 import { logger } from "../logger.js";
 import {
@@ -28,6 +29,7 @@ import {
   graphicsCellSize,
   selectGraphicsFormat,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../sixel.js";
 import { SERIES_PALETTE } from "./chart-core.js";
 import { COLORS, muted, terminalLink } from "./colors.js";
@@ -871,7 +873,7 @@ function renderTableContent(data: TableResult, innerWidth: number): string[] {
       if (typeof val === "number") {
         return formatWithUnit(val, col.unit);
       }
-      return String(val);
+      return stringifyUnknown(val);
     }),
   );
 
@@ -2156,7 +2158,13 @@ function renderCompleteDashboardAsGraphics(
     },
     encodeImage:
       format === "kitty"
-        ? (image) => encodeImageToKitty(image, image.width, true)
+        ? (image) =>
+            encodeImageToKitty(
+              image,
+              image.width,
+              true,
+              tmuxKittyPlacement(graphicsColumns),
+            )
         : undefined,
   });
   if (!("output" in graphics)) {

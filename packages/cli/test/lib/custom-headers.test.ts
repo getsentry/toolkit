@@ -120,6 +120,32 @@ describe("parseCustomHeaders", () => {
     );
   });
 
+  test.each([
+    ["emoji", "X-Token: abc\u{1F4A5}def"],
+    ["non-Latin-1 letter", "X-Token: ab\u013Ecd"],
+  ])(
+    "throws ConfigError on header value with %s without echoing it",
+    (_, raw) => {
+      let caught: unknown;
+      try {
+        parseCustomHeaders(raw);
+      } catch (error) {
+        caught = error;
+      }
+      expect(String(caught)).toMatch(
+        /Invalid value for header 'X-Token' in SENTRY_CUSTOM_HEADERS/,
+      );
+      expect(String(caught)).not.toContain("abc");
+      expect(String(caught)).not.toContain("ab\u013E");
+    },
+  );
+
+  test("accepts Latin-1 header values", () => {
+    expect(parseCustomHeaders("X-Name: caf\u00E9")).toEqual([
+      ["X-Name", "caf\u00E9"],
+    ]);
+  });
+
   // Forbidden headers
   const forbiddenHeaders = [
     "Authorization",
@@ -361,6 +387,16 @@ describe("setCustomHeadersOverride", () => {
   test("throws ConfigError on reserved header name", () => {
     expect(() => setCustomHeadersOverride({ Authorization: "x" })).toThrow(
       "Cannot override reserved header 'Authorization' in SentryOptions.headers",
+    );
+  });
+
+  test.each([
+    ["emoji", "secret\u{1F4A5}"],
+    ["CRLF", "a\r\nX-Injected: b"],
+    ["NUL", "a\0b"],
+  ])("throws ConfigError on invalid header value (%s)", (_, value) => {
+    expect(() => setCustomHeadersOverride({ "X-Token": value })).toThrow(
+      "Invalid value for header 'X-Token' in SentryOptions.headers",
     );
   });
 });

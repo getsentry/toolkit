@@ -17,6 +17,13 @@ import {
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseRelease,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -25,10 +32,11 @@ import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
-  type InjectResult,
   injectDirectory,
+  type InjectResult,
 } from "../../lib/sourcemap/inject.js";
 
 /** Result type for the upload command. */
@@ -213,15 +221,37 @@ export const uploadCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.\n\n" +
-      "Usage:\n" +
-      "  sentry sourcemap upload ./dist\n" +
-      "  sentry sourcemap upload ./dist --release 1.0.0\n" +
-      "  sentry sourcemap upload ./dist --release 1.0.0 --dist 12345\n" +
-      "  sentry sourcemap upload ./dist --url-prefix '~/static/js/'\n" +
-      "  sentry sourcemap upload ./dist --no-rewrite\n" +
-      "  sentry sourcemap upload ./dist --ext .js,.mjs\n" +
-      "  sentry sourcemap upload ./maybe-empty --allow-empty",
+      "legitimately be empty.",
+    examples: [
+      {
+        description: "Upload sourcemaps from dist/",
+        command: "sentry sourcemap upload ./dist",
+      },
+      {
+        description: "Associate with a release",
+        command: "sentry sourcemap upload ./dist --release 1.0.0",
+      },
+      {
+        description: "Set a custom URL prefix",
+        command: "sentry sourcemap upload ./dist --url-prefix '~/static/js/'",
+      },
+      {
+        description: "Don't fail when no sourcemaps are found",
+        command: "sentry sourcemap upload ./dist --allow-empty",
+      },
+      {
+        description: "Set a release and distribution",
+        command: "sentry sourcemap upload ./dist --release 1.0.0 --dist 12345",
+      },
+      {
+        description: "Upload without rewriting sourcemaps",
+        command: "sentry sourcemap upload ./dist --no-rewrite",
+      },
+      {
+        description: "Only upload some extensions",
+        command: "sentry sourcemap upload ./dist --ext .js,.mjs",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -232,7 +262,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Directory containing sourcemaps",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],
@@ -240,46 +270,46 @@ export const uploadCommand = buildCommand({
     flags: {
       release: {
         kind: "parsed",
-        parse: String,
+        parse: parseRelease,
         brief: "Release version to associate with the upload",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Distribution identifier to disambiguate builds within a release",
         optional: true,
       },
       "url-prefix": {
         kind: "parsed",
-        parse: String,
-        brief: "URL prefix for uploaded files (default: ~/)",
+        parse: parseText,
+        brief: "URL prefix for uploaded files",
         optional: true,
         default: "~/",
       },
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },
       "strip-prefix": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Strip a prefix from uploaded file paths (e.g. 'build/')",
         optional: true,
       },

@@ -15,6 +15,12 @@ Initialize Sentry in your project (experimental)
 
 Initialize Sentry in your project (experimental)
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<target>] [<directory>]` | Optional target (&lt;org&gt;/&lt;project&gt;, &lt;org&gt;/, or &lt;project&gt;) and directory (default: current directory) |
+
 **Flags:**
 - `-y, --yes - Accept non-interactive defaults (requires --features outside a TTY)`
 - `-n, --dry-run - Show what would happen without making changes`
@@ -38,11 +44,17 @@ sentry init --dry-run
 # Target a subdirectory
 sentry init ./my-app
 
-# Use a specific org (auto-detect project)
+# Use a specific organization (auto-detect project)
 sentry init acme/
 
-# Use a specific org and project
+# Use a specific organization and project
 sentry init acme/my-app
+
+# Search for a project across organizations
+sentry init my-app
+
+# Use a specific project in a subdirectory
+sentry init acme/my-app ./my-project
 
 # Assign a team when creating a new project
 sentry init acme/ --team backend

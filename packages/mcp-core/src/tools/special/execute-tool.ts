@@ -40,7 +40,7 @@ async function executeCatalogToolWithSpan({
   params: Record<string, unknown>;
   context: ServerContext;
 }) {
-  return startSpan(
+  return await startSpan(
     {
       name: `tools/call ${tool.name}`,
       op: "mcp.execute_tool",
@@ -135,7 +135,7 @@ export function createExecuteTool(getTools: () => ToolRegistry) {
         );
       }
 
-      return executeCatalogToolWithSpan({
+      return await executeCatalogToolWithSpan({
         tool: match.tool,
         params: params.arguments,
         context,

@@ -14,6 +14,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { getCompletionScript } from "../../lib/completions.js";
 import { ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -26,10 +27,28 @@ export const completionCommand = buildCommand({
     fullDescription:
       "Print the shell completion script for the given shell to stdout.\n\n" +
       "Supported shells: bash, zsh, fish.\n" +
-      "When no shell is given, it is detected from the $SHELL environment variable.\n\n" +
-      "Examples:\n" +
-      "  sentry cli completion zsh > ~/.local/share/zsh/site-functions/_sentry\n" +
-      '  eval "$(sentry cli completion bash)"',
+      "When no shell is given, it is detected from the $SHELL environment variable.",
+    examples: [
+      {
+        description:
+          "Print completions for your current shell (auto-detected from $SHELL)",
+        command: "sentry cli completion",
+      },
+      {
+        description: "Install zsh completions",
+        command:
+          "sentry cli completion zsh > ~/.local/share/zsh/site-functions/_sentry",
+      },
+      {
+        description: "Load bash completions into the current shell",
+        command: 'eval "$(sentry cli completion bash)"',
+      },
+      {
+        description: "Install fish completions",
+        command:
+          "sentry cli completion fish > ~/.config/fish/completions/sentry.fish",
+      },
+    ],
   },
   output: {
     human: (script: string) => script,
@@ -42,7 +61,7 @@ export const completionCommand = buildCommand({
         {
           placeholder: "shell",
           brief: "Shell to generate completions for (bash, zsh, or fish)",
-          parse: String,
+          parse: choiceParser(["bash", "zsh", "fish"]),
           optional: true,
         },
       ],

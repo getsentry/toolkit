@@ -12,8 +12,8 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { numberParser } from "../../../lib/command.js";
+import { parseText } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
@@ -23,13 +23,8 @@ import {
   type DashboardDetail,
   prepareDashboardForUpdate,
 } from "../../../types/dashboard.js";
-import {
-  enrichDashboardError,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-  resolveWidgetIndex,
-} from "../resolve.js";
+import { type DashboardArguments, dashboardArguments } from "../arguments.js";
+import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
 
 type DeleteFlags = {
   readonly index?: number;
@@ -55,11 +50,22 @@ export const deleteCommand = buildDeleteCommand(
       fullDescription:
         "Remove a widget from an existing Sentry dashboard.\n\n" +
         "The dashboard can be specified by numeric ID or title.\n" +
-        "Identify the widget by --index (0-based) or --title.\n\n" +
-        "Examples:\n" +
-        "  sentry dashboard widget delete 12345 --index 0\n" +
-        "  sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'\n" +
-        "  sentry dashboard widget delete 12345 --index 0 --dry-run",
+        "Identify the widget by --index (0-based) or --title.",
+      examples: [
+        {
+          description: "Delete a widget by title",
+          command:
+            "sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'",
+        },
+        {
+          description: "Delete a widget by index",
+          command: "sentry dashboard widget delete 12345 --index 0",
+        },
+        {
+          description: "Preview the deletion",
+          command: "sentry dashboard widget delete 12345 --index 0 --dry-run",
+        },
+      ],
     },
     output: {
       human: formatWidgetDeleted,
@@ -81,14 +87,11 @@ export const deleteCommand = buildDeleteCommand(
       },
     },
     parameters: {
-      positional: {
-        kind: "array",
-        parameter: {
-          placeholder: "org/project/dashboard",
-          brief: "[<org/project>] <dashboard-id-or-title>",
-          parse: String,
-        },
-      },
+      positional: dashboardArguments({
+        placeholder: "org/project/dashboard",
+        usageHint:
+          "sentry dashboard widget delete <org>/ <id> (--index <n> | --title <name>)",
+      }),
       flags: {
         index: {
           kind: "parsed",
@@ -98,16 +101,18 @@ export const deleteCommand = buildDeleteCommand(
         },
         title: {
           kind: "parsed",
-          parse: String,
+          parse: parseText,
           brief: "Widget title to match",
           optional: true,
         },
       },
       aliases: { i: "index", t: "title" },
     },
-    async *func(this: SentryContext, flags: DeleteFlags, ...args: string[]) {
-      const { cwd } = this;
-
+    async *func(
+      this: SentryContext,
+      flags: DeleteFlags,
+      target: DashboardArguments,
+    ) {
       if (flags.index === undefined && !flags.title) {
         throw new ValidationError(
           "Specify --index or --title to identify the widget to delete.",
@@ -115,23 +120,16 @@ export const deleteCommand = buildDeleteCommand(
         );
       }
 
-      const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-      const parsed = parseOrgProjectArg(targetArg);
-      const orgSlug = await resolveOrgFromTarget(
-        parsed,
-        cwd,
-        "sentry dashboard widget delete <org>/ <id> (--index <n> | --title <name>)",
-      );
-      const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+      const { orgSlug, dashboardId } = await target.resolved;
 
       // GET current dashboard → find widget
-      const current = await getDashboard(orgSlug, dashboardId).catch(
-        async (error: unknown) =>
-          enrichDashboardError(error, {
-            orgSlug,
-            dashboardId,
-            operation: "view",
-          }),
+      const current = await withDashboardErrors(
+        {
+          orgSlug,
+          dashboardId,
+          operation: "view",
+        },
+        () => getDashboard(orgSlug, dashboardId),
       );
       const widgets = current.widgets ?? [];
 
@@ -154,16 +152,13 @@ export const deleteCommand = buildDeleteCommand(
       const updateBody = prepareDashboardForUpdate(current);
       updateBody.widgets.splice(widgetIndex, 1);
 
-      const updated = await updateDashboard(
-        orgSlug,
-        dashboardId,
-        updateBody,
-      ).catch(async (error: unknown) =>
-        enrichDashboardError(error, {
+      const updated = await withDashboardErrors(
+        {
           orgSlug,
           dashboardId,
           operation: "update",
-        }),
+        },
+        () => updateDashboard(orgSlug, dashboardId, updateBody),
       );
 
       yield new CommandOutput({

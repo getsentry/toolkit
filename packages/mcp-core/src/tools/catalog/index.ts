@@ -70,6 +70,8 @@ import getAgentConversationDetails from "./get-agent-conversation-details";
 import searchAgentConversations from "./search-agent-conversations";
 import addIssueNote from "./add-issue-note";
 import onboardingStatusUpdate from "./onboarding-status-update";
+import searchAttributes from "./search-attributes";
+import submitFeedbackToSentryTeam from "./submit-feedback-to-sentry-team";
 import type { ToolConfig } from "../types";
 
 const legacyGetAIConversationDetails = {
@@ -144,6 +146,7 @@ const catalogTools = {
   update_issue: updateIssue,
   link_issue: linkIssue,
   unlink_issue: unlinkIssue,
+  search_attributes: searchAttributes,
   search_errors: searchErrors,
   search_logs: searchLogs,
   search_traces: searchTraces,
@@ -178,6 +181,7 @@ const catalogTools = {
   search_ai_conversations: legacySearchAIConversations,
   add_issue_note: addIssueNote,
   onboarding_status_update: onboardingStatusUpdate,
+  submit_feedback_to_sentry_team: submitFeedbackToSentryTeam,
 } as const satisfies Record<string, ToolConfig<any>>;
 
 export default catalogTools;

@@ -20,6 +20,7 @@ import { basename, dirname, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { createSourceBundle } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -79,10 +80,19 @@ export const bundleSourcesCommand = buildCommand({
       "this is normally run on the build machine right after compiling. " +
       "Referenced files that are not present locally are skipped. The format " +
       "is auto-detected, and this command makes no network requests.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files bundle-sources ./libexample.so\n" +
-      "  sentry debug-files bundle-sources ./app.pdb -o ./app.src.zip\n\n" +
       "Exits non-zero if no referenced source files are found on disk.",
+    examples: [
+      {
+        description:
+          "Bundle a debug file's referenced source files (run on the build machine)",
+        command: "sentry debug-files bundle-sources ./libexample.so",
+      },
+      {
+        description: "Write the bundle to a specific path",
+        command:
+          "sentry debug-files bundle-sources ./app.pdb --output ./app.src.zip",
+      },
+    ],
   },
   output: {
     human: formatBundleResult,
@@ -93,7 +103,7 @@ export const bundleSourcesCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -101,7 +111,7 @@ export const bundleSourcesCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path for the source bundle ZIP (default: <path>.src.zip)",
         optional: true,

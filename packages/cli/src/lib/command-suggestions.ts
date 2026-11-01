@@ -22,17 +22,10 @@ export type CommandSuggestion = {
  *
  * Route context is the last successfully matched route segment before
  * the unknown token. For top-level routes, prefix with `/`.
+ * Keep registered commands and aliases out of this map: runtime error
+ * handlers also consult it. Prefer native suggestions only for exact equivalents.
  */
 const SUGGESTIONS: ReadonlyMap<string, CommandSuggestion> = new Map([
-  // --- issue events (most common, ~20 events) ---
-  [
-    "issue/events",
-    {
-      command: "sentry issue view <issue-id>",
-      explanation: "To see events for an issue, view the issue details",
-    },
-  ],
-
   // --- view synonyms (~15 events) ---
   ["issue/get", { command: "sentry issue view <issue-id>" }],
   ["issue/details", { command: "sentry issue view <issue-id>" }],
@@ -40,14 +33,7 @@ const SUGGESTIONS: ReadonlyMap<string, CommandSuggestion> = new Map([
   ["issue/info", { command: "sentry issue view <issue-id>" }],
 
   // --- mutation commands (~8 events) ---
-  [
-    "issue/resolve",
-    {
-      command:
-        'sentry api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data \'{"status":"resolved"}\'',
-      explanation: "Issue mutations are available via the API",
-    },
-  ],
+  ["issue/close", { command: "sentry issue resolve <issue-id>" }],
   [
     "issue/update",
     {
@@ -61,22 +47,6 @@ const SUGGESTIONS: ReadonlyMap<string, CommandSuggestion> = new Map([
     {
       command:
         'sentry api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data \'{"status":"..."}\'',
-      explanation: "Issue status changes are available via the API",
-    },
-  ],
-  [
-    "issue/close",
-    {
-      command:
-        'sentry api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data \'{"status":"resolved"}\'',
-      explanation: "Issue status changes are available via the API",
-    },
-  ],
-  [
-    "issue/ignore",
-    {
-      command:
-        'sentry api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data \'{"status":"ignored"}\'',
       explanation: "Issue status changes are available via the API",
     },
   ],

@@ -12,6 +12,9 @@ export function isPublicSentryHost(host: string): boolean {
   return isSentryHost(host) && !host.endsWith(".my.sentry.io");
 }
 
+// The Explore page's `mode` URL parameter.
+export type ExploreMode = "aggregate" | "samples";
+
 export interface TraceMetricIdentifier {
   name: string;
   type: string;
@@ -56,9 +59,9 @@ function deriveSelectedFields(
     return fields;
   }
 
-  return Array.from(
-    new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
-  );
+  return [
+    ...new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
+  ];
 }
 
 function getSentryWebBaseUrl(
@@ -153,7 +156,7 @@ function dedupeTraceMetrics(
 function buildMetricQueryState(params: {
   metric: TraceMetricIdentifier;
   query: string;
-  mode: "aggregate" | "samples";
+  mode: ExploreMode;
   yAxes: string[];
   groupByFields?: string[];
   aggregateSortBys?: Array<{ field: string; kind: "asc" | "desc" }>;
@@ -584,6 +587,21 @@ export function getTraceUrl(
     host,
     organizationSlug,
     `/explore/traces/trace/${traceId}`,
+    protocol,
+  );
+}
+
+export function getLogUrl(
+  host: string,
+  organizationSlug: string,
+  logId: string,
+  protocol: SentryProtocol = "https",
+): string {
+  const urlParams = new URLSearchParams({ project: "-1", logsPinned: logId });
+  return getSentryWebBaseUrl(
+    host,
+    organizationSlug,
+    `/explore/logs/?${urlParams.toString()}`,
     protocol,
   );
 }

@@ -22,6 +22,10 @@ import {
 } from "@sentry/mcp-core/skills";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
+import {
+  MAX_MCP_REQUEST_BODY_BYTES,
+  boundMcpRequestBody,
+} from "@sentry/toolkit-core/mcp-limits";
 import { createMcpHandler } from "agents/mcp/server";
 import { annotateResponseMetric } from "../metrics";
 import {
@@ -284,7 +288,7 @@ export async function handleSentryBearerMcpRequest(
     return skills.response;
   }
 
-  return handleAuthenticatedMcpRequest(request, env, ctx, {
+  return await handleAuthenticatedMcpRequest(request, env, ctx, {
     kind: "sentry-bearer",
     accessToken,
     grantedSkills: skills.grantedSkills,
@@ -344,7 +348,10 @@ async function handleAuthenticatedMcpRequest(
   }
 
   if (auth.kind === "oauth") {
-    for (const skill of Array.from(auth.grantedSkills).sort()) {
+    const grantedSkills = [...auth.grantedSkills].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    for (const skill of grantedSkills) {
       activeSpan?.setAttribute(getSkillGrantedAttributeName(skill), true);
     }
   }
@@ -412,6 +419,7 @@ async function handleAuthenticatedMcpRequest(
               cache: {
                 kv: env.MCP_CACHE,
                 userId: auth.userId,
+                waitUntil: (promise) => ctx.waitUntil(promise),
               },
             },
           );
@@ -453,9 +461,17 @@ async function handleAuthenticatedMcpRequest(
       auth.kind === "oauth" ? auth.onUpstreamUnauthorized : undefined,
   };
 
+  // `createMcpHandler` from agents only forwards `maxRequestBodySize` to the
+  // SDK v2 lane. Its legacy-request classification and legacy compatibility
+  // lane still read up to the SDK's 4 MiB default, so bound every lane here.
+  const boundedRequest = await boundMcpRequestBody(request);
+  if (boundedRequest instanceof Response) {
+    return boundedRequest;
+  }
+
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
-  return createMcpHandler(
+  return await createMcpHandler(
     () =>
       buildServer({
         context: serverContext,
@@ -467,8 +483,9 @@ async function handleAuthenticatedMcpRequest(
       // The Agents handler rejects browser Origins by default except localhost.
       // Permit only the hostname serving this authenticated endpoint.
       allowedOriginHostnames: [url.hostname],
+      maxRequestBodySize: MAX_MCP_REQUEST_BODY_BYTES,
     },
-  )(request, env, ctx);
+  )(boundedRequest, env, ctx);
 }
 
 /**
@@ -591,7 +608,7 @@ const mcpHandler: ExportedHandler<Env> = {
 
     let upstreamUnauthorizedHandled = false;
 
-    return handleAuthenticatedMcpRequest(request, env, ctx, {
+    return await handleAuthenticatedMcpRequest(request, env, ctx, {
       kind: "oauth",
       userId,
       clientId,

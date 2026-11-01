@@ -43,7 +43,7 @@ export function createLocalAgentServer() {
     const { prompt } = (await c.req.json()) as { prompt?: unknown };
     const safePrompt = typeof prompt === "string" ? prompt : "";
 
-    return startSpan(
+    return await startSpan(
       {
         name: "agent.run",
         op: "gen_ai.invoke_agent",
@@ -105,7 +105,6 @@ export function createLocalAgentServer() {
 function startServer(): void {
   init({
     dsn: process.env.SENTRY_DSN,
-    enableLogs: true,
     tracesSampleRate: 1,
   });
 

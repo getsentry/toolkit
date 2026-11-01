@@ -36,7 +36,7 @@ import {
   type DebugFileUploadResult,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   createIl2cppLineMapping,
   createSourceBundle,
@@ -47,7 +47,13 @@ import {
   type PreparedDif,
   prepareDifs,
   scanPaths,
+  VALID_DIF_TYPES,
 } from "../../lib/dif/scan.js";
+import {
+  choiceParser,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -547,17 +553,55 @@ export const uploadCommand = buildCommand({
       "from each file's referenced generated C++ sources and uploaded as " +
       "separate il2cpp debug files; combine with --include-sources to also " +
       "bundle the referenced C# source files.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files upload ./build\n" +
-      "  sentry debug-files upload ./symbols.zip\n" +
-      "  sentry debug-files upload ./libexample.so --include-sources\n" +
-      "  sentry debug-files upload ./dsyms --type dsym --wait\n" +
-      "  sentry debug-files upload ./build --il2cpp-mapping --include-sources\n" +
-      "  sentry debug-files upload --derived-data --no-upload\n" +
-      "  sentry debug-files upload ./build --no-zips --no-upload\n\n" +
       "BCSymbolMap resolution (legacy --symbol-maps) is not supported: it " +
       "only applies to Apple Bitcode, which Apple has deprecated. Use the " +
       "legacy Rust sentry-cli if you still need it.",
+    examples: [
+      {
+        description:
+          "Upload debug information files (scans directories recursively)",
+        command: "sentry debug-files upload ./build",
+      },
+      {
+        description: "Attach a source bundle to each file",
+        command: "sentry debug-files upload ./libexample.so --include-sources",
+      },
+      {
+        description: "Scan a .zip archive in place",
+        command: "sentry debug-files upload ./symbols.zip",
+      },
+      {
+        description: "Skip .zip archives",
+        command: "sentry debug-files upload ./build --no-zips",
+      },
+      {
+        description: "Upload only dSYMs and wait for server-side processing",
+        command: "sentry debug-files upload ./dsyms --type dsym --wait",
+      },
+      {
+        description: "Fail unless the requested debug ID is found",
+        command:
+          "sentry debug-files upload ./build --id <debug-id> --require-all",
+      },
+      {
+        description: "Unity: upload IL2CPP line mappings",
+        command: "sentry debug-files upload ./build --il2cpp-mapping",
+      },
+      {
+        description:
+          "Unity: upload IL2CPP line mappings with referenced C# sources",
+        command:
+          "sentry debug-files upload ./build --il2cpp-mapping --include-sources",
+      },
+      {
+        description: "Preview what would be uploaded (no credentials needed)",
+        command: "sentry debug-files upload ./build --no-upload",
+      },
+      {
+        description: "Scan Xcode's DerivedData without uploading",
+        command: "sentry debug-files upload --derived-data --no-upload",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -567,14 +611,14 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Files or directories to scan for debug information files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VALID_DIF_TYPES),
         brief:
           "Only upload files of this type (repeatable): dsym, elf, pe, pdb, " +
           "portablepdb, wasm, breakpad, sourcebundle, jvm",
@@ -583,7 +627,7 @@ export const uploadCommand = buildCommand({
       },
       id: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Only upload the object with this debug id (repeatable)",
         optional: true,
         variadic: true,
@@ -651,7 +695,7 @@ export const uploadCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait up to this many seconds for server-side processing",
         optional: true,
       },

@@ -3,7 +3,14 @@
 import { basename } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceParser,
+  parseLocalSession,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { CliError, ValidationError } from "../../lib/errors.js";
+import { formatLocalControlResult } from "../../lib/formatters/local.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import {
@@ -22,6 +29,7 @@ import {
   MAX_ENVELOPES_FLAG,
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
+import { LOOPBACK_HOSTS } from "./loopback.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -45,25 +53,21 @@ function publicDaemonState({
   return { host, pid, port, version };
 }
 
-function formatHuman(data: ControlResult): string {
-  return JSON.stringify(data, null, 2);
-}
-
 const CONTROL_COMMAND_DEFAULTS = {
   auth: false,
-  output: { human: formatHuman },
+  output: { human: formatLocalControlResult },
 } as const;
 
 const DAEMON_CONNECTION_FLAGS = {
   host: {
     kind: "parsed",
-    parse: String,
+    parse: choiceParser(LOOPBACK_HOSTS),
     brief: "Loopback host",
     default: "localhost",
   },
   port: {
     kind: "parsed",
-    parse: parsePort,
+    parse: textParser(parsePort),
     brief: "Control-plane port",
     default: "8969",
   },
@@ -73,7 +77,7 @@ const SESSION_REFERENCE_POSITIONAL = {
   kind: "array",
   parameter: {
     brief: "Session ID or unique name",
-    parse: String,
+    parse: parseLocalSession,
     placeholder: "session",
   },
 } as const;
@@ -217,7 +221,7 @@ const sessionCreateCommand = buildCommand({
     flags: {
       clientId: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Idempotency key for retried agent session creation",
         optional: true,
       },
@@ -228,7 +232,7 @@ const sessionCreateCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Optional session label",
-        parse: String,
+        parse: parseText,
         placeholder: "name",
       },
     },
@@ -298,7 +302,7 @@ function buildTelemetryViewCommand(
         kind: "array",
         parameter: {
           brief: `Session and ${kind} ID`,
-          parse: String,
+          parse: parseLocalSession,
           placeholder: `session ${kind}`,
         },
       },

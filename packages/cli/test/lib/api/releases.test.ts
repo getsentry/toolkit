@@ -102,7 +102,7 @@ function linkHeader(cursor: string, hasResults: boolean): string {
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://us.sentry.io");
 });
 
@@ -338,6 +338,58 @@ describe("setCommitsAuto", () => {
     expect(release.commitCount).toBe(5);
   });
 
+  test("fetches the previous release commit concurrently with the repository lookup", async () => {
+    const withCommits = { ...SAMPLE_RELEASE, commitCount: 2 };
+    let releaseRepos: (() => void) | undefined;
+    const reposGate = new Promise<void>((resolve) => {
+      releaseRepos = resolve;
+    });
+    let previousRequestedBeforeReposResolved = false;
+    let reposResolved = false;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+
+      if (req.url.includes("/repos/")) {
+        await reposGate;
+        reposResolved = true;
+        return new Response(JSON.stringify([SAMPLE_REPO]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (req.url.includes("/previous-with-commits/")) {
+        previousRequestedBeforeReposResolved = !reposResolved;
+        // Unblock the repository lookup only once the previous-release
+        // request is in flight; a sequential implementation would deadlock.
+        releaseRepos?.();
+        return new Response(
+          JSON.stringify({
+            lastCommit: { id: "prev000000000000000000000000000000000000" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const body = (await req.json()) as {
+        refs: Array<{ previousCommit?: string }>;
+      };
+      expect(body.refs[0]?.previousCommit).toBe(
+        "prev000000000000000000000000000000000000",
+      );
+      return new Response(JSON.stringify(withCommits), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const release = await setCommitsAuto("test-org", "1.0.0", "/tmp");
+
+    expect(previousRequestedBeforeReposResolved).toBe(true);
+    expect(release.commitCount).toBe(2);
+  });
+
   test("throws ApiError when org has no repositories", async () => {
     globalThis.fetch = mockFetch(
       async () =>
@@ -388,9 +440,15 @@ describe("setCommitsAuto", () => {
       });
       expect(isUserError(error)).toBe(false);
       expect(classifySilenced(error)).toBeNull();
-      expect(requests).toEqual([
+      // The previous-release lookup runs concurrently with the repository
+      // lookup, so only assert on the repository request and that the
+      // release was never updated.
+      expect(
+        requests.filter(({ pathname }) => pathname.endsWith("/repos/")),
+      ).toEqual([
         { method: "GET", pathname: "/api/0/organizations/test-org/repos/" },
       ]);
+      expect(requests.some(({ method }) => method === "PUT")).toBe(false);
     },
   );
 
@@ -399,7 +457,15 @@ describe("setCommitsAuto", () => {
     const repoQueries: (string | null)[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const params = new URL(new Request(input!, init).url).searchParams;
+      const url = new URL(new Request(input!, init).url);
+      if (!url.pathname.endsWith("/repos/")) {
+        // Concurrent previous-release lookup
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const params = url.searchParams;
       repoQueries.push(params.get("query"));
       const repos = params.get("query") ? [] : [otherRepo];
       return new Response(JSON.stringify(repos), {

@@ -9,7 +9,7 @@ import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError } from "../../lib/errors.js";
+import { stringifyUnknown } from "../../lib/errors.js";
 import { plainSafeMuted } from "../../lib/formatters/human.js";
 import {
   formatIssueView,
@@ -17,6 +17,7 @@ import {
   type SingleIssueViewData,
 } from "../../lib/formatters/issue.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import type { IssueArgument } from "../../lib/issue-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
@@ -30,16 +31,12 @@ import {
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import type { SentryEvent } from "../../types/index.js";
 import { IssueViewOutputSchema } from "../../types/index.js";
-import {
-  collectIssueArgs,
-  issueIdsPositional,
-  mapIssueArgsConcurrently,
-  resolveIssue,
-} from "./utils.js";
+import { type IssuesArguments, issuesPositional } from "./positional.js";
+import { mapIssueArgsConcurrently, resolveIssue } from "./utils.js";
 
 const log = logger.withTag("issue.view");
 
-/** Usage hint for ContextError messages */
+/** Usage hint for a missing issue */
 const USAGE_HINT = "sentry issue view <issue> [<issue>...]";
 
 /** Maximum browser tabs opened without an explicit safety override. */
@@ -129,7 +126,7 @@ async function buildIssueSpanData(
  * Resolve one issue and attach latest event, replays, and optional span tree.
  */
 async function buildSingleIssueViewData(
-  issueArg: string,
+  issueArg: IssueArgument,
   cwd: string,
   spans: number,
 ): Promise<SingleIssueViewData> {
@@ -162,8 +159,8 @@ async function buildSingleIssueViewData(
 
 /** Options for fetching multiple issues in parallel */
 type FetchMultipleIssueViewsOptions = {
-  /** Issue identifiers as provided on the command line */
-  issueArgs: readonly string[];
+  /** Issue identifiers from the command line, parsed */
+  issueArgs: readonly IssueArgument[];
   /** Working directory for DSN / project detection */
   cwd: string;
   /** Span tree depth (`0` skips the fetch) */
@@ -187,7 +184,9 @@ export function fetchMultipleIssueViews(
     issueArgs,
     (issueArg) => buildSingleIssueViewData(issueArg, cwd, spans),
     (issueArg, reason) => {
-      log.warn(`Failed to fetch issue ${issueArg}: ${reason}`);
+      log.warn(
+        `Failed to fetch issue ${issueArg.text}: ${stringifyUnknown(reason)}`,
+      );
     },
   );
 }
@@ -195,12 +194,12 @@ export function fetchMultipleIssueViews(
 /**
  * Resolve and open issue browser pages, respecting the tab safety limit.
  *
- * @param issueArgs - Normalized issue identifiers
+ * @param issueArgs - Issue identifiers, parsed
  * @param cwd - Working directory for issue resolution
  * @param force - Whether to bypass {@link MAX_WEB_ISSUES}
  */
 async function openIssuesInBrowser(
-  issueArgs: readonly string[],
+  issueArgs: readonly IssueArgument[],
   cwd: string,
   force: boolean,
 ): Promise<void> {
@@ -222,7 +221,9 @@ async function openIssuesInBrowser(
       return issue;
     },
     (issueArg, reason) => {
-      log.warn(`Failed to open issue ${issueArg}: ${reason}`);
+      log.warn(
+        `Failed to open issue ${issueArg.text}: ${stringifyUnknown(reason)}`,
+      );
     },
   );
 
@@ -254,6 +255,62 @@ export const viewCommand = buildCommand({
       `With --web, up to ${MAX_WEB_ISSUES} issues open by default; pass --force to open all.\n\n` +
       "In multi-project mode (after 'issue list'), use alias-suffix format (e.g., 'f-g' " +
       "where 'f' is the project alias shown in the list).",
+    examples: [
+      { description: "View an issue", command: "sentry issue view FRONT-ABC" },
+      {
+        description: "View the most recent issue",
+        command: "sentry issue view @latest",
+      },
+      {
+        description: "View several issues (space-separated, not commas)",
+        command: "sentry issue view FRONT-ABC BACK-2",
+      },
+      {
+        description: "Select an organization explicitly",
+        command: "sentry issue view my-org/FRONT-ABC",
+      },
+      {
+        description:
+          'Use a GitHub-style identifier (the "#" replaces the final slash)',
+        command: "sentry issue view my-org/my-project#FRONT-ABC",
+      },
+      {
+        description: "Open issues in the browser (up to 5 tabs by default)",
+        command: "sentry issue view FRONT-ABC BACK-2 -w",
+      },
+      {
+        description: "Allow more than 5 browser tabs",
+        command:
+          "sentry issue view FRONT-ABC BACK-2 API-3 WEB-4 IOS-5 OPS-6 -w --force",
+      },
+      {
+        description:
+          "Full JSON (issue fields + latest event + trace/replay context)",
+        command: "sentry issue view FRONT-ABC --json",
+      },
+      {
+        description: "Select top-level fields to keep output small",
+        command:
+          "sentry issue view FRONT-ABC --json --fields shortId,title,culprit,count,userCount,permalink",
+      },
+      {
+        description:
+          "Select fields from the latest event instead of the whole event",
+        command:
+          "sentry issue view FRONT-ABC --json --fields event.id,event.title,event.dateCreated",
+      },
+      {
+        description: "Extract the request URL and method from the latest event",
+        command:
+          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"request\") | .data | {url, method}'",
+      },
+      {
+        description:
+          "Extract the exception type and value from the latest event",
+        command:
+          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"exception\") | .data.values[0] | {type, value}'",
+      },
+    ],
   },
   output: {
     human: formatIssueView,
@@ -261,7 +318,11 @@ export const viewCommand = buildCommand({
     schema: IssueViewOutputSchema,
   },
   parameters: {
-    positional: issueIdsPositional,
+    positional: issuesPositional({
+      brief: "One or more issue IDs",
+      usageHint: USAGE_HINT,
+      distinct: true,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -278,15 +339,13 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(this: SentryContext, flags: ViewFlags, issues: IssuesArguments) {
     applyFreshFlag(flags);
     const { cwd } = this;
 
-    const issueArgs = collectIssueArgs(args);
-    const [primaryArg] = issueArgs;
-    if (primaryArg === undefined) {
-      throw new ContextError("Issue ID", USAGE_HINT, []);
-    }
+    // Never empty: the positional requires an issue
+    const issueArgs = await issues.resolved;
+    const primaryArg = issueArgs[0]?.text;
 
     if (flags.web) {
       await openIssuesInBrowser(issueArgs, cwd, flags.force);

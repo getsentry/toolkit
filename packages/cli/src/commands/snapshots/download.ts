@@ -18,6 +18,11 @@ import {
   waitForSnapshotArchive,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  parseDirectoryPath,
+  parseText,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import { getDefaultProject } from "../../lib/db/defaults.js";
 import {
   ApiError,
@@ -154,11 +159,23 @@ export const downloadCommand = buildCommand({
       "Use --snapshot-id to download a specific snapshot, or --app-id to " +
       "resolve the latest baseline (org auth tokens require --project with a " +
       "project ID or slug for --app-id).\n\n" +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry snapshots download --snapshot-id 1234567890\n" +
-      "  sentry snapshots download --app-id my-app --branch main\n" +
-      "  sentry snapshots download --app-id my-app --output ./baseline/",
+      "This feature only works with Sentry SaaS.",
+    examples: [
+      {
+        description: "Download a specific baseline snapshot by ID",
+        command: "sentry snapshots download --snapshot-id 1234567890",
+      },
+      {
+        description:
+          "Download the latest baseline for an app, filtered by branch",
+        command: "sentry snapshots download --app-id my-app --branch main",
+      },
+      {
+        description: "Extract images to a specific directory",
+        command:
+          "sentry snapshots download --app-id my-app --output ./baseline/",
+      },
+    ],
   },
   output: {
     human: formatDownloadResult,
@@ -167,26 +184,26 @@ export const downloadCommand = buildCommand({
     flags: {
       "app-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "App identifier (e.g. my-app) to resolve the latest baseline; mutually exclusive with --snapshot-id",
         optional: true,
       },
       "snapshot-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Direct snapshot artifact ID; mutually exclusive with --app-id",
         optional: true,
       },
       branch: {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Git branch filter (only with --app-id)",
         optional: true,
       },
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: `Directory for extracted images (default: ${DEFAULT_OUTPUT})`,
         optional: true,
       },

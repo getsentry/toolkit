@@ -40,6 +40,7 @@ import {
   resolveStableDelta,
   validateChainStep,
 } from "../../src/lib/delta-upgrade.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import type { OciManifest } from "../../src/lib/ghcr.js";
 import { useTestConfigDir } from "../helpers.js";
 
@@ -218,7 +219,8 @@ describe("extractStableChain", () => {
    * Converts each char to its hex code to produce valid [0-9a-f]+ output.
    */
   function versionToHex(version: string): string {
-    return Array.from(version)
+    return version
+      .split("")
       .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
       .join("");
   }
@@ -834,10 +836,10 @@ describe("fetchRecentReleases", () => {
     ];
 
     mockFetch(async (url) => {
-      expect(String(url)).toContain(
+      expect(extractInputUrl(url)).toContain(
         "api.github.com/repos/getsentry/toolkit/releases",
       );
-      expect(String(url)).toContain("per_page=");
+      expect(extractInputUrl(url)).toContain("per_page=");
       return new Response(JSON.stringify(releases), { status: 200 });
     });
 
@@ -871,7 +873,7 @@ describe("fetchRecentReleases", () => {
   test("uses the selected legacy GitHub repository", async () => {
     const urls: string[] = [];
     mockFetch(async (url) => {
-      urls.push(String(url));
+      urls.push(extractInputUrl(url));
       return new Response(JSON.stringify([]), { status: 200 });
     });
 
@@ -906,7 +908,7 @@ describe("downloadStablePatch", () => {
     const patchData = new Uint8Array([1, 2, 3, 4, 5]);
 
     mockFetch(async (url) => {
-      expect(String(url)).toBe("https://example.com/patch.bin");
+      expect(extractInputUrl(url)).toBe("https://example.com/patch.bin");
       return new Response(patchData.buffer as ArrayBuffer, {
         status: 200,
       });
@@ -942,7 +944,8 @@ describe("resolveStableChain", () => {
    * Reuses the same approach as the extractStableChain tests above.
    */
   function versionHex(version: string): string {
-    return Array.from(version)
+    return version
+      .split("")
       .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
       .join("");
   }
@@ -953,7 +956,7 @@ describe("resolveStableChain", () => {
     patches: Map<string, Uint8Array>,
   ): void {
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.startsWith("https://api.github.com/")) {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
@@ -1004,7 +1007,7 @@ describe("resolveStableChain", () => {
   test("keeps stable resolution on the selected legacy source", async () => {
     const urls: string[] = [];
     mockFetch(async (url) => {
-      urls.push(String(url));
+      urls.push(extractInputUrl(url));
       return new Response("Not Found", { status: 404 });
     });
 
@@ -1151,7 +1154,7 @@ describe("resolveNightlyChain", () => {
     blobs: Map<string, Uint8Array>,
   ): void {
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
 
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
@@ -1247,7 +1250,7 @@ describe("resolveNightlyChain", () => {
   test("keeps nightly resolution on the selected legacy source", async () => {
     const urls: string[] = [];
     mockFetch(async (url) => {
-      urls.push(String(url));
+      urls.push(extractInputUrl(url));
       return new Response(JSON.stringify({ tags: [] }), { status: 200 });
     });
 
@@ -1743,7 +1746,7 @@ describe("resolveNightlyDelta", () => {
     blobs: Map<string, Uint8Array>;
   }): void {
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
 
       // Token exchange
       if (urlStr.includes("ghcr.io/token")) {
@@ -1935,7 +1938,7 @@ async function importDeltaUpgradeWithVersion(version: string) {
       await importOriginal<typeof import("../../src/lib/constants.js")>();
     return { ...actual, CLI_VERSION: version };
   });
-  return import("../../src/lib/delta-upgrade.js");
+  return await import("../../src/lib/delta-upgrade.js");
 }
 
 function restoreDeltaUpgradeModule(): void {
@@ -1950,7 +1953,7 @@ describe("selected source affinity", () => {
   test("attemptDeltaUpgrade keeps stable requests on the legacy source", async () => {
     const urls: string[] = [];
     mockFetch(async (url) => {
-      urls.push(String(url));
+      urls.push(extractInputUrl(url));
       return new Response("Not Found", { status: 404 });
     });
     const versionedDelta = await importDeltaUpgradeWithVersion("0.13.0");
@@ -1974,7 +1977,7 @@ describe("selected source affinity", () => {
   test("attemptDeltaUpgrade keeps nightly requests on the legacy source", async () => {
     const urls: string[] = [];
     mockFetch(async (url) => {
-      urls.push(String(url));
+      urls.push(extractInputUrl(url));
       return new Response("Unauthorized", { status: 401 });
     });
     const versionedDelta =
@@ -1999,7 +2002,7 @@ describe("selected source affinity", () => {
   test("prefetchStablePatches keeps requests on the legacy source", async () => {
     const urls: string[] = [];
     mockFetch(async (url) => {
-      urls.push(String(url));
+      urls.push(extractInputUrl(url));
       return new Response("Not Found", { status: 404 });
     });
     const versionedDelta = await importDeltaUpgradeWithVersion("0.13.0");
@@ -2018,7 +2021,7 @@ describe("selected source affinity", () => {
   test("prefetchNightlyPatches keeps requests on the legacy source", async () => {
     const urls: string[] = [];
     mockFetch(async (url) => {
-      urls.push(String(url));
+      urls.push(extractInputUrl(url));
       return new Response("Unauthorized", { status: 401 });
     });
     const versionedDelta =

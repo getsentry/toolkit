@@ -6,11 +6,19 @@
  * slug separators. This module provides version-aware parsing.
  */
 
+import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
+import {
+  type BoundPositional,
+  boundPositional,
+} from "../../lib/positional-parse.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
 
 /** Slug pattern: lowercase alphanumeric + hyphens, no leading/trailing hyphen */
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+
+/** A parsed `[<org>/]<version>` argument. */
+type ParsedReleaseArg = { version: string; orgSlug?: string };
 
 /**
  * Parse a release positional argument: `[<org>/]<version>`.
@@ -31,7 +39,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 export function parseReleaseArg(
   arg: string,
   usageHint: string,
-): { version: string; orgSlug?: string } {
+): ParsedReleaseArg {
   const firstSlash = arg.indexOf("/");
 
   if (firstSlash > 0) {
@@ -65,39 +73,62 @@ export type ResolvedReleaseTarget = {
   detectedFrom?: string;
 };
 
+/** A parsed `[<org>/]<version>` positional, bound to its org resolver. */
+export type ReleaseTarget = BoundPositional<
+  ParsedReleaseArg,
+  ResolvedReleaseTarget
+>;
+
+/** What the release resolver needs from the command context. */
+type ReleaseTargetContext = { readonly cwd: string };
+
 /**
- * Resolve a single release positional argument into a concrete `{ version, org }`.
+ * Parse a `[<org>/]<version>` positional, before the command runs.
  *
- * Centralizes the version-only release-command boilerplate: it parses the
- * `[<org>/]<version>` target, resolves the organization (from the parsed prefix
- * or the surrounding project context), and raises consistent {@link ContextError}s
- * when the version is missing or no organization can be determined.
- *
- * Commands pass a single required positional (Stricli `kind: "tuple"`), so callers
- * never need to join variadic args — preventing the silent
- * `args.join(" ")` defect where extra positionals were swallowed into the version.
- *
- * @param target - The raw positional argument (e.g. `1.0.0` or `my-org/1.0.0`)
- * @param usageHint - Single-line usage example for error messages
- * @param cwd - Current working directory, used for context-based org detection
- * @returns The resolved version and organization
- * @throws {ContextError} If the version is empty or the org cannot be resolved
+ * @throws {ContextError} When the version is missing or blank
  */
-export async function resolveReleaseTarget(
-  target: string | undefined,
+function parseReleaseInput(
+  raw: string | undefined,
   usageHint: string,
-  cwd: string,
-): Promise<ResolvedReleaseTarget> {
-  const trimmed = target?.trim();
+): ParsedReleaseArg {
+  const trimmed = raw?.trim();
   if (!trimmed) {
     throw new ContextError("Release version", usageHint, []);
   }
+  return parseReleaseArg(trimmed, usageHint);
+}
 
-  const { version, orgSlug } = parseReleaseArg(trimmed, usageHint);
-  const resolved = await resolveOrg({ org: orgSlug, cwd });
-  if (!resolved) {
-    throw new ContextError("Organization", usageHint);
-  }
-
-  return { version, org: resolved.org, detectedFrom: resolved.detectedFrom };
+/**
+ * The `[<org>/]<version>` parameter of a release command's tuple positional.
+ *
+ * The argument is parsed before the command runs, so a blank version fails
+ * like any other argument. `target.resolved` finds the org (from the prefix,
+ * or the surrounding project context) inside `func`, after the auth guard.
+ *
+ * @param usageHint - Single-line usage example for error messages
+ * @param brief - Help text of the parameter
+ */
+export function releaseParameter(usageHint: string, brief: string) {
+  return {
+    placeholder: "org/version",
+    brief,
+    parse: boundPositional(
+      ORG_TARGET,
+      (raw) => parseReleaseInput(raw, usageHint),
+      async (
+        { version, orgSlug },
+        context: ReleaseTargetContext,
+      ): Promise<ResolvedReleaseTarget> => {
+        const resolved = await resolveOrg({ org: orgSlug, cwd: context.cwd });
+        if (!resolved) {
+          throw new ContextError("Organization", usageHint);
+        }
+        return {
+          version,
+          org: resolved.org,
+          detectedFrom: resolved.detectedFrom,
+        };
+      },
+    ),
+  } as const;
 }

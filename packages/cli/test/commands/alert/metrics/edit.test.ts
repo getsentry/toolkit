@@ -90,7 +90,7 @@ describe("alert metrics edit", () => {
       aggregate: "count()",
       dataset: "errors",
       timeWindow: 5,
-      triggers: [{ alertThreshold: 100, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 100 }],
     });
     putSpy.mockResolvedValue({
       id: "9",
@@ -100,7 +100,7 @@ describe("alert metrics edit", () => {
       aggregate: "count()",
       dataset: "spans",
       timeWindow: 15,
-      triggers: [{ alertThreshold: 200, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 200 }],
     });
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
@@ -116,7 +116,7 @@ describe("alert metrics edit", () => {
         aggregate: "count()",
         dataset: "spans",
         "time-window": 15,
-        trigger: ['{"alertThreshold":200,"actions":[{"id":"notify"}]}'],
+        trigger: ['{"alertThreshold":200}'],
         json: true,
       },
       "test-org/9",
@@ -130,7 +130,7 @@ describe("alert metrics edit", () => {
       aggregate: "count()",
       dataset: "spans",
       timeWindow: 15,
-      triggers: [{ alertThreshold: 200, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 200 }],
     });
   });
 
@@ -199,7 +199,7 @@ describe("alert metrics edit", () => {
       aggregate: "count()",
       dataset: "errors",
       timeWindow: 5,
-      triggers: [{ alertThreshold: 100, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 100 }],
     });
     putSpy.mockResolvedValue({
       id: "9",
@@ -209,7 +209,7 @@ describe("alert metrics edit", () => {
       aggregate: "count()",
       dataset: "errors",
       timeWindow: 5,
-      triggers: [{ alertThreshold: 100, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 100 }],
     });
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,
@@ -245,7 +245,7 @@ describe("alert metrics edit", () => {
       aggregate: "count()",
       dataset: "errors",
       timeWindow: 5,
-      triggers: [{ alertThreshold: 100, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 100 }],
     });
     putSpy.mockResolvedValue({
       id: "9",
@@ -255,7 +255,7 @@ describe("alert metrics edit", () => {
       aggregate: "count()",
       dataset: "spans",
       timeWindow: 5,
-      triggers: [{ alertThreshold: 100, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 100 }],
     });
     const func = (await editCommand.loader()) as unknown as (
       this: unknown,

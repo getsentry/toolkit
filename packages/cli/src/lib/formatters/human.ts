@@ -8,7 +8,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import prettyMs from "pretty-ms";
 import type {
   DashboardDetail,
@@ -29,6 +29,7 @@ import type {
   Writer,
 } from "../../types/index.js";
 import { resolveOrgDisplayName } from "../api-client.js";
+import { stringifyUnknown } from "../errors.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { withSerializeSpan } from "../telemetry.js";
 import { tipsSuppressed } from "../tips.js";
@@ -851,8 +852,12 @@ export function formatIssueDetails(issue: SentryIssue): string {
   const firstReleaseVersion = issue.firstRelease?.shortVersion;
   const lastReleaseVersion = issue.lastRelease?.shortVersion;
   if (firstReleaseVersion || lastReleaseVersion) {
-    const first = escapeMarkdownInline(String(firstReleaseVersion ?? ""));
-    const last = escapeMarkdownInline(String(lastReleaseVersion ?? ""));
+    const first = escapeMarkdownInline(
+      stringifyUnknown(firstReleaseVersion ?? ""),
+    );
+    const last = escapeMarkdownInline(
+      stringifyUnknown(lastReleaseVersion ?? ""),
+    );
     if (firstReleaseVersion && lastReleaseVersion) {
       if (firstReleaseVersion === lastReleaseVersion) {
         kvRows.push(["Release", first]);
@@ -872,14 +877,14 @@ export function formatIssueDetails(issue: SentryIssue): string {
   if (issue.firstSeen) {
     let firstSeenLine = new Date(issue.firstSeen).toLocaleString();
     if (firstReleaseVersion) {
-      firstSeenLine += ` (in ${escapeMarkdownCell(String(firstReleaseVersion))})`;
+      firstSeenLine += ` (in ${escapeMarkdownCell(stringifyUnknown(firstReleaseVersion))})`;
     }
     kvRows.push(["First seen", firstSeenLine]);
   }
   if (issue.lastSeen) {
     let lastSeenLine = new Date(issue.lastSeen).toLocaleString();
     if (lastReleaseVersion && lastReleaseVersion !== firstReleaseVersion) {
-      lastSeenLine += ` (in ${escapeMarkdownCell(String(lastReleaseVersion))})`;
+      lastSeenLine += ` (in ${escapeMarkdownCell(stringifyUnknown(lastReleaseVersion))})`;
     }
     kvRows.push(["Last seen", lastSeenLine]);
   }
@@ -1012,10 +1017,12 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
     if (!message && breadcrumb.data) {
       const data = breadcrumb.data as Record<string, unknown>;
       if (data.url && data.method) {
-        const status = data.status_code ? ` → ${data.status_code}` : "";
-        message = `${data.method} ${data.url}${status}`;
+        const status = data.status_code
+          ? ` → ${stringifyUnknown(data.status_code)}`
+          : "";
+        message = `${stringifyUnknown(data.method)} ${stringifyUnknown(data.url)}${status}`;
       } else if (data.from && data.to) {
-        message = `${data.from} → ${data.to}`;
+        message = `${stringifyUnknown(data.from)} → ${stringifyUnknown(data.to)}`;
       } else if (data.arguments && Array.isArray(data.arguments)) {
         message = String(data.arguments[0] || "").slice(0, 60);
       }
@@ -1961,13 +1968,29 @@ export function formatAuthStatus(data: AuthStatusData): string {
 function formatEnvTokenSection(
   envToken: NonNullable<AuthStatusData["envToken"]>,
 ): string {
-  const status = envToken.active
-    ? "active"
-    : "set but not used (using OAuth credentials)";
+  let status = "active";
+  if (!envToken.active) {
+    status = envToken.host
+      ? "used for organizations it can access (OAuth credentials otherwise)"
+      : "set but not used (using OAuth credentials)";
+  }
   const rows: [string, string][] = [
     ["Env var", safeCodeSpan(envToken.envVar)],
     ["Status", status],
   ];
+  if (envToken.host) {
+    rows.push(["Server", escapeMarkdownInline(envToken.host)]);
+  }
+  const user = envToken.user;
+  const who = user?.name ?? user?.username ?? user?.email;
+  if (who) {
+    rows.push([
+      "User",
+      escapeMarkdownInline(
+        user?.email && user.email !== who ? `${who} <${user.email}>` : who,
+      ),
+    ]);
+  }
   return `\n${mdKvTable(rows, "Environment Token")}`;
 }
 

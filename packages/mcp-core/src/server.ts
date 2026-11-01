@@ -30,6 +30,7 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { MCP_SERVER_NAME } from "./constants";
 import {
   formatErrorForUser,
@@ -156,9 +157,10 @@ export function buildServer({
     name: MCP_SERVER_NAME,
     version: LIB_VERSION,
   };
+  const serverOptions = { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS };
 
   if (sdkVersion === "v2") {
-    const server = new ModernMcpServer(serverInfo);
+    const server = new ModernMcpServer(serverInfo, serverOptions);
     const registrations = configureServer({
       server,
       context: contextWithModes,
@@ -174,7 +176,7 @@ export function buildServer({
     return wrapMcpServerWithSentry(server);
   }
 
-  const server = new LegacyMcpServer(serverInfo);
+  const server = new LegacyMcpServer(serverInfo, serverOptions);
   const registrations = configureServer({
     server,
     context: contextWithModes,
@@ -216,9 +218,7 @@ function configureServer({
   const grantedSkills: Set<Skill> | undefined = context.grantedSkills
     ? new Set<Skill>(context.grantedSkills)
     : undefined;
-  const grantedSkillIds = grantedSkills
-    ? Array.from(grantedSkills).sort()
-    : undefined;
+  const grantedSkillIds = grantedSkills ? [...grantedSkills].sort() : undefined;
   const availableTools = getAvailableTools({
     tools: registry,
     context,
@@ -386,7 +386,9 @@ function configureServer({
         if (isStructuredToolOutput(output)) {
           return structuredOutputToCallToolResult(output);
         }
-        throw new Error(`Invalid tool output: ${output}`);
+        throw new Error(
+          `Invalid tool output: ${typeof output === "object" ? JSON.stringify(output) : String(output)}`,
+        );
       } catch (error) {
         if (activeSpan) {
           activeSpan.setStatus({

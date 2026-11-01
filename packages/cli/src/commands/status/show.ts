@@ -12,6 +12,7 @@ import {
   SENTRY_STATUS_PAGE_URL,
 } from "../../lib/api/status-page.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseUrl } from "../../lib/completion-target.js";
 import { formatSentryStatus } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 
@@ -32,13 +33,28 @@ export const showCommand = buildCommand({
       "This works even when the Sentry API is degraded or unreachable, so " +
       "you can tell whether an issue is on Sentry's side. Point `--url` at a " +
       "different Statuspage instance to check a self-hosted or regional page.",
+    examples: [
+      {
+        description: "Show the current status of Sentry's services",
+        command: "sentry status",
+      },
+      {
+        description: "Get machine-readable status (useful in scripts)",
+        command: "sentry status --json",
+      },
+      {
+        description:
+          "Check a self-hosted or regional status page (Statuspage CNAME)",
+        command: "sentry status --url https://status.acme.com",
+      },
+    ],
   },
   output: { human: formatSentryStatus },
   parameters: {
     flags: {
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "Status page base URL to query",
         default: SENTRY_STATUS_PAGE_URL,
       },

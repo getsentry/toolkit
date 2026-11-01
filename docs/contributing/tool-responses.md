@@ -151,7 +151,9 @@ the same selection with an explicit `eventId`.
   dependency was absent from the application.
 - Truncate versions after 256 characters with an explicit marker and escape
   Markdown in package data when rendering Markdown; structured strings stay raw.
-  Do not render unrelated packages.
+  Use the shared `@sentry/toolkit-core/markdown` inline escape helper and collapse
+  line breaks so package values stay inside their list entries. Do not render
+  unrelated packages.
 - Package selection requires an exact event; issue/latest-event and other resource
   lookups reject it.
 

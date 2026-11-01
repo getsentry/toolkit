@@ -12,6 +12,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath, parseText } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -56,6 +57,23 @@ export const bundleJvmCommand = buildCommand({
       "Groovy, or Clojure source files. The bundle is a ZIP archive that " +
       "can be uploaded to Sentry for source context in JVM stack traces.\n\n" +
       "This command is local-only — it makes no network requests.",
+    examples: [
+      {
+        description: "Bundle JVM sources with a debug ID",
+        command:
+          "sentry debug-files bundle-jvm --output ./out --debug-id <uuid> ./src",
+      },
+      {
+        description: "Exclude additional directories",
+        command:
+          "sentry debug-files bundle-jvm --output ./out --debug-id <uuid> --exclude generated --exclude build-tools ./src",
+      },
+      {
+        description: "Output as JSON",
+        command:
+          "sentry debug-files bundle-jvm --output ./out --debug-id <uuid> --json ./src",
+      },
+    ],
   },
   output: {
     human: formatBundleResult,
@@ -66,7 +84,7 @@ export const bundleJvmCommand = buildCommand({
       parameters: [
         {
           brief: "Directory containing JVM source files",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "path",
         },
       ],
@@ -74,17 +92,17 @@ export const bundleJvmCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: "Output directory for the bundle ZIP",
       },
       "debug-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Debug ID (UUID) to stamp on the bundle",
       },
       exclude: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Additional directory names to exclude (repeatable)",
         optional: true,
         variadic: true,

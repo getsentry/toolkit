@@ -269,7 +269,7 @@ export default function TerminalAnimation() {
     if (didInitRef.current) return;
     didInitRef.current = true;
 
-    (async () => {
+    void (async () => {
       await mountOnce();
       // Start playing from the first marker
       setTimeout(() => {

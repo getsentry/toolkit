@@ -6,7 +6,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { queryEvents } from "../../../src/lib/api/explore.js";
+import {
+  queryEvents,
+  queryEventsTimeSeries,
+} from "../../../src/lib/api/explore.js";
+import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 describe("queryEvents", () => {
@@ -194,6 +198,7 @@ describe("queryEvents", () => {
 
     const result = await queryEvents("my-org", {
       fields: ["title", "count()"],
+      limit: 1,
     });
 
     expect(result.data.data).toHaveLength(1);
@@ -201,7 +206,7 @@ describe("queryEvents", () => {
       title: "string",
       "count()": "integer",
     });
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false in Link header", async () => {
@@ -272,7 +277,7 @@ describe("queryEvents", () => {
         },
       },
       {
-        body: { data: makeRows(50), meta: PAGE_META },
+        body: { data: makeRows(100), meta: PAGE_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
@@ -281,38 +286,16 @@ describe("queryEvents", () => {
 
     const result = await queryEvents("my-org", {
       fields: ["title", "count()"],
-      limit: 150,
+      limit: 200,
     });
 
-    expect(result.data.data).toHaveLength(150);
+    expect(result.data.data).toHaveLength(200);
     expect(result.data.meta?.fields).toEqual(PAGE_META.fields);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results and drops nextCursor when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeRows(100), meta: PAGE_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeRows(100), meta: PAGE_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await queryEvents("my-org", {
-      fields: ["title", "count()"],
-      limit: 120,
-    });
-
-    expect(result.data.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
+    for (const url of getCapturedUrls()) {
+      expect(url).toContain("per_page=100");
+    }
   });
 
   test("single-page fast path when limit <= API_MAX_PER_PAGE", async () => {
@@ -367,5 +350,198 @@ describe("queryEvents", () => {
 
     // Meta should come from the first page
     expect(result.data.meta).toEqual(firstPageMeta);
+  });
+});
+
+describe("queryEventsTimeSeries", () => {
+  useTestConfigDir("explore-timeseries-test-");
+
+  let originalFetch: typeof globalThis.fetch;
+  let requests: Request[];
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    requests = [];
+    setOrgRegion("timeseries-org", "https://de.sentry.io");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function mockResponse(body: unknown, status = 200) {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      requests.push(new Request(input!, init));
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+  }
+
+  test("queries the org region and preserves values, nulls, and complete metadata", async () => {
+    const response = {
+      meta: {
+        dataset: "spans",
+        start: 1_729_425_600_000,
+        end: 1_729_425_900_000,
+        ingestion: {
+          status: "delayed",
+          delaySeconds: 120,
+          completeThrough: 1_729_425_780_000,
+        },
+        extraMetadata: { source: "backend" },
+      },
+      timeSeries: [
+        {
+          yAxis: "p95(span.duration)",
+          meta: {
+            interval: 300_000,
+            valueType: "duration",
+            valueUnit: "millisecond",
+            dataScanned: "partial",
+          },
+          values: [
+            {
+              timestamp: 1_729_425_600_000,
+              value: 125.5,
+              incomplete: true,
+              incompleteReason: "INGESTION_PENDING",
+              sampleCount: 4,
+              sampleRate: 0.5,
+              confidence: "low",
+              extraBucketMetadata: true,
+            },
+            {
+              timestamp: 1_729_425_900_000,
+              value: null,
+              incomplete: true,
+              incompleteReason: "NOT_ELAPSED",
+              sampleRate: null,
+              confidence: null,
+            },
+          ],
+        },
+      ],
+    };
+    mockResponse(response);
+
+    const result = await queryEventsTimeSeries("timeseries-org", {
+      fields: ["p95(span.duration)"],
+      dataset: "spans",
+      query: "project:my-project environment:production span.op:http.server",
+      statsPeriod: "1h",
+      interval: "5m",
+    });
+
+    expect(result).toEqual(response);
+    expect(requests).toHaveLength(1);
+    const request = requests[0]!;
+    const url = new URL(request.url);
+    expect(request.method).toBe("GET");
+    expect(url.origin).toBe("https://de.sentry.io");
+    expect(url.pathname).toBe(
+      "/api/0/organizations/timeseries-org/events-timeseries/",
+    );
+    expect(url.searchParams.getAll("yAxis")).toEqual(["p95(span.duration)"]);
+    expect(url.searchParams.get("query")).toBe(
+      "project:my-project environment:production span.op:http.server",
+    );
+    expect(url.searchParams.get("dataset")).toBe("spans");
+    expect(url.searchParams.get("statsPeriod")).toBe("1h");
+    expect(url.searchParams.get("interval")).toBe("5m");
+    expect(url.searchParams.has("field")).toBe(false);
+    expect(url.searchParams.has("cursor")).toBe(false);
+    expect(url.searchParams.has("per_page")).toBe(false);
+    expect(url.searchParams.has("topEvents")).toBe(false);
+  });
+
+  test("defaults to errors over 24h with repeated yAxis and string-valued aggregates", async () => {
+    const response = {
+      timeSeries: [
+        {
+          yAxis: "max(timestamp)",
+          meta: {
+            interval: 300_000,
+            valueType: "date",
+            valueUnit: null,
+          },
+          values: [
+            {
+              timestamp: 1_729_425_600_000,
+              value: "2024-10-20T12:01:00Z",
+              incomplete: false,
+            },
+          ],
+        },
+        {
+          yAxis: "latest_event()",
+          meta: {
+            interval: 300_000,
+            valueType: "string",
+            valueUnit: null,
+          },
+          values: [
+            {
+              timestamp: 1_729_425_600_000,
+              value: "00123456789012345678901234567890",
+              incomplete: false,
+            },
+          ],
+        },
+      ],
+    };
+    mockResponse(response);
+
+    const result = await queryEventsTimeSeries("timeseries-org", {
+      fields: ["max(timestamp)", "latest_event()"],
+      interval: "5m",
+      query: "",
+    });
+
+    expect(result).toEqual(response);
+    const params = new URL(requests[0]!.url).searchParams;
+    expect(params.getAll("yAxis")).toEqual([
+      "max(timestamp)",
+      "latest_event()",
+    ]);
+    expect(params.get("dataset")).toBe("errors");
+    expect(params.get("statsPeriod")).toBe("24h");
+    expect(params.has("query")).toBe(false);
+  });
+
+  test("uses an absolute range without also sending statsPeriod", async () => {
+    mockResponse({ timeSeries: [] });
+
+    const result = await queryEventsTimeSeries("timeseries-org", {
+      fields: ["sum(value,request.count,counter,none)"],
+      dataset: "tracemetrics",
+      start: "2024-10-20T12:00:00Z",
+      end: "2024-10-20T13:00:00Z",
+      statsPeriod: "7d",
+      interval: "1m",
+    });
+
+    expect(result).toEqual({ timeSeries: [] });
+    const params = new URL(requests[0]!.url).searchParams;
+    expect(params.get("dataset")).toBe("tracemetrics");
+    expect(params.get("start")).toBe("2024-10-20T12:00:00Z");
+    expect(params.get("end")).toBe("2024-10-20T13:00:00Z");
+    expect(params.has("statsPeriod")).toBe(false);
+  });
+
+  test("propagates backend query errors with their detail", async () => {
+    mockResponse({ detail: "Selected interval is not allowed" }, 400);
+
+    await expect(
+      queryEventsTimeSeries("timeseries-org", {
+        fields: ["count()"],
+        dataset: "logs",
+        interval: "20s",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      detail: "Selected interval is not allowed",
+    });
   });
 });

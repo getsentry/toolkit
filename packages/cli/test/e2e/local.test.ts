@@ -14,6 +14,7 @@ type Session = {
   id: string;
   ingestUrl: string;
   streamUrl: string;
+  directoryUrl: string;
 };
 
 const fetch = (globalThis as { __originalFetch: typeof globalThis.fetch })
@@ -21,7 +22,7 @@ const fetch = (globalThis as { __originalFetch: typeof globalThis.fetch })
 const getConfigDir = useTestConfigDir("local-e2e-");
 
 async function cli(...args: string[]) {
-  return runCli(["local", ...args, "--json"], {
+  return await runCli(["local", ...args, "--json"], {
     env: {
       SENTRY_CONFIG_DIR: getConfigDir(),
       SENTRY_CLI_NO_TELEMETRY: "1",
@@ -91,6 +92,214 @@ afterEach(async () => {
 });
 
 describe("Local daemon E2E", () => {
+  test("human session and daemon summaries advertise a plain viewer link without changing JSON", async () => {
+    const port = await availablePort();
+    const env = {
+      SENTRY_CONFIG_DIR: getConfigDir(),
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      SENTRY_AUTH_TOKEN: "",
+      SENTRY_TOKEN: "",
+    };
+    const created = await runCli(
+      [
+        "local",
+        "session",
+        "create",
+        "viewer-link",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+      ],
+      { env },
+    );
+    expect(created.exitCode, created.stderr).toBe(0);
+    for (const result of [
+      created,
+      await runCli(["local", "session", "view", "viewer-link"], { env }),
+      await runCli(["local", "daemon", "status"], { env }),
+    ]) {
+      expect(result.exitCode, result.stderr).toBe(0);
+      const link = result.stdout.match(/View events at (https:\/\/\S+)/)?.[1];
+      expect(link).toBeTruthy();
+      const url = new URL(link!);
+      expect(url.origin).toBe("https://local.sentry.dev");
+      expect(url.searchParams.get("url")).toBe(
+        `http://127.0.0.1:${port}/stream`,
+      );
+    }
+    const json = await cli("session", "view", "viewer-link");
+    expect(json.stdout).not.toContain("View events at");
+    expect(JSON.parse(json.stdout).label).toBe("viewer-link");
+  }, 30_000);
+
+  test("hosted session discovery switches isolated streams and preserves retained sessions", async () => {
+    const port = await availablePort();
+    const web = await createSession("web", port);
+    const worker = await createSession("worker", port);
+    await ingest(web, "web-id", "web-only");
+    await ingest(worker, "worker-id", "worker-only");
+    const origin = { Origin: "https://local.sentry.dev" };
+    // A user only needs the daemon address; /stream supplies discovery metadata.
+    const bootstrap = await fetch(`http://127.0.0.1:${port}/stream`, {
+      headers: origin,
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(bootstrap.status).toBe(200);
+    expect(bootstrap.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://local.sentry.dev",
+    );
+    const bootstrapReader = bootstrap.body!.getReader();
+    let directoryUrl: string;
+    try {
+      let text = "";
+      while (!text.includes("\n\n")) {
+        const chunk = await bootstrapReader.read();
+        if (chunk.done) throw new Error("Bootstrap stream closed");
+        text += new TextDecoder().decode(chunk.value);
+      }
+      expect(text).toContain("event: sentry.local.directory");
+      directoryUrl = (
+        JSON.parse(text.match(/data: (.+)/)![1]!) as { directoryUrl: string }
+      ).directoryUrl;
+    } finally {
+      await bootstrapReader.cancel();
+    }
+    expect(directoryUrl).toBe(web.directoryUrl);
+    expect(
+      (
+        await fetch(`http://127.0.0.1:${port}/stream`, {
+          headers: { Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    const bootstrapPreflight = await fetch(`http://127.0.0.1:${port}/stream`, {
+      method: "OPTIONS",
+      headers: {
+        ...origin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(bootstrapPreflight.status).toBe(204);
+    expect(
+      bootstrapPreflight.headers.get("Access-Control-Allow-Private-Network"),
+    ).toBe("true");
+    const response = await fetch(directoryUrl, { headers: origin });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://local.sentry.dev",
+    );
+    const directory = (await response.json()) as {
+      sessions: {
+        id: string;
+        label: string;
+        state: string;
+        streamUrl: string;
+      }[];
+    };
+    expect(directory.sessions).toHaveLength(2);
+    expect(JSON.stringify(directory)).not.toContain("ingestUrl");
+    for (const [id, expected, excluded] of [
+      [web.id, "web-only", "worker-only"],
+      [worker.id, "worker-only", "web-only"],
+      [web.id, "web-only", "worker-only"],
+    ]) {
+      const session = directory.sessions.find((s) => s.id === id)!;
+      const stream = await fetch(session.streamUrl, {
+        headers: origin,
+        signal: AbortSignal.timeout(5000),
+      });
+      const reader = stream.body!.getReader();
+      try {
+        let text = "";
+        while (!text.includes(expected!)) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Stream closed");
+          text += new TextDecoder().decode(chunk.value);
+        }
+        expect(text).not.toContain(excluded!);
+      } finally {
+        await reader.cancel();
+      }
+    }
+    const wrong = new URL(web.directoryUrl);
+    wrong.searchParams.set(
+      "cap",
+      new URL(web.streamUrl).searchParams.get("cap")!,
+    );
+    expect((await fetch(wrong, { headers: origin })).status).toBe(401);
+    const preflight = await fetch(web.directoryUrl, {
+      method: "OPTIONS",
+      headers: {
+        ...origin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Private-Network")).toBe(
+      "true",
+    );
+    expect(
+      (
+        await fetch(web.directoryUrl, {
+          headers: { Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await fetch(web.directoryUrl, { method: "POST", headers: origin }))
+        .status,
+    ).toBe(403);
+    expect((await cli("session", "close", worker.id)).exitCode).toBe(0);
+    const refreshed = (await (
+      await fetch(web.directoryUrl, { headers: origin })
+    ).json()) as typeof directory;
+    expect(refreshed.sessions.find((s) => s.id === worker.id)?.state).toBe(
+      "retained",
+    );
+    expect(
+      JSON.parse((await cli("event", "list", worker.id)).stdout).events,
+    ).toHaveLength(1);
+  }, 30_000);
+
+  test("close freezes capture and reconnect replays a finite archive until reset", async () => {
+    const session = await createSession("archive", await availablePort());
+    await ingest(session, "saved-id", "saved-before-close");
+    expect((await cli("session", "close", session.id)).exitCode).toBe(0);
+    const rejected = await fetch(session.ingestUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope" },
+      body: '{}\n{"type":"event"}\n{"message":"must-not-arrive"}',
+    });
+    expect(rejected.status).toBe(410);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const archive = await fetch(session.streamUrl, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const text = await archive.text();
+      expect(text).toContain("saved-before-close");
+      expect(text).toContain("event: sentry.local.session");
+      expect(text).toContain('"state":"retained"');
+      expect(text).not.toContain("must-not-arrive");
+    }
+    const reset = new URL(session.streamUrl);
+    reset.pathname = reset.pathname.replace(/\/stream$/, "/ui/reset");
+    expect((await fetch(reset, { method: "POST" })).status).toBe(204);
+    const empty = await (
+      await fetch(session.streamUrl, { signal: AbortSignal.timeout(5000) })
+    ).text();
+    expect(empty).toContain('"state":"retained"');
+    expect(empty).not.toContain("saved-before-close");
+    const directory = (await (await fetch(session.directoryUrl)).json()) as {
+      sessions: { id: string; state: string }[];
+    };
+    expect(
+      directory.sessions.find((entry) => entry.id === session.id)?.state,
+    ).toBe("retained");
+  }, 30_000);
+
   test.each(
     ["stop", "restart"].flatMap((command) =>
       ["delayed", "rejected", "never", "hung"].map((mode) => ({
@@ -266,8 +475,13 @@ describe("Local daemon E2E", () => {
     });
     const reader = stream.body?.getReader();
     expect(reader).toBeDefined();
-    const first = await reader?.read();
-    expect(new TextDecoder().decode(first?.value)).toContain("web event");
+    let replay = "";
+    while (!replay.includes("web event")) {
+      const chunk = await reader!.read();
+      if (chunk.done) throw new Error("Stream ended before retained event");
+      replay += new TextDecoder().decode(chunk.value);
+    }
+    expect(replay).toContain("web event");
     await reader?.cancel();
     const resetUrl = new URL(web.streamUrl);
     resetUrl.pathname = resetUrl.pathname.replace(/\/stream$/, "/ui/reset");
@@ -363,7 +577,7 @@ describe("Local daemon E2E", () => {
       const updated = await fetch(uiUrl, {
         method: "POST",
         headers: {
-          Origin: "http://localhost:5173",
+          Origin: "https://local.sentry.dev",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ maxEnvelopes: 6 }),
@@ -533,7 +747,7 @@ describe("Local daemon E2E", () => {
         "--input-type=module",
         "-e",
         `import * as Sentry from '@sentry/node';
-        Sentry.init({enableLogs: true, tracesSampleRate: 1});
+        Sentry.init({tracesSampleRate: 1});
         const id = Sentry.captureException(new Error('Local real SDK event'));
         console.error('SDK_EVENT:' + id);
         await Sentry.flush(2000);

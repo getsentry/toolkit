@@ -13,6 +13,7 @@ import { formatToolCallInstruction } from "../../../internal/tool-helpers/tool-c
 import {
   type SnapshotImageEntry,
   type SnapshotImageTreeItem,
+  type SnapshotVcsInfo,
   formatSnapshotDiffPercent,
   getSnapshotImageDisplayName,
   renderSnapshotImageContext,
@@ -348,9 +349,12 @@ export async function fetchSnapshotSummary(
     compactMetadata: true,
   })) as Record<string, unknown>;
 
-  const vcsInfo = data.vcs_info as Record<string, unknown> | undefined;
+  const comparisonType = data.comparison_type as string | null | undefined;
+  const state = data.state as string | null | undefined;
+  const projectId = data.project_id as string | number | null | undefined;
+  const vcsInfo = data.vcs_info as SnapshotVcsInfo | undefined;
   const approvalInfo = data.approval_info as
-    | Record<string, unknown>
+    | { status?: string | null; is_auto_approved?: boolean | null }
     | undefined;
 
   const allImages = (data.images as SnapshotImageEntry[]) || [];
@@ -374,10 +378,10 @@ export async function fetchSnapshotSummary(
 
   sections.push("\n## Summary\n");
   sections.push(`- **URL**: ${resolvedSnapshotUrl}`);
-  sections.push(`- **Type**: ${data.comparison_type ?? "unknown"}`);
-  sections.push(`- **State**: ${data.state ?? "unknown"}`);
-  if (data.project_id) {
-    sections.push(`- **Project ID**: ${data.project_id}`);
+  sections.push(`- **Type**: ${comparisonType ?? "unknown"}`);
+  sections.push(`- **State**: ${state ?? "unknown"}`);
+  if (projectId) {
+    sections.push(`- **Project ID**: ${projectId}`);
   }
 
   const totalCount = countField(data, "total_count", allImages.length);
@@ -397,11 +401,11 @@ export async function fetchSnapshotSummary(
     if (vcsInfo.repo_name) sections.push(`- **Repo**: ${vcsInfo.repo_name}`);
     if (vcsInfo.head_ref)
       sections.push(
-        `- **Head**: ${vcsInfo.head_ref} (\`${String(vcsInfo.head_sha ?? "").slice(0, 8)}\`)`,
+        `- **Head**: ${vcsInfo.head_ref} (\`${(vcsInfo.head_sha ?? "").slice(0, 8)}\`)`,
       );
     if (vcsInfo.base_ref)
       sections.push(
-        `- **Base**: ${vcsInfo.base_ref} (\`${String(vcsInfo.base_sha ?? "").slice(0, 8)}\`)`,
+        `- **Base**: ${vcsInfo.base_ref} (\`${(vcsInfo.base_sha ?? "").slice(0, 8)}\`)`,
       );
     if (vcsInfo.pr_number) sections.push(`- **PR**: #${vcsInfo.pr_number}`);
   }
@@ -422,9 +426,9 @@ export async function fetchSnapshotSummary(
   if (hasDiffs) {
     sections.push("\n## Changes\n");
 
-    const sortedChanged = changed
-      .slice()
-      .sort((left, right) => (right.diff ?? -1) - (left.diff ?? -1));
+    const sortedChanged = [...changed].sort(
+      (left, right) => (right.diff ?? -1) - (left.diff ?? -1),
+    );
 
     sections.push(
       ...renderTreeSections([

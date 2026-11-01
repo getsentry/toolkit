@@ -15,6 +15,7 @@
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { type DifArchiveInfo, parseDebugFile } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -120,11 +121,23 @@ export const checkCommand = buildCommand({
       "PE/PDB, Portable PDB, WebAssembly, Breakpad, and source bundles.\n\n" +
       "The format is auto-detected. This command is local-only and makes no " +
       "network requests.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files check ./libexample.so\n" +
-      "  sentry debug-files check MyApp.dSYM/Contents/Resources/DWARF/MyApp\n" +
-      "  sentry debug-files check ./app.pdb --json\n\n" +
       "Exits non-zero if the file is not usable for symbolication.",
+    examples: [
+      {
+        description:
+          "Inspect a debug information file (auto-detects the format)",
+        command: "sentry debug-files check ./libexample.so",
+      },
+      {
+        description: "Inspect the DWARF file inside a dSYM",
+        command:
+          "sentry debug-files check MyApp.dSYM/Contents/Resources/DWARF/MyApp",
+      },
+      {
+        description: "Output the report as JSON",
+        command: "sentry debug-files check ./app.pdb --json",
+      },
+    ],
   },
   output: {
     human: formatCheckResult,
@@ -135,7 +148,7 @@ export const checkCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],

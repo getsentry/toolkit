@@ -29,7 +29,7 @@ import {
 const log = logger.withTag("sourcemap.inject");
 
 /** Default JavaScript file extensions to scan. */
-const DEFAULT_EXTENSIONS = new Set([".js", ".cjs", ".mjs"]);
+export const DEFAULT_EXTENSIONS = new Set([".js", ".cjs", ".mjs"]);
 
 /**
  * The location of a JavaScript file's sourcemap.

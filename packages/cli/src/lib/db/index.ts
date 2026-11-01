@@ -16,6 +16,7 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
+import { createResilientDatabase } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
 import { Database } from "./sqlite.js";
 
@@ -27,6 +28,9 @@ const LEGACY_CONFIG_DIR_NAME = ".sentry";
 /** Sub-directory used under the XDG config base directory. */
 const XDG_CONFIG_SUBDIR = "sentry";
 
+/** Default config directory as shown to users (help text, docs). */
+export const DEFAULT_CONFIG_DIR_DISPLAY = `~/.config/${XDG_CONFIG_SUBDIR}`;
+
 const DB_FILENAME = "cli.db";
 
 /** 7-day TTL for cache entries (milliseconds) */
@@ -35,11 +39,16 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Probability of running cleanup on write operations */
 const CLEANUP_PROBABILITY = 0.1;
 
-/** Traced database wrapper (returned by getDatabase) */
+/** Wrapped database (returned by getDatabase) */
 let db: Database | null = null;
-/** Raw database without tracing (used for repair operations) */
+/** Raw, unwrapped database (used for repair operations) */
 let rawDb: Database | null = null;
 let dbOpenedPath: string | null = null;
+/**
+ * Set once {@link detachDatabase} hands `cli.db` to another CLI version.
+ * Later reads in this process use a throwaway in-memory database instead.
+ */
+let detached = false;
 
 /**
  * Whether the process-exit close handler has been registered.
@@ -139,8 +148,11 @@ export function getDbPath(): string {
   return join(getConfigDir(), DB_FILENAME);
 }
 
-function ensureConfigDir(): void {
-  mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
+/** Create the config directory, owner-only, if needed, and return its path. */
+export function ensureConfigDir(): string {
+  const directory = getConfigDir();
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return directory;
 }
 
 function setDbPermissions(): void {
@@ -169,7 +181,7 @@ function setDbPermissions(): void {
 
 /** Get or initialize the database connection. */
 export function getDatabase(): Database {
-  const dbPath = getDbPath();
+  const dbPath = detached ? ":memory:" : getDbPath();
 
   // Auto-invalidate if config directory changed (for tests)
   if (db && dbOpenedPath !== dbPath) {
@@ -183,7 +195,9 @@ export function getDatabase(): Database {
     return db;
   }
 
-  ensureConfigDir();
+  if (!detached) {
+    ensureConfigDir();
+  }
 
   rawDb = new Database(dbPath);
 
@@ -204,22 +218,20 @@ export function getDatabase(): Database {
     rawDb.exec("PRAGMA foreign_keys = ON");
     rawDb.exec("PRAGMA synchronous = NORMAL");
 
-    setDbPermissions();
+    if (!detached) {
+      setDbPermissions();
+    }
     initSchema(rawDb);
     runMigrations(rawDb);
-    migrateFromJson(rawDb);
-
-    // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node-core (~85ms).
-    // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
-    if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
-      db = rawDb;
-    } else {
-      const { createTracedDatabase } = _require("../telemetry.js") as {
-        createTracedDatabase: (d: Database) => Database;
-      };
-      db = createTracedDatabase(rawDb);
+    if (!detached) {
+      migrateFromJson(rawDb);
     }
+
+    // Both wrappers repair schema errors and skip read-only writes; the traced
+    // one also adds query spans when telemetry is on.
+    db =
+      lazyTelemetry()?.createTracedDatabase(rawDb) ??
+      createResilientDatabase(rawDb);
     dbOpenedPath = dbPath;
     registerExitHandler();
 
@@ -232,6 +244,40 @@ export function getDatabase(): Database {
   }
 }
 
+/**
+ * `true` in the npm package's `dist/complete.cjs` (defined in
+ * `script/bundle.ts`), so esbuild drops the telemetry `require` below from
+ * that bundle. Undefined when running from source.
+ */
+declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
+
+/**
+ * The telemetry module, required lazily so the database modules never import
+ * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
+ * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
+ */
+function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
+  if (
+    (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
+      SENTRY_CLI_COMPLETION_BUILD) ||
+    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
+  ) {
+    return;
+  }
+  return _require("../telemetry.js") as typeof import("../telemetry.js");
+}
+
+/** Run a database operation in a `db.operation` span (telemetry's `withDbSpan`). */
+export function withDbSpan<T>(operation: string, fn: () => T): T {
+  const telemetry = lazyTelemetry();
+  return telemetry ? telemetry.withDbSpan(operation, fn) : fn();
+}
+
+/** Record a cache hit or miss (telemetry's `recordCacheHit`). */
+export function recordCacheHit(cacheName: string, hit: boolean): void {
+  lazyTelemetry()?.recordCacheHit(cacheName, hit);
+}
+
 /** Close the database connection (used for testing). */
 export function closeDatabase(): void {
   if (db) {
@@ -240,6 +286,19 @@ export function closeDatabase(): void {
     rawDb = null;
     dbOpenedPath = null;
   }
+  detached = false;
+}
+
+/**
+ * Close `cli.db` for good in this process, so another CLI version can own it.
+ *
+ * Used when `sentry cli upgrade undo` swaps in an older version's database:
+ * reopening it here would migrate it to this version's schema. Later reads
+ * get a fresh in-memory database, so their writes are dropped.
+ */
+export function detachDatabase(): void {
+  closeDatabase();
+  detached = true;
 }
 
 /**
@@ -276,6 +335,9 @@ function cleanupExpiredCaches(): void {
     .run(expiryTime);
   database
     .query("DELETE FROM project_aliases WHERE last_accessed < ?")
+    .run(expiryTime);
+  database
+    .query("DELETE FROM completion_cache WHERE last_seen < ?")
     .run(expiryTime);
   // project_root_cache uses ttl_expires_at instead of last_accessed
   database

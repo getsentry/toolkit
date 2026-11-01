@@ -196,7 +196,7 @@ export async function listAppIssueLinks(
 ): Promise<AppIssueLink[]> {
   requireIssueTarget(orgSlug, issueId);
   const config = getSdkClientConfig(await resolveOrgRegion(orgSlug));
-  return fetchAllPages(
+  return await fetchAllPages(
     async (cursor) => {
       const result = await listOrganizationIssueExternalIssues({
         ...config,

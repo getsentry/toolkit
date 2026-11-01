@@ -12,7 +12,7 @@
  * when the transport is created, every envelope uses zstd; otherwise
  * every envelope uses gzip.
  *
- * This mirrors `@sentry/node-core/transports/http.js` `makeNodeTransport`
+ * This mirrors `@sentry/node/transports/http.js` `makeNodeTransport`
  * — URL parsing, `no_proxy` handling, proxy agent, CA certs, keepAlive,
  * IPv6 hostname unwrapping, rate-limit response header normalization —
  * but swaps out the gzip-via-stream-pipe for an async one-shot compress
@@ -45,10 +45,10 @@ import {
   type TransportRequest,
   type TransportRequestExecutor,
 } from "@sentry/core";
-import {
-  makeNodeTransport,
-  type NodeTransportOptions,
-} from "@sentry/node-core/light";
+import { makeNodeTransport } from "@sentry/node";
+
+/** `@sentry/node` v11 no longer re-exports this type from its entry point. */
+type NodeTransportOptions = Parameters<typeof makeNodeTransport>[0];
 
 /** Codec actually applied to a given envelope. */
 type AppliedEncoding = "zstd" | "gzip" | "none";
@@ -155,7 +155,7 @@ export function makeCompressedTransport(
  * no_proxy. When true, the caller falls back to the SDK's default
  * transport (which handles CONNECT tunneling).
  *
- * Mirrors `@sentry/node-core/transports/http.js` `applyNoProxyOption`'s
+ * Mirrors `@sentry/node/transports/http.js` `applyNoProxyOption`'s
  * proxy-resolution priority:
  *   - http  → `options.proxy` | `http_proxy`
  *   - https → `options.proxy` | `https_proxy` | `http_proxy`
@@ -208,7 +208,7 @@ async function performRequest(
     headers["content-encoding"] = encodingApplied;
   }
 
-  return new Promise<TransportMakeRequestResponse>((resolve, reject) => {
+  return await new Promise<TransportMakeRequestResponse>((resolve, reject) => {
     const req = httpModule.request(
       {
         method: "POST",

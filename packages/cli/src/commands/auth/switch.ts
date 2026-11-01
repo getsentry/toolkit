@@ -12,6 +12,11 @@ import {
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  ACCOUNT_SERVER_TARGET,
+  completingParser,
+  parseAccountSelector,
+} from "../../lib/completion-target.js";
+import {
   type AccountSummary,
   getAccountRow,
   isAccountOnServer,
@@ -81,18 +86,30 @@ export const switchCommand = buildCommand({
       "'jane@acme.com') is used with a warning when it is the only one. When\n" +
       "the same user is stored on several servers, add --url <server> (or use\n" +
       "'<email>@<server-hostname>'). Without an argument, pick from a\n" +
-      "searchable list interactively.\n\n" +
-      "Examples:\n" +
-      "  sentry auth switch\n" +
-      "  sentry auth switch jane@acme.com\n" +
-      "  sentry auth switch jane@acme.com --url https://sentry.acme.com",
+      "searchable list interactively.",
+    examples: [
+      {
+        description: "Pick the active account from a searchable list",
+        command: "sentry auth switch",
+      },
+      {
+        description: "Switch to a specific account",
+        command: "sentry auth switch jane@example.com",
+      },
+      {
+        description:
+          "Pick the account on one server when the same email is stored twice",
+        command:
+          "sentry auth switch jane@example.com --url https://sentry.example.com",
+      },
+    ],
   },
   output: { human: formatAccountSwitch },
   parameters: {
     flags: {
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Only consider accounts on this server (disambiguates the same email on several servers)",
         optional: true,
@@ -104,7 +121,7 @@ export const switchCommand = buildCommand({
         {
           placeholder: "account",
           brief: "Email, username, user ID, or account ID to switch to",
-          parse: String,
+          parse: parseAccountSelector,
           optional: true,
         },
       ],

@@ -145,6 +145,20 @@ describe("injectDebugId", () => {
     expect(mapResult.debug_id).toBe(debugId);
   });
 
+  test("rejects a malformed sourcemap with a ValidationError", async () => {
+    const jsPath = join(tmpDir, "bundle.js");
+    const mapPath = join(tmpDir, "bundle.js.map");
+
+    await writeFile(jsPath, 'console.log("hello");\n');
+    await writeFile(mapPath, "{ not json");
+
+    await expect(injectDebugId(jsPath, mapPath)).rejects.toThrow(
+      `Sourcemap '${mapPath}' is not valid JSON.`,
+    );
+    // The JS file must not be touched when the map cannot be parsed.
+    expect(await readFile(jsPath, "utf-8")).toBe('console.log("hello");\n');
+  });
+
   test("prepends one ; to sourcemap mappings", async () => {
     const jsPath = join(tmpDir, "bundle.js");
     const mapPath = join(tmpDir, "bundle.js.map");

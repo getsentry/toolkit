@@ -7,8 +7,8 @@
  * calls or database access.
  *
  * The interactive TTY prompt tests use vi.mock() at the top of this file
- * to stub node:tty (so isatty(0) returns true) and the logger module (so
- * `.prompt()` is controllable).
+ * to stub node:tty (so isatty(0) returns true) and the prompt module (so
+ * `prompt()` is controllable).
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -31,13 +31,12 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger module to intercept the .prompt() call made by the
-  // module-scoped `log = logger.withTag("auth.login")` in login.ts.
+  // Stub the logger module-scoped as `log = logger.withTag("auth.login")` in
+  // login.ts; the prompt module is mocked with `_mockPrompt` below.
   const _mockPrompt = vi.fn((): Promise<boolean | symbol> =>
     Promise.resolve(true),
   );
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
@@ -45,7 +44,6 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     success: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     info: vi.fn(_noop),
     warn: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -68,6 +66,8 @@ vi.mock("node:tty", () => ({
   default: ttyExports,
 }));
 
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
+
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,
   setLogLevel: vi.fn(noop),
@@ -83,8 +83,10 @@ vi.mock("../../../src/lib/logger.js", () => ({
 }));
 
 // Dynamic import: must run AFTER vi.mock() so login.ts picks up fakeLog.
-const { loginCommand, parseLoginEmail, rcTokenHint, splitLoginTarget } =
+const { loginCommand, rcTokenHint } =
   await import("../../../src/commands/auth/login.js");
+const { parseLoginEmail, splitLoginTarget } =
+  await import("../../../src/lib/db/accounts.js");
 
 vi.mock("../../../src/lib/account-selection.js", async (importOriginal) => {
   const actual =
@@ -804,7 +806,7 @@ describe("loginCommand.func --token path", () => {
  * Tests for the interactive TTY re-authentication prompt.
  *
  * Uses the module-level `vi.mock()` on node:tty (so `isatty(0)` returns
- * true) and the logger (so `.prompt()` is controllable).
+ * true) and the prompt module (so `prompt()` is controllable).
  */
 describe("login re-authentication interactive prompt", () => {
   let isAuthenticatedSpy: ReturnType<typeof spyOn>;
@@ -913,7 +915,7 @@ describe("login re-authentication interactive prompt", () => {
   test("cancel (Ctrl+C): returns without re-auth", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel"));
 
     const context = createPromptContext();

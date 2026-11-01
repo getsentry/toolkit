@@ -1,3 +1,4 @@
+import { replayEnvelopes, defaultFixtures } from "../scripts/replay.ts";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { EventSource as NodeEventSource } from "eventsource";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -8,6 +9,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { NuqsAdapter } from "nuqs/adapters/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
@@ -15,6 +17,7 @@ import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
 import { createLocalRetentionBuffer } from "../../../packages/cli/src/commands/local/retention-buffer.ts";
 import App from "./App.tsx";
+import { saveDisconnected } from "./lib/connection-history.ts";
 import { sdkException } from "./test-fixtures/sdk-exception.ts";
 import { LocalWorkspaceRoute } from "./routes/local-workspace-route.tsx";
 import {
@@ -71,7 +74,11 @@ function envelope(transaction: string, options: EnvelopeOptions = {}): string {
 }
 
 async function startReceiver() {
-  return tryListen(buildApp(createSpotlightBuffer(10)), 0, "127.0.0.1");
+  return await tryListen(
+    buildApp(createSpotlightBuffer(10), { uiActions: true }),
+    0,
+    "127.0.0.1",
+  );
 }
 
 async function stopReceiver(
@@ -79,6 +86,8 @@ async function stopReceiver(
 ) {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
+    // Node 22 can otherwise wait for old SSE/probe keep-alive sockets during teardown.
+    server.closeAllConnections();
   });
 }
 
@@ -91,6 +100,30 @@ async function sendEnvelope(
     method: "POST",
     headers: { "Content-Type": SENTRY_CONTENT_TYPE },
     body: envelope(transaction, options),
+  });
+  expect(response.status).toBe(204);
+}
+
+async function sendLog(
+  port: number,
+  body: string,
+  logger: string,
+  level = "info",
+) {
+  const response = await fetch(`http://127.0.0.1:${port}/stream`, {
+    method: "POST",
+    headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+    body: [
+      JSON.stringify({}),
+      JSON.stringify({ type: "log" }),
+      JSON.stringify({
+        timestamp: 1_700_000_000,
+        body,
+        level,
+        attributes: { "sentry.logger.name": { type: "string", value: logger } },
+      }),
+      "",
+    ].join("\n"),
   });
   expect(response.status).toBe(204);
 }
@@ -114,8 +147,8 @@ function renderViewer(port: number, path = "/") {
   );
 }
 
-function renderBareViewer() {
-  window.history.replaceState(null, "", "/");
+function renderBareViewer(path = "/") {
+  window.history.replaceState(null, "", path);
   return render(
     <ThemeProvider attribute="class" defaultTheme="light">
       <NuqsAdapter>
@@ -157,6 +190,46 @@ class ControllableEventSource extends EventTarget {
   }
 }
 
+/** Open the replacement probe, then the committed replay stream when one is created. */
+async function openLatestReceiver() {
+  const probe = ControllableEventSource.instances.at(-1)!;
+  await act(async () => probe.onopen?.(new Event("open")));
+  const current = ControllableEventSource.instances.at(-1)!;
+  if (current !== probe)
+    await act(async () => current.onopen?.(new Event("open")));
+  return current;
+}
+
+function viewButton(name: string): HTMLButtonElement {
+  if (!screen.queryByRole("button", { name, exact: true })) {
+    fireEvent.click(
+      screen.getByRole("button", { name: "Diagnostics", exact: true }),
+    );
+  }
+  return screen.getByRole("button", { name, exact: true }) as HTMLButtonElement;
+}
+
+function captureAction(name: string): HTMLButtonElement {
+  let button = screen.queryByRole("button", { name, exact: true });
+  if (!button) {
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: "Capture actions",
+        exact: true,
+      })[0]!,
+    );
+    button = screen.getByRole("button", { name, exact: true });
+  }
+  return button as HTMLButtonElement;
+}
+
+function confirmDeleteCapturedEvents() {
+  fireEvent.click(captureAction("Delete captured events"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Delete captured events", exact: true }),
+  );
+}
+
 describe("local receiver to viewer integration", () => {
   beforeEach(() => {
     // Nuqs shares pending URL updates across mounts. Reset them between tests
@@ -185,6 +258,253 @@ describe("local receiver to viewer integration", () => {
     cleanup();
     vi.unstubAllGlobals();
     window.history.replaceState(null, "", "/");
+  });
+
+  test("consumes the connection link without restoring it during view navigation", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer("/?url=http%3A%2F%2F127.0.0.1%3A8969%2Fstream");
+    await act(async () =>
+      ControllableEventSource.instances[0]!.onopen?.(new Event("open")),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open traces view" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/traces"));
+    expect(new URLSearchParams(window.location.search).has("url")).toBe(false);
+  });
+
+  test("Clear view only clears this tab and keeps the capture connection open", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "before local clear" }]],
+          ]),
+          lastEventId: "before-local-clear",
+        }),
+      );
+    });
+    fireEvent.click(captureAction("Clear view"));
+    expect(request).not.toHaveBeenCalled();
+    expect(source.closed).toBe(false);
+    expect(screen.queryByLabelText("View event event")).toBeNull();
+    await act(async () =>
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "after local clear" }]],
+          ]),
+          lastEventId: "after-local-clear",
+        }),
+      ),
+    );
+    expect(screen.getByTestId("event-list").textContent).toContain(
+      "after local clear",
+    );
+  });
+
+  test("Switch receiver is a dismissible modal that keeps the live feed and restores focus", async () => {
+    const receiver = await startReceiver();
+    try {
+      renderViewer(receiver.port);
+      await screen.findByText("Connected to local receiver");
+      await sendEnvelope(receiver.port, "GET /keep-live");
+      await screen.findByLabelText("View transaction event");
+      const trigger = screen.getByRole("button", {
+        name: "Switch receiver",
+        exact: true,
+      });
+      fireEvent.click(trigger);
+      const dialog = screen.getByRole("dialog", { name: "Switch receiver" });
+      expect(document.body.style.pointerEvents).toBe("none");
+      expect(screen.queryByRole("button", { name: "Clear view" })).toBeNull();
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(document.activeElement).toBe(trigger);
+      expect(screen.getByTestId("event-list").textContent).toContain(
+        "/keep-live",
+      );
+      fireEvent.click(trigger);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Close", exact: true }),
+      );
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      fireEvent.click(trigger);
+      const overlay = document.querySelector('[data-slot="dialog-overlay"]')!;
+      // Radix registers outside-pointer listeners on the next task.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      fireEvent.pointerDown(overlay, { pointerType: "mouse", button: 0 });
+      fireEvent.click(overlay);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    } finally {
+      cleanup();
+      await stopReceiver(receiver.server);
+    }
+  });
+
+  test("a failed or cancelled Switch receiver attempt keeps the current stream and events", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    const first = ControllableEventSource.instances[0]!;
+    await act(async () => {
+      first.onopen?.(new Event("open"));
+      first.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "keep this event" }]],
+          ]),
+        }),
+      );
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch receiver", exact: true }),
+    );
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "http://127.0.0.1:8970/stream" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    const candidate = ControllableEventSource.instances.at(-1)!;
+    await act(async () => candidate.onerror?.(new Event("error")));
+    expect(first.closed).toBe(false);
+    expect(
+      screen.getByRole("dialog", { name: "Switch receiver" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("alert", { name: "Receiver connection error" })
+        .textContent,
+    ).toContain("Could not connect");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    const cancelled = ControllableEventSource.instances.at(-1)!;
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    expect(cancelled.closed).toBe(true);
+    await act(async () => cancelled.onopen?.(new Event("open")));
+    expect(first.closed).toBe(false);
+    expect(screen.getByTestId("event-list").textContent).toContain(
+      "keep this event",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("Settings blocks the background, closes on outside click and restores its trigger", async () => {
+    vi.stubGlobal("EventSource", OpeningEventSource);
+    renderBareViewer();
+    await screen.findByText("Connected to local receiver");
+    const trigger = screen.getByRole("button", {
+      name: "Settings",
+      exact: true,
+    });
+    fireEvent.click(trigger);
+    expect(document.body.style.pointerEvents).toBe("none");
+    expect(screen.queryByRole("button", { name: "Clear view" })).toBeNull();
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]')!;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    fireEvent.pointerDown(overlay, { pointerType: "mouse", button: 0 });
+    fireEvent.click(overlay);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test("editing the connection landing prevents a late automatic connection from dismissing it", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    const automatic = ControllableEventSource.instances[0]!;
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "http://127.0.0.1:8970/stream" },
+    });
+    expect(automatic.closed).toBe(true);
+    await act(async () => automatic.onopen?.(new Event("open")));
+    expect(screen.getByLabelText("Receiver endpoint")).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await openLatestReceiver();
+    await screen.findByText("Connected to local receiver");
+    expect(window.localStorage.getItem(STREAM_STORAGE_KEY)).toBe(
+      "http://127.0.0.1:8970/stream",
+    );
+  });
+
+  test("appearance Settings remain available without a connected receiver", () => {
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings", exact: true }),
+    );
+    expect(screen.getByRole("dialog", { name: "Settings" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Dark", exact: true }));
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(
+      screen.getByText("This receiver does not provide retention settings."),
+    ).not.toBeNull();
+  });
+
+  test("Settings changes and persists the viewer theme without reconnecting the receiver", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderViewer(8969);
+    await act(async () =>
+      ControllableEventSource.instances.at(-1)?.onopen?.(new Event("open")),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dark", exact: true }));
+    await waitFor(() =>
+      expect(document.documentElement.classList.contains("dark")).toBe(true),
+    );
+    expect(window.localStorage.getItem("theme")).toBe("dark");
+    expect(ControllableEventSource.instances).toHaveLength(1);
+    expect(ControllableEventSource.instances[0]?.closed).toBe(false);
+
+    cleanup();
+    renderViewer(8969);
+    await act(async () =>
+      ControllableEventSource.instances.at(-1)?.onopen?.(new Event("open")),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Dark", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Light", exact: true }));
+    await waitFor(() =>
+      expect(document.documentElement.classList.contains("light")).toBe(true),
+    );
+    expect(window.localStorage.getItem("theme")).toBe("light");
+    fireEvent.click(
+      screen.getByRole("button", { name: "System", exact: true }),
+    );
+    expect(window.localStorage.getItem("theme")).toBe("system");
+    expect(
+      screen
+        .getByRole("button", { name: "System", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(ControllableEventSource.instances).toHaveLength(2);
+    expect(ControllableEventSource.instances[1]?.closed).toBe(false);
   });
 
   test("shows SDK exception titles, causes and stacks in Overview without losing JSON", async () => {
@@ -271,6 +591,59 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
+  test("System appearance follows live device changes while explicit choices stay fixed", async () => {
+    let prefersDark = false;
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return prefersDark;
+      },
+      media: query,
+      addListener: (listener: (event: MediaQueryListEvent) => void) =>
+        listeners.add(listener),
+      removeListener: (listener: (event: MediaQueryListEvent) => void) =>
+        listeners.delete(listener),
+    }));
+    const changeSystemTheme = async (dark: boolean) => {
+      prefersDark = dark;
+      await act(async () => {
+        const event = Object.assign(new Event("change"), {
+          matches: dark,
+          media: "(prefers-color-scheme: dark)",
+        }) as MediaQueryListEvent;
+        for (const listener of listeners) listener(event);
+      });
+    };
+    window.localStorage.setItem("theme", "system");
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderViewer(8969);
+    await act(async () =>
+      ControllableEventSource.instances[0]?.onopen?.(new Event("open")),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(screen.getByText("System appearance: Light")).not.toBeNull();
+    await changeSystemTheme(true);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(screen.getByText("System appearance: Dark")).not.toBeNull();
+    await changeSystemTheme(false);
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Dark", exact: true }));
+    await changeSystemTheme(true);
+    await changeSystemTheme(false);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "System", exact: true }),
+    );
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(ControllableEventSource.instances).toHaveLength(1);
+    expect(ControllableEventSource.instances[0]?.closed).toBe(false);
+    expect(window.localStorage.getItem("theme")).toBe("system");
+  });
+
   test("keeps the selected live transaction open in the detail pane", async () => {
     const { server, port } = await startReceiver();
 
@@ -281,7 +654,7 @@ describe("local receiver to viewer integration", () => {
       const shell = screen.getByTestId("app-shell");
       expect(shell.className).not.toContain("px-");
       expect(shell.className).not.toContain("py-");
-      expect(screen.queryByRole("banner")).toBeNull();
+      expect(screen.queryByLabelText("Capture context")).not.toBeNull();
 
       await sendEnvelope(port, "GET /live");
       await screen.findByLabelText("View transaction event");
@@ -296,7 +669,7 @@ describe("local receiver to viewer integration", () => {
       expect(eventList.className).toContain("flex-1");
       expect(eventList.className).not.toContain("max-h-[42rem]");
       expect(
-        screen.getByRole("complementary", { name: "Live Activity" }),
+        screen.getByRole("complementary", { name: "Events list" }),
       ).not.toBeNull();
       const detail = screen.getByTestId("event-detail");
       expect(detail.textContent).toContain("GET /live");
@@ -335,54 +708,28 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
-  test("keeps direct receiver actions in a compact sidebar utility bar", async () => {
+  test("keeps capture context separate from labelled sidebar actions", async () => {
     const { server, port } = await startReceiver();
-
     try {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /dock");
       await screen.findByLabelText("View transaction event");
-
       const sidebar = screen.getByLabelText("Workspace navigation");
-      const utilityBar = sidebar.querySelector(
-        '[data-testid="sidebar-utility-bar"]',
+      expect(sidebar.querySelector('[role="status"]')).toBeNull();
+      expect(screen.getByLabelText("Capture context").textContent).toContain(
+        "Capturing",
       );
-      expect(utilityBar).not.toBeNull();
-      expect(utilityBar?.textContent).toContain("Connected");
       expect(
-        utilityBar?.querySelector('button[aria-label="Search events"]'),
-      ).not.toBeNull();
-      expect(
-        utilityBar
-          ?.querySelector('[role="status"]')
-          ?.getAttribute("aria-label"),
-      ).toBe("Connected to local receiver");
-      expect(
-        sidebar.querySelector(
-          'button[aria-label="Change receiver connection"]',
-        ),
-      ).not.toBeNull();
-      expect(
-        sidebar.querySelector('button[aria-label="Clear events"]'),
-      ).not.toBeNull();
-      expect(screen.queryByRole("banner")).toBeNull();
-
+        screen.getAllByRole("button", { name: "Search this session" }),
+      ).not.toHaveLength(0);
       fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
       expect(
-        screen.getByRole("button", { name: "Open live activity view" })
-          .className,
+        screen.getByRole("button", { name: "Open events view" }).className,
       ).toContain("justify-center");
+      fireEvent.click(captureAction("Switch receiver"));
       expect(
-        utilityBar?.querySelector('button[aria-label="Search events"]')
-          ?.className,
-      ).toContain("mx-auto");
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Change receiver connection" }),
-      );
-      expect(
-        await screen.findByRole("heading", { name: "Connect a receiver" }),
+        await screen.findByRole("dialog", { name: "Switch receiver" }),
       ).not.toBeNull();
     } finally {
       cleanup();
@@ -398,10 +745,10 @@ describe("local receiver to viewer integration", () => {
       "Receiver setup",
     );
     expect(
-      screen.queryByRole("searchbox", { name: "Search events" }),
+      screen.queryByRole("searchbox", { name: "Search this session" }),
     ).toBeNull();
     expect(screen.queryByLabelText("Workspace navigation")).toBeNull();
-    expect(screen.getByText("Looking for Sentry Local")).not.toBeNull();
+    expect(screen.getByText("Connecting to receiver")).not.toBeNull();
     expect(
       screen.getByRole("status", { name: "Checking receiver" }),
     ).not.toBeNull();
@@ -416,13 +763,133 @@ describe("local receiver to viewer integration", () => {
     expect(connectButton.disabled).toBe(false);
     expect(connectButton.getAttribute("aria-busy")).toBe("false");
     expect(
-      screen.getByText(
-        "Defaults to your local receiver. You can paste another local or HTTPS stream above.",
-      ),
+      screen.getByText("Paste a local /stream address or an HTTPS stream URL."),
     ).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: "Copy local serve command" }),
+      screen.getByRole("button", { name: "Copy local run command" }),
     ).not.toBeNull();
+  });
+
+  test("replays bundled envelopes through the receiver into every investigation view", async () => {
+    const { server, port } = await startReceiver();
+    const originalCreate = URL.createObjectURL?.bind(URL);
+    const originalRevoke = URL.revokeObjectURL?.bind(URL);
+    URL.createObjectURL = () => "blob:fixture";
+    URL.revokeObjectURL = () => {};
+    try {
+      renderViewer(port);
+      await screen.findByText("Connected to local receiver");
+      expect(
+        await replayEnvelopes({
+          endpoint: `http://127.0.0.1:${port}/stream`,
+          fixtures: defaultFixtures,
+          compression: "gzip",
+        }),
+      ).toBe(9);
+      await waitFor(() =>
+        expect(screen.getByTestId("event-list").textContent).toContain(
+          "/checkout",
+        ),
+      );
+      fireEvent.click(viewButton("Open queries view"));
+      const query = await screen.findByRole("button", {
+        name: "SELECT id, total FROM orders WHERE user_id = ?",
+      });
+      fireEvent.click(query);
+      expect(
+        screen.getByRole("region", { name: "Database queries executions" })
+          .textContent,
+      ).toContain("Captured executions · 2");
+      fireEvent.click(
+        screen.getAllByRole("button", { name: /GET \/checkout.*ms/ })[0]!,
+      );
+      expect(
+        await screen.findByRole("region", { name: "Span detail" }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open resources view"));
+      expect(
+        await screen.findByRole("button", {
+          name: "http://localhost:3000/checkout.js",
+        }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open web vitals view"));
+      expect(
+        await screen.findByRole("img", {
+          name: /LCP: 3200 ms, Needs improvement/,
+        }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open ai view"));
+      expect(await screen.findByText("Order 42 ships tomorrow.")).toBeDefined();
+      fireEvent.click(viewButton("Open profiles view"));
+      expect(
+        await screen.findByRole("table", { name: "Profile functions" }),
+      ).toBeDefined();
+      fireEvent.change(screen.getByLabelText("Visualization"), {
+        target: { value: "sunburst" },
+      });
+      expect(
+        screen.getByRole("group", { name: "sunburst profile visualization" }),
+      ).toBeDefined();
+      fireEvent.click(viewButton("Open attachments view"));
+      expect(
+        await screen.findByRole("heading", { name: "notes.txt", level: 3 }),
+      ).toBeDefined();
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "View attachment event" })[3]!,
+      );
+      const image = await screen.findByRole("img", { name: "pixel.png" });
+      expect(image.getAttribute("src")).toMatch(/^blob:/);
+      fireEvent.click(viewButton("Open sdks view"));
+      expect(await screen.findByText("sentry.javascript.node")).toBeDefined();
+    } finally {
+      cleanup();
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      await stopReceiver(server);
+    }
+  }, 15_000);
+
+  test("parameterized text attachments follow the real receiver's base64 wire encoding", async () => {
+    const { server, port } = await startReceiver();
+    const observer = new NodeEventSource(`http://127.0.0.1:${port}/stream`);
+    try {
+      const received = new Promise<string>((resolve) =>
+        observer.addEventListener(
+          SENTRY_CONTENT_TYPE,
+          (event) => resolve(event.data),
+          { once: true },
+        ),
+      );
+      await new Promise<void>((resolve, reject) => {
+        observer.onopen = () => resolve();
+        observer.onerror = reject;
+      });
+      renderViewer(port, "/attachments");
+      await screen.findByText("Connected to local receiver");
+      const content = "héllo";
+      const header = {
+        type: "attachment",
+        filename: "charset.txt",
+        content_type: "text/plain; charset=utf-8",
+        length: new TextEncoder().encode(content).byteLength,
+      };
+      const response = await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: `{}\n${JSON.stringify(header)}\n${content}\n`,
+      });
+      expect(response.status).toBe(204);
+      const wire = JSON.parse(await received) as [
+        unknown,
+        [[unknown, { data: string }]],
+      ];
+      expect(wire[1][0][1].data).toBe(Buffer.from(content).toString("base64"));
+      expect(await screen.findByText(content)).toBeDefined();
+    } finally {
+      observer.close();
+      cleanup();
+      await stopReceiver(server);
+    }
   });
 
   test("renders every Explorer view from a receiver-backed telemetry session", async () => {
@@ -440,18 +907,18 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /ai", { operation: "ai.generate" });
 
       const explorerViews = [
-        ["Open live activity view", "View transaction event"],
+        ["Open events view", "View transaction event"],
         ["Open errors view", "View event event"],
         ["Open logs view", "View log event"],
         ["Open feedback view", "View user_report event"],
         ["Open envelopes view", "View envelope event"],
         ["Open profiles view", "View profile event"],
-        ["Open sessions & sdks view", "View client_report event"],
+        ["Open sdks view", "View client_report event"],
         ["Open ai view", "View transaction event"],
       ] as const;
 
       for (const [view, event] of explorerViews) {
-        fireEvent.click(screen.getByRole("button", { name: view }));
+        fireEvent.click(viewButton(view));
         expect((await screen.findAllByLabelText(event)).length).toBeGreaterThan(
           0,
         );
@@ -487,12 +954,90 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
+  test("past connections survive reload and reconnect isolated feeds without pasting endpoints", async () => {
+    const first = await startReceiver();
+    const second = await startReceiver();
+    try {
+      await sendEnvelope(first.port, "GET /past-first");
+      await sendEnvelope(second.port, "GET /past-second");
+      renderViewer(first.port);
+      await screen.findByLabelText("View transaction event");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Switch receiver", exact: true }),
+      );
+      fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+        target: { value: `http://127.0.0.1:${second.port}/stream` },
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Connect", exact: true }),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("event-list").textContent).toContain(
+          "/past-second",
+        ),
+      );
+      cleanup();
+      renderBareViewer();
+      await screen.findByLabelText("View transaction event");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Switch receiver", exact: true }),
+      );
+      const firstLabel = `http://127.0.0.1:${first.port}/stream`;
+      const secondLabel = `http://127.0.0.1:${second.port}/stream`;
+      expect(
+        screen.getByRole("button", {
+          name: `Reconnect to ${secondLabel}`,
+          exact: true,
+        }),
+      ).not.toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `Reconnect to ${firstLabel}`,
+          exact: true,
+        }),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("event-list").textContent).toContain(
+          "/past-first",
+        ),
+      );
+      expect(screen.getByTestId("event-list").textContent).not.toContain(
+        "/past-second",
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Switch receiver", exact: true }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `Forget ${secondLabel}`,
+          exact: true,
+        }),
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: `Reconnect to ${secondLabel}`,
+          exact: true,
+        }),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Close", exact: true }),
+      );
+      expect(screen.getByTestId("event-list").textContent).toContain(
+        "/past-first",
+      );
+    } finally {
+      cleanup();
+      await stopReceiver(first.server);
+      await stopReceiver(second.server);
+    }
+  });
+
   test("keeps a successfully opened remote receiver only for this browser session", async () => {
     vi.stubGlobal("EventSource", OpeningEventSource);
     renderBareViewer();
     await screen.findByText("Connected to local receiver");
     window.localStorage.clear();
-    fireEvent.click(screen.getByRole("button", { name: "Change receiver" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
 
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
       target: { value: "https://receiver.example/stream?token=abc" },
@@ -505,6 +1050,314 @@ describe("local receiver to viewer integration", () => {
       );
     });
     expect(window.localStorage.getItem(STREAM_STORAGE_KEY)).toBeNull();
+  });
+
+  test("editing a failed landing clears its stale connection error without reconnecting", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    await act(async () => source.onerror?.(new Event("error")));
+    await screen.findByRole("alert", { name: "Receiver connection error" });
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "http://127.0.0.1:8970/stream" },
+    });
+    expect(
+      screen.queryByRole("alert", { name: "Receiver connection error" }),
+    ).toBeNull();
+    expect(ControllableEventSource.instances).toHaveLength(1);
+    await act(async () => source.onerror?.(new Event("error")));
+    expect(
+      screen.queryByRole("alert", { name: "Receiver connection error" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await openLatestReceiver();
+    await screen.findByText("Connected to local receiver");
+  });
+
+  test("an ignored remote query never reconnects a disconnected tab to its saved receiver", () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/saved/stream?cap=read",
+    );
+    saveDisconnected(true);
+    renderBareViewer(
+      "/?url=" + encodeURIComponent("https://remote.example/stream"),
+    );
+    expect(ControllableEventSource.instances).toHaveLength(0);
+    expect(
+      screen.getByRole("heading", { name: "Capture a local session" }),
+    ).not.toBeNull();
+  });
+
+  test.each([true, false])(
+    "an explicit scoped link persists reconnection only after it opens (success: %s)",
+    async (success) => {
+      ControllableEventSource.instances = [];
+      vi.stubGlobal("EventSource", ControllableEventSource);
+      saveDisconnected(true);
+      const streamUrl =
+        "http://127.0.0.1:8969/_local/v1/sessions/new-run/stream?cap=read";
+      renderBareViewer("/#stream=" + encodeURIComponent(streamUrl));
+      const source = ControllableEventSource.instances[0]!;
+      await act(async () => {
+        if (success) source.onopen?.(new Event("open"));
+        else source.onerror?.(new Event("error"));
+      });
+      expect(window.location.hash).toBe("");
+      cleanup();
+      renderBareViewer();
+      expect(ControllableEventSource.instances).toHaveLength(success ? 2 : 1);
+      if (success) {
+        await act(async () =>
+          ControllableEventSource.instances[1]!.onopen?.(new Event("open")),
+        );
+        expect(
+          screen.getByRole("heading", { name: "No events captured" }),
+        ).not.toBeNull();
+      } else {
+        expect(
+          screen.getByRole("heading", { name: "Capture a local session" }),
+        ).not.toBeNull();
+      }
+    },
+  );
+
+  test("clear ignores pre-reset deliveries and reconnects without replacing the workspace shell", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/reset-run/stream?cap=reset-test",
+    );
+    let completeReset: ((response: Response) => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            completeReset = resolve;
+          }),
+      ),
+    );
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    const deliver = (message: string, id: string) =>
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([{}, [[{ type: "event" }, { message }]]]),
+          lastEventId: id,
+        }),
+      );
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      deliver("before reset", "before");
+    });
+    const shell = screen.getByRole("complementary", {
+      name: "Workspace navigation",
+    });
+    confirmDeleteCapturedEvents();
+    await act(async () => deliver("stale queued event", "stale"));
+    expect(screen.queryByText("stale queued event")).toBeNull();
+    expect(
+      screen.getByRole("complementary", { name: "Workspace navigation" }),
+    ).toBe(shell);
+    await act(async () => completeReset?.(new Response(null, { status: 204 })));
+    expect(ControllableEventSource.instances).toHaveLength(2);
+    expect(
+      screen.getByRole("complementary", { name: "Workspace navigation" }),
+    ).toBe(shell);
+  });
+
+  test.each(["http", "network", "reconnecting"])(
+    "failed %s clear keeps an empty workspace recoverable",
+    async (failure) => {
+      ControllableEventSource.instances = [];
+      vi.stubGlobal("EventSource", ControllableEventSource);
+      const request = vi.fn();
+      if (failure === "network")
+        request.mockRejectedValue(new TypeError("Network unavailable"));
+      else request.mockResolvedValue(new Response(null, { status: 403 }));
+      vi.stubGlobal("fetch", request);
+      window.localStorage.setItem(
+        STREAM_STORAGE_KEY,
+        "http://127.0.0.1:8969/_local/v1/sessions/clear-failed/stream?cap=read",
+      );
+      renderBareViewer();
+      const source = ControllableEventSource.instances[0]!;
+      await act(async () => {
+        source.onopen?.(new Event("open"));
+        source.dispatchEvent(
+          new MessageEvent(SENTRY_CONTENT_TYPE, {
+            data: JSON.stringify([
+              {},
+              [[{ type: "event" }, { message: "before clear" }]],
+            ]),
+            lastEventId: "before-clear",
+          }),
+        );
+      });
+      if (failure === "reconnecting") {
+        await act(async () => source.onerror?.(new Event("error")));
+        fireEvent.click(
+          screen.getByRole("button", { name: "Reconnect", exact: true }),
+        );
+      }
+      const sidebar = screen.getByRole("complementary", {
+        name: "Workspace navigation",
+      });
+      confirmDeleteCapturedEvents();
+      await screen.findByText(
+        "This view is empty, but the receiver could not delete its captured events.",
+      );
+      expect(
+        screen.getByRole("complementary", { name: "Workspace navigation" }),
+      ).toBe(sidebar);
+      expect(source.closed).toBe(true);
+      expect(screen.queryByText("Waiting for events")).toBeNull();
+      expect(
+        screen.getByRole("heading", { name: "No events displayed" }),
+      ).not.toBeNull();
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Reconnect",
+            exact: true,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Reconnect", exact: true }),
+      );
+      const reconnected = await openLatestReceiver();
+      expect(reconnected).not.toBe(source);
+      await act(async () =>
+        reconnected.dispatchEvent(
+          new MessageEvent(SENTRY_CONTENT_TYPE, {
+            data: JSON.stringify([
+              {},
+              [[{ type: "event" }, { message: "after reconnect" }]],
+            ]),
+            lastEventId: "after-reconnect",
+          }),
+        ),
+      );
+      await screen.findByRole("button", { name: "View event event" });
+      expect(screen.getByTestId("event-list").textContent).toContain(
+        "after reconnect",
+      );
+      expect(
+        screen.queryByRole("heading", { name: "Receiver disconnected" }),
+      ).toBeNull();
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test("unchanged Switch receiver retries a disconnected scoped session without losing its events or selection", async () => {
+    const stream =
+      "http://127.0.0.1:8969/_local/v1/sessions/selected-run/stream?cap=session-test";
+    const requestedStreams: string[] = [];
+    ControllableEventSource.instances = [];
+    vi.stubGlobal(
+      "EventSource",
+      class extends ControllableEventSource {
+        constructor(url: string) {
+          super(url);
+          requestedStreams.push(url);
+        }
+      },
+    );
+    window.localStorage.setItem(STREAM_STORAGE_KEY, stream);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [
+              [
+                { type: "event" },
+                { message: "kept scoped event", level: "error" },
+              ],
+            ],
+          ]),
+          lastEventId: "kept-scoped",
+        }),
+      );
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open errors view", exact: true }),
+    );
+    await screen.findByRole("heading", { name: "Errors", exact: true });
+    fireEvent.click(screen.getByRole("tab", { name: "JSON", exact: true }));
+    await act(async () => source.onerror?.(new Event("error")));
+    await screen.findByText("Connection lost", { exact: true });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch receiver", exact: true }),
+    );
+    expect(
+      (screen.getByLabelText("Receiver endpoint") as HTMLInputElement).value,
+    ).toBe("http://127.0.0.1:8969/stream");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect", exact: true }),
+    );
+    await openLatestReceiver();
+    await screen.findByText("Connected to local receiver");
+    expect(
+      screen.getByRole("heading", { name: "Errors", exact: true }),
+    ).not.toBeNull();
+    expect(screen.getByTestId("event-detail").textContent).toContain(
+      "kept scoped event",
+    );
+    expect(
+      screen
+        .getByRole("tab", { name: "JSON", exact: true })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    const reconnected = new URL(requestedStreams.at(-1)!);
+    expect(reconnected.pathname).toBe(new URL(stream).pathname);
+    expect(reconnected.searchParams.get("cap")).toBe("session-test");
+  });
+
+  test("editing a replacement keeps the disconnected feed's error after closing the modal", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "kept event" }]],
+          ]),
+          lastEventId: "kept",
+        }),
+      );
+      source.onerror?.(new Event("error"));
+    });
+    await screen.findByText("Connection lost", { exact: true });
+    const error =
+      "Could not connect to the default receiver. Start it with the command below or enter another endpoint.";
+    expect(screen.getByText(error)).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch receiver", exact: true }),
+    );
+    fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
+      target: { value: "http://127.0.0.1:8970/stream" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    expect(screen.getByText(error)).not.toBeNull();
+    expect(screen.getByTestId("event-detail").textContent).toContain(
+      "kept event",
+    );
   });
 
   test("keeps endpoint validation visible after a failed receiver has been stopped", async () => {
@@ -583,7 +1436,7 @@ describe("local receiver to viewer integration", () => {
     expect(source).toBeDefined();
     await act(async () => source?.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
-    fireEvent.click(screen.getByRole("button", { name: "Change receiver" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
 
     await act(async () => {
       source?.dispatchEvent(
@@ -614,9 +1467,7 @@ describe("local receiver to viewer integration", () => {
     await act(async () => source?.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Change receiver connection" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
       target: { value: "http://127.0.0.1:8970/stream" },
     });
@@ -637,7 +1488,7 @@ describe("local receiver to viewer integration", () => {
     expect(source).toBeDefined();
     await act(async () => source?.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
-    fireEvent.click(screen.getByRole("button", { name: "Change receiver" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
       target: { value: "http://receiver.example/stream" },
     });
@@ -645,7 +1496,7 @@ describe("local receiver to viewer integration", () => {
 
     expect(source?.closed).toBe(false);
     expect(
-      screen.getByRole("status", { name: "Connected to local receiver" }),
+      screen.getAllByText("Connected to local receiver", { exact: true })[0],
     ).not.toBeNull();
   });
 
@@ -720,8 +1571,7 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /another-healthy");
       await waitFor(() => {
         expect(
-          screen.getByRole("button", { name: "Open live activity view" })
-            .textContent,
+          screen.getByRole("button", { name: "Open events view" }).textContent,
         ).toContain("3");
       });
       expect(
@@ -747,7 +1597,7 @@ describe("local receiver to viewer integration", () => {
 
       await screen.findByLabelText("View event event");
       expect(
-        screen.getByRole("button", { name: "Open live activity view" }),
+        screen.getByRole("button", { name: "Open events view" }),
       ).not.toBeNull();
       expect(
         screen.getByRole("button", { name: "Open errors view" }).textContent,
@@ -804,13 +1654,9 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /raw-envelope");
       await screen.findByLabelText("View transaction event");
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Open envelopes view" }),
-      );
+      fireEvent.click(viewButton("Open envelopes view"));
 
-      expect(
-        screen.getByRole("button", { name: "Open envelopes view" }).textContent,
-      ).toContain("1");
+      expect(viewButton("Open envelopes view").textContent).toContain("1");
       fireEvent.click(screen.getByLabelText("View envelope event"));
       expect(
         screen.getByRole("heading", { name: "Raw envelope" }),
@@ -833,9 +1679,7 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /first-envelope");
       await screen.findByLabelText("View transaction event");
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Open envelopes view" }),
-      );
+      fireEvent.click(viewButton("Open envelopes view"));
       fireEvent.click(await screen.findByLabelText("View envelope event"));
       await sendEnvelope(port, "GET /second-envelope");
 
@@ -867,17 +1711,10 @@ describe("local receiver to viewer integration", () => {
       );
     });
 
-    const clearButton = screen.getByRole("button", {
-      name: "Clear events",
-    }) as HTMLButtonElement;
-    await waitFor(() => expect(clearButton.disabled).toBe(false));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open envelopes view" }),
-    );
+    fireEvent.click(viewButton("Open envelopes view"));
     expect(await screen.findByLabelText("View envelope event")).not.toBeNull();
-    fireEvent.click(clearButton);
-
-    await waitFor(() => expect(clearButton.disabled).toBe(true));
+    fireEvent.click(captureAction("Clear view"));
+    expect(captureAction("Clear view").disabled).toBe(true);
   });
 
   test("preserves undecodable raw envelopes and clears their stale alert with the feed", async () => {
@@ -899,24 +1736,29 @@ describe("local receiver to viewer integration", () => {
       );
     });
     await screen.findByText("Received an event that could not be decoded.");
-    const clear = screen.getByRole("button", {
-      name: "Clear events",
-    }) as HTMLButtonElement;
-    expect(clear.disabled).toBe(false);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open envelopes view" }),
-    );
+    fireEvent.click(viewButton("Open envelopes view"));
     await screen.findByLabelText("View envelope event");
-    fireEvent.click(clear);
+    fireEvent.click(captureAction("Clear view"));
     await waitFor(() =>
       expect(
         screen.queryByText("Received an event that could not be decoded."),
       ).toBeNull(),
     );
-    expect(clear.disabled).toBe(true);
+    expect(captureAction("Clear view").disabled).toBe(true);
   });
 
   test("replays more than 500 retained envelopes and applies a real runtime update", async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      const target = args[0];
+      const url = new URL(target instanceof Request ? target.url : target);
+      if (url.pathname === "/retention" && args[1]?.method === "POST") {
+        // Valid request latency can exceed Testing Library's one-second default.
+        // Keep the real HTTP request and receiver mutation behind this delay.
+        await new Promise((resolve) => setTimeout(resolve, 1250));
+      }
+      return await realFetch(...args);
+    });
     const retention = createLocalRetentionBuffer(1000);
     const receiver = await tryListen(
       buildApp(retention.buffer, { uiActions: true, retention }),
@@ -925,37 +1767,71 @@ describe("local receiver to viewer integration", () => {
     );
     try {
       // Initial metadata must precede replay, otherwise the viewer's default clips history.
-      for (let index = 0; index < 501; index++)
-        await sendEnvelope(receiver.port, `retained-${index}`);
+      // Keep real HTTP ingestion without serializing 501 network round trips.
+      for (let offset = 0; offset < 501; offset += 16) {
+        await Promise.all(
+          Array.from({ length: Math.min(16, 501 - offset) }, (_, index) =>
+            sendEnvelope(receiver.port, `retained-${offset + index}`),
+          ),
+        );
+      }
       renderViewer(receiver.port, "/explorer/events");
-      await screen.findByText(
-        /Retention limit: 1,000 envelopes · 501 displayed/,
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Settings", exact: true }),
+      );
+      // Role queries over hundreds of aria-hidden background rows are costly in
+      // jsdom and can starve this real receiver's request timeout on CI workers.
+      const settings = within(screen.getByRole("dialog", { name: "Settings" }));
+      await settings.findByText(
+        /501 envelopes currently retained/,
         {},
         { timeout: 10000 },
       );
-      fireEvent.click(screen.getByText(/Retention limit: 1,000 envelopes/));
-      fireEvent.change(screen.getByLabelText("Retention limit"), {
+      fireEvent.change(settings.getByLabelText("Envelope limit"), {
         target: { value: "2000" },
       });
       fireEvent.click(
-        screen.getByRole("button", { name: "Apply retention limit" }),
+        settings.getByRole("button", { name: "Apply envelope limit" }),
       );
-      await screen.findByText(
-        /Retention limit: 2,000 envelopes · 501 displayed/,
+      expect(
+        (
+          (await settings.findByRole("button", {
+            name: "Applying…",
+          })) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      // The edited input is already 2000 while the HTTP mutation is pending.
+      expect(
+        (settings.getByLabelText("Envelope limit") as HTMLInputElement).value,
+      ).toBe("2000");
+      expect(retention.getSettings().maxEnvelopes).toBe(1000);
+      // Await completion, allowing the receiver's five-second request timeout
+      // plus scheduling overhead, before checking its committed configuration.
+      const apply = await settings.findByRole(
+        "button",
+        { name: "Apply envelope limit" },
+        { timeout: 6000 },
       );
+      expect((apply as HTMLButtonElement).disabled).toBe(false);
+      expect(settings.queryByRole("alert")).toBeNull();
+      expect(
+        settings.getByText(/501 envelopes currently retained/),
+      ).not.toBeNull();
       expect(retention.getSettings()).toEqual({
         maxEnvelopes: 2000,
         retainedEnvelopes: 501,
       });
       await sendEnvelope(receiver.port, "after-growth");
-      await screen.findByText(
-        /Retention limit: 2,000 envelopes · 502 displayed/,
+      await settings.findByText(
+        /502 envelopes currently retained/,
+        {},
+        { timeout: 10000 },
       );
     } finally {
       cleanup();
       await stopReceiver(receiver.server);
     }
-  }, 20000);
+  }, 60000);
 
   test("updates live retention without clearing events or replacing the stream", async () => {
     ControllableEventSource.instances = [];
@@ -989,22 +1865,24 @@ describe("local receiver to viewer integration", () => {
           }),
         );
     });
-    fireEvent.click(await screen.findByText(/Retention limit: 500 envelopes/));
-    fireEvent.change(screen.getByLabelText("Retention limit"), {
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Settings", exact: true }),
+    );
+    fireEvent.change(screen.getByLabelText("Envelope limit"), {
       target: { value: "1" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Apply retention limit" }),
+      screen.getByRole("button", { name: "Apply envelope limit" }),
     );
     await screen.findByText(
-      /Cannot lower the limit below 2 displayed envelopes/,
+      /Cannot lower the limit below 2 retained envelopes/,
     );
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Retention limit"), {
+    fireEvent.change(screen.getByLabelText("Envelope limit"), {
       target: { value: "1000" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Apply retention limit" }),
+      screen.getByRole("button", { name: "Apply envelope limit" }),
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await act(async () =>
@@ -1014,7 +1892,21 @@ describe("local receiver to viewer integration", () => {
         }),
       ),
     );
-    await screen.findByText(/Retention limit: 1,000 envelopes/);
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
+      ).toBe("1000"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Settings", exact: true }),
+      ),
+    );
+    const clearButton = captureAction("Clear view");
+    fireEvent.focus(clearButton);
+    expect(document.activeElement).toBe(clearButton);
+    fireEvent.blur(clearButton);
     expect(
       screen.getAllByRole("button", { name: "View event event" }),
     ).toHaveLength(2);
@@ -1046,15 +1938,66 @@ describe("local receiver to viewer integration", () => {
       source?.onerror?.(new Event("error"));
     });
     fireEvent.click(
-      await screen.findByText(/Retention limit: 1,000 envelopes/),
+      await screen.findByRole("button", { name: "Settings", exact: true }),
     );
-    await screen.findByText("Reconnect to this receiver to change retention.");
+    await screen.findByText(
+      "Reconnect to this receiver to change history capacity.",
+    );
     expect(
-      screen.queryByRole("button", { name: "Apply retention limit" }),
+      screen.queryByRole("button", { name: "Apply envelope limit" }),
     ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
     expect(
       screen.getByRole("button", { name: "View event event" }),
     ).not.toBeNull();
+  });
+
+  test("keeps closed retention read-only while its archive replay connects and opens", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/closed-run/stream?cap=read",
+    );
+    renderBareViewer();
+    const source = ControllableEventSource.instances[0]!;
+    const retained = () =>
+      new MessageEvent("sentry.local.session", {
+        data: '{"state":"retained"}',
+      });
+    await act(async () => {
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
+        new MessageEvent("sentry.local.retention", {
+          data: '{"maxEnvelopes":1000}',
+        }),
+      );
+      source.dispatchEvent(retained());
+    });
+    await screen.findByText("Saved capture", { exact: true });
+    fireEvent.click(screen.getByRole("button", { name: "Reload capture" }));
+    const replay = ControllableEventSource.instances.at(-1)!;
+    expect(replay).not.toBe(source);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Settings", exact: true }),
+    );
+    const assertReadOnly = () => {
+      expect(
+        screen.getByText("History capacity is read-only for saved captures."),
+      ).not.toBeNull();
+      expect(screen.queryByLabelText("Envelope limit")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Apply envelope limit" }),
+      ).toBeNull();
+    };
+    assertReadOnly();
+    await act(async () => replay.onopen?.(new Event("open")));
+    assertReadOnly();
+    await act(async () => replay.dispatchEvent(retained()));
+    assertReadOnly();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test.each([false, true])(
@@ -1079,24 +2022,27 @@ describe("local receiver to viewer integration", () => {
         );
       });
       fireEvent.click(
-        await screen.findByText(/Retention limit: 500 envelopes/),
+        await screen.findByRole("button", { name: "Settings", exact: true }),
       );
-      fireEvent.change(screen.getByLabelText("Retention limit"), {
+      fireEvent.change(screen.getByLabelText("Envelope limit"), {
         target: { value: "1" },
       });
       fireEvent.click(
-        screen.getByRole("button", { name: "Apply retention limit" }),
+        screen.getByRole("button", { name: "Apply envelope limit" }),
       );
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       if (switchReceiver) {
         fireEvent.click(
-          screen.getByRole("button", { name: "Change receiver" }),
+          screen.getByRole("button", { name: "Close", exact: true }),
+        );
+        fireEvent.click(
+          screen.getByRole("button", { name: "Switch receiver" }),
         );
         fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
           target: { value: "http://127.0.0.1:8970/stream" },
         });
         fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-        source = ControllableEventSource.instances[1];
+        source = await openLatestReceiver();
       }
       await act(async () => {
         source?.onopen?.(new Event("open"));
@@ -1108,7 +2054,18 @@ describe("local receiver to viewer integration", () => {
         respond(new Response('{"maxEnvelopes":1}', { status: 200 }));
         await pending;
       });
-      await screen.findByText(/Retention limit: 1,000 envelopes/);
+      if (switchReceiver)
+        fireEvent.click(
+          await screen.findByRole("button", { name: "Settings", exact: true }),
+        );
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
+        ).toBe("1000"),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Close", exact: true }),
+      );
       await act(async () => {
         for (const id of ["one", "two"])
           source?.dispatchEvent(
@@ -1144,15 +2101,13 @@ describe("local receiver to viewer integration", () => {
       );
       async function connect(url: string) {
         fireEvent.click(
-          screen.getAllByRole("button", { name: /^Change receiver/ })[0]!,
+          screen.getAllByRole("button", { name: /^Switch receiver/ })[0]!,
         );
         fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
           target: { value: url },
         });
         fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-        const source = ControllableEventSource.instances.at(-1)!;
-        await act(async () => source.onopen?.(new Event("open")));
-        return source;
+        return await openLatestReceiver();
       }
       const firstUrl =
         "http://127.0.0.1:8969/_local/v1/sessions/first/stream?cap=read";
@@ -1168,14 +2123,8 @@ describe("local receiver to viewer integration", () => {
           }),
         ),
       );
-      fireEvent.click(
-        screen.getByRole("button", {
-          name:
-            action === "clear error"
-              ? "Clear events"
-              : "Close telemetry session",
-        }),
-      );
+      if (action === "clear error") confirmDeleteCapturedEvents();
+      else fireEvent.click(captureAction("Stop capture"));
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       await connect("http://127.0.0.1:8970/stream");
       const current = await connect(firstUrl);
@@ -1189,11 +2138,11 @@ describe("local receiver to viewer integration", () => {
       });
       expect(current.closed).toBe(false);
       expect(
-        screen.queryByText("Could not close this telemetry session."),
+        screen.queryByText("Could not stop this capture. Try again."),
       ).toBeNull();
       expect(
         screen.queryByText(
-          "Cleared this viewer, but the receiver could not clear its retained session.",
+          "This view is empty, but the receiver could not delete its captured events.",
         ),
       ).toBeNull();
       await act(async () =>
@@ -1211,10 +2160,54 @@ describe("local receiver to viewer integration", () => {
         await screen.findByRole("button", { name: "View event event" }),
       ).not.toBeNull();
       expect(
-        screen.queryByRole("heading", { name: "Connect a receiver" }),
+        screen.queryByRole("heading", { name: "Capture a local session" }),
       ).toBeNull();
     },
   );
+
+  test("closing a session preserves final envelopes when HTTP completes before the stream", async () => {
+    ControllableEventSource.instances = [];
+    vi.stubGlobal("EventSource", ControllableEventSource);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+    );
+    window.localStorage.setItem(
+      STREAM_STORAGE_KEY,
+      "http://127.0.0.1:8969/_local/v1/sessions/closing-run/stream?cap=read",
+    );
+    renderBareViewer();
+    await act(async () =>
+      ControllableEventSource.instances[0]!.onopen?.(new Event("open")),
+    );
+    fireEvent.click(captureAction("Stop capture"));
+    await screen.findByText("Saved capture", { exact: true });
+    // The close response can overtake SSE delivery. The current feed must still
+    // consume the final archive before its terminal lifecycle notification.
+    const finalSource = ControllableEventSource.instances.at(-1)!;
+    await act(async () => {
+      finalSource.onopen?.(new Event("open"));
+      finalSource.dispatchEvent(
+        new MessageEvent(SENTRY_CONTENT_TYPE, {
+          data: JSON.stringify([
+            {},
+            [[{ type: "event" }, { message: "final accepted event" }]],
+          ]),
+          lastEventId: "final-envelope",
+        }),
+      );
+      finalSource.dispatchEvent(
+        new MessageEvent("sentry.local.session", {
+          data: '{"state":"retained"}',
+        }),
+      );
+    });
+    expect(await screen.findAllByText("final accepted event")).not.toHaveLength(
+      0,
+    );
+    expect(finalSource.closed).toBe(true);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 
   test.each([204, 403])(
     "handles scoped reset HTTP %s and closes a telemetry session",
@@ -1231,7 +2224,7 @@ describe("local receiver to viewer integration", () => {
       const initialSource = ControllableEventSource.instances[0];
       expect(initialSource).toBeDefined();
       await act(async () => initialSource?.onopen?.(new Event("open")));
-      fireEvent.click(screen.getByRole("button", { name: "Change receiver" }));
+      fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
 
       const streamUrl =
         "http://127.0.0.1:8969/_local/v1/sessions/session-1/stream?cap=read-capability";
@@ -1240,9 +2233,7 @@ describe("local receiver to viewer integration", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-      const scopedSource = ControllableEventSource.instances[1];
-      expect(scopedSource).toBeDefined();
-      await act(async () => scopedSource?.onopen?.(new Event("open")));
+      const scopedSource = await openLatestReceiver();
       await act(async () => {
         scopedSource?.dispatchEvent(
           new MessageEvent(SENTRY_CONTENT_TYPE, {
@@ -1252,33 +2243,61 @@ describe("local receiver to viewer integration", () => {
         );
       });
 
-      const clearButton = screen.getByRole("button", { name: "Clear events" });
+      const clearButton = captureAction("Delete captured events");
       await waitFor(() =>
         expect((clearButton as HTMLButtonElement).disabled).toBe(false),
       );
       fireEvent.click(clearButton);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Delete captured events",
+          exact: true,
+        }),
+      );
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
         "http://127.0.0.1:8969/_local/v1/sessions/session-1/ui/reset?cap=read-capability",
       );
-      expect(fetchMock.mock.calls[0]?.[1]).toEqual({ method: "POST" });
+      expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          signal: expect.any(AbortSignal),
+        }),
+      );
       if (resetStatus !== 204) {
         await screen.findByText(
-          "Cleared this viewer, but the receiver could not clear its retained session.",
+          "This view is empty, but the receiver could not delete its captured events.",
         );
       }
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Close telemetry session" }),
-      );
+      fireEvent.click(captureAction("Stop capture"));
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
       expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
         "http://127.0.0.1:8969/_local/v1/sessions/session-1/ui/close?cap=read-capability",
       );
-      expect(fetchMock.mock.calls[1]?.[1]).toEqual({ method: "POST" });
+      expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          signal: expect.any(AbortSignal),
+        }),
+      );
       await waitFor(() => expect(scopedSource?.closed).toBe(true));
-      await screen.findByRole("heading", { name: "Connect a receiver" });
-      expect(screen.queryByText("Waiting for events")).toBeNull();
+      await screen.findByText("Saved capture", { exact: true });
+      expect(
+        screen.queryByText(
+          "Telemetry session closed. Retained events remain available for three hours.",
+        ),
+      ).toBeNull();
+      expect(screen.getByLabelText("Workspace navigation")).not.toBeNull();
+      expect(screen.queryByLabelText("Receiver endpoint")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Reload capture" }),
+      ).not.toBeNull();
+      fireEvent.click(captureAction("Disconnect viewer"));
+      await screen.findByRole("heading", { name: "Capture a local session" });
+      expect(
+        screen.getByRole("region", { name: "Past connections" }),
+      ).not.toBeNull();
       expect(screen.getByLabelText("Receiver endpoint")).not.toBeNull();
       await waitFor(() =>
         expect(
@@ -1306,9 +2325,7 @@ describe("local receiver to viewer integration", () => {
         }),
       );
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open envelopes view" }),
-    );
+    fireEvent.click(viewButton("Open envelopes view"));
     fireEvent.click(await screen.findByLabelText("View envelope event"));
 
     await act(async () => source?.onerror?.(new Event("error")));
@@ -1318,12 +2335,12 @@ describe("local receiver to viewer integration", () => {
       screen.getByRole("heading", { name: "Raw envelope" }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Receiver endpoint")).toBeNull();
-    fireEvent.click(
-      screen.getAllByRole("button", { name: "Search events" })[0]!,
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Filter Envelopes" }),
+      {
+        target: { value: "unmatched-envelope" },
+      },
     );
-    fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
-      target: { value: "unmatched-envelope" },
-    });
     await waitFor(() =>
       expect(new URLSearchParams(window.location.search).get("q")).toBe(
         "unmatched-envelope",
@@ -1347,7 +2364,7 @@ describe("local receiver to viewer integration", () => {
       await act(async () =>
         ControllableEventSource.instances[0]?.onopen?.(new Event("open")),
       );
-      fireEvent.click(screen.getByRole("button", { name: "Change receiver" }));
+      fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
       fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
         target: {
           value:
@@ -1355,9 +2372,8 @@ describe("local receiver to viewer integration", () => {
         },
       });
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-      const source = ControllableEventSource.instances[1];
+      const source = await openLatestReceiver();
       await act(async () => {
-        source?.onopen?.(new Event("open"));
         for (const transaction of ["GET /alpha", "GET /beta"]) {
           source?.dispatchEvent(
             new MessageEvent(SENTRY_CONTENT_TYPE, {
@@ -1375,35 +2391,50 @@ describe("local receiver to viewer integration", () => {
           2,
         ),
       );
-      fireEvent.click(
-        screen.getAllByRole("button", { name: "Search events" })[0]!,
+      fireEvent.change(
+        screen.getByRole("searchbox", { name: "Filter Events" }),
+        {
+          target: { value: "alpha" },
+        },
       );
-      fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
-        target: { value: "alpha" },
-      });
       await waitFor(() =>
         expect(new URLSearchParams(window.location.search).get("q")).toBe(
           "alpha",
         ),
       );
-      fireEvent.keyDown(
-        screen.getByPlaceholderText("Search events and views"),
-        { key: "Escape" },
-      );
       if (state === "closed") {
-        fireEvent.click(
-          screen.getByRole("button", { name: "Close telemetry session" }),
-        );
+        fireEvent.click(captureAction("Stop capture"));
         await waitFor(() => expect(source?.closed).toBe(true));
+        await screen.findByText("Saved capture", { exact: true });
+        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
+          1,
+        );
+        expect(
+          screen.queryByRole("button", { name: "Stop capture" }),
+        ).toBeNull();
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: "Reload capture",
+            exact: true,
+          }),
+        );
+        const replay = await openLatestReceiver();
+        await act(async () => replay.onerror?.(new Event("error")));
+        expect(screen.getByRole("alert").textContent).toContain(
+          "Could not connect to this receiver",
+        );
+        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
+          1,
+        );
       } else {
         await act(async () => source?.onerror?.(new Event("error")));
       }
-      fireEvent.click(
-        screen.getAllByRole("button", { name: "Search events" })[0]!,
+      fireEvent.change(
+        screen.getByRole("searchbox", { name: "Filter Events" }),
+        {
+          target: { value: "" },
+        },
       );
-      fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
-        target: { value: "" },
-      });
       await waitFor(() => {
         expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
           2,
@@ -1423,7 +2454,7 @@ describe("local receiver to viewer integration", () => {
       expect(screen.queryByText("No traces captured")).toBeNull();
       expect(
         screen.getByText(
-          "Try a different search term or clear the search to see everything in this view.",
+          "Adjust the filter or clear it to see all traces in this capture.",
         ),
       ).not.toBeNull();
     } finally {
@@ -1432,7 +2463,7 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
-  test("omits redundant type pills from dedicated Errors and Envelopes lists", async () => {
+  test("distinguishes request types in Errors and keeps envelopes quiet", async () => {
     const { server, port } = await startReceiver();
 
     try {
@@ -1445,13 +2476,11 @@ describe("local receiver to viewer integration", () => {
       await screen.findByLabelText("View event event");
 
       fireEvent.click(screen.getByRole("button", { name: "Open errors view" }));
-      expect(
-        screen.getByLabelText("View event event").textContent,
-      ).not.toContain("Error");
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Open envelopes view" }),
+      expect(screen.getByLabelText("View event event").textContent).toContain(
+        "Exception",
       );
+
+      fireEvent.click(viewButton("Open envelopes view"));
       expect(
         screen.getByLabelText("View envelope event").textContent,
       ).not.toContain("envelope");
@@ -1474,7 +2503,7 @@ describe("local receiver to viewer integration", () => {
 
       expect(
         (await screen.findByLabelText("View event event")).textContent,
-      ).toContain("Error");
+      ).toContain("Exception");
     } finally {
       cleanup();
       await stopReceiver(server);
@@ -1508,48 +2537,43 @@ describe("local receiver to viewer integration", () => {
     }
   });
 
-  test("filters retained events from the global command search", async () => {
+  test("session search does not filter the workspace until explicitly requested", async () => {
     const { server, port } = await startReceiver();
-
     try {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /customers/42");
       await sendEnvelope(port, "POST /orders");
-
-      await waitFor(() => {
+      await waitFor(() =>
         expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
           2,
-        );
-      });
+        ),
+      );
       fireEvent.click(
-        screen.getAllByRole("button", { name: "Search events" })[0]!,
+        screen.getAllByRole("button", { name: "Search this session" })[0]!,
       );
       fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
         target: { value: "customers" },
       });
-
-      expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-        2,
-      );
+      expect(screen.getByTestId("event-list").textContent).toContain("/orders");
       expect(new URLSearchParams(window.location.search).get("q")).toBeNull();
-
-      await waitFor(() => {
+      fireEvent.click(
+        screen.getByRole("option", { name: /Filter Events for “customers”/ }),
+      );
+      await waitFor(() =>
         expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
           1,
-        );
-      });
-      expect(screen.getByTestId("event-list").textContent).toContain(
-        "/customers/42",
+        ),
       );
-      expect(screen.getByTestId("event-list").textContent).not.toContain(
-        "/orders",
+      expect(new URLSearchParams(window.location.search).get("q")).toBe(
+        "customers",
       );
-      await waitFor(() => {
-        expect(new URLSearchParams(window.location.search).get("q")).toBe(
-          "customers",
-        );
-      });
+      fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+      await waitFor(() =>
+        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
+          2,
+        ),
+      );
     } finally {
       cleanup();
       await stopReceiver(server);
@@ -1585,7 +2609,7 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port, "/?q=old-search");
       await screen.findByText("Connected to local receiver");
       await screen.findByLabelText("View transaction event");
-      fireEvent.click(screen.getByRole("button", { name: "Clear events" }));
+      fireEvent.click(captureAction("Clear view"));
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 500));
       });
@@ -1594,6 +2618,51 @@ describe("local receiver to viewer integration", () => {
       await screen.findByLabelText("View transaction event");
       expect(screen.getByTestId("event-detail").textContent).toContain(
         "/new-event",
+      );
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test("span drill-down within Traces preserves its active view filter", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendEnvelope(port, "GET /alpha", {
+        traceId: "trace-alpha",
+        spanId: "root-alpha",
+        startTimestamp: 1_699_999_999,
+        spans: [
+          {
+            span_id: "child-alpha",
+            parent_span_id: "root-alpha",
+            op: "db.query",
+            description: "SELECT alpha",
+            start_timestamp: 1_699_999_999.1,
+            timestamp: 1_699_999_999.2,
+          },
+        ],
+      });
+      await sendEnvelope(port, "GET /beta", { traceId: "trace-beta" });
+      renderViewer(port, "/traces?q=alpha");
+      const span = await screen.findByRole("button", {
+        name: "Inspect span SELECT alpha",
+      });
+      fireEvent.click(span);
+      await screen.findByRole("button", { name: "Back to trace" });
+      expect(new URLSearchParams(window.location.search).get("q")).toBe(
+        "alpha",
+      );
+      expect(new URLSearchParams(window.location.search).get("span")).toBe(
+        "child-alpha",
+      );
+      expect(
+        screen.queryByRole("button", { name: "View trace GET /beta" }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Back to trace" }));
+      await screen.findByRole("button", { name: "Inspect span SELECT alpha" });
+      expect(new URLSearchParams(window.location.search).get("q")).toBe(
+        "alpha",
       );
     } finally {
       cleanup();
@@ -1637,9 +2706,7 @@ describe("local receiver to viewer integration", () => {
       renderViewer(first.port);
       await screen.findByText("Connected to local receiver");
       await screen.findByLabelText("View transaction event");
-      fireEvent.click(
-        screen.getByRole("button", { name: "Change receiver connection" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
       await screen.findByText("Connected to local receiver");
       expect(screen.getByTestId("event-list").textContent).toContain(
@@ -1648,9 +2715,7 @@ describe("local receiver to viewer integration", () => {
       expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
         1,
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Change receiver connection" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
       fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
         target: { value: `http://127.0.0.1:${second.port}/stream` },
       });
@@ -1787,7 +2852,7 @@ describe("local receiver to viewer integration", () => {
       await screen.findByLabelText("View event event");
 
       fireEvent.click(
-        screen.getAllByRole("button", { name: "Search events" })[0]!,
+        screen.getAllByRole("button", { name: "Search this session" })[0]!,
       );
       fireEvent.change(screen.getByPlaceholderText("Search events and views"), {
         target: { value: "broken" },
@@ -1810,10 +2875,92 @@ describe("local receiver to viewer integration", () => {
       await waitFor(() => {
         expect(
           screen
-            .getByRole("button", { name: "Open live activity view" })
+            .getByRole("button", { name: "Open events view" })
             .getAttribute("aria-current"),
         ).toBe("page");
       });
+    } finally {
+      cleanup();
+      await stopReceiver(server);
+    }
+  });
+
+  test.each(["logger", "severity"])(
+    "command navigation reveals an explicit log excluded by its %s facet",
+    async (facet) => {
+      const { server, port } = await startReceiver();
+      try {
+        await sendLog(port, "Selected log A", "logger-a");
+        await sendLog(port, "Destination log B", "logger-b", "warning");
+        renderViewer(port, "/logs");
+        await screen.findByText("Connected to local receiver");
+        await waitFor(() =>
+          expect(screen.getAllByLabelText("View log event")).toHaveLength(2),
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+        fireEvent.click(
+          screen.getByRole("checkbox", {
+            name: facet === "logger" ? "logger-a" : "info",
+          }),
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Filters (1)" }));
+        expect(screen.getAllByLabelText("View log event")).toHaveLength(1);
+        fireEvent.click(
+          screen.getAllByRole("button", { name: "Search this session" })[0]!,
+        );
+        fireEvent.change(
+          screen.getByPlaceholderText("Search events and views"),
+          { target: { value: "Destination log B" } },
+        );
+        fireEvent.click(
+          screen.getByRole("option", { name: /^Destination log B/ }),
+        );
+        await waitFor(() =>
+          expect(screen.getByTestId("event-detail").textContent).toContain(
+            "Destination log B",
+          ),
+        );
+        expect(
+          screen.queryByRole("button", { name: "Clear 1 filter" }),
+        ).toBeNull();
+        expect(
+          new URLSearchParams(window.location.search).get("event"),
+        ).not.toBeNull();
+      } finally {
+        cleanup();
+        await stopReceiver(server);
+      }
+    },
+  );
+
+  test("new log badges and actions honor active logger and severity facets", async () => {
+    const { server, port } = await startReceiver();
+    try {
+      await sendLog(port, "Selected log", "logger-a");
+      renderViewer(port, "/logs");
+      await screen.findByText("Connected to local receiver");
+      fireEvent.click(await screen.findByLabelText("View log event"));
+      fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "logger-a" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "info" }));
+      fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+      await sendLog(port, "Visible new log", "logger-a");
+      await sendLog(port, "Hidden logger log", "logger-b");
+      await sendLog(port, "Hidden severity log", "logger-a", "warning");
+      await screen.findByRole("button", { name: "View 1 new log" });
+      // Wait for the final arrival too: its severity becomes a filter option.
+      fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+      await screen.findByRole("checkbox", { name: "warning" });
+      fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+      fireEvent.click(screen.getByRole("button", { name: "View 1 new log" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("event-detail").textContent).toContain(
+          "Visible new log",
+        ),
+      );
+      expect(
+        screen.queryByRole("button", { name: /View \d+ new log/ }),
+      ).toBeNull();
     } finally {
       cleanup();
       await stopReceiver(server);
@@ -1829,10 +2976,10 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /clear-me");
       await screen.findByLabelText("View transaction event");
 
-      fireEvent.click(screen.getByRole("button", { name: "Clear events" }));
+      fireEvent.click(captureAction("Clear view"));
 
       expect(screen.queryByLabelText("View transaction event")).toBeNull();
-      expect(screen.getByText("Waiting for events")).not.toBeNull();
+      expect(screen.getByText("No events displayed")).not.toBeNull();
     } finally {
       cleanup();
       await stopReceiver(server);
@@ -1914,12 +3061,10 @@ describe("local receiver to viewer integration", () => {
         traceId: "summary-trace",
       });
 
-      const details = await screen.findByRole("table", {
-        name: "Event details",
-      });
+      const details = await screen.findByLabelText("Request summary");
       expect(details.textContent).toContain("201");
       expect(details.textContent).toContain("6.17ms");
-      expect(details.textContent).not.toContain("Method");
+      expect(details.textContent).toContain("Method");
       expect(details.textContent).not.toContain("Route");
       expect(details.textContent).not.toContain("Trace ID");
       expect(details.textContent).not.toContain("Operation");
@@ -2032,7 +3177,9 @@ describe("local receiver to viewer integration", () => {
       ).toBeGreaterThan(0);
       expect(screen.getByText("1 trace")).not.toBeNull();
       const traceList = screen.getByLabelText("Trace list");
-      expect(traceList.className).toContain("w-80");
+      expect(
+        screen.getByRole("separator", { name: "Resize Trace list" }),
+      ).not.toBeNull();
       expect(traceList.className).toContain("bg-muted/30");
 
       const traceRow = screen.getByRole("button", {
@@ -2067,15 +3214,13 @@ describe("local receiver to viewer integration", () => {
       ).not.toBeNull();
       expect(screen.getByText("1 error")).not.toBeNull();
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Open feedback view" }),
-      );
+      fireEvent.click(viewButton("Open feedback view"));
       expect(
-        await screen.findByRole("heading", { name: "No feedback received" }),
+        await screen.findByRole("heading", { name: "No feedback captured" }),
       ).not.toBeNull();
       expect(
         screen.getByText(
-          "User feedback submitted through supported SDKs will appear here.",
+          "Submit user feedback through a supported SDK to this receiver.",
         ),
       ).not.toBeNull();
     } finally {

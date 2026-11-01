@@ -70,7 +70,7 @@ function optionalScript(scripts, configured, candidates) {
 function safeRelativePath(value, field) {
   const hasUnsafeDelimiter =
     typeof value === "string" &&
-    [...value].some((character) => {
+    value.split("").some((character) => {
       const codeUnit = character.charCodeAt(0);
       return (
         codeUnit <= 0x1f ||

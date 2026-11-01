@@ -15,6 +15,12 @@ Work with ProGuard/R8 mapping files
 
 Upload ProGuard/R8 mapping files to Sentry
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path...>` | Paths to ProGuard/R8 mapping files |
+
 **Flags:**
 - `--uuid <value> - Force a specific UUID instead of computing from file content (only valid with a single file)`
 - `--no-upload - Compute and print UUIDs without uploading (dry-run)`
@@ -29,16 +35,25 @@ sentry proguard upload ./app/build/outputs/mapping/release/mapping.txt
 # Upload multiple mapping files
 sentry proguard upload mapping-release.txt mapping-debug.txt
 
-# Validate without uploading (dry-run)
+# Validate without uploading
 sentry proguard upload mapping.txt --no-upload
 
-# Fail if no mapping files are provided (useful in CI)
+# Fail if no mapping files are found (useful in CI)
 sentry proguard upload ./mapping/ --require-one
+
+# Upload with an explicit UUID
+sentry proguard upload mapping.txt --uuid 5db7294d-87fc-5726-a5c0-4a90679657a5
 ```
 
 ### `sentry proguard uuid <path>`
 
 Compute the UUID for a ProGuard mapping file
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Path to the ProGuard mapping file |
 
 **Examples:**
 

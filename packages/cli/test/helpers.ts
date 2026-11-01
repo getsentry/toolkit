@@ -7,7 +7,8 @@
 import { mkdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach } from "vitest";
+import { ArgumentParseError } from "@stricli/core";
+import { afterEach, beforeEach, expect } from "vitest";
 import {
   resetAccountSelection,
   resetAuthRowCache,
@@ -16,6 +17,7 @@ import {
   resetIdentityFingerprintCache,
 } from "../src/lib/db/auth.js";
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
+import { ENV_VAR_AGENTS } from "../src/lib/detect-agent.js";
 import { resetTipsCache } from "../src/lib/tips.js";
 
 // re-exporting a single constant, not a barrel
@@ -241,10 +243,12 @@ export type FetchRoute = {
   match: string | RegExp;
   /** HTTP method filter (default: any) */
   method?: string;
+  /* oxlint-disable typescript/no-redundant-type-constituents -- documents the accepted shapes */
   /** Response body (JSON-serialized) or a handler function */
   response:
     | unknown
     | ((url: string, init?: RequestInit) => unknown | Promise<unknown>);
+  /* oxlint-enable typescript/no-redundant-type-constituents */
   /** HTTP status code (default: 200) */
   status?: number;
   /** Response headers */
@@ -346,4 +350,34 @@ export function installFetchMock(
       globalThis.fetch = originalFetch;
     },
   };
+}
+
+/** Env vars `detectAgent()` reads besides the {@link ENV_VAR_AGENTS} table. */
+const AGENT_ENV_VARS = [
+  "AI_AGENT",
+  "AGENT",
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CURSOR_EXTENSION_HOST_ROLE",
+];
+
+/**
+ * A copy of `process.env` without any variable that `detectAgent()` reads, so
+ * code under test behaves as if a human ran it even inside an agent session.
+ */
+export function envWithoutAgent(): NodeJS.ProcessEnv {
+  const agentKeys = new Set([...AGENT_ENV_VARS, ...ENV_VAR_AGENTS.keys()]);
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !agentKeys.has(key)),
+  );
+}
+
+/**
+ * The error a command's positionals failed to parse with: arguments parse
+ * before `func` runs, so it reaches the caller wrapped in Stricli's
+ * ArgumentParseError. For `.catch()` on a command call.
+ */
+export function parseFailure(error: unknown): Error {
+  expect(error).toBeInstanceOf(ArgumentParseError);
+  return (error as ArgumentParseError).exception as Error;
 }

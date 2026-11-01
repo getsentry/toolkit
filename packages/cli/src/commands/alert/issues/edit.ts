@@ -10,20 +10,32 @@ import {
   getIssueAlertWorkflowDocument,
   updateIssueAlertRule,
 } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { ContextError, ValidationError } from "../../../lib/errors.js";
+import {
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseText,
+} from "../../../lib/completion-target.js";
+import {
+  ContextError,
+  stringifyUnknown,
+  ValidationError,
+} from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
+  ISSUE_MATCH_MODES,
   matchToLogicType,
   parseJsonObjectList,
   parseMatchMode,
   parseStatusFlag,
+  RULE_STATUSES,
   triggerLogicType,
   validateIssueRuleArrays,
 } from "../mutation-utils.js";
-import { parseIssueRuleArg, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
 
 const USAGE_HINT =
   "sentry alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled";
@@ -167,12 +179,30 @@ export const editCommand = buildCommand({
     fullDescription:
       "Update an issue alert rule by id or name. You must set at least one of --name or " +
       "--status.\n\n" +
-      "The CLI loads the current rule, applies your changes, and updates it via the API.\n\n" +
-      "Examples:\n" +
-      "  sentry alert issues edit my-org/my-app/12 --name 'Prod errors'\n" +
-      "  sentry alert issues edit my-org/my-app/'Old name' --status disabled\n" +
-      "  sentry alert issues edit 12 --name 'Renamed' --status active\n" +
-      '  sentry alert issues edit my-org/my-app/12 --condition \'{"id":"sentry.rules.conditions.first_seen_event.FirstSeenEventCondition"}\'',
+      "The CLI loads the current rule, applies your changes, and updates it via the API.",
+    examples: [
+      {
+        description: "Rename an issue alert rule",
+        command:
+          "sentry alert issues edit my-org/my-project/12345 --name 'Prod errors'",
+      },
+      {
+        description: "Disable a rule selected by name",
+        command:
+          "sentry alert issues edit my-org/my-project/'Old name' --status disabled",
+      },
+      {
+        description:
+          "Rename and enable a rule (organization and project auto-detected)",
+        command:
+          "sentry alert issues edit 12345 --name 'Renamed' --status active",
+      },
+      {
+        description: "Replace the rule's conditions",
+        command:
+          'sentry alert issues edit my-org/my-project/12345 --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\'',
+      },
+    ],
   },
   output: {
     human: formatEdited,
@@ -182,36 +212,32 @@ export const editCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        issueRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "New rule name",
       },
       status: {
         kind: "parsed",
-        parse: parseStatusFlag,
+        parse: choiceParser(RULE_STATUSES, parseStatusFlag),
         optional: true,
         brief: "Rule status: active or disabled",
       },
       condition: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Condition object JSON (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Action object JSON (repeatable, or pass one JSON array)",
@@ -224,26 +250,28 @@ export const editCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
       filter: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Filter object JSON (repeatable, or pass one JSON array)",
       },
       "filter-match": {
         kind: "parsed",
-        parse: (value: string) => parseMatchMode(value, "filter-match"),
+        parse: choiceParser(ISSUE_MATCH_MODES, (value) =>
+          parseMatchMode(value, "filter-match"),
+        ),
         optional: true,
         brief: "Filter match mode: all or any",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },
@@ -254,12 +282,15 @@ export const editCommand = buildCommand({
       m: "filter-match",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
     validateIssueEditFlags(flags);
 
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
       usageHint: USAGE_HINT,
@@ -284,10 +315,10 @@ export const editCommand = buildCommand({
       ...updated,
       org: target.org,
       project: target.project,
-      id: String(updated.id ?? rule.id),
+      id: stringifyUnknown(updated.id ?? rule.id),
       // The workflows endpoint returns `enabled` rather than `status`; map it
       // back to a status label so human/JSON output matches the create path.
-      status: String(
+      status: stringifyUnknown(
         updated.status ?? (updated.enabled === false ? "disabled" : "active"),
       ),
     } satisfies EditResult);

@@ -11,7 +11,7 @@ import { ResolutionError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
 
 /** Valid tracemetrics aggregation functions. */
-const VALID_AGGS = new Set([
+export const VALID_AGGS = new Set([
   "sum",
   "avg",
   "count",
@@ -56,9 +56,9 @@ export function resolveMetricField(
 
   const match = metrics.find((m) => m.name === metricName);
   if (!match) {
-    const candidateNames = Array.from(
-      new Set(metrics.map((m) => m.name).filter((n) => n.length > 0)),
-    );
+    const candidateNames = [
+      ...new Set(metrics.map((m) => m.name).filter((n) => n.length > 0)),
+    ];
     const suggestions = fuzzyMatch(metricName, candidateNames, {
       maxResults: 5,
     });

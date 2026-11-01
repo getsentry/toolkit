@@ -64,10 +64,10 @@ afterEach(() => {
 });
 
 /**
- * Capture stderr output from consola's default reporter.
+ * Capture stderr output from the logger's stderr reporter.
  *
  * We can't reliably spy on `logger.withTag("auth").info` from a test
- * because each `withTag()` call returns a fresh consola instance — the
+ * because each `withTag()` call returns a fresh logger instance — the
  * spy target and the instance used inside `auth-hint.ts` are
  * different objects. Hooking `process.stderr.write` captures the final
  * rendered output regardless of which instance emitted it.

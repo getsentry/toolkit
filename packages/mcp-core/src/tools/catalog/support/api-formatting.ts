@@ -1,5 +1,7 @@
 import { isPlainObject } from "../../../internal/type-guards";
 
+export { formatUnknown } from "../../../internal/unknown-formatting";
+
 export function formatId(value: string | number | undefined | null): string {
   return value === undefined || value === null ? "unknown" : String(value);
 }
@@ -46,22 +48,6 @@ export function formatActor(value: unknown): string {
       ? value.id
       : undefined,
   );
-}
-
-export function formatUnknown(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "unknown";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-
-  return JSON.stringify(value);
 }
 
 export function readString(

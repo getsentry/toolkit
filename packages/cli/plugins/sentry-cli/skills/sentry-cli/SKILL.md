@@ -22,7 +22,7 @@ Best practices and operational guidance for AI coding agents using the Sentry CL
 - **Just run the command** — the CLI handles authentication and org/project detection automatically. Don't pre-authenticate or look up org/project before running commands. The CLI prompts for login if needed.
 - **Prefer CLI commands over raw API calls** — the CLI has dedicated commands for most tasks. Reach for `sentry issue view`, `sentry issue list`, `sentry trace view`, etc. before constructing API calls manually or fetching external documentation.
 - **Use `sentry docs` for setup questions** — if you need to know how to configure a Sentry SDK or feature, run `sentry docs "your question"` to query the documentation directly. This is faster and more accurate than fetching docs externally.
-- **Use `sentry schema` to explore the API** — if you need to discover API endpoints, run `sentry schema` to browse interactively or `sentry schema <resource>` to search. This is faster than fetching OpenAPI specs externally.
+- **Use `sentry schema` to explore the API** — run `sentry schema` to list API resources or `sentry schema <query...>` to search by API concepts or CLI command paths. Use `sentry help <command>` for CLI flags and usage examples.
 - **Use `sentry issue view` to investigate issues** — when asked about a specific issue (e.g., `CLI-G5`, `PROJECT-123`), use `sentry issue view` directly. Multiple IDs can be passed in one invocation: `sentry issue view A B C --json` returns an array of the same objects.
 - **Use `--json` for machine-readable output** — pipe through `jq` for filtering. Human-readable output includes formatting that is hard to parse.
 - **The CLI auto-detects org/project — don't discover it yourself** — most commands work without explicit targets by checking `.sentryclirc` config files, scanning for DSNs in `.env` files and source code, and matching directory names. Do **not** run `sentry org list` and then `sentry project list` to figure out which project this checkout belongs to — that manual fan-out just replicates the detection the CLI already runs on every command. Only specify `<org>/<project>` when the CLI reports it can't detect the target or detects the wrong one.
@@ -46,7 +46,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `project delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -64,6 +64,7 @@ The CLI uses semantic exit codes. Key ranges for agents:
 | 40–49 | Feature unavailable | Inform user about plan/settings |
 | 50–59 | Operation error | Report to user |
 | 60–69 | Command-specific | Check stderr for details |
+| 252 | Invalid argument | Check the command's `--help` and fix the argument |
 
 See [Exit Codes](/exit-codes/) for the complete reference.
 
@@ -222,7 +223,7 @@ sentry release deploy my-org/1.0.0 production
 sentry agent-conversation list
 
 # Explicit org, last 24 hours
-sentry agent-conversation list my-org --period 24h
+sentry agent-conversation list my-org/ --period 24h
 
 # View a conversation transcript
 sentry agent-conversation view my-org/conv-123
@@ -336,7 +337,7 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 
 ### Common Mistakes
 
-- **Wrong issue ID format**: Use `PROJECT-123` (short ID), not the numeric ID `123456789`. The short ID includes the project prefix.
+- **Wrong issue ID format**: Use the full short ID (`PROJECT-123`) or the numeric issue ID from a Sentry URL (`123456789`). A bare suffix without its project prefix, such as `123`, is read as a numeric issue ID, not as a short ID.
 - **Pre-authenticating unnecessarily**: Don't run `sentry auth login` before every command. The CLI detects missing/expired auth and prompts automatically. Only run `sentry auth login` to add an account. With several stored accounts, commands pick the one that knows the target organization or server automatically; use `sentry auth switch` only to change the default.
 - **Missing `--json` for piping**: Human-readable output includes formatting. Use `--json` when parsing output programmatically.
 - **Specifying org/project when not needed**: Auto-detection resolves org/project from `.sentryclirc` config files, DSNs, env vars, and directory names. Let it work first — only add `<org>/<project>` if the CLI says it can't detect the target or detects the wrong one.
@@ -359,6 +360,21 @@ The CLI must be installed and authenticated before use.
 ```bash
 curl https://cli.sentry.dev/install -fsS | bash
 curl https://cli.sentry.dev/install -fsS | bash -s -- --version nightly
+# Pin to a specific stable version
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=0.42.2 bash
+
+# Pin to nightly
+curl https://cli.sentry.dev/install -fsS | SENTRY_VERSION=nightly bash
+# Skip shell config modifications (~/.zshrc, ~/.bashrc, etc.)
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-modify-path
+
+# Skip shell completion installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-completions
+
+# Skip AI agent skill installation
+curl https://cli.sentry.dev/install -fsS | bash -s -- --no-agent-skills
+curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 
 # Or install via npm/pnpm/bun
 npm install -g sentry
@@ -416,6 +432,7 @@ Manage Sentry issues
 
 - `sentry issue list [<org/project>]` — List issues in a project
 - `sentry issue events <issue>` — List events for a specific issue
+- `sentry issue tags <issue> <key>` — Show the top values of an issue tag
 - `sentry issue explain <issue...>` — Analyze one or more issues using Seer AI
 - `sentry issue plan <issue>` — Generate a solution plan using Seer AI
 - `sentry issue view <issue...>` — View details of one or more issues
@@ -462,6 +479,14 @@ Manage Sentry alert rules
 - `sentry alert metrics edit <org/rule-id-or-name>` — Edit a metric alert rule
 
 → Full flags and examples: `references/alert.md`
+
+### Attribute
+
+Explore span, log, and metric attributes
+
+- `sentry attribute list [<target>] [<filter>]` — List attribute keys for spans, logs, or metrics
+
+→ Full flags and examples: `references/attribute.md`
 
 ### Build
 
@@ -632,7 +657,7 @@ Work with Sentry teams
 Work with Sentry integrations
 
 - `sentry integration list [<org/project>]` — List installed integrations
-- `sentry integration delete <org/integration-id>` — Remove an installed integration
+- `sentry integration delete [<org>/]<integration-id>` — Remove an installed integration
 
 → Full flags and examples: `references/integration.md`
 
@@ -781,7 +806,7 @@ Sentry for local development
 
 Browse the Sentry API schema
 
-- `sentry schema <resource...>` — Browse the Sentry API schema
+- `sentry schema <query...>` — Browse the Sentry API schema
 
 → Full flags and examples: `references/schema.md`
 

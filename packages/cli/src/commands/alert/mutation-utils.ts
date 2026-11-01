@@ -2,59 +2,116 @@
  * Shared validation and parsing helpers for alert mutation commands (create/edit).
  */
 
+import type {
+  DatasetCompletion,
+  DatasetFields,
+} from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
+import {
+  METRIC_ALERT_DATASET_ALIASES,
+  METRIC_ALERT_DATASET_NAMES,
+  type MetricAlertDataset,
+  metricAlertSource,
+} from "../../types/metric-alert.js";
 
-const ISSUE_MATCH_MODES = new Set(["all", "any"]);
-const METRIC_DATASET_VALUES = new Set([
-  "errors",
-  "sessions",
-  "events",
-  "spans",
-  "metrics",
-]);
-
-/**
- * Maps user-provided dataset aliases to canonical metric alert dataset values.
- *
- * Only aliases that resolve to a value already accepted by the metric alert API
- * are listed here: the singular forms (`error` → `errors`, `span` → `spans`)
- * and the dashboard terminology for the error dataset (`error-events` →
- * `errors`). This lets users copying from dashboard docs avoid a validation
- * error without changing which dataset is sent.
- *
- * Names that denote a *distinct* dataset in the metric alert path — e.g.
- * `tracemetrics`, `metricsenhanced`, `eap`, `events_analytics_platform` — are
- * deliberately NOT aliased here. Rewriting them onto `metrics`/`spans` would
- * silently send the wrong dataset in the create/edit payload (the CLI's
- * canonical `metrics` is session/crash-rate, not trace metrics), with no
- * validation error to catch it.
- *
- * The deprecated `transaction`/`transactions` datasets are handled separately
- * by {@link resolveMetricDataset} — they route to `spans` with an added
- * `is_transaction:true` filter rather than a plain rename, so they are not
- * listed here.
- */
-const METRIC_DATASET_ALIASES: Record<string, string> = {
-  // Singular forms
-  error: "errors",
-  session: "sessions",
-  metric: "metrics",
-  span: "spans",
-  // Dashboard terminology for the error dataset
-  "error-events": "errors",
-};
-
+/** Match modes of an issue alert's filter group. */
+export const ISSUE_MATCH_MODES = ["all", "any"] as const;
 /** Deprecated dataset names that now route to `spans` with `is_transaction:true`. */
 const TRANSACTION_DATASET_NAMES = new Set(["transaction", "transactions"]);
+
+/*
+ * Aggregates metric alerts accept, from getsentry/sentry (`@sentry/api`
+ * types detector `data_sources` as `Array<unknown>`, so it has none):
+ * - Spans and logs (EAP) skip column checks for the functions in
+ *   `EAP_FUNCTIONS` (`sentry.incidents.logic`); the subscription then
+ *   resolves them with the dataset's EAP definitions, so logs, which have
+ *   no formulas (`sentry.search.eap.ourlogs.aggregates`), take only the
+ *   plain aggregates.
+ * - Errors take a function of no column or of `user`, `release`, `dist`
+ *   (`SUPPORTED_COLUMNS`, `TRANSLATABLE_COLUMNS` in the same module).
+ * - Crash rate takes only `percentage(sessions_crashed|users_crashed,
+ *   sessions|users)` (`CRASH_RATE_ALERT_AGGREGATE_RE` in
+ *   `sentry.snuba.entity_subscription`).
+ */
+
+/** `EAP_FUNCTIONS` that logs also define. */
+const LOG_ALERT_FUNCTIONS = [
+  "count",
+  "count_unique",
+  "avg",
+  "p50",
+  "p75",
+  "p90",
+  "p95",
+  "p99",
+  "max",
+  "min",
+  "sum",
+] as const;
+
+/** `EAP_FUNCTIONS`, all of which spans define. */
+const SPAN_ALERT_FUNCTIONS = [
+  ...LOG_ALERT_FUNCTIONS,
+  "p100",
+  "epm",
+  "eps",
+  "failure_count",
+  "failure_rate",
+  "apdex",
+  "user_misery",
+] as const;
+
+const ERROR_ALERT_FIELDS: DatasetFields = {
+  aggregates: [
+    "count()",
+    "count_unique(user)",
+    "count_unique(release)",
+    "count_unique(dist)",
+  ],
+};
+
+const CRASH_RATE_ALERT_FIELDS: DatasetFields = {
+  aggregates: [
+    "percentage(sessions_crashed,sessions)",
+    "percentage(users_crashed,users)",
+  ],
+};
+
+/**
+ * What `--aggregate` completes, by the dataset `--dataset` names: the
+ * aggregates metric alerts accept on it, narrower than a widget's. Without
+ * `--dataset`, every dataset's.
+ */
+export const METRIC_ALERT_FIELD_COMPLETION: DatasetCompletion = {
+  datasets: {
+    errors: ERROR_ALERT_FIELDS,
+    events: ERROR_ALERT_FIELDS,
+    spans: { entity: "span-attribute", functions: SPAN_ALERT_FUNCTIONS },
+    logs: { entity: "log-attribute", functions: LOG_ALERT_FUNCTIONS },
+    metrics: CRASH_RATE_ALERT_FIELDS,
+    sessions: CRASH_RATE_ALERT_FIELDS,
+  } satisfies Record<MetricAlertDataset, DatasetFields>,
+  aliases: {
+    ...METRIC_ALERT_DATASET_ALIASES,
+    ...Object.fromEntries(
+      [...TRANSACTION_DATASET_NAMES].map((name) => [name, "spans"]),
+    ),
+  },
+};
 
 /** Query filter appended when migrating a `transaction(s)` request to `spans`. */
 const IS_TRANSACTION_FILTER = "is_transaction:true";
 
 /** Splits a query string on runs of whitespace. */
 const QUERY_TOKEN_SEPARATOR = /\s+/;
+/** Workflow (alert) ids are numeric. */
+const WORKFLOW_ID_PATTERN = /^\d+$/;
 const METRIC_TIME_WINDOWS = new Set([
   1, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440,
 ]);
+
+/** The `--time-window` values a metric alert accepts, offered by completion. */
+export const METRIC_TIME_WINDOW_VALUES = [...METRIC_TIME_WINDOWS].map(String);
 
 /** Parse and validate an "all" | "any" match mode flag. Returns `undefined` when absent. */
 export function parseMatchMode(
@@ -65,8 +122,8 @@ export function parseMatchMode(
     return;
   }
   const normalized = value.trim().toLowerCase();
-  if (ISSUE_MATCH_MODES.has(normalized)) {
-    return normalized as "all" | "any";
+  if ((ISSUE_MATCH_MODES as readonly string[]).includes(normalized)) {
+    return normalized as (typeof ISSUE_MATCH_MODES)[number];
   }
   throw new ValidationError(
     `${field} must be 'all' or 'any' (got ${JSON.stringify(value)}).`,
@@ -104,16 +161,19 @@ export function triggerLogicType(): "any-short" {
   return "any-short";
 }
 
+/** Statuses `--status` sets on an alert rule. */
+export const RULE_STATUSES = ["active", "disabled"] as const;
+
 /** Parse and validate an "active" | "disabled" status flag. Returns `undefined` when absent. */
 export function parseStatusFlag(
   value: string | undefined,
-): "active" | "disabled" | undefined {
+): (typeof RULE_STATUSES)[number] | undefined {
   if (value === undefined || value === "") {
     return;
   }
   const normalized = value.trim().toLowerCase();
-  if (normalized === "active" || normalized === "disabled") {
-    return normalized;
+  if ((RULE_STATUSES as readonly string[]).includes(normalized)) {
+    return normalized as (typeof RULE_STATUSES)[number];
   }
   throw new ValidationError(
     `Status must be 'active' or 'disabled' (got ${JSON.stringify(value)}).`,
@@ -221,7 +281,7 @@ export function normalizeProjectList(
  */
 export function normalizeMetricDataset(dataset: string): string {
   const lower = dataset.trim().toLowerCase();
-  return METRIC_DATASET_ALIASES[lower] ?? lower;
+  return METRIC_ALERT_DATASET_ALIASES[lower] ?? lower;
 }
 
 /**
@@ -277,12 +337,11 @@ export function resolveMetricDataset(
 
 /** Validate that `dataset` is one of the allowed Sentry metric alert dataset values. */
 export function validateMetricDataset(dataset: string): void {
-  const normalized = normalizeMetricDataset(dataset);
-  if (METRIC_DATASET_VALUES.has(normalized)) {
+  if (metricAlertSource(normalizeMetricDataset(dataset))) {
     return;
   }
   throw new ValidationError(
-    `dataset must be one of: ${[...METRIC_DATASET_VALUES].join(", ")}.`,
+    `dataset must be one of: ${METRIC_ALERT_DATASET_NAMES.join(", ")}.`,
     "dataset",
   );
 }
@@ -298,33 +357,23 @@ export function validateMetricTimeWindow(timeWindow: number): void {
   );
 }
 
-/** Validate that each trigger has an `alertThreshold` and a non-empty `actions` array. */
-export function validateMetricTriggers(
-  triggers: readonly Record<string, unknown>[] | undefined,
-): void {
-  if (!triggers || triggers.length === 0) {
-    throw new ValidationError(
-      "Pass at least one --trigger JSON object.",
-      "trigger",
-    );
+/** Parse `--workflow` values (repeatable or comma-separated) into numeric workflow ids. */
+export function parseWorkflowIds(
+  values: readonly string[] | undefined,
+): number[] | undefined {
+  const ids = normalizeProjectList(values);
+  if (!ids) {
+    return;
   }
-
-  for (const trigger of triggers) {
-    const threshold = trigger.alertThreshold;
-    if (typeof threshold !== "number" && typeof threshold !== "string") {
+  return ids.map((id) => {
+    if (!WORKFLOW_ID_PATTERN.test(id)) {
       throw new ValidationError(
-        "Each trigger must include alertThreshold.",
-        "trigger",
+        `Workflow id must be numeric (got ${JSON.stringify(id)}).`,
+        "workflow",
       );
     }
-    const actions = trigger.actions;
-    if (!Array.isArray(actions) || actions.length === 0) {
-      throw new ValidationError(
-        "Each trigger must include a non-empty actions array.",
-        "trigger",
-      );
-    }
-  }
+    return Number(id);
+  });
 }
 
 /** Map a human-readable status string to the numeric value the metric alert API expects. */

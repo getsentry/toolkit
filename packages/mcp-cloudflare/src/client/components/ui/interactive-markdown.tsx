@@ -48,7 +48,7 @@ export function InteractiveMarkdown({
         components={{
           // Custom renderer for code that might contain slash commands
           code: ({ children, ref, ...props }) => {
-            const text = String(children);
+            const text = typeof children === "string" ? children : "";
             if (text.startsWith("/") && text.match(/^\/[a-zA-Z]+$/)) {
               // This is a slash command, make it clickable
               const command = text.slice(1);

@@ -6,7 +6,12 @@ import {
 } from "../api-client.js";
 import { getAuthToken } from "../db/auth.js";
 import { ApiError, AuthError, HostScopeError, WizardError } from "../errors.js";
-import { buildOrgNotFoundError, resolveOrCreateTeam } from "../resolve-team.js";
+import {
+  buildOrgNotFoundError,
+  canCreateProjectInTeam,
+  pickDefaultTeam,
+  resolveOrCreateTeam,
+} from "../resolve-team.js";
 import { captureOAuthScopeRecoveryGate } from "../scope-recovery.js";
 import { slugify } from "../utils.js";
 import { WizardCancelledError } from "./clack-utils.js";
@@ -63,7 +68,10 @@ export async function resolveInitContext(
       return null;
     }
 
-    const team = await resolveTeam(org, initial, ui);
+    // Team only matters when init creates a project.
+    const team = projectSelection.existingProject
+      ? undefined
+      : await resolveTeam(org, initial, ui);
 
     return buildResolvedInitContext(initial, org, team, projectSelection);
   });
@@ -379,10 +387,6 @@ async function resolveTeam(
   }
 }
 
-function canCreateProjectInTeam(team: SentryTeam): boolean {
-  return Array.isArray(team.access) && team.access.includes("team:admin");
-}
-
 /**
  * Whether the user's access scopes indicate they can create projects
  * regardless of the org's `allowMemberProjectCreation` flag.
@@ -474,13 +478,15 @@ async function resolveImplicitTeam(
     await assertOrgScopedCreationCanProceed(org);
     return;
   }
+  const defaultTeam = pickDefaultTeam(candidateTeams) as SentryTeam;
   if (candidateTeams.length === 1 || initial.yes) {
-    return (candidateTeams[0] as SentryTeam).slug;
+    return defaultTeam.slug;
   }
 
   const selected = await ui.select<string>({
     message: "Which team should own this project?",
     filterable: true,
+    initialValue: defaultTeam.slug,
     options: candidateTeams.map((team) => ({
       value: team.slug,
       label: team.slug,

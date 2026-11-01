@@ -6,6 +6,7 @@ import { build, type Plugin } from "esbuild";
 import pkg from "../package.json";
 import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
 import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
+import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
 import { buildCoreDeclarations, SDK_TYPES_PATH } from "./sdk-declarations.js";
 import { textImportPlugin } from "./text-import-plugin.js";
 
@@ -166,9 +167,11 @@ const sentrySourcemapPlugin: Plugin = {
  * it stays a runtime `require()` that fails in a real install (the driver is
  * a devDependency, not shipped). `node:sqlite` in the same file stays a
  * builtin and is left external by esbuild regardless.
+ * `formatters/json` loads its generated parser only when --fields is parsed.
+ * `formatters/highlight` loads cli-highlight only on the first code block.
  */
 const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|list-command|telemetry)\.ts$/;
+  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.
@@ -252,6 +255,7 @@ const zlibNamespaceShimPlugin: Plugin = {
 
 const plugins: Plugin[] = [
   sentrySourcemapPlugin,
+  zodEnglishLocalesPlugin,
   textImportPlugin,
   requireAliasPlugin,
 ];
@@ -311,6 +315,12 @@ const commonDefine: Record<string, string> = {
   SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
   "process.env.NODE_ENV": JSON.stringify("production"),
   __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
+  // Tree-shakes the SDK's runtime module hooks, which can't instrument a
+  // bundle and would hook the host app in library mode.
+  __SENTRY_CHANNEL_INJECTION__: "false",
+  // `true` only in `dist/complete.cjs`: drops the lazy telemetry `require`
+  // (and `@sentry/node`) from `src/lib/db/index.ts` there.
+  SENTRY_CLI_COMPLETION_BUILD: "false",
 };
 
 // In an ESM bundle, `require`, `__dirname`, and `__filename` don't exist, but
@@ -339,6 +349,21 @@ const result = await build({
   },
 });
 
+// `sentry __complete` runs on every TAB press, so `dist/bin.cjs` loads this
+// small bundle of `runCompletion` instead of the whole CLI in `index.cjs`.
+const completeResult = await build({
+  ...commonBuildOptions,
+  entryPoints: ["./src/lib/complete.ts"],
+  format: "cjs",
+  outfile: "./dist/complete.cjs",
+  inject: ["./script/import-meta-url.js"],
+  define: {
+    ...commonDefine,
+    SENTRY_CLI_COMPLETION_BUILD: "true",
+    "import.meta.url": "import_meta_url",
+  },
+});
+
 const esmResult = await build({
   ...commonBuildOptions,
   format: "esm",
@@ -356,7 +381,7 @@ const esmResult = await build({
 const BIN_WRAPPER = `#!/usr/bin/env node
 {let v=process.versions.node.split(".").map(Number);if(v[0]<18){console.error("Error: sentry requires Node.js 18 or later (found "+process.version+").\\n\\nEither upgrade Node.js, or install the standalone binary instead:\\n  curl -fsSL https://cli.sentry.dev/install | bash\\n");process.exit(1)}}
 {let e=process.emit;process.emit=function(n,...a){return n==="warning"?!1:e.apply(this,[n,...a])}}
-require('./index.cjs')._cli().catch(()=>{process.exitCode=1});
+process.argv[2]==="__complete"?require('./complete.cjs').runCompletion(process.argv.slice(3)).catch(()=>{process.exitCode=0}):require('./index.cjs')._cli().catch(()=>{process.exitCode=1});
 `;
 await writeFile("./dist/bin.cjs", BIN_WRAPPER);
 
@@ -436,11 +461,15 @@ console.log("  -> dist/node-sqlite3-wasm.wasm (WASM SQLite fallback)");
 const bundleSizeKB = (
   (result.metafile?.outputs["dist/index.cjs"]?.bytes ?? 0) / 1024
 ).toFixed(1);
+const completeBundleSizeKB = (
+  (completeResult.metafile?.outputs["dist/complete.cjs"]?.bytes ?? 0) / 1024
+).toFixed(1);
 const esmBundleSizeKB = (
   (esmResult.metafile?.outputs["dist/index.mjs"]?.bytes ?? 0) / 1024
 ).toFixed(1);
 
 console.log(`\n  -> dist/index.cjs (${bundleSizeKB} KB)`);
 console.log(`  -> dist/index.mjs (${esmBundleSizeKB} KB)`);
+console.log(`  -> dist/complete.cjs (${completeBundleSizeKB} KB)`);
 console.log(`\n${"=".repeat(40)}`);
 console.log("Bundle complete!");

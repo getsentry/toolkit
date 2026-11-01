@@ -14,6 +14,7 @@
 import { resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import { readCaCertFile } from "../../lib/custom-ca.js";
 import { parseCustomHeaders } from "../../lib/custom-headers.js";
@@ -40,6 +41,7 @@ import { ValidationError } from "../../lib/errors.js";
 import { formatDefaultsResult } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   FORCE_FLAG,
   guardNonInteractive,
@@ -248,22 +250,6 @@ export const defaultsCommand = buildCommand({
       "View and manage persistent CLI default settings.\n\n" +
       "With no arguments, shows all current defaults. Pass a key and value\n" +
       "to set a default, or use `--clear` to remove defaults.\n\n" +
-      "## Examples\n\n" +
-      "```\n" +
-      "sentry cli defaults                    # Show all defaults\n" +
-      "sentry cli defaults list               # Same as above (alias: ls, show)\n" +
-      "sentry cli defaults org my-org         # Set default organization\n" +
-      "sentry cli defaults project my-proj    # Set default project\n" +
-      "sentry cli defaults telemetry off      # Disable telemetry\n" +
-      "sentry cli defaults agent-skills off   # Stop installing agent skills on upgrade\n" +
-      "sentry cli defaults graphics off       # Disable inline terminal images\n" +
-      "sentry cli defaults tips off           # Hide Tip: hints in command output\n" +
-      "sentry cli defaults url https://...    # Set Sentry URL (self-hosted)\n" +
-      "sentry cli defaults headers 'X-IAP: t'  # Set custom headers (self-hosted)\n" +
-      "sentry cli defaults ca-cert /path/to/ca.pem  # Trust a custom CA certificate\n" +
-      "sentry cli defaults org --clear        # Clear a specific default\n" +
-      "sentry cli defaults --clear --yes      # Clear all defaults\n" +
-      "```\n\n" +
       "## Recognized keys\n\n" +
       "| Key | Description |\n" +
       "|-----|------------|\n" +
@@ -276,6 +262,62 @@ export const defaultsCommand = buildCommand({
       "| `url` | Sentry instance URL (for self-hosted installations) |\n" +
       "| `headers` | Custom HTTP headers for self-hosted proxies (semicolon-separated `Name: Value`) |\n" +
       "| `ca-cert` | Path to PEM file with custom CA certificates (for corporate proxies) |",
+    examples: [
+      {
+        description: "Show all current defaults",
+        command: "sentry cli defaults",
+      },
+      {
+        description: "Same as above (aliases: ls, show)",
+        command: "sentry cli defaults list",
+      },
+      {
+        description: "Set the default organization",
+        command: "sentry cli defaults org my-org",
+      },
+      {
+        description: "Set the default project",
+        command: "sentry cli defaults project my-project",
+      },
+      {
+        description: "Set the default Sentry URL (self-hosted)",
+        command: "sentry cli defaults url https://sentry.example.com",
+      },
+      {
+        description:
+          "Set custom HTTP headers (self-hosted, e.g. for IAP/proxies)",
+        command: 'sentry cli defaults headers "X-IAP: token"',
+      },
+      {
+        description:
+          "Set a custom CA certificate (self-hosted, behind a TLS proxy)",
+        command: "sentry cli defaults ca-cert /path/to/ca.pem",
+      },
+      {
+        description: "Disable telemetry",
+        command: "sentry cli defaults telemetry off",
+      },
+      {
+        description: "Stop installing agent skills on upgrade",
+        command: "sentry cli defaults agent-skills off",
+      },
+      {
+        description: "Disable inline terminal images",
+        command: "sentry cli defaults graphics off",
+      },
+      {
+        description: "Hide Tip: hints in command output",
+        command: "sentry cli defaults tips off",
+      },
+      {
+        description: "Clear a single default",
+        command: "sentry cli defaults org --clear",
+      },
+      {
+        description: "Clear all defaults without prompting",
+        command: "sentry cli defaults --clear --yes",
+      },
+    ],
   },
   output: {
     human: formatDefaultsResult,
@@ -286,7 +328,7 @@ export const defaultsCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Setting key and optional value",
-        parse: String,
+        parse: choiceParser(Object.keys(DEFAULTS_REGISTRY)),
         placeholder: "key value",
       },
     },
@@ -339,7 +381,7 @@ export const defaultsCommand = buildCommand({
         // Clear all defaults (with confirmation)
         guardNonInteractive(flags);
         if (!isConfirmationBypassed(flags)) {
-          const confirmed = await log.prompt(
+          const confirmed = await prompt(
             `This will clear all defaults (${Object.keys(DEFAULTS_REGISTRY).join(", ")}). Continue?`,
             { type: "confirm" },
           );

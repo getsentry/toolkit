@@ -14,6 +14,7 @@ import { describe, expect, test } from "vitest";
 import { ValidationError } from "../../src/lib/errors.js";
 import {
   __testing,
+  sanitizeIssueQuery,
   sanitizeQuery,
   unscopedCountFilterKeys,
 } from "../../src/lib/search-query.js";
@@ -259,6 +260,33 @@ describe("sanitizeQuery: OR → in-list (success)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Issue search
+// ---------------------------------------------------------------------------
+
+describe("sanitizeIssueQuery", () => {
+  test("rewrites is: OR into status/substatus in-lists", () => {
+    expect(sanitizeIssueQuery("is:resolved OR is:ignored")).toBe(
+      "status:[resolved,ignored]",
+    );
+    expect(sanitizeIssueQuery("is:new OR is:ongoing level:error")).toBe(
+      "substatus:[new,ongoing] level:error",
+    );
+  });
+
+  test("keeps the generic rewrites", () => {
+    expect(sanitizeIssueQuery("level:error OR level:warning")).toBe(
+      "level:[error,warning]",
+    );
+  });
+
+  test("throws ValidationError for is: OR it cannot rewrite", () => {
+    expect(() => sanitizeIssueQuery("is:unresolved OR is:assigned")).toThrow(
+      ValidationError,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // OR → throws (cannot rewrite)
 // ---------------------------------------------------------------------------
 
@@ -407,7 +435,7 @@ describe("sanitizeQuery: edge cases", () => {
 
 describe("sanitizeQuery: regex filters", () => {
   // How the grammar reads regex patterns and keys is tested in
-  // packages/toolkit-core/src/search-syntax.test.ts. These cover the
+  // @sentry/search-syntax (getsentry/sentry). These cover the
   // sanitizer: patterns survive AND stripping and OR rewriting untouched.
   test("preserves repeated whitespace inside a pattern", () => {
     expect(sanitizeQuery("message://a  AND  b//")).toBe(

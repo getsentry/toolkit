@@ -22,14 +22,23 @@ import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceParser,
+  parseBindHost,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
+  FILTER_VALUES,
   type FilterValue,
-  type FormatValue,
+  FORMAT_VALUES,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
+  type FormatValue,
+  printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
 import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
@@ -394,36 +403,71 @@ export const runCommand = buildCommand({
       "framework-prefixed client variants (NEXT_PUBLIC_, VITE_, etc.), and\n" +
       "SENTRY_TRACES_SAMPLE_RATE=1. Use --format json to stream versioned\n" +
       "NDJSON observations to stdout for agents. Use --open to launch the\n" +
-      "Sentry Local UI.\n\n" +
-      "Example:\n" +
-      "  sentry local run -- npm run dev\n" +
-      "  sentry local run -- python manage.py runserver",
+      "Sentry Local UI.",
+    examples: [
+      {
+        description: "Run a Node.js dev server with the local server enabled",
+        command: "sentry local run -- npm run dev",
+      },
+      {
+        description: "Run a Django dev server with the local server enabled",
+        command: "sentry local run -- python manage.py runserver",
+      },
+      {
+        description:
+          "Capture into a daemon session, inspect it after the app exits, then clean up",
+        command: [
+          "sentry local run --session web -- npm run dev",
+          "sentry local session list --json",
+          "sentry local session view web --json",
+          "sentry local session retention web --max-envelopes 2000",
+          "sentry local event list web --json",
+          "sentry local event view web <event-id> --json",
+          "sentry local envelope list web --json",
+          "sentry local envelope view web <envelope-id> --json",
+          "sentry local session reset web",
+          "sentry local session close web",
+          "sentry local daemon status",
+          "sentry local daemon stop",
+        ],
+      },
+      {
+        description: "Run your app and open the Sentry Local UI",
+        command: "sentry local run --open -- npm run dev",
+      },
+      {
+        description:
+          "Stream agent-relevant NDJSON without SDK housekeeping envelopes",
+        command:
+          "sentry local run --format json -f error -f transaction -f log -f ai -- npm run dev",
+      },
+    ],
   },
   parameters: {
     positional: {
       kind: "array",
       parameter: {
         brief: "Command to run",
-        parse: String,
+        parse: parseText,
         placeholder: "command",
       },
     },
     flags: {
       port: {
         kind: "parsed",
-        parse: parsePort,
-        brief: `Port for the local server (default ${DEFAULT_PORT})`,
+        parse: textParser(parsePort),
+        brief: "Port for the local server",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
-        parse: String,
-        brief: "Hostname for the local server (default localhost)",
+        parse: parseBindHost,
+        brief: "Hostname for the local server",
         default: "localhost",
       },
       filter: {
         kind: "parsed",
-        parse: parseFilter,
+        parse: choiceParser(FILTER_VALUES, parseFilter),
         brief:
           "Only show items of this type (repeatable: error, transaction, log, ai)",
         variadic: true,
@@ -436,14 +480,14 @@ export const runCommand = buildCommand({
       },
       timeout: {
         kind: "parsed",
-        parse: parseTimeout,
+        parse: textParser(parseTimeout),
         brief:
           "Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode)",
         default: "0",
       },
       format: {
         kind: "parsed",
-        parse: parseFormat,
+        parse: choiceParser(FORMAT_VALUES, parseFormat),
         brief: "Output format: human (default) or json (NDJSON on stdout)",
         default: "human",
       },
@@ -460,7 +504,7 @@ export const runCommand = buildCommand({
       "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
       session: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Create a daemon-owned telemetry session with this label",
         optional: true,
       },
@@ -499,6 +543,7 @@ export const runCommand = buildCommand({
     let daemonSessionId: string | undefined;
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
+    let daemonDirectoryUrl: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
@@ -514,6 +559,7 @@ export const runCommand = buildCommand({
           daemonSessionId = session.id;
           daemonIngestUrl = session.ingestUrl;
           daemonStreamUrl = session.streamUrl;
+          daemonDirectoryUrl = session.directoryUrl;
           return attachToExistingServer({
             activeFilters,
             showAttributes: flags.attributes,
@@ -531,8 +577,13 @@ export const runCommand = buildCommand({
           showAttributes: flags.attributes,
         });
     url = tail.url;
+    printLocalViewerHint(url, useJson);
 
-    await openLocalUiIfRequested(flags.open, daemonStreamUrl ?? url);
+    await openLocalUiIfRequested(
+      flags.open,
+      daemonStreamUrl ?? url,
+      daemonDirectoryUrl,
+    );
 
     const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
     const wrangler = await injectWranglerSpotlightBinding(
@@ -686,6 +737,7 @@ async function* runWithVerify(
   );
   const url = formatLocalServerUrl(flags.host, boundPort);
   logger.info(`Verify server listening on ${bold(url)}`);
+  printLocalViewerHint(url, flags.format === "json");
 
   const spotlightUrl = `${url}/stream`;
 

@@ -18,10 +18,10 @@ import {
   detectSwappedViewArgs,
   looksLikeIssueShortId,
   normalizeSlug,
-  parseIssueArg,
   parseOrgProjectArg,
   parseSelector,
 } from "../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../src/lib/issue-arguments.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 // Arbitraries for generating valid inputs
@@ -40,7 +40,7 @@ const numericIdArb = stringMatching(/^[1-9][0-9]{0,15}$/);
 
 describe("parseIssueArg properties", () => {
   test("numeric-only inputs always return type 'numeric'", async () => {
-    await fcAssert(
+    fcAssert(
       property(numericIdArb, (input) => {
         const result = parseIssueArg(input);
         expect(result.type).toBe("numeric");
@@ -53,7 +53,7 @@ describe("parseIssueArg properties", () => {
   });
 
   test("suffix is always uppercase in result", async () => {
-    await fcAssert(
+    fcAssert(
       property(suffixArb, (suffix) => {
         const result = parseIssueArg(suffix);
         // suffix-only type (no dash, no slash, not numeric)
@@ -66,7 +66,7 @@ describe("parseIssueArg properties", () => {
   });
 
   test("org/project-suffix returns type 'explicit' with uppercase suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, suffixArb),
         ([org, project, suffix]) => {
@@ -86,7 +86,7 @@ describe("parseIssueArg properties", () => {
   });
 
   test("org/numericId returns type 'explicit-org-numeric'", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, numericIdArb), ([org, numericId]) => {
         const input = `${org}/${numericId}`;
         const result = parseIssueArg(input);
@@ -102,7 +102,7 @@ describe("parseIssueArg properties", () => {
   });
 
   test("org/suffix (no dash) returns type 'explicit-org-suffix' with uppercase suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, suffixArb), ([org, suffix]) => {
         // Skip if suffix looks numeric (would be explicit-org-numeric)
         if (/^\d+$/.test(suffix)) return;
@@ -121,7 +121,7 @@ describe("parseIssueArg properties", () => {
   });
 
   test("project-suffix returns type 'project-search' with uppercase suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(projectSlugArb, suffixArb), ([project, suffix]) => {
         const input = `${project}-${suffix}`;
         const result = parseIssueArg(input);
@@ -142,7 +142,7 @@ describe("parseIssueArg properties", () => {
       /^[a-zA-Z][a-zA-Z0-9]{0,9}$/,
     );
 
-    await fcAssert(
+    fcAssert(
       property(alphanumericWithLetterArb, (input) => {
         const result = parseIssueArg(input);
 
@@ -178,7 +178,7 @@ describe("parseIssueArg properties", () => {
       suffixArb,
     );
 
-    await fcAssert(
+    fcAssert(
       property(validInputArb, (input) => {
         try {
           const result = parseIssueArg(input);
@@ -200,7 +200,7 @@ describe("parseIssueArg properties", () => {
       suffixArb,
     );
 
-    await fcAssert(
+    fcAssert(
       property(inputArb, (input) => {
         const originalInput = input;
         try {
@@ -218,10 +218,11 @@ describe("parseIssueArg properties", () => {
 
 describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
   /** Forbidden characters (besides the structural #) that must always be rejected. */
-  const forbiddenCharArb = constantFrom("?", "%", " ", "\t");
+  // A space makes words, which are a search rather than an identifier
+  const forbiddenCharArb = constantFrom("?", "%", "\t");
 
   test("org/project#FULL-SHORTID is equivalent to org/project/FULL-SHORTID", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, suffixArb),
         ([org, project, suffix]) => {
@@ -236,7 +237,7 @@ describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
   });
 
   test("project#FULL-SHORTID always yields project-search with extracted suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(projectSlugArb, suffixArb), ([project, suffix]) => {
         const result = parseIssueArg(`${project}#${project}-${suffix}`);
         expect(result).toEqual({
@@ -250,7 +251,7 @@ describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
   });
 
   test("forbidden character in fragment always throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(projectSlugArb, suffixArb, forbiddenCharArb),
         ([project, suffix, bad]) => {
@@ -266,7 +267,7 @@ describe("parseOrgProjectArg properties", () => {
   test("undefined or empty string returns type 'auto-detect'", async () => {
     const emptyInputArb = constantFrom(undefined, "", "  ", "\t", "\n");
 
-    await fcAssert(
+    fcAssert(
       property(emptyInputArb, (input) => {
         const result = parseOrgProjectArg(input);
         expect(result.type).toBe("auto-detect");
@@ -276,7 +277,7 @@ describe("parseOrgProjectArg properties", () => {
   });
 
   test("org/project returns type 'explicit'", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, projectSlugArb), ([org, project]) => {
         const input = `${org}/${project}`;
         const result = parseOrgProjectArg(input);
@@ -293,7 +294,7 @@ describe("parseOrgProjectArg properties", () => {
   });
 
   test("org/a,b stays one project unless list parsing is enabled", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, projectSlugArb),
         ([org, first, second]) => {
@@ -310,7 +311,7 @@ describe("parseOrgProjectArg properties", () => {
   });
 
   test("org/a,b returns both slugs when list parsing is enabled", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, projectSlugArb),
         ([org, first, second]) => {
@@ -332,7 +333,7 @@ describe("parseOrgProjectArg properties", () => {
   });
 
   test("org/ (trailing slash) returns type 'org-all'", async () => {
-    await fcAssert(
+    fcAssert(
       property(orgSlugArb, (org) => {
         const input = `${org}/`;
         const result = parseOrgProjectArg(input);
@@ -347,7 +348,7 @@ describe("parseOrgProjectArg properties", () => {
   });
 
   test("project without slash returns type 'project-search'", async () => {
-    await fcAssert(
+    fcAssert(
       property(projectSlugArb, (project) => {
         const result = parseOrgProjectArg(project);
 
@@ -361,7 +362,7 @@ describe("parseOrgProjectArg properties", () => {
   });
 
   test("/project (leading slash) returns type 'project-search'", async () => {
-    await fcAssert(
+    fcAssert(
       property(projectSlugArb, (project) => {
         const input = `/${project}`;
         const result = parseOrgProjectArg(input);
@@ -386,7 +387,7 @@ describe("parseOrgProjectArg properties", () => {
       projectSlugArb.map((p) => `/${p}`),
     );
 
-    await fcAssert(
+    fcAssert(
       property(validInputArb, (input) => {
         try {
           const result = parseOrgProjectArg(input);
@@ -400,7 +401,7 @@ describe("parseOrgProjectArg properties", () => {
   });
 
   test("whitespace is trimmed from input", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, constantFrom("", " ", "  ")),
         ([org, project, ws]) => {
@@ -423,7 +424,7 @@ describe("parseIssueArg and parseOrgProjectArg consistency", () => {
   test("parseIssueArg uses parseOrgProjectArg for dash-separated inputs", async () => {
     // When parseIssueArg gets "org/project-suffix", it should parse "org/project"
     // the same way parseOrgProjectArg would
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, suffixArb),
         ([org, project, suffix]) => {
@@ -471,7 +472,7 @@ const displayNameLikeArb = stringMatching(/^[A-Za-z][A-Za-z0-9 _-]{0,20}$/);
 
 describe("normalizeSlug properties (no-op)", () => {
   test("always returns the input unchanged", async () => {
-    await fcAssert(
+    fcAssert(
       property(displayNameLikeArb, (input) => {
         const result = normalizeSlug(input);
         expect(result.slug).toBe(input);
@@ -481,7 +482,7 @@ describe("normalizeSlug properties (no-op)", () => {
   });
 
   test("normalized is always false", async () => {
-    await fcAssert(
+    fcAssert(
       property(displayNameLikeArb, (input) => {
         const result = normalizeSlug(input);
         expect(result.normalized).toBe(false);
@@ -491,7 +492,7 @@ describe("normalizeSlug properties (no-op)", () => {
   });
 
   test("idempotent: normalizing twice yields same result as normalizing once", async () => {
-    await fcAssert(
+    fcAssert(
       property(displayNameLikeArb, (input) => {
         const first = normalizeSlug(input);
         const second = normalizeSlug(first.slug);
@@ -505,7 +506,7 @@ describe("normalizeSlug properties (no-op)", () => {
 
 describe("looksLikeIssueShortId properties", () => {
   test("all-lowercase slugs with dashes never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
@@ -514,7 +515,7 @@ describe("looksLikeIssueShortId properties", () => {
   });
 
   test("strings without dashes never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(noDashAlphanumArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
@@ -523,7 +524,7 @@ describe("looksLikeIssueShortId properties", () => {
   });
 
   test("strings with slashes never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(withSlashArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
@@ -532,7 +533,7 @@ describe("looksLikeIssueShortId properties", () => {
   });
 
   test("two-part lowercase slugs do not match with ignoreCase", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         if (input.split("-").length === 2) {
           expect(looksLikeIssueShortId(input, { ignoreCase: true })).toBe(
@@ -545,7 +546,7 @@ describe("looksLikeIssueShortId properties", () => {
   });
 
   test("three-plus-part lowercase slugs without alphanumeric final segment do not match with ignoreCase", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         const parts = input.split("-");
         const lastPart = parts.at(-1) ?? "";
@@ -562,7 +563,7 @@ describe("looksLikeIssueShortId properties", () => {
   });
 
   test("three-plus-part lowercase slugs with alphanumeric final segment match with ignoreCase", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         const parts = input.split("-");
         const lastPart = parts.at(-1) ?? "";
@@ -593,7 +594,7 @@ describe("parseSelector properties", () => {
   );
 
   test("recognized selectors always return a canonical value", async () => {
-    await fcAssert(
+    fcAssert(
       property(selectorVariantArb, (input) => {
         const result = parseSelector(input);
         expect(result).toBeDefined();
@@ -604,7 +605,7 @@ describe("parseSelector properties", () => {
   });
 
   test("non-@ strings never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(orgSlugArb, (input) => {
         expect(parseSelector(input)).toBeUndefined();
       }),
@@ -613,7 +614,7 @@ describe("parseSelector properties", () => {
   });
 
   test("bare @selector parses to type 'selector'", async () => {
-    await fcAssert(
+    fcAssert(
       property(selectorVariantArb, (input) => {
         const result = parseIssueArg(input);
         expect(result.type).toBe("selector");
@@ -627,7 +628,7 @@ describe("parseSelector properties", () => {
   });
 
   test("org/@selector parses to type 'selector' with org", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, selectorVariantArb), ([org, sel]) => {
         const input = `${org}/${sel}`;
         const result = parseIssueArg(input);
@@ -642,7 +643,7 @@ describe("parseSelector properties", () => {
   });
 
   test("canonical form is stable regardless of casing", async () => {
-    await fcAssert(
+    fcAssert(
       property(selectorVariantArb, (input) => {
         const direct = parseSelector(input);
         const lower = parseSelector(input.toLowerCase());
@@ -655,7 +656,7 @@ describe("parseSelector properties", () => {
 
 describe("detectSwappedViewArgs properties", () => {
   test("symmetric inverse: if swap(a,b) is non-null then swap(b,a) is null when exactly one has slash", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(noSlashArb, withSlashArb), ([noSlash, withSlash]) => {
         // noSlash first, withSlash second → swapped → non-null
         expect(detectSwappedViewArgs(noSlash, withSlash)).not.toBeNull();
@@ -667,7 +668,7 @@ describe("detectSwappedViewArgs properties", () => {
   });
 
   test("both without slashes always returns null", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(noSlashArb, noSlashArb), ([a, b]) => {
         expect(detectSwappedViewArgs(a, b)).toBeNull();
       }),
@@ -676,7 +677,7 @@ describe("detectSwappedViewArgs properties", () => {
   });
 
   test("both with slashes always returns null", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(withSlashArb, withSlashArb), ([a, b]) => {
         expect(detectSwappedViewArgs(a, b)).toBeNull();
       }),

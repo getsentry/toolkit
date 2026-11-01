@@ -1,72 +1,24 @@
 /**
- * Unit tests for the logger module.
+ * Unit tests for the CLI's logger configuration.
  *
- * Tests parseLogLevel, getEnvLogLevel, setLogLevel (with withTag propagation),
- * attachSentryReporter, and the logger instance configuration.
+ * Tests getEnvLogLevel, setLogLevel (with withTag propagation),
+ * attachSentryReporter, and the library-mode env. The logger itself is tested
+ * in packages/logger.
  */
 
+import { sentryReporter } from "@sentry/logger";
+import { logger as sentryLogger } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { withEnv } from "../../src/lib/env.js";
 import {
   attachSentryReporter,
   getEnvLogLevel,
   LOG_LEVEL_ENV_VAR,
   LOG_LEVEL_NAMES,
   logger,
-  parseLogLevel,
   printLine,
   setLogLevel,
 } from "../../src/lib/logger.js";
-
-describe("parseLogLevel", () => {
-  test("maps known level names to correct numeric values", () => {
-    expect(parseLogLevel("error")).toBe(0);
-    expect(parseLogLevel("warn")).toBe(1);
-    expect(parseLogLevel("log")).toBe(2);
-    expect(parseLogLevel("info")).toBe(3);
-    expect(parseLogLevel("debug")).toBe(4);
-    expect(parseLogLevel("trace")).toBe(5);
-  });
-
-  test("is case-insensitive", () => {
-    expect(parseLogLevel("ERROR")).toBe(0);
-    expect(parseLogLevel("Debug")).toBe(4);
-    expect(parseLogLevel("TRACE")).toBe(5);
-    expect(parseLogLevel("Warn")).toBe(1);
-  });
-
-  test("trims whitespace", () => {
-    expect(parseLogLevel("  debug  ")).toBe(4);
-    expect(parseLogLevel("\ttrace\n")).toBe(5);
-  });
-
-  test("returns default (info=3) for unrecognized values", () => {
-    expect(parseLogLevel("verbose")).toBe(3);
-    expect(parseLogLevel("")).toBe(3);
-    expect(parseLogLevel("unknown")).toBe(3);
-    expect(parseLogLevel("42")).toBe(3);
-  });
-});
-
-describe("LOG_LEVEL_NAMES", () => {
-  test("contains all expected level names with index = consola numeric level", () => {
-    expect(LOG_LEVEL_NAMES).toEqual([
-      "error", // 0
-      "warn", // 1
-      "log", // 2
-      "info", // 3
-      "debug", // 4
-      "trace", // 5
-    ]);
-  });
-
-  test("all names are valid for parseLogLevel", () => {
-    for (const name of LOG_LEVEL_NAMES) {
-      const level = parseLogLevel(name);
-      expect(level).toBeGreaterThanOrEqual(0);
-      expect(level).toBeLessThanOrEqual(5);
-    }
-  });
-});
 
 describe("LOG_LEVEL_ENV_VAR", () => {
   test("is SENTRY_LOG_LEVEL", () => {
@@ -184,7 +136,7 @@ describe("setLogLevel", () => {
 });
 
 describe("logger instance", () => {
-  test("is a consola instance with expected methods", () => {
+  test("exposes the log methods", () => {
     expect(typeof logger.info).toBe("function");
     expect(typeof logger.debug).toBe("function");
     expect(typeof logger.warn).toBe("function");
@@ -271,13 +223,39 @@ describe("attachSentryReporter", () => {
   test("can be called without error", () => {
     // attachSentryReporter is idempotent and safe to call even when
     // Sentry is not initialized (it catches errors internally)
-    expect(() => attachSentryReporter()).not.toThrow();
+    expect(() =>
+      attachSentryReporter(sentryReporter(sentryLogger)),
+    ).not.toThrow();
   });
 
   test("is idempotent (second call is a no-op)", () => {
     // First call may or may not succeed depending on Sentry state
-    attachSentryReporter();
+    attachSentryReporter(sentryReporter(sentryLogger));
     // Second call should be a no-op due to internal guard
-    expect(() => attachSentryReporter()).not.toThrow();
+    expect(() =>
+      attachSentryReporter(sentryReporter(sentryLogger)),
+    ).not.toThrow();
+  });
+});
+
+describe("stderr output", () => {
+  test("reads the library-mode env instead of process.env", () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      withEnv({ NODE_ENV: "production", NO_COLOR: "1" }, () => {
+        logger.withTag("auth").success("Run `sentry auth status`");
+      });
+      withEnv({ CI: "true" }, () => {
+        logger.withTag("auth").info("Logged in");
+      });
+      expect(stderr.mock.calls.map((call) => String(call[0]))).toEqual([
+        "[auth] ✔ Run sentry auth status\n",
+        "[info] [auth] Logged in\n",
+      ]);
+    } finally {
+      stderr.mockRestore();
+    }
   });
 });

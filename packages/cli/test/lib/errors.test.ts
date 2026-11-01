@@ -16,6 +16,7 @@ import {
   isSearchQueryParseError,
   isUserError,
   OutputError,
+  RateLimitError,
   ResolutionError,
   SeerError,
   stringifyUnknown,
@@ -536,6 +537,11 @@ describe("isUserError", () => {
       new TypeError("fetch failed"),
       true,
     ],
+    [
+      "raw terminated TypeError (mid-body network drop)",
+      new TypeError("terminated"),
+      true,
+    ],
     ["ApiError 400", new ApiError("bad request", 400), false],
     [
       // A user's unparseable --query becomes a ValidationError at the command
@@ -563,6 +569,18 @@ describe("isUserError", () => {
 describe("isNetworkError", () => {
   test("true for a raw 'fetch failed' TypeError (undici network failure)", () => {
     expect(isNetworkError(new TypeError("fetch failed"))).toBe(true);
+  });
+
+  test("true for a raw 'terminated' TypeError (mid-body connection drop)", () => {
+    const err = new TypeError("terminated", {
+      cause: new Error("read ETIMEDOUT"),
+    });
+    expect(isNetworkError(err)).toBe(true);
+    expect(isNetworkError(new TypeError("terminated"))).toBe(true);
+  });
+
+  test("false for a plain Error with message 'terminated'", () => {
+    expect(isNetworkError(new Error("terminated"))).toBe(false);
   });
 
   test("false for ApiError status 0 (shared with TLS cert errors)", () => {
@@ -702,6 +720,12 @@ describe("exit codes", () => {
 
   test("ApiError has exit code API", () => {
     expect(new ApiError("fail", 500).exitCode).toBe(EXIT.API);
+  });
+
+  test("RateLimitError has exit code RATE_LIMITED", () => {
+    const err = new RateLimitError("/api/0/organizations/", 2000);
+    expect(err.exitCode).toBe(EXIT.RATE_LIMITED);
+    expect(err.status).toBe(429);
   });
 
   test("ConfigError has exit code CONFIG", () => {

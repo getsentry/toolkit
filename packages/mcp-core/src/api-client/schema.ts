@@ -26,32 +26,12 @@
  * const issues = IssueListSchema.parse(await response.json());
  * // TypeScript now knows the exact shape of issues
  * ```
- *
- * @example Error Handling
- * ```typescript
- * const { data, success, error } = ApiErrorSchema.safeParse(response);
- * if (success) {
- *   throw new ApiError(data.detail, statusCode);
- * }
- * ```
  */
 import type {
   SentryIssueIdentity,
   SentryNamedResource,
 } from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
-
-/**
- * Schema for Sentry API error responses.
- *
- * Uses .passthrough() to allow additional fields that may be present
- * in different error scenarios.
- */
-export const ApiErrorSchema = z
-  .object({
-    detail: z.string(),
-  })
-  .passthrough();
 
 export const UserSchema = z
   .object({
@@ -830,6 +810,8 @@ export const CommittersResponseSchema = z.object({
 export const IssueActivitySchema = z
   .object({
     id: ApiResourceIdSchema,
+    commentId: ApiResourceIdSchema.nullable().optional(),
+    source: z.string().nullable().optional(),
     type: z.string().nullable().optional(),
     dateCreated: z.string().datetime().nullable().optional(),
     user: ApiActorSchema.nullable().optional(),
@@ -1725,43 +1707,43 @@ export const TraceMetaSchema = z
  * Represents the hierarchical structure of spans with timing information,
  * operation details, and nested children spans.
  */
-export const TraceSpanSchema: z.ZodType<any> = z.lazy(() =>
-  z.object({
-    children: z.array(TraceSpanSchema),
-    errors: z.array(z.any()),
-    occurrences: z.array(z.any()),
-    event_id: z.string(),
-    span_id: z.string().optional(),
-    transaction_id: z.string(),
-    project_id: z.union([z.string(), z.number()]),
-    project_slug: z.string(),
-    profile_id: z.string().nullable().optional(),
-    profiler_id: z.string().nullable().optional(),
-    parent_span_id: z.string().nullable(),
-    start_timestamp: z.number(),
-    end_timestamp: z.number(),
-    measurements: z.record(z.string(), z.number()).optional(),
-    duration: z.number(),
-    trace: z.string().optional(),
-    transaction: z.string().nullable().optional(),
-    is_transaction: z.boolean().optional(),
-    description: z.string().nullable().optional(),
-    sdk_name: z.string().nullable().optional(),
-    op: z.string().nullable().optional(),
-    name: z.string().nullable().optional(),
-    event_type: z.string().nullable().optional(),
-    additional_attributes: z.record(z.string(), z.unknown()).optional(),
-    hash: z.string().nullable().optional(),
-    exclusive_time: z.number().optional(),
-    status: z.string().nullable().optional(),
-    is_segment: z.boolean().optional(),
-    same_process_as_parent: z.boolean().optional(),
-    organization: z.unknown().nullable().optional(),
-    tags: z.record(z.string(), z.unknown()).optional(),
-    timestamp: z.union([z.string(), z.number()]).optional(),
-    data: z.record(z.string(), z.unknown()).optional(),
-  }),
-);
+export const TraceSpanSchema = z.object({
+  get children() {
+    return z.array(TraceSpanSchema);
+  },
+  errors: z.array(z.any()),
+  occurrences: z.array(z.any()),
+  event_id: z.string(),
+  span_id: z.string().optional(),
+  transaction_id: z.string(),
+  project_id: z.union([z.string(), z.number()]),
+  project_slug: z.string(),
+  profile_id: z.string().nullable().optional(),
+  profiler_id: z.string().nullable().optional(),
+  parent_span_id: z.string().nullable(),
+  start_timestamp: z.number(),
+  end_timestamp: z.number(),
+  measurements: z.record(z.string(), z.number()).optional(),
+  duration: z.number(),
+  trace: z.string().optional(),
+  transaction: z.string().nullable().optional(),
+  is_transaction: z.boolean().optional(),
+  description: z.string().nullable().optional(),
+  sdk_name: z.string().nullable().optional(),
+  op: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  event_type: z.string().nullable().optional(),
+  additional_attributes: z.record(z.string(), z.unknown()).optional(),
+  hash: z.string().nullable().optional(),
+  exclusive_time: z.number().optional(),
+  status: z.string().nullable().optional(),
+  is_segment: z.boolean().optional(),
+  same_process_as_parent: z.boolean().optional(),
+  organization: z.unknown().nullable().optional(),
+  tags: z.record(z.string(), z.unknown()).optional(),
+  timestamp: z.union([z.string(), z.number()]).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
 
 /**
  * Schema for issue objects that can appear in trace responses.

@@ -11,15 +11,14 @@ import pLimit from "p-limit";
 import type { SentryContext } from "../../context.js";
 import { getLogItemDetail, getLogs } from "../../lib/api-client.js";
 import {
-  detectSwappedViewArgs,
   looksLikeIssueShortId,
-  parseOrgProjectArg,
-  parseSlashSeparatedArg,
-  splitNewlineArg,
+  type OrgProjectInput,
+  type ParsedOrgProject,
+  parseOrgProjectInput,
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import {
   ContextError,
   ResolutionError,
@@ -28,28 +27,30 @@ import {
 import { formatLogDetails } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import {
-  ageInDaysFromUuidV7,
-  HEX_ID_RE,
-  normalizeHexId,
-  validateHexId,
-} from "../../lib/hex-id.js";
+import { ageInDaysFromUuidV7 } from "../../lib/hex-id.js";
 import {
   handleRecoveryResult,
   recoverHexId,
 } from "../../lib/hex-id-recovery.js";
+import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import {
   resolveLogProjectId,
   resolveOrgAndProject,
   resolveProjectBoundSlug,
 } from "../../lib/resolve-target.js";
 import { RETENTION_DAYS } from "../../lib/retention.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildLogsUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits } from "../../lib/utils.js";
@@ -71,216 +72,54 @@ type ViewFlags = {
 const USAGE_HINT = "sentry log view <org>/<project> <log-id> [<log-id>...]";
 
 /**
- * Resolve a single-slash positional arg (`before/after`) as `org/log-id`, or
- * return `null` when `after` is not a valid 32-char hex log ID and should fall
- * through to `parseSlashSeparatedArg`.
- *
- * This guard must run before `parseSlashSeparatedArg` because that function
- * throws `ContextError` for any single-slash arg, treating it as `org/project`
- * with a missing log ID (CLI-1AK).
- */
-function parseSingleSlashLogArg(
-  beforeSlash: string,
-  afterSlash: string,
-): { rawLogIds: string[]; targetArg: string | undefined } | null {
-  // "org/LOG-ID" or "project/LOG-ID" → treat beforeSlash as target, afterSlash as log ID.
-  if (afterSlash && HEX_ID_RE.test(normalizeHexId(afterSlash))) {
-    return {
-      rawLogIds: [normalizeHexId(afterSlash)],
-      targetArg: beforeSlash || undefined,
-    };
-  }
-  return null;
-}
-
-/**
- * Split a fully-qualified `<org>/<project>/<log-id>` arg into its target and
- * log ID, or return `null` when the arg isn't in that shape (fewer than two
- * slashes, or the trailing segment isn't a 32-char hex ID).
- *
- * Agents often pass several fully-qualified paths to one `log view` call
- * (CLI-1XC). Without this, the first path was used verbatim as the target
- * (yielding project `"<project>/<log-id>"`) and the rest failed hex validation.
- */
-function splitFullLogPath(
-  arg: string,
-): { target: string; logId: string } | null {
-  const trimmed = arg.trim();
-  const firstSlash = trimmed.indexOf("/");
-  const lastSlash = trimmed.lastIndexOf("/");
-  if (firstSlash === -1 || firstSlash === lastSlash) {
-    return null;
-  }
-  const logId = normalizeHexId(trimmed.slice(lastSlash + 1));
-  if (!HEX_ID_RE.test(logId)) {
-    return null;
-  }
-  return { target: trimmed.slice(0, lastSlash), logId };
-}
-
-/**
- * Parse multiple args where the first is a fully-qualified log path.
- * Every later arg may be a fully-qualified path or a bare log ID; all paths
- * must share the same org/project target.
- *
- * @throws {ValidationError} If the paths reference different targets
- */
-function parseMultipleFullPaths(
-  args: string[],
-  target: string,
-): { rawLogIds: string[]; targetArg: string } {
-  const rawLogIds: string[] = [];
-  for (const arg of args) {
-    const full = splitFullLogPath(arg);
-    if (full) {
-      if (full.target !== target) {
-        throw new ValidationError(
-          `Log IDs reference different projects ('${target}' and '${full.target}'). ` +
-            `View logs from one project per call: ${USAGE_HINT}`,
-        );
-      }
-      rawLogIds.push(full.logId);
-    } else {
-      rawLogIds.push(...splitNewlineArg(arg));
-    }
-  }
-  return { rawLogIds, targetArg: target };
-}
-
-/**
- * Strip a redundant `<target>/` prefix from a log ID arg, so
- * `sentry log view org/proj org/proj/<id>` resolves `<id>` (CLI-1XC).
- */
-function stripTargetPrefix(rawId: string, target: string): string {
-  const prefix = `${target.trim()}/`;
-  return rawId.startsWith(prefix) ? rawId.slice(prefix.length) : rawId;
-}
-
-/**
  * Parse positional arguments for log view.
- * Handles:
- * - `<log-id>` — single log ID (auto-detect org/project)
- * - `<target> <log-id> [<log-id>...]` — explicit target + one or more log IDs
- * - `<org>/<project>/<log-id>` — single slash-separated arg
  *
- * When two or more args are provided, the first is always treated as the
- * target (org/project specifier) and the rest as log IDs.
+ * Log IDs take the forms every ID-taking command does (see
+ * `id-arguments.ts`): `<log-id>`, `<project>/<log-id>`,
+ * `<org>/<project>/<log-id>`, `<target> <log-id>`, reversed, and more log
+ * IDs after any of those, each maybe repeating the target. An argument may
+ * hold several lines, one log ID each.
  *
- * Arguments containing newlines are split into multiple IDs.
- *
- * Returns **raw** log IDs without running {@link validateHexId} — validation
+ * Returns **raw** log IDs without validating them — validation
  * is deferred to the main command so {@link recoverHexId} can use the
  * resolved org/project context for fuzzy prefix lookups.
  *
  * @param args - Positional arguments from CLI
- * @returns Parsed raw log IDs and optional target arg
- * @throws {ContextError} If no arguments provided
+ * @returns Parsed raw log IDs, optional target arg, and warnings
+ * @throws {ContextError} If no log ID is given
+ * @throws {ValidationError} If the log IDs name different projects
  */
-// positional arg parsing has many format branches by design
-export function parsePositionalArgs(args: string[]): {
+export function parsePositionalArgs(args: readonly string[]): {
   rawLogIds: string[];
   targetArg: string | undefined;
+  /** Warnings to log, such as for reversed arguments */
+  warnings: readonly string[];
   /** Suggestion when first arg looks like an issue short ID */
   suggestion?: string;
 } {
-  if (args.length === 0) {
-    throw new ContextError("Log ID", USAGE_HINT, []);
-  }
-
-  const first = args[0];
-  if (first === undefined) {
-    throw new ContextError("Log ID", USAGE_HINT, []);
-  }
-
-  if (args.length === 1) {
-    // Single arg — could be slash-separated org/project/logId, org/logId, or a plain ID
-    // (possibly containing newlines).
-    // Guard: detect exactly-one-slash args before parseSlashSeparatedArg, which
-    // throws ContextError for "org/logId" thinking it's "org/project" with no ID.
-    const trimmedFirst = first.trim();
-    const slashIdx = trimmedFirst.indexOf("/");
-    if (slashIdx !== -1 && trimmedFirst.indexOf("/", slashIdx + 1) === -1) {
-      const singleSlash = parseSingleSlashLogArg(
-        trimmedFirst.slice(0, slashIdx),
-        trimmedFirst.slice(slashIdx + 1),
-      );
-      if (singleSlash) {
-        if (singleSlash.rawLogIds.length === 0) {
-          throw new ContextError("Log ID", USAGE_HINT, []);
-        }
-        return singleSlash;
-      }
-    }
-
-    const { id, targetArg } = parseSlashSeparatedArg(
-      first,
-      "Log ID",
-      USAGE_HINT,
-    );
-    const rawLogIds = splitNewlineArg(id);
-    if (rawLogIds.length === 0) {
-      throw new ContextError("Log ID", USAGE_HINT, []);
-    }
-    return { rawLogIds, targetArg };
-  }
-
-  // Two or more args — first is target, rest are log IDs.
-  // Each arg may contain newlines (split them).
-
-  // Check issue short ID first — it takes precedence over swap detection
-  // because `detectSwappedViewArgs` also fires for `CAM-82X my-org/project`
-  // (first has no "/", second has "/"), but the user's intent is clearly
-  // to view an issue, not to swap log-view arguments.
-  if (looksLikeIssueShortId(first)) {
-    const rawLogIds = args.slice(1).flatMap(splitNewlineArg);
-    if (rawLogIds.length === 0) {
-      throw new ContextError("Log ID", USAGE_HINT, []);
-    }
-    return {
-      rawLogIds,
-      targetArg: first,
-      suggestion: `Did you mean: sentry issue view ${first}`,
-    };
-  }
-
-  // oxlint-disable-next-line typescript/no-non-null-assertion -- length >= 2 guarantees index 1 exists
-  const second = args[1]!;
-
-  // Detect swapped args: exactly two args where first has no "/" and second
-  // does (e.g., `sentry log view ace106b2 myorg/myproject`). Only fires for
-  // the two-arg case to avoid silently dropping extra args in multi-arg use.
-  if (args.length === 2) {
-    const swapWarning = detectSwappedViewArgs(first, second);
-    if (swapWarning) {
-      return {
-        rawLogIds: splitNewlineArg(first),
-        targetArg: second,
-        suggestion: swapWarning,
-      };
-    }
-  }
-
-  // Every arg is (or starts with) a fully-qualified `org/project/log-id`.
-  const firstFull = splitFullLogPath(first);
-  if (firstFull) {
-    return parseMultipleFullPaths(args, firstFull.target);
-  }
-
-  const rawLogIds = args
-    .slice(1)
-    .flatMap(splitNewlineArg)
-    .map((id) => stripTargetPrefix(id, first));
-  if (rawLogIds.length === 0) {
-    throw new ContextError("Log ID", USAGE_HINT, []);
-  }
-
-  return { rawLogIds, targetArg: first };
+  const { target, ids, warnings } = parseIdArguments(args, ID_KINDS.log, {
+    usageHint: USAGE_HINT,
+    multiple: true,
+    needsProject: true,
+    validate: false,
+  });
+  const [first] = args;
+  return {
+    rawLogIds: [...ids],
+    targetArg: target,
+    warnings,
+    ...(args.length > 1 &&
+      first &&
+      looksLikeIssueShortId(first) && {
+        suggestion: `Did you mean: sentry issue view ${first}`,
+      }),
+  };
 }
 
 /**
  * Validate and attempt to recover one log ID against the resolved target.
  *
- * For each raw ID: run {@link validateHexId}; on {@link ValidationError},
+ * For each raw ID: run `ID_KINDS.log.validate`; on {@link ValidationError},
  * attempt {@link recoverHexId} with the resolved org/project. Successful
  * recovery returns a valid hex ID (and emits a `log.warn`).
  */
@@ -289,7 +128,7 @@ async function validateAndRecoverLogId(
   target: ResolvedLogTarget,
 ): Promise<string> {
   try {
-    return validateHexId(rawId, "log ID");
+    return ID_KINDS.log.validate(rawId);
   } catch (err) {
     if (!(err instanceof ValidationError)) {
       throw err;
@@ -319,14 +158,14 @@ export type ResolvedLogTarget = {
 /**
  * Resolve the target org/project from the parsed arg.
  *
- * @param parsed - Result of `parseOrgProjectArg`
+ * @param parsed - The parsed target argument
  * @param rawLogIds - Raw log IDs (used for usage hints; not yet validated)
  * @param cwd - Current working directory
  * @returns Resolved target, or null if resolution produced nothing
  * @throws {ContextError} If org-all mode is used (requires specific project)
  */
 async function resolveTarget(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   rawLogIds: string[],
   cwd: string,
 ): Promise<ResolvedLogTarget | null> {
@@ -358,7 +197,7 @@ async function resolveTarget(
       throw new ContextError("Specific project", USAGE_HINT, []);
 
     case "auto-detect":
-      return resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+      return await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
 
     default: {
       const _exhaustiveCheck: never = parsed;
@@ -367,6 +206,58 @@ async function resolveTarget(
       );
     }
   }
+}
+
+/** The arguments of `log view`: the log IDs as typed, and the target. */
+type LogViewInput = ReturnType<typeof parsePositionalArgs> & {
+  readonly target: OrgProjectInput;
+};
+
+/** The target of `log view`, and its log IDs, validated or recovered. */
+type ResolvedLogs = ResolvedLogTarget & { readonly logIds: string[] };
+
+/** The arguments of `log view`. */
+type LogViewArguments = BoundArguments<LogViewInput, ResolvedLogs>;
+
+/** Parse `log view` arguments, without side effects. */
+function parseLogViewInput(args: readonly string[]): LogViewInput {
+  const input = parsePositionalArgs(args);
+  return { ...input, target: parseOrgProjectInput(input.targetArg) };
+}
+
+/**
+ * Resolve `log view` arguments: find the org and project, then validate
+ * (or recover) the log IDs in that project.
+ */
+async function resolveLogViewInput(
+  input: LogViewInput,
+  context: SentryContext,
+): Promise<ResolvedLogs> {
+  if (input.target.baseUrl) {
+    applySentryUrlContext(input.target.baseUrl);
+  }
+  const cmdLog = logger.withTag("log.view");
+  for (const warning of input.warnings) {
+    cmdLog.warn(warning);
+  }
+  if (input.suggestion) {
+    cmdLog.warn(input.suggestion);
+  }
+  const target = await resolveTarget(
+    input.target.parsed,
+    input.rawLogIds,
+    context.cwd,
+  );
+  if (!target) {
+    throw new ContextError("Organization and project", USAGE_HINT);
+  }
+  // `log.warn` preserves emission order regardless of await order, and a
+  // throwing recovery (multi-match ResolutionError) exits via
+  // `Promise.all` with the first-thrown error.
+  const logIds = await Promise.all(
+    input.rawLogIds.map((raw) => validateAndRecoverLogId(raw, target)),
+  );
+  return { ...target, logIds };
 }
 
 /**
@@ -381,7 +272,7 @@ function formatIdList(ids: string[]): string {
 
 /**
  * Warn about IDs that weren't found in the API response.
- * Uses the consola logger for structured output to stderr.
+ * Uses the logger for structured output to stderr.
  *
  * @param logIds - All requested IDs
  * @param logs - Logs actually returned by the API
@@ -416,11 +307,11 @@ async function handleWebOpen(orgSlug: string, logIds: string[]): Promise<void> {
       );
       return;
     }
-    const confirmed = await log.prompt(`Open ${logIds.length} browser tabs?`, {
+    const confirmed = await prompt(`Open ${logIds.length} browser tabs?`, {
       type: "confirm",
       initial: false,
     });
-    // consola prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
     // Strictly check for `true` to avoid opening tabs on cancel.
     if (confirmed !== true) {
       return;
@@ -563,13 +454,28 @@ export const viewCommand = buildCommand({
     brief: "View details of one or more log entries",
     fullDescription:
       "View detailed information about Sentry log entries by their IDs.\n\n" +
-      "Target specification:\n" +
-      "  sentry log view <log-id>                          # auto-detect from DSN or config\n" +
-      "  sentry log view <org>/<proj> <log-id> [<id>...]   # explicit org and project\n" +
-      "  sentry log view <project> <log-id> [<id>...]      # find project across all orgs\n\n" +
       "Multiple log IDs can be passed as separate arguments or newline-separated\n" +
       "within a single argument (handy when piping from other commands).\n\n" +
       "The log ID is the 32-character hexadecimal identifier shown in log listings.",
+    examples: [
+      {
+        description: "View a log entry",
+        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01",
+      },
+      {
+        description: "Specify the project explicitly",
+        command:
+          "sentry log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01 -w",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry log view backend 968c763c740cfda8b6728f27fb9e9b01",
+      },
+    ],
   },
   output: {
     human: formatLogViewHuman,
@@ -581,15 +487,14 @@ export const viewCommand = buildCommand({
         : data.logs,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/log-id",
-        brief:
-          "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/log-id",
+      brief:
+        "[<org>/<project>] <log-id> [<log-id>...] - Target (optional) and one or more log IDs",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseLogViewInput,
+      resolve: resolveLogViewInput,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -600,32 +505,10 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(this: SentryContext, flags: ViewFlags, args: LogViewArguments) {
     applyFreshFlag(flags);
-    const { cwd } = this;
     const cmdLog = logger.withTag("log.view");
-
-    // Parse positional args (raw — validation is deferred to after target
-    // resolution so we can run fuzzy recovery with org/project context).
-    const { rawLogIds, targetArg, suggestion } = parsePositionalArgs(args);
-    if (suggestion) {
-      cmdLog.warn(suggestion);
-    }
-    const parsed = parseOrgProjectArg(targetArg);
-
-    const target = await resolveTarget(parsed, rawLogIds, cwd);
-
-    if (!target) {
-      throw new ContextError("Organization and project", USAGE_HINT);
-    }
-
-    // Validate + recover each log ID in parallel. `log.warn` preserves
-    // emission order regardless of await order, and a throwing recovery
-    // (multi-match ResolutionError) exits via `Promise.all` with the
-    // first-thrown error — same UX as the old sequential loop.
-    const logIds = await Promise.all(
-      rawLogIds.map((raw) => validateAndRecoverLogId(raw, target)),
-    );
+    const { logIds, ...target } = await args.resolved;
 
     if (flags.web) {
       await handleWebOpen(target.org, logIds);

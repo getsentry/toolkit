@@ -190,8 +190,11 @@ describe("error output boundaries", () => {
     expect(error.message).not.toContain("SYNTHETIC");
     expect(error.stack).not.toContain("SYNTHETIC");
     expect(error.stderr).not.toContain("SYNTHETIC");
-    expect(JSON.stringify({ message: error.message, ...error })).not.toContain(
-      "SYNTHETIC",
-    );
+    expect(
+      JSON.stringify({
+        message: error.message,
+        ...Object.fromEntries(Object.entries(error)),
+      }),
+    ).not.toContain("SYNTHETIC");
   });
 });

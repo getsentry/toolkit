@@ -5,6 +5,7 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
+import { escapeMarkdownInline } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
   DefaultEventSchema,
@@ -31,6 +32,7 @@ import type {
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
 import { selectEventPackages } from "./event-packages";
+import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
   findMostRelevantInAppFrame,
@@ -883,7 +885,14 @@ function formatVariableValue(value: unknown, maxLength = 80): string {
       }
       return stringified;
     }
-    return String(value);
+    if (
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      typeof value === "bigint"
+    ) {
+      return String(value);
+    }
+    return `<${typeof value}>`;
   } catch {
     // Handle circular references or other stringify errors
     return `<${typeof value}>`;
@@ -1730,7 +1739,7 @@ function formatMetricAlertCondition(
       return type === "lte" ? "at or below" : "below";
     }
     if (type != null) {
-      return String(type);
+      return formatUnknown(type);
     }
     return undefined;
   })();
@@ -1763,19 +1772,23 @@ function formatMetricAlertDetails(
   const snubaQuery = getMetricAlertSnubaQuery(evidenceData);
   if (snubaQuery) {
     if (snubaQuery.dataset != null) {
-      parts.push(`**Dataset**: ${String(snubaQuery.dataset)}`);
+      parts.push(`**Dataset**: ${formatUnknown(snubaQuery.dataset)}`);
     }
     if (snubaQuery.aggregate != null) {
-      parts.push(`**Aggregate**: ${String(snubaQuery.aggregate)}`);
+      parts.push(`**Aggregate**: ${formatUnknown(snubaQuery.aggregate)}`);
     }
-    if (snubaQuery.query != null && String(snubaQuery.query).length > 0) {
-      parts.push(`**Query**: \`${String(snubaQuery.query)}\``);
+    const query =
+      snubaQuery.query != null ? formatUnknown(snubaQuery.query) : "";
+    if (query.length > 0) {
+      parts.push(`**Query**: \`${query}\``);
     }
     if (snubaQuery.time_window != null) {
-      parts.push(`**Interval**: ${String(snubaQuery.time_window)} second(s)`);
+      parts.push(
+        `**Interval**: ${formatUnknown(snubaQuery.time_window)} second(s)`,
+      );
     }
     if (snubaQuery.environment != null) {
-      parts.push(`**Environment**: ${String(snubaQuery.environment)}`);
+      parts.push(`**Environment**: ${formatUnknown(snubaQuery.environment)}`);
     }
     parts.push("");
   }
@@ -1797,7 +1810,7 @@ function formatMetricAlertDetails(
   }
 
   if (evidenceData.alert_id != null) {
-    parts.push(`**Alert Rule ID**: ${String(evidenceData.alert_id)}`);
+    parts.push(`**Alert Rule ID**: ${formatUnknown(evidenceData.alert_id)}`);
   }
 
   parts.push("");
@@ -1982,25 +1995,30 @@ function formatEventPackages(event: Event, packageNames: string[]): string {
   }
 
   for (const entry of selection.packages) {
-    const value =
-      entry.status === "recorded"
-        ? entry.truncated
+    let value: string;
+    switch (entry.status) {
+      case "recorded":
+        value = entry.truncated
           ? `${entry.version}… (truncated)`
-          : entry.version
-        : entry.status === "not_listed"
-          ? "Not listed in this event's package metadata"
-          : "Version not recorded";
+          : entry.version;
+        break;
+      case "not_listed":
+        value = "Not listed in this event's package metadata";
+        break;
+      case "version_not_recorded":
+        value = "Version not recorded";
+        break;
+    }
     output += `- ${formatPackageText(entry.name)}: ${formatPackageText(value)}\n`;
   }
   return `${output}\n`;
 }
 
+/** Keep untrusted package data on one list line and preserve literal HTML entities. */
 function formatPackageText(value: string): string {
-  return value
-    .replace(/[\r\n\t]/g, " ")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/([\\`*_[\]|>])/g, "\\$1");
+  return escapeMarkdownInline(
+    value.replace(/[\r\n\t]/g, " ").replace(/&/g, "&amp;"),
+  ).replace(/\|/g, "\\|");
 }
 
 /** Projects the suspect commit consistently for structured and markdown issue details. */
@@ -2203,7 +2221,7 @@ export function formatIssueOutput({
   }
 
   output += `**Event ID**: ${event.id}\n`;
-  output += `**Type**: ${event.type}\n`;
+  output += `**Type**: ${formatUnknown(event.type)}\n`;
   // default: error without exception data, generic: performance/metric issue, csp: CSP violation
   if (
     event.type === "error" ||
@@ -2215,7 +2233,7 @@ export function formatIssueOutput({
       | z.infer<typeof ErrorEventSchema>
       | z.infer<typeof DefaultEventSchema>
       | z.infer<typeof GenericEventSchema>
-      | any; // CSP events don't have a schema yet
+      | { dateCreated?: string | null }; // CSP events don't have a schema yet
     if (typedEvent.dateCreated) {
       const d = new Date(typedEvent.dateCreated);
       if (!isNaN(d.getTime())) {

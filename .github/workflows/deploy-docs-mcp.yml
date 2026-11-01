@@ -1,0 +1,157 @@
+name: Deploy Docs MCP
+
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-mcp-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Docs MCP
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.id == github.event.repository.id &&
+          github.event.workflow_run.head_branch == 'main' }}
+    env:
+      TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+      DEPLOYMENT_MARKER: toolkit-mcp:${{ github.run_id }}:${{ github.run_attempt }}:${{ github.event.workflow_run.head_sha }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Require tested revision on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'The tested revision is no longer at main; refusing deployment.' >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      # pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Capture active Docs MCP version
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFile } from 'node:fs/promises';
+          import { capturePrevious, listDeployments } from './scripts/cloudflare-deployment.mjs';
+          const journal = capturePrevious(await listDeployments(process.env, 'docs-mcp'), process.env.DEPLOYMENT_MARKER);
+          await writeFile(`${process.env.RUNNER_TEMP}/docs-mcp-deployment.json`, JSON.stringify(journal), { mode: 0o600 });
+          await writeFile(process.env.GITHUB_STEP_SUMMARY, `## Docs MCP deployment\n\nSource: ${process.env.TESTED_SHA}\n\nPrevious version: ${journal.previous.version}\n`, { flag: 'a' });
+          NODE
+
+      - name: Upload Docs MCP without moving traffic
+        working-directory: apps/docs-mcp
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/docs-mcp-upload.jsonl
+        run: |
+          pnpm exec wrangler versions upload --experimental-auto-create=false \
+            --minify --keep-vars --message "$DEPLOYMENT_MARKER:upload"
+
+      - name: Identify uploaded Docs MCP version
+        id: uploaded
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/docs-mcp-upload.jsonl
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { capturePrevious, listDeployments, parseUploadedVersion } from './scripts/cloudflare-deployment.mjs';
+          const path = `${process.env.RUNNER_TEMP}/docs-mcp-deployment.json`;
+          const journal = JSON.parse(await readFile(path, 'utf8'));
+          const candidateVersion = parseUploadedVersion(await readFile(process.env.WRANGLER_OUTPUT_FILE_PATH, 'utf8'), 'docs-mcp');
+          const live = capturePrevious(await listDeployments(process.env, 'docs-mcp'), journal.marker);
+          if (live.previous.id !== journal.previous.id || live.previous.version !== journal.previous.version || candidateVersion === journal.previous.version) {
+            throw new Error('Production changed during Docs MCP upload');
+          }
+          await writeFile(path, JSON.stringify({ ...journal, candidateVersion }), { mode: 0o600 });
+          await writeFile(process.env.GITHUB_OUTPUT, `candidate_version=${candidateVersion}\n`, { flag: 'a' });
+          NODE
+
+      - name: Require tested revision on main before deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
+            echo 'Main advanced before deployment; refusing deployment.' >&2
+            exit 1
+          fi
+
+      - name: Deploy exact Docs MCP version
+        working-directory: apps/docs-mcp
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CANDIDATE_VERSION: ${{ steps.uploaded.outputs.candidate_version }}
+        run: pnpm exec wrangler versions deploy "$CANDIDATE_VERSION@100" --yes --message "$DEPLOYMENT_MARKER"
+
+      - name: Verify active Docs MCP version
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { listDeployments, listSettled, verifyCandidate } from './scripts/cloudflare-deployment.mjs';
+          const journal = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/docs-mcp-deployment.json`, 'utf8'));
+          const deployments = await listSettled(
+            process.env,
+            (listed) => listed[0]?.annotations?.['workers/message'] === journal.marker,
+            { list: (env) => listDeployments(env, 'docs-mcp') },
+          );
+          const verified = verifyCandidate(deployments, journal);
+          if (verified.candidate.version !== journal.candidateVersion) {
+            throw new Error('Production does not serve the uploaded Docs MCP version');
+          }
+          await writeFile(process.env.GITHUB_STEP_SUMMARY, `\nActive version: ${verified.candidate.version} (100% traffic)\n\nVerify functionality separately through the private service binding.\n`, { flag: 'a' });
+          NODE

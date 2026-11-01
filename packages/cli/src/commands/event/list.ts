@@ -24,11 +24,8 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import { IssueEventSchema } from "../../types/index.js";
-import {
-  buildCommandHint,
-  issueIdPositional,
-  resolveIssue,
-} from "../issue/utils.js";
+import { type IssueTarget, issuePositional } from "../issue/positional.js";
+import { buildCommandHint } from "../issue/utils.js";
 import {
   appendEventsFlags,
   EVENTS_ALIASES,
@@ -86,13 +83,45 @@ export const listCommand = buildListCommand("event", {
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7\n" +
       "  <project>-suffix - Project + suffix: cli-G\n" +
       "  ID               - Short ID: CLI-G\n" +
-      "  numeric          - Numeric ID: 123456789\n\n" +
-      "Examples:\n" +
-      "  sentry event list CLI-G\n" +
-      "  sentry event list @latest --limit 50\n" +
-      "  sentry event list 123456789 --full\n" +
-      '  sentry event list CLI-G -q "user.email:foo@bar.com"\n' +
-      "  sentry event list CLI-G --json",
+      "  numeric          - Numeric ID: 123456789",
+    examples: [
+      {
+        description: "List events for an issue (short ID)",
+        command: "sentry event list PROJ-ABC",
+      },
+      {
+        description: "List events for an issue (numeric ID)",
+        command: "sentry event list 123456789",
+      },
+      {
+        description: "List events for the most recent issue",
+        command: "sentry event list @latest --limit 50",
+      },
+      {
+        description: "Filter by search query",
+        command: 'sentry event list PROJ-ABC --query "browser:Chrome"',
+      },
+      {
+        description: "Include full event bodies (stacktraces)",
+        command: "sentry event list PROJ-ABC --full",
+      },
+      {
+        description: "Limit results and time range",
+        command: "sentry event list PROJ-ABC --limit 50 --period 24h",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry event list PROJ-ABC -c next",
+      },
+      {
+        description: "Fetch the previous page",
+        command: "sentry event list PROJ-ABC -c prev",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry event list PROJ-ABC --json",
+      },
+    ],
   },
   output: {
     human: formatEventsHuman,
@@ -100,28 +129,26 @@ export const listCommand = buildListCommand("event", {
     schema: IssueEventSchema,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({
+      command: COMMAND_NAME,
+      commandBase: COMMAND_BASE,
+    }),
     flags: EVENTS_FLAGS,
     aliases: EVENTS_ALIASES,
   },
-  async *func(this: SentryContext, flags: EventsFlags, issueArg: string) {
-    // interceptSubcommand (in buildListCommand) may replace the positional
-    // with undefined when the user types e.g. "sentry events view" via the
-    // plural alias. The tip message is already printed — just bail out.
+  async *func(this: SentryContext, flags: EventsFlags, target: IssueTarget) {
+    // interceptSubcommand (in buildListCommand) may drop the positional when
+    // the user types e.g. "sentry events view" via the plural alias. The tip
+    // message is already printed — just bail out.
+    const issueArg = target.raw;
     if (!issueArg) {
       return;
     }
 
-    const { cwd } = this;
     const timeRange = flags.period;
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND_NAME,
-      commandBase: COMMAND_BASE,
-    });
+    const { org, issue } = await target.resolved;
 
     // Org is required for region-routed events endpoint
     if (!org) {

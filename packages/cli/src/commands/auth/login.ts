@@ -9,6 +9,12 @@ import {
 } from "../../lib/api-client.js";
 import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  ACCOUNT_SERVER_TARGET,
+  choiceListParser,
+  completingParser,
+  parseText,
+} from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
   getAccountIdToReplace,
@@ -24,7 +30,8 @@ import {
 import {
   getAccountRow,
   isAccountRowUsable,
-  splitAccountSelector,
+  parseLoginEmail,
+  splitLoginTarget,
 } from "../../lib/db/accounts.js";
 import { getDbPath } from "../../lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../lib/db/user.js";
@@ -48,6 +55,7 @@ import {
   toLoginUser,
 } from "../../lib/interactive-login.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   buildHostRefusalMessage,
   isLoginHostTrusted,
@@ -61,6 +69,7 @@ import {
   type SentryCliRcConfig,
 } from "../../lib/sentryclirc.js";
 import { registerLoginTrustAnchor } from "../../lib/token-host.js";
+import { SENTRY_SCOPES } from "../../lib/api-scope.js";
 
 const log = logger.withTag("auth.login");
 
@@ -157,55 +166,6 @@ function resolveLoginScope(flags: LoginFlags): string | undefined {
  * and full URLs; returns the normalized origin.
  */
 /** @internal exported for testing */
-/**
- * Parse the optional `email` argument of `sentry auth login`: an email, or
- * `<email>:<server>` (the notation `sentry org list` shows, e.g.
- * `jane@acme.com:sentry.acme.com`) to also pick the server like `--url`.
- * Returns the trimmed argument; {@link splitLoginTarget} splits it.
- *
- * @throws {ValidationError} when the value is not an email address, or the
- *   server part is not a valid URL
- */
-export function parseLoginEmail(raw: string): string {
-  const target = raw.trim();
-  splitLoginTarget(target, raw);
-  return target;
-}
-
-/**
- * Split a `sentry auth login` target into its email and, for
- * `<email>:<server>`, the server's normalized origin. Uses the same
- * {@link splitAccountSelector} as `--account`, plus an email check.
- *
- * @throws {ValidationError} when either part is invalid
- */
-export function splitLoginTarget(
-  target: string,
-  raw = target,
-): { email: string; url?: string } {
-  const parts = splitAccountSelector(target);
-  if (!(parts && isEmailAddress(parts.who))) {
-    throw new ValidationError(
-      `Expected an email address, or <email>:<server> with a valid server, to log in as; got '${raw}'.`,
-      "email",
-    );
-  }
-  return parts.server
-    ? { email: parts.who, url: parts.server }
-    : { email: parts.who };
-}
-
-/** One `@` with text on both sides, and no whitespace. */
-function isEmailAddress(value: string): boolean {
-  const at = value.indexOf("@");
-  return (
-    at > 0 &&
-    at < value.length - 1 &&
-    value.indexOf("@", at + 1) === -1 &&
-    !/\s/.test(value)
-  );
-}
-
 /**
  * Apply the server of an `<email>:<server>` login target as `--url`.
  *
@@ -442,7 +402,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Interactive TTY: prompt user to confirm re-authentication
     const userInfo = getUserInfo();
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
-    const confirmed = await log.prompt(
+    const confirmed = await prompt(
       `Already authenticated as ${identity}. Add another account? ` +
         "(The current account stays saved; see 'sentry auth list'. Use --force to replace it.)",
       { type: "confirm", initial: false },
@@ -541,25 +501,61 @@ export const loginCommand = buildCommand({
       "are kept). Pass an email (or <email>:<server>, as 'sentry org list'\n" +
       "shows it) to add or log in again to that account without prompting:\n" +
       "Sentry approves the request as whoever is signed in to the browser,\n" +
-      "so a login approved as another user is refused and nothing is saved.\n\n" +
-      "Examples:\n" +
-      "  sentry auth login\n" +
-      "  sentry auth login jane@acme.com\n" +
-      "  sentry auth login jane@acme.com --url https://sentry.acme.com\n" +
-      "  sentry auth login jane@acme.com:sentry.acme.com",
+      "so a login approved as another user is refused and nothing is saved.",
+    examples: [
+      {
+        description: "Log in with OAuth (device flow)",
+        command: "sentry auth login",
+      },
+      {
+        description: "Log in with an API token",
+        command: "sentry auth login --token YOUR_SENTRY_API_TOKEN",
+      },
+      {
+        description: "Request only read-only scopes",
+        command: "sentry auth login --read-only",
+      },
+      {
+        description: "Request specific scopes (repeatable or comma-separated)",
+        command: "sentry auth login --scope project:read --scope org:read",
+      },
+      {
+        description: "Log in to a self-hosted instance",
+        command: "sentry auth login --url https://sentry.example.com",
+      },
+      {
+        description: "Log in to a self-hosted instance with a token",
+        command:
+          "sentry auth login --token YOUR_TOKEN --url https://sentry.example.com",
+      },
+      {
+        description:
+          "Add (or log in again to) a specific account without prompting",
+        command: "sentry auth login jane@example.com",
+      },
+      {
+        description: "Add an account on a specific server",
+        command:
+          "sentry auth login jane@example.com --url https://sentry.example.com",
+      },
+      {
+        description: "Same as --url, using the account notation",
+        command: "sentry auth login jane@example.com:sentry.example.com",
+      },
+    ],
   },
   parameters: {
     flags: {
       token: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Authenticate using an API token instead of OAuth",
         optional: true,
       },
       timeout: {
         kind: "parsed",
         parse: numberParser,
-        brief: "Timeout for OAuth flow in seconds (default: 900)",
+        brief: "Timeout for OAuth flow in seconds",
         // Stricli passes string defaults through parse(); numberParser converts to number
         default: "900",
       },
@@ -571,7 +567,7 @@ export const loginCommand = buildCommand({
       },
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Sentry instance URL to authenticate against (e.g. https://sentry.example.com). " +
           "Required for self-hosted; defaults to SaaS (https://sentry.io).",
@@ -586,7 +582,7 @@ export const loginCommand = buildCommand({
       },
       scope: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(SENTRY_SCOPES),
         brief:
           "Request specific OAuth scopes (repeatable, comma-separated). " +
           "E.g. --scope project:read --scope org:read. Overrides the default scope set.",

@@ -1,5 +1,10 @@
 /** Tail formatters for the local dev server. */
 
+import {
+  formatLocalServerUrl,
+  getLocalUiConnectionUrl,
+} from "../../commands/local/ui.js";
+import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { blue, bold, cyan, green, muted, red, yellow } from "./colors.js";
 import { stripAnsi } from "./plain-detect.js";
@@ -244,7 +249,7 @@ export function formatErrorItem(
   const first = exception?.values?.at(-1);
   const errorType = sanitize(String(first?.type ?? "Error"));
   const errorValue = sanitize(
-    String(first?.value ?? event.message ?? "Unknown error"),
+    stringifyUnknown(first?.value ?? event.message ?? "Unknown error"),
   );
 
   let msg = `${errorType}: ${errorValue}`;
@@ -383,15 +388,7 @@ function formatAttrValue(value: unknown): string {
   if (value === null) {
     return "null";
   }
-  if (typeof value === "object") {
-    try {
-      return sanitize(JSON.stringify(value));
-    } catch (err) {
-      log.debug("Failed to JSON-encode attribute value", err);
-      return sanitize(String(value));
-    }
-  }
-  return sanitize(String(value));
+  return sanitize(stringifyUnknown(value));
 }
 
 /**
@@ -733,6 +730,8 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   }
 
   try {
+    // UUID objects override toString(); the base Object result is rejected below.
+    // oxlint-disable-next-line typescript/no-base-to-string
     const identifier = value.toString();
     if (identifier === "[object Object]") {
       return;
@@ -861,7 +860,9 @@ function formatTransactionJson(
   const attrs = mergeTransactionAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
-    String(payload.transaction ?? trace?.description ?? "Transaction"),
+    stringifyUnknown(
+      payload.transaction ?? trace?.description ?? "Transaction",
+    ),
   );
   const start = payload.start_timestamp as number | undefined;
   const end = payload.timestamp as number | undefined;
@@ -1212,4 +1213,40 @@ export function formatEnvelopeLines(
     return [];
   }
   return [formatFallbackLine(resolveUnparseableLabel(container))];
+}
+
+/** Human control-plane summaries add a viewer link without altering JSON data. */
+export function formatLocalControlResult(
+  data: Record<string, unknown>,
+): string {
+  const daemon =
+    data.daemon &&
+    typeof data.daemon === "object" &&
+    !Array.isArray(data.daemon)
+      ? (data.daemon as Record<string, unknown>)
+      : data;
+  const receiverUrl =
+    typeof data.streamUrl === "string"
+      ? data.streamUrl
+      : typeof daemon.host === "string" && typeof daemon.port === "number"
+        ? formatLocalServerUrl(daemon.host, daemon.port)
+        : undefined;
+  const hint = receiverUrl ? formatLocalViewerHint(receiverUrl) : undefined;
+  return JSON.stringify(data, null, 2) + (hint ? `\n\n${hint}` : "");
+}
+
+/** Point human Local command output to a credential-free receiver connection. */
+export function formatLocalViewerHint(receiverUrl: string): string | undefined {
+  const url = getLocalUiConnectionUrl(receiverUrl);
+  return url ? `View events at ${url}` : undefined;
+}
+
+/** Streaming commands cannot defer their hint until the generator returns. */
+export function printLocalViewerHint(
+  receiverUrl: string,
+  useJson: boolean,
+): void {
+  if (useJson) return;
+  const hint = formatLocalViewerHint(receiverUrl);
+  if (hint) logger.info(hint);
 }

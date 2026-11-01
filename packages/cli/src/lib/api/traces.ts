@@ -4,6 +4,13 @@
  * Functions for retrieving detailed traces, listing transactions, and listing spans.
  */
 
+import {
+  type ListOrganizationTraceItemAttributesData,
+  type ListOrganizationTraceItemAttributesQueryAttributeType,
+  type ListOrganizationTraceItemAttributesQueryDataset,
+  type ListOrganizationTraceItemAttributesResponse,
+  listOrganizationTraceItemAttributes,
+} from "@sentry/api";
 import pLimit from "p-limit";
 
 import {
@@ -30,9 +37,11 @@ import { isAllDigits } from "../utils.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
+  getOrgSdkConfig,
   type PaginatedResponse,
   paginate,
   parseLinkHeader,
+  unwrapPaginatedResult,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.traces");
@@ -168,7 +177,10 @@ export async function getDetailedTrace(
       : undefined;
 
   if (timestamp !== undefined) {
-    return requestTrace(regionUrl, orgSlug, traceId, { ...shared, timestamp });
+    return await requestTrace(regionUrl, orgSlug, traceId, {
+      ...shared,
+      timestamp,
+    });
   }
 
   const spans = await requestTrace(regionUrl, orgSlug, traceId, {
@@ -182,7 +194,7 @@ export async function getDetailedTrace(
   log.debug(
     `No spans for trace ${traceId} in ${TRACE_LOOKUP_STATS_PERIOD}; retrying ${TRACE_LOOKUP_FALLBACK_STATS_PERIOD}`,
   );
-  return requestTrace(regionUrl, orgSlug, traceId, {
+  return await requestTrace(regionUrl, orgSlug, traceId, {
     ...shared,
     statsPeriod: TRACE_LOOKUP_FALLBACK_STATS_PERIOD,
   });
@@ -241,6 +253,119 @@ export function getSpanDetails(
     traceId,
     itemType: "spans",
   });
+}
+
+// ---------------------------------------------------------------------------
+// Trace item attribute discovery
+// ---------------------------------------------------------------------------
+
+type TraceItemAttributesQuery = NonNullable<
+  ListOrganizationTraceItemAttributesData["query"]
+>;
+
+/** Trace item dataset accepted by the attributes endpoint (e.g. "spans", "logs"). */
+export type TraceItemAttributeDataset =
+  ListOrganizationTraceItemAttributesQueryDataset;
+
+/** Attribute value type the attributes endpoint can filter on. */
+export type TraceItemAttributeValueType =
+  ListOrganizationTraceItemAttributesQueryAttributeType;
+
+/**
+ * An attribute key available on a trace item dataset (name, type, and whether
+ * it is Sentry-defined or user-defined). This describes a key, not to be confused
+ * with {@link TraceItemAttribute}, which is a key/value pair
+ */
+export type TraceItemAttributeDefinition =
+  ListOrganizationTraceItemAttributesResponse[number];
+
+/** Metadata returned for an attribute when `context` is requested. */
+export type TraceItemAttributeContext = NonNullable<
+  TraceItemAttributeDefinition["context"]
+>;
+
+/** Options for {@link listTraceItemAttributes} */
+export type ListTraceItemAttributesOptions = {
+  /** Dataset to list attribute keys for */
+  dataset: TraceItemAttributeDataset;
+  /** Project IDs or slugs to scope to (omit for all accessible projects) */
+  project?: Array<number | string>;
+  /** Environment names to scope to */
+  environment?: string[];
+  /** Only return attributes of these value types (filtered server-side) */
+  attributeTypes?: TraceItemAttributeValueType[];
+  /** Only return attribute names containing this substring (case-sensitive) */
+  substringMatch?: string;
+  /**
+   * Sentry search query. The result is limited to keys that co-occur
+   * with all of those keys. `has:<key>` filters express this exactly.
+   */
+  query?: string;
+  /** Relative time window, e.g. "24h" or "14d" (overrides start/end) */
+  statsPeriod?: string;
+  /** Absolute window start (ISO-8601) */
+  start?: string;
+  /** Absolute window end (ISO-8601) */
+  end?: string;
+  /**
+   * Page size, sent as `per_page` Applied per attribute type, so total
+   * results can exceed this value
+   */
+  perPage?: number;
+  /**
+   * Include each attribute's `context` metadata (description, examples,
+   * deprecation)
+   */
+  context?: boolean;
+  /** Pagination cursor from a previous page's `nextCursor` */
+  cursor?: string;
+};
+
+/**
+ * List the attribute keys available on a trace item dataset via
+ * `GET /organizations/{org}/trace-items/attributes/`.
+ *
+ * Empty filters are omitted rather than sent as empty params, and the
+ * next-page cursor is parsed from the Link header.
+ *
+ * Use {@link getTraceItemDetail} for the values on a specific item.
+ *
+ * @param orgSlug - Organization slug
+ * @param options - Dataset plus optional project, type, substring, query, and time filters
+ * @returns Attribute definitions and an optional next-page cursor
+ */
+export async function listTraceItemAttributes(
+  orgSlug: string,
+  options: ListTraceItemAttributesOptions,
+): Promise<PaginatedResponse<TraceItemAttributeDefinition[]>> {
+  const config = await getOrgSdkConfig(orgSlug);
+  // `per_page` is accepted by the endpoint's paginator but missing from the
+  // SDK's generated query type, so widen the type rather than cast the call.
+  const query: TraceItemAttributesQuery & { per_page?: number } = {
+    dataset: options.dataset,
+    project: options.project?.length ? options.project : undefined,
+    environment: options.environment?.length ? options.environment : undefined,
+    attributeType: options.attributeTypes?.length
+      ? options.attributeTypes
+      : undefined,
+    substringMatch: options.substringMatch || undefined,
+    query: options.query || undefined,
+    statsPeriod: options.statsPeriod,
+    start: options.start,
+    end: options.end,
+    expand: options.context ? ["context"] : undefined,
+    per_page: options.perPage,
+    cursor: options.cursor,
+  };
+  const result = await listOrganizationTraceItemAttributes({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query,
+  });
+  return unwrapPaginatedResult<TraceItemAttributeDefinition[]>(
+    result,
+    `Failed to list ${options.dataset} attributes`,
+  );
 }
 
 /**
@@ -512,7 +637,7 @@ export async function listTransactions(
   options: ListTransactionsOptions = {},
 ): Promise<PaginatedResponse<TransactionListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return paginate(options, (perPage, cursor) =>
+  return await paginate(options, (perPage, cursor) =>
     fetchTransactionsPage(
       regionUrl,
       orgSlug,
@@ -593,7 +718,7 @@ async function fetchSpansPage(
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
   const fields = options.extraFields?.length
-    ? SPAN_FIELDS.concat(options.extraFields)
+    ? [...SPAN_FIELDS, ...options.extraFields]
     : SPAN_FIELDS;
 
   let projectParam: string | undefined;
@@ -648,7 +773,7 @@ export async function listSpans(
   options: ListSpansOptions = {},
 ): Promise<PaginatedResponse<SpanListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  return paginate(options, (perPage, cursor) =>
+  return await paginate(options, (perPage, cursor) =>
     fetchSpansPage(
       regionUrl,
       orgSlug,

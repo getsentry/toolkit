@@ -294,6 +294,20 @@ export const ERROR_AGGREGATE_FUNCTIONS = [
 
 export type ErrorAggregateFunction = (typeof ERROR_AGGREGATE_FUNCTIONS)[number];
 
+/**
+ * The aggregate functions {@link validateAggregateNames} accepts on a widget
+ * dataset: none on `tracemetrics`, whose aggregates name a metric instead
+ * (`aggregation(value,metric_name,metric_type,unit)`).
+ */
+export function aggregateFunctionsOf(dataset?: string): readonly string[] {
+  if (dataset === "tracemetrics") {
+    return [];
+  }
+  return dataset === "error-events"
+    ? ERROR_AGGREGATE_FUNCTIONS
+    : SPAN_AGGREGATE_FUNCTIONS;
+}
+
 /** Valibot schema for validating a span aggregate function name */
 export const SpanAggregateFunctionSchema = picklist(SPAN_AGGREGATE_FUNCTIONS);
 
@@ -430,10 +444,7 @@ export function validateAggregateNames(
     return;
   }
 
-  const validFunctions: readonly string[] =
-    dataset === "error-events"
-      ? ERROR_AGGREGATE_FUNCTIONS
-      : SPAN_AGGREGATE_FUNCTIONS;
+  const validFunctions = aggregateFunctionsOf(dataset);
 
   for (const agg of aggregates) {
     const fn = extractFunctionName(agg);
@@ -521,6 +532,17 @@ export function prepareWidgetQueries(
 /** Sentry dashboard grid column count */
 export const GRID_COLUMNS = 6;
 
+/** The values `--col` accepts: each 0-based grid column. */
+export const GRID_COLUMN_POSITIONS = Array.from(
+  { length: GRID_COLUMNS },
+  (_, column) => String(column),
+);
+
+/** The values `--width` accepts: 1 to {@link GRID_COLUMNS} columns. */
+export const GRID_WIDTHS = Array.from({ length: GRID_COLUMNS }, (_, column) =>
+  String(column + 1),
+);
+
 /**
  * Controls how the auto-placer positions new widgets in the grid.
  *
@@ -529,7 +551,10 @@ export const GRID_COLUMNS = 6;
  * - `dense` — First-fit packing: scan top-to-bottom, left-to-right
  *   and place in the first available gap. Produces compact layouts.
  */
-export type WidgetLayoutMode = "sequential" | "dense";
+export type WidgetLayoutMode = (typeof WIDGET_LAYOUT_MODES)[number];
+
+/** The {@link WidgetLayoutMode} values, which `--layout` accepts. */
+export const WIDGET_LAYOUT_MODES = ["sequential", "dense"] as const;
 
 /** Default widget dimensions by displayType */
 const DEFAULT_WIDGET_SIZE: Partial<

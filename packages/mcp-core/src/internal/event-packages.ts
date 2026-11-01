@@ -29,30 +29,29 @@ export function selectEventPackages(
   if (!packageNames?.length) {
     return undefined;
   }
-  if (!packages || Object.keys(packages).length === 0) {
+  const packageVersions = new Map(Object.entries(packages ?? {}));
+  if (packageVersions.size === 0) {
     return { metadataAvailable: false, packages: [] };
   }
 
   return {
     metadataAvailable: true,
-    packages: [...new Set(packageNames)].map((name) => {
-      const version = Object.hasOwn(packages, name)
-        ? packages[name]
-        : undefined;
-      if (version === undefined || !version?.trim()) {
-        return {
-          name,
-          status: version === undefined ? "not_listed" : "version_not_recorded",
-          version: null,
-          truncated: false,
-        };
-      }
-      return {
-        name,
-        status: "recorded",
-        version: version.slice(0, 256),
-        truncated: version.length > 256,
-      };
+    packages: Array.from(new Set(packageNames), (name) => {
+      const version = packageVersions.get(name);
+      const notListed = version === undefined;
+      return version?.trim()
+        ? {
+            name,
+            status: "recorded",
+            version: version.slice(0, 256),
+            truncated: version.length > 256,
+          }
+        : {
+            name,
+            status: notListed ? "not_listed" : "version_not_recorded",
+            version: null,
+            truncated: false,
+          };
     }),
   };
 }

@@ -443,3 +443,135 @@ export function inferDefaultBranch(remote: string, cwd?: string): string {
     return "main";
   }
 }
+
+// ---------------------------------------------------------------------------
+// Shell completion
+// ---------------------------------------------------------------------------
+
+/** A ref or commit offered by shell completion. */
+export type GitCompletion = {
+  /** What the shell inserts: a ref name or a full commit SHA */
+  name: string;
+  /** Subject line of the commit it points at */
+  subject: string;
+};
+
+/**
+ * Field separator of `--format` output, NUL, which refs and SHAs cannot
+ * contain. Written `%00` (`for-each-ref`) or `%x00` (`log`) in the format,
+ * since an argument cannot hold a NUL byte.
+ */
+const FIELD_SEPARATOR = "\u0000";
+
+/**
+ * Run git for shell completion, which suggests nothing outside a work tree
+ * or when git is missing rather than failing.
+ *
+ * @returns The output lines, split into their {@link FIELD_SEPARATOR} fields
+ */
+function gitLines(args: string[], cwd?: string): string[][] {
+  let output: string;
+  try {
+    output = git(args, cwd);
+  } catch (error) {
+    if (error instanceof Error) {
+      // Not a repository, or git is missing: there is nothing to complete
+      return [];
+    }
+    throw error;
+  }
+  return output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.split(FIELD_SEPARATOR));
+}
+
+/**
+ * `for-each-ref` of `patterns`, most recently committed first, each by the
+ * `name` format atom (`%(refname:short)`, …).
+ */
+function forEachRef(
+  name: string,
+  patterns: string[],
+  cwd?: string,
+): GitCompletion[] {
+  return gitLines(
+    [
+      "for-each-ref",
+      "--sort=-committerdate",
+      `--format=%(refname)%00${name}%00%(subject)`,
+      ...patterns,
+    ],
+    cwd,
+  ).flatMap(([ref = "", short, subject = ""]) =>
+    // `refs/remotes/origin/HEAD` names whichever branch the remote's HEAD
+    // points at
+    short && !ref.endsWith("/HEAD") ? [{ name: short, subject }] : [],
+  );
+}
+
+/**
+ * Branches, tags, and remote-tracking branches as git resolves them
+ * locally (`main`, `v1.2.0`, `origin/main`), most recent first: the refs
+ * a local range such as `<ref>..HEAD` can start from.
+ *
+ * @param cwd - Working directory
+ */
+export function listLocalRefs(cwd?: string): GitCompletion[] {
+  return forEachRef(
+    "%(refname:short)",
+    ["refs/heads", "refs/tags", "refs/remotes"],
+    cwd,
+  );
+}
+
+/**
+ * Branch and tag names as the hosting provider knows them, for flags that
+ * send a ref to Sentry: local branches, remote-tracking branches without
+ * their remote (`origin/main` → `main`), then tags. Each name once.
+ *
+ * @param cwd - Working directory
+ */
+export function listVcsRefs(cwd?: string): GitCompletion[] {
+  const refs = [
+    ...forEachRef("%(refname:lstrip=2)", ["refs/heads"], cwd),
+    ...forEachRef("%(refname:lstrip=3)", ["refs/remotes"], cwd),
+    ...forEachRef("%(refname:lstrip=2)", ["refs/tags"], cwd),
+  ];
+  const seen = new Set<string>();
+  return refs.filter(({ name }) => !seen.has(name) && seen.add(name));
+}
+
+/** Most recent commits of `HEAD` offered for completion. */
+const MAX_COMPLETED_COMMITS = 50;
+
+/**
+ * The latest commits of `HEAD` by full SHA, newest first.
+ *
+ * @param cwd - Working directory
+ */
+export function listRecentCommits(cwd?: string): GitCompletion[] {
+  return gitLines(
+    ["log", `--max-count=${MAX_COMPLETED_COMMITS}`, "--format=%H%x00%s"],
+    cwd,
+  ).flatMap(([sha, subject = ""]) => (sha ? [{ name: sha, subject }] : []));
+}
+
+/**
+ * The `owner/repo` names of every remote, with the remote they belong to.
+ *
+ * @param cwd - Working directory
+ * @returns Each name once, in `git remote -v` order
+ */
+export function listRemoteRepositories(cwd?: string): GitCompletion[] {
+  const seen = new Set<string>();
+  return gitLines(["remote", "-v"], cwd).flatMap(([line = ""]) => {
+    const [remote, url] = line.split(/\s+/);
+    const name = url ? parseRemoteUrl(url) : undefined;
+    if (!(remote && name) || seen.has(name)) {
+      return [];
+    }
+    seen.add(name);
+    return [{ name, subject: remote }];
+  });
+}

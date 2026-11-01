@@ -10,10 +10,12 @@ import {
   listMetricAlertsPaginated,
   type MetricAlertRule,
 } from "../../../lib/api-client.js";
+import { ORG_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
-import { isAllDigits } from "../../../lib/utils.js";
+import { countChar, isAllDigits } from "../../../lib/utils.js";
+import { alertRuleParameter } from "../arguments.js";
 
 const log = logger.withTag("alert.metrics");
 
@@ -45,7 +47,7 @@ export function parseMetricRuleArg(
     return { ref: trimmed, targetArg: undefined };
   }
 
-  const slashCount = [...trimmed].filter((c) => c === "/").length;
+  const slashCount = countChar(trimmed, "/");
   if (slashCount > 1) {
     throw new ValidationError(
       `Metric alerts are org-scoped — use '<org>/<rule-id-or-name>', not '<org>/<project>/<rule>'.\nUse: ${usageHint}`,
@@ -63,6 +65,20 @@ export function parseMetricRuleArg(
     );
   }
   return { ref, targetArg: targetPart ? `${targetPart}/` : undefined };
+}
+
+/**
+ * The `<org>/<rule-id-or-name>` parameter of a metric alert command,
+ * parsed with {@link parseMetricRuleArg} before the command runs.
+ */
+export function metricRuleParameter(usageHint: string, brief: string) {
+  return alertRuleParameter({
+    placeholder: "org/rule-id-or-name",
+    brief,
+    kind: ORG_TARGET,
+    split: parseMetricRuleArg,
+    usageHint,
+  });
 }
 
 export async function listAllMetricRulesForOrg(

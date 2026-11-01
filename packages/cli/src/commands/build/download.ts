@@ -17,6 +17,7 @@ import {
   toBinaryDownloadUrl,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ResolutionError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -55,10 +56,21 @@ export const downloadCommand = buildCommand({
       "Download a mobile build artifact (APK or IPA) previously uploaded to " +
       "Sentry's preprod system for size analysis. The build is resolved by " +
       "ID within the organization; the artifact is streamed to a local file.\n\n" +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry build download 1234567890\n" +
-      "  sentry build download 1234567890 --output ./app.ipa",
+      "This feature only works with Sentry SaaS.",
+    examples: [
+      {
+        description: "Download a build artifact by ID",
+        command: "sentry build download 1234567890",
+      },
+      {
+        description: "Download to a specific path",
+        command: "sentry build download 1234567890 --output ./app.ipa",
+      },
+      {
+        description: "Output the result as JSON",
+        command: "sentry build download 1234567890 --json",
+      },
+    ],
   },
   output: {
     human: formatDownloadResult,
@@ -69,7 +81,7 @@ export const downloadCommand = buildCommand({
       parameters: [
         {
           brief: "ID of the build to download",
-          parse: String,
+          parse: parseText,
           placeholder: "build-id",
         },
       ],
@@ -77,7 +89,7 @@ export const downloadCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path (default: preprod_artifact_<build-id>.<ext> in the current directory)",
         optional: true,

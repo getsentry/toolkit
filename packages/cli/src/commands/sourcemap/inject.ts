@@ -8,6 +8,12 @@
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
+import {
   colorTag,
   mdKvTable,
   renderMarkdown,
@@ -17,10 +23,11 @@ import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
-  type InjectResult,
   injectDirectory,
+  type InjectResult,
 } from "../../lib/sourcemap/inject.js";
 
 /** Result type for the inject command output. */
@@ -64,12 +71,25 @@ export const injectCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.\n\n" +
-      "Usage:\n" +
-      "  sentry sourcemap inject ./dist\n" +
-      "  sentry sourcemap inject ./build --ext .js,.mjs\n" +
-      "  sentry sourcemap inject ./out --dry-run\n" +
-      "  sentry sourcemap inject ./maybe-empty --allow-empty",
+      "legitimately be empty.",
+    examples: [
+      {
+        description: "Inject debug IDs into all JS files in dist/",
+        command: "sentry sourcemap inject ./dist",
+      },
+      {
+        description: "Preview changes without writing",
+        command: "sentry sourcemap inject ./dist --dry-run",
+      },
+      {
+        description: "Only process specific extensions",
+        command: "sentry sourcemap inject ./build --ext .js,.mjs",
+      },
+      {
+        description: "Allow a directory with no sourcemaps",
+        command: "sentry sourcemap inject ./maybe-empty --allow-empty",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,
@@ -82,7 +102,7 @@ export const injectCommand = buildCommand({
       parameters: [
         {
           brief: "Directory to scan for JS + sourcemap pairs",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],
@@ -90,20 +110,20 @@ export const injectCommand = buildCommand({
     flags: {
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },

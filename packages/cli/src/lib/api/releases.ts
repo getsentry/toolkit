@@ -466,6 +466,11 @@ export async function setCommitsAuto(
     );
   }
 
+  // The previous release's commit only depends on the org and version, not
+  // on which repository matches, so fetch it concurrently with the repository
+  // lookup instead of after it. getPreviousReleaseCommit never rejects.
+  const previousCommitPromise = getPreviousReleaseCommit(orgSlug, version);
+
   const localRepoLower = localRepo.toLowerCase();
   let cursor: string | undefined;
   let foundAnyRepos = false;
@@ -486,7 +491,7 @@ export async function setCommitsAuto(
     );
     if (match) {
       const headCommit = getHeadCommit(cwd);
-      const previousCommit = await getPreviousReleaseCommit(orgSlug, version);
+      const previousCommit = await previousCommitPromise;
       const ref: {
         repository: string;
         commit: string;
@@ -495,7 +500,7 @@ export async function setCommitsAuto(
       if (previousCommit) {
         ref.previousCommit = previousCommit;
       }
-      return setCommitsWithRefs(orgSlug, version, [ref]);
+      return await setCommitsWithRefs(orgSlug, version, [ref]);
     }
 
     if (!result.nextCursor) {

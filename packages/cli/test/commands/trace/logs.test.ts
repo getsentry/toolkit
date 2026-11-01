@@ -20,6 +20,7 @@ import {
   test,
   vi,
 } from "vitest";
+import { ArgumentParseError } from "@stricli/core";
 import { logsCommand } from "../../../src/commands/trace/logs.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -49,7 +50,7 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
-import { ContextError } from "../../../src/lib/errors.js";
+import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
   const actual =
@@ -81,7 +82,7 @@ import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TraceLog } from "../../../src/types/sentry.js";
 
-// Note: parseTraceTarget parsing tests are in test/lib/trace-target.test.ts
+// Note: trace-target parsing tests are in test/lib/trace-target.test.ts
 
 const TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 const ORG = "test-org";
@@ -466,6 +467,32 @@ describe("logsCommand.func", () => {
           TRACE_ID,
         ),
       ).rejects.toThrow(ContextError);
+    });
+
+    test.each([
+      ["a missing trace ID", "my-org/web", ContextError],
+      ["an invalid trace ID", "not-a-trace-id", ValidationError],
+    ])("%s fails to parse, before any lookup", async (_, arg, cause) => {
+      const { context } = createMockContext();
+      const func = await logsCommand.loader();
+
+      const error = await func
+        .call(
+          context,
+          {
+            json: false,
+            web: false,
+            period: parsePeriod("14d"),
+            limit: 100,
+            sort: "newest",
+          },
+          arg,
+        )
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(cause);
+      expect(resolveOrgSpy).not.toHaveBeenCalled();
+      expect(listTraceLogsSpy).not.toHaveBeenCalled();
     });
   });
 

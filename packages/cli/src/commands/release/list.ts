@@ -13,10 +13,12 @@ import {
   listReleasesPaginated,
   type ReleaseSortValue,
 } from "../../lib/api-client.js";
+import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
-  type ParsedOrgProject,
-  parseOrgProjectArg,
-} from "../../lib/arg-parsing.js";
+  choiceParser,
+  parseEnvironmentList,
+  parseRelativePeriod,
+} from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -45,6 +47,7 @@ import {
   toNumericId,
 } from "../../lib/resolve-target.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 import type { SentryRelease } from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
 
@@ -78,6 +81,9 @@ const SORT_ALIASES: Record<string, ReleaseSortValue> = {
 };
 
 const DEFAULT_SORT: ReleaseSortValue = "date";
+
+/** Release statuses `--status` filters by. */
+const RELEASE_STATUSES = ["open", "archived"];
 
 function parseSortFlag(value: string): ReleaseSortValue {
   if (VALID_SORT_VALUES.includes(value as ReleaseSortValue)) {
@@ -640,23 +646,38 @@ export const listCommand = buildListCommand("release", {
       "  users                # by total users\n" +
       "  crash_free_sessions  # by crash-free session rate (aliases: stable_sessions, cfs)\n" +
       "  crash_free_users     # by crash-free user rate (aliases: stable_users, cfu)\n\n" +
-      "Target specification:\n" +
-      "  sentry release list               # auto-detect from DSN (project-scoped)\n" +
-      "  sentry release list <org>/        # list all releases in org (paginated)\n" +
-      "  sentry release list <org>/<proj>  # list releases for project\n" +
-      "  sentry release list <org>         # list releases in org\n\n" +
-      "Pagination:\n" +
-      "  sentry release list <org>/ -c next  # fetch next page\n" +
-      "  sentry release list <org>/ -c prev  # fetch previous page\n\n" +
-      "Examples:\n" +
-      "  sentry release list                         # auto-detect project\n" +
-      "  sentry release list my-org/                  # all releases in org\n" +
-      "  sentry release list my-org/my-proj           # project-scoped\n" +
-      "  sentry release list --sort cfs               # sort by crash-free sessions\n" +
-      "  sentry release list --environment production  # filter by env\n" +
-      "  sentry release list --period 7d              # last 7 days of health data\n" +
-      "  sentry release list --json\n\n" +
       "Alias: `sentry releases` → `sentry release list`",
+    examples: [
+      {
+        description: "List releases (project auto-detected)",
+        command: "sentry release list",
+      },
+      {
+        description: "List all releases in an organization",
+        command: "sentry release list my-org/",
+      },
+      {
+        description: "List releases for one project",
+        command: "sentry release list my-org/my-project",
+      },
+      {
+        description: "Sort by crash-free sessions",
+        command: "sentry release list --sort cfs",
+      },
+      {
+        description: "Filter by environment",
+        command: "sentry release list --environment production",
+      },
+      {
+        description: "Show the last 7 days of health data",
+        command: "sentry release list --period 7d",
+      },
+      { description: "Output as JSON", command: "sentry release list --json" },
+      {
+        description: "Fetch the next page",
+        command: "sentry release list my-org/ -c next",
+      },
+    ],
   },
   output: {
     human: formatListHuman,
@@ -669,36 +690,40 @@ export const listCommand = buildListCommand("release", {
       limit: buildListLimitFlag("releases"),
       sort: {
         kind: "parsed" as const,
-        parse: parseSortFlag,
+        parse: choiceParser(VALID_SORT_VALUES, parseSortFlag),
         brief:
           "Sort: date, sessions, users, crash_free_sessions (cfs), crash_free_users (cfu)",
         default: DEFAULT_SORT,
       },
       environment: {
         kind: "parsed" as const,
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true as const,
         optional: true as const,
       },
       period: {
         kind: "parsed" as const,
-        parse: String,
+        parse: parseRelativePeriod,
         brief: "Health stats period (e.g., 24h, 7d, 14d, 90d)",
         default: "90d",
       },
       status: {
         kind: "parsed" as const,
-        parse: String,
+        parse: choiceParser(RELEASE_STATUSES),
         brief: "Filter by status: open (default) or archived",
         default: "open",
       },
     },
     aliases: { ...LIST_BASE_ALIASES, s: "sort", e: "environment", t: "period" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
-    const parsed = parseOrgProjectArg(target);
+    const { parsed } = await target.resolved;
     // Flatten: -e prod,dev -e staging → ["prod", "dev", "staging"]
     const envFilter = flags.environment
       ? [...flags.environment]

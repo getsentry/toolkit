@@ -15,6 +15,12 @@ Manage code mappings for stack trace linking
 
 Upload code mappings for stack trace linking
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path>` | Path to the code mappings JSON file |
+
 **Flags:**
 - `--repo <value> - Repository name (e.g., owner/repo). Auto-detected from git remote if omitted.`
 - `--default-branch <value> - Default branch name. Auto-detected from git remote HEAD if omitted.`
@@ -25,10 +31,10 @@ Upload code mappings for stack trace linking
 # Upload code mappings from a JSON file
 sentry code-mappings upload mappings.json
 
-# Specify repository explicitly
+# Specify the repository explicitly
 sentry code-mappings upload mappings.json --repo owner/repo
 
-# Specify repository and default branch
+# Specify the repository and default branch
 sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop
 
 # Output as JSON

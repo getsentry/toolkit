@@ -554,7 +554,7 @@ describe("dsn list", () => {
     expect(first).toMatchObject({
       hasMore: true,
       hasPrev: false,
-      nextCursor: "0:1:0",
+      nextCursor: expect.stringContaining("0:1:0"),
       data: [{ org: "test-org", project: "test-project" }],
     });
     const second = await invokeJson({ limit: 1, cursor: "next" });

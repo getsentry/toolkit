@@ -15,6 +15,12 @@ Find Sentry DSNs
 
 List DSNs
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of DSNs to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -32,8 +38,10 @@ sentry dsn list my-org/my-project
 # List DSNs across all accessible projects in an organization
 sentry dsn list my-org/
 
-# Navigate between pages
+# Fetch the next page
 sentry dsn list my-org/ --limit 10 -c next
+
+# Fetch the previous page
 sentry dsn list my-org/ --limit 10 -c prev
 
 # Select public DSN fields as JSON

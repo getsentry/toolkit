@@ -1,50 +1,609 @@
 /**
- * Completion-aware positional parsers.
+ * What shell completion suggests for each argument, read from its parser.
  *
- * Target positionals use these instead of `String` so shell completion can
- * read the target kind straight from the command's `parameters`. Both parsers
- * return their input unchanged; the kind is identified by which function a
- * positional uses. `script/generate-completion-targets.ts` collects them at
- * build time because the `__complete` fast path cannot boot Stricli to walk
- * the route tree.
+ * A positional or flag completes a kind when its `parse` function is tagged
+ * with {@link withCompletionTarget}, or is one of the shared value parsers
+ * in {@link PARSER_TARGETS}. `script/generate-completion-targets.ts`
+ * collects the kind of every argument at build time, because the
+ * `__complete` fast path cannot boot Stricli to walk the route tree, and
+ * `src/lib/complete.ts` maps each kind to its completer; the kinds are the
+ * keys of that map.
+ *
+ * Commands get the tag from the bound parsers in `target-positional.ts`
+ * and `positional-parse.ts`, which parse the value too, or, for arguments
+ * that are not Sentry targets, from the pre-tagged parsers here
+ * ({@link parseFilePath}, {@link parseText}, {@link choiceParser}, …).
+ * A command's own validating parser keeps its checks when wrapped:
+ * `choiceParser(VALUES, parseSort)`, `textParser(parsePort)`.
  */
 
-/** Completes organization slugs only (e.g. `org`, `org/version`, `org/id`). */
-export const ORG_TARGET = "org";
+import { ISSUE_IS_VALUES } from "@sentry/toolkit-core/search-query";
+import { numberParser } from "@stricli/core";
+import type { CompletionTarget } from "./complete.js";
+import { aggregateFunctionsOf } from "../types/dashboard.js";
+import { ISSUE_LEVELS } from "../types/sentry.js";
+import {
+  CURSOR_NAVIGATION,
+  parseCursorFlag,
+  parseLogSort,
+  parseSpanDepth,
+  SPAN_DEPTH_KEYWORDS,
+  VALID_LOG_SORT_DIRECTIONS,
+} from "./arg-parsing.js";
+import { LOOPBACK_HOSTS } from "../commands/local/loopback.js";
+import { INSTALLATION_METHODS, parseInstallationMethod } from "./binary.js";
+import { parseLoginEmail } from "./db/accounts.js";
+import type { CompletionEntityKind } from "./db/completion-cache.js";
+import { parseReleaseChannel, RELEASE_CHANNELS } from "./db/release-channel.js";
+import { sanitizeIssueQuery, sanitizeQuery } from "./search-query.js";
+import { parsePeriod, UNIT_SECONDS } from "./time-range.js";
 
-/** Completes `org/` prefixes, `org/project` pairs, and project aliases. */
-export const ORG_PROJECT_TARGET = "org/project";
+/** What shell completion suggests for an argument: a key of the completer map. */
+export type { CompletionTarget };
 
-/** Every completion target kind, in a stable order. */
-export const COMPLETION_TARGETS = [ORG_TARGET, ORG_PROJECT_TARGET] as const;
+// Names for the kinds, each checked against the keys of `COMPLETERS` in
+// `complete.ts`, which documents what each one completes.
 
-/** Which cached slugs shell completion suggests for a target positional. */
-export type CompletionTarget = (typeof COMPLETION_TARGETS)[number];
+/** Organization slugs. */
+export const ORG_TARGET = "org" satisfies CompletionTarget;
 
-/** Parser for positionals whose leading segment is an organization slug. */
-export function parseOrgTarget(input: string): string {
-  return input;
-}
+/** `org/` prefixes, `org/project` pairs, and project aliases. */
+export const ORG_PROJECT_TARGET = "org/project" satisfies CompletionTarget;
 
-/** Parser for positionals that start with `org/project`, a project, or an alias. */
-export function parseOrgProjectTarget(input: string): string {
-  return input;
+/** {@link ORG_PROJECT_TARGET} plus cached issue short IDs. */
+export const ISSUE_TARGET = "issue" satisfies CompletionTarget;
+
+/** `org/` prefixes and cached dashboards, in the first positional. */
+export const DASHBOARD_TARGET = "dashboard" satisfies CompletionTarget;
+
+/** The term at the end of an issue search query. */
+export const ISSUE_QUERY_TARGET = "issue-query" satisfies CompletionTarget;
+
+/** Relative `--period` values. */
+export const PERIOD_TARGET = "period" satisfies CompletionTarget;
+
+/** `project create` `name:platform` specs. */
+export const PROJECT_SPEC_TARGET = "project-spec" satisfies CompletionTarget;
+
+/** Stored accounts. */
+export const ACCOUNT_TARGET = "account" satisfies CompletionTarget;
+
+/** File and directory paths. */
+export const FILE_TARGET = "file" satisfies CompletionTarget;
+
+/** Directory paths only. */
+export const DIRECTORY_TARGET = "directory" satisfies CompletionTarget;
+
+/** `sentry init`'s `[<target>] [<directory>]`. */
+export const ORG_PROJECT_OR_DIRECTORY_TARGET =
+  "org-project-or-directory" satisfies CompletionTarget;
+
+/** A CLI command path, one route segment per word. */
+export const COMMAND_PATH_TARGET = "command-path" satisfies CompletionTarget;
+
+/** The values its parser was made with by {@link choiceParser}. */
+export const CHOICE_TARGET = "choice" satisfies CompletionTarget;
+
+/** Comma-separated values its parser was made with by {@link choiceListParser}. */
+export const CHOICE_LIST_TARGET = "choice-list" satisfies CompletionTarget;
+
+/** Platform identifiers (`javascript-react`, `python-django`, …). */
+export const PLATFORM_TARGET = "platform" satisfies CompletionTarget;
+
+/** Free text with nothing to suggest. */
+export const TEXT_TARGET = "text" satisfies CompletionTarget;
+
+/** Cached environment names. */
+export const ENVIRONMENT_TARGET = "environment" satisfies CompletionTarget;
+
+/** Comma-separated cached environment names. */
+export const ENVIRONMENT_LIST_TARGET =
+  "environment-list" satisfies CompletionTarget;
+
+/** Cached release versions. */
+export const RELEASE_TARGET = "release" satisfies CompletionTarget;
+
+/** Cached team slugs. */
+export const TEAM_TARGET = "team" satisfies CompletionTarget;
+
+/** Cached teams as `team:<id>` owner actors. */
+export const OWNER_TARGET = "owner" satisfies CompletionTarget;
+
+/** Cached project slugs. */
+export const PROJECT_TARGET = "project" satisfies CompletionTarget;
+
+/** Comma-separated project slugs. */
+export const PROJECT_LIST_TARGET = "project-list" satisfies CompletionTarget;
+
+/** Comma-separated cached alert (workflow) IDs. */
+export const WORKFLOW_LIST_TARGET = "workflow-list" satisfies CompletionTarget;
+
+/** `monitor run`'s cached monitor slug, then the command to run. */
+export const MONITOR_COMMAND_TARGET =
+  "monitor-command" satisfies CompletionTarget;
+
+/** Cached native integration IDs. */
+export const INTEGRATION_TARGET = "integration" satisfies CompletionTarget;
+
+/** Cached installed Sentry App slugs. */
+export const SENTRY_APP_TARGET = "sentry-app" satisfies CompletionTarget;
+
+/** Cached Sentry App issue-link form fields, as `name=value`. */
+export const APP_LINK_FIELD_TARGET =
+  "app-link-field" satisfies CompletionTarget;
+
+/** Cached public DSNs. */
+export const DSN_TARGET = "dsn" satisfies CompletionTarget;
+
+/** Cached tag keys of issues. */
+export const TAG_KEY_TARGET = "tag-key" satisfies CompletionTarget;
+
+/** Field names of the dataset the command's `--dataset` names. */
+export const FIELD_TARGET = "field" satisfies CompletionTarget;
+
+/** {@link FIELD_TARGET} fields, or aggregates of them (`p95(span.duration)`). */
+export const FIELD_OR_AGGREGATE_TARGET =
+  "field-or-aggregate" satisfies CompletionTarget;
+
+/** Aggregates of {@link FIELD_TARGET} fields (`p95(span.duration)`). */
+export const AGGREGATE_TARGET = "aggregate" satisfies CompletionTarget;
+
+/** Dashboard shorthand aggregates (`count`, `p95:span.duration`). */
+export const AGGREGATE_SHORTHAND_TARGET =
+  "aggregate-shorthand" satisfies CompletionTarget;
+
+/** Servers of stored accounts. */
+export const ACCOUNT_SERVER_TARGET =
+  "account-server" satisfies CompletionTarget;
+
+/** `issue archive --until` conditions. */
+export const ARCHIVE_UNTIL_TARGET = "archive-until" satisfies CompletionTarget;
+
+/** Addresses a Local server can bind: loopback, then this machine's adapters. */
+export const BIND_HOST_TARGET = "bind-host" satisfies CompletionTarget;
+
+/** The running Local daemon's session IDs and unique labels. */
+export const LOCAL_SESSION_TARGET = "local-session" satisfies CompletionTarget;
+
+/** API paths relative to `/api/0/`, from the API schema. */
+export const API_ENDPOINT_TARGET = "api-endpoint" satisfies CompletionTarget;
+
+/** Refs git resolves locally (`main`, `v1.0.0`, `origin/main`). */
+export const GIT_REF_TARGET = "git-ref" satisfies CompletionTarget;
+
+/** Branch and tag names as the git remote knows them. */
+export const VCS_REF_TARGET = "vcs-ref" satisfies CompletionTarget;
+
+/** Full SHAs of recent commits. */
+export const GIT_COMMIT_TARGET = "git-commit" satisfies CompletionTarget;
+
+/** `owner/repo` names of the git remotes. */
+export const GIT_REPO_TARGET = "git-repo" satisfies CompletionTarget;
+
+/** Comma-separated `REPO@SHA` / `REPO@PREV..SHA` commits. */
+export const REPO_COMMIT_LIST_TARGET =
+  "repo-commit-list" satisfies CompletionTarget;
+
+const COMPLETION_TARGET_KEY = Symbol("completionTarget");
+
+const COMPLETION_CHOICES_KEY = Symbol("completionChoices");
+
+const COMPLETION_DATASETS_KEY = Symbol("completionDatasets");
+
+/** What a field or aggregate argument completes on one dataset. */
+export type DatasetFields = {
+  /** Cached entities that name its fields: attribute keys, or tag keys */
+  entity?: CompletionEntityKind;
+  /** Its fields, for a dataset whose set is fixed */
+  fields?: readonly string[];
+  /** Its aggregate function names */
+  functions?: readonly string[];
+  /** Whole aggregates it takes that are not a function of one field */
+  aggregates?: readonly string[];
+};
+
+/**
+ * What a field or aggregate argument completes, by the dataset the
+ * command's `--dataset` names.
+ */
+export type DatasetCompletion = {
+  /** What completes on each dataset, by its name */
+  datasets: Readonly<Record<string, DatasetFields>>;
+  /** Other lowercase `--dataset` spellings, mapped to the name they mean */
+  aliases?: Readonly<Record<string, string>>;
+  /** The dataset without `--dataset`; when omitted, every dataset */
+  default?: string;
+};
+
+/**
+ * What fields and aggregates complete on each Explore dataset: the cached
+ * attribute keys of spans, logs, and trace metrics, and the tag keys seen
+ * on issues for errors, with the aggregate functions
+ * `validateAggregateNames` accepts. Trace metric aggregates name a metric
+ * (`sum(value,metric,type,unit)`), so only their fields complete.
+ */
+export const DATASET_FIELDS = {
+  errors: {
+    entity: "tag-key",
+    functions: aggregateFunctionsOf("error-events"),
+  },
+  spans: { entity: "span-attribute", functions: aggregateFunctionsOf("spans") },
+  logs: { entity: "log-attribute", functions: aggregateFunctionsOf("logs") },
+  tracemetrics: { entity: "metric-attribute" },
+} as const satisfies Record<string, DatasetFields>;
+
+/**
+ * Tag a positional or flag parser with the completion kind it accepts.
+ *
+ * @returns `parse` itself, so the tag travels with the function
+ */
+export function withCompletionTarget<P extends (input: string) => unknown>(
+  kind: CompletionTarget,
+  parse: P,
+): P {
+  Object.defineProperty(parse, COMPLETION_TARGET_KEY, { value: kind });
+  return parse;
 }
 
 /**
- * Read the completion kind from a positional's `parse` function.
+ * A new parser that calls `parse`, tagged with `kind` and the `values` it
+ * completes. A new function, so tagging never touches a shared parser.
+ */
+function taggedParser<T>(
+  kind: CompletionTarget,
+  parse: (input: string) => T,
+  values?: readonly string[],
+): (input: string) => T {
+  const tagged = withCompletionTarget(kind, (input: string) => parse(input));
+  if (values) {
+    Object.defineProperty(tagged, COMPLETION_CHOICES_KEY, {
+      value: [...values],
+    });
+  }
+  return tagged;
+}
+
+/** A parser that returns its input unchanged, tagged with `kind`. */
+function identityParser(kind: CompletionTarget): (input: string) => string {
+  return taggedParser(kind, (input) => input);
+}
+
+/** Parses a file or directory path; completes paths. */
+export const parseFilePath = identityParser(FILE_TARGET);
+
+/** Parses a directory path; completes directories. */
+export const parseDirectoryPath = identityParser(DIRECTORY_TARGET);
+
+/** Parses free text; completes nothing. */
+export const parseText = identityParser(TEXT_TARGET);
+
+/**
+ * Parses a URL; completes nothing. The command validates it, so each one
+ * keeps its own error for a URL it cannot use.
+ */
+export const parseUrl = identityParser(TEXT_TARGET);
+
+/** Parses one segment of a CLI command path; completes route names. */
+export const parseCommandPath = identityParser(COMMAND_PATH_TARGET);
+
+/** Parses a stored-account selector; completes stored accounts. */
+export const parseAccountSelector = identityParser(ACCOUNT_TARGET);
+
+/** Parses a platform identifier; completes platforms. */
+export const parsePlatform = identityParser(PLATFORM_TARGET);
+
+// Parsers of values that name something the user does not make up. Each
+// returns its input unchanged: the command (or the API) validates it.
+
+/** Parses an organization slug; completes cached organizations. */
+export const parseOrgSlug = identityParser(ORG_TARGET);
+
+/** Parses an issue reference the command resolves; completes issues. */
+export const parseIssueReference = identityParser(ISSUE_TARGET);
+
+/** Parses a relative period the API validates; completes periods. */
+export const parseRelativePeriod = identityParser(PERIOD_TARGET);
+
+/** Parses an environment name; completes cached environments. */
+export const parseEnvironment = identityParser(ENVIRONMENT_TARGET);
+
+/** Parses comma-separated environment names; completes cached ones. */
+export const parseEnvironmentList = identityParser(ENVIRONMENT_LIST_TARGET);
+
+/** Parses a release version; completes cached releases. */
+export const parseRelease = identityParser(RELEASE_TARGET);
+
+/** Parses a team slug; completes cached teams. */
+export const parseTeam = identityParser(TEAM_TARGET);
+
+/** Parses an owner actor (`team:<id>`, `user:<id>`); completes cached teams. */
+export const parseOwner = identityParser(OWNER_TARGET);
+
+/** Parses a project slug; completes cached projects. */
+export const parseProjectSlug = identityParser(PROJECT_TARGET);
+
+/** Parses comma-separated project slugs; completes cached projects. */
+export const parseProjectList = identityParser(PROJECT_LIST_TARGET);
+
+/** Parses comma-separated alert (workflow) IDs; completes cached ones. */
+export const parseWorkflowList = identityParser(WORKFLOW_LIST_TARGET);
+
+/** Parses `monitor run`'s words; completes a cached monitor slug first. */
+export const parseMonitorCommand = identityParser(MONITOR_COMMAND_TARGET);
+
+/** Parses a native integration ID; completes cached integrations. */
+export const parseIntegration = identityParser(INTEGRATION_TARGET);
+
+/** Parses an installed Sentry App slug; completes cached installations. */
+export const parseSentryApp = identityParser(SENTRY_APP_TARGET);
+
+/** Parses a Sentry App link form `name=value`; completes cached fields. */
+export const parseAppLinkField = identityParser(APP_LINK_FIELD_TARGET);
+
+/** Parses a DSN; completes cached client-key DSNs. */
+export const parseDsn = identityParser(DSN_TARGET);
+
+/** Parses an issue tag key; completes cached tag keys. */
+export const parseTagKey = identityParser(TAG_KEY_TARGET);
+
+/** Parses an `issue archive --until` condition; completes its grammar. */
+export const parseArchiveUntil = identityParser(ARCHIVE_UNTIL_TARGET);
+
+/**
+ * Parses the host a Local server binds; completes the loopback hosts, then
+ * every interface (`0.0.0.0`) and the addresses of this machine's adapters.
+ */
+export const parseBindHost = identityParser(BIND_HOST_TARGET);
+
+/**
+ * Parses a Local session ID or label, which the daemon resolves; completes
+ * the running daemon's sessions.
+ */
+export const parseLocalSession = identityParser(LOCAL_SESSION_TARGET);
+
+/** Parses an `api` endpoint; completes API schema paths. */
+export const parseApiEndpoint = identityParser(API_ENDPOINT_TARGET);
+
+/** Parses a local git ref; completes branches, tags, and remote branches. */
+export const parseGitRef = identityParser(GIT_REF_TARGET);
+
+/** Parses a branch or tag name sent to Sentry; completes them from git. */
+export const parseVcsRef = identityParser(VCS_REF_TARGET);
+
+/** Parses a commit SHA; completes recent commits. */
+export const parseGitCommit = identityParser(GIT_COMMIT_TARGET);
+
+/** Parses an `owner/repo` name; completes those of the git remotes. */
+export const parseGitRepo = identityParser(GIT_REPO_TARGET);
+
+/** Parses `REPO@SHA` commits; completes remotes, then recent commits. */
+export const parseRepoCommitList = identityParser(REPO_COMMIT_LIST_TARGET);
+
+/**
+ * A parser that returns its input unchanged, tagged with `kind` and the
+ * fields and aggregates it completes on each dataset.
+ */
+function datasetParser(
+  kind: CompletionTarget,
+  completion: DatasetCompletion,
+): (input: string) => string {
+  const tagged = identityParser(kind);
+  Object.defineProperty(tagged, COMPLETION_DATASETS_KEY, { value: completion });
+  return tagged;
+}
+
+/** Parses a field name; completes those of the `--dataset` given. */
+export function fieldParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(FIELD_TARGET, completion);
+}
+
+/**
+ * Parses a field or an aggregate (`title`, `count()`, `p95(span.duration)`);
+ * completes the fields and aggregate functions of the `--dataset` given.
+ */
+export function fieldOrAggregateParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(FIELD_OR_AGGREGATE_TARGET, completion);
+}
+
+/** Parses an aggregate (`count()`, `p95(span.duration)`); completes them. */
+export function aggregateParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(AGGREGATE_TARGET, completion);
+}
+
+/**
+ * Parses a dashboard shorthand aggregate (`count`, `p95:span.duration`);
+ * completes function names, then a field after the `:`.
+ */
+export function aggregateShorthandParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(AGGREGATE_SHORTHAND_TARGET, completion);
+}
+
+/**
+ * Wrap a command's own parser of free text or numbers; completes nothing.
+ * The value is still parsed and validated by `parse`.
+ */
+export function textParser<T>(
+  parse: (input: string) => T,
+): (input: string) => T {
+  return taggedParser(TEXT_TARGET, parse);
+}
+
+/**
+ * Wrap a command's own parser of a value that completes `kind`, such as a
+ * validating URL parser whose values are stored accounts' servers. The
+ * value is still parsed and validated by `parse`.
+ */
+export function completingParser<T>(
+  kind: CompletionTarget,
+  parse: (input: string) => T,
+): (input: string) => T {
+  return taggedParser(kind, parse);
+}
+
+/**
+ * Build a parser that completes `values`. Without `parse` it returns its
+ * input unchanged, so the command still validates it: the values are
+ * suggestions, and a command may accept others (`cli upgrade 0.5.0` next
+ * to `nightly`). With `parse`, the command's own parser validates it.
+ */
+export function choiceParser(
+  values: readonly string[],
+): (input: string) => string;
+export function choiceParser<T>(
+  values: readonly string[],
+  parse: (input: string) => T,
+): (input: string) => T;
+export function choiceParser(
+  values: readonly string[],
+  parse: (input: string) => unknown = (input) => input,
+): (input: string) => unknown {
+  return taggedParser(CHOICE_TARGET, parse, values);
+}
+
+/**
+ * Build a parser of a comma-separated list that completes `values`, one
+ * list item at a time, leaving out the ones already in the list
+ * (`--fields id,ti` → `id,title`). Like {@link choiceParser}, it returns
+ * its input unless given the command's own `parse`.
+ */
+export function choiceListParser(
+  values: readonly string[],
+): (input: string) => string;
+export function choiceListParser<T>(
+  values: readonly string[],
+  parse: (input: string) => T,
+): (input: string) => T;
+export function choiceListParser(
+  values: readonly string[],
+  parse: (input: string) => unknown = (input) => input,
+): (input: string) => unknown {
+  return taggedParser(CHOICE_LIST_TARGET, parse, values);
+}
+
+/**
+ * Shared value parsers and what their arguments complete: a kind, or the
+ * fixed values they accept, completed as {@link CHOICE_TARGET}. Listed
+ * here, not tagged where they are defined, so those modules know nothing
+ * about completion: every flag that parses with one completes the same way.
+ */
+const PARSER_TARGETS: ReadonlyMap<
+  unknown,
+  CompletionTarget | readonly string[]
+> = new Map<unknown, CompletionTarget | readonly string[]>([
+  [sanitizeIssueQuery, ISSUE_QUERY_TARGET],
+  [sanitizeQuery, TEXT_TARGET],
+  [parsePeriod, PERIOD_TARGET],
+  [parseLoginEmail, ACCOUNT_TARGET],
+  [numberParser, TEXT_TARGET],
+  [parseCursorFlag, CURSOR_NAVIGATION],
+  [parseLogSort, VALID_LOG_SORT_DIRECTIONS],
+  [parseSpanDepth, SPAN_DEPTH_KEYWORDS],
+  [parseInstallationMethod, INSTALLATION_METHODS],
+  [parseReleaseChannel, RELEASE_CHANNELS],
+]);
+
+/**
+ * Read the completion kind from a positional's or flag's `parse` function.
  *
- * @returns The kind for {@link parseOrgTarget} / {@link parseOrgProjectTarget},
- *   or `undefined` for any other parser
+ * @returns The kind a parser was tagged with by {@link withCompletionTarget}
+ *   or is listed with in {@link PARSER_TARGETS}, or `undefined` for any
+ *   other parser
  */
 export function getCompletionTarget(
   parse: unknown,
 ): CompletionTarget | undefined {
-  if (parse === parseOrgTarget) {
-    return ORG_TARGET;
+  if (typeof parse !== "function") {
+    return;
   }
-  if (parse === parseOrgProjectTarget) {
-    return ORG_PROJECT_TARGET;
-  }
-  return;
+  const listed = PARSER_TARGETS.get(parse);
+  return (
+    (parse as { [COMPLETION_TARGET_KEY]?: CompletionTarget })[
+      COMPLETION_TARGET_KEY
+    ] ?? (typeof listed === "string" ? listed : listed && CHOICE_TARGET)
+  );
 }
+
+/**
+ * Read the values a parser completes: those of a {@link choiceParser} or
+ * {@link choiceListParser} parser, or of a shared parser listed with its
+ * values in {@link PARSER_TARGETS}.
+ *
+ * @returns The values, or `undefined` for any other parser
+ */
+export function getCompletionChoices(
+  parse: unknown,
+): readonly string[] | undefined {
+  if (typeof parse !== "function") {
+    return;
+  }
+  const listed = PARSER_TARGETS.get(parse);
+  return (
+    (parse as { [COMPLETION_CHOICES_KEY]?: readonly string[] })[
+      COMPLETION_CHOICES_KEY
+    ] ?? (typeof listed === "string" ? undefined : listed)
+  );
+}
+
+/**
+ * Read the fields and aggregates a parser made by {@link fieldParser} and
+ * its siblings completes.
+ *
+ * @returns Them, or `undefined` for any other parser
+ */
+export function getCompletionDatasets(
+  parse: unknown,
+): DatasetCompletion | undefined {
+  return typeof parse === "function"
+    ? (parse as { [COMPLETION_DATASETS_KEY]?: DatasetCompletion })[
+        COMPLETION_DATASETS_KEY
+      ]
+    : undefined;
+}
+
+/** Fixed values the completers offer (see {@link COMPLETION_VALUES}). */
+export type CompletionValues = {
+  /** Issue search keys with a fixed set of values, for {@link ISSUE_QUERY_TARGET} */
+  issueSearch: Readonly<Record<string, readonly string[]>>;
+  /** Units of a relative period, for {@link PERIOD_TARGET} (`7` → `7d`) */
+  periodUnits: readonly string[];
+  /** Relative periods offered for {@link PERIOD_TARGET}, with descriptions */
+  periodPresets: Readonly<Record<string, string>>;
+  /** Local's loopback hosts, offered first for {@link BIND_HOST_TARGET} */
+  loopbackHosts: readonly string[];
+  /**
+   * API schema paths without `/api/0/`, for {@link API_ENDPOINT_TARGET}.
+   * Not in {@link COMPLETION_VALUES}: the generator adds them from
+   * `getApiCompletionPaths`, so importing this module (as every command
+   * does) does not walk the API schema.
+   */
+  apiPaths: readonly string[];
+};
+
+/**
+ * Fixed values the completers offer, taken from the modules that define
+ * them. The generator writes them next to the command metadata so the
+ * `__complete` fast path gets them without loading those modules.
+ */
+export const COMPLETION_VALUES: Omit<CompletionValues, "apiPaths"> = {
+  issueSearch: { is: ISSUE_IS_VALUES, level: ISSUE_LEVELS },
+  periodUnits: Object.keys(UNIT_SECONDS),
+  // The presets of Sentry's time range selector (`DEFAULT_RELATIVE_PERIODS`
+  // in getsentry/sentry).
+  periodPresets: {
+    "1h": "Last hour",
+    "24h": "Last 24 hours",
+    "7d": "Last 7 days",
+    "14d": "Last 14 days",
+    "30d": "Last 30 days",
+    "90d": "Last 90 days",
+  },
+  loopbackHosts: LOOPBACK_HOSTS,
+};

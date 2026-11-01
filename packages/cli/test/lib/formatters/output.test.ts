@@ -1,5 +1,7 @@
+import { array, nullable, object, optional, string } from "valibot";
 import { describe, expect, test } from "vitest";
 import {
+  extractSchemaFieldPaths,
   type OutputConfig,
   renderCommandOutput,
   resolveRenderer,
@@ -125,7 +127,7 @@ describe("renderCommandOutput", () => {
     render(w, png, config, { json: false });
     expect(w.chunks).toHaveLength(1);
     expect(w.chunks[0]).toBeInstanceOf(Uint8Array);
-    expect(Array.from(w.bytes)).toEqual([
+    expect([...w.bytes]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
     // No trailing newline added by the text formatter path
@@ -139,7 +141,7 @@ describe("renderCommandOutput", () => {
     };
     const bytes = new Uint8Array([0xff, 0x00, 0x80]);
     render(w, bytes, config, { json: true });
-    expect(Array.from(w.bytes)).toEqual([0xff, 0x00, 0x80]);
+    expect([...w.bytes]).toEqual([0xff, 0x00, 0x80]);
   });
 
   test("jsonExclude strips fields from JSON output", () => {
@@ -358,5 +360,28 @@ describe("renderCommandOutput", () => {
     const renderer = resolveRenderer(config.human);
     expect(renderer.render("hello")).toBe("HELLO");
     expect(renderer.finalize).toBeUndefined();
+  });
+});
+
+describe("extractSchemaFieldPaths", () => {
+  test("lists nested fields in dot notation, through wrappers and arrays", () => {
+    const schema = object({
+      id: string(),
+      metadata: optional(nullable(object({ title: string() }))),
+      tags: array(object({ key: string(), value: string() })),
+    });
+
+    expect(extractSchemaFieldPaths(schema)).toEqual([
+      "id",
+      "metadata",
+      "metadata.title",
+      "tags",
+      "tags.key",
+      "tags.value",
+    ]);
+  });
+
+  test("returns nothing for a schema that is not an object", () => {
+    expect(extractSchemaFieldPaths(string())).toEqual([]);
   });
 });

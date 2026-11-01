@@ -112,7 +112,7 @@ describe("alert metrics list pagination", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
     func = (await listCommand.loader()) as unknown as ListFunc;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     openInBrowserSpy = vi.spyOn(browser, "openInBrowser");
     warnSpy = vi.spyOn(logger, "warn");

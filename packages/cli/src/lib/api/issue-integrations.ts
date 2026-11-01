@@ -204,7 +204,7 @@ async function listIntegrations(
   issueId: string,
 ): Promise<NativeIntegration[]> {
   const config = getSdkClientConfig(await resolveOrgRegion(orgSlug));
-  return fetchAllPages(
+  return await fetchAllPages(
     async (cursor) => {
       const result = await listOrganizationIssueIntegrations({
         ...config,

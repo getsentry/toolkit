@@ -3,9 +3,8 @@ import {
   type FilterToken,
   type ParseResultToken,
   parseSearch,
-  TermOperator,
-  Token,
-} from "@sentry/toolkit-core/search-syntax";
+} from "@sentry/search-syntax/parser";
+import { TermOperator, Token } from "@sentry/search-syntax/tokens";
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import type {
@@ -748,7 +747,11 @@ export function formatEventValue(
     return formatObjectValue(value, maxLength);
   }
 
-  return truncateString(sanitizeWhitespace(String(value)), maxLength);
+  if (typeof value === "bigint") {
+    return String(value);
+  }
+
+  return `<${typeof value}>`;
 }
 
 // Helper function to fetch custom attributes for a dataset
@@ -1050,7 +1053,7 @@ export async function validateEventsSearch(
     end?: string;
   },
 ): Promise<EventsValidationResult> {
-  return apiService.validateEvents({
+  return await apiService.validateEvents({
     organizationSlug,
     dataset,
     fields,
@@ -1273,6 +1276,7 @@ export function createDatasetAttributesTool(options: {
             attributeTypes,
             substringMatch,
             query,
+            context: true,
           },
         );
 

@@ -5,6 +5,16 @@ export interface SnapshotImageEntry {
   [key: string]: unknown;
 }
 
+/** VCS metadata attached to snapshot API responses. */
+export interface SnapshotVcsInfo {
+  repo_name?: string | null;
+  head_ref?: string | null;
+  head_sha?: string | null;
+  base_ref?: string | null;
+  base_sha?: string | null;
+  pr_number?: number | null;
+}
+
 export interface SnapshotImageTreeItem {
   image: SnapshotImageEntry;
   details?: string[];

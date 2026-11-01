@@ -268,30 +268,28 @@ describe("dashboard revisions command", () => {
     expect(output).toContain("-c prev");
   });
 
-  test("auto-pagination: --limit larger than page size fetches multiple pages", async () => {
-    // First page returns 2 items + nextCursor, second page returns 1 item
+  test("auto-pagination: --limit above one page keeps one per_page", async () => {
+    const page = Array.from({ length: 100 }, () => REVISION_A);
     listDashboardRevisionsPaginatedSpy
-      .mockResolvedValueOnce({
-        data: [REVISION_A, REVISION_B],
-        nextCursor: "cursor-page-2",
-      })
-      .mockResolvedValueOnce({
-        data: [REVISION_C],
-        nextCursor: undefined,
-      });
+      .mockResolvedValueOnce({ data: page, nextCursor: "100:1:0" })
+      .mockResolvedValueOnce({ data: page, nextCursor: "100:2:0" });
 
     const { context, stdoutWrite } = createMockContext();
     const func = await revisionsCommand.loader();
-    // Request 3 items, which exceeds a single page of 2
-    await func.call(context, defaultFlags({ json: true, limit: 3 }), "123");
+    await func.call(context, defaultFlags({ json: true, limit: 200 }), "123");
 
-    // Should have called API twice
-    expect(listDashboardRevisionsPaginatedSpy).toHaveBeenCalledTimes(2);
-
-    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
-    const parsed = JSON.parse(output);
-    expect(parsed.data).toHaveLength(3);
-    expect(parsed.hasMore).toBe(false);
+    // The revisions endpoint uses OffsetPaginator, whose cursor encodes the
+    // page size, so every request must send the same per_page.
+    expect(
+      listDashboardRevisionsPaginatedSpy.mock.calls.map((call) => call[2]),
+    ).toEqual([
+      { perPage: 100, cursor: undefined },
+      { perPage: 100, cursor: "100:1:0" },
+    ]);
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    expect(parsed.data).toHaveLength(200);
+    expect(parsed.hasMore).toBe(true);
+    expect(parsed.nextCursor).toContain("100:2:0");
   });
 
   // -------------------------------------------------------------------------

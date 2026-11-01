@@ -13,8 +13,7 @@ import type {
   DetectedDsn,
   ResolvedProjectInfo,
 } from "../dsn/types.js";
-import { recordCacheHit } from "../telemetry.js";
-import { getDatabase, maybeCleanupCaches } from "./index.js";
+import { getDatabase, maybeCleanupCaches, recordCacheHit } from "./index.js";
 import { safeParseJson } from "./json.js";
 import { runUpsert, touchCacheEntry } from "./utils.js";
 

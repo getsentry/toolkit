@@ -1,17 +1,12 @@
 
 
-## Examples
+## Filtering organizations
 
-```bash
-# List organizations
-sentry org list
-```
+Pass a filter to `sentry org list` to only list organizations whose slug or
+name matches it, best matches first. Matching ignores case and accepts exact
+matches, prefixes, substrings, small typos, or a glob such as `'acme-*'`.
 
-```
-SLUG           NAME                 ROLE
-my-org         My Organization      owner
-another-org    Another Org          member
-```
+## Multiple accounts
 
 With several stored accounts (see `sentry auth list`), `sentry org list` lists
 the organizations of every logged-in account together, each fetched with that
@@ -25,46 +20,10 @@ and `--account` to a single account. The stored active account never changes.
 With `--json`, each entry's `account` carries that notation as `name`, with its
 parts alongside: `email` (or `username`) and `server`.
 
+<!-- allow-commands: sample output with the ACCOUNT column -->
 ```
 $ sentry org list
 SLUG             NAME               ACCOUNT
 my-org           My Organization    jane@example.com:sentry.io
 acme-internal    Acme Internal      jane@acme.com:sentry.acme.com
-```
-
-```bash
-# Only one account's organizations
-sentry org list --account jane@acme.com
-# The same email on several servers: add the server
-sentry org list -a jane@example.com:sentry.io
-```
-
-```bash
-# Only organizations whose slug or name matches "acme", best matches first
-# (case-insensitive; prefix, substring, and small typos match too)
-sentry org list acme
-# ...or matches a glob
-sentry org list 'acme-*'
-```
-
-```bash
-# View organization details
-sentry org view my-org
-```
-
-```
-Organization: My Organization
-Slug: my-org
-Role: owner
-Projects: 5
-Teams: 3
-Members: 12
-```
-
-```bash
-# Open in browser
-sentry org view my-org -w
-
-# JSON output
-sentry org list --json
 ```

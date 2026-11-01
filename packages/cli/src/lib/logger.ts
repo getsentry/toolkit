@@ -1,28 +1,20 @@
 /**
  * Structured logging for Sentry CLI.
  *
- * Built on {@link https://github.com/unjs/consola | consola} — a lightweight CLI logger
- * with log levels, tag scoping, and fancy TTY output. Two reporters are wired up:
+ * The logger comes from `@sentry/logger` (`packages/logger`): levels, tag
+ * scoping, and reporters. This module configures it for the CLI. Each log
+ * call goes to every registered reporter:
  *
- * 1. **FancyReporter** (built-in) — writes to stderr with colors/icons for TTY,
- *    falls back to BasicReporter in CI/non-TTY environments. Its `formatDate` is
- *    overridden (see {@link patchReporterDates}) so the `[tag HH:MM:SS]` prefix
- *    renders in corrected local time — consola's default renders UTC in the SEA
- *    binaries this CLI ships.
- * 2. **Sentry.createConsolaReporter()** — auto-forwards all log messages to Sentry
- *    structured logs via `_INTERNAL_captureLog`. Requires `enableLogs: true` in
- *    `Sentry.init()` (already enabled in telemetry.ts).
+ * 1. **`fancyReporter`** — renders consola's "fancy" layout on stderr and
+ *    falls back to plain `[type] [tag] message` lines in CI and tests. It reads
+ *    the environment through {@link getEnv}, so library mode's isolated env
+ *    controls colors and layout.
+ * 2. **`sentryReporter(Sentry.logger)`** — forwards all log messages to Sentry
+ *    structured logs. Library mode drops these logs in `beforeSendLog` (see
+ *    telemetry.ts).
  *
- * ## Log levels
- *
- * | Level | consola | Shows |
- * |-------|---------|-------|
- * | error | 0       | fatal, error |
- * | warn  | 1       | + warn |
- * | log   | 2       | + log |
- * | info  | 3       | + info, success, start, ready, fail (default) |
- * | debug | 4       | + debug |
- * | trace | 5       | + trace, verbose |
+ * Prompts live in `prompt.ts`. See `packages/logger/README.md` for the log
+ * levels.
  *
  * ## Usage
  *
@@ -44,82 +36,31 @@
  * ## Environment variables
  *
  * - `SENTRY_LOG_LEVEL` — Sets log level: `error`, `warn`, `info` (default), `debug`, `trace`
- * - `NO_COLOR` — Disables color output (respected by consola natively)
+ * - `NO_COLOR` — Disables color output
  * - `FORCE_COLOR` — Forces color output even in non-TTY
- *
- * ## withTag level propagation
- *
- * Consola's `withTag()` creates an independent instance that snapshots the
- * parent's level at creation time. Scoped loggers created at module load
- * time (e.g. `const log = logger.withTag("upgrade")`) would miss later
- * `setLogLevel()` calls. To fix this, the logger's `withTag` method is
- * wrapped to register all children in a registry, and `setLogLevel()`
- * propagates the level to every registered child.
  *
  * @module
  */
 
-import { createRequire } from "node:module";
-import type { ConsolaInstance } from "consola";
-import { createConsola } from "consola";
-
-const _require = createRequire(import.meta.url);
+import {
+  createLogger,
+  fancyReporter,
+  parseLogLevel,
+  type Reporter,
+} from "@sentry/logger";
 
 import { getEnv } from "./env.js";
-import { formatLogTime } from "./timezone.js";
+
+export { LOG_LEVEL_NAMES, parseLogLevel } from "@sentry/logger";
+export type { LogLevelName, LogRecord, Reporter } from "@sentry/logger";
 
 /**
  * Environment variable name for controlling CLI log verbosity.
  *
- * Using `SENTRY_LOG_LEVEL` (not `CONSOLA_LEVEL`) to be consistent with
+ * Using `SENTRY_LOG_LEVEL` (not a logger-specific name) to be consistent with
  * other Sentry CLI env vars (`SENTRY_URL`, `SENTRY_AUTH_TOKEN`, etc.).
  */
 export const LOG_LEVEL_ENV_VAR = "SENTRY_LOG_LEVEL";
-
-/**
- * Valid log level names accepted by `SENTRY_LOG_LEVEL` and `--log-level`.
- *
- * Array index IS the consola numeric level:
- * - 0 = error (includes fatal)
- * - 1 = warn
- * - 2 = log
- * - 3 = info (default — also shows success, start, ready, fail)
- * - 4 = debug
- * - 5 = trace (includes verbose)
- */
-export const LOG_LEVEL_NAMES = [
-  "error",
-  "warn",
-  "log",
-  "info",
-  "debug",
-  "trace",
-] as const;
-
-/** A valid log level name string */
-export type LogLevelName = (typeof LOG_LEVEL_NAMES)[number];
-
-/**
- * Default log level when nothing is configured.
- * Level 3 shows info, success, start, ready, log, fail — standard user-facing output.
- */
-const DEFAULT_LOG_LEVEL = 3;
-
-/**
- * Parse a log level name string into a consola numeric level.
- *
- * Returns the default level (info = 3) for unrecognized values so that
- * a typo in `SENTRY_LOG_LEVEL` doesn't break the CLI.
- *
- * @param name - Level name from env var or CLI flag
- * @returns consola numeric level
- */
-export function parseLogLevel(name: string): number {
-  const idx = LOG_LEVEL_NAMES.indexOf(
-    name.toLowerCase().trim() as LogLevelName,
-  );
-  return idx === -1 ? DEFAULT_LOG_LEVEL : idx;
-}
 
 /**
  * Read the log level from `SENTRY_LOG_LEVEL`, called lazily by {@link setLogLevel}.
@@ -127,7 +68,7 @@ export function parseLogLevel(name: string): number {
  * Following the same pattern as `getSentryUrl()` in oauth.ts — env vars are read
  * at call time (not module load time) so tests can set them after import.
  *
- * @returns consola numeric level, or null if not set
+ * @returns numeric level, or null if not set
  */
 export function getEnvLogLevel(): number | null {
   const envLevel = getEnv()[LOG_LEVEL_ENV_VAR];
@@ -138,21 +79,14 @@ export function getEnvLogLevel(): number | null {
 }
 
 /**
- * Registry of all scoped loggers created via `logger.withTag()` at any depth.
- *
- * When `setLogLevel()` is called, every registered descendant is updated so that
- * module-level scoped loggers (created at import time, before the CLI parses
- * `--log-level` or `SENTRY_LOG_LEVEL`) see the new level. Grandchildren and
- * deeper descendants are tracked via recursive `patchWithTag()`.
- */
-const scopedLoggers: ConsolaInstance[] = [];
-
-/**
  * Global CLI logger instance.
  *
  * Use `logger.info()`, `logger.success()`, `logger.start()` for user-facing messages.
  * Use `logger.debug()`, `logger.trace()` for diagnostic output.
  * Use `logger.withTag('scope')` for domain-specific scoped loggers.
+ *
+ * All diagnostic/log output goes to stderr — stdout is reserved for command
+ * output (data, JSON, tables).
  *
  * The Sentry reporter is added lazily via {@link attachSentryReporter} after
  * Sentry.init() completes, since the reporter needs an active Sentry client.
@@ -161,21 +95,16 @@ const scopedLoggers: ConsolaInstance[] = [];
  * by bin.ts calling `setLogLevel(getEnvLogLevel())` — not at module load time —
  * so tests can override the env var after import.
  */
-export const logger = createConsola({
-  level: DEFAULT_LOG_LEVEL,
-  // All diagnostic/log output goes to stderr — stdout is reserved for
-  // command output (data, JSON, tables). Both streams must be set because
-  // consola's BasicReporter (non-TTY) routes debug/info to stdout by default.
-  stdout: process.stderr,
-  stderr: process.stderr,
+export const logger = createLogger({
+  reporters: [fancyReporter({ env: getEnv })],
 });
 
 /**
- * Write an already-formatted line to stderr verbatim, bypassing consola.
+ * Write an already-formatted line to stderr verbatim, bypassing the logger.
  *
  * Event tails (`sentry local`) render their own prefix — an event timestamp,
  * level tag, and source tag — before printing. Routing those lines through
- * `logger.log()` makes consola's reporter prepend/append a *second* timestamp
+ * `logger.log()` makes the reporter prepend/append a *second* timestamp
  * (the wall-clock print time), so every line carried two different times.
  * Writing directly keeps the single, meaningful event timestamp.
  *
@@ -198,120 +127,43 @@ export function printJsonLine(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
-/**
- * Patch a consola instance's `withTag` so every child (and grandchild)
- * is registered in {@link scopedLoggers} for {@link setLogLevel} propagation.
- */
-function patchWithTag(instance: ConsolaInstance): void {
-  const original = instance.withTag.bind(instance);
-  instance.withTag = (tag: string): ConsolaInstance => {
-    const child = original(tag);
-    scopedLoggers.push(child);
-    patchWithTag(child);
-    return child;
-  };
-}
-
-// Patch the root logger so all descendants are tracked.
-// Consola's withTag() creates a completely independent instance that
-// snapshots the level at creation time — children never see later
-// setLogLevel() calls. By registering them here, setLogLevel() can
-// propagate the new level to all descendants.
-patchWithTag(logger);
-
-/**
- * A consola reporter exposes a `formatDate(date, opts)` method that produces
- * the time shown in the `[tag HH:MM:SS]` log prefix. Consola does not export
- * its `FancyReporter`/`BasicReporter` classes, so we type just the slice we
- * override.
- */
-type DateFormattingReporter = {
-  formatDate?: (date: Date, opts: unknown) => string;
-};
-
-/**
- * Replace each default reporter's `formatDate` with {@link formatLogTime}.
- *
- * Consola's built-in reporters format the prefix time via
- * `date.toLocaleTimeString()` with no arguments. That call renders in whatever
- * timezone the runtime resolved — which silently falls back to **UTC** in the
- * SEA binaries this CLI ships, so users saw log timestamps hours off from their
- * local clock. Overriding `formatDate` guarantees the prefix uses the corrected
- * local time (see {@link formatLogTime}) regardless of ICU state, and switches
- * to an unambiguous 24-hour format.
- *
- * The instances are reused from `logger.options.reporters` so all of consola's
- * other formatting (icons, colors, alignment, badges) is preserved untouched.
- */
-function patchReporterDates(instance: ConsolaInstance): void {
-  const reporters = (instance.options?.reporters ??
-    []) as DateFormattingReporter[];
-  for (const reporter of reporters) {
-    if (typeof reporter.formatDate === "function") {
-      reporter.formatDate = (date: Date) => formatLogTime(date);
-    }
-  }
-}
-
-patchReporterDates(logger);
-
 /** Whether the Sentry reporter has already been attached */
 let sentryReporterAttached = false;
 
 /**
- * Attach the Sentry consola reporter for automatic log forwarding.
+ * Attach the Sentry reporter for automatic log forwarding.
  *
- * Must be called after `Sentry.init()` completes so that `createConsolaReporter()`
- * can find the active client. Safe to call multiple times — subsequent calls are no-ops.
+ * Must be called after `Sentry.init()` completes so that the reporter has an
+ * active client. Safe to call multiple times — subsequent calls are no-ops.
+ * The caller creates the reporter so this module never imports `@sentry/node`:
+ * the `__complete` fast path loads the logger through the database modules.
  *
- * The reporter auto-forwards all consola log messages to Sentry structured logs,
- * mapping consola types to Sentry severity levels:
- * - fatal → fatal, error → error, warn → warn
- * - info/log/success/ready/start → info
- * - debug/verbose → debug, trace → trace
+ * The reporter forwards all log messages to Sentry structured logs, mapping
+ * log types to Sentry severity levels:
+ * - error → error, fail → error, warn → warn
+ * - info/log/success/start → info
+ * - debug → debug, trace → trace
  *
- * Tags are preserved as `consola.tag` attributes in Sentry.
+ * Tags are preserved as `logger.tag` attributes in Sentry.
  */
-export function attachSentryReporter(): void {
+export function attachSentryReporter(reporter: Reporter): void {
   if (sentryReporterAttached) {
     return;
   }
 
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    // Dynamic import to avoid pulling in Sentry at module load time.
-    // The reporter is exported from @sentry/node-core/light (via @sentry/node → @sentry/core).
-    const Sentry = _require("@sentry/node-core/light") as {
-      createConsolaReporter: (options?: Record<string, unknown>) => {
-        log: (logObj: unknown) => void;
-      };
-    };
-
-    const sentryReporter = Sentry.createConsolaReporter();
-    logger.addReporter(sentryReporter);
-    sentryReporterAttached = true;
-  } catch {
-    // Sentry not available (e.g., telemetry disabled) — continue without reporter
-  }
+  logger.addReporter(reporter);
+  sentryReporterAttached = true;
 }
 
 /**
- * Set the logger level at runtime and propagate to all scoped children.
+ * Set the level of the logger and every scoped logger at runtime.
  *
  * Called from:
  * - bin.ts to apply `SENTRY_LOG_LEVEL` env var early
  * - `buildCommand` wrapper when `--log-level` or `--verbose` flags are parsed
  *
- * Propagation is necessary because consola's `withTag()` creates independent
- * instances that snapshot the parent's level at creation time. Module-level
- * scoped loggers (e.g. `const log = logger.withTag("upgrade")`) would never
- * see a later level change without this.
- *
- * @param level - consola numeric level (0-5)
+ * @param level - numeric level (0-5)
  */
 export function setLogLevel(level: number): void {
   logger.level = level;
-  for (const child of scopedLoggers) {
-    child.level = level;
-  }
 }

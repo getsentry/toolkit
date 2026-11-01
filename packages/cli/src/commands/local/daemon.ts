@@ -21,7 +21,7 @@ import type { Server } from "node:http";
 import { join } from "node:path";
 import { isSea } from "../../lib/react-native/wrap-call.js";
 import { setTimeout as sleep } from "node:timers/promises";
-import { getConfigDir } from "../../lib/db/index.js";
+import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { formatLocalServerUrl } from "./ui.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -34,6 +34,11 @@ import {
   PORT_RETRY_TIMEOUT_MS,
   tryListen,
 } from "./server.js";
+import {
+  removeLocalSessionSnapshot,
+  writeLocalSessionSnapshot,
+} from "./session-snapshot.js";
+import { createLocalSessionStore, type LocalSession } from "./session-store.js";
 
 export const LOCAL_DAEMON_STATE_FILENAME = "local-control-plane.json";
 export const LOCAL_DAEMON_PROTOCOL_VERSION = 1;
@@ -62,6 +67,8 @@ export type LocalDaemonSession = {
   readonly ingestUrl: string;
   readonly label: string;
   readonly streamUrl: string;
+  /** Older daemon versions do not advertise browser discovery. */
+  readonly directoryUrl?: string;
 };
 
 function statePath(directory: string): string {
@@ -269,7 +276,7 @@ export async function claimDaemonOwnership(
           ) {
             await rm(path, { force: true });
             // Claim while the guard is still held, even on the final recovery attempt.
-            return tryClaim();
+            return await tryClaim();
           }
         }
       } catch (error) {
@@ -281,7 +288,7 @@ export async function claimDaemonOwnership(
           )
         )
           throw error;
-        return tryClaim();
+        return await tryClaim();
       }
       return undefined;
     });
@@ -310,13 +317,22 @@ function isProcessRunning(pid: number): boolean {
 
 /** Read a lock's owning PID without interpreting an absent file as ownership. */
 async function readOwnerPid(path: string): Promise<number> {
-  try {
-    return Number(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return 0;
-    logger.debug("Could not read Local startup ownership", error);
-    throw error;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return Number(await readFile(path, "utf8"));
+    } catch (error) {
+      if (error instanceof Error && "code" in error) {
+        if (error.code === "ENOENT") return 0;
+        // Windows may briefly deny reads while the previous owner removes its
+        // file. Retry without interpreting an unreadable owner as absent.
+        if (error.code === "EPERM" && attempt < 4) {
+          await sleep(125);
+          continue;
+        }
+      }
+      logger.debug("Could not read Local startup ownership", error);
+      throw error;
+    }
   }
 }
 
@@ -341,7 +357,7 @@ async function discoverLocalDaemon(
     current.port !== state.port ||
     current.version !== state.version
   ) {
-    return discoverLocalDaemon(waitForResponse);
+    return await discoverLocalDaemon(waitForResponse);
   }
   if (responds) return state;
   if (isProcessRunning(state.pid)) {
@@ -357,7 +373,7 @@ async function discoverLocalDaemon(
 export async function getRunningLocalDaemon(): Promise<
   LocalDaemonState | undefined
 > {
-  return discoverLocalDaemon();
+  return await discoverLocalDaemon();
 }
 
 /** Wait for the stopped daemon to relinquish state and ownership, even while its PID lives. */
@@ -413,8 +429,7 @@ export async function ensureLocalDaemon({
     throw new Error("The Local control-plane port must be non-zero.");
   const running = await getRunningLocalDaemon();
   if (running) return running;
-  const directory = getConfigDir();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directory = ensureConfigDir();
   let lock: Awaited<ReturnType<typeof open>>;
   try {
     lock = await open(startupLockPath(directory), "wx", 0o600);
@@ -435,7 +450,7 @@ export async function ensureLocalDaemon({
       );
     }
     await rm(startupLockPath(directory), { force: true });
-    return ensureLocalDaemon({ host, port });
+    return await ensureLocalDaemon({ host, port });
   }
   let child: ChildProcess | undefined;
   let ready = false;
@@ -499,11 +514,17 @@ export async function runLocalDaemonForeground({
   if (port === 0) {
     throw new Error("The Local control-plane port must be non-zero.");
   }
-  const directory = getConfigDir();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directory = ensureConfigDir();
   const releaseOwnership = await claimDaemonOwnership(directory);
   let listening: Awaited<ReturnType<typeof tryListen>> | undefined;
   let ownedState: LocalDaemonState | undefined;
+  const snapshotSessions = (sessions: readonly LocalSession[]) => {
+    try {
+      writeLocalSessionSnapshot(process.pid, sessions);
+    } catch (error) {
+      logger.debug("Could not write the Local session snapshot", error);
+    }
+  };
   try {
     const token = randomBytes(32).toString("base64url");
     let stop: (() => void) | undefined;
@@ -515,6 +536,8 @@ export async function runLocalDaemonForeground({
       host,
       port,
       onStop: () => stop?.(),
+      // For shell completion, which cannot ask the daemon
+      sessionStore: createLocalSessionStore({ onChange: snapshotSessions }),
     });
     listening = await tryListen(controlPlane.app, port, host);
     const state: LocalDaemonState = {
@@ -526,6 +549,8 @@ export async function runLocalDaemonForeground({
     };
     ownedState = state;
     await writeLocalDaemonState(directory, state);
+    // Replaces the sessions of a daemon that exited without removing them
+    snapshotSessions(controlPlane.sessionStore.list());
 
     let idleTimer: ReturnType<typeof setTimeout> | undefined;
     const pruneSessions = () => {
@@ -570,6 +595,13 @@ export async function runLocalDaemonForeground({
         current.token === ownedState.token
       ) {
         await removeLocalDaemonState(directory);
+      }
+      if (ownedState) {
+        try {
+          removeLocalSessionSnapshot();
+        } catch (error) {
+          logger.debug("Could not remove the Local session snapshot", error);
+        }
       }
     } finally {
       await releaseOwnership();

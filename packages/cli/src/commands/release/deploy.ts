@@ -8,7 +8,11 @@
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
+import {
+  parseEnvironment,
+  parseText,
+  parseUrl,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   mdKvTable,
@@ -18,9 +22,8 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
 import type { SentryDeploy } from "../../types/index.js";
-import { parseReleaseArg } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT =
   "sentry release deploy [<org>/]<version> <environment> [name]";
@@ -53,47 +56,54 @@ function formatDeployCreated(data: Record<string, unknown>): string {
 }
 
 /**
- * Parse the deploy positionals: `[org/]version`, `environment`, optional `name`.
+ * Check the deploy positionals after the release: the required
+ * `environment` and an optional `name`.
  *
- * The first arg is parsed as the release target (version with optional org prefix).
- * The second arg is the required environment. The third is an optional deploy
- * name — multi-word names must be quoted (e.g. `"Deploy #42"`), matching standard
- * CLI conventions and avoiding the silent `args.join(" ")` defect.
+ * The deploy name is a single positional — multi-word names must be quoted
+ * (e.g. `"Deploy #42"`), matching standard CLI conventions and avoiding the
+ * silent `args.join(" ")` defect.
  *
- * @param target - The `[<org>/]<version>` release target
  * @param environment - The deploy environment
  * @param name - Optional deploy name
  */
 function parseDeployArgs(
-  target: string,
-  environment: string,
+  environment: string | undefined,
   name?: string,
-): {
-  version: string;
-  orgSlug?: string;
-  environment: string;
-  name?: string;
-} {
-  if (!(target && environment)) {
-    throw new ContextError("Release version and environment", USAGE_HINT, []);
+): { environment: string; name?: string } {
+  if (!environment) {
+    throw new ContextError("Environment", USAGE_HINT, []);
   }
-
-  const { version, orgSlug } = parseReleaseArg(target, USAGE_HINT);
-
-  return { version, orgSlug, environment, name: name || undefined };
+  return { environment, name: name || undefined };
 }
 
 export const deployCommand = buildCommand({
   docs: {
     brief: "Create a deploy for a release",
     fullDescription:
-      "Create a deploy record for a release in a specific environment.\n\n" +
-      "Examples:\n" +
-      "  sentry release deploy 1.0.0 production\n" +
-      '  sentry release deploy my-org/1.0.0 staging "Deploy #42"\n' +
-      "  sentry release deploy 1.0.0 production --url https://example.com\n" +
-      "  sentry release deploy 1.0.0 production --time 120\n" +
-      "  sentry release deploy 1.0.0 production --dry-run",
+      "Create a deploy record for a release in a specific environment.",
+    examples: [
+      {
+        description: "Create a deploy",
+        command: "sentry release deploy 1.0.0 production",
+      },
+      {
+        description: "Create a named deploy in an explicit organization",
+        command: 'sentry release deploy my-org/1.0.0 staging "Deploy #42"',
+      },
+      {
+        description: "Attach a deploy URL",
+        command:
+          "sentry release deploy 1.0.0 production --url https://example.com",
+      },
+      {
+        description: "Record a deploy duration in seconds",
+        command: "sentry release deploy 1.0.0 production --time 120",
+      },
+      {
+        description: "Preview without creating",
+        command: "sentry release deploy 1.0.0 production --dry-run",
+      },
+    ],
   },
   output: {
     human: formatDeployCreated,
@@ -102,21 +112,17 @@ export const deployCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
         {
           placeholder: "environment",
           brief: "Deploy environment (e.g. production)",
-          parse: String,
+          parse: parseEnvironment,
         },
         {
           placeholder: "name",
           brief:
             'Optional deploy name (quote multi-word names, e.g. "Deploy #42")',
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],
@@ -124,19 +130,19 @@ export const deployCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for the deploy",
         optional: true,
       },
       started: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy start time (ISO 8601)",
         optional: true,
       },
       finished: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy finish time (ISO 8601)",
         optional: true,
       },
@@ -162,21 +168,12 @@ export const deployCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
     environmentArg: string,
     nameArg?: string,
   ) {
-    const { cwd } = this;
-
-    const { version, orgSlug, environment, name } = parseDeployArgs(
-      target,
-      environmentArg,
-      nameArg,
-    );
-    const resolved = await resolveOrg({ org: orgSlug, cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
-    }
+    const { environment, name } = parseDeployArgs(environmentArg, nameArg);
+    const { version, org } = await target.resolved;
 
     const body: Parameters<typeof createReleaseDeploy>[2] = { environment };
     if (name) {
@@ -220,7 +217,7 @@ export const deployCommand = buildCommand({
       return { hint: "Dry run — no deploy was created." };
     }
 
-    const deploy = await createReleaseDeploy(resolved.org, version, body);
+    const deploy = await createReleaseDeploy(org, version, body);
     yield new CommandOutput(deploy);
   },
 });
