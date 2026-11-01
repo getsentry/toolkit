@@ -170,6 +170,51 @@ export function getCachedCompletionEntities(
   }));
 }
 
+/**
+ * When an entity of `kind` from `orgSlug` was last stored, or `undefined`
+ * when none is.
+ */
+export function getLatestCompletionSeen(
+  kind: CompletionEntityKind,
+  orgSlug: string,
+): number | undefined {
+  const row = getDatabase()
+    .query(
+      "SELECT MAX(last_seen) AS latest FROM completion_cache WHERE kind = ? AND org_slug = ?",
+    )
+    .get(kind, orgSlug) as { latest: number | null } | undefined;
+  return row?.latest ?? undefined;
+}
+
+/**
+ * Orgs the user worked in since `since`, most recent first: orgs of the
+ * projects commands resolved, and of the entities they listed or viewed.
+ * Entities of `exceptKinds` are left out, so a cache warm-up does not count
+ * as use of the org it warms.
+ */
+export function getRecentlyUsedOrgs(
+  since: number,
+  exceptKinds: readonly CompletionEntityKind[] = [],
+): string[] {
+  const kindFilter = exceptKinds.length
+    ? `AND kind NOT IN (${exceptKinds.map(() => "?").join(", ")})`
+    : "";
+  const rows = getDatabase()
+    .query(
+      `SELECT org_slug, MAX(used) AS used FROM (
+         SELECT org_slug, last_accessed AS used FROM project_cache
+         WHERE last_accessed >= ?
+         UNION ALL
+         SELECT org_slug, last_seen AS used FROM completion_cache
+         WHERE last_seen >= ? ${kindFilter}
+       )
+       GROUP BY org_slug
+       ORDER BY used DESC, org_slug`,
+    )
+    .all(since, since, ...exceptKinds) as { org_slug: string }[];
+  return rows.map((row) => row.org_slug);
+}
+
 /** Drop every remembered entity (called on logout). */
 export function clearCompletionCache(): void {
   getDatabase().query("DELETE FROM completion_cache").run();

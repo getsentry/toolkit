@@ -459,7 +459,10 @@ authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
 `src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
 operations it lists (by URL template, type-checked against the SDK, and the
 query parameters that pick what a response holds, such as the attribute
-keys' `dataset`), so API functions never seed by hand. To complete a new
+keys' `dataset`), so API functions never seed by hand. Attribute keys are
+also fetched ahead of time by `src/lib/completion-warmup.ts`, which
+`auth login` and `cli setup` call: the default org plus up to three
+recently used orgs, all datasets in parallel, aborted after a second. To complete a new
 entity type, add it to `CompletionEntityKind`, its operations in `completion-seed.ts` (one
 response may seed several kinds), a tagged parser, and an `entityCompleter`
 (target positionals) or `flagEntityCompleter` (flag values) entry in

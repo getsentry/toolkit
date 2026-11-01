@@ -15,6 +15,10 @@ import {
   completingParser,
   parseText,
 } from "../../lib/completion-target.js";
+import {
+  WARMUP_TIMEOUT_MS,
+  warmAttributeCompletions,
+} from "../../lib/completion-warmup.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
   getAccountIdToReplace,
@@ -719,10 +723,10 @@ export const loginCommand = buildCommand({
         await removeAccount(replacedAccountId);
       }
 
-      // Warm the org + region cache so the first real command is fast.
-      // Fire-and-forget — login already succeeded, caching is best-effort.
-      warmOrgCache();
-      return yield new CommandOutput(result);
+      yield new CommandOutput(result);
+      // Login already succeeded and is printed; warming is best-effort.
+      await warmCachesAfterLogin();
+      return;
     }
 
     // OAuth device flow (host scope recorded via completeOAuthFlow → setAuthToken)
@@ -735,8 +739,8 @@ export const loginCommand = buildCommand({
 
     if (result) {
       persistLoginUrlAsDefault(flags.url, effectiveHost);
-      warmOrgCache();
       yield new CommandOutput(result);
+      await warmCachesAfterLogin();
       return { hint: rcTokenHint(rcConfig, effectiveHost) };
     }
     // Error already displayed by runInteractiveLogin
@@ -745,18 +749,43 @@ export const loginCommand = buildCommand({
 });
 
 /**
- * Pre-populate the org + region SQLite cache in the background.
+ * Warm the caches the next commands read, after a successful login.
  *
- * Called after successful authentication so that the first real command
- * doesn't pay the cold-start cost of `getUserRegions()` + fan-out to
- * each region's org list endpoint (~800ms on a typical SaaS account).
+ * First the org + region cache, so the first real command doesn't pay the
+ * cold-start cost of `getUserRegions()` + fan-out to each region's org list
+ * endpoint (~800ms on a typical SaaS account). Then, with the account's orgs
+ * known, the attribute keys that field completion offers (see
+ * {@link warmAttributeCompletions}).
  *
- * Failures are silently ignored — the cache will be populated lazily
- * on the next command that needs it.
+ * Login has already printed success, so each step gets
+ * {@link WARMUP_TIMEOUT_MS}. An org list that takes longer is left to finish
+ * in the background, as before this warm-up existed, and the attribute
+ * warm-up is skipped.
+ *
+ * Never throws: each cache is populated lazily by the next command that
+ * needs it anyway.
  */
-function warmOrgCache(): void {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  listOrganizationsUncached().catch(() => {
-    // Best-effort: cache warming failure doesn't affect the login result
+async function warmCachesAfterLogin(): Promise<void> {
+  const listed = listOrganizationsUncached().then(
+    () => true,
+    (error: unknown) => {
+      log.debug("Could not warm the org cache after login", error);
+      return false;
+    },
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => {
+      log.debug("Org list is still loading; not warming attribute keys");
+      resolve(false);
+    }, WARMUP_TIMEOUT_MS);
   });
+  try {
+    if (!(await Promise.race([listed, timedOut]))) {
+      return;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  await warmAttributeCompletions();
 }
