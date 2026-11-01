@@ -271,6 +271,39 @@ tester.run(
           },
         ],
       },
+      {
+        // A flag with a placeholder is still named by its flag name
+        filename: commands,
+        code: "const flags = { method: { kind: 'parsed', parse: String, brief: 'Method', placeholder: 'method' } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "--method",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        filename: commands,
+        code: "const positional = { kind: 'array', parameter: { placeholder: 'path', brief: 'Path', parse: String } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "<path>",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
     ],
     invalid: [
       {

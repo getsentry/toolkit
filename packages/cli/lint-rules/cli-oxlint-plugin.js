@@ -264,15 +264,23 @@ function objectProperty(node, key) {
 
 /**
  * The parameter an object literal defines, as the coverage test names it:
- * `<placeholder>` for a positional, `--name` for a flag.
+ * `--name` for a flag, keyed by its name (flags can have a `placeholder`
+ * too), and `<placeholder>` for a positional, which sits in a tuple's
+ * `parameters` array or an array positional's `parameter`.
  */
 function parameterName(node) {
+  const parent = node.parent;
+  if (
+    parent?.type === "Property" &&
+    parent.value === node &&
+    !parent.computed
+  ) {
+    const key = parent.key.name ?? parent.key.value;
+    if (key !== "parameter") return `--${key}`;
+  }
   const placeholder = objectProperty(node, "placeholder")?.value;
   if (placeholder?.type === "Literal" && typeof placeholder.value === "string")
     return `<${placeholder.value}>`;
-  const parent = node.parent;
-  if (parent?.type === "Property" && parent.value === node && !parent.computed)
-    return `--${parent.key.name ?? parent.key.value}`;
   return undefined;
 }
 
