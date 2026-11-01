@@ -1,8 +1,11 @@
+import { fileURLToPath } from "node:url";
 import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
 import { experimental_createMCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
 import { getOpenRouterModel } from "@sentry/mcp-core/internal/agents/openrouter-provider";
+
+const CLI_DIR = fileURLToPath(new URL("../../../../cli", import.meta.url));
 
 // Cache for available tools to avoid reconnecting for each test
 let cachedTools: string[] | null = null;
@@ -16,12 +19,16 @@ async function getAvailableTools(): Promise<string[]> {
     return cachedTools;
   }
 
-  // Use pnpm exec to run the binary from the workspace
+  // An inherited deprecated `SENTRY_ACCESS_TOKEN` would replace the mock
+  // token below, and could be scoped to another host than sentry.io.
+  const { SENTRY_ACCESS_TOKEN: _deprecatedToken, ...env } = process.env;
+
+  // Run `sentry mcp` from the workspace CLI source.
   const transport = new Experimental_StdioMCPTransport({
     command: "pnpm",
-    args: ["exec", "sentry-mcp", "--all-skills"],
+    args: ["--silent", "--dir", CLI_DIR, "run", "cli", "mcp", "--all-skills"],
     env: {
-      ...process.env,
+      ...env,
       SENTRY_AUTH_TOKEN: "mocked-access-token",
       SENTRY_FORCE_ENV_TOKEN: "1",
       SENTRY_HOST: "sentry.io",
