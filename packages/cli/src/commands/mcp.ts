@@ -9,7 +9,11 @@
 
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
-import { parseText } from "../lib/completion-target.js";
+import {
+  parseOrgSlug,
+  parseProjectSlug,
+  parseText,
+} from "../lib/completion-target.js";
 import type { McpFlags } from "../lib/mcp/args.js";
 
 /**
@@ -28,6 +32,14 @@ export const MCP_SKILL_NAMES = [
 /** An optional string flag. */
 function stringFlag(brief: string) {
   return { kind: "parsed", parse: parseText, brief, optional: true } as const;
+}
+
+/** A hidden flag kept so existing MCP client configurations keep working. */
+function deprecatedStringFlag(replacement: string) {
+  return {
+    ...stringFlag(`Deprecated: use ${replacement} instead`),
+    hidden: true,
+  } as const;
 }
 
 /** A boolean flag that defaults to off. */
@@ -91,16 +103,28 @@ export const mcpCommand = buildCommand({
   },
   parameters: {
     flags: {
-      "access-token": stringFlag(
-        "Deprecated: set SENTRY_AUTH_TOKEN (and SENTRY_FORCE_ENV_TOKEN=1) instead",
-      ),
+      "access-token": stringFlag("Deprecated: set SENTRY_AUTH_TOKEN instead"),
       host: stringFlag("Sentry host for self-hosted instances"),
       url: stringFlag("Sentry URL (https only; use --host for http)"),
       "insecure-http": booleanFlag(
         "Use http:// for a self-hosted --host value",
       ),
-      "organization-slug": stringFlag("Limit every call to this organization"),
-      "project-slug": stringFlag("Limit calls to this project"),
+      // The CLI's own --org/--project, which this command owns instead of
+      // mapping them onto SENTRY_ORG/SENTRY_PROJECT.
+      org: {
+        kind: "parsed",
+        parse: parseOrgSlug,
+        brief: "Limit every call to this organization",
+        optional: true,
+      },
+      project: {
+        kind: "parsed",
+        parse: parseProjectSlug,
+        brief: "Limit calls to this project",
+        optional: true,
+      },
+      "organization-slug": deprecatedStringFlag("--org"),
+      "project-slug": deprecatedStringFlag("--project"),
       skills: stringFlag(
         "Skills to grant, comma-separated (default: active skills; seer is left out on self-hosted)",
       ),

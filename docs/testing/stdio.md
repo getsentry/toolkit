@@ -371,6 +371,11 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 --url=https://sentry.example.com  # Self-hosted Sentry (full URL)
 --insecure-http                   # Allow http:// for --host
 
+# Constraints (the CLI's --org/--project; --organization-slug and
+# --project-slug still work but are deprecated)
+--org=my-org                      # Limit every call to this organization
+--project=my-project              # Limit calls to this project
+
 # Skills management
 --skills=inspect,docs,triage      # Limit to specific skills (default: all available)
 --disable-skills=seer             # Remove skills from the default set

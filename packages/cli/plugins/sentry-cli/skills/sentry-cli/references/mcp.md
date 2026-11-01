@@ -16,12 +16,12 @@ Start a local Sentry MCP server
 Start a local Sentry MCP server
 
 **Flags:**
-- `--access-token <value> - Deprecated: set SENTRY_AUTH_TOKEN (and SENTRY_FORCE_ENV_TOKEN=1) instead`
+- `--access-token <value> - Deprecated: set SENTRY_AUTH_TOKEN instead`
 - `--host <value> - Sentry host for self-hosted instances`
 - `--url <value> - Sentry URL (https only; use --host for http)`
 - `--insecure-http - Use http:// for a self-hosted --host value`
-- `--organization-slug <value> - Limit every call to this organization`
-- `--project-slug <value> - Limit calls to this project`
+- `--org <value> - Limit every call to this organization`
+- `--project <value> - Limit calls to this project`
 - `--skills <value> - Skills to grant, comma-separated (default: active skills; seer is left out on self-hosted)`
 - `--all-skills - Grant every active skill, including seer on self-hosted`
 - `--disable-skills <value> - Skills to remove, comma-separated`

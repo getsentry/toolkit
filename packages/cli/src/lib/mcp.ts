@@ -9,7 +9,12 @@ import {
 } from "./db/auth.js";
 import { getEnv, withEnv } from "./env.js";
 import { AuthError, HostScopeError } from "./errors.js";
-import { type McpFlags, mergeMcpArgs, parseMcpEnv } from "./mcp/args.js";
+import {
+  deprecatedScopeFlags,
+  type McpFlags,
+  mergeMcpArgs,
+  parseMcpEnv,
+} from "./mcp/args.js";
 import { finalizeMcpConfig } from "./mcp/config.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
@@ -304,6 +309,12 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   const config = finalizeMcpConfig(
     mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env)),
   );
+  for (const { flag, replacement } of deprecatedScopeFlags(flags)) {
+    // stderr only: stdout carries the stdio MCP transport.
+    process.stderr.write(
+      `Deprecation warning: --${flag} is deprecated; use --${replacement} instead.\n`,
+    );
+  }
   const deprecated = readDeprecatedAccessToken(flags, env);
   if (deprecated) {
     warnDeprecatedAccessToken(deprecated.source);

@@ -8,6 +8,8 @@
  * env token (see `lib/mcp.ts`).
  */
 
+import { ValidationError } from "../errors.js";
+
 /** `sentry mcp` flags, as Stricli parses them (see `commands/mcp.ts`). */
 export type McpFlags = {
   readonly "access-token"?: string;
@@ -25,9 +27,44 @@ export type McpFlags = {
   readonly "all-skills": boolean;
   readonly "disable-skills"?: string;
   readonly experimental: boolean;
+  readonly org?: string;
+  readonly project?: string;
+  /** Deprecated alias of `--org`. */
   readonly "organization-slug"?: string;
+  /** Deprecated alias of `--project`. */
   readonly "project-slug"?: string;
 };
+
+/** Deprecated flags and the CLI-wide flag that replaces each. */
+const DEPRECATED_SCOPE_FLAGS = [
+  ["organization-slug", "org"],
+  ["project-slug", "project"],
+] as const;
+
+/** The deprecated scope flags `flags` uses, with their replacements. */
+export function deprecatedScopeFlags(
+  flags: McpFlags,
+): { flag: string; replacement: string }[] {
+  return DEPRECATED_SCOPE_FLAGS.filter(([old]) => flags[old] !== undefined).map(
+    ([flag, replacement]) => ({ flag, replacement }),
+  );
+}
+
+/** A scope flag's value, from its CLI-wide name or its deprecated alias. */
+function scopeFlag(
+  flags: McpFlags,
+  name: "org" | "project",
+  alias: "organization-slug" | "project-slug",
+): string | undefined {
+  const value = flags[name];
+  const aliased = flags[alias];
+  if (value !== undefined && aliased !== undefined && value !== aliased) {
+    throw new ValidationError(
+      `--${name} and --${alias} name different values; pass only --${name}.`,
+    );
+  }
+  return value ?? aliased;
+}
 
 /**
  * Split `--flag=value` into `--flag value` where Stricli does not read the
@@ -131,7 +168,7 @@ export function mergeMcpArgs(flags: McpFlags, env: McpEnvArgs): McpMergedArgs {
     allSkills: flags["all-skills"],
     disableSkills: flags["disable-skills"] ?? env.disableSkills,
     experimental: flags.experimental,
-    organizationSlug: flags["organization-slug"],
-    projectSlug: flags["project-slug"],
+    organizationSlug: scopeFlag(flags, "org", "organization-slug"),
+    projectSlug: scopeFlag(flags, "project", "project-slug"),
   };
 }

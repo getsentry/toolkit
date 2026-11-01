@@ -377,6 +377,18 @@ describe("serveMcp deprecated --access-token", () => {
     expect(output.stderr.join("")).not.toContain("env-static-token");
   });
 
+  test("warns about deprecated scope flags on stderr", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    const { config } = await start(["--organization-slug=acme"]);
+    expect(config.organizationSlug).toBe("acme");
+    expect(output.stdout).toEqual([]);
+    expect(output.stderr).toEqual([
+      "Deprecation warning: --organization-slug is deprecated; use --org instead.\n",
+    ]);
+  });
+
   test("prints no hint without a deprecated token", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",

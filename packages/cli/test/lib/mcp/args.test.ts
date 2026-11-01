@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { ValidationError } from "../../../src/lib/errors.js";
 import {
+  deprecatedScopeFlags,
   mergeMcpArgs,
   parseMcpEnv,
   splitInlineFlagValues,
@@ -267,5 +269,44 @@ describe("@sentry/mcp-server flag parity", () => {
       mergeMcpArgs(await parseMcpFlags(["--agent-provider=openai"]), env)
         .agentProviderFromFlag,
     ).toBe(true);
+  });
+});
+
+describe("sentry mcp scope flags", () => {
+  it("takes the CLI's --org and --project", async () => {
+    const flags = await parseMcpFlags(["--org=acme", "--project", "web"]);
+    expect(mergeMcpArgs(flags, {})).toMatchObject({
+      organizationSlug: "acme",
+      projectSlug: "web",
+    });
+    expect(deprecatedScopeFlags(flags)).toEqual([]);
+  });
+
+  it("keeps --organization-slug and --project-slug as deprecated aliases", async () => {
+    const flags = await parseMcpFlags([
+      "--organization-slug=acme",
+      "--project-slug=web",
+    ]);
+    expect(mergeMcpArgs(flags, {})).toMatchObject({
+      organizationSlug: "acme",
+      projectSlug: "web",
+    });
+    expect(deprecatedScopeFlags(flags)).toEqual([
+      { flag: "organization-slug", replacement: "org" },
+      { flag: "project-slug", replacement: "project" },
+    ]);
+  });
+
+  it("accepts a new flag and its alias with the same value", async () => {
+    const flags = await parseMcpFlags([
+      "--org=acme",
+      "--organization-slug=acme",
+    ]);
+    expect(mergeMcpArgs(flags, {}).organizationSlug).toBe("acme");
+  });
+
+  it("rejects a new flag and its alias with different values", async () => {
+    const flags = await parseMcpFlags(["--project=web", "--project-slug=api"]);
+    expect(() => mergeMcpArgs(flags, {})).toThrow(ValidationError);
   });
 });
