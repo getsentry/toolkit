@@ -249,13 +249,30 @@ function dsnEntities(body: unknown): CompletionEntity[] {
   });
 }
 
+/** Whether Sentry defines an attribute key, rather than the user's data. */
+function isSentryAttribute(attribute: unknown): boolean {
+  return (
+    stringField(objectField(attribute, "attributeSource"), "source_type") ===
+    "sentry"
+  );
+}
+
 /**
  * Attribute keys of a trace item dataset, the form `--field` and `--query`
  * take (`tags[cart.total,number]` for a custom number), described by their
  * type, after their display name when it differs.
+ *
+ * Sentry-defined keys come first. The endpoint sorts stored keys by name and
+ * appends Sentry's aliases, so in a large org numeric and vendor keys would
+ * otherwise fill the per-org cap before `span.*` and the other conventions.
+ * Sentry-defined keys are a small set, so they fit under it.
  */
 function attributeEntities(body: unknown): CompletionEntity[] {
-  return items(body).flatMap((attribute) => {
+  const attributes = items(body);
+  return [
+    ...attributes.filter(isSentryAttribute),
+    ...attributes.filter((attribute) => !isSentryAttribute(attribute)),
+  ].flatMap((attribute) => {
     const value = stringField(attribute, "key");
     const name = stringField(attribute, "name");
     const type = stringField(attribute, "attributeType");
@@ -266,7 +283,7 @@ function attributeEntities(body: unknown): CompletionEntity[] {
 }
 
 /** Entity kind of the attribute keys of each trace item dataset. */
-const ATTRIBUTE_KINDS = {
+export const ATTRIBUTE_KINDS = {
   spans: "span-attribute",
   logs: "log-attribute",
   tracemetrics: "metric-attribute",

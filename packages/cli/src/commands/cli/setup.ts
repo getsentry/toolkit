@@ -28,6 +28,10 @@ import {
   type CompletionLocation,
   installCompletions,
 } from "../../lib/completions.js";
+import {
+  SETUP_REFRESH_AFTER_MS,
+  warmAttributeCompletions,
+} from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
 import { getAuthConfig } from "../../lib/db/auth.js";
 import {
@@ -622,7 +626,8 @@ export const setupCommand = buildCommand({
       "Sets up shell integration for the Sentry CLI:\n\n" +
       "- Adds binary directory to PATH (if not already in PATH): the shell\n" +
       "  config file, or the user PATH on Windows\n" +
-      "- Installs shell completions (bash, zsh, fish)\n" +
+      "- Installs shell completions (bash, zsh, fish) and, when logged in,\n" +
+      "  fetches the attribute keys that field completion offers\n" +
       "- Installs agent skills for detected AI coding assistants\n" +
       "- Records installation metadata for upgrades\n\n" +
       "With --install, also handles binary placement from a temporary\n" +
@@ -808,6 +813,15 @@ export const setupCommand = buildCommand({
       binaryPath,
       version: CLI_VERSION,
     });
+
+    // 6. Fetch attribute keys for field completion, the only reader of that
+    // cache, unless they were fetched recently. Best-effort, silent, and
+    // capped at about a second; skipped without a stored login.
+    if (!flags["no-completions"]) {
+      await warmAttributeCompletions({
+        refreshAfterMs: SETUP_REFRESH_AFTER_MS,
+      });
+    }
 
     if (
       !freshInstall ||
