@@ -43,8 +43,12 @@ describe("workspace CI selection", () => {
     assert.match(docsScripts[docs.prepare], /sentry run generate:schema/);
     assert.match(docsScripts[docs.prepare], /sentry run generate:docs/);
     const cli = matrix.include.find(({ name }) => name === "sentry");
+    assert.equal(cli.prepare, "ci:prepare");
+    assert.equal(cli.build, "");
+    assert.equal(cli.typecheck, "ci:typecheck");
+    assert.equal(cli.test, "ci:test:unit");
     assert.equal(cli.policy, "ci:policy");
-    assert.equal(cli.e2e, "test:e2e");
+    assert.equal(cli.e2e, "");
     assert.equal(cli.coverage, "packages/cli/coverage/lcov.info");
     assert.equal(
       matrix.include.find(({ name }) => name === "@sentry/mcp-core").junit,
@@ -174,7 +178,7 @@ describe("workspace CI selection", () => {
     assert.doesNotMatch(workflow, /matrix\.name == 'sentry-cli-docs'/);
     assert.match(
       workflow,
-      /needs:\s*\[\s*discover-projects,\s*install,\s*quality,\s*project,\s*npm-runtime,\s*cli-asset-catalog,?\s*\]/,
+      /needs:\s*\[\s*discover-projects,\s*install,\s*quality,\s*project,\s*npm-runtime,\s*cli-asset-catalog,\s*cli-e2e,?\s*\]/,
     );
     assert.match(
       workflow,
@@ -192,14 +196,33 @@ describe("workspace CI selection", () => {
     assert.match(workflow, /Validate packaged runtime on Node 20/);
     assert.match(workflow, /Validate packaged runtime on Node 22/);
     assert.match(workflow, /Validate packaged runtime on Node 24/);
-    assert.match(workflow, /NODE_VERSION_20: "20\.20\.2"/);
-    assert.match(workflow, /NODE_VERSION_22: "22\.23\.4"/);
-    assert.match(workflow, /NODE_VERSION_24: "24\.22\.1"/);
+    for (const major of [20, 22, 24]) {
+      const versionFile = `.github/node-versions/${major}`;
+      assert.ok(workflow.includes(`node-version-file: ${versionFile}`));
+      assert.match(
+        readFileSync(resolve(root, versionFile), "utf8").trim(),
+        new RegExp(`^${major}\\.\\d+\\.\\d+$`),
+      );
+    }
     assert.match(workflow, /RUNTIME_RESULT.*needs\.npm-runtime\.result/);
     assert.match(workflow, /name: Verify JUnit/);
     assert.match(workflow, /name: Verify coverage/);
     assert.match(workflow, /if: always\(\)/);
     assert.doesNotMatch(workflow.split("\njobs:", 1)[0], /paths(?:-ignore)?:/);
+  });
+
+  it("runs CLI E2E independently after project discovery", () => {
+    const workflow = readFileSync(
+      resolve(root, ".github/workflows/test.yml"),
+      "utf8",
+    );
+    const job = workflow.split("\n  cli-e2e:\n")[1]?.split(/\n  [\w-]+:\n/)[0];
+    assert.ok(job);
+    assert.match(job, /\n    needs: discover-projects\n/);
+    assert.match(
+      job,
+      /if: contains\(fromJSON\(needs\.discover-projects\.outputs\.matrix\)\.include\.\*\.name, 'sentry'\)/,
+    );
   });
 
   it("requires native asset-catalog success when selected and a skip otherwise", () => {
@@ -244,6 +267,7 @@ describe("workspace CI selection", () => {
           RUNTIME_RESULT: count === "0" ? "skipped" : "success",
           ASSET_CATALOG_RESULT: nativeResult,
           ASSET_CATALOG_SELECTED: String(selected),
+          CLI_E2E_RESULT: selected ? "success" : "skipped",
         },
       });
       assert.equal(
@@ -251,6 +275,45 @@ describe("workspace CI selection", () => {
         passes ? 0 : 1,
         `selected=${selected}, native=${nativeResult}, projects=${count}`,
       );
+    }
+  });
+
+  it("requires CLI E2E success when selected and a skip otherwise", () => {
+    const workflow = readFileSync(
+      resolve(root, ".github/workflows/test.yml"),
+      "utf8",
+    );
+    const gate = workflow.split("\n  test:\n")[1];
+    assert.ok(gate);
+    assert.match(gate, /CLI_E2E_RESULT: \$\{\{ needs\.cli-e2e\.result \}\}/);
+    const script = gate.split("        run: |\n")[1];
+    assert.ok(script);
+
+    for (const selected of [true, false]) {
+      const expected = selected ? "success" : "skipped";
+      for (const status of ["success", "failure", "cancelled", "skipped"]) {
+        const result = spawnSync("bash", ["-euc", script], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            DISCOVER_RESULT: "success",
+            INSTALL_RESULT: "success",
+            QUALITY_RESULT: "success",
+            PROJECT_COUNT: "1",
+            PROJECT_RESULT: "success",
+            RUNTIME_COUNT: selected ? "1" : "0",
+            RUNTIME_RESULT: expected,
+            ASSET_CATALOG_RESULT: expected,
+            ASSET_CATALOG_SELECTED: String(selected),
+            CLI_E2E_RESULT: status,
+          },
+        });
+        assert.equal(
+          result.status,
+          status === expected ? 0 : 1,
+          `selected=${selected}, e2e=${status}`,
+        );
+      }
     }
   });
 

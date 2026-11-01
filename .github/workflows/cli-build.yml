@@ -16,9 +16,6 @@ permissions:
 
 env:
   SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
-  NODE_VERSION_20: "20.20.2"
-  NODE_VERSION_22: "22.23.4"
-  NODE_VERSION_24: "24.22.1"
 
 jobs:
   nightly-version:
@@ -58,7 +55,7 @@ jobs:
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: ${{ env.NODE_VERSION_22 }}
+          node-version-file: .github/node-versions/22
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -267,7 +264,7 @@ jobs:
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: ${{ env.NODE_VERSION_22 }}
+          node-version-file: .github/node-versions/22
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -303,7 +300,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: ${{ matrix.node == 24 && env.NODE_VERSION_24 || matrix.node == 20 && env.NODE_VERSION_20 || env.NODE_VERSION_22 }}
+          node-version-file: .github/node-versions/${{ matrix.node }}
       - name: Download npm artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -334,7 +331,7 @@ jobs:
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: ${{ env.NODE_VERSION_24 }}
+          node-version-file: .github/node-versions/24
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
