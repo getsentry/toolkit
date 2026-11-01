@@ -152,18 +152,15 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 
-vi.mock("../../../src/lib/completion-warmup.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../../../src/lib/completion-warmup.js")
-    >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
-});
+// The post-login warm-up makes its own API requests; tests/lib cover it.
+vi.mock("../../../src/lib/completion-warmup.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/completion-warmup.js")
+  >()),
+  warmCachesAfterLogin: vi.fn(async () => {
+    // no-op
+  }),
+}));
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as completionWarmup from "../../../src/lib/completion-warmup.js";
@@ -731,7 +728,7 @@ describe("loginCommand.func --token path", () => {
     expect(setUserInfoSpy).not.toHaveBeenCalled();
   });
 
-  test("--token: warms attribute completions after the org list, once the result is printed", async () => {
+  test("--token: warms caches once the result is printed", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
     getUserRegionsSpy.mockResolvedValue([]);
@@ -739,111 +736,35 @@ describe("loginCommand.func --token path", () => {
     setUserInfoSpy.mockReturnValue(undefined);
     const { context, getStdout } = createContext();
     let stdoutAtWarmup: string | undefined;
-    const warmSpy = vi
-      .spyOn(completionWarmup, "warmAttributeCompletions")
-      .mockImplementation(async () => {
-        stdoutAtWarmup = getStdout();
-      });
+    const warm = vi.mocked(completionWarmup.warmCachesAfterLogin);
+    warm.mockClear();
+    warm.mockImplementationOnce(async () => {
+      stdoutAtWarmup = getStdout();
+    });
 
-    try {
-      await func.call(context, {
-        token: "my-token",
-        force: false,
-        timeout: 900,
-      });
+    await func.call(context, {
+      token: "my-token",
+      force: false,
+      timeout: 900,
+    });
 
-      expect(listOrgsUncachedSpy).toHaveBeenCalledTimes(1);
-      expect(warmSpy).toHaveBeenCalledTimes(1);
-      expect(warmSpy).toHaveBeenCalledWith();
-      // Ordering: the org list resolves before the warm-up picks orgs
-      expect(listOrgsUncachedSpy.mock.invocationCallOrder[0]).toBeLessThan(
-        warmSpy.mock.invocationCallOrder[0]!,
-      );
-      expect(stdoutAtWarmup).toContain("Authenticated");
-    } finally {
-      warmSpy.mockRestore();
-    }
+    expect(warm).toHaveBeenCalledTimes(1);
+    expect(stdoutAtWarmup).toContain("Authenticated");
   });
 
-  test("OAuth: warms attribute completions after a successful login", async () => {
+  test("OAuth: warms caches after a successful login", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     runInteractiveLoginSpy.mockResolvedValue({
       method: "oauth",
       configPath: "/tmp/db",
     });
-    const warmSpy = vi
-      .spyOn(completionWarmup, "warmAttributeCompletions")
-      .mockResolvedValue(undefined);
+    const warm = vi.mocked(completionWarmup.warmCachesAfterLogin);
+    warm.mockClear();
 
-    try {
-      const { context } = createContext();
-      await func.call(context, { force: false, timeout: 900 });
+    const { context } = createContext();
+    await func.call(context, { force: false, timeout: 900 });
 
-      expect(warmSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      warmSpy.mockRestore();
-    }
-  });
-
-  test("a stalled org list skips the attribute warm-up after the timeout", async () => {
-    isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
-    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
-    setUserInfoSpy.mockReturnValue(undefined);
-    listOrgsUncachedSpy.mockReturnValue(
-      new Promise(() => {
-        // never settles
-      }),
-    );
-    const warmSpy = vi
-      .spyOn(completionWarmup, "warmAttributeCompletions")
-      .mockResolvedValue(undefined);
-
-    try {
-      const { context, getStdout } = createContext();
-      const started = Date.now();
-      await func.call(context, {
-        token: "my-token",
-        force: false,
-        timeout: 900,
-      });
-
-      expect(Date.now() - started).toBeLessThan(
-        completionWarmup.WARMUP_TIMEOUT_MS + 1000,
-      );
-      expect(getStdout()).toContain("Authenticated");
-      expect(warmSpy).not.toHaveBeenCalled();
-    } finally {
-      warmSpy.mockRestore();
-    }
-  });
-
-  test("a failed org list skips the attribute warm-up without failing login", async () => {
-    isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
-    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
-    setUserInfoSpy.mockReturnValue(undefined);
-    listOrgsUncachedSpy.mockRejectedValue(new Error("offline"));
-    const warmSpy = vi
-      .spyOn(completionWarmup, "warmAttributeCompletions")
-      .mockResolvedValue(undefined);
-
-    try {
-      const { context, getStdout } = createContext();
-      await func.call(context, {
-        token: "my-token",
-        force: false,
-        timeout: 900,
-      });
-
-      expect(getStdout()).toContain("Authenticated");
-      expect(warmSpy).not.toHaveBeenCalled();
-      expect(process.exitCode ?? 0).toBe(0);
-    } finally {
-      warmSpy.mockRestore();
-    }
+    expect(warm).toHaveBeenCalledTimes(1);
   });
 
   test("no token: falls through to interactive login", async () => {
