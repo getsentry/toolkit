@@ -11,6 +11,7 @@ import {
   searchDocsInputSchema,
 } from "./internal-api";
 import { trackToolCall, trackToolDuration } from "./metrics";
+import { MAX_TOOL_INPUT_ELEMENTS } from "./request-limits";
 import { getDoctree } from "./sentry-docs/doctree";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -149,12 +150,15 @@ export function createMcpServer(
   docsVersion?: string,
 ) {
   const mcp = Sentry.wrapMcpServerWithSentry(
-    new McpServer({
-      description:
-        "Generates tailored Sentry integration docs by reading docs.sentry.io.",
-      name: "sentry-docs",
-      version: "1.0.0",
-    }),
+    new McpServer(
+      {
+        description:
+          "Generates tailored Sentry integration docs by reading docs.sentry.io.",
+        name: "sentry-docs",
+        version: "1.0.0",
+      },
+      { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS },
+    ),
     {
       recordInputs: true,
       recordOutputs: true,

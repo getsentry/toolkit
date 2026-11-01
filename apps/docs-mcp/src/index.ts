@@ -15,7 +15,10 @@ import {
 } from "./internal-api";
 import { createMcpServer } from "./mcp";
 import { trackToolCall, trackToolDuration } from "./metrics";
+import { MAX_REQUEST_BODY_BYTES, readBoundedBody } from "./request-limits";
 import type { Env } from "./types";
+
+const BODY_TOO_LARGE_MESSAGE = `Request body must not exceed ${MAX_REQUEST_BODY_BYTES} bytes`;
 
 export const app = new Hono<{ Bindings: Env }>().use(cors());
 
@@ -27,6 +30,26 @@ app.all("/mcp", async (c) => {
       { error: "Docs MCP is only available through its service binding" },
       403,
     );
+  }
+
+  // @hono/mcp parses POST bodies itself, so bound them before the transport
+  // reads them. It does not read bodies for other methods.
+  if (c.req.method === "POST" && c.req.raw.body !== null) {
+    const body = await readBoundedBody(c.req.raw);
+    if (!body) {
+      return c.json(
+        {
+          error: {
+            code: -32000,
+            message: `Payload Too Large: ${BODY_TOO_LARGE_MESSAGE}`,
+          },
+          id: null,
+          jsonrpc: "2.0",
+        },
+        413,
+      );
+    }
+    c.req.raw = new Request(c.req.raw, { body, method: "POST" });
   }
 
   const transport = new StreamableHTTPTransport();
@@ -48,7 +71,17 @@ app.post("/internal/docs", async (c) => {
     );
   }
 
-  const body = await c.req.json().catch(() => undefined);
+  const rawBody = await readBoundedBody(c.req.raw);
+  if (!rawBody) {
+    return c.json({ error: BODY_TOO_LARGE_MESSAGE }, 413);
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(new TextDecoder().decode(rawBody));
+  } catch {
+    body = undefined;
+  }
   const parsed = internalDocsRequestSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Invalid docs API request" }, 400);
