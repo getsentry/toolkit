@@ -3,10 +3,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { describe, expect, test, vi } from "vitest";
 import { app } from "../index";
 import {
-  MAX_REQUEST_BODY_BYTES,
+  MAX_MCP_REQUEST_BODY_BYTES,
   MAX_TOOL_INPUT_ELEMENTS,
-} from "../request-limits";
-import { streamOf } from "./streams";
+  mcpPayloadTooLargeResponse,
+} from "@sentry/toolkit-core/mcp-limits";
 
 const TEST_ENV = {
   CF_VERSION_METADATA: { id: "test", tag: "test", timestamp: "test" },
@@ -37,29 +37,6 @@ function stubDocsUnavailable() {
     ),
   );
 }
-
-function mcpRequest(body: BodyInit, headers: Record<string, string> = {}) {
-  return new Request("https://docs-mcp.internal/mcp", {
-    body,
-    // Node requires `duplex` for streamed request bodies.
-    duplex: "half",
-    headers: {
-      accept: "application/json, text/event-stream",
-      "content-type": "application/json",
-      ...headers,
-    },
-    method: "POST",
-  } as RequestInit);
-}
-
-const PAYLOAD_TOO_LARGE = {
-  error: {
-    code: -32000,
-    message: `Payload Too Large: Request body must not exceed ${MAX_REQUEST_BODY_BYTES} bytes`,
-  },
-  id: null,
-  jsonrpc: "2.0",
-};
 
 describe("private MCP transport", () => {
   test("initializes and lists the docs tools through the service binding", async () => {
@@ -130,41 +107,9 @@ describe("private MCP transport", () => {
       error: "Docs MCP is only available through its service binding",
     });
   });
-  test("runs a tool call at the input element budget", async () => {
-    stubDocsUnavailable();
-    const client = await connectClient();
-
-    try {
-      // `libs` is one key, so this is exactly MAX_TOOL_INPUT_ELEMENTS.
-      const libs = Array.from(
-        { length: MAX_TOOL_INPUT_ELEMENTS - 1 },
-        (_, i) => `lib-${i}`,
-      );
-      const result = await client.callTool({
-        arguments: { libs },
-        name: "get-available-features",
-      });
-
-      // The handler ran and stopped at the missing API key, before any model call.
-      expect(result).toEqual({
-        content: [
-          {
-            text: JSON.stringify({
-              error:
-                "Failed to list features: Set OPENROUTER_API_KEY on the docs-mcp worker",
-            }),
-            type: "text",
-          },
-        ],
-        isError: true,
-      });
-    } finally {
-      vi.unstubAllGlobals();
-      await client.close();
-    }
-  });
-
-  test("rejects a tool call over the input element budget before the handler runs", async () => {
+  // Body and element limits themselves are tested in toolkit-core; these
+  // check that this server applies them.
+  test("rejects a tool call over the shared input element budget before the handler runs", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const client = await connectClient();
@@ -196,58 +141,23 @@ describe("private MCP transport", () => {
     }
   });
 
-  test("accepts a request body at the size budget", async () => {
-    stubDocsUnavailable();
-    try {
-      const request = {
-        id: 1,
-        jsonrpc: "2.0",
-        method: "tools/call",
-        params: { arguments: { query: "" }, name: "search-docs" },
-      };
-      const query = "a".repeat(
-        MAX_REQUEST_BODY_BYTES - JSON.stringify(request).length,
-      );
-      const body = JSON.stringify({
-        ...request,
-        params: { ...request.params, arguments: { query } },
-      });
-      expect(new TextEncoder().encode(body).byteLength).toBe(
-        MAX_REQUEST_BODY_BYTES,
-      );
-
-      const response = await app.request(mcpRequest(body), undefined, TEST_ENV);
-
-      // The transport answers over SSE; the tool ran and hit the stubbed fetch.
-      expect(response.status).toBe(200);
-      const text = await response.text();
-      expect(text).toContain('"id":1');
-      expect(text).toContain("Failed to search docs");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  test("rejects a declared oversized body before reading it", async () => {
+  test("rejects an oversized body before the MCP transport reads it", async () => {
     const response = await app.request(
-      mcpRequest(streamOf(16), {
-        "content-length": String(MAX_REQUEST_BODY_BYTES + 1),
-      }),
-      undefined,
+      "https://docs-mcp.internal/mcp",
+      {
+        body: "a".repeat(MAX_MCP_REQUEST_BODY_BYTES + 1),
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
       TEST_ENV,
     );
 
     expect(response.status).toBe(413);
-    await expect(response.json()).resolves.toEqual(PAYLOAD_TOO_LARGE);
-  });
-
-  test("rejects an oversized streamed body without Content-Length", async () => {
-    const request = mcpRequest(streamOf(MAX_REQUEST_BODY_BYTES + 1));
-    expect(request.headers.has("content-length")).toBe(false);
-
-    const response = await app.request(request, undefined, TEST_ENV);
-
-    expect(response.status).toBe(413);
-    await expect(response.json()).resolves.toEqual(PAYLOAD_TOO_LARGE);
+    await expect(response.json()).resolves.toEqual(
+      await mcpPayloadTooLargeResponse().json(),
+    );
   });
 });

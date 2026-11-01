@@ -21,11 +21,11 @@ vi.mock("@sentry/cloudflare", async (importOriginal) => ({
   setUser: sentrySetUser,
 }));
 
-import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/mcp-core/constants";
-import mcpHandler, {
+import {
   MAX_MCP_REQUEST_BODY_BYTES,
-  handleSentryBearerMcpRequest,
-} from "./mcp-handler";
+  MAX_TOOL_INPUT_ELEMENTS,
+} from "@sentry/toolkit-core/mcp-limits";
+import mcpHandler, { handleSentryBearerMcpRequest } from "./mcp-handler";
 import {
   OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE,
   OAUTH_GRANT_REVOKED_REASON_ATTRIBUTE,

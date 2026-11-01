@@ -31,6 +31,10 @@
       "types": "./src/metric-monitor.ts",
       "default": "./src/metric-monitor.ts"
     },
+    "./mcp-limits": {
+      "types": "./src/mcp-limits.ts",
+      "default": "./src/mcp-limits.ts"
+    },
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
@@ -42,10 +46,6 @@
     "./region-cache": {
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
-    },
-    "./request-body": {
-      "types": "./src/request-body.ts",
-      "default": "./src/request-body.ts"
     },
     "./resource-identity": {
       "types": "./src/resource-identity.ts",

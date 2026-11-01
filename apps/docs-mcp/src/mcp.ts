@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as Sentry from "@sentry/cloudflare";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { type ZodRawShape, z } from "zod";
 import { runFeaturesAgent } from "./agent/features-agent";
 import { runTailorAgent } from "./agent/tailor-agent";
@@ -11,7 +12,6 @@ import {
   searchDocsInputSchema,
 } from "./internal-api";
 import { trackToolCall, trackToolDuration } from "./metrics";
-import { MAX_TOOL_INPUT_ELEMENTS } from "./request-limits";
 import { getDoctree } from "./sentry-docs/doctree";
 
 // ── Helpers ─────────────────────────────────────────────────────────
