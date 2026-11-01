@@ -15,14 +15,13 @@
 
 import {
   chmodSync,
-  mkdirSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { getConfigDir } from "../../lib/db/index.js";
+import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { logger } from "../../lib/logger.js";
 import type { LocalSession } from "./session-store.js";
 
@@ -34,8 +33,8 @@ export type LocalSessionSnapshotEntry = Pick<
   "id" | "label" | "state" | "expiresAt"
 >;
 
-function snapshotPath(): string {
-  return join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME);
+function snapshotPath(directory = getConfigDir()): string {
+  return join(directory, LOCAL_SESSION_SNAPSHOT_FILENAME);
 }
 
 /**
@@ -58,8 +57,7 @@ export function writeLocalSessionSnapshot(
       expiresAt,
     })),
   };
-  mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
-  const path = snapshotPath();
+  const path = snapshotPath(ensureConfigDir());
   const temporaryPath = `${path}.${pid}.tmp`;
   writeFileSync(temporaryPath, `${JSON.stringify(snapshot)}\n`, {
     encoding: "utf8",

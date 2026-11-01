@@ -21,7 +21,7 @@ import type { Server } from "node:http";
 import { join } from "node:path";
 import { isSea } from "../../lib/react-native/wrap-call.js";
 import { setTimeout as sleep } from "node:timers/promises";
-import { getConfigDir } from "../../lib/db/index.js";
+import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { formatLocalServerUrl } from "./ui.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -429,8 +429,7 @@ export async function ensureLocalDaemon({
     throw new Error("The Local control-plane port must be non-zero.");
   const running = await getRunningLocalDaemon();
   if (running) return running;
-  const directory = getConfigDir();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directory = ensureConfigDir();
   let lock: Awaited<ReturnType<typeof open>>;
   try {
     lock = await open(startupLockPath(directory), "wx", 0o600);
@@ -515,8 +514,7 @@ export async function runLocalDaemonForeground({
   if (port === 0) {
     throw new Error("The Local control-plane port must be non-zero.");
   }
-  const directory = getConfigDir();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directory = ensureConfigDir();
   const releaseOwnership = await claimDaemonOwnership(directory);
   let listening: Awaited<ReturnType<typeof tryListen>> | undefined;
   let ownedState: LocalDaemonState | undefined;
