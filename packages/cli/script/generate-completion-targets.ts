@@ -44,6 +44,7 @@ const { routes } = await import("../src/app.js");
 const { extractCommandCompletions, extractRouteGroups } =
   await import("../src/lib/introspect.js");
 const { COMPLETION_VALUES } = await import("../src/lib/completion-target.js");
+const { getApiCompletionPaths } = await import("../src/lib/api-schema.js");
 
 const OUTPUT_PATH = "src/generated/completion-targets.json";
 
@@ -56,7 +57,7 @@ const groups = extractRouteGroups(routeMap);
 mkdirSync("src/generated", { recursive: true });
 await writeFile(
   OUTPUT_PATH,
-  `${JSON.stringify({ commands, groups, values: COMPLETION_VALUES }, null, 2)}\n`,
+  `${JSON.stringify({ commands, groups, values: { ...COMPLETION_VALUES, apiPaths: getApiCompletionPaths() } }, null, 2)}\n`,
   "utf8",
 );
 process.stdout.write(

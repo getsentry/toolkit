@@ -19,7 +19,6 @@
 
 import { ISSUE_IS_VALUES } from "@sentry/toolkit-core/search-query";
 import { numberParser } from "@stricli/core";
-import { getAllEndpoints } from "./api-schema.js";
 import type { CompletionTarget } from "./complete.js";
 import { ISSUE_LEVELS } from "../types/sentry.js";
 import {
@@ -427,9 +426,6 @@ export function getCompletionChoices(
   );
 }
 
-/** The prefix `api` adds to an endpoint, left out of {@link COMPLETION_VALUES}. */
-const API_PATH_PREFIX = /^\/api\/0\//;
-
 /** Fixed values the completers offer (see {@link COMPLETION_VALUES}). */
 export type CompletionValues = {
   /** Issue search keys with a fixed set of values, for {@link ISSUE_QUERY_TARGET} */
@@ -438,7 +434,12 @@ export type CompletionValues = {
   periodUnits: readonly string[];
   /** Relative periods offered for {@link PERIOD_TARGET}, with descriptions */
   periodPresets: Readonly<Record<string, string>>;
-  /** API schema paths without `/api/0/`, for {@link API_ENDPOINT_TARGET} */
+  /**
+   * API schema paths without `/api/0/`, for {@link API_ENDPOINT_TARGET}.
+   * Not in {@link COMPLETION_VALUES}: the generator adds them from
+   * `getApiCompletionPaths`, so importing this module (as every command
+   * does) does not walk the API schema.
+   */
   apiPaths: readonly string[];
 };
 
@@ -447,7 +448,7 @@ export type CompletionValues = {
  * them. The generator writes them next to the command metadata so the
  * `__complete` fast path gets them without loading those modules.
  */
-export const COMPLETION_VALUES: CompletionValues = {
+export const COMPLETION_VALUES: Omit<CompletionValues, "apiPaths"> = {
   issueSearch: { is: ISSUE_IS_VALUES, level: ISSUE_LEVELS },
   periodUnits: Object.keys(UNIT_SECONDS),
   // The presets of Sentry's time range selector (`DEFAULT_RELATIVE_PERIODS`
@@ -460,9 +461,4 @@ export const COMPLETION_VALUES: CompletionValues = {
     "30d": "Last 30 days",
     "90d": "Last 90 days",
   },
-  apiPaths: [
-    ...new Set(
-      getAllEndpoints().map(({ path }) => path.replace(API_PATH_PREFIX, "")),
-    ),
-  ],
 };
