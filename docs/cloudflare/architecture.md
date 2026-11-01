@@ -171,8 +171,9 @@ SENTRY_CLIENT_SECRET = "..." # OAuth app secret
 1. **Authentication**: OAuth tokens stored encrypted in KV
 2. **Authorization**: Per-organization access control
 3. **Rate Limiting**: Cloudflare rate limiter integration
-4. **CORS**: Restricted to same-origin requests
-5. **CSP**: Content Security Policy headers
+4. **Request Limits**: `/mcp` POST bodies are capped at 1 MiB (`MAX_MCP_REQUEST_BODY_BYTES`), and tool-call arguments at 10,000 array elements plus object keys (`MAX_TOOL_INPUT_ELEMENTS`)
+5. **CORS**: Restricted to same-origin requests
+6. **CSP**: Content Security Policy headers
 
 ## Performance Optimizations
 

@@ -10,6 +10,7 @@ import {
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { MAX_TOOL_INPUT_ELEMENTS } from "./constants";
 import { UserInputError } from "./errors";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
@@ -269,6 +270,49 @@ describe("buildServer", () => {
       const text = getTextContent(result);
       expect(text).toContain("Required. Call `find_organizations()`");
       expect(text).not.toContain("period");
+    },
+  );
+
+  it.each(["v1", "v2"] as const)(
+    "caps tool input elements on SDK %s",
+    async (sdkVersion) => {
+      const handler = vi.fn(
+        async ({ items }: Record<string, unknown>) =>
+          `count:${(items as string[]).length}`,
+      );
+      const createServer = () => {
+        const tools = {
+          list_tool: createMockTool("list_tool", {
+            inputSchema: { items: z.array(z.string()) },
+            handler,
+          }),
+        };
+        return sdkVersion === "v2"
+          ? buildServer({ context: baseContext, tools, sdkVersion })
+          : buildServer({ context: baseContext, tools });
+      };
+
+      // The `items` key counts as one element, so this lands exactly on the cap.
+      const atLimit = Array.from(
+        { length: MAX_TOOL_INPUT_ELEMENTS - 1 },
+        () => "x",
+      );
+      const accepted = await callRegisteredTool(createServer(), "list_tool", {
+        items: atLimit,
+      });
+      expect(accepted.isError).toBeFalsy();
+      expect(getTextContent(accepted)).toBe(
+        `count:${MAX_TOOL_INPUT_ELEMENTS - 1}`,
+      );
+
+      const rejected = await callRegisteredTool(createServer(), "list_tool", {
+        items: [...atLimit, "x"],
+      });
+      expect(rejected).toMatchObject({ isError: true });
+      expect(getTextContent(rejected)).toContain(
+        `Invalid arguments for tool list_tool: arguments contain more than the maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
+      );
+      expect(handler).toHaveBeenCalledTimes(1);
     },
   );
 

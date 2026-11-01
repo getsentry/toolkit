@@ -10,6 +10,15 @@
 export const MCP_SERVER_NAME = "Sentry MCP" as const;
 
 /**
+ * Most array elements plus object keys accepted in one `tools/call`
+ * `arguments` payload (GHSA-46jr-4wx8-v453). Without a cap, a single HTTP
+ * request can exhaust the heap during input validation. The largest bounded
+ * tool inputs today hold ~100 elements, and realistic alert-rule payloads stay
+ * in the low hundreds, so this leaves wide headroom for legitimate calls.
+ */
+export const MAX_TOOL_INPUT_ELEMENTS = 10_000;
+
+/**
  * Supported issue-search windows exposed by search_issues.
  * Intentionally bounded for query performance; lower-level API methods still accept arbitrary Sentry statsPeriod strings.
  */
