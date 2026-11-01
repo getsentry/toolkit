@@ -262,10 +262,12 @@ function isSentryAttribute(attribute: unknown): boolean {
  * take (`tags[cart.total,number]` for a custom number), described by their
  * type, after their display name when it differs.
  *
- * Sentry-defined keys come first. The endpoint sorts stored keys by name and
- * appends Sentry's aliases, so in a large org numeric and vendor keys would
- * otherwise fill the per-org cap before `span.*` and the other conventions.
- * Sentry-defined keys are a small set, so they fit under it.
+ * Sentry-defined keys come first. The endpoint lists the keys an org stores
+ * by internal name, one attribute type after another, and appends a few
+ * curated aliases and contexts. In a large org, numeric and vendor keys
+ * would otherwise fill the per-org cap before `span.*` and the other
+ * conventions. Stored keys that map to a Sentry definition are tagged
+ * `sentry` too, so they move up with the aliases.
  */
 function attributeEntities(body: unknown): CompletionEntity[] {
   const attributes = items(body);
