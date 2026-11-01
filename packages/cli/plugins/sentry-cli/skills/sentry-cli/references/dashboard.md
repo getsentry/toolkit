@@ -27,6 +27,16 @@ List dashboards
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string |  |
+| `title` | string |  |
+| `dateCreated` | string |  |
+| `createdBy` | object |  |
+| `widgetDisplay` | array |  |
+
 **Examples:**
 
 ```bash
@@ -76,6 +86,19 @@ View a dashboard
 - `--renderer <value> - Graphics renderer (falls back to auto when unavailable) - (default: "auto")`
 - `--no-graphics-cap - Use the terminal-native graphics width (may fall back to ASCII for very large dashboards)`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Dashboard ID |
+| `title` | string | Dashboard title |
+| `period` | string | Time range of the widget data |
+| `fetchedAt` | string | When the data was fetched (ISO 8601) |
+| `url` | string | Dashboard URL |
+| `dateCreated` | string | Creation date (ISO 8601) |
+| `environment` | array | Environment filter |
+| `widgets` | array | Widgets with their query results |
+
 **Examples:**
 
 ```bash
@@ -120,6 +143,20 @@ Create a dashboard
 |----------|-------------|
 | `<org/project/title...>` | [&lt;org/project&gt;] &lt;title&gt; |
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string |  |
+| `title` | string |  |
+| `widgets` | array |  |
+| `dateCreated` | string |  |
+| `createdBy` | object |  |
+| `projects` | array |  |
+| `environment` | array |  |
+| `period` | string \| null |  |
+| `url` | string | Dashboard URL |
+
 **Examples:**
 
 ```bash
@@ -156,6 +193,14 @@ Add a widget to a dashboard
 - `--width <value> - Widget width in grid columns (1–6)`
 - `--height <value> - Widget height in grid rows (min 1)`
 - `-l, --layout <value> - Layout mode: sequential (append in order) or dense (fill gaps) - (default: "sequential")`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dashboard` | object | The saved dashboard |
+| `widget` | object | The added or edited widget |
+| `url` | string | Dashboard URL |
 
 **Examples:**
 
@@ -210,6 +255,14 @@ Edit a widget in a dashboard
 - `-y, --row <value> - Grid row position (0-based)`
 - `--width <value> - Widget width in grid columns (1–6)`
 - `--height <value> - Widget height in grid rows (min 1)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dashboard` | object | The saved dashboard |
+| `widget` | object | The added or edited widget |
+| `url` | string | Dashboard URL |
 
 **Examples:**
 
@@ -273,6 +326,16 @@ List dashboard revisions
 - `-n, --limit <value> - Maximum number of revisions to list - (default: "25")`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string |  |
+| `title` | string |  |
+| `dateCreated` | string |  |
+| `createdBy` | object \| null |  |
+| `source` | string |  |
+
 **Examples:**
 
 ```bash
@@ -304,6 +367,14 @@ Restore a dashboard revision
 
 **Flags:**
 - `-r, --revision <value> - Revision ID to restore`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dashboard` | object | Restored dashboard |
+| `orgSlug` | string | Organization slug |
+| `revisionId` | string | Restored revision ID |
 
 **Examples:**
 

@@ -5,6 +5,7 @@
  * Environment is the first positional arg (required), deploy name is optional second.
  */
 
+import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -22,7 +23,11 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryDeploy } from "../../types/index.js";
+import {
+  DryRunOutputField,
+  type SentryDeploy,
+  SentryDeploySchema,
+} from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT =
@@ -107,6 +112,14 @@ export const deployCommand = buildCommand({
   },
   output: {
     human: formatDeployCreated,
+    schema: looseObject({
+      ...SentryDeploySchema.entries,
+      id: optional(SentryDeploySchema.entries.id),
+      dryRun: DryRunOutputField,
+      version: optional(
+        pipe(string(), description("Release version (--dry-run)")),
+      ),
+    }),
   },
   parameters: {
     positional: {

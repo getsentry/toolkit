@@ -17,7 +17,10 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryRelease } from "../../types/index.js";
+import {
+  ReleaseUpdateOutputSchema,
+  type SentryRelease,
+} from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release restore [<org>/]<version>";
@@ -67,6 +70,7 @@ export const restoreCommand = buildCommand({
   },
   output: {
     human: formatReleaseRestored,
+    schema: ReleaseUpdateOutputSchema,
   },
   parameters: {
     positional: {

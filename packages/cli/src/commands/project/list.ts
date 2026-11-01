@@ -10,6 +10,7 @@
  * - Cross-org project search (e.g., sentry)
  */
 
+import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
@@ -73,7 +74,7 @@ import {
 import { getApiBaseUrl } from "../../lib/sentry-client.js";
 import type { ListCommandTarget } from "../../lib/target-positional.js";
 import { shellQuote } from "../../lib/utils.js";
-import type { SentryProject } from "../../types/index.js";
+import { type SentryProject, SentryProjectSchema } from "../../types/index.js";
 
 /** Extended result type with optional title shown above the table. */
 type ProjectListResult = ListResult<ProjectWithOrg> & { title?: string };
@@ -921,6 +922,10 @@ export const listCommand = buildListCommand("project", {
       return parts.join("");
     },
     jsonTransform: jsonTransformListResult,
+    schema: looseObject({
+      ...SentryProjectSchema.entries,
+      orgSlug: optional(pipe(string(), description("Organization slug"))),
+    }),
   } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
   parameters: {
     positional: listTargetPositional({ names: true, multi: true }),

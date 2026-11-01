@@ -5,6 +5,7 @@
  * when several are logged in.
  */
 
+import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
@@ -46,7 +47,11 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
-import type { SentryOrganization, Writer } from "../../types/index.js";
+import {
+  type SentryOrganization,
+  SentryOrganizationSchema,
+  type Writer,
+} from "../../types/index.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -96,6 +101,31 @@ type OrgListEntry = SentryOrganization & {
   region?: string;
   account?: OrgListAccount;
 };
+
+/** JSON fields of an {@link OrgListEntry}, for `--fields`. */
+const OrgListEntrySchema = looseObject({
+  ...SentryOrganizationSchema.entries,
+  region: optional(
+    pipe(string(), description("Region, when orgs span several (e.g. US, EU)")),
+  ),
+  account: optional(
+    pipe(
+      looseObject({
+        name: pipe(string(), description("What --account accepts")),
+        id: pipe(string(), description("Account ID")),
+        email: optional(pipe(string(), description("Account email"))),
+        username: optional(pipe(string(), description("Account username"))),
+        server: optional(pipe(string(), description("Account server"))),
+        host: optional(pipe(string(), description("Server origin"))),
+        label: pipe(string(), description("Human-readable account label")),
+        envVar: optional(
+          pipe(string(), description("Variable providing the env token")),
+        ),
+      }),
+      description("Account the org was listed under, across accounts"),
+    ),
+  ),
+});
 
 /** One account's fetched orgs plus its slug → region URL cache. */
 type AccountOrgs = {
@@ -442,7 +472,7 @@ export const listCommand = buildCommand({
       { description: "Output as JSON", command: "sentry org list --json" },
     ],
   },
-  output: { human: formatOrgListHuman },
+  output: { human: formatOrgListHuman, schema: OrgListEntrySchema },
   parameters: {
     flags: {
       limit: buildListLimitFlag("organizations"),

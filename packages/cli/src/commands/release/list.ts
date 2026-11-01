@@ -5,6 +5,7 @@
  * project scoping, environment filtering, and rich terminal styling.
  */
 
+import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   type ListReleasesOptions,
@@ -48,7 +49,7 @@ import {
 } from "../../lib/resolve-target.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import type { ListCommandTarget } from "../../lib/target-positional.js";
-import type { SentryRelease } from "../../types/index.js";
+import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
 
 const log = logger.withTag("release.list");
@@ -683,6 +684,13 @@ export const listCommand = buildListCommand("release", {
     human: formatListHuman,
     jsonTransform: (result: ListResult<ReleaseWithOrg>, fields?: string[]) =>
       jsonTransformListResult(result, fields),
+    schema: looseObject({
+      ...SentryReleaseSchema.entries,
+      orgSlug: optional(pipe(string(), description("Organization slug"))),
+      targetProject: optional(
+        pipe(string(), description("Project slug, when listing several")),
+      ),
+    }),
   },
   parameters: {
     positional: LIST_ORG_TARGET_POSITIONAL,

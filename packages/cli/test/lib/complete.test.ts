@@ -865,6 +865,24 @@ describe("getCompletions: fixed values", () => {
     ]);
   });
 
+  test("--fields completes resource commands' output fields", async () => {
+    expect(
+      await values(["release", "view", "--fields"], "version,commitC"),
+    ).toEqual(["version,commitCount"]);
+    expect(
+      await values(["release", "list", "--fields"], "lastDeploy.env"),
+    ).toEqual(["lastDeploy.environment"]);
+    expect(await values(["org", "view", "--fields"], "require")).toEqual([
+      "require2FA",
+    ]);
+    expect(await values(["project", "view", "--fields"], "ds")).toEqual([
+      "dsn",
+    ]);
+    expect(
+      await values(["dashboard", "view", "--fields"], "widgets.data.t"),
+    ).toEqual(["widgets.data.type"]);
+  });
+
   test("list flags complete fixed values one item at a time", async () => {
     expect(
       await values(["auth", "login", "--scope"], "org:read,org:wr"),
