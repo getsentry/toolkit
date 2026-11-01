@@ -4,6 +4,10 @@
  */
 import { StreamableHTTPTransport } from "@hono/mcp";
 import * as Sentry from "@sentry/cloudflare";
+import {
+  boundMcpRequestBody,
+  readBoundedBody,
+} from "@sentry/toolkit-core/request-body";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { isDocsMcpServiceRequest } from "./access";
@@ -15,7 +19,7 @@ import {
 } from "./internal-api";
 import { createMcpServer } from "./mcp";
 import { trackToolCall, trackToolDuration } from "./metrics";
-import { MAX_REQUEST_BODY_BYTES, readBoundedBody } from "./request-limits";
+import { MAX_REQUEST_BODY_BYTES } from "./request-limits";
 import type { Env } from "./types";
 
 const BODY_TOO_LARGE_MESSAGE = `Request body must not exceed ${MAX_REQUEST_BODY_BYTES} bytes`;
@@ -33,24 +37,12 @@ app.all("/mcp", async (c) => {
   }
 
   // @hono/mcp parses POST bodies itself, so bound them before the transport
-  // reads them. It does not read bodies for other methods.
-  if (c.req.method === "POST" && c.req.raw.body !== null) {
-    const body = await readBoundedBody(c.req.raw);
-    if (!body) {
-      return c.json(
-        {
-          error: {
-            code: -32000,
-            message: `Payload Too Large: ${BODY_TOO_LARGE_MESSAGE}`,
-          },
-          id: null,
-          jsonrpc: "2.0",
-        },
-        413,
-      );
-    }
-    c.req.raw = new Request(c.req.raw, { body, method: "POST" });
+  // reads them.
+  const bounded = await boundMcpRequestBody(c.req.raw, MAX_REQUEST_BODY_BYTES);
+  if (bounded instanceof Response) {
+    return bounded;
   }
+  c.req.raw = bounded;
 
   const transport = new StreamableHTTPTransport();
   const mcp = createMcpServer(
@@ -71,7 +63,7 @@ app.post("/internal/docs", async (c) => {
     );
   }
 
-  const rawBody = await readBoundedBody(c.req.raw);
+  const rawBody = await readBoundedBody(c.req.raw, MAX_REQUEST_BODY_BYTES);
   if (!rawBody) {
     return c.json({ error: BODY_TOO_LARGE_MESSAGE }, 413);
   }

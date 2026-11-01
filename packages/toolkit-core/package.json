@@ -43,6 +43,10 @@
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
     },
+    "./request-body": {
+      "types": "./src/request-body.ts",
+      "default": "./src/request-body.ts"
+    },
     "./resource-identity": {
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"

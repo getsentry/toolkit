@@ -16,38 +16,3 @@ export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
  * 1,000 leaves wide headroom for real codebases.
  */
 export const MAX_TOOL_INPUT_ELEMENTS = 1_000;
-
-/**
- * Reads the request body, stopping as soon as it exceeds
- * MAX_REQUEST_BODY_BYTES. Returns `undefined` when the body is too large.
- *
- * A declared `Content-Length` is rejected before reading. Streamed bytes are
- * still counted, so bodies without `Content-Length`, or with a wrong one, are
- * bounded too.
- */
-export async function readBoundedBody(
-  request: Request,
-): Promise<Uint8Array<ArrayBuffer> | undefined> {
-  if (Number(request.headers.get("content-length")) > MAX_REQUEST_BODY_BYTES) {
-    return undefined;
-  }
-  if (request.body === null) {
-    return new Uint8Array();
-  }
-
-  const reader = request.body.getReader();
-  const body = new Uint8Array(MAX_REQUEST_BODY_BYTES);
-  let received = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      return body.subarray(0, received);
-    }
-    if (received + value.byteLength > MAX_REQUEST_BODY_BYTES) {
-      await reader.cancel();
-      return undefined;
-    }
-    body.set(value, received);
-    received += value.byteLength;
-  }
-}

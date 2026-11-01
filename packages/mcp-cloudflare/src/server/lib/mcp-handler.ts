@@ -22,6 +22,7 @@ import {
 } from "@sentry/mcp-core/skills";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
+import { boundMcpRequestBody } from "@sentry/toolkit-core/request-body";
 import { createMcpHandler } from "agents/mcp/server";
 import { annotateResponseMetric } from "../metrics";
 import {
@@ -78,57 +79,6 @@ type AuthenticatedMcpContext = OAuthMcpContext | SentryBearerMcpContext;
  * with wide headroom while shrinking what one request can make the Worker parse.
  */
 export const MAX_MCP_REQUEST_BODY_BYTES = 1024 * 1024;
-
-function requestBodyTooLargeResponse(): Response {
-  return Response.json(
-    {
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_BYTES} bytes`,
-      },
-      id: null,
-    },
-    { status: 413 },
-  );
-}
-
-/**
- * Buffers a POST body up to MAX_MCP_REQUEST_BODY_BYTES, or returns a 413.
- *
- * `createMcpHandler` from agents only forwards `maxRequestBodySize` to the SDK
- * v2 lane. Its legacy-request classification and legacy compatibility lane
- * still read up to the SDK's 4 MiB default, so the bound is enforced here for
- * every lane.
- */
-async function boundRequestBody(request: Request): Promise<Request | Response> {
-  if (request.method !== "POST" || request.body === null) {
-    return request;
-  }
-  if (
-    Number(request.headers.get("content-length")) > MAX_MCP_REQUEST_BODY_BYTES
-  ) {
-    return requestBodyTooLargeResponse();
-  }
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    received += value.byteLength;
-    if (received > MAX_MCP_REQUEST_BODY_BYTES) {
-      await reader.cancel();
-      return requestBodyTooLargeResponse();
-    }
-    chunks.push(value);
-  }
-
-  return new Request(request, { method: "POST", body: new Blob(chunks) });
-}
 
 function getSkillGrantedAttributeName(skill: string): string {
   return `app.consent.skill.${skill.replaceAll("-", "_")}.granted`;
@@ -516,7 +466,13 @@ async function handleAuthenticatedMcpRequest(
       auth.kind === "oauth" ? auth.onUpstreamUnauthorized : undefined,
   };
 
-  const boundedRequest = await boundRequestBody(request);
+  // `createMcpHandler` from agents only forwards `maxRequestBodySize` to the
+  // SDK v2 lane. Its legacy-request classification and legacy compatibility
+  // lane still read up to the SDK's 4 MiB default, so bound every lane here.
+  const boundedRequest = await boundMcpRequestBody(
+    request,
+    MAX_MCP_REQUEST_BODY_BYTES,
+  );
   if (boundedRequest instanceof Response) {
     return boundedRequest;
   }

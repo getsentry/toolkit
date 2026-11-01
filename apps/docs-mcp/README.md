@@ -38,7 +38,8 @@ JSON-RPC error (`code: -32000`); an oversized `/internal/docs` request gets a 41
 with `{ "error": "Request body must not exceed 65536 bytes" }`. MCP tool calls
 also accept at most 1,000 array elements plus object keys across `arguments`;
 larger calls return an `isError` result before the tool runs. Both budgets live
-in `src/request-limits.ts`, with the sizing rationale.
+in `src/request-limits.ts`, with the sizing rationale. The bounded body reader is
+shared with the main MCP server through `@sentry/toolkit-core/request-body`.
 
 The existing `sentry docs` CLI calls Init Server's authenticated `/api/docs/*`
 facade, which forwards requests through its `DOCS_MCP` binding. Moving this app
