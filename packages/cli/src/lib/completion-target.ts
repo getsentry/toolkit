@@ -29,6 +29,7 @@ import {
   SPAN_DEPTH_KEYWORDS,
   VALID_LOG_SORT_DIRECTIONS,
 } from "./arg-parsing.js";
+import { LOOPBACK_HOSTS } from "../commands/local/loopback.js";
 import { INSTALLATION_METHODS, parseInstallationMethod } from "./binary.js";
 import { parseLoginEmail } from "./db/accounts.js";
 import { parseReleaseChannel, RELEASE_CHANNELS } from "./db/release-channel.js";
@@ -141,6 +142,9 @@ export const ACCOUNT_SERVER_TARGET =
 
 /** `issue archive --until` conditions. */
 export const ARCHIVE_UNTIL_TARGET = "archive-until" satisfies CompletionTarget;
+
+/** Addresses a Local server can bind: loopback, then this machine's adapters. */
+export const BIND_HOST_TARGET = "bind-host" satisfies CompletionTarget;
 
 /** API paths relative to `/api/0/`, from the API schema. */
 export const API_ENDPOINT_TARGET = "api-endpoint" satisfies CompletionTarget;
@@ -281,6 +285,12 @@ export const parseTagKey = identityParser(TAG_KEY_TARGET);
 
 /** Parses an `issue archive --until` condition; completes its grammar. */
 export const parseArchiveUntil = identityParser(ARCHIVE_UNTIL_TARGET);
+
+/**
+ * Parses the host a Local server binds; completes the loopback hosts, then
+ * every interface (`0.0.0.0`) and the addresses of this machine's adapters.
+ */
+export const parseBindHost = identityParser(BIND_HOST_TARGET);
 
 /** Parses an `api` endpoint; completes API schema paths. */
 export const parseApiEndpoint = identityParser(API_ENDPOINT_TARGET);
@@ -434,6 +444,8 @@ export type CompletionValues = {
   periodUnits: readonly string[];
   /** Relative periods offered for {@link PERIOD_TARGET}, with descriptions */
   periodPresets: Readonly<Record<string, string>>;
+  /** Local's loopback hosts, offered first for {@link BIND_HOST_TARGET} */
+  loopbackHosts: readonly string[];
   /**
    * API schema paths without `/api/0/`, for {@link API_ENDPOINT_TARGET}.
    * Not in {@link COMPLETION_VALUES}: the generator adds them from
@@ -461,4 +473,5 @@ export const COMPLETION_VALUES: Omit<CompletionValues, "apiPaths"> = {
     "30d": "Last 30 days",
     "90d": "Last 90 days",
   },
+  loopbackHosts: LOOPBACK_HOSTS,
 };

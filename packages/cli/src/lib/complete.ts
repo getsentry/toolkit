@@ -16,7 +16,7 @@
  */
 
 import { readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import generatedTargets from "../generated/completion-targets.json";
 import type { CompletionValues } from "./completion-target.js";
@@ -377,6 +377,8 @@ const COMPLETERS = Object.freeze({
   },
   /** Cached public DSNs, described by the client key name. */
   dsn: flagEntityCompleter("dsn"),
+  /** Loopback hosts, every interface, then the addresses of local adapters. */
+  "bind-host": (partial) => completeBindHosts(partial),
   /** Cached tag keys of issues, described by their labels. */
   "tag-key": flagEntityCompleter("tag-key"),
   /** Servers of stored accounts. */
@@ -865,6 +867,31 @@ function projectCompleter(options: { list: boolean }): Completer {
 const completeMonitors = flagEntityCompleter("monitor");
 
 const completeAppLinkFields = flagEntityCompleter("app-link-field");
+
+/** IPv6 link-local addresses, which cannot be bound without a zone. */
+const LINK_LOCAL_IPV6_RE = /^fe80:/i;
+
+/**
+ * Hosts a Local server can bind: the loopback hosts (the only ones that
+ * keep its UI actions), `0.0.0.0` for every interface, then the address of
+ * each network adapter, described by the adapter's name.
+ */
+function completeBindHosts(partial: string): Completion[] {
+  const hosts = new Map<string, string>(
+    GENERATED.values.loopbackHosts.map((host) => [host, "loopback"]),
+  );
+  hosts.set("0.0.0.0", "every IPv4 interface");
+  for (const [name, addresses] of Object.entries(networkInterfaces())) {
+    for (const { address, family } of addresses ?? []) {
+      if (!(hosts.has(address) || LINK_LOCAL_IPV6_RE.test(address))) {
+        hosts.set(address, `${name} (${family})`);
+      }
+    }
+  }
+  return [...hosts]
+    .filter(([host]) => host.startsWith(partial))
+    .map(([value, description]) => ({ value, description }));
+}
 
 /** Servers of stored accounts, described by the accounts on each. */
 function completeAccountServers(partial: string): Completion[] {

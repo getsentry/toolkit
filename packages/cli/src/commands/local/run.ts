@@ -24,6 +24,7 @@ import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
+  parseBindHost,
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
@@ -68,7 +69,6 @@ import {
   createLocalRetentionBuffer,
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
-import { LOOPBACK_HOSTS } from "./loopback.js";
 
 type RunFlags = {
   readonly port: number;
@@ -461,7 +461,7 @@ export const runCommand = buildCommand({
       },
       host: {
         kind: "parsed",
-        parse: choiceParser(LOOPBACK_HOSTS),
+        parse: parseBindHost,
         brief: "Hostname for the local server",
         default: "localhost",
       },
