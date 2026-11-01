@@ -785,6 +785,40 @@ describe("loginCommand.func --token path", () => {
     }
   });
 
+  test("a stalled org list skips the attribute warm-up after the timeout", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue(undefined);
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    listOrgsUncachedSpy.mockReturnValue(
+      new Promise(() => {
+        // never settles
+      }),
+    );
+    const warmSpy = vi
+      .spyOn(completionWarmup, "warmAttributeCompletions")
+      .mockResolvedValue(undefined);
+
+    try {
+      const { context, getStdout } = createContext();
+      const started = Date.now();
+      await func.call(context, {
+        token: "my-token",
+        force: false,
+        timeout: 900,
+      });
+
+      expect(Date.now() - started).toBeLessThan(
+        completionWarmup.WARMUP_TIMEOUT_MS + 1000,
+      );
+      expect(getStdout()).toContain("Authenticated");
+      expect(warmSpy).not.toHaveBeenCalled();
+    } finally {
+      warmSpy.mockRestore();
+    }
+  });
+
   test("a failed org list skips the attribute warm-up without failing login", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
