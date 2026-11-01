@@ -424,9 +424,11 @@ takes:
 | Comma-separated fixed values (`--scope`, `--features`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
 | Platform | `parsePlatform` | platform identifiers, common ones first |
 | Something that already exists in Sentry, as a flag value (`--environment`, `--release`, `--team`, `--owner`, `--integration`, `--app`, `--dsn`, `--workflow`, `--project`, `issue tags <key>`) | `parseEnvironment`, `parseEnvironmentList`, `parseRelease`, `parseTeam`, `parseOwner` (`team:<id>`), `parseIntegration`, `parseSentryApp`, `parseAppLinkField` (`name=value`), `parseDsn`, `parseWorkflowList`, `parseProjectSlug`, `parseProjectList`, `parseTagKey` | cached entities of the org the command's target names, else of every org, each once; the `*List` parsers complete the last item of a comma-separated list |
+| Field or aggregate of a dataset (`explore --field`/`--sort`, `dashboard widget --group-by`/`--query`/`--sort`, `alert metrics --aggregate`) | `fieldParser`, `fieldOrAggregateParser`, `aggregateParser` (`fn(field)`), or `aggregateShorthandParser` (`fn:field`), given a `DatasetCompletion`: what completes on each dataset (start from `DATASET_FIELDS`), the command's `--dataset` aliases, and its default dataset | the fields of the dataset the `--dataset` typed names (else the default; every dataset when there is none): cached attribute keys of spans, logs, and trace metrics, cached issue tag keys for errors, or a fixed set (replays), matched one `.` segment at a time (`span.d` finds `span.duration`, never `span.op`); then its whole aggregates (`aggregates`), and its aggregate functions as `fn()`, and `fn(field)` once a name is typed in full (`p95` → `p95(span.duration)`). Widgets take the functions of `aggregateFunctionsOf` in `types/dashboard.ts`; `alert metrics --aggregate` takes the narrower ones metric alerts accept (`METRIC_ALERT_FIELD_COMPLETION`). A word starting with `-` completes flag names, so a descending sort's `-` is typed after completing |
 | Issue as a flag value (`issue merge --into`) | `parseIssueReference` | what `ISSUE_TARGET` completes |
 | Git ref, commit, or repository (`--base-ref`, `--head-sha`, `--repo`, `--commit REPO@SHA`, `set-commits --from`) | `parseVcsRef` (branch and tag names as the remote knows them), `parseGitRef` (refs git resolves locally), `parseGitCommit`, `parseGitRepo` (`owner/repo` of the remotes), `parseRepoCommitList` | read from git in the shell's directory; nothing outside a work tree |
 | A structured value with its own grammar (`issue archive --until`, `api <endpoint>`) | `parseArchiveUntil`, `parseApiEndpoint` | the grammar: `forever`, `auto`, `10x`, `10x/5m`, …; API schema paths one segment at a time, with cached orgs and projects for their placeholders |
+| Local session (`local session view`, `local event list`, …) | `parseLocalSession` | the running Local daemon's session IDs, described by label and state, then labels only one session has (none with whitespace). Read from `local-sessions.json`, an owner-only snapshot the daemon rewrites when a session is created, closed, or expires and removes on shutdown; it holds IDs, labels, states, and expiries, never capabilities, and is ignored once its daemon's PID has exited. `<session envelope>` and `<session event>` complete only the session: envelope and event IDs exist only in the daemon's memory |
 | Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`, `org list --account`) |
 | CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |
 | URL | `parseUrl` (the command validates it) | nothing |
@@ -455,12 +457,14 @@ its module must not import `completion-target.ts`, or the two would load
 in a cycle.
 Cached entities (issues, dashboards, environments, releases, teams,
 monitors, alert workflows, integrations, Sentry Apps and their issue-link
-form fields, DSNs, issue tag keys) come from the `completion_cache` table. The
+form fields, DSNs, issue tag keys, attribute keys of each trace item
+dataset) come from the `completion_cache` table. The
 authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
 `src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
-operations it lists (by URL template, type-checked against the SDK), so API
-functions never seed by hand. To complete a new entity type, add it to
-`CompletionEntityKind`, its operations in `completion-seed.ts` (one
+operations it lists (by URL template, type-checked against the SDK, and the
+query parameters that pick what a response holds, such as the attribute
+keys' `dataset`), so API functions never seed by hand. To complete a new
+entity type, add it to `CompletionEntityKind`, its operations in `completion-seed.ts` (one
 response may seed several kinds), a tagged parser, and an `entityCompleter`
 (target positionals) or `flagEntityCompleter` (flag values) entry in
 `src/lib/complete.ts`. To add a

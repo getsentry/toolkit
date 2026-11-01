@@ -295,16 +295,18 @@ export const ERROR_AGGREGATE_FUNCTIONS = [
 export type ErrorAggregateFunction = (typeof ERROR_AGGREGATE_FUNCTIONS)[number];
 
 /**
- * The function names `--query` and `--sort` complete: those of every
- * dataset's aggregates and their aliases, as {@link parseAggregate} reads
- * them (`count`, then `p95:span.duration` once a field follows). A word
- * starting with `-` completes flag names, so a descending sort's `-` is
- * typed after the name is completed.
+ * The aggregate functions {@link validateAggregateNames} accepts on a widget
+ * dataset: none on `tracemetrics`, whose aggregates name a metric instead
+ * (`aggregation(value,metric_name,metric_type,unit)`).
  */
-export const AGGREGATE_FUNCTION_NAMES: readonly string[] = [
-  ...ERROR_AGGREGATE_FUNCTIONS,
-  ...Object.keys(AGGREGATE_ALIASES),
-];
+export function aggregateFunctionsOf(dataset?: string): readonly string[] {
+  if (dataset === "tracemetrics") {
+    return [];
+  }
+  return dataset === "error-events"
+    ? ERROR_AGGREGATE_FUNCTIONS
+    : SPAN_AGGREGATE_FUNCTIONS;
+}
 
 /** Valibot schema for validating a span aggregate function name */
 export const SpanAggregateFunctionSchema = picklist(SPAN_AGGREGATE_FUNCTIONS);
@@ -442,10 +444,7 @@ export function validateAggregateNames(
     return;
   }
 
-  const validFunctions: readonly string[] =
-    dataset === "error-events"
-      ? ERROR_AGGREGATE_FUNCTIONS
-      : SPAN_AGGREGATE_FUNCTIONS;
+  const validFunctions = aggregateFunctionsOf(dataset);
 
   for (const agg of aggregates) {
     const fn = extractFunctionName(agg);

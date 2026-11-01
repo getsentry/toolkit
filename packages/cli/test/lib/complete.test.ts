@@ -1194,8 +1194,15 @@ describe("getCompletions: fixed values from the modules that validate them", () 
       "p95",
       "p99",
     ]);
+    // A spans widget unless --dataset names another
     expect(
       await values(["dashboard", "widget", "add", "--query"], "count"),
+    ).toEqual(["count", "count_unique"]);
+    expect(
+      await values(
+        ["dashboard", "widget", "add", "--dataset", "errors", "-q"],
+        "count",
+      ),
     ).toEqual(["count", "count_unique", "count_if", "count_at_least"]);
     expect(
       await values(["dashboard", "widget", "edit", "--sort"], "ep"),
@@ -1215,5 +1222,195 @@ describe("getCompletions: fixed values from the modules that validate them", () 
     expect(await values(["sourcemap", "inject", "--ext"], ".js,.m")).toEqual([
       ".js,.mjs",
     ]);
+  });
+});
+
+describe("getCompletions: fields and aggregates of the --dataset given", () => {
+  async function seedFields(): Promise<void> {
+    await seedOrgs([
+      { slug: "acme", name: "Acme" },
+      { slug: "beta", name: "Beta" },
+    ]);
+    cacheCompletionEntities("span-attribute", "acme", [
+      { value: "span.duration", label: "number" },
+      { value: "http.method", label: "string" },
+    ]);
+    cacheCompletionEntities("span-attribute", "beta", [
+      { value: "cache.hit", label: "boolean" },
+    ]);
+    cacheCompletionEntities("log-attribute", "acme", [
+      { value: "severity", label: "string" },
+    ]);
+    cacheCompletionEntities("tag-key", "acme", [
+      { value: "browser.name", label: "Browser.Name" },
+    ]);
+  }
+
+  test("explore --field completes the default dataset's tag keys and aggregates", async () => {
+    await seedFields();
+
+    expect(await getCompletions(["explore", "acme/", "-F"], "brow")).toEqual([
+      { value: "browser.name", description: "Browser.Name" },
+    ]);
+    expect(await values(["explore", "acme/", "--field"], "count_")).toEqual([
+      "count_unique()",
+      "count_if()",
+      "count_at_least()",
+    ]);
+  });
+
+  test("the fields follow --dataset, by name, alias, or with =", async () => {
+    await seedFields();
+
+    expect(
+      await values(["explore", "acme/", "--dataset", "spans", "-F"], "span"),
+    ).toEqual(["span.duration"]);
+    expect(
+      await values(["explore", "acme/", "-d", "log", "--field"], ""),
+    ).toContain("severity");
+    expect(
+      await values(
+        ["explore", "acme/", "--dataset=transactions", "-F"],
+        "http",
+      ),
+    ).toEqual(["http.method"]);
+    expect(await values(["explore", "acme/", "-d", "nope", "-F"], "")).toEqual(
+      [],
+    );
+  });
+
+  test("a function typed in full completes calls with each field", async () => {
+    await seedFields();
+    const field = ["explore", "acme/", "-d", "spans", "-F"];
+
+    expect(await values(field, "p95")).toEqual([
+      "p95()",
+      "p95(span.duration)",
+      "p95(http.method)",
+    ]);
+    expect(await getCompletions(field, "p95(span.d")).toEqual([
+      { value: "p95(span.duration)", description: "number" },
+    ]);
+    expect(await values(field, "nope(")).toEqual([]);
+  });
+
+  test("fields are scoped to the target's org, else every org", async () => {
+    await seedFields();
+
+    const groupBy = ["dashboard", "widget", "add", "--group-by"];
+
+    expect(
+      await values(["dashboard", "widget", "add", "beta/", "D", "-g"], ""),
+    ).toEqual(["cache.hit"]);
+    expect((await values(groupBy, "")).sort()).toEqual([
+      "cache.hit",
+      "http.method",
+      "span.duration",
+    ]);
+  });
+
+  test("replays complete the fields the CLI renders, and sort by their own", async () => {
+    const field = await values(["explore", "-d", "replays", "-F"], "count_e");
+    expect(field).toContain("count_errors");
+    expect(field.every((value) => !value.endsWith(")"))).toBe(true);
+    expect(await values(["explore", "-d", "replays", "-s"], "started")).toEqual(
+      ["started_at"],
+    );
+  });
+
+  test("inside fn(, fields match one segment at a time", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("span-attribute", "acme", [
+      { value: "span.op", label: "string" },
+      { value: "span.duration", label: "number" },
+    ]);
+    const field = ["explore", "acme/", "-d", "spans", "-F"];
+
+    // The typed segment never matches past the candidate's: `d` is not `op`
+    expect(await values(field, "avg(span.d")).toEqual(["avg(span.duration)"]);
+    // A typo within the segment being typed still matches
+    expect(await values(field, "avg(span.duraton")).toEqual([
+      "avg(span.duration)",
+    ]);
+    expect((await values(field, "avg(span.")).sort()).toEqual([
+      "avg(span.duration)",
+      "avg(span.op)",
+    ]);
+  });
+
+  test("alert --aggregate completes the calls metric alerts accept", async () => {
+    await seedFields();
+    const create = ["alert", "metrics", "create", "acme/", "--dataset", "span"];
+
+    expect(await values([...create, "--aggregate"], "span")).toEqual([]);
+    expect(await values([...create, "--aggregate"], "p9")).toEqual([
+      "p90()",
+      "p95()",
+      "p99()",
+    ]);
+    expect(await values([...create, "--aggregate"], "fail")).toEqual([
+      "failure_count()",
+      "failure_rate()",
+    ]);
+    expect(await values([...create, "--aggregate"], "avg(span.d")).toEqual([
+      "avg(span.duration)",
+    ]);
+    // Not an alert function, though widgets take it
+    expect(await values([...create, "--aggregate"], "any")).toEqual([]);
+  });
+
+  test("alert --aggregate narrows to each dataset's aggregates", async () => {
+    await seedFields();
+    const aggregate = (dataset: string) => [
+      "alert",
+      "metrics",
+      "create",
+      "acme/",
+      "--dataset",
+      dataset,
+      "--aggregate",
+    ];
+
+    // Logs have no formulas: no epm, failure_rate, or p100
+    expect(await values(aggregate("logs"), "p10")).toEqual([]);
+    expect(await values(aggregate("log"), "e")).toEqual([]);
+    // Errors take no column but user, release, dist, not their tag keys
+    expect(await values(aggregate("errors"), "")).toEqual([
+      "count()",
+      "count_unique(user)",
+      "count_unique(release)",
+      "count_unique(dist)",
+    ]);
+    expect(await values(aggregate("errors"), "count_unique(u")).toEqual([
+      "count_unique(user)",
+    ]);
+    // Crash rate takes only crash-free percentages
+    expect(await values(aggregate("sessions"), "")).toEqual([
+      "percentage(sessions_crashed,sessions)",
+      "percentage(users_crashed,users)",
+    ]);
+    expect(await values(aggregate("metrics"), "percentage(u")).toEqual([
+      "percentage(users_crashed,users)",
+    ]);
+  });
+
+  test("dashboard widgets complete shorthand aggregates and group-by columns", async () => {
+    await seedFields();
+    const add = ["dashboard", "widget", "add", "acme/", "My Dashboard"];
+
+    expect(await values([...add, "--query"], "p95:span.d")).toEqual([
+      "p95:span.duration",
+    ]);
+    expect(await values([...add, "-q"], "nope:")).toEqual([]);
+    expect(await values([...add, "--group-by"], "http")).toEqual([
+      "http.method",
+    ]);
+    expect(
+      await values([...add, "--dataset", "error-events", "-g"], "brow"),
+    ).toEqual(["browser.name"]);
+    // Trace metric aggregates name a metric, so no function completes
+    expect(await values([...add, "--dataset", "metrics", "-q"], "")).toEqual(
+      [],
+    );
   });
 });

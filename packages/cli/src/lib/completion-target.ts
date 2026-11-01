@@ -20,6 +20,7 @@
 import { ISSUE_IS_VALUES } from "@sentry/toolkit-core/search-query";
 import { numberParser } from "@stricli/core";
 import type { CompletionTarget } from "./complete.js";
+import { aggregateFunctionsOf } from "../types/dashboard.js";
 import { ISSUE_LEVELS } from "../types/sentry.js";
 import {
   CURSOR_NAVIGATION,
@@ -32,6 +33,7 @@ import {
 import { LOOPBACK_HOSTS } from "../commands/local/loopback.js";
 import { INSTALLATION_METHODS, parseInstallationMethod } from "./binary.js";
 import { parseLoginEmail } from "./db/accounts.js";
+import type { CompletionEntityKind } from "./db/completion-cache.js";
 import { parseReleaseChannel, RELEASE_CHANNELS } from "./db/release-channel.js";
 import { sanitizeIssueQuery, sanitizeQuery } from "./search-query.js";
 import { parsePeriod, UNIT_SECONDS } from "./time-range.js";
@@ -136,6 +138,20 @@ export const DSN_TARGET = "dsn" satisfies CompletionTarget;
 /** Cached tag keys of issues. */
 export const TAG_KEY_TARGET = "tag-key" satisfies CompletionTarget;
 
+/** Field names of the dataset the command's `--dataset` names. */
+export const FIELD_TARGET = "field" satisfies CompletionTarget;
+
+/** {@link FIELD_TARGET} fields, or aggregates of them (`p95(span.duration)`). */
+export const FIELD_OR_AGGREGATE_TARGET =
+  "field-or-aggregate" satisfies CompletionTarget;
+
+/** Aggregates of {@link FIELD_TARGET} fields (`p95(span.duration)`). */
+export const AGGREGATE_TARGET = "aggregate" satisfies CompletionTarget;
+
+/** Dashboard shorthand aggregates (`count`, `p95:span.duration`). */
+export const AGGREGATE_SHORTHAND_TARGET =
+  "aggregate-shorthand" satisfies CompletionTarget;
+
 /** Servers of stored accounts. */
 export const ACCOUNT_SERVER_TARGET =
   "account-server" satisfies CompletionTarget;
@@ -145,6 +161,9 @@ export const ARCHIVE_UNTIL_TARGET = "archive-until" satisfies CompletionTarget;
 
 /** Addresses a Local server can bind: loopback, then this machine's adapters. */
 export const BIND_HOST_TARGET = "bind-host" satisfies CompletionTarget;
+
+/** The running Local daemon's session IDs and unique labels. */
+export const LOCAL_SESSION_TARGET = "local-session" satisfies CompletionTarget;
 
 /** API paths relative to `/api/0/`, from the API schema. */
 export const API_ENDPOINT_TARGET = "api-endpoint" satisfies CompletionTarget;
@@ -168,6 +187,50 @@ export const REPO_COMMIT_LIST_TARGET =
 const COMPLETION_TARGET_KEY = Symbol("completionTarget");
 
 const COMPLETION_CHOICES_KEY = Symbol("completionChoices");
+
+const COMPLETION_DATASETS_KEY = Symbol("completionDatasets");
+
+/** What a field or aggregate argument completes on one dataset. */
+export type DatasetFields = {
+  /** Cached entities that name its fields: attribute keys, or tag keys */
+  entity?: CompletionEntityKind;
+  /** Its fields, for a dataset whose set is fixed */
+  fields?: readonly string[];
+  /** Its aggregate function names */
+  functions?: readonly string[];
+  /** Whole aggregates it takes that are not a function of one field */
+  aggregates?: readonly string[];
+};
+
+/**
+ * What a field or aggregate argument completes, by the dataset the
+ * command's `--dataset` names.
+ */
+export type DatasetCompletion = {
+  /** What completes on each dataset, by its name */
+  datasets: Readonly<Record<string, DatasetFields>>;
+  /** Other lowercase `--dataset` spellings, mapped to the name they mean */
+  aliases?: Readonly<Record<string, string>>;
+  /** The dataset without `--dataset`; when omitted, every dataset */
+  default?: string;
+};
+
+/**
+ * What fields and aggregates complete on each Explore dataset: the cached
+ * attribute keys of spans, logs, and trace metrics, and the tag keys seen
+ * on issues for errors, with the aggregate functions
+ * `validateAggregateNames` accepts. Trace metric aggregates name a metric
+ * (`sum(value,metric,type,unit)`), so only their fields complete.
+ */
+export const DATASET_FIELDS = {
+  errors: {
+    entity: "tag-key",
+    functions: aggregateFunctionsOf("error-events"),
+  },
+  spans: { entity: "span-attribute", functions: aggregateFunctionsOf("spans") },
+  logs: { entity: "log-attribute", functions: aggregateFunctionsOf("logs") },
+  tracemetrics: { entity: "metric-attribute" },
+} as const satisfies Record<string, DatasetFields>;
 
 /**
  * Tag a positional or flag parser with the completion kind it accepts.
@@ -292,6 +355,12 @@ export const parseArchiveUntil = identityParser(ARCHIVE_UNTIL_TARGET);
  */
 export const parseBindHost = identityParser(BIND_HOST_TARGET);
 
+/**
+ * Parses a Local session ID or label, which the daemon resolves; completes
+ * the running daemon's sessions.
+ */
+export const parseLocalSession = identityParser(LOCAL_SESSION_TARGET);
+
 /** Parses an `api` endpoint; completes API schema paths. */
 export const parseApiEndpoint = identityParser(API_ENDPOINT_TARGET);
 
@@ -309,6 +378,53 @@ export const parseGitRepo = identityParser(GIT_REPO_TARGET);
 
 /** Parses `REPO@SHA` commits; completes remotes, then recent commits. */
 export const parseRepoCommitList = identityParser(REPO_COMMIT_LIST_TARGET);
+
+/**
+ * A parser that returns its input unchanged, tagged with `kind` and the
+ * fields and aggregates it completes on each dataset.
+ */
+function datasetParser(
+  kind: CompletionTarget,
+  completion: DatasetCompletion,
+): (input: string) => string {
+  const tagged = identityParser(kind);
+  Object.defineProperty(tagged, COMPLETION_DATASETS_KEY, { value: completion });
+  return tagged;
+}
+
+/** Parses a field name; completes those of the `--dataset` given. */
+export function fieldParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(FIELD_TARGET, completion);
+}
+
+/**
+ * Parses a field or an aggregate (`title`, `count()`, `p95(span.duration)`);
+ * completes the fields and aggregate functions of the `--dataset` given.
+ */
+export function fieldOrAggregateParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(FIELD_OR_AGGREGATE_TARGET, completion);
+}
+
+/** Parses an aggregate (`count()`, `p95(span.duration)`); completes them. */
+export function aggregateParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(AGGREGATE_TARGET, completion);
+}
+
+/**
+ * Parses a dashboard shorthand aggregate (`count`, `p95:span.duration`);
+ * completes function names, then a field after the `:`.
+ */
+export function aggregateShorthandParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(AGGREGATE_SHORTHAND_TARGET, completion);
+}
 
 /**
  * Wrap a command's own parser of free text or numbers; completes nothing.
@@ -434,6 +550,22 @@ export function getCompletionChoices(
       COMPLETION_CHOICES_KEY
     ] ?? (typeof listed === "string" ? undefined : listed)
   );
+}
+
+/**
+ * Read the fields and aggregates a parser made by {@link fieldParser} and
+ * its siblings completes.
+ *
+ * @returns Them, or `undefined` for any other parser
+ */
+export function getCompletionDatasets(
+  parse: unknown,
+): DatasetCompletion | undefined {
+  return typeof parse === "function"
+    ? (parse as { [COMPLETION_DATASETS_KEY]?: DatasetCompletion })[
+        COMPLETION_DATASETS_KEY
+      ]
+    : undefined;
 }
 
 /** Fixed values the completers offer (see {@link COMPLETION_VALUES}). */

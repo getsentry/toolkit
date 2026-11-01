@@ -39,6 +39,9 @@ import { runUpsert } from "./utils.js";
  *   form, and `name=value` for its fixed choices, with the app
  * - `dsn`: public DSN of a client key, with the key name
  * - `tag-key`: key of a tag seen on an issue, with its label
+ * - `span-attribute`, `log-attribute`, `metric-attribute`: key of an
+ *   attribute of the spans, logs, or trace metrics dataset, as `--field`
+ *   and `--query` take it, with its type
  */
 export type CompletionEntityKind =
   | "issue"
@@ -53,7 +56,10 @@ export type CompletionEntityKind =
   | "sentry-app"
   | "app-link-field"
   | "dsn"
-  | "tag-key";
+  | "tag-key"
+  | "span-attribute"
+  | "log-attribute"
+  | "metric-attribute";
 
 /** Most recently seen entries kept per kind and org. */
 export const MAX_ENTITIES_PER_ORG = 500;

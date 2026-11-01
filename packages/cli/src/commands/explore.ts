@@ -16,6 +16,7 @@ import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
   listReplays,
+  REPLAY_SORT_FIELDS,
   queryEvents,
   queryEventsTimeSeries,
   queryMetricsMeta,
@@ -23,6 +24,9 @@ import {
 import { validateLimit } from "../lib/arg-parsing.js";
 import {
   choiceParser,
+  DATASET_FIELDS,
+  type DatasetCompletion,
+  fieldOrAggregateParser,
   parseEnvironmentList,
   parseText,
   textParser,
@@ -111,6 +115,34 @@ const DATASETS = buildDatasetParser(
   ["errors", "spans", "tracemetrics", "logs", "replays"],
   [...LEGACY_TRANSACTION_DATASETS],
 );
+
+/**
+ * What `--field` completes on each dataset: attribute or tag keys and
+ * aggregates, or the replay fields the CLI renders. `transaction(s)`
+ * queries spans.
+ */
+const FIELD_COMPLETION: DatasetCompletion = {
+  datasets: {
+    ...DATASET_FIELDS,
+    replays: { fields: listSupportedReplayFields() },
+  },
+  aliases: {
+    ...DATASETS.aliases,
+    ...Object.fromEntries(
+      [...LEGACY_TRANSACTION_DATASETS].map((name) => [name, "spans"]),
+    ),
+  },
+  default: DEFAULT_DATASET,
+};
+
+/** What `--sort` completes: `--field`'s, but replays sort by their own fields. */
+const SORT_COMPLETION: DatasetCompletion = {
+  ...FIELD_COMPLETION,
+  datasets: {
+    ...FIELD_COMPLETION.datasets,
+    replays: { fields: REPLAY_SORT_FIELDS },
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -773,7 +805,7 @@ export const exploreCommand = buildListCommand("explore", {
     flags: {
       field: {
         kind: "parsed",
-        parse: parseText,
+        parse: fieldOrAggregateParser(FIELD_COMPLETION),
         brief:
           'API field or aggregate (repeatable). E.g., title, "count()", "p50(span.duration)"',
         variadic: true,
@@ -806,7 +838,7 @@ export const exploreCommand = buildListCommand("explore", {
       },
       sort: {
         kind: "parsed",
-        parse: parseText,
+        parse: fieldOrAggregateParser(SORT_COMPLETION),
         brief: 'Sort field (prefix with - for desc, e.g., "-count()")',
         optional: true,
       },

@@ -10,8 +10,8 @@ import {
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthenticationError } from "./api-client";
-import { MAX_TOOL_INPUT_ELEMENTS } from "./constants";
 import { UserInputError } from "./errors";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";

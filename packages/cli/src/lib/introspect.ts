@@ -15,7 +15,9 @@ import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   CHOICE_TARGET,
   type CompletionTarget,
+  type DatasetCompletion,
   getCompletionChoices,
+  getCompletionDatasets,
   getCompletionTarget,
 } from "./completion-target.js";
 import type { ApiReference, CommandApiReference } from "./api-schema.js";
@@ -428,6 +430,12 @@ type CommandCompletion = {
    */
   choices?: Record<string, readonly string[]>;
   /**
+   * Fields and aggregates of each field or aggregate flag, by the dataset
+   * its command's `--dataset` names, keyed by `--name` spelling only, since
+   * they are large. Omitted when the command has none.
+   */
+  datasets?: Record<string, DatasetCompletion>;
+  /**
    * Every visible flag by its `--name` spelling, booleans included, for
    * completing flag names. Omitted when the command has none.
    */
@@ -486,6 +494,7 @@ function getCommandCompletion(command: Command): CommandCompletion {
     return kind;
   });
   const flagKinds: Record<string, CompletionTarget | null> = {};
+  const datasets: Record<string, DatasetCompletion> = {};
   for (const [name, def] of Object.entries(flags)) {
     if (def.kind !== "boolean") {
       const { kind, values } = argumentCompletion(
@@ -495,6 +504,10 @@ function getCommandCompletion(command: Command): CommandCompletion {
       flagKinds[`--${name}`] = kind;
       if (values) {
         choices[`--${name}`] = values;
+      }
+      const fields = getCompletionDatasets(def.parse);
+      if (fields) {
+        datasets[`--${name}`] = fields;
       }
     }
   }
@@ -527,6 +540,9 @@ function getCommandCompletion(command: Command): CommandCompletion {
     flags: sortedByKey(flagKinds),
     ...(Object.keys(choices).length > 0
       ? { choices: sortedByKey(choices) }
+      : {}),
+    ...(Object.keys(datasets).length > 0
+      ? { datasets: sortedByKey(datasets) }
       : {}),
     ...(Object.keys(flagNames).length > 0
       ? { flagNames: sortedByKey(flagNames) }
