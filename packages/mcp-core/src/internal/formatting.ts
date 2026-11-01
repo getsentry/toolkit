@@ -5,6 +5,7 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
+import { escapeMarkdownInline } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
   DefaultEventSchema,
@@ -30,6 +31,7 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { selectEventPackages } from "./event-packages";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -1982,6 +1984,43 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
   return `${parts.join("\n")}\n\n`;
 }
 
+function formatEventPackages(event: Event, packageNames: string[]): string {
+  const selection = selectEventPackages(event.packages, packageNames);
+  if (!selection) {
+    return "";
+  }
+  let output = "\n### Selected Package Versions\n\n";
+  if (!selection.metadataAvailable) {
+    return `${output}Package metadata is unavailable for this event.\n\n`;
+  }
+
+  for (const entry of selection.packages) {
+    let value: string;
+    switch (entry.status) {
+      case "recorded":
+        value = entry.truncated
+          ? `${entry.version}… (truncated)`
+          : entry.version;
+        break;
+      case "not_listed":
+        value = "Not listed in this event's package metadata";
+        break;
+      case "version_not_recorded":
+        value = "Version not recorded";
+        break;
+    }
+    output += `- ${formatPackageText(entry.name)}: ${formatPackageText(value)}\n`;
+  }
+  return `${output}\n`;
+}
+
+/** Keep untrusted package data on one list line and preserve literal HTML entities. */
+function formatPackageText(value: string): string {
+  return escapeMarkdownInline(
+    value.replace(/[\r\n\t]/g, " ").replace(/&/g, "&amp;"),
+  ).replace(/\|/g, "\\|");
+}
+
 /** Projects the suspect commit consistently for structured and markdown issue details. */
 export function getSuspectCommit(committers: CommitterList | undefined) {
   // The endpoint currently returns the issue's latest suspect commit, grouped by author.
@@ -2006,6 +2045,7 @@ export function getSuspectCommit(committers: CommitterList | undefined) {
  * @returns Formatted markdown string with complete issue information
  */
 export function formatIssueOutput({
+  packageNames,
   organizationSlug,
   issue,
   event,
@@ -2021,6 +2061,7 @@ export function formatIssueOutput({
   availableToolNames,
   directToolNames,
 }: {
+  packageNames?: string[];
   organizationSlug: string;
   issue: Issue;
   event: Event;
@@ -2171,6 +2212,10 @@ export function formatIssueOutput({
         .join("");
     }
 
+    if (packageNames?.length) {
+      output += formatEventPackages(event, packageNames);
+    }
+
     // For unsupported event types, return early without trying to render event details
     return output;
   }
@@ -2211,6 +2256,10 @@ export function formatIssueOutput({
       directToolNames,
     },
   });
+
+  if (packageNames?.length) {
+    output += formatEventPackages(event, packageNames);
+  }
 
   // Add Seer context if available
   if (autofixState) {

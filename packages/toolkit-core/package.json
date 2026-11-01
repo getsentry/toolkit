@@ -74,6 +74,10 @@
     "./api-client/*": {
       "types": "./src/api-client/*.ts",
       "default": "./src/api-client/*.ts"
+    },
+    "./markdown": {
+      "types": "./src/markdown.ts",
+      "default": "./src/markdown.ts"
     }
   },
   "scripts": {

@@ -15,6 +15,10 @@ import type {
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
 import {
+  SelectedEventPackagesSchema,
+  selectEventPackages,
+} from "../../internal/event-packages";
+import {
   buildIssueResponseNotes,
   dedupeReplayIds,
   formatEventOutput,
@@ -44,6 +48,7 @@ import {
   ParamIssueShortId,
   ParamIssueUrl,
   ParamOrganizationSlug,
+  ParamPackageNames,
   ParamRegionUrl,
 } from "../../schema";
 import { logError, logIssue } from "../../telem/logging";
@@ -93,6 +98,7 @@ export const getIssueDetailsOutputSchema = z.object({
     occurredAt: z.string().nullish(),
     message: z.string().nullish(),
     body: z.string(),
+    packageVersions: SelectedEventPackagesSchema.optional(),
   }),
   seer: z
     .object({
@@ -198,6 +204,7 @@ function issueDetailsResult(args: IssueDetailsArgs) {
 }
 
 function buildIssueDetailsPayload({
+  packageNames,
   organizationSlug,
   issue,
   event,
@@ -213,6 +220,7 @@ function buildIssueDetailsPayload({
   availableToolNames,
   directToolNames,
 }: {
+  packageNames?: string[];
   organizationSlug: string;
   issue: Issue;
   event: Event;
@@ -233,6 +241,7 @@ function buildIssueDetailsPayload({
   // would dwarf the rest of the payload
   const summaries = autofix ? getAutofixArtifactSummaries(autofix) : undefined;
   const isPerf = isPerformanceIssueType(issue) && !!issue.metadata;
+  const packageVersions = selectEventPackages(event.packages, packageNames);
 
   return {
     issue: {
@@ -274,6 +283,7 @@ function buildIssueDetailsPayload({
           : null,
       // replays are their own field below
       body: formatEventOutput(stripReplayMetadata(event), { performanceTrace }),
+      ...(packageVersions ? { packageVersions } : {}),
     },
     seer: autofix
       ? {
@@ -333,6 +343,7 @@ export default defineTool({
     "- Provide a specific issue ID (e.g., 'CLOUDFLARE-MCP-41', 'PROJECT-123')",
     "- Ask to 'explain [ISSUE-ID]', 'tell me about [ISSUE-ID]'",
     "- Want details/stacktrace/analysis for a known issue",
+    "- Need installed package versions for an exact event (pass eventId and packageNames)",
     "- Want the suspect commit's SHA, message, author, and source when available",
     "- Provide a Sentry issue URL",
     "",
@@ -373,6 +384,7 @@ export default defineTool({
     issueId: ParamIssueShortId.optional(),
     eventId: ParamEventId.optional(),
     issueUrl: ParamIssueUrl.optional(),
+    packageNames: ParamPackageNames.optional(),
   },
   // outputSchema is deliberately not declared yet. tools/list would export it immediately,
   // while a session outside experimental mode still gets a markdown result with
@@ -384,6 +396,11 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
+    if (params.packageNames && !params.eventId) {
+      throw new UserInputError(
+        "`packageNames` requires an explicit `eventId`.",
+      );
+    }
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
@@ -459,6 +476,7 @@ export default defineTool({
       ]);
 
       return issueDetailsResult({
+        packageNames: params.packageNames,
         organizationSlug: orgSlug,
         issue,
         event,
