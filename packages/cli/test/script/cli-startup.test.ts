@@ -6,8 +6,12 @@ import { expect, test } from "vitest";
 
 const ANY_IMPORT = /.*/;
 
-/** Hostname and origin predicates are pure and have no startup side effects. */
+/**
+ * Hostname and origin predicates and the logger are pure and have no startup
+ * side effects.
+ */
 const PURE_SENTRY_IMPORTS = [
+  "@sentry/logger",
   "@sentry/toolkit-core/sentry-host",
   "@sentry/toolkit-core/sentry-origin",
 ];

@@ -49,6 +49,7 @@ import {
   toLoginUser,
 } from "../../lib/interactive-login.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   buildHostRefusalMessage,
   isLoginHostTrusted,
@@ -394,7 +395,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Interactive TTY: prompt user to confirm re-authentication
     const userInfo = getUserInfo();
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
-    const confirmed = await log.prompt(
+    const confirmed = await prompt(
       `Already authenticated as ${identity}. Add another account? ` +
         "(The current account stays saved; see 'sentry auth list'. Use --force to replace it.)",
       { type: "confirm", initial: false },

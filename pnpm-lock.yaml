@@ -474,6 +474,9 @@ importers:
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
+      '@sentry/logger':
+        specifier: workspace:*
+        version: link:../logger
       '@sentry/mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
@@ -633,6 +636,21 @@ importers:
       yauzl:
         specifier: 3.4.0
         version: 3.4.0
+
+  packages/logger:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.16.0
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.12.9(typescript@5.9.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.16.0)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.16.0)(typescript@5.9.3))(vite@8.3.3(@types/node@22.16.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/mcp-cloudflare:
     dependencies:

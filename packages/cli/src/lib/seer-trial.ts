@@ -15,6 +15,7 @@ import { isatty } from "node:tty";
 import { getProductTrials, startProductTrial } from "./api-client.js";
 import { SeerError, type SeerErrorReason } from "./errors.js";
 import { logger } from "./logger.js";
+import { prompt } from "./prompt.js";
 import { buildBillingUrl } from "./sentry-web-urls.js";
 import { findAvailableTrial } from "./trials.js";
 
@@ -99,7 +100,7 @@ export async function promptAndStartTrial(
   }
 
   const daysText = trial.lengthDays ? `${trial.lengthDays}-day ` : "";
-  const confirmed = await log.prompt(
+  const confirmed = await prompt(
     `A free ${daysText}Seer trial is available. Start trial?`,
     { type: "confirm", initial: true },
   );

@@ -21,6 +21,7 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   type AutofixState,
   extractExaminedFiles,
@@ -184,7 +185,7 @@ async function confirmRootCauseAndContinue(
     log.info("Root cause identified:");
     log.info(`"${primaryCause.description}"`);
 
-    const proceed = await log.prompt("Generate a solution plan for it?", {
+    const proceed = await prompt("Generate a solution plan for it?", {
       type: "confirm",
       initial: true,
     });

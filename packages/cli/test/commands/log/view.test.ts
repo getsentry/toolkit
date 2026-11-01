@@ -26,18 +26,16 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger module to intercept the .prompt() call made by the
-  // module-scoped `log = logger.withTag("log-view")` in view.ts.
+  // Stub the logger module-scoped as `log = logger.withTag("log-view")` in
+  // view.ts; the prompt module is mocked with `_mockPrompt` below.
   const _mockPrompt = vi.fn(() => Promise.resolve(true));
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     warn: ReturnType<typeof vi.fn>;
     info: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
     debug: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     warn: vi.fn(_noop),
     info: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -58,6 +56,8 @@ vi.mock("node:tty", () => ({
   ...ttyExports,
   default: ttyExports,
 }));
+
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
 
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,

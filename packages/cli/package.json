@@ -104,6 +104,7 @@
     "@mastra/client-js": "^1.38.0",
     "@sentry/api": "catalog:",
     "@sentry/core": "catalog:",
+    "@sentry/logger": "workspace:*",
     "@sentry/mcp-server": "workspace:*",
     "@sentry/node": "catalog:",
     "@sentry/search-syntax": "catalog:",

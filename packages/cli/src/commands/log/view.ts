@@ -39,6 +39,7 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   type BoundArguments,
   boundArguments,
@@ -306,7 +307,7 @@ async function handleWebOpen(orgSlug: string, logIds: string[]): Promise<void> {
       );
       return;
     }
-    const confirmed = await log.prompt(`Open ${logIds.length} browser tabs?`, {
+    const confirmed = await prompt(`Open ${logIds.length} browser tabs?`, {
       type: "confirm",
       initial: false,
     });

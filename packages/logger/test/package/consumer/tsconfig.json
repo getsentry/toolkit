@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "strict": true,
+    "outDir": "out",
+    "types": ["node"]
+  },
+  "include": ["esm.ts", "cjs.cts"]
+}
