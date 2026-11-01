@@ -26,6 +26,9 @@
     "node": ">=18"
   },
   "sideEffects": false,
+  "sentryCi": {
+    "e2e": "test:package"
+  },
   "files": [
     "dist",
     "LICENSE",

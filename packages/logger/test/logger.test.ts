@@ -281,11 +281,18 @@ describe("logfmtReporter", () => {
       type: "warn",
       level: 1,
       tag: "chat",
-      attributes: { user: "jane doe", count: 2, ok: true, "bad key": "x=y" },
+      attributes: {
+        user: "jane doe",
+        count: 2,
+        ok: true,
+        "http.status_code": 404,
+        "bad key=": "x=y",
+        empty: "",
+      },
     });
 
     expect(stream.text()).toBe(
-      'time=2024-01-15T14:28:59.000Z level=warn tag=chat msg="Said \\"hi\\"\\nthen left" user="jane doe" count=2 ok=true bad_key="x=y"\n',
+      'time=2024-01-15T14:28:59.000Z level=warn tag=chat msg="Said \\"hi\\"\\nthen left" user="jane doe" count=2 ok=true http.status_code=404 bad_key_="x=y" empty=""\n',
     );
   });
 });

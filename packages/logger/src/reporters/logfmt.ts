@@ -20,8 +20,13 @@ const ESCAPES: Record<string, string> = {
   "\t": "\\t",
 };
 
-/** Keys keep only characters that cannot break the `key=value` layout. */
-const UNSAFE_KEY_CHARACTERS = /[^\w.:/-]/g;
+/**
+ * Characters a logfmt key cannot hold: a space, `=`, `"`, or a control
+ * character. Everything else, `.` included, passes through, as in
+ * go-logfmt and node-logfmt.
+ */
+// oxlint-disable-next-line no-control-regex -- control characters must be replaced
+const INVALID_KEY_CHARACTERS = /[\s="\x00-\x1f\x7f]/g;
 
 function formatValue(value: LogAttributeValue): string {
   const text = String(value);
@@ -49,7 +54,7 @@ export function logfmtReporter(options: StreamReporterOptions = {}): Reporter {
       const line = recordFields(record)
         .map(
           ([key, value]) =>
-            `${key.replace(UNSAFE_KEY_CHARACTERS, "_")}=${formatValue(value)}`,
+            `${key.replace(INVALID_KEY_CHARACTERS, "_")}=${formatValue(value)}`,
         )
         .join(" ");
       (options.stream ?? process.stderr).write(`${line}\n`);

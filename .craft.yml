@@ -107,14 +107,13 @@ workspaces:
   packages/logger:
     changelog:
       policy: auto
-    releaseBranchPrefix: release/logger
+    releaseBranchPrefix: "release/{{workspaceName}}"
     targets:
       - name: github
-        tagPrefix: "logger@"
-        includeNames: '/^sentry-logger-\d.*\.tgz$/'
+        tagPrefix: "{{workspaceName}}@"
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
       - name: npm
-        id: "@sentry/logger"
-        includeNames: '/^sentry-logger-\d.*\.tgz$/'
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
   packages/mcp-server:
     changelogPolicy: none
     preReleaseCommand: >-
