@@ -29,9 +29,9 @@ directories below; the MCP index explains which guides apply to that product.
 
 For package-specific rules, see the root [AGENTS.md](../AGENTS.md) and the
 [CLI AGENTS.md](../packages/cli/AGENTS.md). `packages/toolkit-core/` contains
-shared primitives used by both products. `packages/cli-logger/` is the CLI's
-logger, published to npm as `@sentry/cli-logger`; see its
-[README](../packages/cli-logger/README.md).
+shared primitives used by both products. `packages/logger/` is the structured
+logger the CLI uses, published to npm as `@sentry/logger`; see its
+[README](../packages/logger/README.md).
 
 ## Ownership
 

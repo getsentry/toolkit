@@ -1,20 +1,20 @@
 /**
  * Structured logging for Sentry CLI.
  *
- * The logger comes from `@sentry/cli-logger` (`packages/cli-logger`): levels,
- * tag scoping, consola-style stderr output, and consola-shaped log records.
- * This module configures it for the CLI. Each log call goes to every
- * registered reporter:
+ * The logger comes from `@sentry/logger` (`packages/logger`): levels, tag
+ * scoping, and reporters. This module configures it for the CLI. Each log
+ * call goes to every registered reporter:
  *
- * 1. **The stderr reporter** (built in) — renders consola's "fancy" layout and
+ * 1. **`fancyReporter`** — renders consola's "fancy" layout on stderr and
  *    falls back to plain `[type] [tag] message` lines in CI and tests. It reads
  *    the environment through {@link getEnv}, so library mode's isolated env
  *    controls colors and layout.
- * 2. **Sentry.createConsolaReporter()** — auto-forwards all log messages to Sentry
- *    structured logs via `_INTERNAL_captureLog`. Library mode drops these logs
- *    in `beforeSendLog` (see telemetry.ts).
+ * 2. **`sentryReporter(Sentry.logger)`** — forwards all log messages to Sentry
+ *    structured logs. Library mode drops these logs in `beforeSendLog` (see
+ *    telemetry.ts).
  *
- * See `packages/cli-logger/README.md` for the log levels.
+ * Prompts live in `prompt.ts`. See `packages/logger/README.md` for the log
+ * levels.
  *
  * ## Usage
  *
@@ -43,17 +43,16 @@
  */
 
 import {
-  type ConfirmPromptOptions,
   createLogger,
-  type LogReporter,
+  fancyReporter,
   parseLogLevel,
-  type TextPromptOptions,
-} from "@sentry/cli-logger";
+  type Reporter,
+} from "@sentry/logger";
 
 import { getEnv } from "./env.js";
 
-export { LOG_LEVEL_NAMES, parseLogLevel } from "@sentry/cli-logger";
-export type { LogLevelName, LogObject, LogReporter } from "@sentry/cli-logger";
+export { LOG_LEVEL_NAMES, parseLogLevel } from "@sentry/logger";
+export type { LogLevelName, LogRecord, Reporter } from "@sentry/logger";
 
 /**
  * Environment variable name for controlling CLI log verbosity.
@@ -80,44 +79,6 @@ export function getEnvLogLevel(): number | null {
 }
 
 /**
- * Set to `true` by esbuild in the `dist/complete.cjs` bundle (see
- * `script/bundle.ts`), so the `@clack/prompts` import below stays out of the
- * shell completion bundle. Undefined when running from source.
- */
-declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
-
-/**
- * Ask the user a question on the terminal with `@clack/prompts`.
- *
- * Resolves to the answer, or to clack's cancel symbol when the user presses
- * Ctrl+C, so callers check for `=== true` or `typeof answer === "string"`.
- */
-function askUser(
-  message: string,
-  opts: ConfirmPromptOptions,
-): Promise<boolean | symbol>;
-function askUser(
-  message: string,
-  opts: TextPromptOptions,
-): Promise<string | symbol>;
-async function askUser(
-  message: string,
-  opts: ConfirmPromptOptions | TextPromptOptions,
-): Promise<boolean | string | symbol> {
-  if (
-    typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
-    SENTRY_CLI_COMPLETION_BUILD
-  ) {
-    throw new Error("Prompts are not available during shell completion.");
-  } else {
-    // The `else` lets esbuild drop this import from the completion bundle.
-    // Elsewhere `@clack/prompts` loads only when a command asks a question.
-    const { clackPrompt } = await import("@sentry/cli-logger/prompt");
-    return await clackPrompt(message, opts as ConfirmPromptOptions);
-  }
-}
-
-/**
  * Global CLI logger instance.
  *
  * Use `logger.info()`, `logger.success()`, `logger.start()` for user-facing messages.
@@ -134,7 +95,9 @@ async function askUser(
  * by bin.ts calling `setLogLevel(getEnvLogLevel())` — not at module load time —
  * so tests can override the env var after import.
  */
-export const logger = createLogger({ env: getEnv, prompt: askUser });
+export const logger = createLogger({
+  reporters: [fancyReporter({ env: getEnv })],
+});
 
 /**
  * Write an already-formatted line to stderr verbatim, bypassing the logger.
@@ -168,22 +131,22 @@ export function printJsonLine(line: string): void {
 let sentryReporterAttached = false;
 
 /**
- * Attach the Sentry consola reporter for automatic log forwarding.
+ * Attach the Sentry reporter for automatic log forwarding.
  *
- * Must be called after `Sentry.init()` completes so that `createConsolaReporter()`
- * can find the active client. Safe to call multiple times — subsequent calls are no-ops.
+ * Must be called after `Sentry.init()` completes so that the reporter has an
+ * active client. Safe to call multiple times — subsequent calls are no-ops.
  * The caller creates the reporter so this module never imports `@sentry/node`:
  * the `__complete` fast path loads the logger through the database modules.
  *
- * The reporter auto-forwards all log messages to Sentry structured logs,
- * mapping log types to Sentry severity levels:
+ * The reporter forwards all log messages to Sentry structured logs, mapping
+ * log types to Sentry severity levels:
  * - error → error, fail → error, warn → warn
  * - info/log/success/start → info
  * - debug → debug, trace → trace
  *
- * Tags are preserved as `consola.tag` attributes in Sentry.
+ * Tags are preserved as `logger.tag` attributes in Sentry.
  */
-export function attachSentryReporter(reporter: LogReporter): void {
+export function attachSentryReporter(reporter: Reporter): void {
   if (sentryReporterAttached) {
     return;
   }

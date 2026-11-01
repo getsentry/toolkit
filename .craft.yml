@@ -103,20 +103,18 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
-  packages/cli-logger:
+  # No preReleaseCommand: Craft bumps package.json through the npm target.
+  packages/logger:
     changelog:
       policy: auto
-    preReleaseCommand: >-
-      bash -c 'cd packages/cli-logger && npm version "$CRAFT_NEW_VERSION"
-      --no-git-tag-version'
-    releaseBranchPrefix: release/cli-logger
+    releaseBranchPrefix: release/logger
     targets:
       - name: github
-        tagPrefix: "cli-logger@"
-        includeNames: '/^sentry-cli-logger-\d.*\.tgz$/'
+        tagPrefix: "logger@"
+        includeNames: '/^sentry-logger-\d.*\.tgz$/'
       - name: npm
-        id: "@sentry/cli-logger"
-        includeNames: '/^sentry-cli-logger-\d.*\.tgz$/'
+        id: "@sentry/logger"
+        includeNames: '/^sentry-logger-\d.*\.tgz$/'
   packages/mcp-server:
     changelogPolicy: none
     preReleaseCommand: >-

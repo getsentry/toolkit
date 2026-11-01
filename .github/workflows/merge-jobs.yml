@@ -2,7 +2,7 @@ name: Post-merge tasks
 
 on:
   push:
-    branches: ["main", "release/*", "release/mcp/**", "release/cli-logger/**"]
+    branches: ["main", "release/*", "release/mcp/**", "release/logger/**"]
   workflow_dispatch:
 
 jobs:
@@ -26,7 +26,7 @@ jobs:
         run: pnpm install
 
       - name: Build
-        run: pnpm --filter '@sentry/mcp-server...' --filter @sentry/cli-logger --if-present run build
+        run: pnpm --filter '@sentry/mcp-server...' --filter @sentry/logger --if-present run build
 
       - name: Run linter
         run: pnpm lint
@@ -38,8 +38,8 @@ jobs:
         working-directory: packages/mcp-server
         run: pnpm pack --pack-destination dist
 
-      - name: Package cli-logger
-        working-directory: packages/cli-logger
+      - name: Package logger
+        working-directory: packages/logger
         run: pnpm pack --pack-destination dist
 
       - name: Archive artifacts
@@ -48,7 +48,7 @@ jobs:
           name: ${{ github.sha }}
           path: |
             ${{ github.workspace }}/packages/mcp-server/dist/*.tgz
-            ${{ github.workspace }}/packages/cli-logger/dist/*.tgz
+            ${{ github.workspace }}/packages/logger/dist/*.tgz
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857

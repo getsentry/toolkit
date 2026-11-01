@@ -20,6 +20,7 @@ import { success, warning } from "../../lib/formatters/colors.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import { DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import { normalizeUserInputToOrigin } from "../../lib/sentry-urls.js";
 import type {
@@ -229,7 +230,7 @@ async function confirmImport(): Promise<boolean> {
   if (!isatty(0)) {
     return false;
   }
-  const confirmed = await log.prompt("Import these settings to the new CLI?", {
+  const confirmed = await prompt("Import these settings to the new CLI?", {
     type: "confirm",
     initial: true,
   });

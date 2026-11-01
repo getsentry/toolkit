@@ -17,7 +17,7 @@ import { parseText } from "../../lib/completion-target.js";
 import { ConfigError, ValidationError } from "../../lib/errors.js";
 import { formatFeedbackResult } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 
 /** Structured result of the feedback submission */
 export type FeedbackResult = {
@@ -69,7 +69,7 @@ export const feedbackCommand = buildCommand({
       if (!isatty(0)) {
         throw new ValidationError("Please provide a feedback message.");
       }
-      const response = await logger.prompt("Enter your feedback message:", {
+      const response = await prompt("Enter your feedback message:", {
         type: "text",
         placeholder: "e.g. I love this tool!",
       });

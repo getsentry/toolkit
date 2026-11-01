@@ -471,12 +471,12 @@ importers:
       '@sentry/api':
         specifier: 'catalog:'
         version: 0.428.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
-      '@sentry/cli-logger':
-        specifier: workspace:*
-        version: link:../cli-logger
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
+      '@sentry/logger':
+        specifier: workspace:*
+        version: link:../logger
       '@sentry/mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
@@ -637,11 +637,8 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
 
-  packages/cli-logger:
+  packages/logger:
     devDependencies:
-      '@clack/prompts':
-        specifier: 0.11.0
-        version: 0.11.0
       '@types/node':
         specifier: 'catalog:'
         version: 22.16.0

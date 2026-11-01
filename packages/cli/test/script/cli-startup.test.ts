@@ -11,7 +11,7 @@ const ANY_IMPORT = /.*/;
  * side effects.
  */
 const PURE_SENTRY_IMPORTS = [
-  "@sentry/cli-logger",
+  "@sentry/logger",
   "@sentry/toolkit-core/sentry-host",
   "@sentry/toolkit-core/sentry-origin",
 ];

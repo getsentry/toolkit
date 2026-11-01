@@ -2,11 +2,12 @@
  * Unit tests for the CLI's logger configuration.
  *
  * Tests getEnvLogLevel, setLogLevel (with withTag propagation),
- * attachSentryReporter, the library-mode env, and prompts. The logger itself
- * is tested in packages/cli-logger.
+ * attachSentryReporter, and the library-mode env. The logger itself is tested
+ * in packages/logger.
  */
 
-import { createConsolaReporter } from "@sentry/node";
+import { sentryReporter } from "@sentry/logger";
+import { logger as sentryLogger } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { withEnv } from "../../src/lib/env.js";
 import {
@@ -18,13 +19,6 @@ import {
   printLine,
   setLogLevel,
 } from "../../src/lib/logger.js";
-
-const clack = vi.hoisted(() => ({
-  confirm: vi.fn(),
-  text: vi.fn(),
-}));
-
-vi.mock("@clack/prompts", () => clack);
 
 describe("LOG_LEVEL_ENV_VAR", () => {
   test("is SENTRY_LOG_LEVEL", () => {
@@ -229,14 +223,18 @@ describe("attachSentryReporter", () => {
   test("can be called without error", () => {
     // attachSentryReporter is idempotent and safe to call even when
     // Sentry is not initialized (it catches errors internally)
-    expect(() => attachSentryReporter(createConsolaReporter())).not.toThrow();
+    expect(() =>
+      attachSentryReporter(sentryReporter(sentryLogger)),
+    ).not.toThrow();
   });
 
   test("is idempotent (second call is a no-op)", () => {
     // First call may or may not succeed depending on Sentry state
-    attachSentryReporter(createConsolaReporter());
+    attachSentryReporter(sentryReporter(sentryLogger));
     // Second call should be a no-op due to internal guard
-    expect(() => attachSentryReporter(createConsolaReporter())).not.toThrow();
+    expect(() =>
+      attachSentryReporter(sentryReporter(sentryLogger)),
+    ).not.toThrow();
   });
 });
 
@@ -259,39 +257,5 @@ describe("stderr output", () => {
     } finally {
       stderr.mockRestore();
     }
-  });
-});
-
-describe("prompt", () => {
-  test("returns clack's cancel symbol instead of the initial value on Ctrl+C", async () => {
-    const cancel = Symbol("clack:cancel");
-    clack.confirm.mockResolvedValue(cancel);
-
-    const answer = await logger.prompt("Import from .sentryclirc?", {
-      type: "confirm",
-      initial: true,
-    });
-
-    expect(clack.confirm).toHaveBeenCalledWith({
-      message: "Import from .sentryclirc?",
-      initialValue: true,
-    });
-    expect(answer).toBe(cancel);
-  });
-
-  test("passes text prompt options through to clack", async () => {
-    clack.text.mockResolvedValue("my-project");
-
-    const answer = await logger
-      .withTag("delete")
-      .prompt("Type the project slug:", { type: "text", placeholder: "slug" });
-
-    expect(clack.text).toHaveBeenCalledWith({
-      message: "Type the project slug:",
-      placeholder: "slug",
-      initialValue: undefined,
-      defaultValue: undefined,
-    });
-    expect(answer).toBe("my-project");
   });
 });

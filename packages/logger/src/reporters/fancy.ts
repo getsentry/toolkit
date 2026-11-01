@@ -1,18 +1,30 @@
 /**
- * Renders log records the way consola's "fancy" reporter did: icons, colors,
- * `WARN`/`ERROR` badges, and a right-aligned `tag HH:MM:SS`. CI logs and test
- * runs get plain `[type] [tag] message` lines instead.
+ * The consola-style reporter: icons, colors, `WARN`/`ERROR` badges, and a
+ * right-aligned `tag HH:MM:SS`. CI logs and test runs get plain
+ * `[type] [tag] message` lines instead.
  */
 
-import { sep } from "node:path";
-import { formatWithOptions } from "node:util";
+import { formatMessage } from "../message.js";
+import type {
+  LogEnv,
+  LogRecord,
+  LogStream,
+  LogType,
+  Reporter,
+} from "../types.js";
 
-import type { LogObject, LoggerEnv, LogType } from "./types.js";
-
-/** How the stderr reporter reads its environment and renders the time. */
-export type FormatOptions = {
-  env: () => LoggerEnv;
-  formatTime: (date: Date) => string;
+/** Options for {@link fancyReporter}. */
+export type FancyReporterOptions = {
+  /** Where lines go. Defaults to `process.stderr`. */
+  stream?: LogStream;
+  /**
+   * Returns the environment that picks the layout and colors (`CI`, `TEST`,
+   * `NODE_ENV`, `NO_COLOR`, `FORCE_COLOR`, `TERM`, ...). Called on each log
+   * call. Defaults to `process.env`.
+   */
+  env?: () => LogEnv;
+  /** Renders the time next to the tag. Defaults to {@link formatLocalTime}. */
+  formatTime?: (date: Date) => string;
 };
 
 /**
@@ -105,23 +117,23 @@ function isEnabled(value: string | undefined): boolean {
  * Whether to render the fancy layout. CI logs and test runs get plain
  * `[type] [tag] message` lines instead, as they did with consola.
  */
-function useFancyLayout(env: LoggerEnv): boolean {
+function useFancyLayout(env: LogEnv): boolean {
   return !(isEnabled(env.CI) || env.NODE_ENV === "test" || isEnabled(env.TEST));
 }
 
-/** Whether stderr takes ANSI colors: `NO_COLOR`, then `FORCE_COLOR`, then TTY detection. */
-function useColor(env: LoggerEnv): boolean {
+/** Whether to write ANSI colors: `NO_COLOR`, then `FORCE_COLOR`, then TTY detection. */
+function useColor(env: LogEnv, stream: LogStream): boolean {
   if (env.NO_COLOR) {
     return false;
   }
   if (env.FORCE_COLOR) {
     return env.FORCE_COLOR !== "0";
   }
-  return Boolean(process.stderr.isTTY) && env.TERM !== "dumb";
+  return Boolean(stream.isTTY) && env.TERM !== "dumb";
 }
 
 /** Whether the terminal can draw the Unicode icons. */
-function supportsUnicode(env: LoggerEnv): boolean {
+function supportsUnicode(env: LogEnv): boolean {
   if (process.platform !== "win32") {
     return env.TERM !== "linux";
   }
@@ -142,66 +154,21 @@ function visibleWidth(text: string): number {
   return text.replace(ANSI_PATTERN, "").length;
 }
 
-/** Options for formatting log arguments, as consola passed them. */
-const INSPECT_OPTIONS = { colors: false, compact: true } as const;
-
-/** An `Error`, or anything else carrying a stack. */
-type ErrorLike = { message?: unknown; stack: string; cause?: unknown };
-
-function isErrorLike(value: unknown): value is ErrorLike {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { stack?: unknown }).stack === "string"
-  );
-}
-
-/**
- * Render an error as its message, its stack frames, and its causes, as consola
- * did. Unlike `util.inspect`, this leaves out the error's other properties,
- * which can hold API response details.
- */
-function formatError(error: ErrorLike, depth: number): string {
-  const message =
-    typeof error.message === "string"
-      ? error.message
-      : formatWithOptions(INSPECT_OPTIONS, error);
-  const indent = "  ".repeat(depth + 1);
-  const cwd = process.cwd() + sep;
-  const frames = error.stack
-    .split("\n")
-    .slice(message.split("\n").length)
-    .map(
-      (frame) => indent + frame.trim().replace("file://", "").replace(cwd, ""),
-    )
-    .join("\n");
-  const prefix = depth > 0 ? `${"  ".repeat(depth)}[cause]: ` : "";
-  let cause = "";
-  if (isErrorLike(error.cause)) {
-    cause = `\n\n${formatError(error.cause, depth + 1)}`;
-  } else if (error.cause) {
-    cause = `\n\n${"  ".repeat(depth + 1)}[cause]: ${formatWithOptions(INSPECT_OPTIONS, error.cause)}`;
-  }
-  return `${prefix}${message}\n${frames}${cause}`;
-}
-
-/** Render `logObj` as terminal lines, without a trailing newline. */
-export function formatLogObj(
-  logObj: LogObject,
-  { env: getEnv, formatTime }: FormatOptions,
+/** Render `record` as terminal lines, without a trailing newline. */
+function formatRecord(
+  record: LogRecord,
+  env: LogEnv,
+  stream: LogStream,
+  formatTime: (date: Date) => string,
 ): string {
-  const env = getEnv();
-  const message = formatWithOptions(
-    INSPECT_OPTIONS,
-    ...logObj.args.map((arg) => (isErrorLike(arg) ? formatError(arg, 0) : arg)),
-  );
+  const message = formatMessage(record.args, { stack: true });
   if (!useFancyLayout(env)) {
-    return [`[${logObj.type}]`, logObj.tag && `[${logObj.tag}]`, message]
+    return [`[${record.type}]`, record.tag && `[${record.tag}]`, message]
       .filter(Boolean)
       .join(" ");
   }
 
-  const color = useColor(env);
+  const color = useColor(env, stream);
   const paint = (style: AnsiStyle, text: string): string => {
     if (!(color && text)) {
       return text;
@@ -218,17 +185,17 @@ export function formatLogObj(
       );
 
   const [firstLine = "", ...additional] = message.split("\n");
-  const badge = BADGE_BACKGROUNDS[logObj.level];
+  const badge = BADGE_BACKGROUNDS[record.level];
   const type = badge
-    ? paint(badge, paint("black", ` ${logObj.type.toUpperCase()} `))
+    ? paint(badge, paint("black", ` ${record.type.toUpperCase()} `))
     : paint(
-        TYPE_COLORS[logObj.type],
-        TYPE_ICONS[logObj.type][supportsUnicode(env) ? 0 : 1],
+        TYPE_COLORS[record.type],
+        TYPE_ICONS[record.type][supportsUnicode(env) ? 0 : 1],
       );
 
-  const columns = process.stderr.columns || 0;
-  const tag = logObj.tag ? paint("gray", logObj.tag) : "";
-  const date = columns ? paint("gray", formatTime(logObj.date)) : "";
+  const columns = stream.columns || 0;
+  const tag = record.tag ? paint("gray", record.tag) : "";
+  const date = columns ? paint("gray", formatTime(record.date)) : "";
   const left = [type, markup(firstLine)].filter(Boolean).join(" ");
   const right = [tag, date].filter(Boolean).join(" ");
   const space = columns - visibleWidth(left) - visibleWidth(right) - 2;
@@ -241,4 +208,19 @@ export function formatLogObj(
     line += markup(`\n${additional.join("\n")}`);
   }
   return badge ? `\n${line}\n` : line;
+}
+
+/**
+ * A reporter for people at a terminal, in consola's "fancy" layout. Each log
+ * call is one write.
+ */
+export function fancyReporter(options: FancyReporterOptions = {}): Reporter {
+  const getEnv = options.env ?? (() => process.env);
+  const formatTime = options.formatTime ?? formatLocalTime;
+  return {
+    log(record) {
+      const stream = options.stream ?? process.stderr;
+      stream.write(`${formatRecord(record, getEnv(), stream, formatTime)}\n`);
+    },
+  };
 }

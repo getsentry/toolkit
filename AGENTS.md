@@ -22,7 +22,7 @@ toolkit/
 │   └── local/               # Sentry Local browser viewer
 ├── packages/
 │   ├── cli/                 # Sentry CLI (see packages/cli/AGENTS.md)
-│   ├── cli-logger/          # Terminal logger (@sentry/cli-logger on npm)
+│   ├── logger/              # Structured logger (@sentry/logger on npm)
 │   ├── toolkit-core/        # Shared CLI/MCP primitives
 │   ├── mcp-core/            # Core MCP implementation (private)
 │   ├── mcp-server/          # stdio transport (@sentry/mcp-server on npm)
