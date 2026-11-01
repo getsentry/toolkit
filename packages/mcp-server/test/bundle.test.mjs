@@ -125,9 +125,23 @@ test("rejects the CLI's other commands", () => {
 /**
  * Start the server, run initialize + tools/list, and close stdin. Resolves
  * with the two responses and everything the server wrote to stderr.
+ *
+ * With `deletedCwd`, the server starts in a directory removed just before
+ * `exec`, so `process.cwd()` throws. The shell still exports `PWD`, as an
+ * interactive shell would.
  */
-async function serveStdio(args, extraEnv) {
-  const child = spawn(process.execPath, [bin, ...args], {
+async function serveStdio(args, extraEnv, { deletedCwd } = {}) {
+  const node = [process.execPath, bin, ...args];
+  const [command, ...commandArgs] = deletedCwd
+    ? [
+        "/bin/sh",
+        "-c",
+        'cd "$0" && rmdir "$0" && exec "$@"',
+        deletedCwd,
+        ...node,
+      ]
+    : node;
+  const child = spawn(command, commandArgs, {
     env: { ...env, ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -139,6 +153,11 @@ async function serveStdio(args, extraEnv) {
   });
   const responses = new Promise((resolve, reject) => {
     child.on("error", reject);
+    child.on("close", (code) =>
+      reject(
+        new Error(`server exited (${code}) before responding:\n${stderr}`),
+      ),
+    );
     child.stdout.on("data", (chunk) => {
       buffer += chunk;
       const parts = buffer.split("\n");
@@ -210,3 +229,15 @@ test("serves the deprecated --access-token with a hint on stderr", async () => {
   assert.equal(stderr.match(/is deprecated/g)?.length, 1);
   assert.ok(!stderr.includes(token), "the hint must not echo the token");
 });
+
+test(
+  "serves MCP from a deleted working directory",
+  { skip: process.platform === "win32" && "needs a POSIX shell" },
+  async () => {
+    await serveStdio(
+      [],
+      { SENTRY_AUTH_TOKEN: "sntryu_test", SENTRY_FORCE_ENV_TOKEN: "1" },
+      { deletedCwd: mkdtempSync(join(tmpdir(), "sentry-mcp-cwd-")) },
+    );
+  },
+);

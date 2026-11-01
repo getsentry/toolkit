@@ -30,6 +30,7 @@ import {
 } from "@sentry/node";
 import { getAppIdentity } from "../app-identity.js";
 import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
+import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
 import type { McpServerConfig } from "./config.js";
@@ -46,6 +47,7 @@ export type McpServeOptions = {
 };
 
 const SENTRY_FLUSH_TIMEOUT_MS = 5000;
+const log = logger.withTag("mcp.telemetry");
 
 type ProviderMismatch = { configured: string; availableKey: string };
 
@@ -214,6 +216,18 @@ function configureAgentProvider(
  * @internal Exported for testing
  */
 export function initMcpTelemetry(config: McpServerConfig): void {
+  // `init` reads `process.cwd()`, which throws when the working directory was
+  // deleted. Serve without telemetry instead of crashing at startup.
+  try {
+    process.cwd();
+  } catch (error) {
+    // Log only the message: rendering the error's stack calls `process.cwd()`.
+    log.debug(
+      `Working directory is unavailable, starting without telemetry: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+
   const { name, packageName } = getAppIdentity();
   const scopeContext = {
     "app.server.version": CLI_VERSION,

@@ -95,4 +95,28 @@ describe("initMcpTelemetry", () => {
     });
     expect(options.release).toBe(CLI_VERSION);
   });
+
+  test("starts without telemetry when the working directory is gone", async () => {
+    const { logger } = await import("../../../src/lib/logger.js");
+    const { initMcpTelemetry } = await import("../../../src/lib/mcp/server.js");
+    const cwd = vi.spyOn(process, "cwd").mockImplementation(() => {
+      throw new Error("ENOENT: no such file or directory, uv_cwd");
+    });
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    const level = logger.level;
+    logger.level = 4;
+    try {
+      expect(() => initMcpTelemetry(config)).not.toThrow();
+      expect(sentry.init).not.toHaveBeenCalled();
+      expect(stderr.mock.calls.join("\n")).toContain(
+        "Working directory is unavailable, starting without telemetry: ENOENT: no such file or directory, uv_cwd",
+      );
+    } finally {
+      logger.level = level;
+      stderr.mockRestore();
+      cwd.mockRestore();
+    }
+  });
 });
