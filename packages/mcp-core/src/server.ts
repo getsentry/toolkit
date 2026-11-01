@@ -30,7 +30,8 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
-import { MAX_TOOL_INPUT_ELEMENTS, MCP_SERVER_NAME } from "./constants";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
+import { MCP_SERVER_NAME } from "./constants";
 import {
   formatErrorForUser,
   isExpectedToolError,

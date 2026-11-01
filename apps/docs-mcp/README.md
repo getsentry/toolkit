@@ -32,6 +32,15 @@ limited to `frameworks`, `languages`, and `sentryConfigured`. Model failures and
 unverifiable answers retain the safe `DOCS_MODEL_UNAVAILABLE` and
 `DOCS_UNGROUNDED` error codes.
 
+Both endpoints apply the same input limits as Toolkit's main MCP server, from
+`@sentry/toolkit-core/mcp-limits`. Request bodies are capped at 1 MiB before JSON
+parsing, whether or not the request declares `Content-Length`. An oversized
+`/mcp` POST gets a 413 with a JSON-RPC error (`code: -32000`); an oversized
+`/internal/docs` request gets a 413 with
+`{ "error": "Request body must not exceed 1048576 bytes" }`. MCP tool calls accept
+at most 10,000 array elements plus object keys across `arguments`; larger calls
+return an `isError` result before the tool runs.
+
 The existing `sentry docs` CLI calls Init Server's authenticated `/api/docs/*`
 facade, which forwards requests through its `DOCS_MCP` binding. Moving this app
 does not change that contract. Retiring Init Server would require a separate

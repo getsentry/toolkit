@@ -313,6 +313,9 @@ importers:
       '@sentry/cloudflare':
         specifier: ^10.62.0
         version: 10.67.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))
+      '@sentry/toolkit-core':
+        specifier: workspace:*
+        version: link:../../packages/toolkit-core
       ai:
         specifier: ^5.0.0
         version: 5.0.216(zod@4.6.7)
@@ -754,6 +757,9 @@ importers:
       '@sentry/mcp-server-tsconfig':
         specifier: workspace:*
         version: link:../mcp-server-tsconfig
+      '@sentry/toolkit-core':
+        specifier: workspace:*
+        version: link:../toolkit-core
       '@sentry/vite-plugin':
         specifier: 'catalog:'
         version: 4.6.1

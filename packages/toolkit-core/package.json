@@ -31,6 +31,10 @@
       "types": "./src/metric-monitor.ts",
       "default": "./src/metric-monitor.ts"
     },
+    "./mcp-limits": {
+      "types": "./src/mcp-limits.ts",
+      "default": "./src/mcp-limits.ts"
+    },
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
