@@ -468,4 +468,31 @@ describe("sentryReporter", () => {
       "Upload failed: Request failed [cause]: socket hang up",
     );
   });
+
+  test("keeps causes that are falsy", () => {
+    const { calls, sentryLogger } = fakeSentryLogger();
+    const logger = createLogger({ reporters: [sentryReporter(sentryLogger)] });
+    for (const cause of [0, "", false, null, undefined]) {
+      logger.error(new Error("Failed", { cause }));
+    }
+    logger.error(new Error("No cause"));
+    expect(calls.map(([, message]) => message)).toEqual([
+      "Failed [cause]: 0",
+      "Failed [cause]: ",
+      "Failed [cause]: false",
+      "Failed [cause]: null",
+      "Failed [cause]: undefined",
+      "No cause",
+    ]);
+  });
+
+  test("does not read an error's message as a format string", () => {
+    const { calls, sentryLogger } = fakeSentryLogger();
+    createLogger({ reporters: [sentryReporter(sentryLogger)] }).error(
+      new Error("Bad value %s"),
+      "extra",
+      { id: 1 },
+    );
+    expect(calls[0]?.[1]).toBe("Bad value %s extra { id: 1 }");
+  });
 });

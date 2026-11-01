@@ -31,7 +31,7 @@ function formatError(error: ErrorLike, depth: number, stack: boolean): string {
   let cause = "";
   if (isErrorLike(error.cause)) {
     cause = `${stack ? "\n\n" : " "}${formatError(error.cause, depth + 1, stack)}`;
-  } else if (error.cause) {
+  } else if ("cause" in error) {
     cause = `${stack ? `\n\n${"  ".repeat(depth + 1)}` : " "}[cause]: ${formatWithOptions(INSPECT_OPTIONS, error.cause)}`;
   }
   if (!stack) {
@@ -57,8 +57,11 @@ export function formatMessage(
   args: readonly unknown[],
   { stack }: { stack: boolean },
 ): string {
-  return formatWithOptions(
-    INSPECT_OPTIONS,
-    ...args.map((arg) => (isErrorLike(arg) ? formatError(arg, 0, stack) : arg)),
+  const formatted = args.map((arg) =>
+    isErrorLike(arg) ? formatError(arg, 0, stack) : arg,
   );
+  // An error is not a format string, so `%s` in its message stays literal.
+  return isErrorLike(args[0])
+    ? formatWithOptions(INSPECT_OPTIONS, "%s", ...formatted)
+    : formatWithOptions(INSPECT_OPTIONS, ...formatted);
 }

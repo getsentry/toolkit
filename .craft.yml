@@ -1,4 +1,4 @@
-minVersion: "2.33.0"
+minVersion: "3.5.0"
 workspaces:
   packages/cli:
     changelog:
