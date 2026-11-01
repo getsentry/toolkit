@@ -228,6 +228,12 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     return;
   }
 
+  // An empty `--sentry-dsn=` turns telemetry off. Skip `init` so neither the
+  // CLI's DSN nor a shell SENTRY_DSN starts the SDK.
+  if (config.sentryDsn === "") {
+    return;
+  }
+
   const { name, packageName } = getAppIdentity();
   const scopeContext = {
     "app.server.version": CLI_VERSION,
@@ -240,7 +246,7 @@ export function initMcpTelemetry(config: McpServerConfig): void {
 
   // Without `--sentry-dsn`/`SENTRY_DSN`, report to the CLI's own project,
   // honoring the CLI's telemetry opt-outs.
-  const useCliDsn = !config.sentryDsn;
+  const useCliDsn = config.sentryDsn === undefined;
   init({
     dsn: config.sentryDsn ?? SENTRY_CLI_DSN,
     enabled: !useCliDsn || isTelemetryEnabled(),

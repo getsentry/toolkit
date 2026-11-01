@@ -14,7 +14,12 @@ vi.mock("@sentry/node", async (importOriginal) => ({
 }));
 
 useTestConfigDir("mcp-telemetry-");
-useEnvSandbox(["SENTRY_CLI_NO_TELEMETRY", "DO_NOT_TRACK", "SENTRY_RELEASE"]);
+useEnvSandbox([
+  "SENTRY_CLI_NO_TELEMETRY",
+  "DO_NOT_TRACK",
+  "SENTRY_RELEASE",
+  "SENTRY_DSN",
+]);
 
 const config: McpServerConfig = {
   sentryHost: "sentry.io",
@@ -73,6 +78,13 @@ describe("initMcpTelemetry", () => {
     const options = await initOptions({ sentryDsn: dsn });
     expect(options.dsn).toBe(dsn);
     expect(options.enabled).toBe(true);
+  });
+
+  test("an empty DSN turns telemetry off, even with SENTRY_DSN set", async () => {
+    process.env.SENTRY_DSN = "https://key@o1.ingest.sentry.io/1";
+    const { initMcpTelemetry } = await import("../../../src/lib/mcp/server.js");
+    initMcpTelemetry({ ...config, sentryDsn: "" });
+    expect(sentry.init).not.toHaveBeenCalled();
   });
 
   test("ignores SENTRY_RELEASE so the reported release stays ours", async () => {
