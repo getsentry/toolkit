@@ -21,7 +21,11 @@ vi.mock("@sentry/cloudflare", async (importOriginal) => ({
   setUser: sentrySetUser,
 }));
 
-import mcpHandler, { handleSentryBearerMcpRequest } from "./mcp-handler";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/mcp-core/constants";
+import mcpHandler, {
+  MAX_MCP_REQUEST_BODY_BYTES,
+  handleSentryBearerMcpRequest,
+} from "./mcp-handler";
 import {
   OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE,
   OAUTH_GRANT_REVOKED_REASON_ATTRIBUTE,
@@ -918,6 +922,127 @@ describe("MCP Handler", () => {
 
       expect(catalogToolNames).toContain("search_docs");
       expect(catalogToolNames).toContain("get_doc");
+    });
+  });
+
+  describe("request limits", () => {
+    function createDirectContext(): ExecutionContext {
+      return {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+      } as unknown as ExecutionContext;
+    }
+
+    function callSearchSentryTools(query: string): Request {
+      return createMcpRequest("tools/call", {
+        name: "search_sentry_tools",
+        arguments: { query, limit: 1 },
+      });
+    }
+
+    it("accepts a tool call whose body is just under the size limit", async () => {
+      const emptyBodyBytes = (await callSearchSentryTools("").text()).length;
+      const request = callSearchSentryTools(
+        "a".repeat(MAX_MCP_REQUEST_BODY_BYTES - emptyBodyBytes),
+      );
+
+      const response = await handleSentryBearerMcpRequest(
+        request,
+        createTestEnv(),
+        createDirectContext(),
+        "sntryu_test-token",
+      );
+
+      expect(response.status).toBe(200);
+      const body = await parseSSEResponse<{
+        result?: { isError?: boolean };
+      }>(response);
+      expect(body.result).toBeDefined();
+      expect(body.result?.isError).toBeFalsy();
+    });
+
+    it("rejects a body over the size limit with a declared Content-Length", async () => {
+      const request = callSearchSentryTools(
+        "a".repeat(MAX_MCP_REQUEST_BODY_BYTES),
+      );
+
+      const response = await handleSentryBearerMcpRequest(
+        request,
+        createTestEnv(),
+        createDirectContext(),
+        "sntryu_test-token",
+      );
+
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_BYTES} bytes`,
+        },
+        id: null,
+      });
+    });
+
+    it("rejects a streamed body over the size limit without Content-Length", async () => {
+      const chunk = new TextEncoder().encode("a".repeat(64 * 1024));
+      let sent = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent > MAX_MCP_REQUEST_BODY_BYTES) {
+            controller.close();
+            return;
+          }
+          sent += chunk.byteLength;
+          controller.enqueue(chunk);
+        },
+      });
+      const request = new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+          Host: "localhost",
+        },
+        body: stream,
+      });
+      expect(request.headers.get("content-length")).toBeNull();
+
+      const response = await handleSentryBearerMcpRequest(
+        request,
+        createTestEnv(),
+        createDirectContext(),
+        "sntryu_test-token",
+      );
+
+      expect(response.status).toBe(413);
+    });
+
+    it("rejects tool arguments over the element limit before running the tool", async () => {
+      const request = createMcpRequest("tools/call", {
+        name: "search_errors",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          query: "errors",
+          fields: Array.from({ length: MAX_TOOL_INPUT_ELEMENTS }, () => "id"),
+        },
+      });
+
+      const response = await handleSentryBearerMcpRequest(
+        request,
+        createTestEnv(),
+        createDirectContext(),
+        "sntryu_test-token",
+      );
+
+      expect(response.status).toBe(200);
+      const body = await parseSSEResponse<{
+        result?: { isError?: boolean; content?: Array<{ text?: string }> };
+      }>(response);
+      expect(body.result?.isError).toBe(true);
+      expect(body.result?.content?.[0]?.text).toBe(
+        `Invalid arguments for tool search_errors: arguments contain more than the maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
+      );
     });
   });
 });

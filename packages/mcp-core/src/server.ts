@@ -28,7 +28,7 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
-import { MCP_SERVER_NAME } from "./constants";
+import { MAX_TOOL_INPUT_ELEMENTS, MCP_SERVER_NAME } from "./constants";
 import {
   formatErrorForUser,
   isExpectedToolError,
@@ -140,10 +140,13 @@ export function buildServer({
     ...context,
     experimentalMode,
   };
-  const server = new McpServer({
-    name: MCP_SERVER_NAME,
-    version: LIB_VERSION,
-  });
+  const server = new McpServer(
+    {
+      name: MCP_SERVER_NAME,
+      version: LIB_VERSION,
+    },
+    { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS },
+  );
   const registrations = configureServer({
     server,
     context: contextWithModes,

@@ -71,6 +71,65 @@ type SentryBearerMcpContext = {
 
 type AuthenticatedMcpContext = OAuthMcpContext | SentryBearerMcpContext;
 
+/**
+ * Largest MCP POST body accepted over HTTP (GHSA-46jr-4wx8-v453). The SDK
+ * default is 4 MiB. The longest bounded tool text input is 4,096 characters and
+ * the rest are queries, slugs, and IDs, so 1 MiB covers every supported request
+ * with wide headroom while shrinking what one request can make the Worker parse.
+ */
+export const MAX_MCP_REQUEST_BODY_BYTES = 1024 * 1024;
+
+function requestBodyTooLargeResponse(): Response {
+  return Response.json(
+    {
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_BYTES} bytes`,
+      },
+      id: null,
+    },
+    { status: 413 },
+  );
+}
+
+/**
+ * Buffers a POST body up to MAX_MCP_REQUEST_BODY_BYTES, or returns a 413.
+ *
+ * `createMcpHandler` from agents only forwards `maxRequestBodySize` to the SDK
+ * v2 lane. Its legacy-request classification and legacy compatibility lane
+ * still read up to the SDK's 4 MiB default, so the bound is enforced here for
+ * every lane.
+ */
+async function boundRequestBody(request: Request): Promise<Request | Response> {
+  if (request.method !== "POST" || request.body === null) {
+    return request;
+  }
+  if (
+    Number(request.headers.get("content-length")) > MAX_MCP_REQUEST_BODY_BYTES
+  ) {
+    return requestBodyTooLargeResponse();
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    received += value.byteLength;
+    if (received > MAX_MCP_REQUEST_BODY_BYTES) {
+      await reader.cancel();
+      return requestBodyTooLargeResponse();
+    }
+    chunks.push(value);
+  }
+
+  return new Request(request, { method: "POST", body: new Blob(chunks) });
+}
+
 function getSkillGrantedAttributeName(skill: string): string {
   return `app.consent.skill.${skill.replaceAll("-", "_")}.granted`;
 }
@@ -457,6 +516,11 @@ async function handleAuthenticatedMcpRequest(
       auth.kind === "oauth" ? auth.onUpstreamUnauthorized : undefined,
   };
 
+  const boundedRequest = await boundRequestBody(request);
+  if (boundedRequest instanceof Response) {
+    return boundedRequest;
+  }
+
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
   return await createMcpHandler(
@@ -470,8 +534,9 @@ async function handleAuthenticatedMcpRequest(
       // The Agents handler rejects browser Origins by default except localhost.
       // Permit only the hostname serving this authenticated endpoint.
       allowedOriginHostnames: [url.hostname],
+      maxRequestBodySize: MAX_MCP_REQUEST_BODY_BYTES,
     },
-  )(request, env, ctx);
+  )(boundedRequest, env, ctx);
 }
 
 /**
