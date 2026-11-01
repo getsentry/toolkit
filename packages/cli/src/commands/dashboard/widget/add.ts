@@ -8,8 +8,11 @@ import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  aggregateShorthandParser,
   choiceParser,
   DASHBOARD_TARGET,
+  type DatasetCompletion,
+  fieldParser,
   parseText,
 } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
@@ -24,6 +27,7 @@ import {
   assignDefaultLayout,
   type DashboardDetail,
   type DashboardWidget,
+  DEFAULT_WIDGET_TYPE,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
   GRID_COLUMN_POSITIONS,
@@ -34,7 +38,6 @@ import {
   WIDGET_TYPES,
   type WidgetLayoutFlags,
   type WidgetLayoutMode,
-  AGGREGATE_FUNCTION_NAMES,
 } from "../../../types/dashboard.js";
 import {
   type DashboardInput,
@@ -47,8 +50,15 @@ import {
   withDashboardErrors,
   normalizeDataset,
   validateWidgetEnums,
+  WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
+
+/** What `--query`, `--sort`, and `--group-by` complete: a spans widget's by default. */
+const FIELD_COMPLETION: DatasetCompletion = {
+  ...WIDGET_FIELD_COMPLETION,
+  default: DEFAULT_WIDGET_TYPE,
+};
 
 type AddFlags = WidgetQueryFlags &
   WidgetLayoutFlags & {
@@ -191,7 +201,7 @@ export const addCommand = buildCommand({
       },
       query: {
         kind: "parsed",
-        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
+        parse: aggregateShorthandParser(FIELD_COMPLETION),
         brief: "Aggregate expression (e.g. count, p95:span.duration)",
         variadic: true,
         optional: true,
@@ -204,14 +214,14 @@ export const addCommand = buildCommand({
       },
       "group-by": {
         kind: "parsed",
-        parse: parseText,
+        parse: fieldParser(FIELD_COMPLETION),
         brief: "Group-by column (repeatable)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: choiceParser(AGGREGATE_FUNCTION_NAMES),
+        parse: aggregateShorthandParser(FIELD_COMPLETION),
         brief: "Order by (prefix - for desc, e.g. -count)",
         optional: true,
       },

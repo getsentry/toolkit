@@ -275,6 +275,54 @@ describe("completion seeding from API responses", () => {
     ]);
   });
 
+  test("attribute keys are stored by the dataset the request names", async () => {
+    const attributes = (dataset: string) =>
+      `${API}/trace-items/attributes/?dataset=${dataset}&attributeType=number`;
+    await seedCompletions(
+      attributes("spans"),
+      json([
+        {
+          key: "span.duration",
+          name: "span.duration",
+          attributeType: "number",
+        },
+        {
+          key: "tags[cart.total,number]",
+          name: "cart.total",
+          attributeType: "number",
+        },
+      ]),
+    );
+    await seedCompletions(
+      attributes("logs"),
+      json([{ key: "severity", name: "severity", attributeType: "string" }]),
+    );
+    // Datasets nothing completes, and requests that name none, store nothing
+    await seedCompletions(
+      attributes("preprod"),
+      json([{ key: "app.size", name: "app.size", attributeType: "number" }]),
+    );
+    await seedCompletions(
+      `${API}/trace-items/attributes/`,
+      json([{ key: "span.op", name: "span.op", attributeType: "string" }]),
+    );
+
+    expect(getCachedCompletionEntities("span-attribute", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "span.duration", label: "number" },
+      {
+        orgSlug: "acme",
+        value: "tags[cart.total,number]",
+        label: "cart.total (number)",
+      },
+    ]);
+    expect(getCachedCompletionEntities("log-attribute", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "severity", label: "string" },
+    ]);
+    expect(getCachedCompletionEntities("metric-attribute", ["acme"])).toEqual(
+      [],
+    );
+  });
+
   test("ignores other endpoints, failed responses, and bodies that are not JSON", async () => {
     const issue = { shortId: "CLI-1A", title: "Boom" };
     await seedCompletions(`${API}/issues/123/events/`, json([issue]));

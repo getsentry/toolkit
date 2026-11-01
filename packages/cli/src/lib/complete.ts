@@ -19,7 +19,11 @@ import { readdirSync, statSync } from "node:fs";
 import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import generatedTargets from "../generated/completion-targets.json";
-import type { CompletionValues } from "./completion-target.js";
+import type {
+  CompletionValues,
+  DatasetCompletion,
+  DatasetFields,
+} from "./completion-target.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import {
   type AccountSummary,
@@ -150,8 +154,15 @@ const GENERATED = generatedTargets as {
 type CompleterContext = {
   /** Positionals before the word being completed, flags removed. */
   positionals: string[];
+  /**
+   * The value of each flag given before the word being completed, by its
+   * `--name` spelling (`-d spans` and `--dataset=spans` as `--dataset`).
+   */
+  flagValues: Readonly<Record<string, string>>;
   /** The values a `choice` or `choice-list` argument offers. */
   choices?: readonly string[];
+  /** The fields and aggregates a field or aggregate flag completes. */
+  datasets?: DatasetCompletion;
 };
 
 /** What the word being completed is, and the positionals typed before it. */
@@ -163,6 +174,24 @@ type CompletionSlot = CompleterContext & {
 
 /** A flag's spelling without the value given with `=` (`--period=7d`). */
 const FLAG_VALUE_RE = /=.*$/s;
+
+/** Where a flag's spelling ends and its value begins (`--period=7d`). */
+const FLAG_VALUE_SEPARATOR = /=(.*)/s;
+
+/** The `--name` spelling of each of the command's flag spellings. */
+function flagNameOf(
+  command: CommandCompletions[string],
+): (spelling: string) => string {
+  const names = new Map<string, string>();
+  for (const [name, { aliases = [] }] of Object.entries(
+    command.flagNames ?? {},
+  )) {
+    for (const alias of aliases) {
+      names.set(alias, name);
+    }
+  }
+  return (spelling) => names.get(spelling) ?? spelling;
+}
 
 /**
  * The command's visible flags and their aliases, with their briefs, except
@@ -206,11 +235,18 @@ function findSlot(words: string[]): CompletionSlot | undefined {
       continue;
     }
     const positionals: string[] = [];
+    const flagValues: Record<string, string> = {};
+    const nameOf = flagNameOf(command);
     let flag: string | undefined;
     for (const word of words.slice(length)) {
       if (word.startsWith("-")) {
-        flag = word in command.flags ? word : undefined;
+        const [spelling = word, value] = word.split(FLAG_VALUE_SEPARATOR);
+        if (value !== undefined) {
+          flagValues[nameOf(spelling)] = value;
+        }
+        flag = value === undefined && word in command.flags ? word : undefined;
       } else if (flag !== undefined) {
+        flagValues[nameOf(flag)] = word;
         flag = undefined;
       } else {
         positionals.push(word);
@@ -221,7 +257,9 @@ function findSlot(words: string[]): CompletionSlot | undefined {
       return {
         kind: command.flags[flag] ?? null,
         positionals,
+        flagValues,
         choices: command.choices?.[flag],
+        datasets: command.datasets?.[nameOf(flag)],
         flagNames,
       };
     }
@@ -236,6 +274,7 @@ function findSlot(words: string[]): CompletionSlot | undefined {
     return {
       kind: command.positionals[index] ?? null,
       positionals,
+      flagValues,
       choices,
       flagNames,
     };
@@ -381,6 +420,20 @@ const COMPLETERS = Object.freeze({
   "bind-host": (partial) => completeBindHosts(partial),
   /** Cached tag keys of issues, described by their labels. */
   "tag-key": flagEntityCompleter("tag-key"),
+  /**
+   * Fields of the dataset the command's `--dataset` names: cached attribute
+   * or tag keys, or a fixed set (replays).
+   */
+  field: (partial, slot) => matchFields(partial, slot, datasetFieldsOf(slot)),
+  /** What `field` does, then `fn()` and `fn(field)` aggregates. */
+  "field-or-aggregate": (partial, slot) =>
+    completeAggregates(partial, slot, { fields: true }),
+  /** `fn()` and `fn(field)` aggregates of the `--dataset` given. */
+  aggregate: (partial, slot) =>
+    completeAggregates(partial, slot, { fields: false }),
+  /** Dashboard shorthand aggregates: `fn`, then `fn:field`. */
+  "aggregate-shorthand": (partial, slot) =>
+    completeShorthandAggregates(partial, slot),
   /** Servers of stored accounts. */
   "account-server": (partial) => completeAccountServers(partial),
   /**
@@ -862,6 +915,129 @@ function projectCompleter(options: { list: boolean }): Completer {
       (slug) => ({ value: `${head}${slug}`, description: names.get(slug) }),
     );
   };
+}
+
+/**
+ * What completes on the dataset the command's `--dataset` names, on its
+ * default dataset without one, or on every dataset when it has no default
+ * (`dashboard widget edit` keeps the widget's).
+ */
+function datasetFieldsOf(slot: CompleterContext): DatasetFields[] {
+  const completion = slot.datasets;
+  if (!completion) {
+    return [];
+  }
+  const given = slot.flagValues["--dataset"]?.toLowerCase();
+  const name =
+    given === undefined
+      ? completion.default
+      : (completion.aliases?.[given] ?? given);
+  if (name === undefined) {
+    return Object.values(completion.datasets);
+  }
+  const fields = completion.datasets[name];
+  return fields ? [fields] : [];
+}
+
+/**
+ * The fields of `datasets` that match the partial: cached entities of the
+ * org the command's target names (else of every org), then fixed fields,
+ * each once.
+ */
+async function matchFields(
+  partial: string,
+  slot: CompleterContext,
+  datasets: readonly DatasetFields[],
+): Promise<Completion[]> {
+  const found = new Map<string, string | undefined>();
+  const orgs = datasets.some(({ entity }) => entity)
+    ? await flagOrgs(slot.positionals)
+    : [];
+  for (const { entity, fields = [] } of datasets) {
+    const cached = entity ? matchCachedEntities(entity, partial, orgs) : [];
+    for (const { value, label } of cached) {
+      if (!found.has(value)) {
+        found.set(value, label);
+      }
+    }
+    for (const value of fuzzyMatch(partial, fields, { mode: "search" })) {
+      if (!found.has(value)) {
+        found.set(value, undefined);
+      }
+    }
+  }
+  return [...found].map(([value, description]) => ({ value, description }));
+}
+
+/** The aggregate function names of `datasets`, each once. */
+function functionsOf(datasets: readonly DatasetFields[]): string[] {
+  return [...new Set(datasets.flatMap(({ functions = [] }) => functions))];
+}
+
+/**
+ * Complete an aggregate call. Before the `(`, the function names that
+ * start with the partial, as `fn()`; a name typed in full also completes
+ * `fn(field)` for each field, so the shell inserts `fn(` and lists them.
+ * After the `(`, `fn(field)` for the fields that match.
+ *
+ * @param options.fields - The argument also takes a bare field
+ *   (`explore --field title`): complete the fields before the functions
+ */
+async function completeAggregates(
+  partial: string,
+  slot: CompleterContext,
+  options: { fields: boolean },
+): Promise<Completion[]> {
+  const datasets = datasetFieldsOf(slot);
+  const functions = functionsOf(datasets);
+  const calls = async (name: string, argument: string) => [
+    ...(argument === "" ? [{ value: `${name}()` }] : []),
+    ...(await matchFields(argument, slot, datasets)).map(
+      ({ value, description }) => ({ value: `${name}(${value})`, description }),
+    ),
+  ];
+  const open = partial.indexOf("(");
+  if (open !== -1) {
+    const name = partial.slice(0, open);
+    return functions.includes(name)
+      ? await calls(name, partial.slice(open + 1))
+      : [];
+  }
+  const names = functions.filter((name) => name.startsWith(partial));
+  return [
+    ...(options.fields ? await matchFields(partial, slot, datasets) : []),
+    ...(names.includes(partial) ? await calls(partial, "") : []),
+    ...names
+      .filter((name) => name !== partial)
+      .map((name) => ({ value: `${name}()` })),
+  ];
+}
+
+/**
+ * Complete a dashboard shorthand aggregate: the function names that start
+ * with the partial, then, after `fn:`, `fn:field` for the fields that
+ * match (`p95:span.duration`). A word starting with `-` completes flag
+ * names, so a descending sort's `-` is typed after completing.
+ */
+async function completeShorthandAggregates(
+  partial: string,
+  slot: CompleterContext,
+): Promise<Completion[]> {
+  const datasets = datasetFieldsOf(slot);
+  const functions = functionsOf(datasets);
+  const colon = partial.indexOf(":");
+  if (colon === -1) {
+    return functions
+      .filter((name) => name.startsWith(partial))
+      .map((value) => ({ value }));
+  }
+  const name = partial.slice(0, colon);
+  if (!functions.includes(name)) {
+    return [];
+  }
+  return (await matchFields(partial.slice(colon + 1), slot, datasets)).map(
+    ({ value, description }) => ({ value: `${name}:${value}`, description }),
+  );
 }
 
 const completeMonitors = flagEntityCompleter("monitor");

@@ -2,10 +2,16 @@
  * Shared validation and parsing helpers for alert mutation commands (create/edit).
  */
 
+import {
+  DATASET_FIELDS,
+  type DatasetCompletion,
+  type DatasetFields,
+} from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   METRIC_ALERT_DATASET_ALIASES,
   METRIC_ALERT_DATASET_NAMES,
+  type MetricAlertDataset,
   metricAlertSource,
 } from "../../types/metric-alert.js";
 
@@ -13,6 +19,26 @@ import {
 export const ISSUE_MATCH_MODES = ["all", "any"] as const;
 /** Deprecated dataset names that now route to `spans` with `is_transaction:true`. */
 const TRANSACTION_DATASET_NAMES = new Set(["transaction", "transactions"]);
+
+/**
+ * What `--aggregate` completes, by the dataset `--dataset` names. Crash
+ * rate (`metrics`, `sessions`) aggregates are not fields of a dataset, so
+ * nothing completes for them; without `--dataset`, every dataset's.
+ */
+export const METRIC_ALERT_FIELD_COMPLETION: DatasetCompletion = {
+  datasets: {
+    errors: DATASET_FIELDS.errors,
+    events: DATASET_FIELDS.errors,
+    spans: DATASET_FIELDS.spans,
+    logs: DATASET_FIELDS.logs,
+  } satisfies Partial<Record<MetricAlertDataset, DatasetFields>>,
+  aliases: {
+    ...METRIC_ALERT_DATASET_ALIASES,
+    ...Object.fromEntries(
+      [...TRANSACTION_DATASET_NAMES].map((name) => [name, "spans"]),
+    ),
+  },
+};
 
 /** Query filter appended when migrating a `transaction(s)` request to `spans`. */
 const IS_TRANSACTION_FILTER = "is_transaction:true";
