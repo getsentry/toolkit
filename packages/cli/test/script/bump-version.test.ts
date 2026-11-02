@@ -23,7 +23,9 @@ afterEach(() => {
     rmSync(fixture, { recursive: true, force: true });
 });
 
-test("post-release bump updates tracked skill versions before committing", () => {
+// Craft's postReleaseBump writes the development version through this same
+// command, so it must update every tracked version before Craft commits.
+test("version bump updates package, plugin, and tracked skill versions", () => {
   const cwd = mkdtempSync(join(tmpdir(), "cli-bump-version-"));
   fixtures.push(cwd);
   const bin = join(cwd, "bin");
@@ -41,38 +43,24 @@ test("post-release bump updates tracked skill versions before committing", () =>
   for (const path of ["SKILL.md", "references/auth.md"]) {
     writeFileSync(
       join(cwd, skill, path),
-      "---\nname: sentry-cli\nversion: 0.47.0-dev.0\n---\n\nContent\n",
+      "---\nname: sentry-cli\nversion: 0.47.0\n---\n\nContent\n",
     );
   }
 
   writeFileSync(
     join(bin, "npm"),
-    '#!/usr/bin/env node\nrequire("node:fs").writeFileSync("package.json", JSON.stringify({ version: "0.48.0-dev.0" }) + "\\n");\n',
-  );
-  writeFileSync(
-    join(bin, "git"),
-    `#!/usr/bin/env node
-const fs = require("node:fs");
-if (process.argv[2] === "diff") process.exit(1);
-if (process.argv[2] === "commit") {
-  for (const path of ["SKILL.md", "references/auth.md"]) {
-    const content = fs.readFileSync(${JSON.stringify(skill)} + "/" + path, "utf8");
-    if (!content.includes("version: 0.48.0-dev.0")) process.exit(2);
-  }
-}
-fs.appendFileSync("git-commands", process.argv[2] + "\\n");
-`,
+    '#!/usr/bin/env node\nrequire("node:fs").writeFileSync("package.json", JSON.stringify({ version: process.argv.at(-1) }) + "\\n");\n',
   );
   chmodSync(join(bin, "npm"), 0o755);
-  chmodSync(join(bin, "git"), 0o755);
 
   const result = spawnSync(
     process.execPath,
-    ["--experimental-strip-types", script, "--post"],
+    ["--experimental-strip-types", script, "--pre"],
     {
       cwd,
       encoding: "utf8",
       env: {
+        CRAFT_NEW_VERSION: "0.48.0-dev.0",
         HOME: cwd,
         PATH: `${bin}:${process.env.PATH ?? ""}`,
         XDG_CONFIG_HOME: cwd,
@@ -82,12 +70,20 @@ fs.appendFileSync("git-commands", process.argv[2] + "\\n");
   );
 
   expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"))).toEqual({
+    version: "0.48.0-dev.0",
+  });
+  expect(
+    JSON.parse(
+      readFileSync(
+        join(cwd, "plugins/sentry-cli/.claude-plugin/plugin.json"),
+        "utf8",
+      ),
+    ),
+  ).toEqual({ version: "0.48.0" });
   for (const path of ["SKILL.md", "references/auth.md"]) {
     expect(readFileSync(join(cwd, skill, path), "utf8")).toContain(
       "version: 0.48.0-dev.0",
     );
   }
-  expect(readFileSync(join(cwd, "git-commands"), "utf8")).toBe(
-    "commit\npull\npush\n",
-  );
 });
