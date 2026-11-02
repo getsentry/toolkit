@@ -246,6 +246,38 @@ describe("alert issues edit", () => {
     expect(putSpy).not.toHaveBeenCalled();
   });
 
+  test("rejects clearing the filters of a rule without triggers", async () => {
+    const context = createContext();
+    resolveSpy.mockResolvedValue({ targets: [sampleTarget] });
+    getRuleSpy.mockResolvedValue(sampleRule);
+    getDocSpy.mockResolvedValue({
+      id: "42",
+      name: "Rule Alpha",
+      triggers: { logicType: "any-short", conditions: [] },
+      actionFilters: [
+        {
+          logicType: "all",
+          conditions: [{ id: "filter-a" }],
+          actions: [{ id: "action-a" }],
+        },
+      ],
+    });
+    const func = (await editCommand.loader()) as unknown as (
+      this: unknown,
+      flags: EditFlags & { readonly filter?: string[] },
+      arg: string,
+    ) => Promise<void>;
+
+    await expect(
+      func.call(
+        context,
+        { filter: ["[]"], json: true },
+        "test-org/test-project/42",
+      ),
+    ).rejects.toMatchObject({ field: "condition" });
+    expect(putSpy).not.toHaveBeenCalled();
+  });
+
   test("maps the workflow enabled field to a status label in output", async () => {
     const context = createContext();
     resolveSpy.mockResolvedValue({ targets: [sampleTarget] });

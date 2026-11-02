@@ -90,16 +90,13 @@ function validateIssueEditFlags(flags: EditFlags): void {
   }
 }
 
-/** The rule's action-filter conditions, after the edits applied to `body`. */
-function currentFilterConditions(
-  body: Record<string, unknown>,
-): unknown[] | undefined {
-  const filter: unknown = Array.isArray(body.actionFilters)
-    ? body.actionFilters[0]
-    : undefined;
+/** The `conditions` of a data-condition group in the workflow body. */
+function groupConditions(
+  group: unknown,
+): Record<string, unknown>[] | undefined {
   const conditions =
-    filter !== null && typeof filter === "object"
-      ? (filter as Record<string, unknown>).conditions
+    group !== null && typeof group === "object"
+      ? (group as Record<string, unknown>).conditions
       : undefined;
   return Array.isArray(conditions) ? conditions : undefined;
 }
@@ -178,8 +175,15 @@ function applyIssueEdits(
     body.actionFilters = actionFilters;
   }
 
-  if (conditions !== undefined) {
-    validateIssueTriggers(conditions, currentFilterConditions(body));
+  // Check the rule as it will be after the edit: clearing either its
+  // triggers or its filters must not leave an alert on every event.
+  if (conditions !== undefined || filters !== undefined) {
+    validateIssueTriggers(
+      groupConditions(body.triggers),
+      groupConditions(
+        Array.isArray(body.actionFilters) ? body.actionFilters[0] : undefined,
+      ),
+    );
   }
   if (actions !== undefined) {
     validateIssueActions(actions);
