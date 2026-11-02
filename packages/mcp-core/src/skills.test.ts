@@ -1,15 +1,14 @@
-import { describe, expect, it } from "vitest";
-import skillDefinitions from "./skillDefinitions";
+import { describe, it, expect } from "vitest";
 import {
+  SKILLS,
   ACTIVE_SKILLS,
   DEFAULT_SKILLS,
-  isEnabledBySkills,
   isValidSkill,
   parseSkills,
-  SKILLS,
+  isEnabledBySkills,
   type Skill,
 } from "./skills";
-import toolDefinitions from "./toolDefinitions";
+import skillDefinitions from "./skillDefinitions";
 
 function getGeneratedSkillToolNames(skillId: string) {
   const skill = skillDefinitions.find(
@@ -36,19 +35,10 @@ describe("skills module", () => {
   it.each([
     ["api-read", "disabled"],
     ["api-write", "enabled"],
-  ])("describes hosted Code Mode access for %s", (skillId, writeState) => {
-    const definition = skillDefinitions.find((skill) => skill.id === skillId);
-    expect(definition?.hostedOnly).toBe(true);
-    expect([...getGeneratedSkillToolNames(skillId)]).toEqual(
-      expect.arrayContaining(["search_sentry_api", "execute_sentry_code"]),
-    );
-    expect(definition?.toolCount).toBe(definition?.tools?.length);
+  ])("describes Code Mode for %s with writes %s", (skillId, writeState) => {
     expect(
       getGeneratedSkillToolDescription(skillId, "execute_sentry_code"),
     ).toContain(`Writes are ${writeState}.`);
-    expect(toolDefinitions.map((tool) => tool.name)).not.toContain(
-      "execute_sentry_code",
-    );
   });
 
   it("does not advertise workflow-only tools in generated skill prompts", () => {
@@ -66,8 +56,6 @@ describe("skills module", () => {
       expect(SKILLS["project-management"]).toBeDefined();
       expect(SKILLS.seer).toBeDefined();
       expect(SKILLS.docs).toBeDefined();
-      expect(SKILLS["api-read"].hostedOnly).toBe(true);
-      expect(SKILLS["api-write"].hostedOnly).toBe(true);
       expect("preprod" in SKILLS).toBe(false);
     });
 
@@ -93,8 +81,6 @@ describe("skills module", () => {
       expect(DEFAULT_SKILLS).not.toContain("docs");
       expect(DEFAULT_SKILLS).not.toContain("triage");
       expect(DEFAULT_SKILLS).not.toContain("project-management");
-      expect(DEFAULT_SKILLS).not.toContain("api-read");
-      expect(DEFAULT_SKILLS).not.toContain("api-write");
     });
 
     it("has exactly 2 default skills", () => {
@@ -123,8 +109,6 @@ describe("skills module", () => {
       expect(isValidSkill("project-management")).toBe(true);
       expect(isValidSkill("seer")).toBe(true);
       expect(isValidSkill("docs")).toBe(true);
-      expect(isValidSkill("api-read")).toBe(true);
-      expect(isValidSkill("api-write")).toBe(true);
     });
 
     it("returns false for invalid skills", () => {
@@ -137,12 +121,6 @@ describe("skills module", () => {
   });
 
   describe("parseSkills", () => {
-    it("keeps existing grants unchanged when API capabilities are introduced", () => {
-      expect(parseSkills(["inspect", "triage"]).valid).toEqual(
-        new Set(["inspect", "triage"]),
-      );
-      expect(parseSkills(["api-write"]).valid).toEqual(new Set(["api-write"]));
-    });
     it("parses comma-separated string", () => {
       const { valid, invalid } = parseSkills("inspect,triage,docs");
       expect(valid.size).toBe(3);

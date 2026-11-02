@@ -672,7 +672,7 @@
     "defaultEnabled": false,
     "hostedOnly": true,
     "order": 6,
-    "toolCount": 7,
+    "toolCount": 5,
     "tools": [
       {
         "name": "execute_sentry_code",
@@ -718,7 +718,7 @@
     "defaultEnabled": false,
     "hostedOnly": true,
     "order": 7,
-    "toolCount": 7,
+    "toolCount": 5,
     "tools": [
       {
         "name": "execute_sentry_code",

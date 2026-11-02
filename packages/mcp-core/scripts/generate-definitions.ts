@@ -18,7 +18,8 @@ const toolsModule = await import("../src/tools/index.ts");
 const surfacesModule = await import("../src/tools/surfaces.ts");
 const skillsModule = await import("../src/skills.ts");
 const toolTypesModule = await import("../src/tools/types.ts");
-// Hosted-only tools belong in remote plugin allowlists, not core/stdio exports.
+// Code Mode tools are hosted-only: registered by mcp-cloudflare, not by the
+// tool registry, so their definitions are added here.
 const { CODE_MODE_TOOL_NAMES, CODE_MODE_SKILLS, getCodeModeToolDefinitions } =
   await import("../src/code-mode.ts");
 
@@ -30,17 +31,20 @@ function ensureDirExists(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-function zodFieldMapToJsonSchema(
-  fieldMap: Record<string, ZodTypeAny>,
-): unknown {
-  if (!fieldMap || Object.keys(fieldMap).length === 0) return {};
-  const obj = z.object(fieldMap);
-  const { $schema: _, ...jsonSchema } = z.toJSONSchema(obj, {
-    io: "input",
+function toJsonSchema(schema: ZodTypeAny, io: "input" | "output"): unknown {
+  const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema, {
+    io,
     target: "draft-7",
     unrepresentable: "any",
   });
   return jsonSchema;
+}
+
+function zodFieldMapToJsonSchema(
+  fieldMap: Record<string, ZodTypeAny>,
+): unknown {
+  if (!fieldMap || Object.keys(fieldMap).length === 0) return {};
+  return toJsonSchema(z.object(fieldMap), "input");
 }
 
 // Plugin variants whose agent frontmatter gets synced by this script.
@@ -169,13 +173,7 @@ function generateToolDefinitions({
       // Export full JSON Schema under inputSchema for external docs
       inputSchema: jsonSchema,
       outputSchema: t.outputSchema
-        ? (({ $schema: _, ...jsonSchema }) => jsonSchema)(
-            z.toJSONSchema(t.outputSchema, {
-              io: "output",
-              target: "draft-7",
-              unrepresentable: "any",
-            }),
-          )
+        ? toJsonSchema(t.outputSchema, "output")
         : undefined,
       // Preserve tool access requirements for UIs/docs
       requiredScopes: t.requiredScopes,
@@ -184,7 +182,19 @@ function generateToolDefinitions({
       surface,
     };
   });
-  return defs.filter(isNonNull).sort(byName);
+  const codeModeDefs = Object.entries(
+    getCodeModeToolDefinitions({ allowWrites: true }),
+  ).map(([name, definition]) => ({
+    name,
+    description: definition.description,
+    inputSchema: toJsonSchema(definition.inputSchema, "input"),
+    outputSchema: toJsonSchema(definition.outputSchema, "output"),
+    // Sentry checks API permissions per operation, not as one fixed scope.
+    requiredScopes: [],
+    skills: [...CODE_MODE_SKILLS],
+    surface: "direct" as const,
+  }));
+  return [...defs.filter(isNonNull), ...codeModeDefs].sort(byName);
 }
 
 // Skills
@@ -305,7 +315,6 @@ async function generateSkillDefinitions() {
 
     return {
       ...skill,
-      ...(skill.hostedOnly ? { toolCount: skillTools.length } : {}),
       tools: skillTools,
     };
   });
