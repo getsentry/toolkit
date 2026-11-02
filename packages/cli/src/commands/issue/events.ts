@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listIssueEvents } from "../../lib/api-client.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -72,8 +73,7 @@ export const eventsCommand = buildListCommand("issue", {
     fullDescription:
       "List events belonging to a Sentry issue.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7\n" +
       "  <project>-suffix - Project + suffix: cli-G\n" +
       "  ID               - Short ID: CLI-G\n" +

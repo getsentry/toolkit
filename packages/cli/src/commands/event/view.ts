@@ -19,6 +19,7 @@ import {
 } from "../../lib/api-client.js";
 import {
   type IssueSelector,
+  issueSelectorHelp,
   type ParsedOrgProject,
   ProjectSpecificationType,
   parseOrgProjectInput,
@@ -28,7 +29,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
+import { ISSUE_TARGET } from "../../lib/completion-target.js";
 import {
   ApiError,
   AuthError,
@@ -1342,8 +1343,7 @@ export const viewCommand = buildCommand({
       "Without an event ID, shows the latest event of the most recent unresolved issue (@latest)\n" +
       "in the given org or project, or the auto-detected org.\n\n" +
       "Magic selectors pick the issue whose latest event to show:\n" +
-      "  @latest          - Most recent unresolved issue (the default)\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/@selector  - Selector in an org: my-org/@latest\n" +
       "  <org>/<project>/@selector - Selector in a project: my-org/my-project/@most_frequent\n\n" +
       "Pass an issue short ID followed by an event ID to resolve the project from the issue.\n" +
@@ -1412,7 +1412,8 @@ export const viewCommand = buildCommand({
       placeholder: "org/project/event-id",
       brief:
         "[<org>/<project>] [<event-id>...] - Target (optional) and event IDs, or a selector (default: @latest)",
-      kind: ORG_PROJECT_TARGET,
+      // Issue short IDs and selectors name an event too: their latest one
+      kind: ISSUE_TARGET,
       parse: parseEventViewInput,
       resolve: resolveEventViewInput,
     }),
