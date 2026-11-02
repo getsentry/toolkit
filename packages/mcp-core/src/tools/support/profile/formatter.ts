@@ -7,7 +7,6 @@
  * - Raw profile chunk analysis (get_profile_details)
  */
 
-import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import type {
   Flamegraph,
   ProfileChunk,
@@ -53,7 +52,7 @@ function determineComparisonStatus(
  */
 function truncateLocation(location: string, maxLength = 30): string {
   if (location.length <= maxLength) return location;
-  return `...${sliceAtCodePointBoundary(location, -(maxLength - 3))}`;
+  return `...${location.slice(-(maxLength - 3))}`;
 }
 
 /**

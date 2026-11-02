@@ -45,7 +45,6 @@ import {
   getStatusDisplayName,
   isTerminalStatus,
 } from "./tool-helpers/seer";
-import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
 import { isPlainObject } from "./type-guards";
 import { formatUserGeoSummary } from "./user-formatting";
@@ -868,7 +867,7 @@ function formatVariableValue(value: unknown, maxLength = 80): string {
       if (stringified.length > maxLength) {
         // Leave room for ", ...]" or ", ...}"
         const truncateAt = maxLength - 6;
-        let truncated = sliceAtCodePointBoundary(stringified, 0, truncateAt);
+        let truncated = stringified.substring(0, truncateAt);
 
         // Find the last complete element by looking for the last comma
         const lastComma = truncated.lastIndexOf(",");

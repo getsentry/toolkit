@@ -1,7 +1,6 @@
 // Catalog-only Agent Conversations search. This owns the MCP-facing projection for
 // Sentry's conversation list endpoint and intentionally exposes backend default
 // ordering until alternate sorting is applied by the API.
-import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import { z } from "zod";
 import type { AIConversationSummary, SentryApiService } from "../../api-client";
 import { UserInputError } from "../../errors";
@@ -115,7 +114,7 @@ function previewText(value: string | null): string | null {
   if (value == null || value.length <= PREVIEW_LENGTH) {
     return value;
   }
-  return `${sliceAtCodePointBoundary(value, 0, PREVIEW_LENGTH - 3)}...`;
+  return `${value.slice(0, PREVIEW_LENGTH - 3)}...`;
 }
 
 function formatLLMCost(cost: number): string {

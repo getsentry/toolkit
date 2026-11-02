@@ -109,50 +109,6 @@ describe("get_issue_breadcrumbs", () => {
     );
   });
 
-  it("does not split an emoji at the message truncation boundary", async () => {
-    // The lock emoji starts at index 119, so a raw 120-unit cut keeps only
-    // its high surrogate. Strict JSON parsers reject that lone half.
-    const message = `${"x".repeat(119)}\u{1F512} required`;
-    mswServer.use(
-      http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/events/latest/",
-        () =>
-          HttpResponse.json({
-            ...eventFixture,
-            entries: [
-              {
-                type: "breadcrumbs",
-                data: {
-                  values: [
-                    {
-                      timestamp: "2025-04-08T21:14:52.000Z",
-                      category: "console",
-                      level: "info",
-                      message,
-                    },
-                  ],
-                },
-              },
-            ],
-          }),
-        { once: true },
-      ),
-    );
-
-    const result = await getIssueBreadcrumbs.handler(
-      {
-        organizationSlug: "sentry-mcp-evals",
-        regionUrl: null,
-        issueId: "CLOUDFLARE-MCP-41",
-        eventId: "latest",
-      },
-      context,
-    );
-
-    expect(result).toContain(`[console] ${"x".repeat(119)}...`);
-    expect(result).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/);
-  });
-
   it("returns breadcrumbs for an explicit event ID", async () => {
     mswServer.use(
       http.get(

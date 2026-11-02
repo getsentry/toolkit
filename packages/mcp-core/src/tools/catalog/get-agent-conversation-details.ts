@@ -1,7 +1,6 @@
 // Catalog-only agent conversation detail lookup. This owns the MCP-facing
 // transcript projection and keeps detail output chronological and debugger
 // oriented instead of mirroring every raw span attribute.
-import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import { z } from "zod";
 import type { AIConversationSpan, SentryApiService } from "../../api-client";
 import { UserInputError } from "../../errors";
@@ -252,7 +251,7 @@ function truncateAttribute(
   }
 
   truncatedFields.push(field);
-  return `${sliceAtCodePointBoundary(value, 0, MAX_RAW_GEN_AI_ATTRIBUTE_LENGTH)}... [truncated]`;
+  return `${value.slice(0, MAX_RAW_GEN_AI_ATTRIBUTE_LENGTH)}... [truncated]`;
 }
 
 function getOperationType(span: AIConversationSpan): string | undefined {

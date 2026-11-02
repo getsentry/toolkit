@@ -1,5 +1,4 @@
 /** Select native integrations locally; Sentry owns URL validation and link mutations. */
-import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import type { SentryApiService } from "../../../api-client";
 import type { IssueIntegration } from "../../../api-client/types";
 import { UserInputError } from "../../../errors";
@@ -220,7 +219,7 @@ function describeIntegrations(integrations: IssueIntegration[]): string {
     .slice(0, 5)
     .map(
       (integration) =>
-        `${integration.id} (${sliceAtCodePointBoundary(integration.name, 0, 60)}, ${integration.provider.key})`,
+        `${integration.id} (${integration.name.slice(0, 60)}, ${integration.provider.key})`,
     )
     .join("; ");
 }

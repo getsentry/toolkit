@@ -4,7 +4,6 @@ import {
   type ParseResultToken,
   parseSearch,
 } from "@sentry/search-syntax/parser";
-import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import { TermOperator, Token } from "@sentry/search-syntax/tokens";
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
@@ -627,10 +626,10 @@ function truncateString(value: string, maxLength: number): string {
   }
 
   if (maxLength <= 3) {
-    return sliceAtCodePointBoundary(value, 0, maxLength);
+    return value.slice(0, maxLength);
   }
 
-  return `${sliceAtCodePointBoundary(value, 0, maxLength - 3)}...`;
+  return `${value.slice(0, maxLength - 3)}...`;
 }
 
 function safeJsonStringify(value: unknown): string {
@@ -993,7 +992,7 @@ function truncateValidationOutput(output: string): string {
   if (output.length <= VALIDATION_OUTPUT_MAX_LENGTH) {
     return output;
   }
-  return `${sliceAtCodePointBoundary(output, 0, VALIDATION_OUTPUT_MAX_LENGTH)}…`;
+  return `${output.slice(0, VALIDATION_OUTPUT_MAX_LENGTH)}…`;
 }
 
 export function recordEventsSearchValidationTelemetry({
