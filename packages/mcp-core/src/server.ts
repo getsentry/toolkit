@@ -113,26 +113,50 @@ function structuredOutputToCallToolResult(
  * JSON parsers such as serde_json in Codex reject the message and close the
  * transport. Normalizing handler output here covers every tool, including
  * structuredContent and the compatibility text generated from it.
+ *
+ * Runs on every tool call, so it copies on write: it returns the input itself
+ * when nothing changes, and copies only the arrays and objects on the path to
+ * a replaced string. V8 returns the same string from `toWellFormed()` when it
+ * is already well formed, so the `!==` checks are pointer comparisons.
  */
 function toWellFormedOutput<T>(value: T): T {
   if (typeof value === "string") {
     return value.toWellFormed() as T;
   }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
   if (Array.isArray(value)) {
-    return value.map(toWellFormedOutput) as T;
-  }
-  if (value !== null && typeof value === "object") {
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype === Object.prototype || prototype === null) {
-      return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [
-          key.toWellFormed(),
-          toWellFormedOutput(item),
-        ]),
-      ) as T;
+    let copy: unknown[] | undefined;
+    for (let index = 0; index < value.length; index++) {
+      const next = toWellFormedOutput(value[index]);
+      if (next !== value[index]) {
+        copy ??= [...value];
+        copy[index] = next;
+      }
     }
+    return (copy ?? value) as T;
   }
-  return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  // `for...in` avoids allocating a key list per object on the common path.
+  let entries: [string, unknown][] | undefined;
+  let index = 0;
+  for (const key in record) {
+    if (!Object.hasOwn(record, key)) continue;
+    const item = record[key];
+    const nextKey = key.toWellFormed();
+    const next = toWellFormedOutput(item);
+    if (!entries && (nextKey !== key || next !== item)) {
+      entries = Object.entries(record).slice(0, index);
+    }
+    entries?.push([nextKey, next]);
+    index++;
+  }
+  return (entries ? Object.fromEntries(entries) : value) as T;
 }
 
 /**

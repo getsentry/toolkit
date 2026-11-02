@@ -375,8 +375,15 @@ describe("buildServer", () => {
           context: baseContext,
           tools: {
             structured_tool: createMockTool("structured_tool", {
-              outputSchema: z.object({ preview: z.string() }),
-              handler: async () => structuredResult({ preview: cutText }),
+              outputSchema: z.object({
+                title: z.string(),
+                previews: z.array(z.object({ preview: z.string() })),
+              }),
+              handler: async () =>
+                structuredResult({
+                  title: "unchanged",
+                  previews: [{ preview: "unchanged" }, { preview: cutText }],
+                }),
             }),
             failing_tool: createMockTool("failing_tool", {
               handler: async () => {
@@ -392,7 +399,8 @@ describe("buildServer", () => {
         {},
       );
       expect(getStructuredContent(structured)).toEqual({
-        preview: replacedText,
+        title: "unchanged",
+        previews: [{ preview: "unchanged" }, { preview: replacedText }],
       });
       expect(getTextContent(structured)).toBe(
         getGeneratedTextFromStructuredContent(structured),
