@@ -114,11 +114,13 @@ Top-level layout:
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
 - **`src/app-for-args.ts`** — picks the application for a run. When the first
-  argument names a top-level route, it loads only that route through
+  argument after any global flags (`GLOBAL_FLAGS` in `src/lib/global-flags.ts`)
+  names a top-level route, it loads only that route through
   `src/generated/route-loaders.ts`, which `script/generate-route-loaders.ts`
   writes from the route map and imports in `app.ts` (`generate:routes`, part of
-  `generate:docs`). Anything else, and `help`, `schema`, and `cli`, which read
-  the whole tree with `getRoutes()`, loads `app.ts`. Add commands to `app.ts`
+  `generate:docs`). A bare `--version` loads only `help`. Anything else, and
+  `help`, `schema`, and `cli`, which read the whole tree with `getRoutes()`,
+  loads `app.ts`. Add commands to `app.ts`
   only; a new top-level command that reads the whole tree goes in
   `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
 - **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
@@ -287,7 +289,8 @@ with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
 `app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
 import would pull every command into any bundle built from one of them.
 `app.ts` registers its map with `setRoutes()`; a test that needs the real tree
-imports `src/app.js`. A run whose first argument names a top-level route
+imports `src/app.js`. A run whose first argument after global flags names a
+top-level route
 registers a map with only that route (see `src/app-for-args.ts`), so code that
 needs routes other than the running one's must run under a `FULL_TREE_ROUTES`
 command. `test/lib/route-registry.test.ts` fails when a module in

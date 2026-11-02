@@ -34,14 +34,36 @@ describe("routesForArgs", () => {
       ["sourcemaps", "upload"],
       ["help", "sourcemaps"],
     ],
+    // Global flags before the route name, with and without values
+    [
+      ["--verbose", "--log-level", "debug", "issue", "list"],
+      ["help", "issue"],
+    ],
+    [
+      ["--fields=id", "--no-json", "-v", "org", "list"],
+      ["help", "org"],
+    ],
+    // A value flag missing its value doesn't take the next flag
+    [
+      ["--org", "--json", "auth", "status"],
+      ["help", "auth"],
+    ],
+    // `--version` prints the version before any command runs
+    [["--version"], ["help"]],
+    [["--verbose", "--version"], ["help"]],
   ])("%j loads %j", (args, expected) => {
     expect(routesForArgs(args)).toEqual(expected);
   });
 
   test.each([
     [[]],
-    [["--version"]],
     [["--help"]],
+    [["--version", "--help"]],
+    [["--verbose"]],
+    [["--json"]],
+    // Flags the route scanner doesn't accept before the route name
+    [["--unknown", "issue", "list"]],
+    [["--", "issue"]],
     // An unknown name needs every route for the suggestions
     [["isue", "list"]],
     [["__proto__"]],
@@ -70,6 +92,14 @@ describe("loadAppForArgs", () => {
     expect(loaded.routes.getRoutingTargetForInput("project")).toBe(
       routes.getRoutingTargetForInput("project"),
     );
+  });
+
+  test("loads no command for `--version`", async () => {
+    const loaded = await loadAppForArgs(["--version"]);
+
+    expect(
+      loaded.routes.getAllEntries().map((entry) => entry.name.original),
+    ).toEqual(["help"]);
   });
 
   test("loads app.ts for the full application", async () => {
