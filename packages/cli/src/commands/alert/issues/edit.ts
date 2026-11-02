@@ -12,6 +12,13 @@ import {
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  choiceListParser,
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseText,
+} from "../../../lib/completion-target.js";
+import {
   ContextError,
   stringifyUnknown,
   ValidationError,
@@ -19,12 +26,17 @@ import {
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
+  ISSUE_MATCH_MODES,
+  ISSUE_TRIGGER_NAMES,
   matchToLogicType,
+  parseIssueConditions,
   parseJsonObjectList,
   parseMatchMode,
   parseStatusFlag,
+  RULE_STATUSES,
   triggerLogicType,
-  validateIssueRuleArrays,
+  validateIssueActions,
+  validateIssueTriggers,
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
@@ -78,12 +90,23 @@ function validateIssueEditFlags(flags: EditFlags): void {
   }
 }
 
+/** The `conditions` of a data-condition group in the workflow body. */
+function groupConditions(
+  group: unknown,
+): Record<string, unknown>[] | undefined {
+  const conditions =
+    group !== null && typeof group === "object"
+      ? (group as Record<string, unknown>).conditions
+      : undefined;
+  return Array.isArray(conditions) ? conditions : undefined;
+}
+
 // per-flag merge with user-only validation
 function applyIssueEdits(
   body: Record<string, unknown>,
   flags: EditFlags,
 ): Record<string, unknown> {
-  const conditions = parseJsonObjectList(flags.condition, "condition");
+  const conditions = parseIssueConditions(flags.condition);
   const actions = parseJsonObjectList(flags.action, "action");
   const filters = parseJsonObjectList(flags.filter, "filter");
 
@@ -152,11 +175,18 @@ function applyIssueEdits(
     body.actionFilters = actionFilters;
   }
 
-  if (conditions !== undefined) {
-    validateIssueRuleArrays(conditions, actions, "conditions");
+  // Check the rule as it will be after the edit: clearing either its
+  // triggers or its filters must not leave an alert on every event.
+  if (conditions !== undefined || filters !== undefined) {
+    validateIssueTriggers(
+      groupConditions(body.triggers),
+      groupConditions(
+        Array.isArray(body.actionFilters) ? body.actionFilters[0] : undefined,
+      ),
+    );
   }
   if (actions !== undefined) {
-    validateIssueRuleArrays(conditions, actions, "actions");
+    validateIssueActions(actions);
   }
   return body;
 }
@@ -210,26 +240,27 @@ export const editCommand = buildCommand({
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "New rule name",
       },
       status: {
         kind: "parsed",
-        parse: parseStatusFlag,
+        parse: choiceParser(RULE_STATUSES, parseStatusFlag),
         optional: true,
         brief: "Rule status: active or disabled",
       },
       condition: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(ISSUE_TRIGGER_NAMES),
         variadic: true,
         optional: true,
-        brief: "Condition object JSON (repeatable, or pass one JSON array)",
+        brief:
+          "Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Action object JSON (repeatable, or pass one JSON array)",
@@ -242,26 +273,28 @@ export const editCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
       filter: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Filter object JSON (repeatable, or pass one JSON array)",
       },
       "filter-match": {
         kind: "parsed",
-        parse: (value: string) => parseMatchMode(value, "filter-match"),
+        parse: choiceParser(ISSUE_MATCH_MODES, (value) =>
+          parseMatchMode(value, "filter-match"),
+        ),
         optional: true,
         brief: "Filter match mode: all or any",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },

@@ -1,8 +1,4 @@
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-  ServerNotification,
-  ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import { getClient } from "@sentry/core";
 import { z } from "zod";
 import { UserInputError } from "../../errors";
 import {
@@ -117,6 +113,12 @@ function isHiddenByConstraints({
   );
 }
 
+// submit_feedback_to_sentry_team can only deliver reports when Sentry telemetry has a DSN
+// (e.g. stdio without SENTRY_DSN has none), so hide it otherwise.
+function isMissingFeedbackDsn(key: string): boolean {
+  return key === "submit_feedback_to_sentry_team" && !getClient()?.getDsn();
+}
+
 export function getFilteredInputSchema(
   tool: ToolConfig<any>,
   context: ServerContext,
@@ -177,6 +179,10 @@ export function getAvailableTools({
     }
 
     if (!hasRequiredCapabilities({ tool, context })) {
+      continue;
+    }
+
+    if (isMissingFeedbackDsn(key)) {
       continue;
     }
 
@@ -274,8 +280,3 @@ export function resolveToolDescription(
 ): string {
   return resolveDescription(tool.description, context);
 }
-
-export type RegisteredToolHandlerExtra = RequestHandlerExtra<
-  ServerRequest,
-  ServerNotification
->;

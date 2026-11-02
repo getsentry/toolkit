@@ -31,6 +31,10 @@
       "types": "./src/metric-monitor.ts",
       "default": "./src/metric-monitor.ts"
     },
+    "./mcp-limits": {
+      "types": "./src/mcp-limits.ts",
+      "default": "./src/mcp-limits.ts"
+    },
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
@@ -70,6 +74,10 @@
     "./api-client/*": {
       "types": "./src/api-client/*.ts",
       "default": "./src/api-client/*.ts"
+    },
+    "./markdown": {
+      "types": "./src/markdown.ts",
+      "default": "./src/markdown.ts"
     }
   },
   "scripts": {
@@ -86,6 +94,10 @@
   "devDependencies": {
     "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
+    "marked": "catalog:",
+    "mdast-util-from-markdown": "catalog:",
+    "mdast-util-gfm": "catalog:",
+    "micromark-extension-gfm": "catalog:",
     "typescript": "catalog:",
     "valibot": "^1.4.2",
     "vitest": "catalog:",

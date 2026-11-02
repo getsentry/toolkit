@@ -1,5 +1,6 @@
 /** Resize through the Spotlight SDK's public API while keeping a stable buffer facade. */
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   DEFAULT_MAX_ENVELOPES,
@@ -42,7 +43,7 @@ export function validateMaxEnvelopes(value: unknown): asserts value is number {
 const limitFlag = {
   kind: "parsed",
   brief: "Maximum envelopes retained by this receiver or session",
-  parse(value: string): number {
+  parse: textParser((value: string): number => {
     const parsed = /^\d+$/.test(value) ? Number(value) : NaN;
     if (!isValidMaxEnvelopes(parsed))
       throw new ValidationError(
@@ -50,7 +51,7 @@ const limitFlag = {
         "max-envelopes",
       );
     return parsed;
-  },
+  }),
 } as const;
 export const MAX_ENVELOPES_FLAG = {
   ...limitFlag,

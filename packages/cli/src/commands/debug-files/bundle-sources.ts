@@ -20,6 +20,7 @@ import { basename, dirname, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { createSourceBundle } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -102,7 +103,7 @@ export const bundleSourcesCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -110,7 +111,7 @@ export const bundleSourcesCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path for the source bundle ZIP (default: <path>.src.zip)",
         optional: true,

@@ -107,8 +107,18 @@ Translate upstream API shapes into user-facing terms:
   identifiers needed for follow-up.
 - Drop empty, nullish, or unknown placeholder values before rendering details.
 - Cap long repeated lists and say how many additional items were omitted.
+- Truncate long text with plain `slice`. A cut can leave half of an emoji, and
+  strict JSON clients such as Codex reject that lone surrogate, so the server
+  replaces it with U+FFFD in every tool response. Formatters do not need
+  surrogate-aware slicing.
 - Prefer shared helpers for dates, actors, IDs, and unknown values. If a helper
   emits noisy placeholders for a domain-specific field, filter before calling it.
+- Render untrusted values with `@sentry/toolkit-core/markdown`, chosen by what
+  the value is: `inlineCode` for identifiers, slugs, queries, and short values,
+  `codeBlock` for multi-line data such as messages and stack traces, and `text`
+  for values that should read as prose. Each keeps the value inside its line or
+  block, so upstream data cannot add headings, list items, or links. Prefer
+  `inlineCode`: it needs no escaping, so the model reads the value unchanged.
 
 When changing Sentry API endpoint usage, validate the upstream behavior in
 `~/src/sentry` as required by [../../AGENTS.md](../../AGENTS.md). API schemas

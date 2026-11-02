@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
-import { spansFlag } from "../../lib/arg-parsing.js";
+import { issueSelectorHelp, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
 import { stringifyUnknown } from "../../lib/errors.js";
@@ -239,8 +239,7 @@ export const viewCommand = buildCommand({
       "View detailed information about Sentry issues by ID or short ID. " +
       "The latest event is automatically included for full context.\n\n" +
       "Issue formats:\n" +
-      "  @latest         - Most recent unresolved issue\n" +
-      "  @most_frequent  - Issue with highest event frequency\n" +
+      issueSelectorHelp(15) +
       "  <org>/ID        - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +

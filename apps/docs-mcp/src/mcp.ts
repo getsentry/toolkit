@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as Sentry from "@sentry/cloudflare";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { type ZodRawShape, z } from "zod";
 import { runFeaturesAgent } from "./agent/features-agent";
 import { runTailorAgent } from "./agent/tailor-agent";
@@ -149,12 +150,15 @@ export function createMcpServer(
   docsVersion?: string,
 ) {
   const mcp = Sentry.wrapMcpServerWithSentry(
-    new McpServer({
-      description:
-        "Generates tailored Sentry integration docs by reading docs.sentry.io.",
-      name: "sentry-docs",
-      version: "1.0.0",
-    }),
+    new McpServer(
+      {
+        description:
+          "Generates tailored Sentry integration docs by reading docs.sentry.io.",
+        name: "sentry-docs",
+        version: "1.0.0",
+      },
+      { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS },
+    ),
     {
       recordInputs: true,
       recordOutputs: true,

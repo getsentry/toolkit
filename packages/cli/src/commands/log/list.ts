@@ -21,7 +21,7 @@ import {
   parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET, textParser } from "../../lib/completion-target.js";
 import {
   AuthError,
   stringifyUnknown,
@@ -832,7 +832,7 @@ export const listCommand = buildListCommand(
       flags: {
         limit: {
           kind: "parsed",
-          parse: parseLimit,
+          parse: textParser(parseLimit),
           brief: `Number of log entries (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
           default: "100", // Logs are high-volume; 25 is too stingy for debugging
         },
@@ -845,7 +845,7 @@ export const listCommand = buildListCommand(
         },
         follow: {
           kind: "parsed",
-          parse: parseFollow,
+          parse: textParser(parseFollow),
           brief: "Stream logs (optionally specify poll interval in seconds)",
           optional: true,
           inferEmpty: true,

@@ -54,6 +54,28 @@
       }
     },
     {
+      "files": ["packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "sentry",
+                "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["sentry/**", "**/cli/src/**", "**/packages/cli/**"],
+                "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": [
         "packages/cli/src/**/*.{ts,tsx}",
         "packages/cli/test/**/*.{ts,tsx}"
@@ -70,6 +92,7 @@
         "sentry-cli/no-direct-target-resolution": "error",
         "sentry-cli/require-target-resolution": "error",
         "sentry-cli/no-ad-hoc-id-arguments": "error",
+        "sentry-cli/require-completion-parser": "error",
         "sentry-cli/no-generic-is-record": "error",
         "sentry-cli/prefer-paginate-helper": "error",
         "sentry-cli/no-manual-pagination": "error",
@@ -153,6 +176,10 @@
           "error",
           {
             "paths": [
+              {
+                "name": "sentry",
+                "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
               {
                 "name": "assert",
                 "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
@@ -267,6 +294,10 @@
               }
             ],
             "patterns": [
+              {
+                "group": ["sentry/**", "**/cli/src/**", "**/packages/cli/**"],
+                "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
               {
                 "group": ["node:*"],
                 "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."

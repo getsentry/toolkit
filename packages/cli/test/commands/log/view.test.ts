@@ -26,18 +26,16 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger module to intercept the .prompt() call made by the
-  // module-scoped `log = logger.withTag("log-view")` in view.ts.
+  // Stub the logger module-scoped as `log = logger.withTag("log-view")` in
+  // view.ts; the prompt module is mocked with `_mockPrompt` below.
   const _mockPrompt = vi.fn(() => Promise.resolve(true));
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     warn: ReturnType<typeof vi.fn>;
     info: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
     debug: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     warn: vi.fn(_noop),
     info: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -58,6 +56,8 @@ vi.mock("node:tty", () => ({
   ...ttyExports,
   default: ttyExports,
 }));
+
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
 
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,
@@ -732,8 +732,8 @@ describe("log view --web interactive prompt", () => {
   });
 
   test("aborts when user cancels prompt with Ctrl+C (truthy Symbol)", async () => {
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
-    // Cast needed because the mock is typed as boolean but consola actually
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
+    // Cast needed because the mock is typed as boolean but the prompt actually
     // returns a Symbol on cancel.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel") as unknown as boolean);
     openInBrowserSpy.mockResolvedValue(undefined);

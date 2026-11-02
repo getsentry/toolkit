@@ -253,7 +253,7 @@ describe("your_tool_name", () => {
 **After changing output, update snapshots:**
 
 ```bash
-cd packages/mcp-server
+cd packages/mcp-core
 pnpm vitest --run -u
 ```
 

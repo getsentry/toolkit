@@ -7,10 +7,10 @@ on:
         description: Product to release
         required: true
         type: choice
-        default: mcp
+        default: cli
         options:
           - cli
-          - mcp
+          - logger
       bump:
         description: Version bump type
         required: true
@@ -59,14 +59,14 @@ jobs:
         env:
           PRODUCT: ${{ inputs.product }}
         run: |
+          # Each product maps to a `.craft.yml` workspace. The `cli` release
+          # also publishes @sentry/mcp-server at the same version.
           case "$PRODUCT" in
             cli)
               workspace=packages/cli
-              package_path=packages/cli
               ;;
-            mcp)
-              workspace=packages/mcp-server
-              package_path=packages/mcp-server
+            logger)
+              workspace=packages/logger
               ;;
             *)
               echo "::error::Unsupported product: $PRODUCT"
@@ -74,20 +74,7 @@ jobs:
               ;;
           esac
 
-          {
-            echo "workspace=$workspace"
-            echo "package_path=$package_path"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Calculate version
-        id: version
-        env:
-          BUMP: ${{ inputs.bump }}
-          PACKAGE_PATH: ${{ steps.release.outputs.package_path }}
-        run: |
-          CURRENT=$(node -p "require('./$PACKAGE_PATH/package.json').version")
-          NEW=$(npm exec --yes --package=semver@7.7.2 -- semver -i "$BUMP" "$CURRENT")
-          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release
         uses: getsentry/craft@v3
@@ -95,7 +82,9 @@ jobs:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
           workspace: ${{ steps.release.outputs.workspace }}
-          version: ${{ steps.version.outputs.version }}
+          # Craft bumps from the workspace's latest release tag, or from its
+          # package.json version before the first tag.
+          version: ${{ inputs.bump }}
           force: ${{ inputs.force && 'true' || '' }}
           # GITHUB_TOKEN above is the release bot token for git/GitHub ops.
           # AI changelog summaries use the workflow token for Copilot requests.

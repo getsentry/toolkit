@@ -1,3 +1,4 @@
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { isTopLevelToolName } from "../../tools/surfaces";
 import {
   formatToolCall,
@@ -25,17 +26,6 @@ interface SuggestedToolAction {
   toolName: string;
   arguments: Record<string, SuggestedActionValue>;
   reason: string;
-}
-
-function formatInlineCode(value: string): string {
-  const backtickRuns = value.match(/`+/g) ?? [];
-  const fenceLength =
-    backtickRuns.reduce((max, run) => Math.max(max, run.length), 0) + 1;
-  const fence = "`".repeat(fenceLength);
-  const needsPadding = value.startsWith("`") || value.endsWith("`");
-  return needsPadding
-    ? `${fence} ${value} ${fence}`
-    : `${fence}${value}${fence}`;
 }
 
 /** Builds transcript actions that match the session's direct or catalog surface. */
@@ -132,7 +122,7 @@ export function formatAIConversationActionInstructions({
 
   return actions.map(
     (action) =>
-      `Use the Sentry tool ${formatInlineCode(
+      `Use the Sentry tool ${inlineCode(
         formatToolCall({
           toolName: action.toolName,
           arguments: action.arguments,

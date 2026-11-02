@@ -12,6 +12,11 @@ import {
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseGitRef,
+  parseRepoCommitList,
+} from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -422,21 +427,21 @@ export const setCommitsCommand = buildCommand({
       },
       commit: {
         kind: "parsed",
-        parse: String,
+        parse: parseRepoCommitList,
         brief:
           "Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)",
         optional: true,
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Filter commits to these paths (comma-separated). Implies --local.",
         optional: true,
       },
       from: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRef,
         brief:
           "Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.",
         optional: true,

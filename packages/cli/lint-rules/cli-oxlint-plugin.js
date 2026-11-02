@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { marked } from "marked";
 
 const name = "sentry-cli";
@@ -14,9 +15,9 @@ function call(node, property) {
   return node.type === "CallExpression" && member(node.callee, property);
 }
 
-function rule(message, visitors) {
+function rule(message, visitors, schema = []) {
   return {
-    meta: { type: "problem", docs: { description: message }, schema: [] },
+    meta: { type: "problem", docs: { description: message }, schema },
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
       if (!filename.includes("/packages/cli/")) return {};
@@ -226,6 +227,81 @@ function isIdKind(node) {
   );
 }
 
+/**
+ * Parameters exempt from shell completion coverage, shared with
+ * test/lib/completion-coverage.test.ts.
+ */
+const COMPLETION_EXEMPTIONS = JSON.parse(
+  readFileSync(
+    new URL("./completion-exemptions.json", import.meta.url),
+    "utf8",
+  ),
+).exemptions;
+
+/** Built-in conversions, which carry no completion kind. */
+const BUILTIN_PARSERS = new Set([
+  "String",
+  "Number",
+  "Boolean",
+  "BigInt",
+  "Date",
+  "parseInt",
+  "parseFloat",
+]);
+
+/** Objects whose static parsers (`JSON.parse`, `Number.parseInt`) are built-ins. */
+const BUILTIN_PARSER_OBJECTS = new Set(["JSON", "Number", "Date", "BigInt"]);
+
+/** The non-computed property `key` of an object literal. */
+function objectProperty(node, key) {
+  return node.properties.find(
+    (p) =>
+      p.type === "Property" &&
+      !p.computed &&
+      (p.key.name ?? p.key.value) === key,
+  );
+}
+
+/**
+ * The parameter an object literal defines, as the coverage test names it:
+ * `--name` for a flag, keyed by its name (flags can have a `placeholder`
+ * too), and `<placeholder>` for a positional, which sits in a tuple's
+ * `parameters` array or an array positional's `parameter`.
+ */
+function parameterName(node) {
+  const parent = node.parent;
+  if (
+    parent?.type === "Property" &&
+    parent.value === node &&
+    !parent.computed
+  ) {
+    const key = parent.key.name ?? parent.key.value;
+    if (key !== "parameter") return `--${key}`;
+  }
+  const placeholder = objectProperty(node, "placeholder")?.value;
+  if (placeholder?.type === "Literal" && typeof placeholder.value === "string")
+    return `<${placeholder.value}>`;
+  return undefined;
+}
+
+/** Why a `parse` value declares no completion kind, or `undefined`. */
+function untaggedParser(value) {
+  if (value.type === "Identifier" && BUILTIN_PARSERS.has(value.name))
+    return `\`${value.name}\` has no completion kind. Use parseText, textParser(${value.name}), or another tagged parser from src/lib/completion-target.ts.`;
+  if (
+    value.type === "MemberExpression" &&
+    value.object.type === "Identifier" &&
+    BUILTIN_PARSER_OBJECTS.has(value.object.name)
+  )
+    return `\`${value.object.name}.${value.property.name}\` has no completion kind. Wrap it in textParser() or choiceParser().`;
+  if (
+    value.type === "ArrowFunctionExpression" ||
+    value.type === "FunctionExpression"
+  )
+    return "An inline parser has no completion kind. Wrap it in textParser(), choiceParser(), or choiceListParser(), or use a bound parser.";
+  return undefined;
+}
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -416,6 +492,52 @@ const rules = {
         },
       };
     },
+  ),
+  "require-completion-parser": rule(
+    "Give every positional and value-taking flag a parser that declares its completion kind.",
+    (context, file, report) => {
+      if (!file.includes("/src/commands/") && !file.includes("/src/lib/"))
+        return {};
+      const exemptions =
+        context.options[0]?.exemptions ?? COMPLETION_EXEMPTIONS;
+      const exempt = (node) => {
+        const parameter = parameterName(node);
+        return exemptions.some(
+          (entry) =>
+            file.endsWith(`/packages/cli/${entry.file}`) &&
+            entry.parameter === parameter,
+        );
+      };
+      return {
+        ObjectExpression(node) {
+          const parse = objectProperty(node, "parse");
+          if (!parse) return;
+          // boundArguments({ kind, parse, resolve }): `kind` is the
+          // completion kind, and `parse` reads every argument at once.
+          if (objectProperty(node, "resolve")) {
+            if (!objectProperty(node, "kind") && !exempt(node))
+              report(
+                node,
+                "Give boundArguments a completion `kind` (ORG_PROJECT_TARGET, …).",
+              );
+            return;
+          }
+          const kind = objectProperty(node, "kind")?.value;
+          const parsedFlag =
+            kind?.type === "Literal" && kind.value === "parsed";
+          if (!parsedFlag && !objectProperty(node, "brief")) return;
+          const reason = untaggedParser(parse.value);
+          if (reason && !exempt(node)) report(parse.value, reason);
+        },
+      };
+    },
+    [
+      {
+        type: "object",
+        properties: { exemptions: { type: "array" } },
+        additionalProperties: false,
+      },
+    ],
   ),
   "no-generic-is-record": rule(
     "Use a shape-specific guard instead of isRecord().",
