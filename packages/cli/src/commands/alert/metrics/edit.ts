@@ -11,6 +11,7 @@ import {
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  aggregateParser,
   choiceParser,
   parseEnvironment,
   parseOwner,
@@ -28,6 +29,7 @@ import {
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
+  METRIC_ALERT_FIELD_COMPLETION,
   METRIC_TIME_WINDOW_VALUES,
   normalizeMetricDataset,
   normalizeProjectList,
@@ -243,7 +245,7 @@ export const editCommand = buildCommand({
       },
       aggregate: {
         kind: "parsed",
-        parse: parseText,
+        parse: aggregateParser(METRIC_ALERT_FIELD_COMPLETION),
         optional: true,
         brief: "Aggregate expression",
       },

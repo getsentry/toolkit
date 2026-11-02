@@ -5,6 +5,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ApiError, stringifyUnknown } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -90,8 +91,7 @@ export const explainCommand = buildCommand({
       "The analysis may take a few minutes for new issues.\n" +
       "Use --force to trigger a fresh analysis even if one already exists.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector  - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +

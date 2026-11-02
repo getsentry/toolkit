@@ -2,7 +2,7 @@ name: Post-merge tasks
 
 on:
   push:
-    branches: ["main", "release/*", "release/mcp/**", "release/logger/**"]
+    branches: ["main", "release/*", "release/logger/**"]
   workflow_dispatch:
 
 jobs:
@@ -26,17 +26,13 @@ jobs:
         run: pnpm install
 
       - name: Build
-        run: pnpm --filter '@sentry/mcp-server...' --filter @sentry/logger --if-present run build
+        run: pnpm --filter '@sentry/mcp-core...' --filter @sentry/logger --if-present run build
 
       - name: Run linter
         run: pnpm lint
 
       - name: Run tests
         run: pnpm test:ci
-
-      - name: Package mcp-server
-        working-directory: packages/mcp-server
-        run: pnpm pack --pack-destination dist
 
       - name: Package logger
         working-directory: packages/logger
@@ -47,7 +43,6 @@ jobs:
         with:
           name: ${{ github.sha }}
           path: |
-            ${{ github.workspace }}/packages/mcp-server/dist/*.tgz
             ${{ github.workspace }}/packages/logger/dist/*.tgz
 
       - name: Publish Test Report

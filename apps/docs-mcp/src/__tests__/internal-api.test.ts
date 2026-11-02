@@ -10,6 +10,15 @@ vi.mock("../internal-api", async (importOriginal) => ({
 }));
 
 import { app } from "../index";
+import { MAX_MCP_REQUEST_BODY_BYTES } from "@sentry/toolkit-core/mcp-limits";
+
+function docsRequest(body: string) {
+  return new Request("https://docs-mcp.internal/internal/docs", {
+    body,
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+}
 
 describe("private docs API", () => {
   beforeEach(() => {
@@ -102,6 +111,28 @@ describe("private docs API", () => {
     await expect(response.json()).resolves.toEqual({
       code: "DOCS_MODEL_UNAVAILABLE",
       error: "Docs API request failed",
+    });
+  });
+  // The body limit itself is tested in toolkit-core; this checks the route
+  // applies it with its own error shape.
+  test("rejects an oversized body before parsing it", async () => {
+    const response = await app.request(
+      docsRequest("a".repeat(MAX_MCP_REQUEST_BODY_BYTES + 1)),
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: `Request body must not exceed ${MAX_MCP_REQUEST_BODY_BYTES} bytes`,
+    });
+    expect(executeInternalDocsRequest).not.toHaveBeenCalled();
+  });
+
+  test("still rejects malformed JSON as an invalid request", async () => {
+    const response = await app.request(docsRequest("{"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid docs API request",
     });
   });
 });

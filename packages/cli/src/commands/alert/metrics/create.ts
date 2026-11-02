@@ -9,6 +9,7 @@ import { createMetricAlertRule } from "../../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  aggregateParser,
   choiceParser,
   parseEnvironment,
   parseOwner,
@@ -31,6 +32,7 @@ import {
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
+  METRIC_ALERT_FIELD_COMPLETION,
   METRIC_TIME_WINDOW_VALUES,
   normalizeProjectList,
   parseJsonObjectList,
@@ -144,7 +146,7 @@ export const createCommand = buildCommand({
       },
       aggregate: {
         kind: "parsed",
-        parse: parseText,
+        parse: aggregateParser(METRIC_ALERT_FIELD_COMPLETION),
         brief: "Aggregate expression (for example count(), p95(span.duration))",
       },
       dataset: {

@@ -275,6 +275,84 @@ describe("completion seeding from API responses", () => {
     ]);
   });
 
+  test("attribute keys are stored by the dataset the request names", async () => {
+    const attributes = (dataset: string) =>
+      `${API}/trace-items/attributes/?dataset=${dataset}&attributeType=number`;
+    await seedCompletions(
+      attributes("spans"),
+      json([
+        {
+          key: "span.duration",
+          name: "span.duration",
+          attributeType: "number",
+        },
+        {
+          key: "tags[cart.total,number]",
+          name: "cart.total",
+          attributeType: "number",
+        },
+      ]),
+    );
+    await seedCompletions(
+      attributes("logs"),
+      json([{ key: "severity", name: "severity", attributeType: "string" }]),
+    );
+    // Datasets nothing completes, and requests that name none, store nothing
+    await seedCompletions(
+      attributes("preprod"),
+      json([{ key: "app.size", name: "app.size", attributeType: "number" }]),
+    );
+    await seedCompletions(
+      `${API}/trace-items/attributes/`,
+      json([{ key: "span.op", name: "span.op", attributeType: "string" }]),
+    );
+
+    expect(getCachedCompletionEntities("span-attribute", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "span.duration", label: "number" },
+      {
+        orgSlug: "acme",
+        value: "tags[cart.total,number]",
+        label: "cart.total (number)",
+      },
+    ]);
+    expect(getCachedCompletionEntities("log-attribute", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "severity", label: "string" },
+    ]);
+    expect(getCachedCompletionEntities("metric-attribute", ["acme"])).toEqual(
+      [],
+    );
+  });
+
+  test("attribute keys Sentry defines are stored ahead of the user's", async () => {
+    const attribute = (key: string, source: string) => ({
+      key,
+      name: key,
+      attributeType: "string",
+      attributeSource: { source_type: source },
+    });
+    const userKeys = Array.from({ length: MAX_ENTITIES_PER_ORG }, (_, i) =>
+      attribute(`app.${String(i).padStart(3, "0")}`, "user"),
+    );
+    await seedCompletions(
+      `${API}/trace-items/attributes/?dataset=spans`,
+      json([
+        ...userKeys,
+        attribute("span.op", "sentry"),
+        attribute("span.description", "sentry"),
+      ]),
+    );
+
+    const values = getCachedCompletionEntities("span-attribute", ["acme"]).map(
+      (e) => e.value,
+    );
+    expect(values).toHaveLength(MAX_ENTITIES_PER_ORG);
+    expect(values.slice(0, 3)).toEqual([
+      "span.op",
+      "span.description",
+      "app.000",
+    ]);
+  });
+
   test("ignores other endpoints, failed responses, and bodies that are not JSON", async () => {
     const issue = { shortId: "CLI-1A", title: "Boom" };
     await seedCompletions(`${API}/issues/123/events/`, json([issue]));

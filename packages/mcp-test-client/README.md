@@ -124,13 +124,15 @@ SENTRY_ACCESS_TOKEN=your_token pnpm mcp-test-client --transport stdio
 
 # Test stdio auth/tool discovery without an LLM provider key
 pnpm mcp-test-client --transport stdio --list-tools
+
+# Run the built @sentry/mcp-server bundle instead of `sentry mcp` from source
+# (build it first: pnpm --filter @sentry/mcp-server run bundle)
+pnpm mcp-test-client --transport stdio --stdio-bundle --list-tools
 ```
 
-When no token is provided in stdio mode:
-
-- `sentry.io` uses cached auth if available
-- `sentry.io` starts device-code auth when running interactively
-- non-interactive runs fail with the same auth error as the stdio server
+Stdio mode runs the workspace CLI's `sentry mcp`. When no token is provided,
+it uses the `sentry auth login` session; non-interactive runs without one fail
+with the same auth error as `sentry mcp`.
 
 ### Interactive Mode (Default)
 
@@ -202,7 +204,7 @@ pnpm typecheck
 
 If you see "Failed to connect to MCP server":
 
-1. Ensure the mcp-server package is built
+1. Ensure `@sentry/mcp-core` is built (`pnpm --filter @sentry/mcp-core build`)
 2. Check that your access token is valid
 3. Verify the Sentry host URL is correct
 
@@ -222,7 +224,7 @@ To verify stdio auth behavior without an LLM provider key, use:
 pnpm mcp-test-client --transport stdio --list-tools
 ```
 
-This is useful for checking cached-token auth, device-code auth startup, and tool discovery over stdio.
+This is useful for checking CLI-session auth and tool discovery over stdio.
 
 ### Tool Errors
 

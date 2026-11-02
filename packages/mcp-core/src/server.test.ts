@@ -1,8 +1,9 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/server";
 import { type Span, setUser, startSpan } from "@sentry/core";
 import {
+  eventFixture,
   issueFixture,
   mswServer,
   projectFixture,
@@ -10,6 +11,8 @@ import {
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
+import { ApiAuthenticationError } from "./api-client";
 import { UserInputError } from "./errors";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
@@ -95,7 +98,7 @@ async function listRegisteredTools(server: ReturnType<typeof buildServer>) {
 }
 
 async function callRegisteredTool(
-  server: ReturnType<typeof buildServer> | ModernMcpServer,
+  server: ReturnType<typeof buildServer>,
   name: string,
   args: Record<string, unknown>,
 ) {
@@ -176,6 +179,48 @@ describe("buildServer", () => {
     ...options,
   });
 
+  describe("upstream 401", () => {
+    it("uses the token returned by onUpstreamUnauthorized for later calls", async () => {
+      const seenTokens: string[] = [];
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          accessToken: "expired-token",
+          onUpstreamUnauthorized: async () => "fresh-token",
+        },
+        tools: {
+          token_tool: createMockTool("token_tool", {
+            handler: async (_params, context) => {
+              seenTokens.push(context.accessToken);
+              if (context.accessToken === "expired-token") {
+                throw new ApiAuthenticationError("Unauthorized");
+              }
+              return "ok";
+            },
+          }),
+        },
+      });
+
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({
+        name: "server-test-client",
+        version: "1.0.0",
+      });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        await client.callTool({ name: "token_tool", arguments: {} });
+        await client.callTool({ name: "token_tool", arguments: {} });
+      } finally {
+        await client.close();
+        await server.close();
+      }
+
+      expect(seenTokens).toEqual(["expired-token", "fresh-token"]);
+    });
+  });
+
   describe("tool failure telemetry", () => {
     it("invokes the tool's onError hook when its handler throws", async () => {
       const onError = vi.fn();
@@ -229,10 +274,9 @@ describe("buildServer", () => {
           handler: async ({ value }) => `v2:${String(value)}`,
         }),
       },
-      sdkVersion: "v2",
     });
 
-    expect(server).toBeInstanceOf(ModernMcpServer);
+    expect(server).toBeInstanceOf(McpServer);
     const registeredTools = (
       server as unknown as {
         _registeredTools: Record<
@@ -252,25 +296,157 @@ describe("buildServer", () => {
     });
   });
 
-  it.each(["v1", "v2"] as const)(
-    "explains how to recover a missing organizationSlug on SDK %s",
-    async (sdkVersion) => {
-      const server =
-        sdkVersion === "v2"
-          ? buildServer({ context: baseContext, sdkVersion })
-          : buildServer({ context: baseContext });
+  it("explains how to recover a missing organizationSlug", async () => {
+    const server = buildServer({ context: baseContext });
 
-      const result = await callRegisteredTool(server, "search_issues", {
-        query: "is:unresolved",
-        period: "1h",
-      });
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
 
-      expect(result).toMatchObject({ isError: true });
+    expect(result).toMatchObject({ isError: true });
+    const text = getTextContent(result);
+    expect(text).toContain("Required. Call `find_organizations()`");
+    expect(text).not.toContain("period");
+  });
+
+  it("caps tool input elements", async () => {
+    const handler = vi.fn(
+      async ({ items }: Record<string, unknown>) =>
+        `count:${(items as string[]).length}`,
+    );
+    const createServer = () => {
+      const tools = {
+        list_tool: createMockTool("list_tool", {
+          inputSchema: { items: z.array(z.string()) },
+          handler,
+        }),
+      };
+      return buildServer({ context: baseContext, tools });
+    };
+
+    // The `items` key counts as one element, so this lands exactly on the cap.
+    const atLimit = Array.from(
+      { length: MAX_TOOL_INPUT_ELEMENTS - 1 },
+      () => "x",
+    );
+    const accepted = await callRegisteredTool(createServer(), "list_tool", {
+      items: atLimit,
+    });
+    expect(accepted.isError).toBeFalsy();
+    expect(getTextContent(accepted)).toBe(
+      `count:${MAX_TOOL_INPUT_ELEMENTS - 1}`,
+    );
+
+    const rejected = await callRegisteredTool(createServer(), "list_tool", {
+      items: [...atLimit, "x"],
+    });
+    expect(rejected).toMatchObject({ isError: true });
+    expect(getTextContent(rejected)).toContain(
+      `Invalid arguments for tool list_tool: arguments contain more than the maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
+    );
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  describe("lone surrogates in tool output", () => {
+    // Cutting 119 characters plus an emoji at 120 UTF-16 units keeps only the
+    // emoji's high surrogate. Strict JSON parsers such as serde_json in Codex
+    // reject that lone half and close the transport.
+    const lock = "\u{1F512}";
+    const cutText = `${"x".repeat(119)}${lock}`.slice(0, 120);
+    const replacedText = `${"x".repeat(119)}�`;
+
+    it("replaces a breadcrumb message cut inside an emoji", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/events/latest/",
+          () =>
+            HttpResponse.json({
+              ...eventFixture,
+              entries: [
+                {
+                  type: "breadcrumbs",
+                  data: {
+                    values: [
+                      {
+                        timestamp: "2025-04-08T21:14:52.000Z",
+                        category: "console",
+                        level: "info",
+                        message: `${"x".repeat(119)}${lock} required`,
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+          { once: true },
+        ),
+      );
+
+      const result = await callRegisteredTool(
+        buildServer({ context: baseContext }),
+        "execute_sentry_tool",
+        {
+          name: "get_issue_breadcrumbs",
+          arguments: {
+            organizationSlug: "sentry-mcp-evals",
+            issueId: "CLOUDFLARE-MCP-41",
+          },
+        },
+      );
+
       const text = getTextContent(result);
-      expect(text).toContain("Required. Call `find_organizations()`");
-      expect(text).not.toContain("period");
-    },
-  );
+      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text.isWellFormed()).toBe(true);
+    });
+
+    it("replaces them in structured and error output", async () => {
+      const createServer = () =>
+        buildServer({
+          context: baseContext,
+          tools: {
+            structured_tool: createMockTool("structured_tool", {
+              outputSchema: z.object({
+                title: z.string(),
+                previews: z.array(z.object({ preview: z.string() })),
+              }),
+              handler: async () =>
+                structuredResult({
+                  title: "unchanged",
+                  previews: [{ preview: "unchanged" }, { preview: cutText }],
+                }),
+            }),
+            failing_tool: createMockTool("failing_tool", {
+              handler: async () => {
+                throw new UserInputError(cutText);
+              },
+            }),
+          },
+        });
+
+      const structured = await callRegisteredTool(
+        createServer(),
+        "structured_tool",
+        {},
+      );
+      expect(getStructuredContent(structured)).toEqual({
+        title: "unchanged",
+        previews: [{ preview: "unchanged" }, { preview: replacedText }],
+      });
+      expect(getTextContent(structured)).toBe(
+        getGeneratedTextFromStructuredContent(structured),
+      );
+
+      const failed = await callRegisteredTool(
+        createServer(),
+        "failing_tool",
+        {},
+      );
+      expect(failed).toMatchObject({ isError: true });
+      expect(getTextContent(failed)).toContain(replacedText);
+      expect(getTextContent(failed).isWellFormed()).toBe(true);
+    });
+  });
 
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {
@@ -1378,48 +1554,42 @@ describe("buildServer", () => {
       );
     });
 
-    it.each(["v1", "v2"] as const)(
-      "execute_sentry_tool rejects missing skills with unknown capabilities on SDK %s",
-      async (sdkVersion) => {
-        const upstreamRequest = vi.fn(() =>
-          HttpResponse.json(
-            { detail: "You do not have permission to perform this action." },
-            { status: 403 },
-          ),
-        );
-        mswServer.use(
-          http.get(
-            "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
-            upstreamRequest,
-          ),
-        );
-        const context: ServerContext = {
-          ...baseContext,
-          grantedSkills: new Set(["docs"]),
-          constraints: {
-            organizationSlug: "test-org",
-            projectSlug: "test-project",
-            regionUrl: "https://us.sentry.io",
-            projectCapabilities: null,
-          },
-        };
-        const server =
-          sdkVersion === "v2"
-            ? buildServer({ context, sdkVersion })
-            : buildServer({ context });
+    it("execute_sentry_tool rejects missing skills with unknown capabilities", async () => {
+      const upstreamRequest = vi.fn(() =>
+        HttpResponse.json(
+          { detail: "You do not have permission to perform this action." },
+          { status: 403 },
+        ),
+      );
+      mswServer.use(
+        http.get(
+          "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
+          upstreamRequest,
+        ),
+      );
+      const context: ServerContext = {
+        ...baseContext,
+        grantedSkills: new Set(["docs"]),
+        constraints: {
+          organizationSlug: "test-org",
+          projectSlug: "test-project",
+          regionUrl: "https://us.sentry.io",
+          projectCapabilities: null,
+        },
+      };
+      const server = buildServer({ context });
 
-        const result = await callRegisteredTool(server, "execute_sentry_tool", {
-          name: "get_profile_details",
-          arguments: { profileId: "00000000000040008000000000000001" },
-        });
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "get_profile_details",
+        arguments: { profileId: "00000000000040008000000000000001" },
+      });
 
-        expect(result).toMatchObject({ isError: true });
-        expect(getTextContent(result)).toContain(
-          'Tool "get_profile_details" is not available in this session',
-        );
-        expect(upstreamRequest).not.toHaveBeenCalled();
-      },
-    );
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        'Tool "get_profile_details" is not available in this session',
+      );
+      expect(upstreamRequest).not.toHaveBeenCalled();
+    });
 
     it("search_sentry_tools and execute_sentry_tool enforce project capabilities by default", async () => {
       const server = buildServer({

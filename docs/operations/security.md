@@ -229,7 +229,7 @@ validateRegionUrl("https://eu.sentry.io", "sentry.io"); // ❌ Not in allowlist
 validateRegionUrl("https://sub.mycompany.com", "mycompany.com"); // ❌ Not base host or allowlist
 ```
 
-Implementation: `packages/mcp-server/src/internal/tool-helpers/validate-region-url.ts`
+Implementation: `packages/mcp-core/src/internal/tool-helpers/validate-region-url.ts`
 
 ### Prompt Injection Protection
 
