@@ -117,9 +117,14 @@ test("runs the CLI's auth commands", () => {
 });
 
 test("rejects the CLI's other commands", () => {
-  const result = run(["issue", "list"]);
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /issue/);
+  // An unknown first word reaches `mcp` as its <org>/<project> target.
+  const command = run(["issue"]);
+  assert.notEqual(command.status, 0);
+  assert.match(command.stderr, /'issue' names no command/);
+
+  const withArgs = run(["issue", "list"]);
+  assert.notEqual(withArgs.status, 0);
+  assert.match(withArgs.stderr, /list/);
 });
 
 /**

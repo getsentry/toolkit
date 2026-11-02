@@ -28,6 +28,7 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
+import { isUnauthorizedHandled } from "./internal/tool-helpers/credential-routing";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { MCP_SERVER_NAME } from "./constants";
 import {
@@ -432,8 +433,10 @@ function configureServer({
         // Upstream 401 during a tool call — route via the transport so it
         // can revoke the MCP grant or refresh the token; swallow callback
         // errors since the formatted tool response still needs to land.
+        // A routed call already refreshed its own credential.
         if (
           isApiAuthenticationErrorDeep(error) &&
+          !isUnauthorizedHandled(error) &&
           context.onUpstreamUnauthorized
         ) {
           try {

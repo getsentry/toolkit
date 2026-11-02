@@ -13,17 +13,11 @@ import { requireAliasPlugin } from "./lib/require-alias-plugin.js";
 import { textImportPlugin } from "./text-import-plugin.js";
 
 const VERSION = pkg.version;
-const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID ?? "";
+/** Optional OAuth client ID override; unset uses the default in src/lib/oauth.ts. */
+const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
 
 console.log(`\nBundling sentry v${VERSION} for npm`);
 console.log("=".repeat(40));
-
-if (!SENTRY_CLIENT_ID) {
-  console.error("\nError: SENTRY_CLIENT_ID environment variable is required.");
-  console.error("   The CLI requires OAuth to function.");
-  console.error("   Set it via: SENTRY_CLIENT_ID=xxx pnpm run bundle\n");
-  process.exit(1);
-}
 
 type InjectedFile = { jsPath: string; mapPath: string; debugId: string };
 
@@ -287,7 +281,9 @@ const commonBuildOptions = {
 // `import.meta.url` to a shim; the ESM build uses it natively.
 const commonDefine: Record<string, string> = {
   SENTRY_CLI_VERSION: JSON.stringify(VERSION),
-  SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
+  ...(SENTRY_CLIENT_ID && {
+    SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
+  }),
   "process.env.NODE_ENV": JSON.stringify("production"),
   __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
   // Tree-shakes the SDK's runtime module hooks, which can't instrument a

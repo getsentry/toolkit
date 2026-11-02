@@ -20,18 +20,15 @@ if (process.env.__SENTRY_RN_WRAP_XCODE_CALL === "1") {
   process.exit(wrapCall());
 }
 
-installStreamErrorHandlers();
-
 // Shell completion runs on every TAB press: load only the completion engine,
 // never the full CLI (`@sentry/node`, the command tree).
 if (process.argv[2] === "__complete") {
-  import("./lib/complete.js")
-    .then(({ runCompletion }) => runCompletion(process.argv.slice(3)))
-    .catch(() => {
-      // Completions should never crash — silently return no results
-      process.exitCode = 0;
-    });
+  import("./complete-bin.js").catch(() => {
+    // Completions should never crash — silently return no results
+    process.exitCode = 0;
+  });
 } else {
+  installStreamErrorHandlers();
   // startCli handles its own errors — this is a safety net for truly unexpected rejections
   import("./cli.js")
     .then(({ startCli }) => startCli(SENTRY_CLI))

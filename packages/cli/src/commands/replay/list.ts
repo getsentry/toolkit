@@ -4,6 +4,7 @@
  * List Session Replays from Sentry.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   isReplaySortValue,
@@ -23,11 +24,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { toSearchQueryError } from "../../lib/errors.js";
-import {
-  escapeMarkdownCell,
-  formatRelativeTime,
-  formatTable,
-} from "../../lib/formatters/index.js";
+import { formatRelativeTime, formatTable } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import type { Column } from "../../lib/formatters/table.js";
@@ -165,7 +162,7 @@ const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   },
   {
     header: "USER",
-    value: (replay) => escapeMarkdownCell(replayUserLabel(replay)),
+    value: (replay) => tableCell(replayUserLabel(replay)),
     minWidth: 16,
     truncate: true,
   },

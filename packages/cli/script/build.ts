@@ -8,7 +8,8 @@
  * Binaries are uploaded to GitHub Releases.
  *
  * Uses a two-step build to produce external sourcemaps for Sentry:
- * 1. Bundle TS → single minified JS + external .map (esbuild)
+ * 1. Bundle TS → minified JS (esbuild): the CLI with an external .map, the
+ *    shell-completion engine, and the SEA bootstrap that runs one of them
  * 2. Compile JS → native SEA binary per platform (fossilize)
  * 3. Upload .map to Sentry for server-side stack trace resolution
  *
@@ -28,13 +29,14 @@
  */
 
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { buildCarExtract } from "./build-car-extract.js";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
-import { build as esbuild } from "esbuild";
+import { type BuildOptions, build as esbuild } from "esbuild";
 import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
 import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
 import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
@@ -55,8 +57,11 @@ const REQUIRE_ALIAS_FILTER =
   /(?:db[\\/](?:index|schema)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
-/** Build-time constants injected into the binary */
-const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID ?? "";
+/**
+ * Optional OAuth client ID override baked into the binary. When unset, the
+ * binary uses the committed sentry.io default in src/lib/oauth.ts.
+ */
+const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
 
 /** Build targets configuration */
 type BuildTarget = {
@@ -90,21 +95,117 @@ function getFossilizePlatform(target: BuildTarget): string {
 /** Intermediate build directory for esbuild output (separate from fossilize's output). */
 const BUILD_DIR = "dist-build";
 
-/** Path to the pre-bundled JS used by Step 2 (compile). */
+/**
+ * The CLI bundle. Embedded as a SEA asset, so its key is also the filename in
+ * stack traces and the URL of its uploaded sourcemap.
+ */
 const BUNDLE_JS = `${BUILD_DIR}/bin.js`;
+
+/** The `sentry __complete` bundle, embedded as a second SEA asset. */
+const COMPLETE_JS = `${BUILD_DIR}/complete.js`;
+
+/** The SEA main script, which runs one of the two bundles above. */
+const SEA_MAIN_JS = `${BUILD_DIR}/sea-main.js`;
 
 /** Path to the sourcemap produced by Step 1 (bundle). */
 const SOURCEMAP_FILE = `${BUILD_DIR}/bin.js.map`;
 
 /**
- * Step 1: Bundle TypeScript sources into a single minified JS file
- * with an external sourcemap using esbuild.
+ * esbuild options shared by the CLI and completion bundles.
  *
  * Uses esbuild instead of Bun's bundler to avoid Bun's identifier
  * minification bug (oven-sh/bun#14585 — name collisions in minified
  * output). esbuild's minifier is more mature and produces correct
  * identifier mangling plus rich sourcemaps (27k+ names vs Bun's
  * empty names array).
+ */
+const BUNDLE_OPTIONS = {
+  bundle: true,
+  platform: "node",
+  // Target Node 24 LTS. Downlevels `using` declarations (not
+  // supported in CJS). Node SEA runs embedded JS as CJS.
+  target: "node24",
+  format: "cjs",
+  treeShaking: true,
+  // Externalize the Ink + React stack from the esbuild bundling
+  // step. The main bundle never calls `import("ink")` at runtime —
+  // the sidecar is pre-bundled by text-import-plugin as a
+  // self-contained JS file with ink/react inlined. Keeping these
+  // external avoids pulling CJS React wrappers into the bundle.
+  external: [
+    "ink",
+    "ink-spinner",
+    "react",
+    "react/*",
+    "react-reconciler",
+    "react-reconciler/*",
+    // The DIF loader resolves this .wasm at runtime (dev only); never bundle it.
+    "@sentry/symbolic/symbolic_bg.wasm",
+    // WASM SQLite fallback for Node.js < 22.15. The SEA binary always
+    // embeds a modern LTS Node.js (>= 22.15) and uses the native
+    // node:sqlite driver, so this fallback branch is dead code here.
+    // Externalizing it keeps the driver (and its ~1MB .wasm) out of the
+    // binary entirely — see src/lib/db/sqlite.ts resolveDriver().
+    "node-sqlite3-wasm",
+  ],
+  minify: true,
+  metafile: true,
+  // CJS format needs import.meta.url shimmed via inject + define.
+  inject: ["./script/import-meta-url.js"],
+  define: {
+    "import.meta.url": "import_meta_url",
+    SENTRY_CLI_VERSION: JSON.stringify(VERSION),
+    ...(SENTRY_CLIENT_ID && {
+      SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
+    }),
+    "process.env.NODE_ENV": JSON.stringify("production"),
+    __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
+    // Tree-shakes the SDK's runtime module hooks, which can't instrument a
+    // bundle and would hook the host app in library mode.
+    __SENTRY_CHANNEL_INJECTION__: "false",
+  },
+  plugins: [
+    textImportPlugin,
+    zodEnglishLocalesPlugin,
+    zodV3StubPlugin,
+    // Transform _require() → require() so esbuild resolves lazy relative
+    // requires at bundle time. In tsx dev mode, _require is a file-local
+    // createRequire(import.meta.url) that resolves relative to the file.
+    // esbuild only statically resolves bare require() calls.
+    // Only targets the specific files that use _require with relative paths.
+    {
+      name: "require-alias",
+      setup(b) {
+        b.onLoad({ filter: REQUIRE_ALIAS_FILTER }, async (args) => {
+          const source = await readFile(args.path, "utf-8");
+          return {
+            contents: source.replace(REQUIRE_ALIAS_RE, "require("),
+            loader: args.path.endsWith(".tsx") ? "tsx" : "ts",
+          };
+        });
+      },
+    },
+  ],
+} satisfies BuildOptions;
+
+/** Size of a bundle in esbuild's metafile, in MB. */
+async function bundleSizeMb(
+  outputs: Record<string, { bytes: number }> | undefined,
+  file: string,
+): Promise<string> {
+  return (
+    (outputs?.[file]?.bytes ?? (await stat(file)).size) /
+    1024 /
+    1024
+  ).toFixed(2);
+}
+
+/**
+ * Step 1: Bundle TypeScript sources into minified JS files with esbuild:
+ * the CLI (`src/bin.ts`) with an external sourcemap, and the
+ * shell-completion engine (`src/complete-bin.ts`). The SEA bootstrap that
+ * picks one of them is bundled after debug ID injection, because it embeds
+ * a hash of each (see {@link bundleSeaMain}).
  *
  * This runs once and is shared by all compile targets. The sourcemap
  * is uploaded to Sentry (never shipped to users) for server-side
@@ -115,89 +216,75 @@ async function bundleJs(): Promise<boolean> {
 
   try {
     const result = await esbuild({
+      ...BUNDLE_OPTIONS,
       entryPoints: ["./src/bin.ts"],
-      bundle: true,
       outfile: BUNDLE_JS,
-      platform: "node",
-      // Target Node 24 LTS. Downlevels `using` declarations (not
-      // supported in CJS). Node SEA runs embedded JS as CJS.
-      target: "node24",
-      format: "cjs",
-      treeShaking: true,
-      // Externalize the Ink + React stack from the esbuild bundling
-      // step. The main bundle never calls `import("ink")` at runtime —
-      // the sidecar is pre-bundled by text-import-plugin as a
-      // self-contained JS file with ink/react inlined. Keeping these
-      // external avoids pulling CJS React wrappers into the bundle.
-      external: [
-        "ink",
-        "ink-spinner",
-        "react",
-        "react/*",
-        "react-reconciler",
-        "react-reconciler/*",
-        // The DIF loader resolves this .wasm at runtime (dev only); never bundle it.
-        "@sentry/symbolic/symbolic_bg.wasm",
-        // WASM SQLite fallback for Node.js < 22.15. The SEA binary always
-        // embeds a modern LTS Node.js (>= 22.15) and uses the native
-        // node:sqlite driver, so this fallback branch is dead code here.
-        // Externalizing it keeps the driver (and its ~1MB .wasm) out of the
-        // binary entirely — see src/lib/db/sqlite.ts resolveDriver().
-        "node-sqlite3-wasm",
-      ],
       sourcemap: "linked",
-      minify: true,
-      metafile: true,
-      // CJS format needs import.meta.url shimmed via inject + define.
-      inject: ["./script/import-meta-url.js"],
-      define: {
-        "import.meta.url": "import_meta_url",
-        SENTRY_CLI_VERSION: JSON.stringify(VERSION),
-        SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
-        "process.env.NODE_ENV": JSON.stringify("production"),
-        __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
-        // Tree-shakes the SDK's runtime module hooks, which can't instrument a
-        // bundle and would hook the host app in library mode.
-        __SENTRY_CHANNEL_INJECTION__: "false",
-      },
-      plugins: [
-        textImportPlugin,
-        zodEnglishLocalesPlugin,
-        zodV3StubPlugin,
-        // Transform _require() → require() so esbuild resolves lazy relative
-        // requires at bundle time. In tsx dev mode, _require is a file-local
-        // createRequire(import.meta.url) that resolves relative to the file.
-        // esbuild only statically resolves bare require() calls.
-        // Only targets the specific files that use _require with relative paths.
-        {
-          name: "require-alias",
-          setup(b) {
-            b.onLoad({ filter: REQUIRE_ALIAS_FILTER }, async (args) => {
-              const source = await readFile(args.path, "utf-8");
-              return {
-                contents: source.replace(REQUIRE_ALIAS_RE, "require("),
-                loader: args.path.endsWith(".tsx") ? "tsx" : "ts",
-              };
-            });
-          },
-        },
-      ],
+    });
+    // Completion runs with telemetry off and is never symbolicated, so it
+    // gets no sourcemap. `SENTRY_CLI_COMPLETION_BUILD` drops the lazy
+    // telemetry `require` (and `@sentry/node`) from `src/lib/db/index.ts`.
+    const completeResult = await esbuild({
+      ...BUNDLE_OPTIONS,
+      entryPoints: ["./src/complete-bin.ts"],
+      outfile: COMPLETE_JS,
+      define: { ...BUNDLE_OPTIONS.define, SENTRY_CLI_COMPLETION_BUILD: "true" },
     });
 
-    const output = result.metafile?.outputs[BUNDLE_JS];
-    const jsSize = (
-      (output?.bytes ?? (await stat(BUNDLE_JS)).size) /
-      1024 /
-      1024
-    ).toFixed(2);
     const mapSize = ((await stat(SOURCEMAP_FILE)).size / 1024 / 1024).toFixed(
       2,
     );
-    console.log(`    -> ${BUNDLE_JS} (${jsSize} MB)`);
+    console.log(
+      `    -> ${BUNDLE_JS} (${await bundleSizeMb(result.metafile?.outputs, BUNDLE_JS)} MB)`,
+    );
     console.log(`    -> ${SOURCEMAP_FILE} (${mapSize} MB, for Sentry upload)`);
+    console.log(
+      `    -> ${COMPLETE_JS} (${await bundleSizeMb(completeResult.metafile?.outputs, COMPLETE_JS)} MB)`,
+    );
     return true;
   } catch (error) {
     console.error("  Failed to bundle JS:");
+    console.error(
+      `    ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return false;
+  }
+}
+
+/** First 16 hex digits of the SHA-256 of `file`. */
+async function fileHash(file: string): Promise<string> {
+  return createHash("sha256")
+    .update(await readFile(file))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
+ * Bundle the SEA main script (`src/sea-main.ts`). It runs after debug ID
+ * injection so the hash it embeds for the CLI bundle covers its final bytes:
+ * the hash names each bundle's code cache file, and V8 would otherwise accept
+ * a cache from another build whose source has the same length.
+ */
+async function bundleSeaMain(): Promise<boolean> {
+  try {
+    const chunks = {
+      cli: { asset: BUNDLE_JS, buildId: await fileHash(BUNDLE_JS) },
+      complete: { asset: COMPLETE_JS, buildId: await fileHash(COMPLETE_JS) },
+    };
+    await esbuild({
+      entryPoints: ["./src/sea-main.ts"],
+      bundle: true,
+      outfile: SEA_MAIN_JS,
+      platform: "node",
+      target: BUNDLE_OPTIONS.target,
+      format: "cjs",
+      minify: true,
+      define: { SEA_CHUNKS: JSON.stringify(chunks) },
+    });
+    console.log(`    -> ${SEA_MAIN_JS} (SEA main script)`);
+    return true;
+  } catch (error) {
+    console.error("  Failed to bundle the SEA main script:");
     console.error(
       `    ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -315,8 +402,11 @@ async function compileAllTargets(
 ): Promise<{ successes: number; failures: number }> {
   const platforms = targets.map((t) => getFossilizePlatform(t));
 
+  // The SEA main script (SEA_MAIN_JS) runs one of these two bundles, read
+  // back with node:sea.getAsset() under the same keys.
+  const assetArgs: string[] = ["--assets", BUNDLE_JS, "--assets", COMPLETE_JS];
+
   // Add ink sidecar as asset if it exists (pre-bundled by text-import-plugin)
-  const assetArgs: string[] = [];
   // The text-import-plugin pre-bundles the Ink sidecar into BUILD_DIR.
   // Pass it to fossilize as a SEA asset so it's available at runtime
   // via node:sea.getAsset(INK_SIDECAR_ASSET_KEY).
@@ -391,8 +481,9 @@ async function compileAllTargets(
         "--hole-punch",
         // Make the binary ignore NODE_OPTIONS so user V8 flags (e.g.
         // `NODE_OPTIONS=--max-old-space-size=8192`) don't change V8's
-        // flag-hash and reject the embedded code cache ("Code cache data
-        // rejected"). process.env is untouched, so child processes still
+        // flag-hash and reject the code caches ("Code cache data
+        // rejected"), the embedded one and the ones `src/lib/sea-chunk.ts`
+        // writes. process.env is untouched, so child processes still
         // inherit the user's NODE_OPTIONS.
         "--ignore-node-options",
         "--output-name",
@@ -404,7 +495,7 @@ async function compileAllTargets(
         "--node-version",
         NODE_VERSION,
         ...assetArgs,
-        BUNDLE_JS,
+        SEA_MAIN_JS,
       ].join(" "),
       { stdio: "inherit" },
     );
@@ -496,15 +587,6 @@ async function build(): Promise<void> {
   console.log(`\nSentry CLI Build v${VERSION}`);
   console.log("=".repeat(40));
 
-  if (!SENTRY_CLIENT_ID) {
-    console.error(
-      "\nError: SENTRY_CLIENT_ID environment variable is required.",
-    );
-    console.error("   The CLI requires OAuth to function.");
-    console.error("   Set it via: SENTRY_CLIENT_ID=xxx pnpm run build\n");
-    process.exit(1);
-  }
-
   // Determine targets
   let targets: BuildTarget[];
 
@@ -553,6 +635,10 @@ async function build(): Promise<void> {
 
   // Inject debug IDs into the JS and sourcemap (non-fatal on failure).
   await injectDebugIds();
+
+  if (!(await bundleSeaMain())) {
+    process.exit(1);
+  }
 
   console.log("");
 

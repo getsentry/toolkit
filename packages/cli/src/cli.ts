@@ -23,8 +23,11 @@ import { initTimezone } from "./lib/timezone.js";
 
 /** What a binary runs: its application. */
 export type CliEntry = {
-  /** Load the application. Loading it registers its routes. */
-  readonly loadApp: () => Promise<{
+  /**
+   * Load the application for the CLI arguments, which may leave out the
+   * commands they don't run. Loading it registers its routes.
+   */
+  readonly loadApp: (args: readonly string[]) => Promise<{
     app: CliApplication;
     routes: CliRoutes;
   }>;
@@ -203,6 +206,8 @@ function skipLeadingGlobalFlag(
 /**
  * Whether `cliArgs` runs the `mcp` command: `mcp` after any leading global
  * flags, or no command at all when `mcp` is the default (`@sentry/mcp-server`).
+ * There, a first word that names no route is `mcp`'s `<org>/<project>` target:
+ * Stricli routes it to the default command. Route names win over a target.
  *
  * The stdio server owns stdout for JSON-RPC and reports its own telemetry, so
  * the runner starts it without the CLI's telemetry, recovery middleware, and
@@ -220,7 +225,10 @@ export function isMcpInvocation(
   for (let index = 0; index < cliArgs.length;) {
     const token = cliArgs[index] ?? "";
     if (!token.startsWith("-")) {
-      return token === "mcp";
+      return (
+        token === "mcp" ||
+        (isDefault && !routes.getRoutingTargetForInput(token))
+      );
     }
     const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
     if (nextIndex === undefined) {
@@ -301,7 +309,7 @@ export async function runCli(
   cliArgs: string[],
   entry: CliEntry,
 ): Promise<void> {
-  const { app, routes } = await entry.loadApp();
+  const { app, routes } = await entry.loadApp(cliArgs);
   if (isMcpInvocation(routes, cliArgs)) {
     await runMcpServer(app, cliArgs);
     return;

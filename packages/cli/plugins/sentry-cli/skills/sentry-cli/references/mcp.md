@@ -11,9 +11,15 @@ requires:
 
 Start a local Sentry MCP server
 
-### `sentry mcp`
+### `sentry mcp [<org/project>]`
 
 Start a local Sentry MCP server
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (an organization) or &lt;org&gt;/&lt;project&gt; to limit calls to |
 
 **Flags:**
 - `--access-token <value> - Deprecated: set SENTRY_AUTH_TOKEN instead`
@@ -36,6 +42,12 @@ Start a local Sentry MCP server
 ```bash
 # Start the server with the current CLI login
 sentry mcp
+
+# Limit every call to one organization
+sentry mcp acme/
+
+# Limit calls to one project
+sentry mcp acme/web
 
 # Grant every skill, including seer on self-hosted
 sentry mcp --all-skills

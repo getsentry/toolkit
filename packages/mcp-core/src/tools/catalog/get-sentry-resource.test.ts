@@ -362,7 +362,9 @@ describe("get_sentry_resource", () => {
       expect(result).toContain(
         `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
       );
-      expect(result).toContain("Clicked submit order");
+      expect(result).toContain(
+        "**dead click** · `div.modal > button.place-order`",
+      );
     });
 
     it("dispatches monitor URL with a simple slug to get_monitor_details", async () => {
@@ -768,7 +770,9 @@ describe("get_sentry_resource", () => {
       expect(result).toContain(
         `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
       );
-      expect(result).toContain("Clicked submit order");
+      expect(result).toContain(
+        "**dead click** · `div.modal > button.place-order`",
+      );
     });
 
     it("fetches snapshot by snapshot ID", async () => {

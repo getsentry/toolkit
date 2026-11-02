@@ -125,7 +125,7 @@ import {
   ReplayDetailsSchema,
   ReplayIdsByResourceSchema,
   ReplayListResponseSchema,
-  ReplayRecordingSegmentsSchema,
+  ReplayRecordingSegmentPageSchema,
   RepositoryListSchema,
   SearchAgentStartSchema,
   SearchAgentStateSchema,
@@ -200,7 +200,6 @@ import type {
   ReleaseList,
   ReplayDetails,
   ReplayList,
-  ReplayRecordingSegments,
   SearchAgentStart,
   SearchAgentState,
   SentryAppComponentList,
@@ -226,6 +225,9 @@ import { readJsonResponse } from "@sentry/toolkit-core/api-client/response";
 // import { logger } from "@sentry/node";
 
 const SENTRY_MCP_SEARCH_EVENTS_REFERRER = "api.mcp.search-events";
+
+// The recording-segments endpoint caps per_page at 100.
+const REPLAY_SEGMENTS_PER_PAGE = 100;
 
 /**
  * Filters on other events in the same trace, e.g. spans whose trace also has a
@@ -4608,25 +4610,63 @@ export class SentryApiService {
     return replayIdsByResource[normalizedIssueId] ?? [];
   }
 
-  async getReplayRecordingSegments(
+  /**
+   * Visits a replay's recording segments page by page.
+   *
+   * Sentry paginates this endpoint at most 100 segments per page and reports
+   * continuation through the `Link` header, so long replays need the cursor.
+   * Segments are handed to `onSegment` as each page arrives instead of being
+   * collected, because full DOM snapshots make raw pages large and callers
+   * only keep a small projection of each one.
+   */
+  async visitReplayRecordingSegments(
     {
       organizationSlug,
       projectSlugOrId,
       replayId,
+      maxSegments,
     }: {
       organizationSlug: string;
       projectSlugOrId: string;
       replayId: string;
+      maxSegments: number;
     },
+    onSegment: (events: unknown[]) => void,
     opts?: RequestOptions,
-  ): Promise<ReplayRecordingSegments> {
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlugOrId}/replays/${replayId}/recording-segments/` +
-        `?download=true`,
-      undefined,
-      opts,
-    );
-    return ReplayRecordingSegmentsSchema.parse(body);
+  ): Promise<{ segmentsRead: number; truncated: boolean }> {
+    let cursor: string | null = null;
+    let segmentsRead = 0;
+
+    do {
+      const params = new URLSearchParams();
+      params.set("per_page", String(REPLAY_SEGMENTS_PER_PAGE));
+      if (cursor) {
+        params.set("cursor", cursor);
+      }
+
+      const response = await this.request(
+        apiPath`/projects/${organizationSlug}/${projectSlugOrId}/replays/${replayId}/recording-segments/` +
+          `?${params.toString()}`,
+        { method: "GET" },
+        opts,
+      );
+      const page = ReplayRecordingSegmentPageSchema.parse(
+        await readJsonResponse(response),
+      );
+      for (const segment of page) {
+        if (segmentsRead >= maxSegments) {
+          return { segmentsRead, truncated: true };
+        }
+        onSegment(segment);
+        segmentsRead += 1;
+      }
+      cursor = getNextCursor(response.headers.get("link"));
+      if (cursor && segmentsRead >= maxSegments) {
+        return { segmentsRead, truncated: true };
+      }
+    } while (cursor);
+
+    return { segmentsRead, truncated: false };
   }
 
   async updateIssue(

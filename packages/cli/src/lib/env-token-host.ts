@@ -215,6 +215,22 @@ export function scopeEnvTokenToBootHost(derived: NodeJS.ProcessEnv): void {
   );
 }
 
+/**
+ * Give `derived`, a copy of the current environment, the env-token host this
+ * environment snapshotted instead of one re-read from the copy, so the copy
+ * scopes its env token the same way.
+ */
+export function inheritEnvTokenHost(derived: NodeJS.ProcessEnv): void {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
+    captureEnvTokenHost();
+  }
+  const snapshot = snapshotState.byEnv.get(env);
+  if (snapshot) {
+    snapshotState.byEnv.set(derived, snapshot);
+  }
+}
+
 /** Only the explicit URL captured at boot may migrate a legacy stored login. */
 export function getBootConfiguredSentryUrl(): string | undefined {
   const env = getEnv();
