@@ -14,6 +14,7 @@ import { buildTraceUrl } from "../sentry-web-urls.js";
 import {
   colorTag,
   escapeMarkdownCell,
+  escapeMarkdownInline,
   escapeMarkdownLines,
   mdKvTable,
   mdRow,
@@ -464,8 +465,10 @@ export function formatLogDetails(
       lines.push(
         mdKvTable(
           customAttrs.map((a) => [
-            a.name,
-            a.type === "array" ? JSON.stringify(a.value) : String(a.value),
+            escapeMarkdownInline(a.name),
+            escapeMarkdownInline(
+              a.type === "array" ? JSON.stringify(a.value) : String(a.value),
+            ),
           ]),
           "Custom Attributes",
         ),

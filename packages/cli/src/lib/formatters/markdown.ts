@@ -90,6 +90,28 @@ export function mdRow(cells: readonly string[]): string {
 }
 
 /**
+ * A backslash escape, a code span, or a pipe, scanned left to right so an
+ * escaped backtick cannot open a code span and backslashes inside a code span
+ * stay literal.
+ */
+const KV_CELL_TOKEN = /\\[\s\S]|(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)|\|/g;
+
+/**
+ * Make a Markdown value safe for an {@link mdKvTable} cell.
+ *
+ * Pipes become a box-drawing │ so they cannot end the cell, even inside a
+ * code span. An escaped pipe (`\|`, as from escapeMarkdownCell) becomes │
+ * without its backslash. Inside a code span, backslashes are literal and
+ * stay. Newlines are collapsed to spaces. Content escaping is the caller's job.
+ */
+function kvTableCell(value: string): string {
+  return value.replace(/\n/g, " ").replace(KV_CELL_TOKEN, (token) => {
+    if (token === "|" || token === "\\|") return "\u2502";
+    return token.startsWith("`") ? token.replace(/\|/g, "\u2502") : token;
+  });
+}
+
+/**
  * Build a key-value markdown table section with an optional heading.
  *
  * Each entry is rendered as `| **Label** | value |`.
@@ -106,16 +128,7 @@ export function mdKvTable(
   lines.push("| | |");
   lines.push("|---|---|");
   for (const [label, value] of rows) {
-    // Pipes become a box-drawing │ so they cannot end the cell, even inside a
-    // code span. A pipe escaped by an odd run of backslashes (as from
-    // escapeMarkdownCell) drops that escape, so no backslash shows. Newlines
-    // are collapsed to spaces. Content escaping is the caller's job.
-    const cell = value
-      .replace(/\n/g, " ")
-      .replace(/(\\*)\|/g, (_, slashes: string) =>
-        slashes.length % 2 ? `${slashes.slice(1)}\u2502` : `${slashes}\u2502`,
-      );
-    lines.push(`| **${label}** | ${cell} |`);
+    lines.push(`| **${label}** | ${kvTableCell(value)} |`);
   }
   return lines.join("\n");
 }

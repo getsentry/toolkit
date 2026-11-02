@@ -498,6 +498,15 @@ describe("mdKvTable", () => {
     expect(result).toContain("| **Only** | Row |");
   });
 
+  test("keeps a literal backslash before a pipe in a code span or raw value", () => {
+    expect(mdKvTable([["Culprit", safeCodeSpan("a\\|b")]])).toContain(
+      "| **Culprit** | `a\\\u2502b` |",
+    );
+    expect(mdKvTable([["Raw", "a\\\\|b `\\`|`"]])).toContain(
+      "| **Raw** | a\\\\\u2502b `\\`\u2502` |",
+    );
+  });
+
   test("shows a pipe from escapeMarkdownCell without its backslash", () => {
     expect(mdKvTable([["Org", escapeMarkdownCell("a|b")]])).toContain(
       "| **Org** | a\u2502b |",
