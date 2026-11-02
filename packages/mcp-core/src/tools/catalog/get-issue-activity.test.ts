@@ -56,7 +56,7 @@ describe("get_issue_activity", () => {
 
       ## Response Notes
 
-      - Use the Sentry tool \`add_issue_note\` to add a new human-visible issue comment.
+      - Use the Sentry tool \`add_issue_note\` to add a new issue comment.
       "
     `);
   });
@@ -121,7 +121,7 @@ describe("get_issue_activity", () => {
 
       ## Response Notes
 
-      - Use the Sentry tool \`add_issue_note\` to add a new human-visible issue comment.
+      - Use the Sentry tool \`add_issue_note\` to add a new issue comment.
       "
     `);
     expect(result).not.toContain("by system");
