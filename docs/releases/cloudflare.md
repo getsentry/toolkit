@@ -75,7 +75,7 @@ The MCP handler uses a stateless architecture with closure-captured context:
 
 ```typescript
 import { experimental_createMcpHandler as createMcpHandler } from "agents/mcp";
-import { buildServer } from "@sentry/mcp-server/server";
+import { buildServer } from "@sentry/mcp-core/server";
 
 const mcpHandler: ExportedHandler<Env> = {
   async fetch(

@@ -2,16 +2,19 @@
 /**
  * Version Bump Script
  *
- * Sets the CLI version to CRAFT_NEW_VERSION and keeps package.json,
- * plugin.json, and the tracked skill frontmatter in sync.
- *
- * Craft runs this as the preReleaseCommand twice per release: once with the
- * release version, and once after publishing with the next development
- * version (`postReleaseBump` in .craft.yml). Craft commits and pushes the
- * development version itself.
+ * Craft's `preReleaseCommand` for the CLI workspace. It runs for the release
+ * version in `craft prepare`, and again for the next `-dev` version after
+ * `craft publish` (`postReleaseBump` in .craft.yml), which Craft commits and
+ * pushes. `@sentry/mcp-server` ships with every CLI release, so it takes the
+ * same version.
  *
  * Usage:
  *   CRAFT_NEW_VERSION=1.0.0 node --experimental-strip-types script/bump-version.ts --pre
+ *
+ * Sets CRAFT_NEW_VERSION as:
+ *   - the CLI and @sentry/mcp-server package.json versions
+ *   - the plugin.json version, without the prerelease suffix
+ *   - the tracked CLI skill frontmatter versions
  */
 
 import { execSync } from "node:child_process";
@@ -19,6 +22,7 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PLUGIN_PATH = "plugins/sentry-cli/.claude-plugin/plugin.json";
+const MCP_SERVER_PATH = "../mcp-server";
 const SKILL_PATH = "plugins/sentry-cli/skills/sentry-cli";
 const SKILL_VERSION_LINE = /^version: [^\r\n]+$/gm;
 
@@ -89,8 +93,17 @@ function syncSkillVersions(version: string): void {
 /**
  * Execute a shell command with output inherited to stdout/stderr
  */
-function exec(command: string): void {
-  execSync(command, { stdio: "inherit" });
+function exec(command: string, cwd?: string): void {
+  execSync(command, { stdio: "inherit", cwd });
+}
+
+/** Give `@sentry/mcp-server` the CLI's version. */
+function setMcpServerVersion(version: string): void {
+  exec(
+    `npm --no-git-tag-version --allow-same-version version ${version}`,
+    MCP_SERVER_PATH,
+  );
+  console.log(`Updated @sentry/mcp-server to ${version}`);
 }
 
 /**
@@ -107,6 +120,7 @@ function preRelease(): void {
 
   // Update package.json via npm (handles formatting consistently)
   exec(`npm --no-git-tag-version version ${version}`);
+  setMcpServerVersion(version);
 
   // Update plugin.json (strip prerelease suffix for cleaner version)
   const plugin = readPluginJson();
@@ -121,25 +135,11 @@ function preRelease(): void {
   syncSkillVersions(version);
 }
 
-/**
- * Print usage information
- */
-function printUsage(): void {
+if (process.argv.includes("--pre")) {
+  preRelease();
+} else {
   console.log(`
-Usage: node --experimental-strip-types script/bump-version.ts --pre
-
-Sets package.json, plugin.json, and the CLI skill versions to the
-CRAFT_NEW_VERSION environment variable.
-
-Example:
-  CRAFT_NEW_VERSION=1.0.0 node --experimental-strip-types script/bump-version.ts --pre
+Usage: CRAFT_NEW_VERSION=<version> node --experimental-strip-types script/bump-version.ts --pre
 `);
-}
-
-// Main
-if (!process.argv.slice(2).includes("--pre")) {
-  printUsage();
   process.exit(1);
 }
-
-preRelease();

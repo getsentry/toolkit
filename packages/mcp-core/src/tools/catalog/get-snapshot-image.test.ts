@@ -1,7 +1,4 @@
-import type {
-  ImageContent,
-  TextContent,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { ImageContent, TextContent } from "@modelcontextprotocol/server";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { decode as decodePng, encode as encodePng } from "fast-png";
 import { http, HttpResponse } from "msw";

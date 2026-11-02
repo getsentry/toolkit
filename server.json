@@ -20,7 +20,7 @@
           "isRequired": true,
           "format": "string",
           "isSecret": true,
-          "name": "SENTRY_ACCESS_TOKEN"
+          "name": "SENTRY_AUTH_TOKEN"
         }
       ]
     }

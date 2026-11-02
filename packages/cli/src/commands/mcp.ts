@@ -1,22 +1,161 @@
+/**
+ * `sentry mcp`: run the local Sentry MCP server over stdio.
+ *
+ * Also the default command of the `@sentry/mcp-server` package, so
+ * `npx @sentry/mcp-server` starts the same server. The server stack (mcp-core,
+ * the embedded agent providers, `@sentry/node`'s MCP telemetry) loads only
+ * when the server starts, not for `--help`.
+ */
+
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
-import { CommandOutput } from "../lib/formatters/output.js";
+import {
+  parseOrgSlug,
+  parseProjectSlug,
+  parseText,
+} from "../lib/completion-target.js";
+import type { McpFlags } from "../lib/mcp/args.js";
 
-/** Documentation route for the stdio handoff in {@link runCli}. */
+/**
+ * mcp-core's `ALL_SKILLS`, copied so the command tree does not import
+ * mcp-core: docs generation and `pnpm run cli` load every command without
+ * building it. A test fails if this list drifts.
+ */
+export const MCP_SKILL_NAMES = [
+  "inspect",
+  "seer",
+  "docs",
+  "triage",
+  "project-management",
+] as const;
+
+/** An optional string flag. */
+function stringFlag(brief: string) {
+  return { kind: "parsed", parse: parseText, brief, optional: true } as const;
+}
+
+/** A hidden flag kept so existing MCP client configurations keep working. */
+function deprecatedStringFlag(replacement: string) {
+  return {
+    ...stringFlag(`Deprecated: use ${replacement} instead`),
+    hidden: true,
+  } as const;
+}
+
+/** A boolean flag that defaults to off. */
+function booleanFlag(brief: string) {
+  return { kind: "boolean", brief, default: false } as const;
+}
+
+/** A hidden boolean flag kept so existing MCP client configurations keep working. */
+function deprecatedBooleanFlag(replacement: string) {
+  return {
+    ...booleanFlag(`Deprecated: use ${replacement} instead`),
+    hidden: true,
+  } as const;
+}
+
 export const mcpCommand = buildCommand({
+  // The server resolves its own credential (the CLI session or env token),
+  // with its own `.sentryclirc` URL check.
   auth: false,
+  skipRcUrlCheck: true,
   docs: {
     brief: "Start a local Sentry MCP server",
     fullDescription:
-      "Start the local stdio MCP server using the current Sentry CLI session. " +
-      "Configure an MCP client with `sentry mcp`; authenticate first with `sentry auth login`.",
+      "Serve the Sentry MCP tools over stdio, for MCP clients such as Claude Code, Cursor, or VS Code. " +
+      "Uses the current Sentry CLI login, refreshing it as needed, and stays on the account it started with. " +
+      "Log in with 'auth login' first, or set SENTRY_AUTH_TOKEN. " +
+      "SENTRY_AUTH_TOKEN, when set, wins over a stored login. " +
+      "An org auth token (sntrys_) only works with the host it was issued for.\n\n" +
+      "--access-token and SENTRY_ACCESS_TOKEN are deprecated: they act as SENTRY_AUTH_TOKEN, " +
+      "sent to the configured Sentry instance, and print a warning. " +
+      "--host, --url, and --insecure-http are deprecated too: set SENTRY_HOST or SENTRY_URL " +
+      "(an http:// URL for a self-hosted instance over plain HTTP).\n\n" +
+      "Environment variables:\n" +
+      "  SENTRY_AUTH_TOKEN        Sentry token (same as for other commands)\n" +
+      "  SENTRY_HOST, SENTRY_URL  Sentry instance (same as for other commands; http:// for plain HTTP)\n" +
+      "  MCP_URL                  MCP server URL reported in telemetry\n" +
+      "  SENTRY_DSN               DSN for the server's own telemetry\n" +
+      "  OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY\n" +
+      "                           LLM API key for AI-powered search tools\n" +
+      "  OPENAI_MODEL, ANTHROPIC_MODEL, OPENROUTER_MODEL\n" +
+      "                           LLM model overrides\n" +
+      "  OPENROUTER_REASONING_EFFORT\n" +
+      "                           none|minimal|low|medium|high|xhigh, or empty to omit (default: high)\n" +
+      "  EMBEDDED_AGENT_PROVIDER  openai, azure-openai, anthropic, or openrouter\n" +
+      "  MCP_SKILLS               Skills to grant (comma-separated)\n" +
+      "  MCP_DISABLE_SKILLS       Skills to remove (comma-separated)\n\n" +
+      `Available skills: ${MCP_SKILL_NAMES.join(", ")}`,
+    examples: [
+      {
+        description: "Start the server with the current CLI login",
+        command: "sentry mcp",
+      },
+      {
+        description: "Grant every skill, including seer on self-hosted",
+        command: "sentry mcp --all-skills",
+      },
+      {
+        description: "Grant only some skills",
+        command: "sentry mcp --skills inspect,triage",
+      },
+      {
+        description: "Pick the LLM provider for AI-powered search",
+        command: "sentry mcp --agent-provider anthropic",
+      },
+    ],
   },
-  output: { human: (message: string) => message },
-  parameters: {},
-  // biome-ignore lint/suspicious/useAwait: async generator required by buildCommand
-  async *func(this: SentryContext) {
-    yield new CommandOutput(
-      "The local MCP server is started by running `sentry mcp` from an MCP client configuration.",
-    );
+  parameters: {
+    flags: {
+      "access-token": stringFlag("Deprecated: set SENTRY_AUTH_TOKEN instead"),
+      host: deprecatedStringFlag("SENTRY_HOST"),
+      url: deprecatedStringFlag("SENTRY_URL"),
+      "insecure-http": deprecatedBooleanFlag("an http:// SENTRY_URL"),
+      // The CLI's own --org/--project, which this command owns instead of
+      // mapping them onto SENTRY_ORG/SENTRY_PROJECT.
+      org: {
+        kind: "parsed",
+        parse: parseOrgSlug,
+        brief: "Limit every call to this organization",
+        optional: true,
+      },
+      project: {
+        kind: "parsed",
+        parse: parseProjectSlug,
+        brief: "Limit calls to this project",
+        optional: true,
+      },
+      "organization-slug": deprecatedStringFlag("--org"),
+      "project-slug": deprecatedStringFlag("--project"),
+      skills: stringFlag(
+        "Skills to grant, comma-separated (default: active skills; seer is left out on self-hosted)",
+      ),
+      "all-skills": booleanFlag(
+        "Grant every active skill, including seer on self-hosted",
+      ),
+      "disable-skills": stringFlag("Skills to remove, comma-separated"),
+      experimental: booleanFlag(
+        "Enable forward-looking tool variants and experimental features",
+      ),
+      "agent-provider": stringFlag(
+        "LLM provider for AI-powered search: openai, azure-openai, anthropic, or openrouter",
+      ),
+      "openai-base-url": stringFlag("OpenAI API base URL"),
+      "openai-model": stringFlag("OpenAI model (default: gpt-5)"),
+      "anthropic-base-url": stringFlag("Anthropic API base URL"),
+      "anthropic-model": stringFlag(
+        "Anthropic model (default: claude-sonnet-4-5)",
+      ),
+      "mcp-url": stringFlag("MCP server URL reported in telemetry"),
+      "sentry-dsn": stringFlag("DSN for the server's own telemetry"),
+    },
+  },
+  // oxlint-disable-next-line require-yield -- The server speaks JSON-RPC on stdout; the command yields no output.
+  async *func(this: SentryContext, flags: McpFlags) {
+    const { serveMcp } = await import("../lib/mcp.js");
+    // Resolves when the client disconnects, so the runner tears down only
+    // after the server is done.
+    await serveMcp(flags, this.cwd);
   },
 });
