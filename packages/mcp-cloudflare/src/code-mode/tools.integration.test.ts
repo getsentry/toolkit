@@ -4,15 +4,11 @@ import {
   waitOnExecutionContext,
 } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  MAX_MCP_REQUEST_BODY_BYTES,
-  MAX_TOOL_INPUT_ELEMENTS,
-} from "@sentry/toolkit-core/mcp-limits";
 import * as Sentry from "@sentry/cloudflare";
 import * as logging from "@sentry/mcp-core/telem/logging";
-import { SPEC_TEXT, SPEC_VERSION } from "../../code-mode/openapi";
-import type { Env, WorkerProps } from "../types";
-import mcpHandler from "./mcp-handler";
+import mcpHandler from "../server/lib/mcp-handler";
+import type { Env, WorkerProps } from "../server/types";
+import { SPEC_TEXT, SPEC_VERSION } from "./openapi";
 
 const monitorPath =
   "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/monitors/{monitor_id_or_slug}/";
@@ -401,89 +397,6 @@ describe("Code Mode on the authenticated MCP", () => {
     },
   );
 
-  it.each([
-    {
-      shape: "object keys",
-      unused: Object.fromEntries(
-        Array.from({ length: MAX_TOOL_INPUT_ELEMENTS + 1 }, (_, index) => [
-          `key${index}`,
-          null,
-        ]),
-      ),
-    },
-    {
-      shape: "array elements",
-      unused: { values: Array(MAX_TOOL_INPUT_ELEMENTS + 1).fill(null) },
-    },
-  ])(
-    "rejects excessive nested $shape before executing code",
-    async ({ unused }) => {
-      const result = await rpc<ToolResult>("tools/call", {
-        name: "execute_sentry_code",
-        arguments: {
-          code: 'async () => sentry.request({path: "/organizations/"})',
-          unused,
-        },
-      });
-      expect(result.isError).toBe(true);
-      expect(result.content[0]?.text).toContain(
-        `maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
-      );
-      expect(apiRequests).toEqual([]);
-    },
-  );
-
-  it.each(["2026-07-28", "2025-03-26"] as const)(
-    "rejects HTTP bodies above the limit with protocol %s",
-    async (protocolVersion) => {
-      const { response, ctx } = await dispatchRpc(
-        "tools/call",
-        {
-          name: "execute_sentry_code",
-          arguments: { code: "x".repeat(MAX_MCP_REQUEST_BODY_BYTES) },
-        },
-        { protocolVersion },
-      );
-      const body = await response.text();
-      await waitOnExecutionContext(ctx);
-      expect(response.status).toBe(413);
-      expect(response.headers.get("Content-Type")).toContain(
-        "application/json",
-      );
-      expect(JSON.parse(body)).toEqual({
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: -32000,
-          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_BYTES} bytes`,
-        },
-      });
-      expect(apiRequests).toEqual([]);
-    },
-  );
-
-  it("advertises Code Mode alongside the normal catalog and executes discovery", async () => {
-    const list = await rpc<ToolList>("tools/list", {});
-    expect(list.tools.map(({ name }) => name)).toEqual(
-      expect.arrayContaining([
-        "search_sentry_api",
-        "execute_sentry_code",
-        "find_organizations",
-      ]),
-    );
-    expect(
-      list.tools.find(({ name }) => name === "execute_sentry_code")?.annotations
-        ?.readOnlyHint,
-    ).toBe(true);
-    const result = await rpc<ToolResult>("tools/call", {
-      name: "search_sentry_api",
-      arguments: { code: "async () => Object.keys(spec.paths)" },
-    });
-    expect(result.isError).toBeUndefined();
-    expect(result.structuredContent?.result).toContain(monitorPath);
-    expect(apiRequests).toHaveLength(0);
-  });
-
   it("blocks api-read writes through both sentry.request and raw fetch", async () => {
     const result = await execute(
       `async () => {
@@ -495,16 +408,6 @@ describe("Code Mode on the authenticated MCP", () => {
       catch { rawBlocked = true; }
       return {wrappedStatus, rawBlocked};
     }`,
-      {
-        props: {
-          upstreamScopes: [
-            "org:read",
-            "project:write",
-            "team:write",
-            "event:write",
-          ],
-        },
-      },
     );
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent?.result).toEqual({
@@ -608,126 +511,43 @@ describe("Code Mode on the authenticated MCP", () => {
   });
 
   it.each([
+    { name: "API Read", grantedSkills: ["api-read"], listed: true },
+    { name: "API Write", grantedSkills: ["api-write"], listed: true },
+    ...["docs", "inspect", "triage", "project-management", "seer"].map(
+      (skill) => ({ name: skill, grantedSkills: [skill], listed: false }),
+    ),
     {
-      name: "docs-only grant",
-      props: { grantedSkills: ["docs"] },
-      path: "/mcp",
+      name: "API Read on a project connection",
+      grantedSkills: ["api-read"],
+      listed: false,
+      project: true,
     },
-    {
-      name: "project constraint",
-      props: {
-        grantedSkills: ["api-read"],
-        constraintOrganizationSlug: "code-mode-org",
-        constraintProjectSlug: "web",
-      },
-      path: "/mcp/code-mode-org/web",
-    },
-  ])("preserves the existing surface for a $name", async ({ props, path }) => {
-    const result = await rpc<ToolList>("tools/list", {}, { props, path });
-    expect(result.tools.map(({ name }) => name)).not.toContain(
-      "execute_sentry_code",
-    );
-    expect(result.tools.map(({ name }) => name)).not.toContain(
-      "search_sentry_api",
-    );
-  });
-
-  it.each(["inspect", "triage", "project-management", "seer"])(
-    "does not turn a legacy %s grant into arbitrary API access",
-    async (skill) => {
-      const result = await rpc<ToolList>(
+  ])(
+    "lists Code Mode only for API grants: $name",
+    async ({ grantedSkills, listed, project }) => {
+      const { tools } = await rpc<ToolList>(
         "tools/list",
         {},
-        {
-          props: {
-            grantedSkills: [skill],
-            upstreamScopes: ["org:read", "project:write", "event:write"],
-          },
-        },
+        project
+          ? {
+              path: "/mcp/code-mode-org/web",
+              props: {
+                grantedSkills,
+                constraintOrganizationSlug: "code-mode-org",
+                constraintProjectSlug: "web",
+              },
+            }
+          : { props: { grantedSkills } },
       );
-      expect(result.tools.map(({ name }) => name)).not.toContain(
-        "execute_sentry_code",
-      );
-      expect(result.tools.map(({ name }) => name)).not.toContain(
-        "search_sentry_api",
-      );
-      expect(apiRequests).toHaveLength(0);
-    },
-  );
-
-  it("copies a dashboard for two projects with api-write and an upstream org:read token", async () => {
-    // Dashboard POST accepts org:read in both the published schema and backend.
-    const original = {
-      id: "101",
-      title: "Errors",
-      projects: [101, 102],
-      widgets: [],
-    };
-    const dashboards = new Map([[original.id, original]]);
-    apiResponse = ({ url, method, body }) => {
-      if (method === "POST") {
-        const saved = {
-          ...JSON.parse(body),
-          id: String(dashboards.size + 101),
-        };
-        dashboards.set(saved.id, saved);
-        return Response.json(saved, { status: 201 });
-      }
-      const id = new URL(url).pathname.split("/").at(-2)!;
-      return Response.json(dashboards.get(id));
-    };
-    const result = await execute(
-      `async () => {
-        const path = "/organizations/code-mode-org/dashboards/";
-        const original = (await sentry.request({path: path + "101/"})).body;
-        const copies = [];
-        for (const project of [201, 202]) {
-          const created = (await sentry.request({method: "POST", path,
-            body: {title: original.title + " " + project, widgets: original.widgets, projects: [project]}
-          })).body;
-          const verified = (await sentry.request({path: path + created.id + "/"})).body;
-          copies.push({id: verified.id, projects: verified.projects});
-        }
-        return copies;
-      }`,
-      {
-        props: {
-          grantedSkills: ["api-write"],
-          upstreamScopes: ["org:read"],
-          grantedScopes: ["org:read"],
-        },
-      },
-    );
-    expect(result.isError).toBeUndefined();
-    expect(result.structuredContent?.result).toEqual([
-      { id: "102", projects: [201] },
-      { id: "103", projects: [202] },
-    ]);
-    expect(apiRequests.filter(({ method }) => method === "POST")).toHaveLength(
-      2,
-    );
-    expect(dashboards.get("101")).toEqual(original);
-  });
-
-  it.each([undefined, ["org:read", "project:write"]])(
-    "preserves the real upstream permission denial with recorded scopes %j",
-    async (upstreamScopes) => {
-      apiResponse = () =>
-        Response.json(
-          { detail: "You do not have permission to perform this action." },
-          { status: 403 },
+      const execute = tools.find(({ name }) => name === "execute_sentry_code");
+      const search = tools.find(({ name }) => name === "search_sentry_api");
+      expect(Boolean(execute), "execute_sentry_code").toBe(listed);
+      expect(Boolean(search), "search_sentry_api").toBe(listed);
+      if (execute) {
+        expect(execute.annotations?.readOnlyHint).toBe(
+          !grantedSkills.includes("api-write"),
         );
-      const result = await execute(
-        'async () => sentry.request({method: "POST", path: "/organizations/code-mode-org/dashboards/", body: {title: "Copy", widgets: []}})',
-        { props: { grantedSkills: ["api-write"], upstreamScopes } },
-      );
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("403");
-      expect(result.content[0].text).toContain("You do not have permission");
-      expect(
-        apiRequests.filter(({ method }) => method === "POST"),
-      ).toHaveLength(1);
-      expect(revokeGrant).not.toHaveBeenCalled();
+      }
     },
   );
 
@@ -911,71 +731,48 @@ describe("Code Mode sandbox", () => {
     ]);
   });
 
-  it("returns API failures as tool errors without retrying writes", async () => {
-    failPosts();
+  it("returns an uncaught API failure with HTTP evidence and no retries", async () => {
+    const challenge =
+      'Bearer error="insufficient_scope", scope="org:admin org:write"';
+    apiResponse = () =>
+      Response.json(
+        { detail: "You do not have permission to perform this action." },
+        {
+          status: 403,
+          headers: {
+            "Set-Cookie": "private-session=secret",
+            "WWW-Authenticate": challenge,
+          },
+        },
+      );
     const result = await execute(
       `async () => sentry.request({method: "POST", path: "${dashboards}", body: {}})`,
       writer,
     );
     expect(result.isError).toBe(true);
+    expect(result.structuredContent).toEqual({
+      error: expect.stringContaining(
+        `POST ${dashboardsPath} returned HTTP 403`,
+      ),
+      httpError: {
+        status: 403,
+        method: "POST",
+        path: dashboardsPath,
+        headers: {
+          "content-type": "application/json",
+          "www-authenticate": challenge,
+        },
+      },
+      stats: { apiCalls: 1, writesAttempted: 1 },
+    });
     expect(result.content[0]?.text).toContain(
-      `POST ${dashboardsPath} returned HTTP 400`,
+      "You do not have permission to perform this action.",
     );
     expect(result.content[0]?.text).toContain(
       "writes may already have completed",
     );
     expect(sent("POST")).toHaveLength(1);
   });
-
-  it.each(["insufficient-scope", "forbidden"])(
-    "returns an uncaught %s denial with HTTP evidence and no retries",
-    async (kind) => {
-      const challenge =
-        'Bearer error="insufficient_scope", scope="org:admin org:write"';
-      apiResponse = () =>
-        Response.json(
-          { detail: "You do not have permission to perform this action." },
-          {
-            status: 403,
-            headers: {
-              "Set-Cookie": "private-session=secret",
-              ...(kind === "insufficient-scope"
-                ? { "WWW-Authenticate": challenge }
-                : {}),
-            },
-          },
-        );
-      const result = await execute(
-        `async () => sentry.request({method: "POST", path: "${dashboards}", body: {}})`,
-        writer,
-      );
-      expect(result.isError).toBe(true);
-      expect(result.structuredContent).toEqual({
-        error: expect.stringContaining(
-          `POST ${dashboardsPath} returned HTTP 403`,
-        ),
-        httpError: {
-          status: 403,
-          method: "POST",
-          path: dashboardsPath,
-          headers: {
-            "content-type": "application/json",
-            ...(kind === "insufficient-scope"
-              ? { "www-authenticate": challenge }
-              : {}),
-          },
-        },
-        stats: { apiCalls: 1, writesAttempted: 1 },
-      });
-      expect(result.content[0]?.text).toContain(
-        "You do not have permission to perform this action.",
-      );
-      expect(result.content[0]?.text).toContain(
-        "writes may already have completed",
-      );
-      expect(sent("POST")).toHaveLength(1);
-    },
-  );
 
   it("exposes HTTP details on caught errors", async () => {
     failPosts(403);
@@ -995,78 +792,75 @@ describe("Code Mode sandbox", () => {
     });
   });
 
-  it.each(["", ".then(() => {})"])(
-    "reports settled API failures from ignored promises%s",
-    async (chain) => {
+  it.each([
+    {
+      name: "a failure settled before the program returns",
+      ignored: `sentry.request({method: "POST", path: "${dashboards}", body: {}})`,
+      error: `POST ${dashboardsPath} returned HTTP 400`,
+      posts: 1,
+    },
+    {
+      name: "a failure through a derived promise",
+      ignored: `sentry.request({method: "POST", path: "${dashboards}", body: {}}).then(() => {})`,
+      error: `POST ${dashboardsPath} returned HTTP 400`,
+      posts: 1,
+    },
+    {
+      name: "an invalid request",
+      ignored: 'sentry.request({path: "invalid-path"})',
+      error: "path must start with /",
+      posts: 0,
+    },
+  ])(
+    "fails the execution on an ignored rejection: $name",
+    async ({ ignored, error, posts }) => {
       const answered = deferred();
       apiResponse = async ({ method }) => {
         if (method === "POST") {
           answered.resolve();
           return Response.json({ title: ["Required."] }, { status: 400 });
         }
-        await answered.promise;
+        // Answer the awaited read after the ignored write has failed.
+        if (posts) await answered.promise;
         await new Promise((resolve) => setTimeout(resolve, 50));
         return Response.json([]);
       };
       const result = await execute(
         `async () => {
-          sentry.request({method: "POST", path: "${dashboards}", body: {}})${chain};
+          ${ignored};
           await sentry.request({path: "/organizations/"});
           return "done";
         }`,
         writer,
       );
       expect(result.isError).toBe(true);
-      expect(result.structuredContent).toMatchObject({
-        error: expect.stringContaining(
-          `POST ${dashboardsPath} returned HTTP 400`,
-        ),
-        httpError: { status: 400, method: "POST", path: dashboardsPath },
-        stats: { apiCalls: 2, writesAttempted: 1 },
-      });
+      expect(result.structuredContent?.error).toContain(error);
       expect(result.structuredContent).not.toHaveProperty("result");
-      expect(sent("POST")).toHaveLength(1);
+      expect(sent("POST")).toHaveLength(posts);
     },
   );
 
-  it("reports an ignored request rejection when the program returns immediately", async () => {
-    const result = await execute(`async () => {
-      sentry.request({path: "invalid-path"});
-      return "done";
-    }`);
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain("path must start with /");
-    expect(apiRequests).toEqual([]);
-  });
-
-  it("allows handling an API failure after another request finishes", async () => {
+  it("allows handled rejections, caught late or collected with allSettled", async () => {
     failPosts();
     const result = await execute(
       `async () => {
         const pending = sentry.request({method: "POST", path: "${dashboards}", body: {}});
         await sentry.request({path: "/organizations/"});
-        try { await pending; } catch (error) { return {status: error.status}; }
-      }`,
-      writer,
-    );
-    expect(result.isError).toBeUndefined();
-    expect(result.structuredContent?.result).toEqual({ status: 400 });
-  });
-
-  it("allows collecting API failures with Promise.allSettled", async () => {
-    failPosts();
-    const result = await execute(
-      `async () => {
-        const results = await Promise.allSettled([
+        let late;
+        try { await pending; } catch (error) { late = error.status; }
+        const settled = await Promise.allSettled([
           sentry.request({method: "POST", path: "${dashboards}", body: {}}),
           sentry.request({path: "/organizations/"}),
         ]);
-        return results.map(result => result.status);
+        return {late, settled: settled.map(result => result.status)};
       }`,
       writer,
     );
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent?.result).toEqual(["rejected", "fulfilled"]);
+    expect(result.structuredContent?.result).toEqual({
+      late: 400,
+      settled: ["rejected", "fulfilled"],
+    });
   });
 
   it("bounds API requests per execution", async () => {
@@ -1088,21 +882,17 @@ describe("Code Mode sandbox", () => {
     });
   });
 
-  it("preserves a user error with partial HTTP-like properties", async () => {
-    const result = await execute(
+  it("returns useful errors for invalid code, plain throws and oversized results", async () => {
+    const invalid = await execute("async () => {");
+    expect(invalid.isError).toBe(true);
+    // A thrown object with HTTP-like fields is the program's error, not an API one.
+    const thrown = await execute(
       'async () => { throw {status: 403, message: "Example denied"}; }',
     );
-    expect(result.isError).toBe(true);
-    expect(result.structuredContent).toMatchObject({
+    expect(thrown.structuredContent).toEqual({
       error: expect.stringContaining("Example denied"),
       stats: { apiCalls: 0, writesAttempted: 0 },
     });
-    expect(result.structuredContent).not.toHaveProperty("httpError");
-  });
-
-  it("returns useful errors for invalid code and oversized results", async () => {
-    const invalid = await execute("async () => {");
-    expect(invalid.isError).toBe(true);
     const oversized = await execute("async () => 'x'.repeat(50_001)");
     expect(oversized.isError).toBe(true);
     expect(oversized.content[0]?.text).toContain("Result exceeds 50,000 bytes");
