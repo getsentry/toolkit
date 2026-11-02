@@ -22,6 +22,19 @@ interface ApiReply {
   headers?: Record<string, string>;
 }
 
+/**
+ * Organization details without a region URL, so the hosted policy's regional
+ * lookup keeps requests on this loopback fixture, as a single-region org would.
+ */
+export function organizationDetails(
+  method: string,
+  pathname: string,
+): ApiReply | undefined {
+  const slug = /^\/api\/0\/organizations\/([^/]+)\/$/.exec(pathname)?.[1];
+  if (method !== "GET" || !slug) return undefined;
+  return { body: { id: "1", slug, name: slug, links: {} } };
+}
+
 /** Authenticated loopback HTTP boundary; scenario state and grading stay with the fixture. */
 export async function startApiFixture(
   accessToken: string,
@@ -52,10 +65,11 @@ export async function startApiFixture(
           url,
           headers: request.headers,
           body: raw ? JSON.parse(raw) : undefined,
-        })) ?? {
-          status: 404,
-          body: { detail: "Endpoint not implemented in this eval fixture" },
-        };
+        })) ??
+          organizationDetails(method, url.pathname) ?? {
+            status: 404,
+            body: { detail: "Endpoint not implemented in this eval fixture" },
+          };
       }
     } catch (error) {
       reply =

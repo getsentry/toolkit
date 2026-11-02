@@ -135,18 +135,6 @@ describe("dashboard Code Mode eval fixture", () => {
       ),
     ).toEqual({ success: true, dashboardIds: ["201", "202"] });
 
-    const discovery = await (await fetch(instance.openapiUrl)).json();
-    expect(discovery).toMatchObject({
-      paths: {
-        "/api/0/organizations/{organization_id_or_slug}/dashboards/": {
-          post: { requestBody: expect.any(Object) },
-        },
-        "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/":
-          {
-            get: { responses: { "200": expect.any(Object) } },
-          },
-      },
-    });
     expect((await request(instance, "/snapshot")).status).toBe(404);
 
     instance.reset();

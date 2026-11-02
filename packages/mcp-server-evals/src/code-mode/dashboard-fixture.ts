@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage } from "node:http";
 import { z } from "zod";
+import { organizationDetails } from "./api-fixture";
 import fixtureData from "./dashboard-fixture-data.json" with { type: "json" };
 
 const ORGANIZATION = "dashboard-evals";
@@ -191,12 +192,13 @@ export async function createDashboardFixture({
     };
 
     try {
-      if (method === "GET" && url.pathname === "/openapi.json") {
-        reply(200, fixtureData.openapi);
-        return;
-      }
       if (request.headers.authorization !== `Bearer ${accessToken}`) {
         reply(401, { detail: "Invalid token" });
+        return;
+      }
+      const organization = organizationDetails(method, url.pathname);
+      if (organization) {
+        reply(200, organization.body);
         return;
       }
       if (url.pathname === collectionPath && method === "GET") {
@@ -325,7 +327,6 @@ export async function createDashboardFixture({
 
   return {
     baseUrl,
-    openapiUrl: `${baseUrl}/openapi.json`,
     organizationSlug: ORGANIZATION,
     projectIds: TARGETS.map((target) => target.projectId),
     prompt,

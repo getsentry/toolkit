@@ -16,29 +16,38 @@ change. SDK comparisons remain future work.
 loopback API fixture and a local Wrangler Worker, then creates a fresh external
 agent session. It never supplies a task algorithm. Each repetition resets state.
 
-| Surface            | Available tools and agent instructions                                                                        |
-| ------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `code-mode`        | The two HTTP tools, with explicit instructions to use them; execution baseline only                           |
-| `catalog-and-code` | Normal top-level tools/catalog plus Code Mode; Claude's default system prompt and an outcome-only user prompt |
-| `catalog`          | The same normal catalog without Code Mode; negative control                                                   |
+The Worker is `packages/mcp-cloudflare/src/code-mode/eval-worker.ts`, configured
+by `packages/mcp-server-evals/src/code-mode/wrangler.jsonc`. It makes the same
+`buildServer()` and `registerCodeModeTools()` calls as the hosted handler, so
+`ApiAuthorization` applies as in production: only operations in the shipped
+schema pass, regional lookups run, and API Read/Write come from the connection's
+skills. Only the context differs: a dummy token and a loopback API fixture. It
+rejects any non-loopback API configuration and does not exercise OAuth.
+
+| Surface            | Route            | Connection grant                | Agent instructions                                              |
+| ------------------ | ---------------- | ------------------------------- | --------------------------------------------------------------- |
+| `code-mode`        | `/code-mode/mcp` | API Write only                  | Use the two Code Mode tools; execution baseline only            |
+| `catalog-and-code` | `/mcp`           | Every catalog skill + API Write | Claude's default system prompt and an outcome-only user prompt  |
+| `catalog`          | `/catalog/mcp`   | Every catalog skill             | Same as `catalog-and-code`, without Code Mode; negative control |
+
+An API Write-only connection still lists the foundational catalog tools
+(`find_organizations`, `find_projects`, `search_sentry_tools`,
+`execute_sentry_tool`), as it would in production.
 
 Natural discovery prompts do not mention Code Mode, JavaScript, HTTP, schemas or
 tool names. The same MCP is named `sentry`; release examples in tool descriptions
-avoid scaffolding dashboard copying. Discovery searches the full pinned OpenAPI
-snapshot (159 paths / 254 operations), although only fixture routes execute.
-No catalog-first sequence is required: selection is the behavior being measured.
+avoid scaffolding dashboard copying. Every surface searches the shipped OpenAPI
+document (the `@sentry/api` release in
+`packages/mcp-cloudflare/src/code-mode/generated/source.json`), although only
+fixture routes execute. Fixture routes missing from that document are refused
+with a 403 before they reach the fixture, as in production. No catalog-first
+sequence is required: selection is the behavior being measured.
 
 All surfaces use an empty temporary directory and disable other MCP servers,
 built-in tools, hooks, skills and persistence where supported by the client.
 This is a controlled MCP selection test, not a test with every client capability
-enabled. `discovery-worker.ts` uses the real core server and rejects non-loopback
-API configuration. It is an eval-only composition, not hosted authorization.
-
-The isolated entrypoint uses a direct bearer token held outside generated code.
-Server-owned `API_BASE_URL`, `OPENAPI_URL` and `CODE_MODE_ALLOW_WRITES` configure
-its API origin/prefix, trusted dereferenced schema and writes (false by default).
-Evaluations supply local URLs, synthetic data, a dummy token and explicit writes
-where needed. They do not call a real Sentry account.
+enabled. Evaluations use synthetic data and a dummy token; they do not call a
+real Sentry account.
 
 | Task                  | Missing catalog capability             | Independent verification                                                                                                                                                  |
 | --------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -77,8 +86,6 @@ Use Node 24 for this checkout. After `pnpm install --frozen-lockfile`:
 
 ```bash
 pnpm --filter '@sentry/mcp-core...' --if-present run build
-pnpm --filter @sentry/mcp-cloudflare test:code-mode
-pnpm --filter @sentry/mcp-cloudflare tsc:code-mode
 pnpm --filter @sentry/mcp-server-evals test:code-mode
 pnpm --filter @sentry/mcp-server-evals tsc:code-mode
 

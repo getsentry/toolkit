@@ -41,6 +41,15 @@ const fixtures = {
 type Task = keyof typeof fixtures;
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
+const EVAL_WORKER = "packages/mcp-cloudflare/src/code-mode/eval-worker.ts";
+const EVAL_WORKER_CONFIG =
+  "packages/mcp-server-evals/src/code-mode/wrangler.jsonc";
+/** Each surface is a connection grant on the eval worker; see eval-worker.ts. */
+const SURFACE_ROUTES: Record<string, string> = {
+  "catalog-and-code": "/mcp",
+  catalog: "/catalog/mcp",
+  "code-mode": "/code-mode/mcp",
+};
 const systemPrompt =
   "Complete the user's task using only the sentry_code_mode MCP tools search_sentry_api and execute_sentry_code. Do not use shell, files, web, resources, or other tools. Discover the API as needed, execute the necessary operations, and report the actual result. Do not claim success without evidence. The requested writes are authorized.";
 
@@ -101,7 +110,6 @@ async function runTask(
   repetitions: number,
 ) {
   const discovery = values.surface !== "code-mode";
-  const entrypoint = discovery ? "discovery-worker.ts" : "worker.ts";
   const instructions = discovery ? undefined : systemPrompt;
   const require = createRequire(import.meta.url);
   const requireWrangler = createRequire(
@@ -121,37 +129,22 @@ async function runTask(
   let worker: Awaited<ReturnType<typeof unstable_dev>> | undefined;
   const runs = [];
   try {
-    worker = await unstable_dev(
-      path.join(root, "packages/mcp-cloudflare/src/code-mode", entrypoint),
-      {
-        config: path.join(
-          root,
-          "packages/mcp-cloudflare/wrangler.code-mode.jsonc",
-        ),
-        ip: "127.0.0.1",
-        port: 0,
-        local: true,
-        persist: false,
-        logLevel: "error",
-        vars: {
-          API_BASE_URL: `${fixture.baseUrl}/api/0`,
-          // Natural discovery searches the pinned full document from Wrangler config.
-          ...(discovery
-            ? {}
-            : {
-                OPENAPI_URL:
-                  "openapiUrl" in fixture ? fixture.openapiUrl : undefined,
-              }),
-          CODE_MODE_ALLOW_WRITES: "true",
-        },
-        experimental: {
-          disableExperimentalWarning: true,
-          disableDevRegistry: true,
-          watch: false,
-        },
+    // The hosted Code Mode registration and policy, against the loopback fixture.
+    worker = await unstable_dev(path.join(root, EVAL_WORKER), {
+      config: path.join(root, EVAL_WORKER_CONFIG),
+      ip: "127.0.0.1",
+      port: 0,
+      local: true,
+      persist: false,
+      logLevel: "error",
+      vars: { API_BASE_URL: `${fixture.baseUrl}/api/0` },
+      experimental: {
+        disableExperimentalWarning: true,
+        disableDevRegistry: true,
+        watch: false,
       },
-    );
-    const mcpUrl = `http://${worker.address}:${worker.port}${values.surface === "catalog" ? "/catalog/mcp" : "/mcp"}`;
+    });
+    const mcpUrl = `http://${worker.address}:${worker.port}${SURFACE_ROUTES[values.surface]}`;
     const client = new Client({ name: "eval-inventory", version: "1.0.0" });
     let inventory: Tool[];
     try {
@@ -245,6 +238,19 @@ async function runTask(
       );
     }
     const successes = runs.filter((run) => run.verification.success).length;
+    const specSource = z
+      .object({ version: z.string() })
+      .parse(
+        JSON.parse(
+          await readFile(
+            path.join(
+              root,
+              "packages/mcp-cloudflare/src/code-mode/generated/source.json",
+            ),
+            "utf8",
+          ),
+        ),
+      );
     const reportPath = await writeEvalReport(
       {
         root,
@@ -279,17 +285,17 @@ async function runTask(
         codeHashes: Object.fromEntries(
           await Promise.all(
             [
-              "packages/mcp-cloudflare/src/code-mode/worker.ts",
+              EVAL_WORKER,
+              EVAL_WORKER_CONFIG,
+              "packages/mcp-cloudflare/src/code-mode/tools.ts",
+              "packages/mcp-cloudflare/src/code-mode/authorization.ts",
+              "packages/mcp-cloudflare/src/code-mode/access.ts",
               "packages/mcp-cloudflare/src/code-mode/broker.ts",
               "packages/mcp-cloudflare/src/code-mode/sandbox.ts",
-              ...(discovery
-                ? [
-                    "packages/mcp-cloudflare/src/code-mode/discovery-worker.ts",
-                    "packages/mcp-core/src/server.ts",
-                    "packages/mcp-core/src/toolDefinitions.json",
-                  ]
-                : []),
-              "packages/mcp-cloudflare/wrangler.code-mode.jsonc",
+              "packages/mcp-cloudflare/src/code-mode/generated/source.json",
+              "packages/mcp-core/src/code-mode.ts",
+              "packages/mcp-core/src/server.ts",
+              "packages/mcp-core/src/toolDefinitions.json",
               `packages/mcp-server-evals/src/code-mode/${task}-fixture.ts`,
               ...(task === "release-recovery"
                 ? ["packages/mcp-server-evals/src/code-mode/release-fixture.ts"]
@@ -319,9 +325,7 @@ async function runTask(
             ]),
           ),
         ),
-        discovery: discovery
-          ? "Full pinned Sentry OpenAPI document from wrangler.code-mode.jsonc; only fixture API endpoints are executable"
-          : "Complete schemas for three dashboard operations; not the full Sentry OpenAPI corpus",
+        discovery: `Shipped OpenAPI document of @sentry/api ${specSource.version}, enforced by the hosted ApiAuthorization; only fixture API endpoints are executable`,
         inventory,
         prompt: fixture.prompt,
         systemPrompt: instructions ?? null,
