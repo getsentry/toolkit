@@ -9,8 +9,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { operations } from "@sentry/api/operations";
-import { isIdempotentRequest } from "@sentry/toolkit-core/api-client/retry";
-import type { IdempotentOperation } from "../src/lib/idempotent-operations.js";
+import { selectIdempotentWrites } from "@sentry/toolkit-core/api-client/idempotent-operations";
 import { projectApiOperations } from "./lib/api-schema.js";
 
 const OUTPUT_PATH = "src/generated/api-schema.json";
@@ -24,14 +23,7 @@ console.log(
   `Generated ${OUTPUT_PATH} (${endpoints.length} endpoints, ${Math.round(JSON.stringify(endpoints).length / 1024)}KB)`,
 );
 
-// Safe methods already retry, so only writes need listing; that keeps the
-// file the CLI loads on every request tiny.
-const idempotentOperations: IdempotentOperation[] = operations
-  .filter((op) => op.idempotent && !isIdempotentRequest(op.method))
-  .map((op) => ({ method: op.method, path: op.path }))
-  .sort(
-    (a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
-  );
+const idempotentOperations = selectIdempotentWrites(operations);
 
 await writeFile(
   IDEMPOTENT_OUTPUT_PATH,

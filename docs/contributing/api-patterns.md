@@ -285,6 +285,11 @@ them here:
   [`retry.ts`](../../packages/toolkit-core/src/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
+- Which writes count as idempotent: the ones the installed `@sentry/api`
+  catalog marks `idempotent`, from Sentry's `x-sentry-idempotent` extension.
+  The matcher is in
+  [`idempotent-operations.ts`](../../packages/toolkit-core/src/api-client/idempotent-operations.ts);
+  bumping `@sentry/api` is enough to pick up newly marked writes.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
   [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
 
@@ -299,7 +304,8 @@ Retries are:
 - **Abortable** — aborting the request's `signal` ends the wait.
 - **Network failures retry for idempotent requests** — when `fetch` itself
   fails (DNS, connection refused or reset, socket timeout), only GET, HEAD,
-  and OPTIONS retry, since a write may already have reached Sentry.
+  OPTIONS, and writes Sentry marks idempotent retry, since any other write
+  may already have reached Sentry.
 - **Fail-fast otherwise** — configuration errors (such as a malformed token)
   are not retried.
   A rate-limited tool call returns a **Rate Limited** message with the retry
