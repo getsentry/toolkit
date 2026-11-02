@@ -5,6 +5,7 @@
  * passing them to Markdown, table, or shared event renderers.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { EventAttachmentDetailsResponse } from "@sentry/api";
 import wrapAnsi from "wrap-ansi";
 import type {
@@ -16,14 +17,7 @@ import type {
 } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails } from "./human.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "./markdown.js";
+import { colorTag, mdKvTable, renderMarkdown } from "./markdown.js";
 import { formatBytes } from "./numbers.js";
 import { stripAnsi } from "./plain-detect.js";
 import { type Column, formatTable } from "./table.js";
@@ -72,15 +66,15 @@ function sanitizeFeedbackInline(value: string): string {
 }
 
 function escapeFeedbackInline(value: string): string {
-  return escapeMarkdownInline(sanitizeFeedbackInline(value));
+  return text(sanitizeFeedbackInline(value));
 }
 
 function escapeFeedbackCell(value: string): string {
-  return escapeMarkdownCell(sanitizeFeedbackInline(value));
+  return tableCell(sanitizeFeedbackInline(value));
 }
 
 function feedbackCodeSpan(value: string): string {
-  return safeCodeSpan(sanitizeFeedbackInline(value));
+  return inlineCode(sanitizeFeedbackInline(value));
 }
 
 /** Recursively sanitize event strings and keys before human rendering. */

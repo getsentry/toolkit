@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { codeBlock, inlineCode, text } from "./markdown.js";
+import { codeBlock, inlineCode, tableCell, text } from "./markdown.js";
 
 describe("inlineCode", () => {
   test("wraps a value without escaping Markdown syntax", () => {
@@ -71,5 +71,11 @@ describe("text", () => {
   test("escapes syntax that only counts at the start of a line", () => {
     expect(text("1. one")).toBe("1\\. one");
     expect(text("  + two ")).toBe("\\+ two");
+  });
+});
+
+describe("tableCell", () => {
+  test("escapes pipes as well as text syntax", () => {
+    expect(tableCell("a | *b* \\| c")).toBe("a \\| \\*b\\* \\\\\\| c");
   });
 });

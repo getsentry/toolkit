@@ -10,6 +10,7 @@
  * - Cross-org project search (e.g., sentry)
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
@@ -35,7 +36,6 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { ResolutionError, withAuthGuard } from "../../lib/errors.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import {
   CommandOutput,
   type OutputConfig,
@@ -310,7 +310,7 @@ async function resolveOrgsForAutoDetect(cwd: string): Promise<OrgResolution> {
 const PROJECT_COLUMNS: Column<ProjectWithOrg>[] = [
   { header: "ORG", value: (p) => p.orgSlug || "" },
   { header: "PROJECT", value: (p) => p.slug || "" },
-  { header: "NAME", value: (p) => escapeMarkdownCell(p.name) },
+  { header: "NAME", value: (p) => tableCell(p.name) },
   { header: "PLATFORM", value: (p) => p.platform || "" },
 ];
 

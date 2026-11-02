@@ -7,11 +7,12 @@
  * flags and enforces the non-interactive guard before `func()` runs.
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteIntegration, getIntegration } from "../../lib/api-client.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ApiError, ValidationError } from "../../lib/errors.js";
-import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
+import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
@@ -61,7 +62,7 @@ type DeleteFlags = {
 };
 
 function formatIntegrationDeleted(result: DeleteResult): string {
-  const label = `${result.provider} integration ${safeCodeSpan(result.name)} (id ${result.id})`;
+  const label = `${result.provider} integration ${inlineCode(result.name)} (id ${result.id})`;
   if (result.dryRun) {
     return renderMarkdown(
       `Would remove ${label} from **${result.org}**. (dry run)`,

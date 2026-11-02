@@ -5,11 +5,11 @@
  * and cursor pagination.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import {
   listIntegrations,
   listIntegrationsPaginated,
 } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
@@ -31,10 +31,10 @@ type IntegrationWithOrg = SentryIntegration & { orgSlug?: string };
 const INTEGRATION_COLUMNS: Column<IntegrationWithOrg>[] = [
   { header: "ORG", value: (i) => i.orgSlug || "" },
   { header: "ID", value: (i) => i.id },
-  { header: "PROVIDER", value: (i) => escapeMarkdownCell(i.provider.name) },
-  { header: "NAME", value: (i) => escapeMarkdownCell(i.name) },
+  { header: "PROVIDER", value: (i) => tableCell(i.provider.name) },
+  { header: "NAME", value: (i) => tableCell(i.name) },
   { header: "STATUS", value: (i) => i.organizationIntegrationStatus },
-  { header: "DOMAIN", value: (i) => escapeMarkdownCell(i.domainName || "") },
+  { header: "DOMAIN", value: (i) => tableCell(i.domainName || "") },
 ];
 
 /** Shared config that plugs into the org-list framework. */

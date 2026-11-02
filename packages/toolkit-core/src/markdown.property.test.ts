@@ -13,7 +13,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 import { describe, expect, test } from "vitest";
-import { codeBlock, inlineCode, text } from "./markdown.js";
+import { codeBlock, inlineCode, tableCell, text } from "./markdown.js";
 
 const NUM_RUNS = 500;
 
@@ -221,6 +221,77 @@ describe.each([
           expect(parseHeading(`### ${text(value)}\n`)).toBe(
             singleLine(value).trim(),
           );
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  });
+});
+
+/** A two-column table whose only body row holds `cell` and then `end`. */
+const tableRow = (cell: string) =>
+  `| a | b |\n| --- | --- |\n| ${cell} | end |\n`;
+
+/** Parses a table with micromark; returns the body row's cells as literal text. */
+function tableMicromark(markdown: string): string[] {
+  const root = fromMarkdown(markdown, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  });
+  const [table] = root.children;
+  expect(root.children).toHaveLength(1);
+  if (table?.type !== "table") {
+    throw new Error(`expected table, got ${table?.type}`);
+  }
+  expect(table.children).toHaveLength(2);
+  return (table.children[1]?.children ?? []).map((cell) =>
+    cell.children
+      .map((node) => {
+        if (node.type === "text") return node.value;
+        // See parseMicromark: mdast-util-gfm links literal URLs after parsing.
+        if (node.type === "link") {
+          return node.children
+            .map((c) => ("value" in c ? c.value : ""))
+            .join("");
+        }
+        throw new Error(`unexpected ${node.type} node`);
+      })
+      .join(""),
+  );
+}
+
+/** Parses a table with marked; returns the body row's cells as literal text. */
+function tableMarked(markdown: string): string[] {
+  const tokens = marked.lexer(markdown).filter((t) => t.type !== "space");
+  const [table] = tokens;
+  expect(tokens).toHaveLength(1);
+  if (table?.type !== "table") {
+    throw new Error(`expected table, got ${table?.type}`);
+  }
+  expect(table.rows).toHaveLength(1);
+  return (table.rows[0] as { tokens: Token[] }[]).map((cell) =>
+    cell.tokens
+      .map((token) => {
+        if (token.type === "text" || token.type === "escape") return token.text;
+        throw new Error(`unexpected ${token.type} token`);
+      })
+      .join(""),
+  );
+}
+
+describe.each([
+  ["marked", tableMarked],
+  ["micromark", tableMicromark],
+] as const)("tableCell with %s", (_, parseTable) => {
+  test("round-trips any value inside its cell", () => {
+    fcAssert(
+      property(
+        markdownArb.filter((value) => singleLine(value).trim() !== ""),
+        (value) => {
+          expect(parseTable(tableRow(tableCell(value)))).toEqual([
+            singleLine(value).trim(),
+            "end",
+          ]);
         },
       ),
       { numRuns: NUM_RUNS },

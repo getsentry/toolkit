@@ -539,7 +539,7 @@ Reference: `project/create.ts`, `release/set-commits.ts` (`--path`), `auth/login
 
 All non-trivial human output must use the markdown rendering pipeline:
 
-- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `escapeMarkdownCell()`, `renderMarkdown()`
+- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `renderMarkdown()`, and `text()`, `tableCell()`, `inlineCode()` from `@sentry/toolkit-core/markdown`
 - **NEVER** use raw `muted()` / chalk in output strings — use `colorTag("muted", text)` inside markdown
 - Tree-structured output (box-drawing characters) that can't go through `renderMarkdown()` should use the `plainSafeMuted` pattern: `isPlainOutput() ? text : muted(text)`
 - `isPlainOutput()` precedence: `SENTRY_PLAIN_OUTPUT` > `NO_COLOR` > `FORCE_COLOR` (TTY only) > `!isTTY`

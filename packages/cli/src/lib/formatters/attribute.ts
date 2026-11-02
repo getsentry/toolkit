@@ -4,12 +4,12 @@
  * Provides formatting utilities for displaying Sentry attributes in the CLI.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type {
   TraceItemAttributeContext,
   TraceItemAttributeDefinition,
 } from "../api/traces.js";
 import type { ListResult } from "../org-list.js";
-import { escapeMarkdownCell } from "./markdown.js";
 import { type Column, formatTable } from "./table.js";
 
 /**
@@ -84,7 +84,7 @@ const KEY_COLUMNS: Column<AttributeListItem>[] = [
     // The exact key, not the display name: custom non-string attributes only
     // work in --query/--fields in their typed form, e.g. tags[cart.total,number].
     header: "KEY",
-    value: (item) => escapeMarkdownCell(item.key),
+    value: (item) => tableCell(item.key),
     minWidth: 24,
   },
   { header: "TYPE", value: (item) => item.type, minWidth: 7 },
@@ -93,7 +93,7 @@ const KEY_COLUMNS: Column<AttributeListItem>[] = [
 
 const ALIASES_COLUMN: Column<AttributeListItem> = {
   header: "ALIASES",
-  value: (item) => escapeMarkdownCell(item.aliases?.join(", ") ?? ""),
+  value: (item) => tableCell(item.aliases?.join(", ") ?? ""),
 };
 
 const COLUMNS: Column<AttributeListItem>[] = [...KEY_COLUMNS, ALIASES_COLUMN];
@@ -104,13 +104,13 @@ const CONTEXT_COLUMNS: Column<AttributeListItem>[] = [
   {
     header: "DESCRIPTION",
     value: (item) =>
-      escapeMarkdownCell(item.context ? describeAttribute(item.context) : ""),
+      tableCell(item.context ? describeAttribute(item.context) : ""),
     minWidth: 20,
   },
   {
     header: "EXAMPLES",
     value: (item) =>
-      escapeMarkdownCell(
+      tableCell(
         (item.context?.examples ?? [])
           .slice(0, MAX_EXAMPLES)
           .map(String)

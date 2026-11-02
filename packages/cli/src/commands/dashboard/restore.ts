@@ -4,12 +4,13 @@
  * Restore a dashboard to a previous revision.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { withProgress } from "../../lib/polling.js";
@@ -37,11 +38,11 @@ function formatRestoreHuman(result: RestoreResult): string {
   const created = formatRelativeTime(d.dateCreated);
 
   return (
-    `Restored dashboard **${escapeMarkdownCell(d.title)}** to revision ${result.revisionId}.\n\n` +
+    `Restored dashboard **${tableCell(d.title)}** to revision ${result.revisionId}.\n\n` +
     "| Field | Value |\n" +
     "|-------|-------|\n" +
     `| ID | ${d.id} |\n` +
-    `| Title | ${escapeMarkdownCell(d.title)} |\n` +
+    `| Title | ${tableCell(d.title)} |\n` +
     `| Widgets | ${widgetCount} |\n` +
     `| Created | ${created} |\n` +
     `| URL | ${colorTag("muted", url)} |`
