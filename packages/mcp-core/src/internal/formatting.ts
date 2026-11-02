@@ -1856,7 +1856,11 @@ function formatTags(tags: z.infer<typeof EventSchema>["tags"]) {
     return "";
   }
   return `### Tags\n\n${tags
-    .map((tag) => `**${text(tag.key)}**: ${inlineCode(String(tag.value))}`)
+    .map(
+      // A code span cannot be empty, so a null or empty value gets a placeholder.
+      (tag) =>
+        `**${text(tag.key)}**: ${tag.value ? inlineCode(tag.value) : "(empty)"}`,
+    )
     .join("\n")}\n\n`;
 }
 

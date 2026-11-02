@@ -164,6 +164,34 @@ describe("formatIssueOutput", () => {
     expect(output.match(/^## Response Notes$/gm)).toHaveLength(1);
   });
 
+  it("writes a placeholder for null and empty tag values", () => {
+    const event = new EventBuilder("javascript").withId("event-1").build();
+    event.tags = [
+      { key: "release", value: null },
+      { key: "environment", value: "" },
+    ];
+    const output = formatIssueOutput({
+      organizationSlug: "sentry-mcp-evals",
+      issue: {
+        id: "123456",
+        shortId: "CLOUDFLARE-MCP-1",
+        title: "Retry job failed",
+        count: "1",
+        userCount: 1,
+        status: "unresolved",
+        project: { name: "cloudflare-mcp", slug: "cloudflare-mcp" },
+      } as Issue,
+      event,
+      apiService: {
+        getIssueUrl: () => "https://sentry.example/issues/123456",
+      } as unknown as SentryApiService,
+    });
+
+    expect(output).toContain(
+      "**release**: (empty)\n**environment**: (empty)\n",
+    );
+  });
+
   it("does not throw and omits Occurred At when dateCreated is missing", () => {
     const output = formatIssueOutput({
       organizationSlug: "sentry-mcp-evals",
