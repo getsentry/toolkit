@@ -355,6 +355,22 @@ describe("classifySilenced", () => {
     ).toBe("user_input_error");
   });
 
+  test.each([
+    ["empty --condition array", "Pass at least one --condition JSON object."],
+    [
+      "unquoted --condition JSON",
+      'condition must be valid JSON (got "{type:first_seen_event}").',
+    ],
+  ])(
+    "silences ValidationError with field 'condition' (%s)",
+    (_label, message) => {
+      // Bad --condition input to `alert issues create/edit` is user-input noise (CLI-1ZD).
+      expect(classifySilenced(new ValidationError(message, "condition"))).toBe(
+        "user_input_error",
+      );
+    },
+  );
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(

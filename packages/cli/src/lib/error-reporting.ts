@@ -136,6 +136,14 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
+  // A ValidationError with field "condition" means the --condition value the
+  // user passed to `alert issues create/edit` was empty (`[]`) or not valid
+  // JSON (often a shell stripping the double quotes). Pure user-input noise,
+  // not a CLI bug — the user sees the offending value and what to pass
+  // (CLI-1ZD). The cli.error.silenced metric keeps the volume visible.
+  if (error instanceof ValidationError && error.field === "condition") {
+    return "user_input_error";
+  }
   // A ResolutionError means the user provided a value (event ID, project slug,
   // etc.) that was looked up but not found. This is pure user-input noise, not
   // a CLI bug — the user sees a clear "not found" message (CLI-RP).
