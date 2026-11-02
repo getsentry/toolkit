@@ -1,7 +1,7 @@
 [
   {
     "name": "add_issue_note",
-    "description": "Add a comment to a Sentry issue's activity feed.\n\nUse this tool to record findings, context, or decisions on an issue.\n\n<examples>\nadd_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')\nadd_issue_note(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/', text='Resolved by deploy 1.2.3.')\n</examples>\n\n<hints>\n- This mutates visible Sentry issue state by posting a comment.\n- Do not use this for private scratch notes, secrets, or credentials.\n</hints>",
+    "description": "Add a comment to a Sentry issue's activity feed.\n\nUse this tool to record findings, context, or decisions on an issue.\n\n<examples>\nadd_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')\nadd_issue_note(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/', text='Resolved by deploy 1.2.3.')\n</examples>\n\n<hints>\n- This mutates visible Sentry issue state by posting a comment.\n- Do not use this for private scratch notes, secrets, credentials, or unapproved content.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {

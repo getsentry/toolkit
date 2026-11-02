@@ -50,7 +50,7 @@ export default defineTool({
     "",
     "<hints>",
     "- This mutates visible Sentry issue state by posting a comment.",
-    "- Do not use this for private scratch notes, secrets, or credentials.",
+    "- Do not use this for private scratch notes, secrets, credentials, or unapproved content.",
     "</hints>",
   ].join("\n"),
   inputSchema: {
