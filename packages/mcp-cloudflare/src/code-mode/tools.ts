@@ -2,9 +2,9 @@ import type { WorkerEntrypoint } from "cloudflare:workers";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as Sentry from "@sentry/cloudflare";
 import {
-  CODE_MODE_SKILLS,
   codeModeResultSchema,
   getCodeModeToolDefinitions,
+  isCodeModeSkill,
 } from "@sentry/mcp-core/code-mode";
 import type { Skill } from "@sentry/mcp-core/skills";
 import { logIssue } from "@sentry/mcp-core/telem/logging";
@@ -38,9 +38,7 @@ export function registerCodeModeTools(
   context: ServerContext,
 ): void {
   const skills = new Set<Skill>(
-    [...(context.grantedSkills ?? [])].filter((skill) =>
-      CODE_MODE_SKILLS.some((allowedSkill) => skill === allowedSkill),
-    ),
+    [...(context.grantedSkills ?? [])].filter(isCodeModeSkill),
   );
   // A project route can mutate shared resources (e.g. release files). OpenAPI
   // does not prove project isolation, so retain the existing scoped tools only.

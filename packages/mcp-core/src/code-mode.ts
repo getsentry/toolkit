@@ -5,8 +5,16 @@
  * the consent screen read them like any other tool metadata.
  */
 import { z } from "zod";
+import { ALL_SKILLS, SKILLS, type Skill } from "./skills";
 
-export const CODE_MODE_SKILLS = ["api-read", "api-write"] as const;
+/** Skills that grant Code Mode: the hosted-only ones. */
+export const CODE_MODE_SKILLS: readonly Skill[] = ALL_SKILLS.filter(
+  (skill) => SKILLS[skill].hostedOnly,
+);
+
+export function isCodeModeSkill(skill: string): boolean {
+  return CODE_MODE_SKILLS.some((codeModeSkill) => codeModeSkill === skill);
+}
 
 export const codeModeResultSchema = z
   .object({

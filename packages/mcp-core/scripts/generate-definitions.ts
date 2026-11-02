@@ -20,8 +20,12 @@ const skillsModule = await import("../src/skills.ts");
 const toolTypesModule = await import("../src/tools/types.ts");
 // Code Mode tools are hosted-only: registered by mcp-cloudflare, not by the
 // tool registry, so their definitions are added here.
-const { CODE_MODE_TOOL_NAMES, CODE_MODE_SKILLS, getCodeModeToolDefinitions } =
-  await import("../src/code-mode.ts");
+const {
+  CODE_MODE_TOOL_NAMES,
+  CODE_MODE_SKILLS,
+  getCodeModeToolDefinitions,
+  isCodeModeSkill,
+} = await import("../src/code-mode.ts");
 
 function writeJson(file: string, data: unknown) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -297,7 +301,7 @@ async function generateSkillDefinitions() {
       });
     }
 
-    if (CODE_MODE_SKILLS.some((skillId) => skillId === skill.id)) {
+    if (isCodeModeSkill(skill.id)) {
       const definitions = getCodeModeToolDefinitions({
         allowWrites: skill.id === "api-write",
       });

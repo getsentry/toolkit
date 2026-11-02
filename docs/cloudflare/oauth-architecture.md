@@ -431,8 +431,6 @@ an independent, additive permission: it allows API writes even when Triage Issue
 or Manage Projects & Teams is unchecked, subject to Sentry permissions and the
 connection's organization scope. Project-constrained sessions do not offer
 Code Mode skills.
-Project consent preserves previously remembered API Read/Write choices for the
-next organization consent without adding them to the project's grant.
 
 Note: These describe the MCP OAuth server, not Sentry's OAuth endpoints.
 

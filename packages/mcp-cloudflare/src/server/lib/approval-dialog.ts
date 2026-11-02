@@ -6,8 +6,7 @@ import skillDefinitions, {
   type SkillDefinition,
 } from "@sentry/mcp-core/skillDefinitions";
 import { logError, logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
-import { CODE_MODE_SKILLS } from "@sentry/mcp-core/code-mode";
-import { parseResourceMcpConstraints } from "../oauth/resource-scope";
+import { isCodeModeSkill } from "@sentry/mcp-core/code-mode";
 import {
   type OAuthState,
   signState,
@@ -306,24 +305,12 @@ async function createSkillPreferencesSetCookie(
   clientId: string,
   skills: string[],
   cookieSecret: string,
-  resource?: string,
 ): Promise<string> {
   const preferences = await getSkillPreferencesFromCookie(
     request.headers.get("Cookie"),
     cookieSecret,
   );
-  // Hidden project permissions retain their preferences, never their grant.
-  const rememberedApiSkills = parseResourceMcpConstraints(resource)?.projectSlug
-    ? (preferences.clients
-        .find(([id]) => id === clientId)?.[1]
-        .filter((skill) =>
-          CODE_MODE_SKILLS.some((apiSkill) => apiSkill === skill),
-        ) ?? [])
-    : [];
-  const filteredSkills = filterApprovableSkillIds([
-    ...skills,
-    ...rememberedApiSkills,
-  ]);
+  const filteredSkills = filterApprovableSkillIds(skills);
   const clients = preferences.clients.filter(([id]) => id !== clientId);
 
   if (filteredSkills.length > 0) {
@@ -478,10 +465,9 @@ export async function renderApprovalDialog(
     cookieSecret,
     defaultSkills,
   } = options;
+  // Code Mode is not offered on project-scoped connections.
   const approvableSkills = APPROVABLE_SKILLS.filter(
-    (skill) =>
-      !scope?.projectSlug ||
-      !CODE_MODE_SKILLS.some((codeModeSkill) => codeModeSkill === skill.id),
+    (skill) => !scope?.projectSlug || !isCodeModeSkill(skill.id),
   );
   const defaultSkillIds =
     defaultSkills === undefined
@@ -503,7 +489,7 @@ export async function renderApprovalDialog(
       <div class="permission-content">
         <div class="permission-header">
           <span class="permission-name" id="skill-name-${sanitizeHtml(skill.id)}">${sanitizeHtml(skill.name)}</span>
-          ${skill.toolCount !== undefined && !CODE_MODE_SKILLS.some((codeModeSkill) => codeModeSkill === skill.id) ? `<span class="permission-tool-count">${sanitizeHtml(String(skill.toolCount))} ${skill.toolCount === 1 ? "tool" : "tools"}</span>` : ""}
+          ${skill.toolCount !== undefined && !isCodeModeSkill(skill.id) ? `<span class="permission-tool-count">${sanitizeHtml(String(skill.toolCount))} ${skill.toolCount === 1 ? "tool" : "tools"}</span>` : ""}
         </div>
         <div class="permission-description" id="skill-description-${sanitizeHtml(skill.id)}">${sanitizeHtml(skill.description)}</div>
         ${
@@ -1233,7 +1219,6 @@ export async function parseRedirectApproval(
       clientId,
       skills,
       cookieSecret,
-      state.oauthReqInfo.resource,
     ),
   );
 
