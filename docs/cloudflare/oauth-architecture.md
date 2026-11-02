@@ -308,10 +308,6 @@ const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
 The system only refreshes MCP tokens. It does not rotate upstream Sentry OAuth
 tokens anymore.
 
-Refresh preserves `upstreamScopes` from the original Sentry token response.
-Older grants and responses that omit `scope` leave this metadata unknown;
-refresh does not infer it from MCP skills or the requested scope set.
-
 1. **MCP Token Refresh**: MCP clients exchange an MCP refresh token for a new MCP access token
 2. **Sentry Token Reuse**: The worker keeps reusing the cached Sentry access token while it is still valid
 3. **Stale grant rejection**: Grants missing required stored props like `refreshToken` are treated as stale and revoked
