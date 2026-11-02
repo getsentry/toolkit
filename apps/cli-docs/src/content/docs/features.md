@@ -164,11 +164,19 @@ sentry issue explain FRONTEND-XYZ
 
 ### Short Suffix
 
-Just the suffix portion when project context is provided via the `<org>/` prefix:
+Just the suffix portion, when the project is known. Pass it as
+`<org>/<project>/<suffix>`, or pass the suffix alone to use the auto-detected
+project:
 
 ```bash
-sentry issue view my-org/myproject-ABC
+sentry issue view my-org/myproject/ABC
+
+# Project auto-detected
+sentry issue view ABC
 ```
+
+An organization alone is not enough: `my-org/ABC` fails because it names no
+project. Include the project prefix instead, as in `my-org/myproject-ABC`.
 
 ### GitHub-Style (`#` separator)
 
