@@ -2398,10 +2398,10 @@ describe("formatEventOutput metric alert details", () => {
 
       **Monitor ID**: 1234567
       **Dataset**: Logs
-      **Aggregate**: count(message)
+      **Aggregate**: \`count(message)\`
       **Query**: \`severity:error\`
       **Interval**: 3600 second(s)
-      **Environment**: prod
+      **Environment**: \`prod\`
       **Evaluated Window**: 2026-10-28T10:39:52.000Z to 2026-10-28T11:39:52.000Z
       **Evaluated Value**: 4988
       **Threshold**: above 4000
@@ -2441,7 +2441,7 @@ describe("formatEventOutput metric alert details", () => {
     );
     expect(
       datasetLabel({ dataset: "transactions", eventTypes: ["transaction"] }),
-    ).toBe("transactions");
+    ).toBe("`transactions`");
   });
 
   it("keeps performance regression formatting for regression evidence", () => {
