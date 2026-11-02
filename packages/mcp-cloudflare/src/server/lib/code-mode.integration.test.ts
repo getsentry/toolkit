@@ -389,6 +389,10 @@ describe("Code Mode on the authenticated MCP", () => {
         expect(apiRequests).toHaveLength(1);
         // A deadline is the program's outcome, not a server failure.
         expect(logIssue).not.toHaveBeenCalled();
+        expect(result.structuredContent).toEqual({
+          error: expect.stringContaining("Execution deadline exceeded"),
+          stats: { apiCalls: 1, writesAttempted: 0 },
+        });
       } finally {
         finish.resolve();
         vi.useRealTimers();
@@ -1211,6 +1215,11 @@ describe("Code Mode telemetry", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain("Loader unavailable");
     expect(result.content[0]?.text).toContain("Event ID: internal-event");
+    // Failures outside the sandbox keep the tool's declared output shape.
+    expect(result.structuredContent).toEqual({
+      error: expect.stringContaining("Event ID: internal-event"),
+      stats: { apiCalls: 0, writesAttempted: 0 },
+    });
     expect(logIssue).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ message: "Loader unavailable" }),
       {
