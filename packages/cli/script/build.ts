@@ -55,8 +55,11 @@ const REQUIRE_ALIAS_FILTER =
   /(?:db[\\/](?:index|schema)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
-/** Build-time constants injected into the binary */
-const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID ?? "";
+/**
+ * Optional OAuth client ID override baked into the binary. When unset, the
+ * binary uses the committed sentry.io default in src/lib/oauth.ts.
+ */
+const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
 
 /** Build targets configuration */
 type BuildTarget = {
@@ -153,7 +156,9 @@ async function bundleJs(): Promise<boolean> {
       define: {
         "import.meta.url": "import_meta_url",
         SENTRY_CLI_VERSION: JSON.stringify(VERSION),
-        SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
+        ...(SENTRY_CLIENT_ID && {
+          SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
+        }),
         "process.env.NODE_ENV": JSON.stringify("production"),
         __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
         // Tree-shakes the SDK's runtime module hooks, which can't instrument a
@@ -495,15 +500,6 @@ async function build(): Promise<void> {
 
   console.log(`\nSentry CLI Build v${VERSION}`);
   console.log("=".repeat(40));
-
-  if (!SENTRY_CLIENT_ID) {
-    console.error(
-      "\nError: SENTRY_CLIENT_ID environment variable is required.",
-    );
-    console.error("   The CLI requires OAuth to function.");
-    console.error("   Set it via: SENTRY_CLIENT_ID=xxx pnpm run build\n");
-    process.exit(1);
-  }
 
   // Determine targets
   let targets: BuildTarget[];

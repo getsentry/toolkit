@@ -469,7 +469,7 @@ function generateDevEnvVarsTable(): string {
     const desc = entry.devGuide ?? "";
     let defaultCol = "—";
     if (entry.name === "SENTRY_CLIENT_ID") {
-      defaultCol = "(required for build)";
+      defaultCol = "Public sentry.io client ID";
     } else if (entry.defaultValue) {
       defaultCol = `\`${entry.defaultValue}\``;
     }
