@@ -23,11 +23,12 @@ describe("get_replay_details", () => {
       ## Summary
 
       - **Replay URL**: https://sentry-mcp-evals.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/
+      - **Started**: 2025-04-07 12:00:00 UTC
       - **Duration**: 5m
       - **Environment**: production
       - **Browser**: Chrome 123.0
       - **OS**: macOS 14.4
-      - **User**: Taylor Example
+      - **User**: Taylor Example (id \`user-1\`)
       - **URLs**: /login, /checkout
       - **Device**: MacBook Pro
       - **Release**: frontend@1.2.3
@@ -39,11 +40,19 @@ describe("get_replay_details", () => {
       - **Recording Segments**: 2
       - **Archived**: No
 
-      ## Activity
+      ## Timeline
 
-      - T+0s · \`page.view\` · href=https://example.com/login
-      - T+10s · \`navigation.navigate\` · description=https://example.com/checkout · duration_ms=710
-      - T+20s · \`ui.click\` · message="Clicked submit order"
+      **Recorded**: 1 × page load · 1 × click · 1 × navigation · 2 × request (1 failed) · 1 × console.error · 1 × console.log · 1 × dead click · 1 × key · 1 × dialog
+      **Showing**: notable events · 8 of 8 events
+
+      - 00:00.1 · **page load** · \`https://example.com/login\`
+      - 00:10.0 · **click** · \`form.login > button#sign-in\` · text: \`Sign in\`
+      - 00:12.0 · **navigation** · \`https://example.com/checkout\`
+      - 04:50.0 · **request** · \`POST https://example.com/api/orders\` · status: \`500\` · duration: \`812ms\`
+      - 04:50.9 · **console.error** · \`Payment request failed\`
+      - 04:52.0 · **dead click** · \`div.modal > button.place-order\` · text: \`Place order\` · no response after: \`7.0s\`
+      - 04:58.5 · **key** · \`div.modal\` · key: \`Escape\`
+      - 04:58.6 · **dialog** · \`Checkout dialog closed\`
 
       ## Related
 
@@ -110,11 +119,12 @@ describe("get_replay_details", () => {
       ## Summary
 
       - **Replay URL**: https://sentry-mcp-evals.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/
+      - **Started**: 2025-04-07 12:00:00 UTC
       - **Duration**: 5m
       - **Environment**: production
       - **Browser**: Chrome 123.0
       - **OS**: macOS 14.4
-      - **User**: Taylor Example
+      - **User**: Taylor Example (id \`user-1\`)
       - **URLs**: /login, /checkout
       - **Device**: MacBook Pro
       - **Release**: frontend@1.2.3
@@ -126,7 +136,7 @@ describe("get_replay_details", () => {
       - **Recording Segments**: 2
       - **Archived**: Yes
 
-      ## Activity
+      ## Timeline
 
       Recording is archived and not available for playback.
 
@@ -139,7 +149,7 @@ describe("get_replay_details", () => {
     `);
   });
 
-  it("degrades gracefully when segment fetch fails", async () => {
+  it("reports when the recording cannot be loaded", async () => {
     mswServer.use(
       http.get(
         `https://us.sentry.io/api/0/organizations/sentry-mcp-evals/replays/${replayDetailsFixture.id}/`,
@@ -172,11 +182,12 @@ describe("get_replay_details", () => {
       ## Summary
 
       - **Replay URL**: https://sentry-mcp-evals.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/
+      - **Started**: 2025-04-07 12:00:00 UTC
       - **Duration**: 5m
       - **Environment**: production
       - **Browser**: Chrome 123.0
       - **OS**: macOS 14.4
-      - **User**: Taylor Example
+      - **User**: Taylor Example (id \`user-1\`)
       - **URLs**: /login, /checkout
       - **Device**: MacBook Pro
       - **Release**: frontend@1.2.3
@@ -188,9 +199,9 @@ describe("get_replay_details", () => {
       - **Recording Segments**: 2
       - **Archived**: No
 
-      ## Activity
+      ## Timeline
 
-      No activity events recorded.
+      The recording could not be loaded: Replay recording segment not found.
 
       ## Related
 
@@ -330,25 +341,98 @@ describe("get_replay_details", () => {
     );
   });
 
-  it("does not repeat explicit payload fields in generic replay events", async () => {
+  const directParams = {
+    organizationSlug: "sentry-mcp-evals",
+    replayId: replayDetailsFixture.id,
+    regionUrl: "https://us.sentry.io",
+  };
+
+  it("shows the last seconds of a replay with negative offsets", async () => {
+    const result = await getReplayDetails.handler(
+      { ...directParams, startOffsetSeconds: -10 },
+      getServerContext(),
+    );
+
+    expect(
+      result.slice(result.indexOf("## Timeline"), result.indexOf("## Related")),
+    ).toMatchInlineSnapshot(`
+      "## Timeline
+
+      **Recorded**: 1 × page load · 1 × click · 1 × navigation · 2 × request (1 failed) · 1 × console.error · 1 × console.log · 1 × dead click · 1 × key · 1 × dialog
+      **Showing**: notable events · from 04:50.0 to 05:00.0 · 5 of 5 events
+
+      - 04:50.0 · **request** · \`POST https://example.com/api/orders\` · status: \`500\` · duration: \`812ms\`
+      - 04:50.9 · **console.error** · \`Payment request failed\`
+      - 04:52.0 · **dead click** · \`div.modal > button.place-order\` · text: \`Place order\` · no response after: \`7.0s\`
+      - 04:58.5 · **key** · \`div.modal\` · key: \`Escape\`
+      - 04:58.6 · **dialog** · \`Checkout dialog closed\`
+
+      "
+    `);
+  });
+
+  it("shows every event in a requested category", async () => {
+    const result = await getReplayDetails.handler(
+      { ...directParams, categories: ["network", "console"] },
+      getServerContext(),
+    );
+
+    expect(result).toContain(
+      "**request** · `GET https://example.com/api/cart`",
+    );
+    expect(result).toContain("**console.log** · `cart refreshed`");
+    expect(result).not.toContain("**click**");
+  });
+
+  it("explains how to continue when more events match than the limit", async () => {
+    const result = await getReplayDetails.handler(
+      { ...directParams, limit: 2 },
+      getServerContext(),
+    );
+
+    expect(result).toContain("**Showing**: notable events · 2 of 8 events");
+    expect(result).toContain(
+      "6 more events match. Call `get_replay_details` again with the same arguments and `startOffsetSeconds: 12` to continue.",
+    );
+  });
+
+  it("rejects windows that end before they start", async () => {
+    await expect(
+      getReplayDetails.handler(
+        { ...directParams, startOffsetSeconds: 60, endOffsetSeconds: 30 },
+        getServerContext(),
+      ),
+    ).rejects.toThrow(
+      "`startOffsetSeconds` must resolve to a time before `endOffsetSeconds`.",
+    );
+  });
+
+  it("ignores malformed recording events", async () => {
     mswServer.use(
       http.get(
         `https://us.sentry.io/api/0/projects/sentry-mcp-evals/${replayDetailsFixture.project_id}/replays/${replayDetailsFixture.id}/recording-segments/`,
         () =>
           HttpResponse.json([
             [
+              { type: 5, data: { tag: "breadcrumb", payload: ["alpha"] } },
+              {
+                type: 5,
+                timestamp: "invalid",
+                data: {
+                  tag: "breadcrumb",
+                  payload: { category: "ui.click", message: "button" },
+                },
+              },
+              "not an event",
               {
                 type: 5,
                 timestamp: 1744027205000,
                 data: {
-                  tag: "console",
+                  tag: "breadcrumb",
                   payload: {
-                    message: "Payment request failed",
-                    description: "POST /api/orders returned 500",
-                    category: "network",
-                    type: "error",
-                    endpoint: "/api/orders",
-                    status: 500,
+                    category: "ui.click",
+                    message: "button.ok",
+                    data: { node: { textContent: 42 } },
                   },
                 },
               },
@@ -359,51 +443,12 @@ describe("get_replay_details", () => {
     );
 
     const result = await getReplayDetails.handler(
-      {
-        organizationSlug: "sentry-mcp-evals",
-        replayId: replayDetailsFixture.id,
-        regionUrl: "https://us.sentry.io",
-      },
+      directParams,
       getServerContext(),
     );
 
-    expect(result).toContain(
-      '- T+0s · `console` · message="Payment request failed" · description="POST /api/orders returned 500" · category="network" · type="error" · payload="endpoint=/api/orders, status=500"',
-    );
-  });
-
-  it("ignores array payloads instead of rendering numeric keys", async () => {
-    mswServer.use(
-      http.get(
-        `https://us.sentry.io/api/0/projects/sentry-mcp-evals/${replayDetailsFixture.project_id}/replays/${replayDetailsFixture.id}/recording-segments/`,
-        () =>
-          HttpResponse.json([
-            [
-              {
-                type: 5,
-                timestamp: 1744027205000,
-                data: {
-                  tag: "console",
-                  payload: ["alpha", "beta"],
-                },
-              },
-            ],
-          ]),
-        { once: true },
-      ),
-    );
-
-    const result = await getReplayDetails.handler(
-      {
-        organizationSlug: "sentry-mcp-evals",
-        replayId: replayDetailsFixture.id,
-        regionUrl: "https://us.sentry.io",
-      },
-      getServerContext(),
-    );
-
-    expect(result).not.toContain("- T+0s · `console`");
-    expect(result).not.toContain('payload="0=');
+    expect(result).toContain("**Recorded**: 1 × click");
+    expect(result).toContain("- 00:05.0 · **click** · `button.ok`");
   });
 
   describe("tool definition", () => {
@@ -421,6 +466,10 @@ describe("get_replay_details", () => {
         "organizationSlug",
         "replayId",
         "regionUrl",
+        "categories",
+        "startOffsetSeconds",
+        "endOffsetSeconds",
+        "limit",
       ]);
     });
   });
