@@ -142,54 +142,24 @@ If you work with multiple organizations that have projects with the same slug, t
 
 ## Issue ID Formats
 
-The CLI accepts several formats for identifying issues:
+The CLI accepts these formats wherever a command takes an issue:
 
-### Numeric ID
-
-The internal Sentry issue ID:
-
-```bash
-sentry issue view 123456789
-sentry issue explain 987654321
-```
-
-### Full Short ID
-
-The project-prefixed short ID shown in Sentry UI:
-
-```bash
-sentry issue view MYPROJECT-ABC
-sentry issue explain FRONTEND-XYZ
-```
-
-### Short Suffix
-
-Just the suffix portion, when the project is known. Pass it as
-`<org>/<project>/<suffix>`, or pass the suffix alone to use the auto-detected
-project:
-
-```bash
-sentry issue view my-org/myproject/ABC
-
-# Project auto-detected
-sentry issue view ABC
-```
-
-An organization alone is not enough: `my-org/ABC` fails because it names no
-project. Include the project prefix instead, as in `my-org/myproject-ABC`.
-
-### GitHub-Style (`#` separator)
-
-A `#` may be used in place of the final slash, matching how issues are referenced
-on GitHub. This is handy for AI agents and tooling that emit `org/project#SHORTID`:
-
-```bash
-# Equivalent to my-org/my-project/PROJ-123
-sentry issue view my-org/my-project#PROJ-123
-
-# Project context only (org auto-detected)
-sentry issue view my-project#PROJ-123
-```
+<!-- GENERATED:START issue-id-formats -->
+| Format | Example | Meaning |
+|--------|---------|---------|
+| `<numeric-id>` | `123456789` | The issue's numeric ID |
+| `<project>-<suffix>` | `cli-G` | A short ID, as shown in Sentry. A project alias from `sentry issue list` works in place of the project (`e-4Y`). Otherwise the project is looked up in the default organization, or in every accessible organization |
+| `<suffix>` | `G` | The suffix of a short ID, in the auto-detected project |
+| `<org>/<project>-<suffix>` | `my-org/cli-G` | A short ID in that organization |
+| `<org>/<project>/<id>` | `my-org/cli/CLI-G` | An issue in that project. `<id>` is a short ID, its suffix, or a numeric ID |
+| `<org>/<numeric-id>` | `my-org/123456789` | A numeric ID in that organization |
+| `<org>/<suffix>` | `my-org/G` | Always fails: it names no project. Use `<org>/<project>-<suffix>` or `<org>/<project>/<suffix>` |
+| `[<org>/]<project>#<id>` | `my-org/cli#CLI-G` | GitHub-style: `<org>/<project>#<id>` is the same as `<org>/<project>/<id>`, `<project>#<id>` as `<project>:<id>`, and `#<id>` as `<id>` |
+| `<project>:<id>` | `cli:CLI-G` | An issue in that project. `<id>` is a short ID, its suffix, or a numeric ID |
+| `[<org>/]@<selector>` | `@latest` | The top issue in the organization: `@latest` (most recent) or `@most_frequent` |
+| `https://<org>.sentry.io/issues/<id>/` | `https://my-org.sentry.io/issues/123456789/` | An issue URL or share link copied from Sentry |
+| `<text with spaces>` | `login timeout` | The one issue in the organization whose search matches the text. Quote it in the shell |
+<!-- GENERATED:END issue-id-formats -->
 
 ### Alias-Suffix
 
