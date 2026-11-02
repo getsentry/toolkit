@@ -184,7 +184,7 @@ These are Sentry MCP application attributes that are not part of the MCP semanti
 - `app.consent.skill.<skill>.granted` - Per-skill boolean attributes for skills granted to the MCP request. Skill ids are normalized with `-` replaced by `_`
 - `app.upstream.host` - Upstream Sentry host configured for the server
 - `app.url.full` - MCP URL configured for stdio
-- `app.code_mode.*` - Hosted Code Mode outcome, API calls, writes, operations by path template and schema commit; see [HTTP Code Mode telemetry](../testing/code-mode.md#telemetry)
+- `app.code_mode.*` - Hosted Code Mode outcome, API calls, writes, operations by path template and `@sentry/api` release; see [HTTP Code Mode telemetry](../architecture/code-mode.md#telemetry)
 
 ### User Agent Tracking
 

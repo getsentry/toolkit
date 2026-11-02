@@ -99,27 +99,11 @@ const mcpClient = await experimental_createMCPClient({
 ### Hosted MCP Code Mode
 
 The authenticated hosted MCP also registers `search_sentry_api` and
-`execute_sentry_code` on the fresh server built for each request. The external
-client's model writes the code; a Cloudflare Dynamic Worker executes it. This
-path does not use the chat interface's model or introduce another OAuth flow.
-
-The Worker Loader binding (`LOADER`) creates an isolated execution with all
-network egress disabled. The trusted sandbox wrapper receives an `ApiBroker`
-capability through its `run()` RPC method and uses it for `sentry.request()`;
-raw `fetch()` is blocked. The broker retains the access token and an
-`ApiAuthorization` object in the parent request context. It checks published
-operations and the explicit API read/write MCP grant, enforces
-organization constraints, resolves validated regional routing and forwards
-client attribution. Generated code cannot access the private token or
-authorization context. Upstream 401s use the existing unauthorized callback.
-
-This integration has no beta or opt-in flag. Code Mode is unavailable for
-project-constrained sessions because arbitrary API operations can affect shared
-resources even through project-bearing routes. Existing grants do not acquire
-API permissions automatically. The shared upstream OAuth token remains separate
-from connection permissions; Sentry enforces its scopes and resource access. See [HTTP Code Mode integration](../testing/code-mode.md#authentication-and-scope)
-for the permission policy, fixture limitations and validation status. Source and
-configuration changes alone do not establish that a deployment is active.
+`execute_sentry_code` for connections granted API Read or API Write. The
+client's model writes the code; a Dynamic Worker from the `LOADER` binding runs
+it without network access, and an RPC broker in the parent Worker sends the
+allowed Sentry API requests with the user's token. See
+[HTTP Code Mode](../architecture/code-mode.md).
 
 ### 4. AI Assistant
 

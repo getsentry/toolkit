@@ -71,6 +71,7 @@ toolkit/
 **MCP architecture and operations:**
 
 - docs/architecture/overview.md — MCP system design
+- docs/architecture/code-mode.md — Hosted HTTP Code Mode: sandbox, permissions, telemetry
 - docs/operations/security.md — Authentication and security patterns
 - docs/operations/stdio-auth.md — stdio auth: shared CLI login and static tokens
 - docs/operations/oauth-signout-playbook.md — Remote OAuth diagnostic runbook
