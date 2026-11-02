@@ -475,3 +475,50 @@ tester.run(
     ],
   },
 );
+
+tester.run(
+  "json-transform-uses-fields",
+  plugin.rules["json-transform-uses-fields"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => filterFieldsIfSet(r.items, fields) } });",
+      },
+      {
+        filename: commands,
+        code: "function toJson(r, fields) { return filterFieldsIfSet(r, fields); }\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+      {
+        filename: commands,
+        code: "export function jsonTransformList(r, fields = []) { return filterFields(r, fields); }",
+      },
+      {
+        filename: commands,
+        code: "import { toJson } from './shared.js';\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r) => r } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => ({ id: r.id }) } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function toJson(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform: toJson } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function jsonTransform(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform } });",
+        errors: 1,
+      },
+    ],
+  },
+);

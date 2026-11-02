@@ -57,6 +57,61 @@ function readsProperty(node, object, property) {
   );
 }
 
+const FUNCTION_TYPES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+]);
+
+/**
+ * Top-level functions of a module by name: `function f() {}` and
+ * `const f = () => {}`, exported or not.
+ */
+function moduleFunctions(program) {
+  const functions = new Map();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "FunctionDeclaration" && declaration.id) {
+      functions.set(declaration.id.name, declaration);
+    }
+    if (declaration?.type === "VariableDeclaration") {
+      for (const declarator of declaration.declarations) {
+        if (
+          declarator.id.type === "Identifier" &&
+          FUNCTION_TYPES.has(declarator.init?.type)
+        )
+          functions.set(declarator.id.name, declarator.init);
+      }
+    }
+  }
+  return functions;
+}
+
+/** Whether a function reads its second parameter (the parsed `--fields`). */
+function readsFieldsParameter(fn) {
+  const fields = fn.params[1];
+  const name =
+    fields?.type === "AssignmentPattern" ? fields.left?.name : fields?.name;
+  return Boolean(name) && containsIdentifier(fn.body, name);
+}
+
+/** `jsonTransform: ...` properties anywhere under a node. */
+function jsonTransformProperties(node) {
+  const found = [];
+  someNode(node, (n) => {
+    if (
+      n.type === "Property" &&
+      (n.key?.name ?? n.key?.value) === "jsonTransform"
+    )
+      found.push(n);
+    return false;
+  });
+  return found;
+}
+
 /**
  * Target positional types from `src/lib/target-positional.ts`, and
  * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
@@ -635,6 +690,43 @@ const rules = {
             },
             NewExpression(node) {
               if (MARKDOWN_STRUCTURE_RE.test(regexSource(node))) report(node);
+            },
+          }
+        : {},
+  ),
+  // A transform that drops `fields` makes `--fields` a silent no-op:
+  // https://github.com/getsentry/toolkit/issues/1808
+  "json-transform-uses-fields": rule(
+    "A jsonTransform replaces the default --fields filtering, so it must read its fields parameter.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            Program(program) {
+              const functions = moduleFunctions(program);
+              // Exported jsonTransform* helpers are shared by several
+              // commands, so check them where they are defined.
+              for (const [fnName, fn] of functions) {
+                if (
+                  fnName.startsWith("jsonTransform") &&
+                  !readsFieldsParameter(fn)
+                )
+                  report(fn);
+              }
+              for (const property of jsonTransformProperties(program)) {
+                const value = property.value;
+                if (FUNCTION_TYPES.has(value.type)) {
+                  if (!readsFieldsParameter(value)) report(property);
+                } else if (value.type === "Identifier") {
+                  // Imported transforms are checked in their own module.
+                  const fn = functions.get(value.name);
+                  if (
+                    fn &&
+                    !value.name.startsWith("jsonTransform") &&
+                    !readsFieldsParameter(fn)
+                  )
+                    report(property);
+                }
+              }
             },
           }
         : {},

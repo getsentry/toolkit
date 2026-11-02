@@ -228,7 +228,6 @@ export const editCommand = buildCommand({
   },
   output: {
     human: formatEdited,
-    jsonTransform: (r: EditResult) => r,
   },
   parameters: {
     positional: {

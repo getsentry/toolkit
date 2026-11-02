@@ -17,6 +17,7 @@ import {
   type AccountListResult,
   formatAccountList,
 } from "../../lib/formatters/accounts.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 
 export const listCommand = buildCommand({
@@ -41,7 +42,8 @@ export const listCommand = buildCommand({
   },
   output: {
     human: formatAccountList,
-    jsonTransform: (data: AccountListResult) => data.accounts,
+    jsonTransform: (data: AccountListResult, fields?: string[]) =>
+      filterFieldsIfSet(data.accounts, fields),
   },
   parameters: {
     flags: {},

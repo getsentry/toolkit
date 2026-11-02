@@ -118,7 +118,6 @@ export const createCommand = buildCommand({
   },
   output: {
     human: formatCreated,
-    jsonTransform: (result: CreateResult) => result,
   },
   parameters: {
     positional: {

@@ -28,6 +28,7 @@ import { buildCommand } from "../../lib/command.js";
 import { choiceParser } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryIssue } from "../../types/index.js";
@@ -88,8 +89,11 @@ function formatResolved(result: ResolveResult): string {
   return `${head}\n\n${formatIssueDetails(issue)}`;
 }
 
-function jsonTransform(result: ResolveResult): unknown {
-  return { ...result.issue, resolved_in: result.spec ?? undefined };
+function jsonTransform(result: ResolveResult, fields?: string[]): unknown {
+  return filterFieldsIfSet(
+    { ...result.issue, resolved_in: result.spec ?? undefined },
+    fields,
+  );
 }
 
 export const resolveCommand = buildCommand({
