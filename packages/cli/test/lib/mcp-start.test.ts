@@ -13,6 +13,7 @@ import { captureEnvTokenHost } from "../../src/lib/env-token-host.js";
 import {
   HostScopeError,
   MalformedAuthTokenError,
+  ValidationError,
 } from "../../src/lib/errors.js";
 import type { McpServerConfig } from "../../src/lib/mcp/config.js";
 import {
@@ -26,7 +27,7 @@ import {
   useEnvSandbox,
   useTestConfigDir,
 } from "../helpers.js";
-import { parseMcpFlags } from "./mcp/parse-flags.js";
+import { parseMcpArgs } from "./mcp/parse-flags.js";
 
 type Served = { config: McpServerConfig; options: McpServeOptions };
 
@@ -92,7 +93,8 @@ afterEach(async () => {
 /** Run `sentry mcp <args>` up to the (mocked) stdio server. */
 async function serve(args: string[]): Promise<void> {
   const { serveMcp } = await import("../../src/lib/mcp.js");
-  await serveMcp(await parseMcpFlags(args), workingDir);
+  const { flags, scope } = await parseMcpArgs(args);
+  await serveMcp(flags, workingDir, scope);
 }
 
 async function start(args: string[]): Promise<Served> {
@@ -150,6 +152,29 @@ describe("serveMcp credential wiring", () => {
       host: "https://sentry.io",
     });
     await expect(options.refreshAccessToken?.()).resolves.toBe("rotated-token");
+  });
+});
+
+describe("serveMcp scope", () => {
+  test("serves the <org>/<project> target as the server's scope", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+
+    const { config } = await start(["acme/web"]);
+    expect(config.organizationSlug).toBe("acme");
+    expect(config.projectSlug).toBe("web");
+  });
+
+  test("refuses a target that conflicts with --org before serving", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+
+    await expect(serve(["acme/", "--org=other"])).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    expect(served.calls).toHaveLength(0);
   });
 });
 

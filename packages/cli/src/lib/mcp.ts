@@ -13,6 +13,7 @@ import { AuthError, HostScopeError } from "./errors.js";
 import {
   deprecatedFlags,
   type McpFlags,
+  type McpScope,
   mergeMcpArgs,
   parseMcpEnv,
 } from "./mcp/args.js";
@@ -343,11 +344,17 @@ function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
  * @param cwd - The command context's working directory, where a repo-local
  *   `.sentryclirc` is looked up. Unlike `process.cwd()`, it survives a deleted
  *   working directory (see `resolveCwd` in `context.ts`).
+ * @param scope - The organization and project of the `[<org>/[<project>]]`
+ *   positional, if one was passed
  */
-export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
+export async function serveMcp(
+  flags: McpFlags,
+  cwd: string,
+  scope?: McpScope,
+): Promise<void> {
   const env = getEnv();
   const config = finalizeMcpConfig(
-    mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env)),
+    mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env), scope),
   );
   for (const { flag, replacement } of deprecatedFlags(flags)) {
     // stderr only: stdout carries the stdio MCP transport.

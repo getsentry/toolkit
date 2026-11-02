@@ -694,7 +694,7 @@ View Sentry logs
 
 Start a local Sentry MCP server
 
-- `sentry mcp` — Start a local Sentry MCP server
+- `sentry mcp [<org/project>]` — Start a local Sentry MCP server
 
 → Full flags and examples: `references/mcp.md`
 

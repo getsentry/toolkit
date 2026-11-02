@@ -369,9 +369,12 @@ Run `pnpm --silent --dir packages/cli run cli mcp --help` for the full list.
 # Host configuration: set SENTRY_HOST or SENTRY_URL (http:// for plain
 # HTTP). --host, --url, and --insecure-http still work but are deprecated.
 
-# Constraints (the CLI's --org/--project; --organization-slug and
-# --project-slug still work but are deprecated)
---org=my-org                      # Limit every call to this organization
+# Constraints: an optional my-org/ or my-org/my-project target, or the
+# CLI's --org/--project (--organization-slug and --project-slug still work
+# but are deprecated). A target and a flag must not disagree.
+my-org/                           # Limit every call to this organization
+my-org/my-project                 # Limit calls to this project
+--org=my-org                      # Same as my-org/
 --project=my-project              # Limit calls to this project
 
 # Skills management

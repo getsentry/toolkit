@@ -10,11 +10,17 @@
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import {
+  completingParser,
+  ORG_PROJECT_TARGET,
   parseOrgSlug,
   parseProjectSlug,
   parseText,
 } from "../lib/completion-target.js";
-import type { McpFlags } from "../lib/mcp/args.js";
+import {
+  type McpFlags,
+  type McpScope,
+  parseMcpTarget,
+} from "../lib/mcp/args.js";
 
 /**
  * mcp-core's `ALL_SKILLS`, copied so the command tree does not import
@@ -93,6 +99,14 @@ export const mcpCommand = buildCommand({
         command: "sentry mcp",
       },
       {
+        description: "Limit every call to one organization",
+        command: "sentry mcp acme/",
+      },
+      {
+        description: "Limit calls to one project",
+        command: "sentry mcp acme/web",
+      },
+      {
         description: "Grant every skill, including seer on self-hosted",
         command: "sentry mcp --all-skills",
       },
@@ -107,6 +121,18 @@ export const mcpCommand = buildCommand({
     ],
   },
   parameters: {
+    positional: {
+      kind: "tuple",
+      parameters: [
+        {
+          placeholder: "org/project",
+          brief:
+            "<org>/ (an organization) or <org>/<project> to limit calls to",
+          parse: completingParser(ORG_PROJECT_TARGET, parseMcpTarget),
+          optional: true,
+        },
+      ],
+    },
     flags: {
       "access-token": stringFlag("Deprecated: set SENTRY_AUTH_TOKEN instead"),
       host: deprecatedStringFlag("SENTRY_HOST"),
@@ -152,10 +178,10 @@ export const mcpCommand = buildCommand({
     },
   },
   // oxlint-disable-next-line require-yield -- The server speaks JSON-RPC on stdout; the command yields no output.
-  async *func(this: SentryContext, flags: McpFlags) {
+  async *func(this: SentryContext, flags: McpFlags, scope?: McpScope) {
     const { serveMcp } = await import("../lib/mcp.js");
     // Resolves when the client disconnects, so the runner tears down only
     // after the server is done.
-    await serveMcp(flags, this.cwd);
+    await serveMcp(flags, this.cwd, scope);
   },
 });

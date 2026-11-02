@@ -8,7 +8,9 @@
  * env token (see `lib/mcp.ts`).
  */
 
+import { parseOrgProjectInput } from "../arg-parsing.js";
 import { ValidationError } from "../errors.js";
+import { validateResourceId } from "../input-validation.js";
 
 /** `sentry mcp` flags, as Stricli parses them (see `commands/mcp.ts`). */
 export type McpFlags = {
@@ -38,6 +40,63 @@ export type McpFlags = {
   readonly "project-slug"?: string;
 };
 
+/** The organization, and optionally project, of a `sentry mcp` target. */
+export type McpScope = {
+  readonly org: string;
+  readonly project?: string;
+};
+
+const TARGET_USAGE =
+  "Pass <org>/ for an organization, or <org>/<project> for a project.";
+
+/**
+ * Parse the optional `[<org>/[<project>]]` positional of `sentry mcp`.
+ *
+ * Reads the target with the CLI's shared parser but takes only the forms that
+ * name an organization: the server is scoped up front, with no project search
+ * or auto-detection. A bare `<slug>` would be a project search to every other
+ * command, so it is refused instead of read as an organization; under
+ * `@sentry/mcp-server` it is also what an unknown command reaches. A URL is
+ * refused too: the server's host comes from `SENTRY_HOST`/`SENTRY_URL`.
+ *
+ * @returns `undefined` for an empty target, which scopes nothing
+ * @throws {ValidationError} For any other form
+ */
+export function parseMcpTarget(input: string): McpScope | undefined {
+  const text = input.trim();
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(text)) {
+    throw new ValidationError(
+      `'${text}' is a URL. ${TARGET_USAGE} Set SENTRY_URL to pick the Sentry instance.`,
+      "target",
+    );
+  }
+  const { parsed } = parseOrgProjectInput(text);
+  switch (parsed.type) {
+    case "auto-detect":
+      return;
+    case "org-all":
+      validateResourceId(parsed.org, "organization slug");
+      return { org: parsed.org };
+    case "explicit":
+      if (/[/,]/.test(parsed.project)) {
+        throw new ValidationError(
+          `'${text}' names more than one project. ${TARGET_USAGE}`,
+          "target",
+        );
+      }
+      validateResourceId(parsed.org, "organization slug");
+      validateResourceId(parsed.project, "project slug");
+      return { org: parsed.org, project: parsed.project };
+    case "project-search":
+      throw new ValidationError(
+        text.includes("/")
+          ? `'${text}' has no organization. ${TARGET_USAGE}`
+          : `'${text}' names no command, and a target needs an organization: pass '${text}/' for the organization, or '<org>/${text}' for a project.`,
+        "target",
+      );
+  }
+}
+
 /**
  * Deprecated flags and what replaces each: a CLI-wide flag, or the
  * environment variable every other command reads the Sentry instance from.
@@ -59,11 +118,15 @@ export function deprecatedFlags(
   ).map(([flag, replacement]) => ({ flag, replacement }));
 }
 
-/** A scope flag's value, from its CLI-wide name or its deprecated alias. */
+/**
+ * A scope's value, from the target positional, the CLI-wide flag, or the
+ * flag's deprecated alias. Any two of them must agree.
+ */
 function scopeFlag(
   flags: McpFlags,
   name: "org" | "project",
   alias: "organization-slug" | "project-slug",
+  fromTarget: string | undefined,
 ): string | undefined {
   const value = flags[name];
   const aliased = flags[alias];
@@ -72,7 +135,18 @@ function scopeFlag(
       `--${name} and --${alias} name different values; pass only --${name}.`,
     );
   }
-  return value ?? aliased;
+  const fromFlag = value ?? aliased;
+  if (
+    fromTarget !== undefined &&
+    fromFlag !== undefined &&
+    fromTarget !== fromFlag
+  ) {
+    const flag = value === undefined ? alias : name;
+    throw new ValidationError(
+      `The target and --${flag} name different values; pass only the target.`,
+    );
+  }
+  return fromTarget ?? fromFlag;
 }
 
 /**
@@ -158,8 +232,12 @@ export function parseMcpEnv(env: NodeJS.ProcessEnv): McpEnvArgs {
   return fromEnv;
 }
 
-/** Merge flags over environment values. */
-export function mergeMcpArgs(flags: McpFlags, env: McpEnvArgs): McpMergedArgs {
+/** Merge flags and the target positional over environment values. */
+export function mergeMcpArgs(
+  flags: McpFlags,
+  env: McpEnvArgs,
+  scope?: McpScope,
+): McpMergedArgs {
   return {
     url: flags.url,
     host: flags.host,
@@ -177,7 +255,7 @@ export function mergeMcpArgs(flags: McpFlags, env: McpEnvArgs): McpMergedArgs {
     allSkills: flags["all-skills"],
     disableSkills: flags["disable-skills"] ?? env.disableSkills,
     experimental: flags.experimental,
-    organizationSlug: scopeFlag(flags, "org", "organization-slug"),
-    projectSlug: scopeFlag(flags, "project", "project-slug"),
+    organizationSlug: scopeFlag(flags, "org", "organization-slug", scope?.org),
+    projectSlug: scopeFlag(flags, "project", "project-slug", scope?.project),
   };
 }
