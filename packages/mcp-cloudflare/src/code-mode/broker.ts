@@ -6,7 +6,6 @@ import type { ApiAuthorization } from "./authorization";
 import type { ExecutionGate } from "./execution";
 
 export interface BrokerOptions {
-  accessToken: string;
   execution: ExecutionGate;
   /** Fixed origin and API prefix, e.g. https://sentry.io/api/0. */
   apiBaseUrl: string;
@@ -102,7 +101,8 @@ export class ApiBroker extends RpcTarget {
     this.#options.execution.assertOpen();
     if ("error" in authorized) return deny(authorized.error);
     call.operation = authorized.pathTemplate;
-    // Only API-relevant input headers cross the boundary. Auth is always replaced.
+    // Only API-relevant input headers cross the boundary. Authorization and
+    // attribution always come from the trusted side.
     const headers = new Headers();
     for (const name of [
       "accept",
@@ -115,7 +115,6 @@ export class ApiBroker extends RpcTarget {
     }
     for (const [name, value] of Object.entries(authorized.headers))
       headers.set(name, value);
-    headers.set("Authorization", `Bearer ${this.#options.accessToken}`);
     call.sent = true;
     const response = await fetch(
       new Request(new Request(authorized.url, request), {

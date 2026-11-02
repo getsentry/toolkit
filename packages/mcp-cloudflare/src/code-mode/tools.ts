@@ -55,7 +55,6 @@ export function registerCodeModeTools(
     const execution = new ExecutionGate();
     const broker = execute
       ? new ApiBroker({
-          accessToken: context.accessToken,
           execution,
           apiBaseUrl,
           allowWrites,
