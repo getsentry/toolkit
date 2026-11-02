@@ -1178,7 +1178,7 @@ function resolveAvailableFields(
 /**
  * Describe a field for the agent with examples is provided.
  */
-function describeField(field: AttributeDescriptor): string {
+export function describeField(field: AttributeDescriptor): string {
   const { context } = field;
   const parts: string[] = [];
 
