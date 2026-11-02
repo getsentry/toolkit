@@ -1,4 +1,4 @@
-minVersion: "3.5.0"
+minVersion: "3.7.0"
 workspaces:
   packages/cli:
     changelog:
@@ -17,7 +17,9 @@ workspaces:
     versioning:
       policy: auto
     preReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --pre'
-    postReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --post'
+    # After a release, Craft reruns preReleaseCommand with the next minor
+    # `-dev.0` version, then commits and pushes it.
+    postReleaseBump: true
     releaseBranchPrefix: release/cli
     artifactProvider:
       name: github

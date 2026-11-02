@@ -2,26 +2,22 @@
 /**
  * Version Bump Script
  *
- * Handles version bumping for releases, keeping package.json and plugin.json in sync.
- * `@sentry/mcp-server` ships with every CLI release, so it takes the same version.
- * Extracted from .craft.yml inline scripts for maintainability.
+ * Craft's `preReleaseCommand` for the CLI workspace. It runs for the release
+ * version in `craft prepare`, and again for the next `-dev` version after
+ * `craft publish` (`postReleaseBump` in .craft.yml), which Craft commits and
+ * pushes. `@sentry/mcp-server` ships with every CLI release, so it takes the
+ * same version.
  *
  * Usage:
- *   node --experimental-strip-types script/bump-version.ts --pre   # Pre-release: set CRAFT_NEW_VERSION
- *   node --experimental-strip-types script/bump-version.ts --post  # Post-release: bump to next dev version
+ *   CRAFT_NEW_VERSION=1.0.0 node --experimental-strip-types script/bump-version.ts --pre
  *
- * Pre-release (--pre):
- *   - Sets the CLI and @sentry/mcp-server package.json versions to CRAFT_NEW_VERSION
- *   - Updates plugin.json version (strips prerelease suffix)
- *
- * Post-release (--post):
- *   - Bumps package.json to next preminor with -dev prerelease, and
- *     @sentry/mcp-server to match
- *   - Updates plugin.json version
- *   - Commits and pushes if there are changes
+ * Sets CRAFT_NEW_VERSION as:
+ *   - the CLI and @sentry/mcp-server package.json versions
+ *   - the plugin.json version, without the prerelease suffix
+ *   - the tracked CLI skill frontmatter versions
  */
 
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -132,92 +128,18 @@ function preRelease(): void {
   writePluginJson(plugin);
 
   console.log(`Updated plugin.json to ${plugin.version}`);
-}
-
-/**
- * Post-release: Bump to next dev version, commit and push
- */
-function postRelease(): void {
-  console.log("Bumping to next development version");
-
-  // Bump package.json to next preminor with -dev prerelease
-  exec("npm --no-git-tag-version version preminor --preid=dev");
-
-  // Read the new version from package.json
-  const pkg = JSON.parse(readFileSync("package.json", "utf-8")) as {
-    version: string;
-  };
-  console.log(`package.json bumped to ${pkg.version}`);
-  setMcpServerVersion(pkg.version);
-
-  // Update plugin.json
-  const plugin = readPluginJson();
-  plugin.version = stripPrerelease(pkg.version);
-  writePluginJson(plugin);
-  console.log(`Updated plugin.json to ${plugin.version}`);
 
   // The generator embeds package.json's version in every tracked skill file.
   // Sync only its frontmatter here: the full generator needs an API schema that
-  // is gitignored and may not exist in Craft's post-release checkout.
-  syncSkillVersions(pkg.version);
-
-  // Commit and push if there are changes
-  // Use spawnSync to check exit code without throwing
-  const diffResult = spawnSync("git", ["diff", "--quiet"], {
-    stdio: "inherit",
-  });
-  if (diffResult.status !== 0) {
-    console.log("Committing version bump");
-    exec(
-      'git commit -anm "meta: Bump new development version\n\n#skip-changelog"',
-    );
-    exec("git pull --rebase");
-    exec("git push");
-    console.log("Pushed version bump");
-  } else {
-    console.log("No changes to commit");
-  }
+  // is gitignored and may not exist in Craft's checkout.
+  syncSkillVersions(version);
 }
 
-/**
- * Print usage information
- */
-function printUsage(): void {
-  console.log(`
-Usage: node --experimental-strip-types script/bump-version.ts <mode>
-
-Modes:
-  --pre   Pre-release: set version from CRAFT_NEW_VERSION env var
-  --post  Post-release: bump to next dev version, commit and push
-
-Examples:
-  CRAFT_NEW_VERSION=1.0.0 node --experimental-strip-types script/bump-version.ts --pre
-  node --experimental-strip-types script/bump-version.ts --post
-`);
-}
-
-// Main
-const args = process.argv.slice(2);
-
-function parseMode(): "pre" | "post" | null {
-  if (args.includes("--pre")) {
-    return "pre";
-  }
-  if (args.includes("--post")) {
-    return "post";
-  }
-  return null;
-}
-
-const mode = parseMode();
-
-if (!mode) {
-  printUsage();
-  process.exit(1);
-}
-
-if (mode === "pre") {
+if (process.argv.includes("--pre")) {
   preRelease();
 } else {
-  postRelease();
+  console.log(`
+Usage: CRAFT_NEW_VERSION=<version> node --experimental-strip-types script/bump-version.ts --pre
+`);
+  process.exit(1);
 }

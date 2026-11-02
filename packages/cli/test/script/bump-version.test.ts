@@ -25,9 +25,8 @@ afterEach(() => {
 });
 
 /**
- * Lay out `cli/` and its sibling `mcp-server/` like `packages/`, with fake
- * `npm` and `git` binaries. The fake `npm version` writes the requested
- * version, or the next dev version for `preminor`.
+ * Lay out `cli/` and its sibling `mcp-server/` like `packages/`, with a fake
+ * `npm` binary whose `npm version` writes the requested version.
  */
 function createFixture(): { root: string; cli: string; bin: string } {
   const root = mkdtempSync(join(tmpdir(), "cli-bump-version-"));
@@ -59,38 +58,20 @@ function createFixture(): { root: string; cli: string; bin: string } {
   writeFileSync(
     join(bin, "npm"),
     `#!/usr/bin/env node
-const args = process.argv.slice(2);
-const version = args.includes("preminor") ? "0.48.0-dev.0" : args.at(-1);
-require("node:fs").writeFileSync("package.json", JSON.stringify({ version }) + "\\n");
-`,
-  );
-  writeFileSync(
-    join(bin, "git"),
-    `#!/usr/bin/env node
-const fs = require("node:fs");
-if (process.argv[2] === "diff") process.exit(1);
-if (process.argv[2] === "commit") {
-  for (const path of ["SKILL.md", "references/auth.md"]) {
-    const content = fs.readFileSync(${JSON.stringify(skill)} + "/" + path, "utf8");
-    if (!content.includes("version: 0.48.0-dev.0")) process.exit(2);
-  }
-}
-fs.appendFileSync("git-commands", process.argv[2] + "\\n");
+require("node:fs").writeFileSync("package.json", JSON.stringify({ version: process.argv.at(-1) }) + "\\n");
 `,
   );
   chmodSync(join(bin, "npm"), 0o755);
-  chmodSync(join(bin, "git"), 0o755);
   return { root, cli, bin };
 }
 
 function runScript(
   { cli, bin }: { cli: string; bin: string },
-  mode: "--pre" | "--post",
-  env: Record<string, string> = {},
+  env: Record<string, string>,
 ) {
   return spawnSync(
     process.execPath,
-    ["--experimental-strip-types", script, mode],
+    ["--experimental-strip-types", script, "--pre"],
     {
       cwd: cli,
       encoding: "utf8",
@@ -113,7 +94,7 @@ function readVersion(path: string): string {
 test("pre-release bump gives @sentry/mcp-server the release version", () => {
   const fixture = createFixture();
 
-  const result = runScript(fixture, "--pre", { CRAFT_NEW_VERSION: "0.48.0" });
+  const result = runScript(fixture, { CRAFT_NEW_VERSION: "0.48.0" });
 
   expect(result.status, result.stderr).toBe(0);
   expect(readVersion(join(fixture.cli, "package.json"))).toBe("0.48.0");
@@ -122,21 +103,25 @@ test("pre-release bump gives @sentry/mcp-server the release version", () => {
   );
 });
 
-test("post-release bump updates tracked skill versions before committing", () => {
+// Craft's post-release bump reruns the pre-release command with the next
+// development version.
+test("dev version bump syncs every tracked version", () => {
   const fixture = createFixture();
 
-  const result = runScript(fixture, "--post");
+  const result = runScript(fixture, { CRAFT_NEW_VERSION: "0.49.0-dev.0" });
 
   expect(result.status, result.stderr).toBe(0);
+  for (const path of ["package.json", "../mcp-server/package.json"]) {
+    expect(readVersion(join(fixture.cli, path))).toBe("0.49.0-dev.0");
+  }
+  expect(
+    readVersion(
+      join(fixture.cli, "plugins/sentry-cli/.claude-plugin/plugin.json"),
+    ),
+  ).toBe("0.49.0");
   for (const path of ["SKILL.md", "references/auth.md"]) {
     expect(readFileSync(join(fixture.cli, skill, path), "utf8")).toContain(
-      "version: 0.48.0-dev.0",
+      "version: 0.49.0-dev.0",
     );
   }
-  expect(readVersion(join(fixture.root, "mcp-server/package.json"))).toBe(
-    "0.48.0-dev.0",
-  );
-  expect(readFileSync(join(fixture.cli, "git-commands"), "utf8")).toBe(
-    "commit\npull\npush\n",
-  );
 });
