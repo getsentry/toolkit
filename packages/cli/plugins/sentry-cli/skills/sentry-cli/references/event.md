@@ -51,7 +51,7 @@ View details of one or more events
 | `type` | string |  |
 | `metadata` | object |  |
 | `errors` | array |  |
-| `occurrence` | object \| null |  |
+| `occurrence` | object \| object \| null |  |
 | `_meta` | object |  |
 | `crashFile` | string \| null |  |
 | `culprit` | string \| null |  |

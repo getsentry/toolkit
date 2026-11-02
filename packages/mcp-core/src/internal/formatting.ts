@@ -5,6 +5,7 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
+import type { IssueEventDetailsResponse } from "@sentry/api";
 import { codeBlock, inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
@@ -1684,6 +1685,25 @@ function formatPrimitive(value: unknown): string | undefined {
 
 const METRIC_ISSUE_OCCURRENCE_TYPE = 8001;
 
+type MetricIssueEvidenceData = Extract<
+  NonNullable<IssueEventDetailsResponse["occurrence"]>,
+  { type: typeof METRIC_ISSUE_OCCURRENCE_TYPE }
+>["evidenceData"];
+type MetricIssueDataSource = MetricIssueEvidenceData["dataSources"][number];
+type MetricIssueSnubaQuery = MetricIssueDataSource["queryObj"]["snubaQuery"];
+type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
+
+/**
+ * Keys come from the generated `@sentry/api` metric occurrence type, so a
+ * renamed or misspelled evidence key fails tsc. Values stay `unknown`: the
+ * event is parsed with a loose Zod schema and older events can omit fields.
+ */
+type Unverified<T> = { readonly [K in keyof T]?: unknown };
+
+function asUnverified<T>(value: unknown): Unverified<T> | undefined {
+  return isPlainObject(value) ? (value as Unverified<T>) : undefined;
+}
+
 type MetricAlertQuery = {
   dataset?: string;
   aggregate?: string;
@@ -1694,7 +1714,7 @@ type MetricAlertQuery = {
 };
 
 type MetricAlertContext = {
-  evidenceData: Record<string, unknown>;
+  evidenceData: Unverified<MetricIssueEvidenceData>;
   query?: MetricAlertQuery;
   monitorId?: string;
   alertRuleId?: string;
@@ -1710,7 +1730,9 @@ function getMetricAlertContext(event: Event): MetricAlertContext | undefined {
     return undefined;
   }
   const occurrence = (event as GenericEvent).occurrence;
-  const evidenceData = occurrence?.evidenceData;
+  const evidenceData = asUnverified<MetricIssueEvidenceData>(
+    occurrence?.evidenceData,
+  );
   if (occurrence?.type !== METRIC_ISSUE_OCCURRENCE_TYPE || !evidenceData) {
     return undefined;
   }
@@ -1724,7 +1746,7 @@ function getMetricAlertContext(event: Event): MetricAlertContext | undefined {
 }
 
 function getMetricAlertQuery(
-  evidenceData: Record<string, unknown>,
+  evidenceData: Unverified<MetricIssueEvidenceData>,
 ): MetricAlertQuery | undefined {
   const dataSources = evidenceData.dataSources;
   if (!Array.isArray(dataSources)) {
@@ -1732,11 +1754,13 @@ function getMetricAlertQuery(
   }
 
   for (const dataSource of dataSources) {
-    if (!isPlainObject(dataSource) || !isPlainObject(dataSource.queryObj)) {
-      continue;
-    }
-    const snubaQuery = dataSource.queryObj.snubaQuery;
-    if (!isPlainObject(snubaQuery)) {
+    const queryObj = asUnverified<MetricIssueDataSource["queryObj"]>(
+      asUnverified<MetricIssueDataSource>(dataSource)?.queryObj,
+    );
+    const snubaQuery = asUnverified<MetricIssueSnubaQuery>(
+      queryObj?.snubaQuery,
+    );
+    if (!snubaQuery) {
       continue;
     }
     const timeWindow = snubaQuery.timeWindow;
@@ -1820,7 +1844,7 @@ function formatPeriodSince(start: Date, now: number): string {
 }
 
 function formatMetricAlertCondition(
-  condition: Record<string, unknown>,
+  condition: Unverified<MetricIssueCondition>,
 ): string | undefined {
   const comparison = condition.comparison;
   const formattedComparison = formatPrimitive(comparison);
