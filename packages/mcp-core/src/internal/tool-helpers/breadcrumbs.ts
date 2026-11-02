@@ -1,3 +1,4 @@
+import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import type { SentryApiService } from "../../api-client/index";
 
 /**
@@ -93,10 +94,11 @@ export function formatBreadcrumbData(
 }
 
 /**
- * Strips newlines and truncates a string to maxLen characters.
+ * Strips newlines and truncates a string to maxLen UTF-16 code units without
+ * splitting a surrogate pair.
  */
 export function cleanAndTruncate(str: string, maxLen: number): string {
   const clean = str.replace(/[\r\n]+/g, " ");
   if (clean.length <= maxLen) return clean;
-  return `${clean.slice(0, maxLen)}...`;
+  return `${sliceAtCodePointBoundary(clean, 0, maxLen)}...`;
 }

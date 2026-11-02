@@ -1,3 +1,4 @@
+import { sliceAtCodePointBoundary } from "@sentry/toolkit-core/text";
 import type { TraceSpan } from "../../../api-client";
 
 interface SemanticSpanDisplay {
@@ -767,5 +768,5 @@ function formatDisplayPart(
     return normalized;
   }
 
-  return `${normalized.slice(0, maxLength - 3)}...`;
+  return `${sliceAtCodePointBoundary(normalized, 0, maxLength - 3)}...`;
 }
