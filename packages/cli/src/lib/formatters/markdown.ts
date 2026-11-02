@@ -18,6 +18,7 @@
  * See {@link isPlainOutput} in `plain-detect.ts` for the full priority chain.
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
 import chalk from "chalk";
 import { marked, type Token, type Tokens } from "marked";
 import stringWidth from "string-width";
@@ -30,50 +31,27 @@ import { type Alignment, renderTextTable } from "./text-table.js";
 export { isPlainOutput } from "./plain-detect.js";
 
 // ──────────────────────────── Escape helpers ──────────────────────────
+//
+// Escape untrusted values with `text`, `tableCell`, and `inlineCode` from
+// `@sentry/toolkit-core/markdown`, which MCP uses too; their property tests
+// parse the output with the same `marked` this renderer uses. Escaped text
+// never becomes a link: a URL in API data renders as plain text, and
+// deliberate links use explicit link syntax.
+
+/** Indentation a line keeps in {@link escapeMarkdownLines}; four spaces would start a code block. */
+const LINE_INDENT = /^ {0,3}/;
 
 /**
- * Escape a string for safe use inside a markdown table cell.
+ * Escapes a multi-line value as literal text, one line at a time.
  *
- * Collapses newlines, escapes backslashes, pipes, and angle brackets.
- * Angle brackets are backslash-escaped (`\<`/`\>`) so that user-supplied
- * content (e.g. `Expected <string>`) is not parsed as an HTML tag by
- * `marked`, which would silently drop the content via `renderHtmlToken`.
+ * Unlike `text` from `@sentry/toolkit-core/markdown`, which puts a value on
+ * one line, this keeps line breaks and up to three spaces of indentation.
  */
-export function escapeMarkdownCell(value: string): string {
+export function escapeMarkdownLines(value: string): string {
   return value
-    .replace(/\n/g, " ")
-    .replace(/\\/g, "\\\\")
-    .replace(/\|/g, "\\|")
-    .replace(/</g, "\\<")
-    .replace(/>/g, "\\>");
-}
-
-/**
- * Escape CommonMark inline emphasis characters.
- *
- * Prevents `_`, `*`, `` ` ``, `[`, `]`, `<`, and `>` from being consumed
- * by the parser. Angle brackets are backslash-escaped (`\<`/`\>`) so that
- * user-supplied content (e.g. `Expected <string> got <number>`) is not
- * silently dropped when `marked` parses the text as HTML tokens.
- */
-export function escapeMarkdownInline(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\*/g, "\\*")
-    .replace(/_/g, "\\_")
-    .replace(/`/g, "\\`")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/</g, "\\<")
-    .replace(/>/g, "\\>");
-}
-
-/**
- * Wrap a string in a backtick code span, sanitising characters that
- * would break the span or surrounding table structure.
- */
-export function safeCodeSpan(value: string): string {
-  return `\`${value.replace(/`/g, "\u02CB").replace(/\|/g, "\u2502").replace(/\n/g, " ")}\``;
+    .split(/\r\n?|\n/)
+    .map((line) => `${LINE_INDENT.exec(line)?.[0] ?? ""}${text(line)}`)
+    .join("\n");
 }
 
 // ──────────────────────── Streaming table helpers ─────────────────────
@@ -104,6 +82,28 @@ export function mdRow(cells: readonly string[]): string {
 }
 
 /**
+ * A backslash escape, a code span, or a pipe, scanned left to right so an
+ * escaped backtick cannot open a code span and backslashes inside a code span
+ * stay literal.
+ */
+const KV_CELL_TOKEN = /\\[\s\S]|(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)|\|/g;
+
+/**
+ * Make a Markdown label or value safe for an {@link mdKvTable} cell.
+ *
+ * Pipes become a box-drawing │ so they cannot end the cell, even inside a
+ * code span. An escaped pipe (`\|`, as from `tableCell`) becomes │
+ * without its backslash. Inside a code span, backslashes are literal and
+ * stay. Newlines are collapsed to spaces. Content escaping is the caller's job.
+ */
+function kvTableCell(value: string): string {
+  return value.replace(/\n/g, " ").replace(KV_CELL_TOKEN, (token) => {
+    if (token === "|" || token === "\\|") return "\u2502";
+    return token.startsWith("`") ? token.replace(/\|/g, "\u2502") : token;
+  });
+}
+
+/**
  * Build a key-value markdown table section with an optional heading.
  *
  * Each entry is rendered as `| **Label** | value |`.
@@ -120,14 +120,7 @@ export function mdKvTable(
   lines.push("| | |");
   lines.push("|---|---|");
   for (const [label, value] of rows) {
-    // Escape backslashes first, then replace pipes with a Unicode box character
-    // so that backslash-pipe sequences in values don't produce escaped pipes in
-    // the rendered output. Newlines are collapsed to spaces.
-    // Only replace structural characters that break table syntax.
-    // Content escaping (<>, \, _*`) is the caller's responsibility.
-    lines.push(
-      `| **${label}** | ${value.replace(/\n/g, " ").replace(/\|/g, "\u2502")} |`,
-    );
+    lines.push(`| **${kvTableCell(label)}** | ${kvTableCell(value)} |`);
   }
   return lines.join("\n");
 }

@@ -5,15 +5,14 @@
  * visible in the default release list again.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   colorTag,
-  escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
@@ -33,15 +32,15 @@ const USAGE_HINT = "sentry release restore [<org>/]<version>";
 function formatReleaseRestored(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would restore release ${safeCodeSpan(String(data.version))} (dry run)`,
+      `Would restore release ${inlineCode(String(data.version))} (dry run)`,
     );
   }
   const release = data as unknown as SentryRelease;
   const lines: string[] = [];
-  lines.push(`## Release Restored: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Release Restored: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Status", colorTag("green", "Open")]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));

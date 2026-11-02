@@ -5,6 +5,7 @@
  * Environment is the first positional arg (required), deploy name is optional second.
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
@@ -15,11 +16,7 @@ import {
   parseUrl,
 } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
-import {
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
@@ -36,7 +33,7 @@ const USAGE_HINT =
 function formatDeployCreated(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would create deploy for ${safeCodeSpan(String(data.environment))} environment (dry run)`,
+      `Would create deploy for ${inlineCode(String(data.environment))} environment (dry run)`,
     );
   }
   const deploy = data as unknown as SentryDeploy;
@@ -45,7 +42,7 @@ function formatDeployCreated(data: Record<string, unknown>): string {
   lines.push("");
   const kvRows: [string, string][] = [];
   kvRows.push(["ID", deploy.id]);
-  kvRows.push(["Environment", safeCodeSpan(deploy.environment)]);
+  kvRows.push(["Environment", inlineCode(deploy.environment)]);
   kvRows.push(["Name", deploy.name || "—"]);
   kvRows.push(["URL", deploy.url || "—"]);
   kvRows.push([

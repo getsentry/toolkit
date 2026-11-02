@@ -113,6 +113,20 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
+- **`src/app-for-args.ts`** — picks the application for a run. When the first
+  argument names a top-level route, it loads only that route through
+  `src/generated/route-loaders.ts`, which `script/generate-route-loaders.ts`
+  writes from the route map and imports in `app.ts` (`generate:routes`, part of
+  `generate:docs`). Anything else, and `help`, `schema`, and `cli`, which read
+  the whole tree with `getRoutes()`, loads `app.ts`. Add commands to `app.ts`
+  only; a new top-level command that reads the whole tree goes in
+  `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
+- **`src/sea-main.ts`** — main script of the standalone binary. `script/build.ts`
+  embeds the CLI (`src/bin.ts`) and the completion engine (`src/complete-bin.ts`)
+  as separate SEA assets, and this bootstrap runs one of them through
+  `src/lib/sea-chunk.ts`, which keeps a V8 code cache for each under
+  `<config dir>/cache/code/`. It must import only `node:` builtins and pure
+  helpers (`test/script/cli-startup.test.ts` lists its modules).
 - **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
   bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
@@ -235,7 +249,10 @@ with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
 `app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
 import would pull every command into any bundle built from one of them.
 `app.ts` registers its map with `setRoutes()`; a test that needs the real tree
-imports `src/app.js`. `test/lib/route-registry.test.ts` fails when a module in
+imports `src/app.js`. A run whose first argument names a top-level route
+registers a map with only that route (see `src/app-for-args.ts`), so code that
+needs routes other than the running one's must run under a `FULL_TREE_ROUTES`
+command. `test/lib/route-registry.test.ts` fails when a module in
 `src/lib/` reaches `app.ts`; the only exception is `sdk-invoke.ts`, the
 library-mode runner that executes the whole application.
 
@@ -491,7 +508,9 @@ the arguments that need it.
 The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
 and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
 for `__complete` first and call `runCompletion` without loading `cli.ts`;
-the npm package ships it as the separate `dist/complete.cjs` bundle. That
+the npm package ships it as the separate `dist/complete.cjs` bundle, and the
+standalone binary as a separate SEA asset (`src/complete-bin.ts`), so a TAB
+press never compiles the CLI bundle. That
 graph must stay free of `@sentry/node`, telemetry, the API client, and the
 command tree: the database modules get spans and cache metrics through
 `withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
@@ -532,7 +551,7 @@ Reference: `project/create.ts`, `release/set-commits.ts` (`--path`), `auth/login
 
 All non-trivial human output must use the markdown rendering pipeline:
 
-- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `escapeMarkdownCell()`, `renderMarkdown()`
+- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `renderMarkdown()`, and `text()`, `tableCell()`, `inlineCode()` from `@sentry/toolkit-core/markdown`
 - **NEVER** use raw `muted()` / chalk in output strings — use `colorTag("muted", text)` inside markdown
 - Tree-structured output (box-drawing characters) that can't go through `renderMarkdown()` should use the `plainSafeMuted` pattern: `isPlainOutput() ? text : muted(text)`
 - `isPlainOutput()` precedence: `SENTRY_PLAIN_OUTPUT` > `NO_COLOR` > `FORCE_COLOR` (TTY only) > `!isTTY`

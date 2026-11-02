@@ -170,6 +170,10 @@ parser the CLI renders with (same version, from the workspace catalog), and
 with micromark, the CommonMark reference parser, and check that any input
 round-trips as the same literal value.
 
+`tableCell` is `text` plus escaped pipes, for a value in a GFM table cell. The
+CLI and MCP both import these helpers, so their output escapes the same way. Escaped text never becomes a literal autolink: a URL in upstream data
+stays plain text.
+
 ## Resource identity
 
 The `resource-identity` types describe the identifiers shared by organization,

@@ -4,6 +4,7 @@
  * List revision history for a Sentry dashboard with cursor-based pagination.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { paginate } from "../../lib/api/infrastructure.js";
 import { listDashboardRevisionsPaginated } from "../../lib/api-client.js";
@@ -15,7 +16,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { filterFields } from "../../lib/formatters/json.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
@@ -66,11 +67,11 @@ function formatRevisionsHuman(result: RevisionsResult): string {
 
   const rows: RevisionRow[] = result.revisions.map((r) => ({
     id: r.id,
-    title: escapeMarkdownCell(r.title),
-    author: escapeMarkdownCell(
+    title: tableCell(r.title),
+    author: tableCell(
       r.createdBy?.name ?? r.createdBy?.email ?? r.createdBy?.id ?? "—",
     ),
-    created: `${escapeMarkdownCell(formatRelativeTime(r.dateCreated))}\n${colorTag("muted", r.dateCreated)}`,
+    created: `${tableCell(formatRelativeTime(r.dateCreated))}\n${colorTag("muted", r.dateCreated)}`,
   }));
 
   const columns: Column<RevisionRow>[] = [

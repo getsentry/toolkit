@@ -5,6 +5,7 @@
  * project scoping, environment filtering, and rich terminal styling.
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
 import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
@@ -20,10 +21,7 @@ import {
   parseEnvironmentList,
   parseRelativePeriod,
 } from "../../lib/completion-target.js";
-import {
-  colorTag,
-  escapeMarkdownInline,
-} from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { sparkline } from "../../lib/formatters/sparkline.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
@@ -136,7 +134,7 @@ function extractSessionPoints(stats?: Record<string, unknown>): number[] {
  * Second line: muted "age | last-deploy-env".
  */
 function formatVersionCell(r: ReleaseWithOrg): string {
-  const version = escapeMarkdownInline(r.shortVersion || r.version);
+  const version = text(r.shortVersion || r.version);
   const org = r.orgSlug || "";
   const linked = org
     ? `[**${version}**](${buildReleaseUrl(org, r.version)})`

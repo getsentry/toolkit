@@ -10,11 +10,11 @@
  * - Bare org slug (e.g., sentry) - lists repos for that org
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import {
   listRepositories,
   listRepositoriesPaginated,
 } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
@@ -35,10 +35,10 @@ type RepositoryWithOrg = SentryRepository & { orgSlug?: string };
 /** Column definitions for the repository table. */
 const REPO_COLUMNS: Column<RepositoryWithOrg>[] = [
   { header: "ORG", value: (r) => r.orgSlug || "" },
-  { header: "NAME", value: (r) => escapeMarkdownCell(r.name) },
+  { header: "NAME", value: (r) => tableCell(r.name) },
   { header: "PROVIDER", value: (r) => r.provider.name },
   { header: "STATUS", value: (r) => r.status },
-  { header: "URL", value: (r) => escapeMarkdownCell(r.url || "") },
+  { header: "URL", value: (r) => tableCell(r.url || "") },
 ];
 
 /** Shared config that plugs into the org-list framework. */

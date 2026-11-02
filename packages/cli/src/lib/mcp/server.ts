@@ -18,7 +18,7 @@ import {
 import { buildServer } from "@sentry/mcp-core/server";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
-import type { ServerContext } from "@sentry/mcp-core/types";
+import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
 import {
   captureException,
   consoleLoggingIntegration,
@@ -43,6 +43,12 @@ export type McpServeOptions = {
    * tokens, which are never refreshed.
    */
   refreshAccessToken?: () => Promise<string>;
+  /**
+   * Route each tool call to the stored account that knows its
+   * organization. When set, it also refreshes credentials after a 401, so
+   * `refreshAccessToken` is omitted.
+   */
+  credentialRouter?: CredentialRouter;
   env: NodeJS.ProcessEnv;
 };
 
@@ -375,6 +381,7 @@ export async function serveMcpStdio(
     // mcp-core uses the returned token for later tool calls, so a
     // long-running server recovers from an expired CLI session.
     onUpstreamUnauthorized: options.refreshAccessToken,
+    credentialRouter: options.credentialRouter,
   };
 
   const server = buildServer({

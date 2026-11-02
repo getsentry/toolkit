@@ -22,7 +22,7 @@ describe("submit_feedback_to_sentry_team", () => {
         description: "No tool returns p95 latency. Contact jane@example.com.",
         toolName: "search_traces",
       },
-      createTestContext(),
+      createTestContext({ clientFamily: "opencode", userId: "123" }),
     );
 
     assertStructuredOnlyResult(result);
@@ -38,6 +38,7 @@ describe("submit_feedback_to_sentry_team", () => {
       Tool: search_traces
 
       No tool returns p95 latency. Contact [REDACTED_EMAIL].",
+        "name": "MCP agent (opencode) for user 123",
         "source": "mcp_agent",
         "tags": {
           "feedback.impact": "blocked",
@@ -46,6 +47,22 @@ describe("submit_feedback_to_sentry_team", () => {
         },
       }
     `);
+  });
+
+  it("names a generic agent without client or user context", async () => {
+    await submitFeedbackToSentryTeam.handler(
+      {
+        task: "find slow endpoints",
+        kind: "idea",
+        impact: "friction",
+        description: "Add p95 latency per endpoint.",
+      },
+      createTestContext(),
+    );
+
+    expect(vi.mocked(captureFeedback).mock.calls.at(-1)?.[0].name).toBe(
+      "MCP agent",
+    );
   });
 
   it("truncates messages to Sentry's feedback length limit", async () => {

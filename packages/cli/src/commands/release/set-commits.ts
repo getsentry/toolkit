@@ -4,6 +4,7 @@
  * Associate commits with a release using auto-discovery or local git history.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   NO_REPO_INTEGRATIONS_MESSAGE,
@@ -24,12 +25,7 @@ import {
   ValidationError,
   validationError,
 } from "../../lib/errors.js";
-import {
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   getCommitLog,
@@ -338,10 +334,10 @@ function parseLocalScope(flags: {
 
 function formatCommitsSet(release: SentryRelease): string {
   const lines: string[] = [];
-  lines.push(`## Commits Set: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Commits Set: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Commits", String(release.commitCount ?? 0)]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));

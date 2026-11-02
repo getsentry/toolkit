@@ -4,6 +4,7 @@
  * Create a new Sentry release.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import { looseObject } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
@@ -15,10 +16,8 @@ import {
 } from "../../lib/completion-target.js";
 import {
   colorTag,
-  escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
@@ -51,10 +50,10 @@ type ReleaseCreateDryRun = Pick<
 
 function formatReleaseCreated(release: SentryRelease): string {
   const lines: string[] = [];
-  lines.push(`## Release Created: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Release Created: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push([
     "Status",
     release.dateReleased
@@ -124,7 +123,7 @@ export const createCommand = buildCommand({
       if ("dryRun" in data && data.dryRun) {
         const projects = data.projects.map((p) => p.slug);
         return renderMarkdown(
-          `Would create release ${safeCodeSpan(data.version)}` +
+          `Would create release ${inlineCode(data.version)}` +
             (projects.length > 0
               ? ` in projects: ${projects.join(", ")}`
               : "") +

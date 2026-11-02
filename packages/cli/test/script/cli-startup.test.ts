@@ -1,10 +1,15 @@
 /** Keep Sentry SDK dependencies out of the CLI's startup paths. */
 
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { expect, test } from "vitest";
 
 const ANY_IMPORT = /.*/;
+
+/** A route module path in `src/generated/route-loaders.ts`. */
+const ROUTE_MODULE_RE = /import\("\.\.\/([^"]+)"\)/g;
+const TS_EXTENSION_RE = /\.js$/;
 
 /**
  * Hostname and origin predicates and the logger are pure and have no startup
@@ -97,11 +102,39 @@ test.each(["bin.ts", "cli.ts", "index.ts", "mcp-server.ts"])(
 );
 
 test("the __complete fast path loads only light modules", async () => {
-  const { metafile } = await bundleStartup("lib/complete.ts", (specifier) =>
+  const { metafile } = await bundleStartup("complete-bin.ts", (specifier) =>
     COMPLETION_PACKAGES.has(specifier),
   );
   const sourceModules = Object.keys(metafile.inputs).filter(
     (input) => !input.includes("node_modules"),
   );
   expect(sourceModules.length).toBeLessThanOrEqual(COMPLETION_MODULE_BUDGET);
+});
+
+test("the standalone binary's main script loads only builtins", async () => {
+  // It runs before every command, ahead of the CLI or completion chunk
+  const { metafile } = await bundleStartup("sea-main.ts", () => false);
+  expect(Object.keys(metafile.inputs).sort()).toEqual([
+    "src/lib/config-dir.ts",
+    "src/lib/sea-chunk.ts",
+    "src/sea-main.ts",
+  ]);
+});
+
+test("picking the application loads none of its commands", async () => {
+  // `app-for-args.ts` loads only the route being run, so no route module of
+  // `app.ts` (each one a `ROUTE_LOADERS` import) may load before it picks one
+  const loaders = await readFile(
+    join(import.meta.dirname, "../../src/generated/route-loaders.ts"),
+    "utf8",
+  );
+  const routeModules = [...loaders.matchAll(ROUTE_MODULE_RE)].map(
+    ([, module]) => `src/${module?.replace(TS_EXTENSION_RE, ".ts")}`,
+  );
+  const { metafile } = await bundleStartup("app-for-args.ts", () => true);
+  const inputs = Object.keys(metafile.inputs);
+
+  expect(routeModules.length).toBeGreaterThan(0);
+  expect(inputs).not.toContain("src/app.ts");
+  expect(inputs.filter((input) => routeModules.includes(input))).toEqual([]);
 });

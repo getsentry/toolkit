@@ -4,6 +4,7 @@
  * Finalize a release by setting its dateReleased to now.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
@@ -11,10 +12,8 @@ import { buildCommand } from "../../lib/command.js";
 import { parseText, parseUrl } from "../../lib/completion-target.js";
 import {
   colorTag,
-  escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
@@ -29,15 +28,15 @@ const USAGE_HINT = "sentry release finalize [<org>/]<version>";
 function formatReleaseFinalized(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would finalize release ${safeCodeSpan(String(data.version))} (dry run)`,
+      `Would finalize release ${inlineCode(String(data.version))} (dry run)`,
     );
   }
   const release = data as unknown as SentryRelease;
   const lines: string[] = [];
-  lines.push(`## Release Finalized: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Release Finalized: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Status", colorTag("green", "Finalized")]);
   kvRows.push(["Released", release.dateReleased || "—"]);
   lines.push(mdKvTable(kvRows));
