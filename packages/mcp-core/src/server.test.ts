@@ -2717,6 +2717,7 @@ describe("buildServer", () => {
         "regionUrl",
         "replayId",
         "replayUrl",
+        "skip",
         "startOffsetSeconds",
       ]);
     });

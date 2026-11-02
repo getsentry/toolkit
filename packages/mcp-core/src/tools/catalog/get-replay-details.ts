@@ -60,6 +60,7 @@ interface TimelineRequest {
   startOffsetSeconds: number | null;
   endOffsetSeconds: number | null;
   limit: number;
+  skip: number;
 }
 
 const MAX_RELATED_ERRORS = 3;
@@ -131,6 +132,15 @@ export default defineTool({
       .describe(
         `Maximum timeline events to return (1-${MAX_TIMELINE_LIMIT}, default ${DEFAULT_TIMELINE_LIMIT}).`,
       ),
+    skip: z
+      .number()
+      .int()
+      .min(0)
+      .nullable()
+      .optional()
+      .describe(
+        "Number of matching timeline events to skip. Use the value a previous response gives to continue past the limit.",
+      ),
   },
   annotations: {
     readOnlyHint: true,
@@ -158,6 +168,7 @@ export default defineTool({
       startOffsetSeconds: params.startOffsetSeconds ?? null,
       endOffsetSeconds: params.endOffsetSeconds ?? null,
       limit: params.limit ?? DEFAULT_TIMELINE_LIMIT,
+      skip: params.skip ?? 0,
     };
     const replay = await apiService.getReplayDetails({
       organizationSlug: resolved.organizationSlug,
@@ -554,7 +565,8 @@ function formatTimeline({
       (windowStartMs === null || event.timestampMs >= windowStartMs) &&
       (windowEndMs === null || event.timestampMs <= windowEndMs),
   );
-  const shown = matching.slice(0, timelineRequest.limit);
+  const shownEnd = timelineRequest.skip + timelineRequest.limit;
+  const shown = matching.slice(timelineRequest.skip, shownEnd);
   const offset = (timestampMs: number) => timestampMs - replayStartMs;
 
   lines.push(`**Recorded**: ${formatActivityCounts(events)}`);
@@ -568,7 +580,11 @@ function formatTimeline({
       `from ${formatOffset(offset(windowStartMs ?? replayStartMs))} to ${formatOffset(offset(windowEndMs ?? replayEndMs))}`,
     );
   }
-  showing.push(`${shown.length} of ${matching.length} events`);
+  showing.push(
+    shown.length > 0 && timelineRequest.skip > 0
+      ? `events ${timelineRequest.skip + 1}-${timelineRequest.skip + shown.length} of ${matching.length}`
+      : `${shown.length} of ${matching.length} events`,
+  );
   lines.push(`**Showing**: ${showing.join(" · ")}`);
   lines.push("");
 
@@ -584,11 +600,10 @@ function formatTimeline({
   }
 
   const notes: string[] = [];
-  const nextEvent = matching[shown.length];
-  if (nextEvent && canContinue) {
-    const nextOffsetSeconds = Math.floor(offset(nextEvent.timestampMs)) / 1000;
+  const remaining = matching.length - shownEnd;
+  if (remaining > 0 && canContinue) {
     notes.push(
-      `${matching.length - shown.length} more events match. Call \`get_replay_details\` again with the same arguments and \`startOffsetSeconds: ${nextOffsetSeconds}\` to continue.`,
+      `${remaining} more events match. Call \`get_replay_details\` again with the same arguments and \`skip: ${shownEnd}\` to continue.`,
     );
   }
   if (recording.truncated) {

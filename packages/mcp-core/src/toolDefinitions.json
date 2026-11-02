@@ -5545,6 +5545,19 @@
               "type": "null"
             }
           ]
+        },
+        "skip": {
+          "description": "Number of matching timeline events to skip. Use the value a previous response gives to continue past the limit.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },

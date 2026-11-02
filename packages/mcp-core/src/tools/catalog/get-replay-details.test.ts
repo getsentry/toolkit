@@ -392,8 +392,32 @@ describe("get_replay_details", () => {
 
     expect(result).toContain("**Showing**: notable events · 2 of 8 events");
     expect(result).toContain(
-      "6 more events match. Call `get_replay_details` again with the same arguments and `startOffsetSeconds: 12` to continue.",
+      "6 more events match. Call `get_replay_details` again with the same arguments and `skip: 2` to continue.",
     );
+  });
+
+  it("continues from the skip value without repeating events", async () => {
+    const firstPage = await getReplayDetails.handler(
+      { ...directParams, limit: 2 },
+      getServerContext(),
+    );
+    const secondPage = await getReplayDetails.handler(
+      { ...directParams, limit: 2, skip: 2 },
+      getServerContext(),
+    );
+    const timelineLines = (result: string) =>
+      result.split("\n").filter((line) => /^- \d/.test(line));
+
+    expect(secondPage).toContain(
+      "**Showing**: notable events · events 3-4 of 8",
+    );
+    expect(secondPage).toContain(
+      "4 more events match. Call `get_replay_details` again with the same arguments and `skip: 4` to continue.",
+    );
+    expect(timelineLines(secondPage)).toHaveLength(2);
+    for (const line of timelineLines(secondPage)) {
+      expect(timelineLines(firstPage)).not.toContain(line);
+    }
   });
 
   it("rejects windows that end before they start", async () => {
@@ -470,6 +494,7 @@ describe("get_replay_details", () => {
         "startOffsetSeconds",
         "endOffsetSeconds",
         "limit",
+        "skip",
       ]);
     });
   });
