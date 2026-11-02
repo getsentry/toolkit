@@ -77,6 +77,10 @@ catalog:
   hono: ^4.13.11
   lint-staged: ^15.5.2
   lucide-react: ^0.503.0
+  mdast-util-from-markdown: ^2.0.2
+  mdast-util-gfm: ^3.1.0
+  mdast-util-to-markdown: ^2.1.2
+  micromark-extension-gfm: ^3.0.0
   # Keep Dynamic Worker tests on the same Miniflare/workerd runtime as Wrangler.
   miniflare: 5.20261019.1-beta
   msw: ^2.10.2

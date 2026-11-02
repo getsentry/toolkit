@@ -74,6 +74,10 @@
     "./api-client/*": {
       "types": "./src/api-client/*.ts",
       "default": "./src/api-client/*.ts"
+    },
+    "./markdown": {
+      "types": "./src/markdown.ts",
+      "default": "./src/markdown.ts"
     }
   },
   "scripts": {
@@ -85,11 +89,15 @@
     "@sentry/api": "catalog:",
     "@sentry/search-syntax": "catalog:",
     "@standard-schema/spec": "1.1.0",
-    "http-cache-semantics": "^4.2.0"
+    "http-cache-semantics": "^4.2.0",
+    "mdast-util-gfm": "catalog:",
+    "mdast-util-to-markdown": "catalog:"
   },
   "devDependencies": {
     "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
+    "mdast-util-from-markdown": "catalog:",
+    "micromark-extension-gfm": "catalog:",
     "typescript": "catalog:",
     "valibot": "^1.4.2",
     "vitest": "catalog:",

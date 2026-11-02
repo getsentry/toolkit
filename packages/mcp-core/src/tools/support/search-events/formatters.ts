@@ -1,3 +1,4 @@
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryApiService } from "../../../api-client";
 import type {
   EventsTimeSeriesResponse,
@@ -36,17 +37,6 @@ export interface ExecutedSearch {
   timeRange?: SearchTimeRange;
 }
 
-function formatInlineCode(value: string): string {
-  const backtickRuns = value.match(/`+/g) ?? [];
-  const fenceLength =
-    backtickRuns.reduce((max, run) => Math.max(max, run.length), 0) + 1;
-  const fence = "`".repeat(fenceLength);
-  const needsPadding = value.startsWith("`") || value.endsWith("`");
-  return needsPadding
-    ? `${fence} ${value} ${fence}`
-    : `${fence}${value}${fence}`;
-}
-
 function formatExecutedTimeRange(timeRange?: SearchTimeRange): string {
   if (!timeRange) {
     return "Last 14d";
@@ -69,20 +59,20 @@ export function formatExecutedSearch(executedSearch?: ExecutedSearch): string {
     executedSearch.fields === undefined
       ? undefined
       : executedSearch.fields.length > 0
-        ? executedSearch.fields.map(formatInlineCode).join(", ")
+        ? executedSearch.fields.map(inlineCode).join(", ")
         : "(none)";
 
   const lines = [
     "## Executed Search",
-    `- Dataset: ${formatInlineCode(executedSearch.dataset)}`,
-    `- Query: ${formatInlineCode(executedSearch.query || "(empty)")}`,
+    `- Dataset: ${inlineCode(executedSearch.dataset)}`,
+    `- Query: ${inlineCode(executedSearch.query || "(empty)")}`,
   ];
 
   if (fields !== undefined) {
     lines.push(`- Fields: ${fields}`);
   }
   if (executedSearch.sort) {
-    lines.push(`- Sort: ${formatInlineCode(executedSearch.sort)}`);
+    lines.push(`- Sort: ${inlineCode(executedSearch.sort)}`);
   }
   lines.push(
     `- Time range: ${formatExecutedTimeRange(executedSearch.timeRange)}`,
