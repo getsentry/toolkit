@@ -12,6 +12,7 @@ import {
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  choiceListParser,
   choiceParser,
   parseEnvironment,
   parseOwner,
@@ -26,6 +27,7 @@ import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
   ISSUE_MATCH_MODES,
+  ISSUE_TRIGGER_NAMES,
   matchToLogicType,
   parseIssueConditions,
   parseJsonObjectList,
@@ -246,7 +248,7 @@ export const editCommand = buildCommand({
       },
       condition: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceListParser(ISSUE_TRIGGER_NAMES),
         variadic: true,
         optional: true,
         brief:

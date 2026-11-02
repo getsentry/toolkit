@@ -12,6 +12,7 @@ import {
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  choiceListParser,
   choiceParser,
   parseEnvironment,
   parseOwner,
@@ -178,7 +179,7 @@ export const createCommand = buildCommand({
       },
       condition: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceListParser(ISSUE_TRIGGER_NAMES),
         variadic: true,
         optional: true,
         brief:
