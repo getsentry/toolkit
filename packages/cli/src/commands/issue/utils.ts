@@ -52,6 +52,7 @@ import {
   resolveFromDsn,
   resolveOrg,
   resolveOrgAndProject,
+  resolveProjectIdsInOrg,
 } from "../../lib/resolve-target.js";
 import {
   applySentryUrlContext,
@@ -584,15 +585,38 @@ async function resolveSelector(
     orgSlug = resolved.org;
   }
 
-  const sort = SELECTOR_SORT_MAP[selector];
-  const label = SELECTOR_LABELS[selector];
+  const issue = await findSelectorIssue(selector, orgSlug);
+  return { org: orgSlug, issue };
+}
+
+/**
+ * The top unresolved issue a magic `@` selector picks in an organization,
+ * or in one of its projects.
+ *
+ * @param selector - The magic selector (e.g., `@latest`, `@most_frequent`)
+ * @param org - Organization slug
+ * @param project - Project slug to look in, selected by its numeric ID
+ *   (a `project:<slug>` filter misses projects that are not actively
+ *   selected, #1317); omit for the whole organization
+ * @throws {ResolutionError} When no unresolved issue matches, or the
+ *   project does not exist
+ */
+export async function findSelectorIssue(
+  selector: IssueSelector,
+  org: string,
+  project?: string,
+): Promise<SentryIssue> {
+  const projects = project
+    ? await resolveProjectIdsInOrg(org, [project])
+    : undefined;
 
   // Fetch just the top issue with the appropriate sort.
   // Collapse all non-essential fields since we only need the issue identity.
-  const { data: issues } = await listIssuesPaginated(orgSlug, "", {
-    sort,
+  const { data: issues } = await listIssuesPaginated(org, "", {
+    sort: SELECTOR_SORT_MAP[selector],
     perPage: 1,
     query: "is:unresolved",
+    projects,
     collapse: ISSUE_DETAIL_COLLAPSE,
   });
 
@@ -601,12 +625,13 @@ async function resolveSelector(
     throw new ResolutionError(
       `Selector '${selector}'`,
       "no unresolved issues found",
-      `sentry issue list ${orgSlug}/ -q "is:resolved"`,
-      [`The ${label} issue selector only matches unresolved issues.`],
+      `sentry issue list ${org}/${project ?? ""} -q "is:resolved"`,
+      [
+        `The ${SELECTOR_LABELS[selector]} issue selector only matches unresolved issues.`,
+      ],
     );
   }
-
-  return { org: orgSlug, issue };
+  return issue;
 }
 
 /**

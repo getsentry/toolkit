@@ -29,12 +29,6 @@ export type ExploreQueryOptions = {
   /** Sentry search query filter */
   query?: string;
   /**
-   * Numeric project IDs, sent as the `project` param. Unlike a
-   * `project:<slug>` filter, this selects projects that are not actively
-   * selected in the organization (#1317).
-   */
-  project?: number[];
-  /**
    * Sort field. Prefix with `-` for descending.
    * Every Events dataset accepts it as long as the sort column is in
    * `fields`; resolve both with `resolveEventsSort` from
@@ -143,7 +137,6 @@ async function fetchEventsPage(
         dataset: options.dataset ?? "errors",
         field: options.fields,
         query: options.query || undefined,
-        project: options.project?.map(String),
         sort: options.sort || undefined,
         per_page: perPage,
         statsPeriod:

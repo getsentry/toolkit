@@ -183,10 +183,10 @@ describe("parseEventViewInput", () => {
 
     test("does not detect org/lowercase-slug as issue short ID", () => {
       // "my-org/my-project" is a normal org/project target, not an issue
-      // short ID: it names the project's latest event (CLI-CG)
+      // short ID: without an event ID, it takes the default @latest (CLI-CG)
       const result = parseEventViewInput(["my-org/my-project"]);
       expect(result.issueShortId).toBeUndefined();
-      expect(result.projectLatest).toBe(true);
+      expect(result.selector).toBe("@latest");
       expect(result.targetArg).toBe("my-org/my-project");
     });
   });
@@ -283,19 +283,62 @@ describe("parseEventViewInput", () => {
     });
   });
 
-  describe("error cases", () => {
-    test("throws ContextError for empty args", () => {
-      expect(() => parseEventViewInput([])).toThrow(ContextError);
+  describe("magic selectors", () => {
+    test("no arguments default to @latest in the auto-detected org", () => {
+      expect(parseEventViewInput([])).toEqual({
+        eventId: "@latest",
+        targetArg: undefined,
+        selector: "@latest",
+        target: { type: "auto-detect" },
+        baseUrl: undefined,
+        warnings: [],
+      });
     });
 
-    test("throws ContextError with usage hint", () => {
-      try {
-        parseEventViewInput([]);
-        expect.unreachable("Should have thrown");
-      } catch (error) {
-        expect(error).toBeInstanceOf(ContextError);
-        expect((error as ContextError).message).toContain("Event ID");
-      }
+    test.each([
+      ["@latest", "@latest"],
+      ["@most_frequent", "@most_frequent"],
+      ["@Most-Frequent", "@most_frequent"],
+    ])("bare %s selects %s", (arg, selector) => {
+      const result = parseEventViewInput([arg]);
+      expect(result.selector).toBe(selector);
+      expect(result.eventId).toBe("@latest");
+      expect(result.target).toEqual({ type: "auto-detect" });
+    });
+
+    test("<org>/@selector selects in the org", () => {
+      const result = parseEventViewInput(["my-org/@most_frequent"]);
+      expect(result.selector).toBe("@most_frequent");
+      expect(result.target).toEqual({ type: "org-all", org: "my-org" });
+    });
+
+    test.each([
+      [["my-org/my-project/@latest"]],
+      [["my-org/my-project", "@latest"]],
+      [["@latest", "my-org/my-project"]],
+    ])("%j selects in the project", (args) => {
+      const result = parseEventViewInput(args);
+      expect(result.selector).toBe("@latest");
+      expect(result.target).toEqual({
+        type: "explicit",
+        org: "my-org",
+        project: "my-project",
+      });
+    });
+
+    test("org only (org/, no event ID) defaults to @latest in the org", () => {
+      const result = parseEventViewInput(["sentry/"]);
+      expect(result.selector).toBe("@latest");
+      expect(result.target).toEqual({ type: "org-all", org: "sentry" });
+    });
+
+    test.each([
+      [["@latest", "abc123def456abc123def456abc123de"]],
+      [["@latest", "CLI-G"]],
+      [["my-org/@latest", "my-project"]],
+      [["my-org/my-project", "@latest", "@latest"]],
+    ])("%j rejects a selector with IDs", (args) => {
+      expect(() => parseEventViewInput(args)).toThrow(ValidationError);
     });
   });
 
@@ -368,10 +411,10 @@ describe("parseEventViewInput", () => {
       expect(result.eventId).toBe("deadbeef");
     });
 
-    test("one slash (org/project, no event ID) asks for the project's latest event (CLI-CG)", () => {
+    test("one slash (org/project, no event ID) defaults to @latest in the project (CLI-CG)", () => {
       const result = parseEventViewInput(["sentry/cli"]);
       expect(result.eventId).toBe("@latest");
-      expect(result.projectLatest).toBe(true);
+      expect(result.selector).toBe("@latest");
       expect(result.targetArg).toBe("sentry/cli");
       expect(result.target).toMatchObject({
         type: "explicit",
@@ -380,17 +423,13 @@ describe("parseEventViewInput", () => {
       });
     });
 
-    test("org only (org/, no event ID) still throws ContextError", () => {
-      expect(() => parseEventViewInput(["sentry/"])).toThrow(ContextError);
-    });
-
     test("trailing slash (org/project/) throws ContextError", () => {
       expect(() => parseEventViewInput(["sentry/cli/"])).toThrow(ContextError);
     });
 
-    test("org-only ContextError mentions Event ID", () => {
+    test("trailing-slash ContextError mentions Event ID", () => {
       try {
-        parseEventViewInput(["sentry/"]);
+        parseEventViewInput(["sentry/cli/"]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -1333,38 +1372,43 @@ describe("viewCommand.func", () => {
     getLatestEventSpy.mockRestore();
   });
 
-  test("org/project without an event ID shows the project's latest event (CLI-CG)", async () => {
-    const resolveOrgSpy = vi
-      .spyOn(resolveTarget, "resolveOrg")
-      .mockResolvedValue({ org: "my-org" });
-    const getProjectByIdSpy = vi
-      .spyOn(apiClient, "getProject")
-      .mockResolvedValue({ id: "4510776311808000", slug: "frontend" } as never);
-    const findLatestSpy = vi
-      .spyOn(apiClient, "findLatestProjectEventId")
-      .mockResolvedValue(VALID_EVENT_ID);
-    getEventSpy.mockResolvedValue(sampleEvent);
-    getSpanTreeLinesSpy.mockResolvedValue({
-      lines: [],
-      spans: null,
-      traceId: null,
-      success: false,
-    });
+  test("org/project without an event ID shows the latest event of the project's @latest issue (CLI-CG)", async () => {
+    const projectIdsSpy = vi
+      .spyOn(resolveTarget, "resolveProjectIdsInOrg")
+      .mockResolvedValue([42]);
+    const listIssuesSpy = vi
+      .spyOn(apiClient, "listIssuesPaginated")
+      .mockResolvedValue({
+        data: [{ id: "17370", shortId: "TEST-PROJ-1" }],
+      } as never);
+    const getLatestEventSpy = vi
+      .spyOn(apiClient, "getLatestEvent")
+      .mockResolvedValue(sampleEvent);
 
     const { context, stdoutWrite } = createMockContext();
     const func = await viewCommand.loader();
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
-      "my-org/frontend",
+      "test-org/test-proj",
     );
 
     // Selected by numeric ID, not `project:<slug>` (#1317)
-    expect(getProjectByIdSpy).toHaveBeenCalledWith("my-org", "frontend");
-    expect(findLatestSpy).toHaveBeenCalledWith("my-org", 4510776311808000);
-    expect(getEventSpy).toHaveBeenCalledWith(
-      "my-org",
-      "frontend",
+    expect(projectIdsSpy).toHaveBeenCalledWith("test-org", ["test-proj"]);
+    expect(listIssuesSpy).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({
+        sort: "date",
+        perPage: 1,
+        query: "is:unresolved",
+        projects: [42],
+      }),
+    );
+    expect(getLatestEventSpy).toHaveBeenCalledWith("test-org", "17370");
+    expect(listEventAttachmentsSpy).toHaveBeenCalledWith(
+      "test-org",
+      "test-proj",
       VALID_EVENT_ID,
     );
     const output = JSON.parse(
@@ -1372,37 +1416,66 @@ describe("viewCommand.func", () => {
     );
     expect(output.eventID).toBe(VALID_EVENT_ID);
 
-    resolveOrgSpy.mockRestore();
-    getProjectByIdSpy.mockRestore();
-    findLatestSpy.mockRestore();
+    projectIdsSpy.mockRestore();
+    listIssuesSpy.mockRestore();
+    getLatestEventSpy.mockRestore();
   });
 
-  test("org/project without an event ID fails when the project has no events", async () => {
+  test("@most_frequent without a target looks across the auto-detected org", async () => {
     const resolveOrgSpy = vi
       .spyOn(resolveTarget, "resolveOrg")
-      .mockResolvedValue({ org: "my-org" });
-    const getProjectByIdSpy = vi
-      .spyOn(apiClient, "getProject")
-      .mockResolvedValue({ id: "42", slug: "frontend" } as never);
-    const findLatestSpy = vi
-      .spyOn(apiClient, "findLatestProjectEventId")
-      .mockResolvedValue(undefined);
+      .mockResolvedValue({ org: "test-org" });
+    const listIssuesSpy = vi
+      .spyOn(apiClient, "listIssuesPaginated")
+      .mockResolvedValue({
+        data: [
+          {
+            id: "17370",
+            shortId: "TEST-PROJ-1",
+            project: { slug: "test-proj" },
+          },
+        ],
+      } as never);
+    const getLatestEventSpy = vi
+      .spyOn(apiClient, "getLatestEvent")
+      .mockResolvedValue(sampleEvent);
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 0 },
+      "@most_frequent",
+    );
+
+    expect(listIssuesSpy).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({ sort: "freq", projects: undefined }),
+    );
+    expect(getLatestEventSpy).toHaveBeenCalledWith("test-org", "17370");
+    expect(getEventSpy).not.toHaveBeenCalled();
+
+    resolveOrgSpy.mockRestore();
+    listIssuesSpy.mockRestore();
+    getLatestEventSpy.mockRestore();
+  });
+
+  test("a selector fails when no unresolved issue matches", async () => {
+    const listIssuesSpy = vi
+      .spyOn(apiClient, "listIssuesPaginated")
+      .mockResolvedValue({ data: [] } as never);
+    const getLatestEventSpy = vi.spyOn(apiClient, "getLatestEvent");
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
     await expect(
-      func.call(
-        context,
-        { json: true, web: false, spans: 0 },
-        "my-org/frontend",
-      ),
+      func.call(context, { json: true, web: false, spans: 0 }, "test-org/"),
     ).rejects.toThrow(ResolutionError);
-    expect(findLatestSpy).toHaveBeenCalledWith("my-org", 42);
-    expect(getEventSpy).not.toHaveBeenCalled();
+    expect(getLatestEventSpy).not.toHaveBeenCalled();
 
-    resolveOrgSpy.mockRestore();
-    getProjectByIdSpy.mockRestore();
-    findLatestSpy.mockRestore();
+    listIssuesSpy.mockRestore();
+    getLatestEventSpy.mockRestore();
   });
 
   test("org/project + short-ID second arg passes explicit org through to resolveOrg", async () => {
