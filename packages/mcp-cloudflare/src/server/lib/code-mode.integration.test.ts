@@ -10,7 +10,7 @@ import {
 } from "@sentry/toolkit-core/mcp-limits";
 import * as Sentry from "@sentry/cloudflare";
 import * as logging from "@sentry/mcp-core/telem/logging";
-import { getSpec, SPEC_VERSION } from "../../code-mode/openapi";
+import { SPEC_TEXT, SPEC_VERSION } from "../../code-mode/openapi";
 import type { Env, WorkerProps } from "../types";
 import mcpHandler from "./mcp-handler";
 
@@ -800,7 +800,7 @@ describe("Code Mode sandbox", () => {
   };
 
   it("runs the published search examples against the shipped schema", async () => {
-    const spec = getSpec() as {
+    const spec = JSON.parse(SPEC_TEXT) as {
       tags?: unknown;
       paths: Record<
         string,
@@ -1179,7 +1179,7 @@ describe("Code Mode telemetry", () => {
     const code = "async () => Object.keys(spec.paths).length";
     const result = await search(code);
     expect(result.structuredContent?.result).toBe(
-      Object.keys(getSpec().paths as object).length,
+      Object.keys(JSON.parse(SPEC_TEXT).paths).length,
     );
     expect(attributes).toEqual({
       "gen_ai.tool.call.arguments.code": code,

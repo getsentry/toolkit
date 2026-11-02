@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 
-// Writes the Sentry OpenAPI schema that Code Mode ships with the deploy.
-// Nothing fetches or syncs the schema at runtime. The pin is the `@sentry/api`
-// version in the pnpm catalog, the same API release the CLI's `sentry api` and
+// Writes what Code Mode ships with the deploy: the Sentry OpenAPI schema for
+// search, and the method and path of each operation for authorization. Nothing
+// fetches or syncs either at runtime. The pin is the `@sentry/api` version in
+// the pnpm catalog, the same API release the CLI's `sentry api` and
 // `sentry schema` are built from: bump the catalog, install, then run
 //
 //   pnpm --filter @sentry/mcp-cloudflare generate:openapi
 //
-// and review the regenerated artifact in the pull request.
+// and review the regenerated artifacts in the pull request.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { operations } from "@sentry/api/operations";
 
 const OUT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -48,22 +50,19 @@ if (!spec || typeof spec !== "object" || typeof spec.paths !== "object") {
 writeFileSync(join(OUT, "openapi.json.txt"), asciiJson(JSON.stringify(spec)));
 writeFileSync(join(OUT, "source.json"), `${JSON.stringify(source, null, 2)}\n`);
 
-const operations = Object.values(spec.paths).flatMap((item) =>
-  Object.keys(item).filter((key) =>
-    [
-      "get",
-      "put",
-      "post",
-      "delete",
-      "options",
-      "head",
-      "patch",
-      "trace",
-    ].includes(key),
-  ),
+// Like the CLI's generated catalog: only the fields authorization needs, so
+// the Worker does not evaluate the SDK's full catalog in every isolate.
+const routes = operations
+  .map(({ method, path }) => ({ method, path }))
+  .sort(
+    (a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
+  );
+writeFileSync(
+  join(OUT, "operations.json"),
+  `${JSON.stringify(routes, null, 2)}\n`,
 );
 console.log(
-  `${Object.keys(spec.paths).length} paths, ${operations.length} operations from ${source.package}@${source.version}`,
+  `${Object.keys(spec.paths).length} paths, ${routes.length} operations from ${source.package}@${source.version}`,
 );
 
 /**

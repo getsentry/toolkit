@@ -1,7 +1,7 @@
 import { apiServiceForOrganization } from "@sentry/mcp-core/internal/tool-helpers/resolve-region-url";
 import type { ServerContext } from "@sentry/mcp-core/types";
 import { authorizeApiRequest } from "./access";
-import { getSpec } from "./openapi";
+import { OPERATIONS } from "./openapi";
 
 export type AuthorizationResult =
   | { url: string; headers: Record<string, string>; pathTemplate: string }
@@ -28,7 +28,7 @@ export class ApiAuthorization {
       ({ organizationSlug, pathTemplate } = authorizeApiRequest(
         target,
         method,
-        getSpec(),
+        OPERATIONS,
         { organizationSlug: this.#context.constraints.organizationSlug },
       ));
     } catch (error) {
