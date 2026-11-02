@@ -45,7 +45,8 @@ async function request({ method = "GET", path, query, body }) {
     const text = await response.text();
     let data = text;
     if (text && (response.headers.get("content-type") || "").toLowerCase().includes("json")) {
-      try { data = JSON.parse(text); } catch { throw new Error("API response was not valid JSON."); }
+      // A failed request keeps its HTTP details even when the body is not JSON.
+      try { data = JSON.parse(text); } catch { if (response.ok) throw new Error("API response was not valid JSON."); }
     } else if (!text) data = null;
     if (!response.ok) {
       const error = new Error("Sentry API error: " + method.toUpperCase() + " " + url.pathname +
