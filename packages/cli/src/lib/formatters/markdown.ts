@@ -97,7 +97,7 @@ export function mdRow(cells: readonly string[]): string {
 const KV_CELL_TOKEN = /\\[\s\S]|(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)|\|/g;
 
 /**
- * Make a Markdown value safe for an {@link mdKvTable} cell.
+ * Make a Markdown label or value safe for an {@link mdKvTable} cell.
  *
  * Pipes become a box-drawing │ so they cannot end the cell, even inside a
  * code span. An escaped pipe (`\|`, as from escapeMarkdownCell) becomes │
@@ -128,7 +128,7 @@ export function mdKvTable(
   lines.push("| | |");
   lines.push("|---|---|");
   for (const [label, value] of rows) {
-    lines.push(`| **${label}** | ${kvTableCell(value)} |`);
+    lines.push(`| **${kvTableCell(label)}** | ${kvTableCell(value)} |`);
   }
   return lines.join("\n");
 }

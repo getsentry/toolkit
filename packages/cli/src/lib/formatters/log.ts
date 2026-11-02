@@ -478,7 +478,10 @@ export function formatLogDetails(
     // Fallback: no trace-items detail available, show only explicitly requested fields
     const customRows: [string, string][] = extraFields
       .filter((f) => log[f] !== null && log[f] !== undefined)
-      .map((f) => [f, String(log[f])]);
+      .map((f) => [
+        escapeMarkdownInline(f),
+        escapeMarkdownInline(String(log[f])),
+      ]);
     if (customRows.length > 0) {
       lines.push("");
       lines.push(mdKvTable(customRows, "Custom Attributes"));

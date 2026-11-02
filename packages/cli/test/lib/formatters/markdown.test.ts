@@ -507,6 +507,12 @@ describe("mdKvTable", () => {
     );
   });
 
+  test("keeps a pipe in a label inside its cell", () => {
+    expect(mdKvTable([[escapeMarkdownInline("a|b"), "v"]])).toContain(
+      "| **a\u2502b** | v |",
+    );
+  });
+
   test("shows a pipe from escapeMarkdownCell without its backslash", () => {
     expect(mdKvTable([["Org", escapeMarkdownCell("a|b")]])).toContain(
       "| **Org** | a\u2502b |",
