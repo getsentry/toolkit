@@ -48,35 +48,39 @@ function toResult(organization: {
 /**
  * With several logins, `nextCursor` carries each account's own cursor,
  * keyed by credential id, so the next page continues every account that
- * has more.
+ * has more. It also carries the slugs already returned, so an organization
+ * several logins reach is listed once across pages.
  */
 const ACCOUNTS_CURSOR_PREFIX = "accounts:";
 const INVALID_CURSOR_MESSAGE =
   "Invalid cursor. Pass the nextCursor returned by the previous find_organizations call.";
 
-function encodeAccountsCursor(cursors: Record<string, string>): string {
-  return `${ACCOUNTS_CURSOR_PREFIX}${btoa(JSON.stringify(cursors))}`;
+const AccountsCursorSchema = z.object({
+  cursors: z.record(z.string(), z.string()),
+  seen: z.array(z.string()),
+});
+
+type AccountsCursor = z.infer<typeof AccountsCursorSchema>;
+
+function encodeAccountsCursor(cursor: AccountsCursor): string {
+  return `${ACCOUNTS_CURSOR_PREFIX}${btoa(JSON.stringify(cursor))}`;
 }
 
-function decodeAccountsCursor(cursor: string): Record<string, string> {
+function decodeAccountsCursor(cursor: string): AccountsCursor {
   if (!cursor.startsWith(ACCOUNTS_CURSOR_PREFIX)) {
     throw new UserInputError(INVALID_CURSOR_MESSAGE);
   }
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(
-      atob(cursor.slice(ACCOUNTS_CURSOR_PREFIX.length)),
-    );
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return Object.fromEntries(
-        Object.entries(parsed).filter(
-          (entry): entry is [string, string] => typeof entry[1] === "string",
-        ),
-      );
-    }
+    parsed = JSON.parse(atob(cursor.slice(ACCOUNTS_CURSOR_PREFIX.length)));
   } catch {
-    // Reported below.
+    throw new UserInputError(INVALID_CURSOR_MESSAGE);
   }
-  throw new UserInputError(INVALID_CURSOR_MESSAGE);
+  const result = AccountsCursorSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new UserInputError(INVALID_CURSOR_MESSAGE);
+  }
+  return result.data;
 }
 
 /**
@@ -89,9 +93,11 @@ async function listAcrossAccounts(
   query: string | null,
   cursor: string | null,
 ) {
-  const cursors = cursor ? decodeAccountsCursor(cursor) : undefined;
-  const pending = cursors
-    ? accounts.filter(({ credential }) => Object.hasOwn(cursors, credential.id))
+  const previous = cursor ? decodeAccountsCursor(cursor) : undefined;
+  const pending = previous
+    ? accounts.filter(({ credential }) =>
+        Object.hasOwn(previous.cursors, credential.id),
+      )
     : accounts;
   const pages = await mapCredentialContexts(
     pending,
@@ -99,11 +105,11 @@ async function listAcrossAccounts(
       await apiServiceFromContext(context).listOrganizations({
         query: query ?? undefined,
         limit: RESULT_LIMIT,
-        cursor: cursors?.[credential.id],
+        cursor: previous?.cursors[credential.id],
       }),
   );
   const organizations: OrganizationResult[] = [];
-  const seen = new Set<string>();
+  const seen = new Set(previous?.seen);
   const nextCursors: Record<string, string> = {};
   for (const { entry, value } of pages) {
     for (const organization of value.organizations) {
@@ -121,7 +127,9 @@ async function listAcrossAccounts(
   return {
     organizations,
     hasMore,
-    nextCursor: hasMore ? encodeAccountsCursor(nextCursors) : null,
+    nextCursor: hasMore
+      ? encodeAccountsCursor({ cursors: nextCursors, seen: [...seen] })
+      : null,
   };
 }
 

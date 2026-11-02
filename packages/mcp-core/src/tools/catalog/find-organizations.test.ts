@@ -276,7 +276,7 @@ describe("find_organizations", () => {
       const requests = mockAccountOrganizations(
         {
           "a-token": { first: ["org-a"] },
-          "b-token": { first: fullPage, "b-2": ["org-b-2"] },
+          "b-token": { first: fullPage, "b-2": ["org-b-next"] },
         },
         { "b-token": { first: "b-2" } },
       );
@@ -300,10 +300,40 @@ describe("find_organizations", () => {
           context,
         ),
       );
-      expect(second.organizations.map(({ slug }) => slug)).toEqual(["org-b-2"]);
+      expect(second.organizations.map(({ slug }) => slug)).toEqual([
+        "org-b-next",
+      ]);
       expect(second.hasMore).toBe(false);
       expect(second.nextCursor).toBeNull();
       expect(requests.slice(2)).toEqual([{ token: "b-token", cursor: "b-2" }]);
+    });
+
+    it("lists an organization once across pages", async () => {
+      const fullPage = Array.from({ length: 25 }, (_, i) => `org-b-${i}`);
+      mockAccountOrganizations(
+        {
+          "a-token": { first: ["shared"] },
+          "b-token": { first: fullPage, "b-2": ["shared", "org-b-last"] },
+        },
+        { "b-token": { first: "b-2" } },
+      );
+      const context = routedContext(["a", "b"]);
+
+      const first = getStructuredContent<{ nextCursor: string | null }>(
+        await findOrganizations.handler({ query: null, cursor: null }, context),
+      );
+      const second = getStructuredContent<{
+        organizations: Array<{ slug: string }>;
+      }>(
+        await findOrganizations.handler(
+          { query: null, cursor: first.nextCursor },
+          context,
+        ),
+      );
+
+      expect(second.organizations.map(({ slug }) => slug)).toEqual([
+        "org-b-last",
+      ]);
     });
 
     it("continues a multi-login cursor when only one login remains", async () => {
@@ -311,7 +341,7 @@ describe("find_organizations", () => {
       const requests = mockAccountOrganizations(
         {
           "a-token": { first: ["org-a"] },
-          "b-token": { first: fullPage, "b-2": ["org-b-2"] },
+          "b-token": { first: fullPage, "b-2": ["org-b-next"] },
         },
         { "b-token": { first: "b-2" } },
       );
@@ -332,13 +362,15 @@ describe("find_organizations", () => {
         ),
       );
 
-      expect(second.organizations.map(({ slug }) => slug)).toEqual(["org-b-2"]);
+      expect(second.organizations.map(({ slug }) => slug)).toEqual([
+        "org-b-next",
+      ]);
       expect(second.nextCursor).toBeNull();
       expect(requests.slice(2)).toEqual([{ token: "b-token", cursor: "b-2" }]);
     });
 
     it("rejects a multi-login cursor without a credential router", async () => {
-      const cursor = `accounts:${btoa(JSON.stringify({ a: "a-2" }))}`;
+      const cursor = `accounts:${btoa(JSON.stringify({ cursors: { a: "a-2" }, seen: [] }))}`;
       await expect(
         findOrganizations.handler(
           { query: null, cursor },
