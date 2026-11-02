@@ -83,8 +83,10 @@ Before each `sentry.request()`, the broker's `ApiAuthorization` checks:
 
 1. The URL keeps the configured origin and `/api/0` prefix, with no encoded
    separators or traversal segments.
-2. The path and method are a published operation (`access.ts`). HEAD may use a
-   published GET. Unknown or ambiguous paths fail.
+2. The path and method are a published operation (`access.ts`, with the
+   template matcher shared with the CLI). HEAD may use a published GET, and a
+   missing trailing slash is added to the path sent. Unknown or ambiguous paths
+   fail.
 3. Without API Write, only GET, HEAD and OPTIONS reach Sentry.
 4. On `/mcp/{org}`, the organization path parameter must be that organization.
    Other organizations, numeric aliases and global object-ID routes fail;
