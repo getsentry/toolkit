@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteMetricAlertRule } from "../../../lib/api-client.js";
+import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
 import {
@@ -17,6 +18,7 @@ import {
 import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
+import { MetricAlertDeleteOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
 
@@ -61,10 +63,17 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatDeleted,
-    jsonTransform: (r: DeleteResult) =>
-      r.dryRun
-        ? { dryRun: true, org: r.org, id: r.ruleId, name: r.name }
-        : { deleted: true, org: r.org, id: r.ruleId, name: r.name },
+    schema: MetricAlertDeleteOutputSchema,
+    jsonTransform: (r: DeleteResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        {
+          ...(r.dryRun ? { dryRun: true } : { deleted: true }),
+          org: r.org,
+          id: r.ruleId,
+          name: r.name,
+        },
+        fields,
+      ),
   },
   parameters: {
     positional: {

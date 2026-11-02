@@ -299,6 +299,16 @@ Delete a widget from a dashboard
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the widget was deleted |
+| `widgetTitle` | string | Title of the deleted widget |
+| `widgetCount` | number | Dashboard widget count after the delete (before it, with --dry-run) |
+| `url` | string | Dashboard URL |
+
 **Examples:**
 
 ```bash

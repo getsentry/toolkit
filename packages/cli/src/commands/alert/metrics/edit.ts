@@ -45,6 +45,7 @@ import {
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 import { metricAlertStatusLabel } from "./status.js";
+import { MetricAlertEditOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled";
@@ -215,7 +216,7 @@ export const editCommand = buildCommand({
   },
   output: {
     human: formatEdited,
-    jsonTransform: (r: EditResult) => r,
+    schema: MetricAlertEditOutputSchema,
   },
   parameters: {
     positional: {

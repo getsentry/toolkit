@@ -10,12 +10,22 @@
  * shows which widget would be removed without modifying the dashboard.
  */
 
+import {
+  boolean,
+  description,
+  looseObject,
+  number,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { numberParser } from "../../../lib/command.js";
 import { parseText } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
+import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDeleteCommand } from "../../../lib/mutate-command.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
@@ -23,6 +33,7 @@ import {
   type DashboardDetail,
   prepareDashboardForUpdate,
 } from "../../../types/dashboard.js";
+import { DryRunOutputField } from "../../../types/index.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
 
@@ -35,6 +46,22 @@ type DeleteFlags = {
   readonly json: boolean;
   readonly fields?: string[];
 };
+
+/** `--fields` / skill-reference schema for the JSON output. */
+const WidgetDeleteOutputSchema = looseObject({
+  dryRun: DryRunOutputField,
+  deleted: optional(
+    pipe(boolean(), description("True when the widget was deleted")),
+  ),
+  widgetTitle: pipe(string(), description("Title of the deleted widget")),
+  widgetCount: pipe(
+    number(),
+    description(
+      "Dashboard widget count after the delete (before it, with --dry-run)",
+    ),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+});
 
 type DeleteResult = {
   dashboard: DashboardDetail;
@@ -69,22 +96,17 @@ export const deleteCommand = buildDeleteCommand(
     },
     output: {
       human: formatWidgetDeleted,
-      jsonTransform: (result: DeleteResult) => {
-        if (result.dryRun) {
-          return {
-            dryRun: true,
+      schema: WidgetDeleteOutputSchema,
+      jsonTransform: (result: DeleteResult, fields?: string[]) =>
+        filterFieldsIfSet(
+          {
+            ...(result.dryRun ? { dryRun: true } : { deleted: true }),
             widgetTitle: result.widgetTitle,
             widgetCount: result.dashboard.widgets?.length ?? 0,
             url: result.url,
-          };
-        }
-        return {
-          deleted: true,
-          widgetTitle: result.widgetTitle,
-          widgetCount: result.dashboard.widgets?.length ?? 0,
-          url: result.url,
-        };
-      },
+          },
+          fields,
+        ),
     },
     parameters: {
       positional: dashboardArguments({
