@@ -8,7 +8,8 @@
     ]
   },
   "include": [
-    "src/server"
+    "src/server",
+    "src/code-mode"
   ],
   "exclude": [
     "src/**/*.test.ts",

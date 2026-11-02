@@ -8,60 +8,14 @@ import {
   MAX_MCP_REQUEST_BODY_SIZE,
   MAX_MCP_TOOL_INPUT_ELEMENTS,
 } from "@sentry/mcp-core/constants";
+import * as Sentry from "@sentry/cloudflare";
 import * as logging from "@sentry/mcp-core/telem/logging";
-import { SENTRY_OPENAPI_URL } from "../../code-mode/openapi";
+import { getSpec, SPEC_VERSION } from "../../code-mode/openapi";
 import type { Env, WorkerProps } from "../types";
 import mcpHandler from "./mcp-handler";
 
 const monitorPath =
   "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/monitors/{monitor_id_or_slug}/";
-const projectListPath =
-  "/api/0/organizations/{organization_id_or_slug}/projects/";
-// A small subset of the pinned schema's real paths and auth_token alternatives.
-const spec = {
-  openapi: "3.0.0",
-  paths: {
-    "/api/0/organizations/": {
-      get: {
-        security: [{ auth_token: ["org:admin", "org:read", "org:write"] }],
-      },
-    },
-    [projectListPath]: {
-      get: {
-        security: [{ auth_token: ["org:admin", "org:read", "org:write"] }],
-      },
-    },
-    "/api/0/organizations/{organization_id_or_slug}/dashboards/": {
-      get: {
-        security: [{ auth_token: ["org:admin", "org:read", "org:write"] }],
-      },
-      post: {
-        security: [{ auth_token: ["org:admin", "org:read", "org:write"] }],
-      },
-    },
-    "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/":
-      {
-        get: {
-          security: [{ auth_token: ["org:admin", "org:read", "org:write"] }],
-        },
-      },
-    [monitorPath]: {
-      get: {
-        security: [
-          { auth_token: ["project:admin", "project:read", "project:write"] },
-        ],
-      },
-      put: {
-        security: [
-          { auth_token: ["alerts:write", "project:admin", "project:write"] },
-        ],
-      },
-    },
-    "/api/0/sentry-apps/{sentry_app_id_or_slug}/": {
-      get: { security: [{ auth_token: ["org:read", "project:read"] }] },
-    },
-  },
-};
 
 interface ApiRequest {
   url: string;
@@ -75,13 +29,24 @@ interface ToolResult {
   isError?: boolean;
   content: Array<{ type: string; text?: string }>;
   structuredContent?: {
-    result: unknown;
+    result?: unknown;
+    error?: string;
+    httpError?: {
+      status: number;
+      method: string;
+      path: string;
+      headers: Record<string, string>;
+    };
     stats: { apiCalls: number; writesAttempted: number };
   };
 }
 
 interface ToolList {
-  tools: Array<{ name: string; annotations?: { readOnlyHint?: boolean } }>;
+  tools: Array<{
+    name: string;
+    description?: string;
+    annotations?: { readOnlyHint?: boolean };
+  }>;
 }
 
 const originalFetch = globalThis.fetch;
@@ -90,11 +55,12 @@ let apiResponse: (request: ApiRequest) => Response | Promise<Response>;
 let beforeRegionResponse: (() => Promise<void>) | undefined;
 const revokeGrant = vi.fn(async () => {});
 
-function workerEnv(): Env {
+function workerEnv(overrides: Partial<Env> = {}): Env {
   return {
     ...(env as Record<string, unknown>),
     MCP_CACHE: env.OAUTH_KV,
     OAUTH_PROVIDER: { revokeGrant },
+    ...overrides,
   } as Env;
 }
 
@@ -106,6 +72,7 @@ async function dispatchRpc(
     path?: string;
     keepAlive?: Promise<void>;
     protocolVersion?: "2026-07-28" | "2025-03-26";
+    env?: Partial<Env>;
   } = {},
 ) {
   const protocolVersion = options.protocolVersion ?? "2026-07-28";
@@ -156,7 +123,11 @@ async function dispatchRpc(
       },
     }),
   });
-  const response = await mcpHandler.fetch!(request, workerEnv(), ctx);
+  const response = await mcpHandler.fetch!(
+    request,
+    workerEnv(options.env),
+    ctx,
+  );
   return { response, ctx };
 }
 
@@ -197,6 +168,31 @@ async function execute(
   );
 }
 
+async function search(
+  code: string,
+  options?: Parameters<typeof rpc>[2],
+): Promise<ToolResult> {
+  return await rpc(
+    "tools/call",
+    { name: "search_sentry_api", arguments: { code } },
+    options,
+  );
+}
+
+/** One of the search examples published in the tool description. */
+async function publishedExample(
+  name: "Discovery" | "Categories" | "Schema",
+): Promise<string> {
+  const { tools } = await rpc<ToolList>("tools/list", {});
+  const example = tools
+    .find((tool) => tool.name === "search_sentry_api")
+    ?.description?.split(`${name} example: `)[1]
+    ?.split(/\n(?:Discovery|Categories|Schema) example: /)[0]
+    ?.trim();
+  if (!example) throw new Error(`${name} example missing from tools/list`);
+  return example;
+}
+
 beforeEach(() => {
   apiRequests = [];
   revokeGrant.mockClear();
@@ -206,7 +202,6 @@ beforeEach(() => {
   // simulated; MCP handlers, Dynamic Workers and the RPC broker are real.
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url === SENTRY_OPENAPI_URL) return Response.json(spec);
     const url = new URL(request.url);
     if (!["sentry.io", "de.sentry.io"].includes(url.hostname)) {
       return await originalFetch(input, init);
@@ -345,6 +340,7 @@ describe("Code Mode on the authenticated MCP", () => {
   it.each(["headers", "body"])(
     "aborts an awaited API request stalled before its %s at the execution deadline",
     async (phase) => {
+      const logIssue = vi.spyOn(logging, "logIssue");
       vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
       const started = deferred();
       const finish = deferred();
@@ -391,6 +387,8 @@ describe("Code Mode on the authenticated MCP", () => {
         expect(result.content[0].text).toContain("Execution deadline exceeded");
         expect(pending?.signal.aborted).toBe(true);
         expect(apiRequests).toHaveLength(1);
+        // A deadline is the program's outcome, not a server failure.
+        expect(logIssue).not.toHaveBeenCalled();
       } finally {
         finish.resolve();
         vi.useRealTimers();
@@ -399,25 +397,37 @@ describe("Code Mode on the authenticated MCP", () => {
     },
   );
 
-  it("rejects excessive nested argument members before executing code", async () => {
-    const result = await rpc<ToolResult>("tools/call", {
-      name: "execute_sentry_code",
-      arguments: {
-        code: 'async () => sentry.request({path: "/organizations/"})',
-        unused: Object.fromEntries(
-          Array.from(
-            { length: MAX_MCP_TOOL_INPUT_ELEMENTS + 1 },
-            (_, index) => [`key${index}`, null],
-          ),
-        ),
-      },
-    });
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain(
-      `maximum of ${MAX_MCP_TOOL_INPUT_ELEMENTS} elements`,
-    );
-    expect(apiRequests).toEqual([]);
-  });
+  it.each([
+    {
+      shape: "object keys",
+      unused: Object.fromEntries(
+        Array.from({ length: MAX_MCP_TOOL_INPUT_ELEMENTS + 1 }, (_, index) => [
+          `key${index}`,
+          null,
+        ]),
+      ),
+    },
+    {
+      shape: "array elements",
+      unused: { values: Array(MAX_MCP_TOOL_INPUT_ELEMENTS + 1).fill(null) },
+    },
+  ])(
+    "rejects excessive nested $shape before executing code",
+    async ({ unused }) => {
+      const result = await rpc<ToolResult>("tools/call", {
+        name: "execute_sentry_code",
+        arguments: {
+          code: 'async () => sentry.request({path: "/organizations/"})',
+          unused,
+        },
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain(
+        `maximum of ${MAX_MCP_TOOL_INPUT_ELEMENTS} elements`,
+      );
+      expect(apiRequests).toEqual([]);
+    },
+  );
 
   it.each(["2026-07-28", "2025-03-26"] as const)(
     "rejects HTTP bodies above the limit with protocol %s",
@@ -758,7 +768,11 @@ describe("Code Mode on the authenticated MCP", () => {
           expect.objectContaining({ name: "ApiServerError", status: 503 }),
           {
             loggerScope: ["code-mode", "api"],
-            extra: { method: "GET", status: 503 },
+            extra: {
+              method: "GET",
+              status: 503,
+              operation: "/api/0/organizations/",
+            },
           },
         );
       } else {
@@ -766,4 +780,444 @@ describe("Code Mode on the authenticated MCP", () => {
       }
     },
   );
+});
+
+describe("Code Mode sandbox", () => {
+  const dashboards = "/organizations/code-mode-org/dashboards/";
+  const dashboardsPath = `/api/0${dashboards}`;
+  const writer = { props: { grantedSkills: ["api-write"] } };
+  const sent = (method: string) =>
+    apiRequests.filter((request) => request.method === method);
+  const failPosts = (status = 400) => {
+    apiResponse = ({ method }) =>
+      method === "POST"
+        ? Response.json({ title: ["This field is required."] }, { status })
+        : Response.json([]);
+  };
+
+  it("runs the published search examples against the shipped schema", async () => {
+    const spec = getSpec() as {
+      tags?: unknown;
+      paths: Record<
+        string,
+        Record<
+          string,
+          { description?: string; parameters?: unknown; requestBody?: unknown }
+        >
+      >;
+    };
+    const discovery = await search(
+      (await publishedExample("Discovery")).replace(
+        'const term = "release";',
+        'const term = "alert";',
+      ),
+    );
+    expect(discovery.isError).toBeUndefined();
+    expect(discovery.structuredContent?.result).toContainEqual(
+      expect.objectContaining({
+        method: "put",
+        path: "/api/0/organizations/{organization_id_or_slug}/workflows/{workflow_id}/",
+        summary: "Update an Alert by ID",
+      }),
+    );
+    const categories = await search(await publishedExample("Categories"));
+    expect(categories.structuredContent?.result).toEqual(spec.tags);
+    const schema = await search(await publishedExample("Schema"));
+    const releases =
+      spec.paths["/api/0/organizations/{organization_id_or_slug}/releases/"];
+    expect(schema.structuredContent?.result).toEqual({
+      description: releases.post.description,
+      pathParameters: releases.parameters,
+      operationParameters: releases.post.parameters,
+      requestBody: releases.post.requestBody,
+    });
+    expect(apiRequests).toEqual([]);
+  });
+
+  it("keeps search away from the network", async () => {
+    const result = await search(
+      'async () => (await fetch("https://sentry.io/api/0/organizations/")).text()',
+    );
+    expect(result.isError).toBe(true);
+    expect(apiRequests).toEqual([]);
+  });
+
+  it("repeats array query parameters and drops private response headers", async () => {
+    const link =
+      '<https://sentry.io/api/0/organizations/code-mode-org/projects/?cursor=next>; rel="next"; results="true"';
+    apiResponse = ({ method }) =>
+      Response.json(
+        { id: "1", name: "Web" },
+        {
+          status: method === "POST" ? 201 : 200,
+          headers: { Link: link, "Set-Cookie": "private-session=secret" },
+        },
+      );
+    const result = await execute(
+      `async () => {
+        const source = await sentry.request({path: "/organizations/code-mode-org/projects/", query: {project: [1, 2], cursor: undefined}});
+        const created = await sentry.request({method: "POST", path: "/api/0${dashboards}", body: {title: source.body.name}});
+        return {status: created.status, link: source.headers.link, cookie: source.headers["set-cookie"] ?? null};
+      }`,
+      writer,
+    );
+    expect(result.structuredContent).toEqual({
+      result: { status: 201, link, cookie: null },
+      stats: { apiCalls: 2, writesAttempted: 1 },
+    });
+    expect(
+      apiRequests
+        .filter(({ url }) => url.startsWith("https://de.sentry.io/"))
+        .map(({ method, url }) => ({ method, url })),
+    ).toEqual([
+      {
+        method: "GET",
+        url: "https://de.sentry.io/api/0/organizations/code-mode-org/projects/?project=1&project=2",
+      },
+      { method: "POST", url: `https://de.sentry.io${dashboardsPath}` },
+    ]);
+  });
+
+  it("blocks raw network access, API path escapes and redirects", async () => {
+    apiResponse = () =>
+      new Response(null, {
+        status: 302,
+        headers: { Location: "https://example.com/outside-api" },
+      });
+    const result = await execute(`async () => {
+      const outcomes = [];
+      for (const url of ["https://unconfigured.invalid/api/0/organizations/", "https://sentry.io/api/0/organizations/"]) {
+        try { await fetch(url, {headers: {Authorization: "Bearer forged"}}); outcomes.push("unexpected access"); }
+        catch { outcomes.push("blocked"); }
+      }
+      for (const path of ["/../../outside-api", "/organizations/"]) {
+        try { await sentry.request({path}); }
+        catch (error) { outcomes.push(error.status); }
+      }
+      return outcomes;
+    }`);
+    expect(result.structuredContent?.result).toEqual([
+      "blocked",
+      "blocked",
+      403,
+      502,
+    ]);
+    expect(apiRequests.map(({ url }) => url)).toEqual([
+      "https://sentry.io/api/0/organizations/",
+    ]);
+  });
+
+  it("returns API failures as tool errors without retrying writes", async () => {
+    failPosts();
+    const result = await execute(
+      `async () => sentry.request({method: "POST", path: "${dashboards}", body: {}})`,
+      writer,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(
+      `POST ${dashboardsPath} returned HTTP 400`,
+    );
+    expect(result.content[0]?.text).toContain(
+      "writes may already have completed",
+    );
+    expect(sent("POST")).toHaveLength(1);
+  });
+
+  it.each(["insufficient-scope", "forbidden"])(
+    "returns an uncaught %s denial with HTTP evidence and no retries",
+    async (kind) => {
+      const challenge =
+        'Bearer error="insufficient_scope", scope="org:admin org:write"';
+      apiResponse = () =>
+        Response.json(
+          { detail: "You do not have permission to perform this action." },
+          {
+            status: 403,
+            headers: {
+              "Set-Cookie": "private-session=secret",
+              ...(kind === "insufficient-scope"
+                ? { "WWW-Authenticate": challenge }
+                : {}),
+            },
+          },
+        );
+      const result = await execute(
+        `async () => sentry.request({method: "POST", path: "${dashboards}", body: {}})`,
+        writer,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toEqual({
+        error: expect.stringContaining(
+          `POST ${dashboardsPath} returned HTTP 403`,
+        ),
+        httpError: {
+          status: 403,
+          method: "POST",
+          path: dashboardsPath,
+          headers: {
+            "content-type": "application/json",
+            ...(kind === "insufficient-scope"
+              ? { "www-authenticate": challenge }
+              : {}),
+          },
+        },
+        stats: { apiCalls: 1, writesAttempted: 1 },
+      });
+      expect(result.content[0]?.text).toContain(
+        "You do not have permission to perform this action.",
+      );
+      expect(result.content[0]?.text).toContain(
+        "writes may already have completed",
+      );
+      expect(sent("POST")).toHaveLength(1);
+    },
+  );
+
+  it("exposes HTTP details on caught errors", async () => {
+    failPosts(403);
+    const result = await execute(
+      `async () => {
+        try { await sentry.request({method: "POST", path: "${dashboards}", body: {}}); }
+        catch (error) { return {status: error.status, method: error.method, path: error.path, data: error.data}; }
+      }`,
+      writer,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent?.result).toEqual({
+      status: 403,
+      method: "POST",
+      path: dashboardsPath,
+      data: { title: ["This field is required."] },
+    });
+  });
+
+  it.each(["", ".then(() => {})"])(
+    "reports settled API failures from ignored promises%s",
+    async (chain) => {
+      const answered = deferred();
+      apiResponse = async ({ method }) => {
+        if (method === "POST") {
+          answered.resolve();
+          return Response.json({ title: ["Required."] }, { status: 400 });
+        }
+        await answered.promise;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return Response.json([]);
+      };
+      const result = await execute(
+        `async () => {
+          sentry.request({method: "POST", path: "${dashboards}", body: {}})${chain};
+          await sentry.request({path: "/organizations/"});
+          return "done";
+        }`,
+        writer,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        error: expect.stringContaining(
+          `POST ${dashboardsPath} returned HTTP 400`,
+        ),
+        httpError: { status: 400, method: "POST", path: dashboardsPath },
+        stats: { apiCalls: 2, writesAttempted: 1 },
+      });
+      expect(result.structuredContent).not.toHaveProperty("result");
+      expect(sent("POST")).toHaveLength(1);
+    },
+  );
+
+  it("reports an ignored request rejection when the program returns immediately", async () => {
+    const result = await execute(`async () => {
+      sentry.request({path: "invalid-path"});
+      return "done";
+    }`);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain("path must start with /");
+    expect(apiRequests).toEqual([]);
+  });
+
+  it("allows handling an API failure after another request finishes", async () => {
+    failPosts();
+    const result = await execute(
+      `async () => {
+        const pending = sentry.request({method: "POST", path: "${dashboards}", body: {}});
+        await sentry.request({path: "/organizations/"});
+        try { await pending; } catch (error) { return {status: error.status}; }
+      }`,
+      writer,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent?.result).toEqual({ status: 400 });
+  });
+
+  it("allows collecting API failures with Promise.allSettled", async () => {
+    failPosts();
+    const result = await execute(
+      `async () => {
+        const results = await Promise.allSettled([
+          sentry.request({method: "POST", path: "${dashboards}", body: {}}),
+          sentry.request({path: "/organizations/"}),
+        ]);
+        return results.map(result => result.status);
+      }`,
+      writer,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent?.result).toEqual(["rejected", "fulfilled"]);
+  });
+
+  it("bounds API requests per execution", async () => {
+    const result = await execute(
+      "async () => { for (let i = 0; i < 21; i++) await sentry.request({path: '/organizations/'}); }",
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain("API call budget exhausted");
+    expect(apiRequests).toHaveLength(20);
+  });
+
+  it("keeps the API broker outside the model module", async () => {
+    const result = await execute(
+      "async () => ({moduleBroker: typeof apiBroker, parameterBroker: typeof broker})",
+    );
+    expect(result.structuredContent?.result).toEqual({
+      moduleBroker: "undefined",
+      parameterBroker: "undefined",
+    });
+  });
+
+  it("preserves a user error with partial HTTP-like properties", async () => {
+    const result = await execute(
+      'async () => { throw {status: 403, message: "Example denied"}; }',
+    );
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      error: expect.stringContaining("Example denied"),
+      stats: { apiCalls: 0, writesAttempted: 0 },
+    });
+    expect(result.structuredContent).not.toHaveProperty("httpError");
+  });
+
+  it("returns useful errors for invalid code and oversized results", async () => {
+    const invalid = await execute("async () => {");
+    expect(invalid.isError).toBe(true);
+    const oversized = await execute("async () => 'x'.repeat(50_001)");
+    expect(oversized.isError).toBe(true);
+    expect(oversized.content[0]?.text).toContain("Result exceeds 50,000 bytes");
+    expect(apiRequests).toEqual([]);
+  });
+});
+
+describe("Code Mode telemetry", () => {
+  /**
+   * Captures what Code Mode records on the active tools/call span. The MCP
+   * handler's own request attributes use setAttribute and are ignored here.
+   */
+  function captureSpan(): Record<string, unknown> {
+    const attributes: Record<string, unknown> = {};
+    const span = {
+      setAttribute: () => {},
+      setAttributes: (values: Record<string, unknown>) =>
+        Object.assign(attributes, values),
+    };
+    vi.spyOn(Sentry, "getActiveSpan").mockReturnValue(
+      span as unknown as ReturnType<typeof Sentry.getActiveSpan>,
+    );
+    return attributes;
+  }
+
+  it("records the executed code and each operation by path template", async () => {
+    const attributes = captureSpan();
+    const count = vi.spyOn(Sentry.metrics, "count");
+    const code = `async () => {
+      await sentry.request({path: "/organizations/code-mode-org/projects/"});
+      await sentry.request({method: "PUT", path: "/projects/code-mode-org/web/monitors/billing/", body: {name: "Billing"}});
+      await sentry.request({path: "/organizations/code-mode-org/not-published/"}).catch(() => {});
+      return "done";
+    }`;
+    const result = await execute(code, {
+      props: { grantedSkills: ["api-write"] },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(attributes).toMatchObject({
+      "gen_ai.tool.call.arguments.code": code,
+      "app.code_mode.outcome": "ok",
+      "app.code_mode.spec_version": SPEC_VERSION,
+      "app.code_mode.api_calls": 3,
+      "app.code_mode.writes": 1,
+    });
+    expect(JSON.parse(String(attributes["app.code_mode.operations"]))).toEqual([
+      "GET /api/0/organizations/{organization_id_or_slug}/projects/ 200",
+      `PUT ${monitorPath} 200`,
+      "GET unknown 403 denied",
+    ]);
+    expect(count).toHaveBeenCalledWith("app.code_mode.execution", 1, {
+      attributes: { tool: "execute_sentry_code", outcome: "ok" },
+    });
+    expect(count).toHaveBeenCalledWith("app.code_mode.request", 1, {
+      attributes: {
+        method: "PUT",
+        operation: monitorPath,
+        status: 200,
+        denied: false,
+      },
+    });
+    expect(count).toHaveBeenCalledWith("app.code_mode.request", 1, {
+      attributes: {
+        method: "GET",
+        operation: "unknown",
+        status: 403,
+        denied: true,
+      },
+    });
+  });
+
+  it("records search code without API attributes", async () => {
+    const attributes = captureSpan();
+    const code = "async () => Object.keys(spec.paths).length";
+    const result = await search(code);
+    expect(result.structuredContent?.result).toBe(
+      Object.keys(getSpec().paths as object).length,
+    );
+    expect(attributes).toEqual({
+      "gen_ai.tool.call.arguments.code": code,
+      "app.code_mode.outcome": "ok",
+      "app.code_mode.spec_version": SPEC_VERSION,
+    });
+  });
+
+  it("does not report program errors as issues", async () => {
+    const logIssue = vi.spyOn(logging, "logIssue");
+    const attributes = captureSpan();
+    const result = await execute(
+      'async () => { throw new Error("Program failed"); }',
+    );
+    expect(result.isError).toBe(true);
+    expect(logIssue).not.toHaveBeenCalled();
+    expect(attributes["app.code_mode.outcome"]).toBe("error");
+  });
+
+  it("reports internal failures as issues and returns the event ID", async () => {
+    const logIssue = vi
+      .spyOn(logging, "logIssue")
+      .mockReturnValue("internal-event");
+    const attributes = captureSpan();
+    const loader = {
+      load() {
+        throw new Error("Loader unavailable");
+      },
+    } as unknown as WorkerLoader;
+    const result = await execute('async () => "never runs"', {
+      env: { LOADER: loader },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain("Loader unavailable");
+    expect(result.content[0]?.text).toContain("Event ID: internal-event");
+    expect(logIssue).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ message: "Loader unavailable" }),
+      {
+        loggerScope: ["code-mode", "execution"],
+        extra: { tool: "execute_sentry_code", specVersion: SPEC_VERSION },
+      },
+    );
+    expect(attributes["app.code_mode.outcome"]).toBe("internal_error");
+  });
 });

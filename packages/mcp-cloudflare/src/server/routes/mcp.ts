@@ -6,19 +6,16 @@
  * so routes here only need to set content-specific headers like Cache-Control.
  */
 
-import TOOL_DEFINITIONS from "@sentry/mcp-core/toolDefinitions";
-import { Hono } from "hono";
-import { z } from "zod";
 import {
   CODE_MODE_SKILLS,
   getCodeModeToolDefinitions,
-} from "../../code-mode/definitions";
+} from "@sentry/mcp-core/code-mode";
+import TOOL_DEFINITIONS from "@sentry/mcp-core/toolDefinitions";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const hostedTools = Object.entries(
-  getCodeModeToolDefinitions({
-    allowWrites: true,
-    authorizationRequired: true,
-  }),
+  getCodeModeToolDefinitions({ allowWrites: true }),
 ).map(([name, { inputSchema, outputSchema, ...definition }]) => ({
   name,
   ...definition,

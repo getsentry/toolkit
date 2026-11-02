@@ -108,11 +108,27 @@ to arbitrary operations. The backend references are
 
 ## Discovery and HTTP contracts
 
-The default `OPENAPI_URL` uses Sentry's published `openapi-derefed.json`, pinned at
-`803d6de98c9156c15e9ddc1bf9accbac6e24cebc`. This is the same artifact family the
-CLI consumes. Custom schema URLs must supply trusted, pre-dereferenced JSON;
-the runtime does not resolve or fetch references. The pinned snapshot contains
-159 paths / 254 operations, not every Sentry feature or internal endpoint.
+The schema ships with the deploy, as Cloudflare's Code Mode server does: nothing
+fetches or syncs it at runtime. `src/code-mode/generated/openapi.json.txt` is
+the published `openapi-derefed.json` of the `@sentry/api` release in the pnpm
+catalog, minified and ASCII-escaped; `source.json` records the release. The CLI
+builds `sentry api` and `sentry schema` from the same release through
+`@sentry/api/operations`, which omits the request and response schemas that
+`search_sentry_api` needs, so Code Mode ships the full document. It is a
+Workers Text module: the main Worker parses it once per isolate, on first use,
+for authorization, and each search sandbox receives the same text as its own
+module and parses it there. Release 0.428.0 contains 173 paths / 273
+operations, not every Sentry feature or internal endpoint.
+
+To move to a new release, bump `@sentry/api` in the catalog, install, and
+regenerate in the same pull request:
+
+```bash
+pnpm --filter @sentry/mcp-cloudflare generate:openapi
+```
+
+`src/code-mode/openapi.test.ts` fails when the shipped operations differ from
+the installed `@sentry/api`. Never edit the generated files by hand.
 
 Tool descriptions guide searches across paths, operation IDs, summaries,
 descriptions and tags. Empty or unrelated results should lead to broader metadata
@@ -159,8 +175,36 @@ when available; startup failures do not have sandbox statistics.
 
 Upstream 5xx responses use the existing `logIssue` helper even when generated
 code catches them. The broker exposes the event ID as `x-sentry-event-id` and
-reports only method/status, not request or response payloads. Expected 4xx
-responses do not create issues.
+reports only method, status and the operation's path template, not request or
+response payloads. Expected 4xx responses do not create issues.
+
+Failures outside the program, such as the Worker Loader failing or the sandbox
+dying, also use `logIssue`; the tool error ends with the event ID. Program
+errors and the execution deadline do not create issues.
+
+## Telemetry
+
+Each `tools/call` span records what the execution did, so one bad run can be
+read back from its trace:
+
+- `gen_ai.tool.call.arguments.code` - the generated program, like every other
+  tool's arguments
+- `app.code_mode.outcome` - `ok`, `error` (the program failed or returned an
+  error), `timeout` or `internal_error`
+- `app.code_mode.spec_version` - the `@sentry/api` release whose schema the deploy shipped
+- `app.code_mode.api_calls`, `app.code_mode.writes` - calls seen by the broker
+  and writes it sent to Sentry (execute only)
+- `app.code_mode.operations` - JSON list of `METHOD template status`, with
+  `denied` when this connection's policy refused the call (execute only)
+
+Spans are sampled. Two metrics are not, so they count every execution:
+
+- `app.code_mode.execution` with `tool` and `outcome`
+- `app.code_mode.request` with `method`, `operation` (the path template, or
+  `unknown` when the path is not in the schema), `status` and `denied`
+
+The broker records operations outside the sandbox; generated code cannot change
+them. Concrete URLs, query strings and bodies are never recorded.
 
 `LOADER.load()` creates a fresh Worker for each execution without ID caching,
 following the [Worker Loader API](https://developers.cloudflare.com/dynamic-workers/api-reference/#load).
@@ -172,16 +216,14 @@ the ID alone is insufficient.
 ### Lifecycle investigation
 
 The parent owns one `ExecutionGate` per tool call, closed in `finally` on success,
-error or timeout. Its 30-second deadline covers schema loading, Worker startup,
-execution and reading the result. The sandbox receives the same deadline.
+error or timeout. Its 30-second deadline covers Worker startup, execution and
+reading the result. The sandbox receives the same deadline.
 
 Like Cloudflare's [ExecutionGate](https://github.com/cloudflare/agents/blob/a2d371ec333198855f4ac2aa4dadbe2696e73c75/packages/codemode/src/executor.ts),
 closing releases pending sandbox-to-host RPC. The Sentry gate also aborts
 upstream HTTP and rejects new work before authorization, then checks again after
 authorization before sending an API request. A slow authorization lookup cannot
-start a write after execution has closed. The shared OpenAPI cache retains its
-independent 15-second timeout; closing one execution does not cancel a schema
-load used by another caller.
+start a write after execution has closed.
 
 Programs must await every `sentry.request()`, including parallel calls. Returning
 with calls still pending is an execution error, not success. Throwing preserves
@@ -210,39 +252,28 @@ with Node 26. After `pnpm install --frozen-lockfile`:
 ```bash
 pnpm --filter '@sentry/mcp-core...' --if-present run build
 pnpm --filter @sentry/mcp-cloudflare test
-pnpm --filter @sentry/mcp-cloudflare test:code-mode
-pnpm --filter @sentry/mcp-cloudflare tsc:code-mode
+pnpm --filter @sentry/mcp-cloudflare tsc:ci
 ```
 
-Cloudflare's `test:ci` and `tsc:ci` include the Code Mode checks. The ordinary
-suite exercises the authenticated MCP handler, Dynamic Workers and RPC broker
-with external OpenAPI/Sentry fixtures. It covers grant and scope visibility,
-regional routing, attribution, concurrent token isolation, organization escapes,
-401 revocation, caught 5xx reporting, and modern/legacy input limits. Dashboard
-copying verifies persisted state with API Write and an upstream `org:read` token.
+There is one composition: `registerCodeModeTools()` on the authenticated MCP
+handler, with its `ApiAuthorization` always applied. The tests drive that
+handler with real Dynamic Workers and the RPC broker, the shipped schema, and
+simulated Sentry HTTP. They cover grant and scope visibility, regional routing,
+attribution, concurrent token isolation, organization escapes, 401 revocation,
+caught 5xx reporting, modern/legacy input limits, the published search examples,
+network denial, path escapes, redirects, pending and ignored requests, limits
+and telemetry. Dashboard copying verifies persisted state with API Write and an
+upstream `org:read` token.
 
-The isolated runtime suite uses `wrangler.code-mode.jsonc` to test execution,
-network denial and API path restrictions. Its direct-token entrypoint is for
-local tests, not hosted deployment or OAuth validation. Only the hosted handler
-applies the connection's skills, constraints and regional policy.
+Three regressions reproduce the original closure bugs: return/throw with pending
+HTTP and delayed authorization. The contexts stay alive after the result to
+prove cleanup does not depend on request teardown. Two fake-timer tests check
+that the deadline aborts a request stalled before its headers or during its
+body.
 
-`@cloudflare/vitest-plugin` 1.4.6 aligns the hosted test runtime with Wrangler and
-the standalone Miniflare tests. Updating only direct Miniflare previously left
-the Vitest pool using older workerd. Miniflare 5 uses
-`convertV4MiniflareOptions()` for standalone configuration; hosted outbound
-fixtures use the existing Undici `MockAgent` with `disableNetConnect()`. No
-binary override is required.
-
-Lifecycle validation on 2026-10-27 passed 474 hosted tests, 27 isolated
-runtime/access tests, 1,836 core tests (six skipped), 89 stdio tests, root build
-and typechecks, lint and documentation links. Three hosted regressions reproduce
-the original closure bugs: return/throw with pending HTTP and delayed
-authorization. The contexts stay alive after the result to prove cleanup does
-not depend on request teardown. Two fake-timer tests check timeout behavior
-before headers and during the response body; these do not establish a baseline
-cancellation bug because fake timers do not advance native `AbortSignal.timeout`.
-A real 30-second test observes the upstream socket close while an accepted write
-remains. No unhandled RPC exceptions appear in these runs.
+For a manual run against a real account, start the hosted server with
+`pnpm run dev` and connect with `Authorization: Sentry-Bearer <token>` and
+`?skills=api-read` or `?skills=api-write`; this is the same code path.
 
 These checks use external HTTP fixtures, not a real Sentry account or deployment.
 No new model evals were run; the agent harness remains in its separate PR.
@@ -253,8 +284,10 @@ is established by these checks.
 
 ## References
 
-- Implementation: `packages/mcp-cloudflare/src/code-mode/production.ts`,
-  `broker.ts`, `worker.ts`, `sandbox.ts` and `definitions.ts`.
+- Implementation: `packages/mcp-cloudflare/src/code-mode/tools.ts`
+  (registration and execution), `authorization.ts`, `access.ts`, `broker.ts`,
+  `sandbox.ts` and `openapi.ts`; tool definitions in
+  `packages/mcp-core/src/code-mode.ts`.
 - Integration tests:
   `packages/mcp-cloudflare/src/server/lib/code-mode.integration.test.ts`.
 - [Cloudflare architecture](../cloudflare/architecture.md) and

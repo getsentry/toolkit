@@ -25,7 +25,7 @@ import { logWarn } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
 import { createMcpHandler } from "agents/mcp/server";
 import { limitMcpRequestBody } from "../../code-mode/http";
-import { registerProductionCodeModeTools } from "../../code-mode/production";
+import { registerCodeModeTools } from "../../code-mode/tools";
 import { annotateResponseMetric } from "../metrics";
 import {
   ACCESS_METHOD_ATTRIBUTE,
@@ -471,7 +471,7 @@ async function handleAuthenticatedMcpRequest(
         experimentalMode: isExperimentalMode,
         sdkVersion: "v2",
       });
-      registerProductionCodeModeTools(server, env.LOADER, serverContext);
+      registerCodeModeTools(server, env.LOADER, serverContext);
       return server;
     },
     {

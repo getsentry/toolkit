@@ -2,8 +2,8 @@
 export function sandboxSource(apiBase?: string): string {
   return `
 import { WorkerEntrypoint } from "cloudflare:workers";
-${apiBase ? "" : 'import spec from "spec.json";'}
-${apiBase ? "" : 'Object.defineProperty(globalThis, "spec", { value: spec });'}
+${apiBase ? "" : 'import specText from "./spec.json.txt";'}
+${apiBase ? "" : 'Object.defineProperty(globalThis, "spec", { value: JSON.parse(specText) });'}
 const apiBase = ${JSON.stringify(apiBase ?? null)};
 let deadline = 0;
 let apiCalls = 0;
