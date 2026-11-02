@@ -8,6 +8,7 @@ import pLimit from "p-limit";
 import type { SentryContext } from "../../context.js";
 import {
   findEventAcrossOrgs,
+  findLatestProjectEventId,
   getEvent,
   getIssueByShortId,
   getIssueInOrg,
@@ -252,6 +253,11 @@ type EventViewInput = {
   issueId?: string;
   /** Issue short ID (e.g. `BRUNCHIE-APP-29`) the event belongs to */
   issueShortId?: string;
+  /**
+   * `<org>/<project>` was passed without an event ID: show the project's
+   * latest event ({@link LATEST_EVENT_SENTINEL})
+   */
+  projectLatest?: boolean;
   /** More event IDs, as typed, from more arguments or lines */
   extraEventIds?: string[];
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
@@ -301,12 +307,37 @@ export function parseEventViewInput(args: readonly string[]): EventViewInput {
     input = issue;
     baseUrl = url?.baseUrl;
   } else {
-    const parsed = parseIdArguments(tokens, ID_KINDS.event, {
-      usageHint: USAGE_HINT,
-      multiple: true,
-      needsProject: true,
-      validate: false,
-    });
+    let parsed: ReturnType<typeof parseIdArguments>;
+    try {
+      parsed = parseIdArguments(tokens, ID_KINDS.event, {
+        usageHint: USAGE_HINT,
+        multiple: true,
+        needsProject: true,
+        validate: false,
+      });
+    } catch (error) {
+      // `<org>/<project>` without an event ID: the project's latest event.
+      // Anything else without an ID (no target, an org alone) still fails.
+      const latest =
+        error instanceof ContextError && args.length === 1
+          ? projectLatestInput(tokens)
+          : null;
+      if (!latest) {
+        throw error;
+      }
+      parsed = latest;
+    }
+    if (parsed.ids.length === 0 && parsed.target !== undefined) {
+      const target = parseOrgProjectInput(parsed.target);
+      return {
+        eventId: LATEST_EVENT_SENTINEL,
+        targetArg: parsed.target,
+        projectLatest: true,
+        target: target.parsed,
+        baseUrl: parsed.baseUrl ?? target.baseUrl,
+        warnings: parsed.warnings,
+      };
+    }
     const [eventId = "", ...extraEventIds] = parsed.ids;
     input = issueFromEventId(eventId, parsed.target) ?? {
       eventId,
@@ -333,6 +364,36 @@ export function parseEventViewInput(args: readonly string[]): EventViewInput {
     baseUrl: baseUrl ?? target.baseUrl,
     warnings,
   };
+}
+
+/**
+ * `event view` arguments that name an explicit `<org>/<project>` and no
+ * event ID, parsed with no IDs; `null` for anything else, which keeps the
+ * missing-event-ID error.
+ *
+ * @throws {ValidationError} When the target is invalid
+ */
+function projectLatestInput(
+  tokens: readonly string[],
+): ReturnType<typeof parseIdArguments> | null {
+  // Only the target alone: an empty ID (`<org>/<project>/`, or `""` after
+  // the target) was typed, so it is a missing one
+  const [only, ...rest] = tokens;
+  if (only === undefined || rest.length > 0 || only.trim().endsWith("/")) {
+    return null;
+  }
+  const parsed = parseIdArguments(tokens, ID_KINDS.event, {
+    usageHint: USAGE_HINT,
+    multiple: true,
+    optional: true,
+    needsProject: true,
+    validate: false,
+  });
+  if (parsed.ids.length > 0 || parsed.target === undefined) {
+    return null;
+  }
+  const { parsed: target } = parseOrgProjectInput(parsed.target);
+  return target.type === ProjectSpecificationType.Explicit ? parsed : null;
 }
 
 /**
@@ -879,9 +940,51 @@ type IssueShortcutOptions = {
   eventId: string;
   issueId: string | undefined;
   issueShortId: string | undefined;
+  /** `<org>/<project>` without an event ID: the project's latest event */
+  projectLatest?: boolean;
   cwd: string;
   spans: number;
 };
+
+/**
+ * Fetch the latest error event of an explicit `<org>/<project>`, for
+ * `event view <org>/<project>` without an event ID.
+ *
+ * @throws {ResolutionError} When the project has no recent error events
+ */
+async function resolveProjectLatestEvent(
+  parsed: ParsedOrgProject,
+  cwd: string,
+  spans: number,
+): Promise<IssueShortcutResult> {
+  if (parsed.type !== ProjectSpecificationType.Explicit) {
+    throw new ContextError("Event ID", USAGE_HINT);
+  }
+  const resolved = await resolveOrg({ org: parsed.org, cwd });
+  const org = resolved?.org ?? parsed.org;
+  const { project } = parsed;
+  logger
+    .withTag("event.view")
+    .info(
+      `No event ID given. Fetching the latest event in ${org}/${project}...`,
+    );
+  const eventId = await findLatestProjectEventId(org, project);
+  if (!eventId) {
+    throw new ResolutionError(
+      `Project '${org}/${project}'`,
+      "has no error events in the last 14 days",
+      `sentry event view ${org}/${project} <event-id>`,
+      [`List the project's issues: sentry issue list ${org}/${project}`],
+    );
+  }
+  const event = await getEvent(org, project, eventId);
+  const data = await buildSingleEventViewData(org, event, spans, project);
+  return {
+    org,
+    data,
+    hint: `Showing the latest event in ${org}/${project}. Pass an event ID to view a specific one: ${USAGE_HINT}`,
+  };
+}
 
 /**
  * Best-effort project resolution for numeric issue shortcuts.
@@ -955,6 +1058,10 @@ async function resolveIssueShortcut(
 ): Promise<IssueShortcutResult | null> {
   const { parsed, eventId, issueId, issueShortId, cwd, spans } = options;
   const log = logger.withTag("event.view");
+
+  if (options.projectLatest) {
+    return await resolveProjectLatestEvent(parsed, cwd, spans);
+  }
 
   // Issue URL / numeric issue ID shortcut: fetch the latest event directly
   // via the issue ID, bypassing project resolution (getLatestEvent only needs
@@ -1211,6 +1318,7 @@ export const viewCommand = buildCommand({
       eventId,
       issueId,
       issueShortId,
+      projectLatest,
       extraEventIds,
     } = await args.resolved;
 
@@ -1222,6 +1330,7 @@ export const viewCommand = buildCommand({
       eventId,
       issueId,
       issueShortId,
+      projectLatest,
       cwd,
       spans: flags.spans,
     });

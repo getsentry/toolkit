@@ -182,11 +182,12 @@ describe("parseEventViewInput", () => {
     });
 
     test("does not detect org/lowercase-slug as issue short ID", () => {
-      // "my-org/my-project" is a normal org/project target, not an issue short ID.
-      // parseSlashSeparatedArg will throw ContextError as expected.
-      expect(() => parseEventViewInput(["my-org/my-project"])).toThrow(
-        "Event ID",
-      );
+      // "my-org/my-project" is a normal org/project target, not an issue
+      // short ID: it names the project's latest event (CLI-CG)
+      const result = parseEventViewInput(["my-org/my-project"]);
+      expect(result.issueShortId).toBeUndefined();
+      expect(result.projectLatest).toBe(true);
+      expect(result.targetArg).toBe("my-org/my-project");
     });
   });
 
@@ -367,17 +368,29 @@ describe("parseEventViewInput", () => {
       expect(result.eventId).toBe("deadbeef");
     });
 
-    test("one slash (org/project, missing event ID) throws ContextError", () => {
-      expect(() => parseEventViewInput(["sentry/cli"])).toThrow(ContextError);
+    test("one slash (org/project, no event ID) asks for the project's latest event (CLI-CG)", () => {
+      const result = parseEventViewInput(["sentry/cli"]);
+      expect(result.eventId).toBe("@latest");
+      expect(result.projectLatest).toBe(true);
+      expect(result.targetArg).toBe("sentry/cli");
+      expect(result.target).toMatchObject({
+        type: "explicit",
+        org: "sentry",
+        project: "cli",
+      });
+    });
+
+    test("org only (org/, no event ID) still throws ContextError", () => {
+      expect(() => parseEventViewInput(["sentry/"])).toThrow(ContextError);
     });
 
     test("trailing slash (org/project/) throws ContextError", () => {
       expect(() => parseEventViewInput(["sentry/cli/"])).toThrow(ContextError);
     });
 
-    test("one-slash ContextError mentions Event ID", () => {
+    test("org-only ContextError mentions Event ID", () => {
       try {
-        parseEventViewInput(["sentry/cli"]);
+        parseEventViewInput(["sentry/"]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -1318,6 +1331,67 @@ describe("viewCommand.func", () => {
 
     resolveOrgSpy.mockRestore();
     getLatestEventSpy.mockRestore();
+  });
+
+  test("org/project without an event ID shows the project's latest event (CLI-CG)", async () => {
+    const resolveOrgSpy = vi
+      .spyOn(resolveTarget, "resolveOrg")
+      .mockResolvedValue({ org: "my-org" });
+    const findLatestSpy = vi
+      .spyOn(apiClient, "findLatestProjectEventId")
+      .mockResolvedValue(VALID_EVENT_ID);
+    getEventSpy.mockResolvedValue(sampleEvent);
+    getSpanTreeLinesSpy.mockResolvedValue({
+      lines: [],
+      spans: null,
+      traceId: null,
+      success: false,
+    });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 0 },
+      "my-org/frontend",
+    );
+
+    expect(findLatestSpy).toHaveBeenCalledWith("my-org", "frontend");
+    expect(getEventSpy).toHaveBeenCalledWith(
+      "my-org",
+      "frontend",
+      VALID_EVENT_ID,
+    );
+    const output = JSON.parse(
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
+    );
+    expect(output.eventID).toBe(VALID_EVENT_ID);
+
+    resolveOrgSpy.mockRestore();
+    findLatestSpy.mockRestore();
+  });
+
+  test("org/project without an event ID fails when the project has no events", async () => {
+    const resolveOrgSpy = vi
+      .spyOn(resolveTarget, "resolveOrg")
+      .mockResolvedValue({ org: "my-org" });
+    const findLatestSpy = vi
+      .spyOn(apiClient, "findLatestProjectEventId")
+      .mockResolvedValue(undefined);
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await expect(
+      func.call(
+        context,
+        { json: true, web: false, spans: 0 },
+        "my-org/frontend",
+      ),
+    ).rejects.toThrow(ResolutionError);
+    expect(getEventSpy).not.toHaveBeenCalled();
+
+    resolveOrgSpy.mockRestore();
+    findLatestSpy.mockRestore();
   });
 
   test("org/project + short-ID second arg passes explicit org through to resolveOrg", async () => {

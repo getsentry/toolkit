@@ -56,6 +56,7 @@ export {
 export { isNotFoundApiError } from "./api/error-guards.js";
 export {
   findEventAcrossOrgs,
+  findLatestProjectEventId,
   getEvent,
   getLatestEvent,
   listEventAttachments,
