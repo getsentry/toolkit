@@ -1179,7 +1179,7 @@ describe("event package selection", () => {
 
         ### Selected Package Versions
 
-        - example: 1.2.3
+        - \`example\`: \`1.2.3\`
 
         ## Response Notes
 

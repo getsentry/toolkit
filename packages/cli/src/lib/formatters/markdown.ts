@@ -26,8 +26,7 @@ import { highlightCode } from "./highlight.js";
 import { isPlainOutput, stripAnsi } from "./plain-detect.js";
 import { type Alignment, renderTextTable } from "./text-table.js";
 
-// Preserve existing CLI import paths for shared helpers.
-export { escapeMarkdownInline } from "@sentry/toolkit-core/markdown";
+// Re-export isPlainOutput so existing importers don't break
 export { isPlainOutput } from "./plain-detect.js";
 
 // ──────────────────────────── Escape helpers ──────────────────────────
@@ -45,6 +44,26 @@ export function escapeMarkdownCell(value: string): string {
     .replace(/\n/g, " ")
     .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
+    .replace(/</g, "\\<")
+    .replace(/>/g, "\\>");
+}
+
+/**
+ * Escape CommonMark inline emphasis characters.
+ *
+ * Prevents `_`, `*`, `` ` ``, `[`, `]`, `<`, and `>` from being consumed
+ * by the parser. Angle brackets are backslash-escaped (`\<`/`\>`) so that
+ * user-supplied content (e.g. `Expected <string> got <number>`) is not
+ * silently dropped when `marked` parses the text as HTML tokens.
+ */
+export function escapeMarkdownInline(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\*/g, "\\*")
+    .replace(/_/g, "\\_")
+    .replace(/`/g, "\\`")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
     .replace(/</g, "\\<")
     .replace(/>/g, "\\>");
 }

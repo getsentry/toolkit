@@ -1,4 +1,5 @@
 import { isTopLevelToolName } from "../../tools/surfaces";
+import { formatInlineCode } from "../inline-code";
 import {
   formatToolCall,
   isToolAvailableInSession,
@@ -25,17 +26,6 @@ interface SuggestedToolAction {
   toolName: string;
   arguments: Record<string, SuggestedActionValue>;
   reason: string;
-}
-
-function formatInlineCode(value: string): string {
-  const backtickRuns = value.match(/`+/g) ?? [];
-  const fenceLength =
-    backtickRuns.reduce((max, run) => Math.max(max, run.length), 0) + 1;
-  const fence = "`".repeat(fenceLength);
-  const needsPadding = value.startsWith("`") || value.endsWith("`");
-  return needsPadding
-    ? `${fence} ${value} ${fence}`
-    : `${fence}${value}${fence}`;
 }
 
 /** Builds transcript actions that match the session's direct or catalog surface. */

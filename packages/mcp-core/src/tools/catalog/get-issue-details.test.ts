@@ -2996,9 +2996,9 @@ describe("selected event package versions", () => {
 
       ### Selected Package Versions
 
-      - example: 1.2.3
-      - @example/client: 2.0.0
-      - missing: Not listed in this event's package metadata
+      - \`example\`: \`1.2.3\`
+      - \`@example/client\`: \`2.0.0\`
+      - \`missing\`: Not listed in this event's package metadata
 
       ## Response Notes
 
@@ -3013,7 +3013,7 @@ describe("selected event package versions", () => {
     mockPackages({ example: "1.2.3", unrelated: "9.9.9" }, false);
     const result = await getIssueDetails.handler(params, baseContext);
     expect(result).toContain("### Selected Package Versions");
-    expect(result).toContain("example: 1.2.3");
+    expect(result).toContain("- `example`: `1.2.3`");
     expect(result).not.toContain("unrelated");
   });
 
@@ -3032,10 +3032,10 @@ describe("selected event package versions", () => {
   it("distinguishes absent names and unrecorded versions", async () => {
     mockPackages({ example: null, "@example/client": "" });
     const result = await getIssueDetails.handler(params, baseContext);
-    expect(result).toContain("example: Version not recorded");
-    expect(result).toContain("@example/client: Version not recorded");
+    expect(result).toContain("- `example`: Version not recorded");
+    expect(result).toContain("- `@example/client`: Version not recorded");
     expect(result).toContain(
-      "missing: Not listed in this event's package metadata",
+      "- `missing`: Not listed in this event's package metadata",
     );
   });
 
@@ -3049,9 +3049,9 @@ describe("selected event package versions", () => {
       baseContext,
     );
     const text = typeof result === "string" ? result : getTextContent(result);
-    expect(text.match(/- example: 1/g)).toHaveLength(1);
-    expect(result).toContain("Example: Not listed");
-    expect(result).toContain("constructor: Not listed");
+    expect(text.match(/- `example`: `1`/g)).toHaveLength(1);
+    expect(result).toContain("- `Example`: Not listed");
+    expect(result).toContain("- `constructor`: Not listed");
   });
 
   it("caps versions and keeps package data inside list entries", async () => {
@@ -3063,14 +3063,13 @@ describe("selected event package versions", () => {
       { ...params, packageNames: ["example", "<script>\n# heading"] },
       baseContext,
     );
-    expect(result).toContain("v".repeat(256));
-    expect(result).not.toContain("v".repeat(257));
-    expect(result).toContain("truncated");
-    expect(result).toContain("\\<script\\>");
     expect(result).toContain(
-      "\\`value\\` # heading \\[link\\](url) \\| &amp;lt;",
+      `- \`example\`: \`${"v".repeat(256)}\` (truncated)`,
     );
-    expect(result).not.toContain("<script>");
+    expect(result).not.toContain("v".repeat(257));
+    expect(result).toContain(
+      "- `<script> # heading`: `` `value` # heading [link](url) | &lt; ``",
+    );
     expect(result).not.toContain("\n# heading");
   });
 
@@ -3120,7 +3119,7 @@ describe("selected event package versions", () => {
       .parse({ ...params, packageNames });
     const result = await getIssueDetails.handler(input, baseContext);
     const text = typeof result === "string" ? result : getTextContent(result);
-    expect(text.match(/: v{256}/g)).toHaveLength(10);
+    expect(text.match(/: `v{256}`\n/g)).toHaveLength(10);
     expect(result).not.toContain("truncated");
   });
 
@@ -3137,7 +3136,7 @@ describe("selected event package versions", () => {
     );
     const result = await getIssueDetails.handler(params, baseContext);
     expect(result).toContain("Unsupported event type");
-    expect(result).toContain("example: 1.2.3");
+    expect(result).toContain("- `example`: `1.2.3`");
   });
 
   it("requires an exact event", async () => {

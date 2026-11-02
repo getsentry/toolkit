@@ -5,7 +5,6 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
-import { escapeMarkdownInline } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
   DefaultEventSchema,
@@ -32,6 +31,7 @@ import type {
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
 import { selectEventPackages } from "./event-packages";
+import { formatInlineCode } from "./inline-code";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -1998,9 +1998,10 @@ function formatEventPackages(event: Event, packageNames: string[]): string {
     let value: string;
     switch (entry.status) {
       case "recorded":
-        value = entry.truncated
-          ? `${entry.version}… (truncated)`
-          : entry.version;
+        value = formatInlineCode(entry.version);
+        if (entry.truncated) {
+          value += " (truncated)";
+        }
         break;
       case "not_listed":
         value = "Not listed in this event's package metadata";
@@ -2009,16 +2010,9 @@ function formatEventPackages(event: Event, packageNames: string[]): string {
         value = "Version not recorded";
         break;
     }
-    output += `- ${formatPackageText(entry.name)}: ${formatPackageText(value)}\n`;
+    output += `- ${formatInlineCode(entry.name)}: ${value}\n`;
   }
   return `${output}\n`;
-}
-
-/** Keep untrusted package data on one list line and preserve literal HTML entities. */
-function formatPackageText(value: string): string {
-  return escapeMarkdownInline(
-    value.replace(/[\r\n\t]/g, " ").replace(/&/g, "&amp;"),
-  ).replace(/\|/g, "\\|");
 }
 
 /** Projects the suspect commit consistently for structured and markdown issue details. */

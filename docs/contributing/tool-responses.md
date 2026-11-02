@@ -153,11 +153,11 @@ the same selection with an explicit `eventId`.
 - Missing, null, and empty maps mean metadata is unavailable. In a populated map,
   distinguish a name not listed from a null or blank version. Neither proves a
   dependency was absent from the application.
-- Truncate versions after 256 characters with an explicit marker and escape
-  Markdown in package data when rendering Markdown; structured strings stay raw.
-  Use the shared `@sentry/toolkit-core/markdown` inline escape helper and collapse
-  line breaks so package values stay inside their list entries. Do not render
-  unrelated packages.
+- Truncate versions after 256 characters with an explicit marker. In Markdown,
+  render package names and versions as code spans with `formatInlineCode`
+  (`packages/mcp-core/src/internal/inline-code.ts`), which keeps them inside
+  their list entries; structured strings stay raw. Do not render unrelated
+  packages.
 - Package selection requires an exact event; issue/latest-event and other resource
   lookups reject it.
 
