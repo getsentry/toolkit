@@ -2437,3 +2437,68 @@ describe("resolveIssue with share URLs", () => {
     ]);
   });
 });
+
+describe("resolveIssue with search text", () => {
+  useEnvSandbox(["SENTRY_ORG", "SENTRY_PROJECT", "SENTRY_DSN"]);
+
+  /** Issues the search returns, and the queries it got */
+  function mockSearch(
+    issues: readonly { id: string; shortId: string; title: string }[],
+  ): URLSearchParams[] {
+    const queries: URLSearchParams[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.pathname === "/api/0/organizations/my-org/issues/") {
+        queries.push(url.searchParams);
+        return Response.json(
+          issues.map((issue) => ({ ...issue, status: "unresolved" })),
+        );
+      }
+      return Response.json({ detail: "Not found" }, { status: 404 });
+    });
+    return queries;
+  }
+
+  function resolve(issueArg: string) {
+    process.env.SENTRY_ORG = "my-org";
+    return resolveIssue({ issueArg, cwd: getConfigDir(), command: "view" });
+  }
+
+  test("resolves the one issue the text matches, in the detected org", async () => {
+    const queries = mockSearch([
+      { id: "1", shortId: "CLI-G", title: "Login timeout" },
+    ]);
+    const result = await resolve("login timeout");
+    expect(result.org).toBe("my-org");
+    expect(result.issue.shortId).toBe("CLI-G");
+    expect(queries[0]?.get("query")).toBe("login timeout");
+  });
+
+  test("no match is a ResolutionError pointing at issue list", async () => {
+    mockSearch([]);
+    const error = await resolve("login timeout").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as ResolutionError).message).toContain(
+      "matched no issues in 'my-org'",
+    );
+    expect((error as ResolutionError).hint).toBe(
+      "sentry issue list my-org/ --query 'login timeout'",
+    );
+  });
+
+  test("several matches are a ResolutionError listing them", async () => {
+    mockSearch([
+      { id: "1", shortId: "CLI-G", title: "Login timeout" },
+      { id: "2", shortId: "CLI-H", title: "Login timeout on retry" },
+    ]);
+    const error = await resolve("login timeout").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as ResolutionError).message).toContain(
+      "matched 2 issues in 'my-org'",
+    );
+    expect((error as ResolutionError).suggestions).toEqual([
+      "sentry issue view my-org/CLI-G  (Login timeout)",
+      "sentry issue view my-org/CLI-H  (Login timeout on retry)",
+    ]);
+  });
+});

@@ -14,6 +14,7 @@
 import { resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import { readCaCertFile } from "../../lib/custom-ca.js";
 import { parseCustomHeaders } from "../../lib/custom-headers.js";
@@ -40,6 +41,7 @@ import { ValidationError } from "../../lib/errors.js";
 import { formatDefaultsResult } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   FORCE_FLAG,
   guardNonInteractive,
@@ -326,7 +328,7 @@ export const defaultsCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Setting key and optional value",
-        parse: String,
+        parse: choiceParser(Object.keys(DEFAULTS_REGISTRY)),
         placeholder: "key value",
       },
     },
@@ -379,7 +381,7 @@ export const defaultsCommand = buildCommand({
         // Clear all defaults (with confirmation)
         guardNonInteractive(flags);
         if (!isConfirmationBypassed(flags)) {
-          const confirmed = await log.prompt(
+          const confirmed = await prompt(
             `This will clear all defaults (${Object.keys(DEFAULTS_REGISTRY).join(", ")}). Continue?`,
             { type: "confirm" },
           );

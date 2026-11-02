@@ -17,7 +17,7 @@ import {
   formatOrgTokenIdentity,
   formatUserIdentity,
   type OrgTokenIdentity,
-} from "../../lib/formatters/index.js";
+} from "../../lib/formatters/human.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {

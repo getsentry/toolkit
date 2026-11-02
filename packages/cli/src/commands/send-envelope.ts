@@ -7,6 +7,7 @@
 
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
+import { parseFilePath, parseText } from "../lib/completion-target.js";
 import { CliError, EXIT } from "../lib/errors.js";
 
 export const sendEnvelopeCommand = buildCommand({
@@ -26,14 +27,14 @@ export const sendEnvelopeCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Path(s) to envelope file(s)",
-        parse: String,
+        parse: parseFilePath,
         optional: true,
       },
     },
     flags: {
       dsn: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "DSN",
         optional: true,
       },

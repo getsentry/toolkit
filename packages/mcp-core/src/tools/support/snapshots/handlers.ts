@@ -1,7 +1,4 @@
-import type {
-  ImageContent,
-  TextContent,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { ImageContent, TextContent } from "@modelcontextprotocol/server";
 import type { SentryApiService } from "../../../api-client";
 import { UserInputError } from "../../../errors";
 import {
@@ -426,9 +423,9 @@ export async function fetchSnapshotSummary(
   if (hasDiffs) {
     sections.push("\n## Changes\n");
 
-    const sortedChanged = changed
-      .slice()
-      .sort((left, right) => (right.diff ?? -1) - (left.diff ?? -1));
+    const sortedChanged = [...changed].sort(
+      (left, right) => (right.diff ?? -1) - (left.diff ?? -1),
+    );
 
     sections.push(
       ...renderTreeSections([

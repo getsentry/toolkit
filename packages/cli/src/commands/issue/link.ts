@@ -2,15 +2,17 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseAppLinkField } from "../../lib/completion-target.js";
 import { formatIssueLinkResult } from "../../lib/formatters/issue-links.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { linkExternalIssue } from "../../lib/issue-links.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import {
   EXTERNAL_ISSUE_FLAGS,
-  EXTERNAL_ISSUE_POSITIONALS,
+  externalIssuePositionals,
   parseIssueLinkFields,
 } from "./link-utils.js";
+import { type IssueTarget, requireIssueArgument } from "./positional.js";
 import { resolveOrgAndIssueId } from "./utils.js";
 
 type LinkFlags = {
@@ -64,13 +66,13 @@ export const linkCommand = buildCommand({
   },
   output: { human: formatIssueLinkResult },
   parameters: {
-    positional: EXTERNAL_ISSUE_POSITIONALS,
+    positional: externalIssuePositionals("link"),
     flags: {
       ...EXTERNAL_ISSUE_FLAGS,
       "dry-run": DRY_RUN_FLAG,
       field: {
         kind: "parsed",
-        parse: String,
+        parse: parseAppLinkField,
         brief: "Additional Sentry App link form field (name=value, repeatable)",
         variadic: true,
         optional: true,
@@ -81,12 +83,12 @@ export const linkCommand = buildCommand({
   async *func(
     this: SentryContext,
     flags: LinkFlags,
-    issueArg: string,
+    target: IssueTarget,
     url: string,
   ) {
     const fields = parseIssueLinkFields(flags.field);
     const { org, issueId, projectId } = await resolveOrgAndIssueId({
-      issueArg,
+      issueArg: requireIssueArgument(target.parsed, { command: "link" }),
       cwd: this.cwd,
       command: "link",
     });

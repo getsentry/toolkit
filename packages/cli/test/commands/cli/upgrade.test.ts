@@ -5,7 +5,7 @@
  * Covers resolveTargetVersion branches (check mode, already up-to-date,
  * version validation) and error paths.
  *
- * Status messages go through consola (→ process.stderr). Tests capture stderr
+ * Status messages go through the logger (→ process.stderr). Tests capture stderr
  * via a spy on process.stderr.write and assert on the collected output.
  */
 
@@ -87,7 +87,7 @@ function mockFetch(
 /**
  * Create a mock Stricli context with stderr and stdout capture.
  *
- * `getOutput()` returns **both** consola output (stderr) and structured
+ * `getOutput()` returns **both** logger output (stderr) and structured
  * output (stdout) combined, so assertions work regardless of whether
  * a message is a progress log or a rendered result.
  * `errors` captures Stricli error output written to context.stderr.
@@ -121,7 +121,7 @@ function createMockContext(
   const origPlain = process.env.SENTRY_PLAIN_OUTPUT;
   process.env.SENTRY_PLAIN_OUTPUT = "0";
 
-  // Capture consola output (routed to process.stderr)
+  // Capture logger output (routed to process.stderr)
   const origStderrWrite = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((chunk: string | Uint8Array) => {
     stderrChunks.push(String(chunk));

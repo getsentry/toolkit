@@ -29,6 +29,7 @@ import {
   graphicsCellSize,
   selectGraphicsFormat,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../sixel.js";
 import { SERIES_PALETTE } from "./chart-core.js";
 import { COLORS, muted, terminalLink } from "./colors.js";
@@ -2157,7 +2158,13 @@ function renderCompleteDashboardAsGraphics(
     },
     encodeImage:
       format === "kitty"
-        ? (image) => encodeImageToKitty(image, image.width, true)
+        ? (image) =>
+            encodeImageToKitty(
+              image,
+              image.width,
+              true,
+              tmuxKittyPlacement(graphicsColumns),
+            )
         : undefined,
   });
   if (!("output" in graphics)) {

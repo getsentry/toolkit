@@ -22,7 +22,7 @@ import type { ParsedOrgProject } from "./arg-parsing.js";
 import { buildCommand, type CommandDocumentation } from "./command.js";
 import { CliError, ContextError } from "./errors.js";
 import type { CommandReturn } from "./formatters/output.js";
-import { logger } from "./logger.js";
+import { prompt } from "./prompt.js";
 
 // ---------------------------------------------------------------------------
 // Level A: shared flag / alias definitions
@@ -182,7 +182,6 @@ export function guardNonInteractive(flags: {
  *
  * @param expected - The string the user must type to confirm (e.g., "acme/my-app")
  * @param promptMessage - The message displayed to the user
- * @param opts - Optional logger override (defaults to the global logger)
  * @returns `true` if confirmed, `false` if cancelled or mismatched
  *
  * @example
@@ -199,16 +198,13 @@ export function guardNonInteractive(flags: {
 export async function confirmByTyping(
   expected: string,
   promptMessage: string,
-  opts?: { logger?: { prompt: typeof logger.prompt } },
 ): Promise<boolean> {
-  const log = opts?.logger ?? logger;
-
-  const response = await log.prompt(promptMessage, {
+  const response = await prompt(promptMessage, {
     type: "text",
     placeholder: expected,
   });
 
-  // consola prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
+  // The prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
   // Check type to avoid treating cancel as a valid response.
   if (typeof response !== "string") {
     return false;

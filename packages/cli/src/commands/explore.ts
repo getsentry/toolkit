@@ -16,11 +16,21 @@ import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
   listReplays,
+  REPLAY_SORT_FIELDS,
   queryEvents,
   queryEventsTimeSeries,
   queryMetricsMeta,
 } from "../lib/api-client.js";
 import { validateLimit } from "../lib/arg-parsing.js";
+import {
+  choiceParser,
+  DATASET_FIELDS,
+  type DatasetCompletion,
+  fieldOrAggregateParser,
+  parseEnvironmentList,
+  parseText,
+  textParser,
+} from "../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -54,7 +64,7 @@ import {
   targetPatternExplanation,
 } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
-import { resolveMetricField } from "../lib/metrics-transform.js";
+import { resolveMetricField, VALID_AGGS } from "../lib/metrics-transform.js";
 import { withProgress } from "../lib/polling.js";
 import {
   DEFAULT_REPLAY_EXPLORE_FIELDS,
@@ -103,8 +113,36 @@ const PAGINATION_KEY = "explore";
 
 const DATASETS = buildDatasetParser(
   ["errors", "spans", "tracemetrics", "logs", "replays"],
-  Array.from(LEGACY_TRANSACTION_DATASETS),
+  [...LEGACY_TRANSACTION_DATASETS],
 );
+
+/**
+ * What `--field` completes on each dataset: attribute or tag keys and
+ * aggregates, or the replay fields the CLI renders. `transaction(s)`
+ * queries spans.
+ */
+const FIELD_COMPLETION: DatasetCompletion = {
+  datasets: {
+    ...DATASET_FIELDS,
+    replays: { fields: listSupportedReplayFields() },
+  },
+  aliases: {
+    ...DATASETS.aliases,
+    ...Object.fromEntries(
+      [...LEGACY_TRANSACTION_DATASETS].map((name) => [name, "spans"]),
+    ),
+  },
+  default: DEFAULT_DATASET,
+};
+
+/** What `--sort` completes: `--field`'s, but replays sort by their own fields. */
+const SORT_COMPLETION: DatasetCompletion = {
+  ...FIELD_COMPLETION,
+  datasets: {
+    ...FIELD_COMPLETION.datasets,
+    replays: { fields: REPLAY_SORT_FIELDS },
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -767,7 +805,7 @@ export const exploreCommand = buildListCommand("explore", {
     flags: {
       field: {
         kind: "parsed",
-        parse: String,
+        parse: fieldOrAggregateParser(FIELD_COMPLETION),
         brief:
           'API field or aggregate (repeatable). E.g., title, "count()", "p50(span.duration)"',
         variadic: true,
@@ -775,55 +813,56 @@ export const exploreCommand = buildListCommand("explore", {
       },
       metric: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Metric name for --dataset metrics. Auto-resolves type/unit via API.",
         optional: true,
       },
       agg: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser([...VALID_AGGS]),
         brief: "Aggregation for --metric (sum, avg, count, p50, p95, etc.)",
         default: "sum",
       },
       dataset: {
         kind: "parsed",
-        parse: DATASETS.parse,
+        parse: choiceParser(DATASETS.names, DATASETS.parse),
         brief: `Dataset to query (${DATASETS.names.join(", ")}; transaction(s) routes to spans)`,
         default: DEFAULT_DATASET,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search query (Sentry search syntax)",
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: fieldOrAggregateParser(SORT_COMPLETION),
         brief: 'Sort field (prefix with - for desc, e.g., "-count()")',
         optional: true,
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Environment filter (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         placeholder: "number",
         brief: `Number of table rows (1-${LIST_MAX_LIMIT}, default: ${DEFAULT_LIMIT})`,
         optional: true,
       },
       "time-series": {
         kind: "parsed",
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           value === "" || value === "auto"
             ? "auto"
             : parseTimeSeriesInterval(value),
+        ),
         placeholder: "auto|interval",
         brief:
           "Query time series (default: auto; optional bucket duration, e.g., 15m)",

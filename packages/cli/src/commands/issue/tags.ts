@@ -10,6 +10,7 @@ import { description, object, pipe } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { getIssueTag } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseEnvironment, parseTagKey } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatIssueTags } from "../../lib/formatters/issue-tags.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -19,7 +20,12 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
-import { buildCommandHint, issueIdPositional, resolveIssue } from "./utils.js";
+import {
+  type IssueTarget,
+  issueParameter,
+  requireIssueArgument,
+} from "./positional.js";
+import { buildCommandHint, resolveIssue } from "./utils.js";
 
 type TagsFlags = {
   /** Emit the API response as JSON instead of a human table; defaults to false. */
@@ -87,18 +93,18 @@ export const tagsCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        ...issueIdPositional.parameters,
+        issueParameter({ command: "tags" }),
         {
           placeholder: "key",
           brief: "Tag key, e.g. release, server_name, browser.name",
-          parse: String,
+          parse: parseTagKey,
         },
       ],
     },
     flags: {
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         brief: "Filter to one environment (default: all environments)",
         optional: true,
       },
@@ -109,10 +115,13 @@ export const tagsCommand = buildCommand({
   async *func(
     this: SentryContext,
     flags: TagsFlags,
-    issueArg: string,
+    target: IssueTarget,
     key: string,
   ) {
     applyFreshFlag(flags);
+    const issueArg = requireIssueArgument(target.parsed, { command: "tags" });
+    // Resolved here, not with `target.resolved`: recovery hints keep the
+    // tag key and environment
     const trailingArgs =
       flags.environment === undefined
         ? [key]
@@ -126,7 +135,7 @@ export const tagsCommand = buildCommand({
     if (!org) {
       throw new ContextError(
         "Organization",
-        buildCommandHint("tags", issueArg, undefined, trailingArgs),
+        buildCommandHint("tags", issueArg.text, undefined, trailingArgs),
       );
     }
 

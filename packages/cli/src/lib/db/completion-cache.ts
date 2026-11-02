@@ -2,10 +2,11 @@
  * Entities seen during normal CLI usage, kept for shell completion.
  *
  * The `__complete` fast path makes no API calls, so it can only suggest what
- * earlier commands already fetched. The API layer records issue short IDs and
- * dashboards here as they are listed or viewed; `src/lib/complete.ts` reads
- * them back. Entries are best-effort hints: a stale one at worst suggests an
- * issue that was since merged or a dashboard that was deleted.
+ * earlier commands already fetched. The API layer records the entities of
+ * {@link CompletionEntityKind} here as they are listed or viewed;
+ * `src/lib/complete.ts` reads them back. Entries are best-effort hints: a
+ * stale one at worst suggests an issue that was since merged or a release
+ * that was deleted.
  *
  * This module is imported by the `__complete` fast path, so it must not pull
  * in the Sentry SDK; best-effort error reporting for writes lives in
@@ -16,19 +17,49 @@
  * other caches in `maybeCleanupCaches()`, and logout clears the table.
  */
 
-import type { CompletionTarget } from "../completion-target.js";
 import { getDatabase, maybeCleanupCaches } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 /**
  * Entity types stored for shell completion, named after the completion
- * kind of the arguments that take them: issues by short ID, dashboards by
- * numeric ID, both with the title as description.
+ * kind of the arguments that take them. Each is stored as the value those
+ * arguments read, with a description:
+ *
+ * - `issue`: short ID, with the title
+ * - `dashboard`: numeric ID, with the title
+ * - `environment`: name
+ * - `release`: version, with the short version
+ * - `team`: slug, with the name
+ * - `owner`: `team:<id>` actor, with the team slug
+ * - `monitor`: slug, with the name
+ * - `workflow`: alert (workflow) ID, with the name
+ * - `integration`: native integration ID, with provider and name
+ * - `sentry-app`: installed Sentry App slug, with the name
+ * - `app-link-field`: `name=` of a field of a Sentry App's issue-link
+ *   form, and `name=value` for its fixed choices, with the app
+ * - `dsn`: public DSN of a client key, with the key name
+ * - `tag-key`: key of a tag seen on an issue, with its label
+ * - `span-attribute`, `log-attribute`, `metric-attribute`: key of an
+ *   attribute of the spans, logs, or trace metrics dataset, as `--field`
+ *   and `--query` take it, with its type
  */
-export type CompletionEntityKind = Extract<
-  CompletionTarget,
-  "issue" | "dashboard"
->;
+export type CompletionEntityKind =
+  | "issue"
+  | "dashboard"
+  | "environment"
+  | "release"
+  | "team"
+  | "owner"
+  | "monitor"
+  | "workflow"
+  | "integration"
+  | "sentry-app"
+  | "app-link-field"
+  | "dsn"
+  | "tag-key"
+  | "span-attribute"
+  | "log-attribute"
+  | "metric-attribute";
 
 /** Most recently seen entries kept per kind and org. */
 export const MAX_ENTITIES_PER_ORG = 500;
@@ -137,6 +168,51 @@ export function getCachedCompletionEntities(
     value: row.value,
     label: row.label ?? undefined,
   }));
+}
+
+/**
+ * When an entity of `kind` from `orgSlug` was last stored, or `undefined`
+ * when none is.
+ */
+export function getLatestCompletionSeen(
+  kind: CompletionEntityKind,
+  orgSlug: string,
+): number | undefined {
+  const row = getDatabase()
+    .query(
+      "SELECT MAX(last_seen) AS latest FROM completion_cache WHERE kind = ? AND org_slug = ?",
+    )
+    .get(kind, orgSlug) as { latest: number | null } | undefined;
+  return row?.latest ?? undefined;
+}
+
+/**
+ * Orgs the user worked in since `since`, most recent first: orgs of the
+ * projects commands resolved, and of the entities they listed or viewed.
+ * Entities of `exceptKinds` are left out, so a cache warm-up does not count
+ * as use of the org it warms.
+ */
+export function getRecentlyUsedOrgs(
+  since: number,
+  exceptKinds: readonly CompletionEntityKind[] = [],
+): string[] {
+  const kindFilter = exceptKinds.length
+    ? `AND kind NOT IN (${exceptKinds.map(() => "?").join(", ")})`
+    : "";
+  const rows = getDatabase()
+    .query(
+      `SELECT org_slug, MAX(used) AS used FROM (
+         SELECT org_slug, last_accessed AS used FROM project_cache
+         WHERE last_accessed >= ?
+         UNION ALL
+         SELECT org_slug, last_seen AS used FROM completion_cache
+         WHERE last_seen >= ? ${kindFilter}
+       )
+       GROUP BY org_slug
+       ORDER BY used DESC, org_slug`,
+    )
+    .all(since, since, ...exceptKinds) as { org_slug: string }[];
+  return rows.map((row) => row.org_slug);
 }
 
 /** Drop every remembered entity (called on logout). */

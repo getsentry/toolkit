@@ -8,13 +8,17 @@ import type { SentryContext } from "../../context.js";
 import { createDashboard, getProject } from "../../lib/api-client.js";
 import {
   type ParsedOrgProject,
-  parseOrgProjectArg,
+  parseOrgProjectInput,
 } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { formatDashboardCreated } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import {
   fetchProjectId,
   resolveAllTargets,
@@ -22,6 +26,7 @@ import {
   resolveProjectBoundSlug,
   toNumericId,
 } from "../../lib/resolve-target.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { DashboardDetail } from "../../types/dashboard.js";
@@ -34,25 +39,34 @@ type CreateFlags = {
 
 type CreateResult = DashboardDetail & { url: string };
 
+/** `dashboard create`'s positionals, parsed: the title and the target. */
+type CreateInput = {
+  readonly title: string;
+  readonly target: ParsedOrgProject;
+  /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+};
+
 /**
- * Parse array positional args for `dashboard create`.
+ * Parse `dashboard create`'s positionals without side effects.
  *
  * Handles:
  * - `<title>` — title only (auto-detect org/project)
- * - `<target> <title>` — explicit target + title
+ * - `<target> <title...>` — explicit target + title; the title's words may
+ *   be separate arguments
+ *
+ * @throws {ValidationError} When there is no title or the target is invalid
  */
-function parsePositionalArgs(args: string[]): {
-  title: string;
-  targetArg: string | undefined;
-} {
-  if (args.length === 0) {
+function parseCreateInput(args: readonly string[]): CreateInput {
+  const [first, ...rest] = args;
+  if (first === undefined) {
     throw new ValidationError("Dashboard title is required.", "title");
   }
-  if (args.length === 1) {
-    return { title: args[0] as string, targetArg: undefined };
+  if (rest.length === 0) {
+    return { title: first, target: { type: "auto-detect" } };
   }
-  // Two args: first is target, second is title
-  return { title: args[1] as string, targetArg: args[0] as string };
+  const { parsed, baseUrl } = parseOrgProjectInput(first);
+  return { title: rest.join(" "), target: parsed, baseUrl };
 }
 
 /** Result of resolving org + project IDs from the parsed target */
@@ -60,6 +74,12 @@ type ResolvedDashboardTarget = {
   orgSlug: string;
   projectIds: number[];
 };
+
+/** `dashboard create`'s `[<org/project>] <title>` arguments. */
+export type DashboardCreateArguments = BoundArguments<
+  CreateInput,
+  ResolvedDashboardTarget
+>;
 
 /** Enrich targets that lack a projectId by calling the project API */
 async function enrichTargetProjectIds(
@@ -163,22 +183,27 @@ export const createCommand = buildCommand({
     human: formatDashboardCreated,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/title",
-        brief: "[<org/project>] <title>",
-        parse: parseOrgProjectTarget,
+    positional: boundArguments({
+      placeholder: "org/project/title",
+      brief: "[<org/project>] <title>",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseCreateInput,
+      resolve: async (input: CreateInput, context: SentryContext) => {
+        if (input.baseUrl) {
+          applySentryUrlContext(input.baseUrl);
+        }
+        return await resolveDashboardTarget(input.target, context.cwd);
       },
-    },
+    }),
     flags: {},
   },
-  async *func(this: SentryContext, _flags: CreateFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { title, targetArg } = parsePositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const { orgSlug, projectIds } = await resolveDashboardTarget(parsed, cwd);
+  async *func(
+    this: SentryContext,
+    _flags: CreateFlags,
+    args: DashboardCreateArguments,
+  ) {
+    const { title } = args.parsed;
+    const { orgSlug, projectIds } = await args.resolved;
 
     const dashboard = await withDashboardErrors(
       { orgSlug, operation: "create" },

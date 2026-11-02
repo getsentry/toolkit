@@ -6,7 +6,7 @@ builds bundle this private workspace package into their artifacts.
 The shared code validates and formats upstream bearer tokens, assembles Sentry
 API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
 responses, advances retry intervals, decides when a Sentry API request may
-be retried and how long to wait (`api-retry`), recognizes Sentry hostnames and
+be retried and how long to wait (`api-client/retry`), recognizes Sentry hostnames and
 credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
 field expressions the way the Sentry frontend does, parses search queries with
 the Sentry frontend grammar, resolves Events endpoint sorts so the sort column
@@ -15,12 +15,54 @@ retains its own credential storage, regional cache identity and persistence,
 host allowlists, routing, polling deadline, response validation, and
 user-facing errors.
 
+## API client
+
+`api-client/` is the shared Sentry API client, built here first and moved
+into `@sentry/api` later, so it uses only web-standard APIs and runs in Node,
+Workers, and browsers. Lint bans `node:*` imports and Node globals in
+toolkit-core, and `pnpm run tsc` also typechecks it against the DOM library
+with no Node types (`tsconfig.browser.json`). The `node:zlib` cache codec is
+the one exception.
+
+- `errors` holds `ApiError` and its status subclasses, `createApiError`, and
+  the `UserInputError` and `ConfigurationError` the client throws. The MCP
+  re-exports them from `packages/mcp-core/src/errors.ts`.
+- `api-path` builds API paths with every identifier segment encoded.
+- `validate` checks a response with any
+  [Standard Schema](https://standardschema.dev) validator the host passes in:
+  Zod in the MCP, valibot in the CLI. Shared code depends only on the
+  interface's types.
+- `response` reads responses. `readErrorResponse` reads a failed response's
+  text, parsed JSON, string `detail`, whether it is an HTML page, and the
+  rate-limit wait, and each host maps that to its own errors.
+  `readJsonResponse` parses a successful body after checking its
+  Content-Type.
+- `core` is the request core endpoint wrappers build on.
+  `createApiClientCore` takes the host's transport, per-request headers
+  (credentials, user agent, attribution), and logger. Its `request` sends
+  to `<origin>/api/0<path>`, turns network failures into readable errors
+  (`ConfigurationError` for an unreachable host), and throws the status's
+  `ApiError` for an error response unless the caller allows that status.
+  `requestJson` also parses the body, and `sdkClient` gives a `@sentry/api`
+  operation a client that sends one GET through `request`. `listPage` walks
+  a list endpoint's pages up to a limit and validates each page. The MCP's
+  `SentryApiService` sends every request through the core.
+- `endpoints/` holds the endpoint wrappers by domain, on `@sentry/api`
+  operations where they exist. Each takes an `ApiTarget` (the core and an
+  origin) and the host's schema, and returns that schema's output. The host
+  picks the origin, such as the control host for the current user.
+  `endpoints/organizations` has `getAuthenticatedUser`, `listOrganizations`,
+  and `getOrganization`.
+- `pagination`, `retry`, `transport`, and `response-cache` are described in
+  the sections below. The `node:zlib` body codec stays outside, at
+  `response-cache/codec`, since browsers lack it.
+
 ## API transport
 
-`api-transport` is the authenticated fetch both products send Sentry API
+`api-client/transport` is the authenticated fetch both products send Sentry API
 requests through. `createApiTransport` sets the Authorization header, refreshes
 the credential once after a 401 and replays the request (any method, since the
-endpoint never ran), times out each attempt, and retries through `api-retry`.
+endpoint never ran), times out each attempt, and retries through `api-client/retry`.
 Request bodies are replayed on each attempt, including stream bodies.
 With `validateRedirects`, it follows redirects by hand, sends the credential
 only to origins the host trusts, and records the final origin for
@@ -37,9 +79,14 @@ fatal fetch errors such as TLS failures, a logger, and a span hook. The CLI's
 `packages/cli/src/lib/sentry-client.ts` wires in its stored credentials,
 host-scope checks, disk cache, and telemetry.
 
+Credentials and timeouts are optional. Without a `CredentialProvider`, the
+transport keeps the request's own Authorization header, never refreshes, and
+skips the cache, since entries are scoped to a credential. The MCP's
+`SentryApiService` uses it that way, with retries only.
+
 ## Pagination
 
-`pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
+`api-client/pagination` walks Sentry list endpoints up to a row limit. `paginate` splits
 the limit evenly over the fewest requests (at most 100 rows each), reuses the
 page size a page-number cursor encodes, and returns a cursor that resumes at
 the first row the caller has not received, even when the walk stopped inside
@@ -54,9 +101,18 @@ the page cap, receives warnings, and turns failures into its own errors. The
 CLI's `paginate` and `fetchAllPages` in
 `packages/cli/src/lib/api/infrastructure.ts` are thin wrappers over it.
 
+`paginate` delegates traversal and partial-page consumption to `@sentry/api`.
+Toolkit retains its page sizing and cursor encoding so existing bookmarks and
+navigation history keep working. The SDK receives decoded server cursors and
+row offsets, without depending on Toolkit's bookmark format or storage.
+
+`decodePageCursor` and `consumePage` expose the same resume logic for callers
+that read one server page at a time, such as `sentry api`. They restore the
+cursor's page size and remove rows already returned without fetching more pages.
+
 ## Response cache
 
-`response-cache` holds the cache policy for Sentry API GET responses.
+`api-client/response-cache` holds the cache policy for Sentry API GET responses.
 `classifyUrl` puts a URL in a fallback TTL tier for responses without HTTP
 caching headers: `volatile` (60 seconds) for issues, project event details,
 full traces, and log and span queries; `no-cache` for autofix and root-cause
@@ -100,6 +156,19 @@ its encoding and original size; `decode` returns `undefined` for an entry this
 runtime cannot read, such as zstd on older Node, so the caller treats it as a
 miss. It is a separate entry point so the policy above stays free of Node
 APIs.
+
+## Markdown
+
+`markdown` builds Markdown for untrusted values. Pick the helper by what the
+value is: `inlineCode` for identifiers and short values, `codeBlock` for
+multi-line data, and `text` for values that should read as prose. Each keeps
+the value inside the line or block it is placed in, so the value cannot add
+headings, list items, links, or other structure. `inlineCode` and `codeBlock`
+need no escaping; `text` escapes with backslashes only and has no runtime
+dependencies. The property tests parse each helper's output with `marked`, the
+parser the CLI renders with (same version, from the workspace catalog), and
+with micromark, the CommonMark reference parser, and check that any input
+round-trips as the same literal value.
 
 ## Resource identity
 

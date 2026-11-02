@@ -35,8 +35,6 @@ import {
   resolveApiResponseOutput,
   resolveBinaryTtyOutput,
   resolveBody,
-  resolveEffectiveHeaders,
-  resolveRequestUrl,
   setNestedValue,
 } from "../../src/commands/api.js";
 import { OutputError, ValidationError } from "../../src/lib/errors.js";
@@ -1390,59 +1388,6 @@ describe("buildBodyFromInput", () => {
   });
 });
 
-describe("resolveEffectiveHeaders", () => {
-  test("auto-adds Content-Type for object bodies", () => {
-    const headers = resolveEffectiveHeaders(undefined, { key: "value" });
-    expect(headers["Content-Type"]).toBe("application/json");
-  });
-
-  test("does not add Content-Type for string bodies", () => {
-    const headers = resolveEffectiveHeaders(undefined, "raw-string");
-    expect(headers["Content-Type"]).toBeUndefined();
-  });
-
-  test("does not override explicit Content-Type", () => {
-    const headers = resolveEffectiveHeaders(
-      { "Content-Type": "text/plain" },
-      { key: "value" },
-    );
-    expect(headers["Content-Type"]).toBe("text/plain");
-  });
-
-  test("case-insensitive Content-Type check", () => {
-    const headers = resolveEffectiveHeaders(
-      { "content-type": "text/xml" },
-      { key: "value" },
-    );
-    expect(headers["content-type"]).toBe("text/xml");
-    expect(headers["Content-Type"]).toBeUndefined();
-  });
-
-  test("preserves custom headers", () => {
-    const headers = resolveEffectiveHeaders(
-      { Authorization: "Bearer token", "X-Custom": "value" },
-      undefined,
-    );
-    expect(headers.Authorization).toBe("Bearer token");
-    expect(headers["X-Custom"]).toBe("value");
-  });
-
-  test("defaults to empty object when no headers provided", () => {
-    const headers = resolveEffectiveHeaders(undefined, undefined);
-    expect(headers).toEqual({});
-  });
-
-  test("adds Content-Type for null body (matches rawApiRequest)", () => {
-    const headers = resolveEffectiveHeaders(undefined, null);
-    expect(headers["Content-Type"]).toBe("application/json");
-  });
-
-  test("does not add Content-Type for undefined body", () => {
-    const headers = resolveEffectiveHeaders(undefined, undefined);
-    expect(headers["Content-Type"]).toBeUndefined();
-  });
-});
-
 // --data/-d and JSON auto-detection (CLI-AF)
 
 describe("parseDataBody", () => {
@@ -1861,47 +1806,7 @@ describe("dataToQueryParams", () => {
 
 // Dry-run tests
 
-describe("resolveRequestUrl", () => {
-  test("builds URL against an explicit regional origin", () => {
-    const url = resolveRequestUrl(
-      "organizations/",
-      undefined,
-      "https://de.sentry.io/sentry",
-    );
-    expect(url).toBe("https://de.sentry.io/sentry/api/0/organizations/");
-  });
-
-  test("strips leading slash from endpoint", () => {
-    const url = resolveRequestUrl("/organizations/");
-    expect(url).toMatch(/\/api\/0\/organizations\/$/);
-  });
-
-  test("appends query params", () => {
-    const url = resolveRequestUrl("issues/", { status: "unresolved" });
-    expect(url).toContain("?status=unresolved");
-    expect(url).toContain("/api/0/issues/");
-  });
-
-  test("handles array params", () => {
-    const url = resolveRequestUrl("events/", {
-      field: ["title", "timestamp"],
-    });
-    expect(url).toContain("field=title");
-    expect(url).toContain("field=timestamp");
-  });
-
-  test("omits query string when no params", () => {
-    const url = resolveRequestUrl("projects/");
-    expect(url).not.toContain("?");
-  });
-
-  test("merges params with an existing query string", () => {
-    const url = resolveRequestUrl("attachments/?download=1", {
-      mode: "raw",
-    });
-    expect(url).toContain("attachments/?download=1&mode=raw");
-  });
-
+describe("API request preview", () => {
   test("absolute URL dry-run preserves the regional origin", async () => {
     let output = "";
     const func = await apiCommand.loader();

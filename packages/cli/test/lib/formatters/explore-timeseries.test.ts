@@ -8,6 +8,11 @@ import {
   renderCommandOutput,
   resolveRenderer,
 } from "../../../src/lib/formatters/output.js";
+import {
+  createPixelCanvas,
+  drawPixelText,
+  type Rgb,
+} from "../../../src/lib/formatters/pixel-canvas.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- terminal capability boundary for vi.spyOn
 import * as terminal from "../../../src/lib/sixel.js";
 import type { DecodedImage } from "../../../src/lib/sixel-image.js";
@@ -234,6 +239,34 @@ function alphaAt(
   return image.data[(y * image.width + x) * 4 + 3];
 }
 
+/** Read a bitmap text region independently of the chart's layout calculation. */
+function textPixels(
+  image: DecodedImage,
+  x: number,
+  y: number,
+  columns: number,
+): Buffer {
+  const rows = Array.from({ length: 8 }, (_, row) => {
+    const start = ((y + row) * image.width + x) * 4;
+    return image.data.slice(start, start + columns * 8 * 4);
+  });
+  return Buffer.concat(rows);
+}
+
+/** Reference glyphs for the literal labels a user should see in the image. */
+function labelPixels(text: string, color: Rgb = [128, 128, 128]): Buffer {
+  const image = createPixelCanvas({ width: text.length * 8, height: 8 });
+  drawPixelText(image, text, {
+    x: 0,
+    y: 0,
+    cellWidth: 8,
+    cellHeight: 8,
+    maxColumns: text.length,
+    color,
+  });
+  return Buffer.from(image.data);
+}
+
 describe("Explore time-series graphics", () => {
   let savedColumns: number | undefined;
 
@@ -246,7 +279,7 @@ describe("Explore time-series graphics", () => {
       cellWidth: 8,
       cellHeight: 8,
     });
-    vi.spyOn(terminal, "terminalPixelWidth").mockReturnValue(160);
+    vi.spyOn(terminal, "terminalPixelWidth").mockReturnValue(640);
   });
 
   afterEach(() => {
@@ -254,7 +287,7 @@ describe("Explore time-series graphics", () => {
   });
 
   test.each(["kitty", "sixel"] as const)(
-    "renders one %s chart and scale per aggregate",
+    "renders one %s chart per aggregate before its caption without repeating its labels",
     (format) => {
       vi.mocked(terminal.selectGraphicsFormat).mockReturnValue(format);
       vi.stubEnv("TZ", "America/Los_Angeles");
@@ -278,17 +311,102 @@ describe("Explore time-series graphics", () => {
 
       const output = formatExploreTimeSeriesHuman(data);
 
-      expect(
-        output.split(format === "kitty" ? "\x1b_Ga=T" : "\x1bP"),
-      ).toHaveLength(3);
-      expect(output).toContain("count() over time");
-      expect(output).toContain("p95(span.duration) over time");
-      expect(output).toContain("Scale: 0 to 1,234");
-      expect(output).toContain("Scale: 0 to 25ms");
-      expect(output).toContain("Unit: millisecond");
-      expect(output).toContain("2026-01-01 00:00:00 to 2026-01-01 00:00:15");
+      const imageStart = format === "kitty" ? "\x1b_Ga=T" : "\x1bP";
+      expect(output.split(imageStart)).toHaveLength(3);
+      expect(output.indexOf(imageStart)).toBeLessThan(
+        output.indexOf("Interval: 5m"),
+      );
+      expect(output.indexOf("Interval: 5m")).toBeLessThan(
+        output.lastIndexOf(imageStart),
+      );
+      expect(output.lastIndexOf(imageStart)).toBeLessThan(
+        output.indexOf("Interval: 15s"),
+      );
+      expect(output).not.toContain("count()");
+      expect(output).not.toContain("p95(span.duration)");
+      expect(output).not.toContain("Scale:");
+      expect(output).not.toContain("Unit:");
+      expect(output).not.toContain("Bucket starts");
+      // The query window remains distinct from the last bucket start on the axis.
+      expect(output).toContain(
+        "Range (UTC): 2026-01-01 00:00:00 to 2026-01-01 00:15:00",
+      );
       expect(output).not.toContain("TIME (UTC)");
       expect(data).toEqual(original);
+      if (format === "kitty") {
+        const [countImage, durationImage] = kittyImages(output);
+        expect(textPixels(countImage!, 0, 0, 5)).toEqual(labelPixels("1,234"));
+        expect(textPixels(durationImage!, 0, 0, 4)).toEqual(
+          labelPixels("25ms"),
+        );
+        expect(textPixels(durationImage!, 41, 48, 23)).toEqual(
+          labelPixels("2026-01-01 00:00:00 UTC"),
+        );
+        expect(textPixels(durationImage!, 449, 48, 23)).toEqual(
+          labelPixels("2026-01-01 00:00:15 UTC"),
+        );
+        expect(textPixels(durationImage!, 8, 56, 17)).toEqual(
+          labelPixels("p95 span.duration", [224, 224, 224]),
+        );
+        expect([
+          ...durationImage!.data.subarray(58 * 640 * 4, 58 * 640 * 4 + 4),
+        ]).toEqual([117, 83, 255, 255]);
+      }
+    },
+  );
+
+  test.each([
+    "p95(custom.measurement.with.a.long.name)",
+    "count_if(span.op,equals,http.client)",
+    "equation|count()/2",
+    "count()/2",
+    "sum(value)",
+  ])(
+    "retains the complete expression %s below an abbreviated legend",
+    (yAxis) => {
+      const data = makeData();
+      data.timeSeries[0]!.yAxis = yAxis;
+
+      const output = formatExploreTimeSeriesHuman(data);
+
+      expect(kittyImages(output)).toHaveLength(1);
+      expect(output).toContain(yAxis);
+      expect(output.indexOf(yAxis)).toBeGreaterThan(
+        output.indexOf("\x1b_Ga=T"),
+      );
+      expect(output.indexOf(yAxis)).toBeLessThan(
+        output.indexOf("Interval: 5m"),
+      );
+    },
+  );
+
+  test.each([
+    { valueType: "rate", maximum: 1234, label: "1,234" },
+    { valueType: "rate", maximum: 0.002, label: "0.002" },
+    { valueType: "number", maximum: 0.002, label: "0.002" },
+  ])(
+    "keeps $valueType units in the caption on a narrow chart (maximum $maximum)",
+    ({ valueType, maximum, label }) => {
+      const data = makeData();
+      const series = data.timeSeries[0]!;
+      series.meta.valueType = valueType;
+      series.meta.valueUnit = "1/second";
+      series.values[0]!.value = maximum;
+      // A redundant axis unit would consume the space needed by the UTC labels.
+      process.stdout.columns = 56;
+      vi.mocked(terminal.terminalPixelWidth).mockReturnValue(448);
+
+      const output = formatExploreTimeSeriesHuman(data);
+      const images = kittyImages(output);
+
+      expect(images).toHaveLength(1);
+      expect(textPixels(images[0]!, 0, 0, label.length)).toEqual(
+        labelPixels(label),
+      );
+      expect(output).toContain("Interval: 5m · Unit: 1/second");
+      expect(output.indexOf("Unit: 1/second")).toBeGreaterThan(
+        output.indexOf("\x1b_Ga=T"),
+      );
     },
   );
 
@@ -319,22 +437,22 @@ describe("Explore time-series graphics", () => {
     expect(images).toHaveLength(1);
     const image = images[0]!;
     expect(image.data).toHaveLength(image.width * image.height * 4);
-    // Eight slots span the image: absent values keep their slots, and a later
-    // complete bucket keeps its time position instead of closing the gaps.
-    expect(alphaAt(image, 10, 0)).toBe(255);
-    expect(alphaAt(image, 30, 63)).toBe(0);
-    expect(alphaAt(image, 50, 63)).toBe(255);
-    expect(alphaAt(image, 50, 62)).toBe(0);
-    expect(alphaAt(image, 70, 63)).toBe(0);
-    expect(alphaAt(image, 90, 63)).toBe(0);
-    expect(alphaAt(image, 110, 63)).toBe(0);
-    expect(alphaAt(image, 130, 31)).toBe(0);
-    expect(alphaAt(image, 130, 32)).toBe(255);
+    // Eight slots follow the value-axis gutter. Gaps keep their time positions
+    // and the axis below the plot must not turn them into visible data ticks.
+    expect(alphaAt(image, 90, 0)).toBe(255);
+    expect(alphaAt(image, 160, 46)).toBe(0);
+    expect(alphaAt(image, 230, 46)).toBe(255);
+    expect(alphaAt(image, 230, 45)).toBe(0);
+    expect(alphaAt(image, 310, 46)).toBe(0);
+    expect(alphaAt(image, 380, 46)).toBe(0);
+    expect(alphaAt(image, 460, 46)).toBe(0);
+    expect(alphaAt(image, 530, 22)).toBe(0);
+    expect(alphaAt(image, 530, 23)).toBe(255);
     // A small positive value must survive a large peak, just as zero does.
-    expect(alphaAt(image, 150, 63)).toBe(255);
-    expect(alphaAt(image, 150, 62)).toBe(0);
-    expect(output).toContain("Scale: 0 to 10,000");
-    expect(output).toContain("Gaps are missing or incomplete buckets");
+    expect(alphaAt(image, 610, 46)).toBe(255);
+    expect(alphaAt(image, 610, 45)).toBe(0);
+    expect(textPixels(image, 0, 0, 6)).toEqual(labelPixels("10,000"));
+    expect(output).toContain("Missing or incomplete buckets:");
     expect(output).toMatch(/2026-01-01 00:05:00\s+│\s+—/);
     expect(output).toMatch(
       /2026-01-01 00:15:00\s+│\s+90,000\s+│\s+Outside retention/,
@@ -349,6 +467,20 @@ describe("Explore time-series graphics", () => {
     expect(output).toContain("Some buckets have low confidence");
     expect(output).toContain("Results include sampled data");
     expect(output).toContain("Reported ingestion delay: 4m 48s");
+    const caption = output.slice(
+      output.indexOf("Interval: 5m"),
+      output.indexOf("Missing or incomplete buckets:"),
+    );
+    expect(caption.trim()).not.toContain("\n\n");
+    expect(output.indexOf("Interval: 5m")).toBeGreaterThan(
+      output.indexOf("\x1b_Ga=T"),
+    );
+    expect(
+      output.indexOf("Only part of the available data was scanned"),
+    ).toBeGreaterThan(output.indexOf("\x1b_Ga=T"));
+    expect(output.indexOf("Ingestion status: healthy")).toBeGreaterThan(
+      output.indexOf("Window not elapsed"),
+    );
     expect(data).toEqual(original);
   });
 
@@ -366,11 +498,11 @@ describe("Explore time-series graphics", () => {
     const output = formatExploreTimeSeriesHuman(data);
     const [image] = kittyImages(output);
 
-    expect(output).toContain("Scale: 0 to 0.002ms");
     expect(image).toBeDefined();
-    expect(alphaAt(image!, 10, 31)).toBe(0);
-    expect(alphaAt(image!, 10, 32)).toBe(255);
-    expect(alphaAt(image!, 90, 0)).toBe(255);
+    expect(textPixels(image!, 0, 0, 7)).toEqual(labelPixels("0.002ms"));
+    expect(alphaAt(image!, 100, 22)).toBe(0);
+    expect(alphaAt(image!, 100, 23)).toBe(255);
+    expect(alphaAt(image!, 400, 0)).toBe(255);
   });
 
   test.each(["negative", "string", "irregular", "missing"] as const)(
@@ -404,13 +536,13 @@ describe("Explore time-series graphics", () => {
     },
   );
 
-  test("uses the full table instead of averaging dense percentile buckets", () => {
+  test("uses the full table when axes leave too little plot width for percentile buckets", () => {
     const data = makeData();
     const series = data.timeSeries[0]!;
     series.yAxis = "p95(span.duration)";
-    series.values = Array.from({ length: 81 }, (_, index) => ({
+    series.values = Array.from({ length: 300 }, (_, index) => ({
       timestamp: Date.UTC(2026, 0, 1) + index * series.meta.interval,
-      value: index === 80 ? 999 : index,
+      value: index === 299 ? 999 : index,
       incomplete: false,
     }));
 
@@ -418,7 +550,17 @@ describe("Explore time-series graphics", () => {
 
     expect(output).not.toContain("\x1b_G");
     expect(output).toContain("TIME (UTC)");
-    expect(output).toMatch(/2026-01-01 06:40:00\s+│\s+999/);
+    expect(output).toMatch(/2026-01-02 00:55:00\s+│\s+999/);
+  });
+
+  test("uses the table when UTC labels cannot fit without truncation", () => {
+    vi.mocked(terminal.terminalPixelWidth).mockReturnValue(400);
+
+    const output = formatExploreTimeSeriesHuman(makeData());
+
+    expect(output).toContain("TIME (UTC)");
+    expect(output).toContain("1,234");
+    expect(output).not.toContain("\x1b_G");
   });
 
   test("uses tables without graphics support or when plain output is requested", () => {

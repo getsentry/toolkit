@@ -14,6 +14,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { getCompletionScript } from "../../lib/completions.js";
 import { ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -60,7 +61,7 @@ export const completionCommand = buildCommand({
         {
           placeholder: "shell",
           brief: "Shell to generate completions for (bash, zsh, or fish)",
-          parse: String,
+          parse: choiceParser(["bash", "zsh", "fish"]),
           optional: true,
         },
       ],

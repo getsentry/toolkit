@@ -25,9 +25,11 @@ import * as issueUtils from "../../../src/commands/issue/utils.js";
 import { triggerSolutionPlanning } from "../../../src/lib/api-client.js";
 import { CliError } from "../../../src/lib/errors.js";
 import { logger } from "../../../src/lib/logger.js";
+import { prompt } from "../../../src/lib/prompt.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
 
 vi.mock("node:tty", () => ({ isatty: vi.fn() }));
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
 
 vi.mock("../../../src/lib/api-client.js", () => ({
   triggerSolutionPlanning: vi.fn(async () => ({})),
@@ -77,11 +79,10 @@ describe("issue plan waiting-for-user-response", () => {
     vi.clearAllMocks();
     resolveSpy = vi.spyOn(issueUtils, "resolveOrgAndIssueId");
     analyzeSpy = vi.spyOn(issueUtils, "ensureRootCauseAnalysis");
-    promptSpy = vi.fn();
-    // The command prompts through a tagged logger, so intercept withTag.
+    promptSpy = vi.mocked(prompt);
+    promptSpy.mockReset();
     vi.spyOn(logger, "withTag").mockReturnValue({
       info: vi.fn(),
-      prompt: promptSpy,
     } as unknown as ReturnType<typeof logger.withTag>);
     resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
   });
@@ -130,7 +131,7 @@ describe("issue plan waiting-for-user-response", () => {
   test("throws when the user cancels the prompt", async () => {
     vi.mocked(isatty).mockReturnValue(true);
     analyzeSpy.mockResolvedValue(waitingState([sampleCause(0, "A cause")]));
-    // consola returns a cancel symbol (non-boolean) when cancelled.
+    // The prompt returns a cancel symbol (non-boolean) when cancelled.
     promptSpy.mockResolvedValue(Symbol("clack:cancel"));
 
     await expect(runPlan(createMockContext())).rejects.toBeInstanceOf(CliError);

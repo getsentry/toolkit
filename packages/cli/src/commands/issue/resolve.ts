@@ -25,13 +25,14 @@ import {
   updateIssueStatus,
 } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryIssue } from "../../types/index.js";
 import { resolveCommitSpec } from "./resolve-commit-spec.js";
-import { issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
 
 const log = logger.withTag("issue.resolve");
 
@@ -145,11 +146,14 @@ export const resolveCommand = buildCommand({
     jsonTransform,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND }),
     flags: {
       in: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser([
+          RESOLVE_NEXT_RELEASE_SENTINEL,
+          RESOLVE_COMMIT_SENTINEL,
+        ]),
         brief: `Resolve in a release, next release, or commit ('<version>' | '${RESOLVE_NEXT_RELEASE_SENTINEL}' | '${RESOLVE_COMMIT_SENTINEL}' | '${RESOLVE_COMMIT_EXPLICIT_PREFIX}<repo>@<sha>')`,
         optional: true,
       },
@@ -158,15 +162,11 @@ export const resolveCommand = buildCommand({
       i: "in",
     },
   },
-  async *func(this: SentryContext, flags: ResolveFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: ResolveFlags, target: IssueTarget) {
     const { cwd } = this;
     const parsed = parseResolveSpec(flags.in);
 
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND,
-    });
+    const { org, issue } = await target.resolved;
 
     // Static specs (release / next-release / omitted) are ready to send.
     // Commit specs need git + Sentry-repo lookup before they become a

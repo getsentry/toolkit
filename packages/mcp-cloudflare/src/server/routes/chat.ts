@@ -182,7 +182,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
       const encoder = new TextEncoder();
       const data = encoder.encode(accessToken);
       const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashArray = [...new Uint8Array(hashBuffer)];
       const hashHex = hashArray
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");

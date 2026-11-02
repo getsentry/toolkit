@@ -246,7 +246,7 @@ For MCP tools specifically:
 When output changes are intentional:
 
 ```bash
-cd packages/mcp-server
+cd packages/mcp-core
 pnpm vitest --run -u
 ```
 
@@ -384,7 +384,7 @@ Coverage requirements:
 
 ## References
 
-- Test setup: `packages/mcp-server/src/test-utils/`
+- Test setup: `packages/mcp-core/src/test-utils/`
 - Mock server: `packages/mcp-server-mocks/`
 - Eval tests: `packages/mcp-server-evals/`
 - Vitest docs: https://vitest.dev/

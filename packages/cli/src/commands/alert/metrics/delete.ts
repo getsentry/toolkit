@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteMetricAlertRule } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
 import {
@@ -15,8 +14,9 @@ import {
   isConfirmationBypassed,
   requireExplicitTarget,
 } from "../../../lib/mutate-command.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
-import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 
 const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
 
@@ -70,27 +70,19 @@ export const deleteCommand = buildDeleteCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        metricRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    requireExplicitTarget(
-      parseOrgProjectArg(targetArg),
-      "Metric alert target",
-      USAGE_HINT,
-    );
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics delete",
-    );
+    const { ref, target } = await ruleArg.resolved;
+    requireExplicitTarget(target, "Metric alert target", USAGE_HINT);
+    const org = await resolveOrgOnlyTarget(target, cwd, "alert metrics delete");
     const orgSlugs = [org];
 
     const { orgSlug, rule } = await resolveMetricAlertRule(

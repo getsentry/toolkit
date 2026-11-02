@@ -59,9 +59,9 @@ function deriveSelectedFields(
     return fields;
   }
 
-  return Array.from(
-    new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
-  );
+  return [
+    ...new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
+  ];
 }
 
 function getSentryWebBaseUrl(
@@ -587,6 +587,21 @@ export function getTraceUrl(
     host,
     organizationSlug,
     `/explore/traces/trace/${traceId}`,
+    protocol,
+  );
+}
+
+export function getLogUrl(
+  host: string,
+  organizationSlug: string,
+  logId: string,
+  protocol: SentryProtocol = "https",
+): string {
+  const urlParams = new URLSearchParams({ project: "-1", logsPinned: logId });
+  return getSentryWebBaseUrl(
+    host,
+    organizationSlug,
+    `/explore/logs/?${urlParams.toString()}`,
     protocol,
   );
 }

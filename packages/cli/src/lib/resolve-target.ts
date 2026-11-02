@@ -15,7 +15,6 @@
  */
 
 import { basename } from "node:path";
-import { isatty } from "node:tty";
 import pLimit from "p-limit";
 import type {
   CachedProject,
@@ -74,7 +73,7 @@ import {
   withAuthGuard,
 } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
-import { interactivePromptsAllowed } from "./interactive-prompts.js";
+import { canShowSelectPrompt, selectWithFilter } from "./select-prompt.js";
 import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
 import { CONFIG_FILENAME, loadSentryCliRc } from "./sentryclirc.js";
@@ -799,7 +798,7 @@ async function findSimilarProjectsAcrossOrgs(
 
     // Deduplicate slugs so fuzzyMatch doesn't waste slots on the same
     // project appearing in multiple orgs.
-    const uniqueSlugs = Array.from(new Set(allProjects.map((p) => p.slug)));
+    const uniqueSlugs = [...new Set(allProjects.map((p) => p.slug))];
     const slugMatches = fuzzyMatch(slug, uniqueSlugs, { maxResults: 5 });
 
     // When a display name is provided (input contained spaces), also
@@ -816,7 +815,7 @@ async function findSimilarProjectsAcrossOrgs(
           nameToSlug.set(p.name, p.slug);
         }
       }
-      const uniqueNames = Array.from(nameToSlug.keys());
+      const uniqueNames = [...nameToSlug.keys()];
       const matchedNames = fuzzyMatch(displayName, uniqueNames, {
         maxResults: 5,
       });
@@ -826,9 +825,7 @@ async function findSimilarProjectsAcrossOrgs(
     }
 
     // Merge slug matches and name matches, preferring slug matches.
-    const mergedSlugs = Array.from(
-      new Set(slugMatches.concat(nameMatchedSlugs)),
-    );
+    const mergedSlugs = [...new Set([...slugMatches, ...nameMatchedSlugs])];
 
     // Expand matched slugs back to org-qualified entries (may include
     // the same slug from multiple orgs — that's correct for suggestions).
@@ -1807,7 +1804,7 @@ function canPromptForTarget(override?: boolean): boolean {
   if (override !== undefined) {
     return override;
   }
-  return interactivePromptsAllowed() && isatty(0) && isatty(1);
+  return canShowSelectPrompt();
 }
 
 /**
@@ -1823,7 +1820,6 @@ async function promptSelect(
   if (options.length === 1 && sole) {
     return sole.value;
   }
-  const { selectWithFilter } = await import("./init/ui/ink-ui.js");
   return await selectWithFilter({ message, options });
 }
 

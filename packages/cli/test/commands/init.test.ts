@@ -23,6 +23,7 @@ import * as prefetchNs from "../../src/lib/init/org-prefetch.js";
 import { resetPrefetch } from "../../src/lib/init/org-prefetch.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as wizardRunner from "../../src/lib/init/wizard-runner.js";
+import { parseFailure } from "../helpers.js";
 
 /** Minimal org shape for mock returns */
 const MOCK_ORG = { id: "1", slug: "resolved-org", name: "Resolved Org" };
@@ -47,8 +48,7 @@ const func = (await initCommand.loader()) as unknown as (
     stdin: { isTTY?: boolean };
   },
   flags: Record<string, unknown>,
-  first?: string,
-  second?: string,
+  ...args: string[]
 ) => Promise<void>;
 
 function makeContext(
@@ -545,18 +545,23 @@ describe("init command func", () => {
   describe("error cases", () => {
     test("two paths throws ValidationError with specific message", async () => {
       const ctx = makeContext();
-      const promise = func.call(ctx, DEFAULT_FLAGS, "./dir1", "./dir2");
-      await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "./dir1", "./dir2")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain(
         '"./dir1" and "./dir2" are both directory paths',
       );
+      expect(runWizardSpy).not.toHaveBeenCalled();
     });
 
     test("two targets throws ValidationError with specific message", async () => {
       const ctx = makeContext();
-      const promise = func.call(ctx, DEFAULT_FLAGS, "acme/", "other/");
-      await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "acme/", "other/")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain(
         '"acme/" and "other/" are both treated as targets',
       );
     });
@@ -565,9 +570,22 @@ describe("init command func", () => {
       // Spaces in org slugs now hit validateResourceId and throw
       // ValidationError — normalizeSlug no longer converts them.
       const ctx = makeContext();
-      await expect(func.call(ctx, DEFAULT_FLAGS, "acme corp/")).rejects.toThrow(
-        ValidationError,
-      );
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "acme corp/")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      // Rejected before any project lookup
+      expect(findProjectsSpy).not.toHaveBeenCalled();
+    });
+
+    test("more than two arguments fail to parse", async () => {
+      const ctx = makeContext();
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "acme/", "./app", "extra")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain("Too many arguments");
+      expect(runWizardSpy).not.toHaveBeenCalled();
     });
   });
 

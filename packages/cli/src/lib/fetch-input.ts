@@ -3,4 +3,4 @@
  * implementation; this path stays for CLI callers and tests.
  */
 
-export { extractInputUrl } from "@sentry/toolkit-core/api-transport";
+export { extractInputUrl } from "@sentry/toolkit-core/api-client/transport";

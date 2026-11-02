@@ -36,6 +36,7 @@ import {
   getActiveTokenHost,
   isRequestOriginTrustedForCustomHeaders,
 } from "./token-host.js";
+import { getUrlLoginCommand } from "./app-identity.js";
 
 const log = logger.withTag("custom-headers");
 
@@ -352,7 +353,7 @@ export function applyCustomHeaders(
       untrustedDestinationWarningLogged = true;
       log.warn(
         "Skipping custom headers for request to untrusted host. " +
-          "If this is legitimate, run 'sentry auth login --url <url>' against the intended instance.",
+          `If this is legitimate, run '${getUrlLoginCommand()} <url>' against the intended instance.`,
       );
     }
     return;

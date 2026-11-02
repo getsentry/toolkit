@@ -9,7 +9,7 @@ import { formatResolvedFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
 import { SentryFeedbackSchema } from "../../types/index.js";
-import { feedbackIdPositional, resolveFeedback } from "./utils.js";
+import { type FeedbackTarget, feedbackPositional } from "./positional.js";
 
 export const resolveCommand = buildCommand({
   docs: {
@@ -43,16 +43,12 @@ export const resolveCommand = buildCommand({
     schema: SentryFeedbackSchema,
   },
   parameters: {
-    positional: feedbackIdPositional,
+    positional: feedbackPositional("resolve"),
   },
-  async *func(this: SentryContext, _flags, feedbackArg: string) {
+  async *func(this: SentryContext, _flags, target: FeedbackTarget) {
     // A cached inbox could select Feedback that has already been resolved elsewhere.
     disableResponseCache();
-    const { org, feedback } = await resolveFeedback(
-      feedbackArg,
-      this.cwd,
-      "resolve",
-    );
+    const { org, feedback } = await target.resolved;
     const updated = await updateIssueStatus(feedback.id, "resolved", {
       orgSlug: org,
     });

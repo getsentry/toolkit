@@ -36,6 +36,7 @@
     "@sentry/mcp-core": "workspace:*",
     "@sentry/mcp-server-mocks": "workspace:*",
     "@sentry/mcp-server-tsconfig": "workspace:*",
+    "@sentry/toolkit-core": "workspace:*",
     "@sentry/vite-plugin": "catalog:",
     "@tailwindcss/typography": "catalog:",
     "@tailwindcss/vite": "catalog:",

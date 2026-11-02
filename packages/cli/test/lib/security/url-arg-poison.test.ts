@@ -11,12 +11,13 @@
  * can establish trust for a new host.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { parsePositionalArgs } from "../../../src/commands/event/view.js";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  parseIssueArg,
-  parseOrgProjectArg,
-} from "../../../src/lib/arg-parsing.js";
+  parseEventViewInput,
+  viewCommand,
+} from "../../../src/commands/event/view.js";
+import { parseOrgProjectArg } from "../../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../../src/lib/issue-arguments.js";
 import { resetEnvTokenHostForTesting } from "../../../src/lib/env-token-host.js";
 import { useEnvSandbox } from "../../helpers.js";
 
@@ -50,12 +51,22 @@ describe("CVE: URL argument credential exfiltration", () => {
     expect(process.env.SENTRY_URL).toBeUndefined();
   });
 
-  test("event view with attacker URL throws before env is poisoned", () => {
-    expect(() =>
-      parsePositionalArgs([
-        "https://evil.com/organizations/acme/issues/999/events/deadbeef/",
-      ]),
-    ).toThrow(/does not match|sentry auth login --url/);
+  test("event view with attacker URL throws before env is poisoned", async () => {
+    const url =
+      "https://evil.com/organizations/acme/issues/999/events/deadbeef/";
+    // Parsing only returns the server, for the command to check and apply
+    expect(parseEventViewInput([url]).baseUrl).toBe("https://evil.com");
+    expect(process.env.SENTRY_URL).toBeUndefined();
+
+    const func = await viewCommand.loader();
+    const context = {
+      stdout: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn(() => true) },
+      cwd: "/tmp",
+    };
+    await expect(
+      func.call(context as never, { json: true, web: false, spans: 0 }, url),
+    ).rejects.toThrow(/does not match|sentry auth login --url/);
 
     expect(process.env.SENTRY_HOST).toBeUndefined();
     expect(process.env.SENTRY_URL).toBeUndefined();

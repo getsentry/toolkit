@@ -74,7 +74,8 @@ function mockFetch(
 const BINARY_NAME = getPlatformBinaryName();
 
 function versionHex(version: string): string {
-  return Array.from(version)
+  return version
+    .split("")
     .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
     .join("");
 }

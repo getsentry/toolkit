@@ -1,14 +1,14 @@
 import type { SentryContext } from "../../../context.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { ContextError } from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import { buildIssueAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import type { AlertRuleArgument } from "../arguments.js";
 import {
   type IssueRuleResolution,
-  parseIssueRuleArg,
+  issueRuleParameter,
   resolveIssueAlertRule,
 } from "./rule-resolve.js";
 
@@ -71,11 +71,7 @@ export const viewCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Issue alert rule ID or name",
-          parse: String,
-        },
+        issueRuleParameter(USAGE_HINT, "Issue alert rule ID or name"),
       ],
     },
     flags: {
@@ -87,10 +83,13 @@ export const viewCommand = buildCommand({
     },
     aliases: { w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
 
     if (flags.web && parsed.type === "explicit") {
       await openInBrowser(

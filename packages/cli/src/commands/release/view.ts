@@ -8,7 +8,6 @@
 import type { SentryContext } from "../../context.js";
 import { getRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownCell,
@@ -27,7 +26,7 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release view [<org>/]<version>";
 
@@ -189,11 +188,10 @@ export const viewCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version to view",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(
+          USAGE_HINT,
+          "[<org>/]<version> - Release version to view",
+        ),
       ],
     },
     flags: {
@@ -208,16 +206,10 @@ export const viewCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-
-    const { version, org, detectedFrom } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org, detectedFrom } = await target.resolved;
 
     const release = await getRelease(org, version, {
       health: true,

@@ -11,6 +11,7 @@ import {
   listFeedback,
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -206,7 +207,7 @@ export const listCommand = buildListCommand("feedback", {
       },
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of feedback items (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },

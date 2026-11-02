@@ -14,11 +14,9 @@ import {
   buildCategoricalChartModel,
   buildChartModel,
   buildHeatmapModel,
-  hexToRgb,
-  rasterizeChart,
   rasterizeHeatmap,
-  seriesColor,
 } from "./chart-core.js";
+import { renderChartWithLabels } from "./chart-presentation.js";
 import {
   blitPixelImage,
   createPixelCanvas,
@@ -47,9 +45,6 @@ const TERMINAL_ESCAPE_RE = new RegExp(
   `${String.fromCharCode(27)}(?:\\[[0-?]*[ -/]*[@-~]|\\][\\s\\S]*?(?:${String.fromCharCode(7)}|${String.fromCharCode(27)}\\\\)|P[\\s\\S]*?${String.fromCharCode(27)}\\\\)`,
   "g",
 );
-
-/** Aggregate function and its simple arguments in a raw query expression. */
-const AGGREGATE_LABEL_RE = /^([a-z][a-z0-9_]*)\(([^()]*)\)/i;
 
 /** A widget layout used by the dashboard grid. */
 export type SixelWidgetLayout = {
@@ -334,218 +329,31 @@ function drawChartContent(
   if (!model) {
     return;
   }
-  const contentRows = Math.max(
-    1,
-    Math.floor(options.height / options.cellHeight),
-  );
-  const hasLegend = contentRows >= 4;
-  const hasAxisLabels = contentRows >= 5;
-  const gutterColumns = options.width >= options.cellWidth * 12 ? 5 : 0;
-  const gutterWidth = gutterColumns * options.cellWidth;
-  const footerHeight =
-    (hasLegend ? 1 : 0) * options.cellHeight +
-    (hasAxisLabels ? 1 : 0) * options.cellHeight;
-  const chartX = options.x + gutterWidth;
-  const chartWidth = options.width - gutterWidth;
-  const chartHeight = options.height - footerHeight;
-  // rasterizeChart enforces a 16x8 minimum, which must never escape this
-  // widget's allocated rectangle on exceptionally narrow terminals.
-  if (chartWidth < 16 || chartHeight < 8) {
-    return;
-  }
-  const chart = rasterizeChart(model, {
-    width: chartWidth,
-    height: chartHeight,
-    backgroundTransparent: true,
-  });
-  if (!chart) {
-    return;
-  }
-
-  blitPixelImage(image, chart, chartX, options.y);
-  drawPixelRect(image, {
-    x: chartX,
-    y: options.y + chartHeight - 1,
-    width: chartWidth,
-    height: 1,
-    color: FRAME_COLOR,
-  });
-  if (gutterWidth > 0) {
-    drawPixelRect(image, {
-      x: chartX,
-      y: options.y,
-      width: 1,
-      height: chartHeight,
-      color: FRAME_COLOR,
-    });
-    drawPixelText(
-      image,
-      formatChartValue(model.maxVal, options.data.series[0]?.unit),
-      {
-        x: options.x,
-        y: options.y,
-        cellWidth: options.cellWidth,
-        cellHeight: options.cellHeight,
-        maxColumns: gutterColumns,
-        color: FRAME_COLOR,
-      },
-    );
-    drawPixelText(image, "0", {
-      x: options.x,
-      y: options.y + chartHeight - options.cellHeight,
-      cellWidth: options.cellWidth,
-      cellHeight: options.cellHeight,
-      maxColumns: gutterColumns,
-      color: FRAME_COLOR,
-    });
-  }
-
-  let footerY = options.y + chartHeight;
-  if (hasAxisLabels) {
-    drawChartLabels(image, {
-      modelKind: model.kind,
-      series: model.series,
-      data: options.data,
-      x: chartX,
-      y: footerY,
-      width: chartWidth,
-      cellWidth: options.cellWidth,
-      cellHeight: options.cellHeight,
-    });
-    footerY += options.cellHeight;
-  }
-  if (hasLegend) {
-    drawLegend(image, {
-      series: model.series,
-      x: options.x,
-      y: footerY,
-      width: options.width,
-      cellWidth: options.cellWidth,
-      cellHeight: options.cellHeight,
-    });
-  }
-}
-
-/** Draw a concise first/last x-axis label for time and categorical charts. */
-function drawChartLabels(
-  image: ReturnType<typeof createPixelCanvas>,
-  options: {
-    modelKind: "timeseries" | "categorical";
-    series: { label: string }[];
-    data: Extract<WidgetDataResult, { type: "timeseries" }>;
-    x: number;
-    y: number;
-    width: number;
-    cellWidth: number;
-    cellHeight: number;
-  },
-): void {
-  const columns = Math.max(1, Math.floor(options.width / options.cellWidth));
   const firstTimestamp = options.data.series[0]?.values[0]?.timestamp;
   const lastTimestamp = options.data.series[0]?.values.at(-1)?.timestamp;
   const spanDays =
     typeof firstTimestamp === "number" && typeof lastTimestamp === "number"
       ? (lastTimestamp - firstTimestamp) / (24 * 60 * 60)
       : 0;
-  const first =
-    options.modelKind === "categorical"
-      ? options.series[0]?.label
-      : formatTimestamp(firstTimestamp, spanDays);
-  const last =
-    options.modelKind === "categorical"
-      ? options.series.at(-1)?.label
-      : formatTimestamp(lastTimestamp, spanDays);
-  drawPixelText(image, first ?? "", {
-    x: options.x,
-    y: options.y,
+  const chart = renderChartWithLabels(model, {
+    width: options.width,
+    height: options.height,
     cellWidth: options.cellWidth,
     cellHeight: options.cellHeight,
-    maxColumns: Math.max(1, Math.floor(columns / 2)),
-    color: FRAME_COLOR,
+    gutterColumns: options.width >= options.cellWidth * 12 ? 5 : 0,
+    maximumLabel: formatChartValue(model.maxVal, options.data.series[0]?.unit),
+    firstLabel:
+      model.kind === "categorical"
+        ? model.series[0]?.label
+        : formatTimestamp(firstTimestamp, spanDays),
+    lastLabel:
+      model.kind === "categorical"
+        ? model.series.at(-1)?.label
+        : formatTimestamp(lastTimestamp, spanDays),
   });
-  const lastColumns = Math.min(Math.floor(columns / 2), (last ?? "").length);
-  drawPixelText(image, last ?? "", {
-    x: options.x + Math.max(0, columns - lastColumns) * options.cellWidth,
-    y: options.y,
-    cellWidth: options.cellWidth,
-    cellHeight: options.cellHeight,
-    maxColumns: Math.max(1, lastColumns),
-    color: FRAME_COLOR,
-  });
-}
-
-/** Draw colored series keys and labels, clipping safely to the widget width. */
-function drawLegend(
-  image: ReturnType<typeof createPixelCanvas>,
-  options: {
-    series: { label: string }[];
-    x: number;
-    y: number;
-    width: number;
-    cellWidth: number;
-    cellHeight: number;
-  },
-): void {
-  let column = 0;
-  const maxColumns = Math.max(1, Math.floor(options.width / options.cellWidth));
-  for (let index = 0; index < options.series.length; index += 1) {
-    const series = options.series[index];
-    if (!series || column >= maxColumns) {
-      break;
-    }
-    const availableColumns = maxColumns - column - 2;
-    const label = truncateLegendLabel(
-      formatLegendLabel(series.label),
-      Math.min(18, availableColumns),
-    );
-    const requiredColumns = Math.min(maxColumns, label.length + 2);
-    if (column + requiredColumns > maxColumns) {
-      break;
-    }
-    drawPixelRect(image, {
-      x: options.x + column * options.cellWidth,
-      y: options.y + Math.max(1, Math.floor(options.cellHeight / 3)),
-      width: Math.max(2, Math.floor(options.cellWidth / 2)),
-      height: Math.max(2, Math.floor(options.cellHeight / 3)),
-      color: hexToRgb(seriesColor(series.label, index)),
-    });
-    drawPixelText(image, label, {
-      x: options.x + (column + 1) * options.cellWidth,
-      y: options.y,
-      cellWidth: options.cellWidth,
-      cellHeight: options.cellHeight,
-      maxColumns: Math.min(label.length, maxColumns - column - 1),
-      color: TEXT_COLOR,
-    });
-    column += requiredColumns;
+  if (chart) {
+    blitPixelImage(image, chart, options.x, options.y);
   }
-}
-
-/** Turn raw aggregate expressions into concise, readable legend labels. */
-export function formatLegendLabel(label: string): string {
-  const aggregate = AGGREGATE_LABEL_RE.exec(label);
-  if (aggregate) {
-    const operation = aggregate[1] ?? label;
-    const arguments_ =
-      aggregate[2]?.split(",").map((argument) => argument.trim()) ?? [];
-    const metric = arguments_[0] === "value" ? arguments_[1] : arguments_[0];
-    return metric ? `${operation} ${metric}` : operation;
-  }
-  if (label.startsWith("equation|")) {
-    return "equation";
-  }
-  return label;
-}
-
-/** Clip a legend label without leaving a partial aggregate expression. */
-function truncateLegendLabel(label: string, maxColumns: number): string {
-  if (label.length <= maxColumns) {
-    return label;
-  }
-  if (maxColumns <= 3) {
-    return label.slice(0, Math.max(0, maxColumns));
-  }
-  return `${label.slice(0, maxColumns - 3)}...`;
 }
 
 /** Format a number compactly enough for the chart-axis gutter. */

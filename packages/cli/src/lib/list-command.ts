@@ -13,24 +13,16 @@
  *   buildOrgListCommand
  */
 
-import { createRequire } from "node:module";
 import type { Aliases, Command, CommandContext } from "@stricli/core";
 import type { SentryContext } from "../context.js";
-
-const _require = createRequire(import.meta.url);
-
-import { parseListTarget, parseOrgProjectArg } from "./arg-parsing.js";
+import { type ListTargetOptions, parseCursorFlag } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
   numberParser,
 } from "./command.js";
-import { parseOrgProjectTarget, parseOrgTarget } from "./completion-target.js";
+import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
-import { logger } from "./logger.js";
-
-const log = logger.withTag("list-command");
-
 import { disableDsnCache } from "./dsn/index.js";
 import { warning } from "./formatters/colors.js";
 import {
@@ -44,8 +36,15 @@ import {
   type ListResult,
   type OrgListConfig,
 } from "./org-list.js";
-import { applyBoundPositionals, rawPositional } from "./positional-parse.js";
+import {
+  applyBoundPositionals,
+  rawPositional,
+  skipLeadingArgument,
+  skippedArgument,
+} from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
+import { type CliRoutes, findRoutes } from "./route-registry.js";
+import { type ListCommandTarget, listTarget } from "./target-positional.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
 
@@ -79,8 +78,8 @@ export const ORG_ALL_TARGET_BRIEF =
 
 /**
  * {@link ORG_ALL_TARGET_BRIEF} for list commands that also match names
- * (see {@link parseListTarget}): a glob filters names, and a name that is
- * no project matches names instead.
+ * (see {@link parseListTargetInput}): a glob filters names, and a name that
+ * is no project matches names instead.
  */
 export const NAMED_LIST_TARGET_BRIEF =
   "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)";
@@ -89,63 +88,53 @@ export const NAMED_LIST_TARGET_BRIEF =
 export const PROJECT_TARGET_BRIEF = "<org>/<project> or <project> (search)";
 
 /**
- * Positional `org/project` parameter shared by all list commands.
+ * Positional `org/project` parameter of a list command, parsed with
+ * {@link listTarget}: `func` gets a `ListCommandTarget` and passes
+ * `(await target.resolved)` to `dispatchOrgScopedList`.
  *
  * Accepts `<org>/`, `<org>/<project>`, or bare `<project>` (search).
  * Marked optional so the command falls back to auto-detection when omitted.
+ *
+ * @param options.orgScoped - For org-scoped resources (teams, repos,
+ *   releases, …): shell completion suggests org slugs only
+ * @param options.names - A glob filters names, and a name that is no
+ *   project matches names instead
  */
-export const LIST_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      placeholder: "org/project",
-      brief: ORG_ALL_TARGET_BRIEF,
-      parse: parseOrgProjectTarget,
-      optional: true as const,
-    },
-  ],
-};
+export function listTargetPositional(
+  options: ListTargetOptions & { readonly orgScoped?: boolean } = {},
+) {
+  const { orgScoped, ...parseOptions } = options;
+  return {
+    kind: "tuple" as const,
+    parameters: [
+      {
+        placeholder: "org/project",
+        brief: parseOptions.names
+          ? NAMED_LIST_TARGET_BRIEF
+          : ORG_ALL_TARGET_BRIEF,
+        parse: listTarget(
+          orgScoped ? ORG_TARGET : ORG_PROJECT_TARGET,
+          parseOptions,
+        ),
+        optional: true as const,
+      },
+    ],
+  };
+}
 
-/**
- * {@link LIST_TARGET_POSITIONAL} for org-scoped resources (teams, repos,
- * releases, …): same syntax, but shell completion suggests org slugs only.
- */
-export const LIST_ORG_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      placeholder: "org/project",
-      brief: ORG_ALL_TARGET_BRIEF,
-      parse: parseOrgTarget,
-      optional: true as const,
-    },
-  ],
-};
+/** {@link listTargetPositional} for most list commands. */
+export const LIST_TARGET_POSITIONAL = listTargetPositional();
 
-/**
- * {@link LIST_TARGET_POSITIONAL} for list commands whose target also
- * matches names; parse it with {@link parseListTarget}.
- */
-export const NAMED_LIST_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    { ...LIST_TARGET_POSITIONAL.parameters[0], brief: NAMED_LIST_TARGET_BRIEF },
-  ],
-};
+/** {@link listTargetPositional} for org-scoped resources. */
+export const LIST_ORG_TARGET_POSITIONAL = listTargetPositional({
+  orgScoped: true,
+});
 
-/**
- * {@link LIST_ORG_TARGET_POSITIONAL} for org-scoped resources whose target
- * also matches names; parse it with {@link parseListTarget}.
- */
-export const NAMED_LIST_ORG_TARGET_POSITIONAL = {
-  kind: "tuple" as const,
-  parameters: [
-    {
-      ...LIST_ORG_TARGET_POSITIONAL.parameters[0],
-      brief: NAMED_LIST_TARGET_BRIEF,
-    },
-  ],
-};
+/** {@link listTargetPositional} for org-scoped resources matched by name. */
+export const NAMED_LIST_ORG_TARGET_POSITIONAL = listTargetPositional({
+  orgScoped: true,
+  names: true,
+});
 
 /**
  * Short note for commands that accept a bare project name but do not support
@@ -241,51 +230,6 @@ export function applyFreshFlag(flags: { readonly fresh: boolean }): void {
     disableDsnCache();
     disableOrgCache();
   }
-}
-
-/** Matches strings that are all digits — used to detect invalid cursor values */
-const ALL_DIGITS_RE = /^\d+$/;
-
-/**
- * Navigation keywords accepted by `--cursor`.
- *
- * - `"next"` / `"last"` — advance to the next page
- * - `"prev"` / `"previous"` — go back to the previous page
- * - `"first"` — jump back to the first page
- *
- * `"last"` is a silent alias for `"next"` preserved for muscle-memory compat.
- */
-export const CURSOR_KEYWORDS = new Set([
-  "next",
-  "last",
-  "prev",
-  "previous",
-  "first",
-]);
-
-/**
- * Parse and validate a `--cursor` flag value.
- *
- * Accepts navigation keywords (`"next"`, `"prev"`, `"previous"`, `"first"`,
- * `"last"`) and opaque Sentry cursor strings (e.g. `"1735689600:0:0"`).
- * Rejects bare integers early — they are never valid cursors and would
- * produce a cryptic 400 from the API.
- *
- * Shared by {@link LIST_CURSOR_FLAG} and commands that define their own
- * cursor flag with a custom `brief`.
- *
- * @throws Error when value is a bare integer
- */
-export function parseCursorFlag(value: string): string {
-  if (CURSOR_KEYWORDS.has(value)) {
-    return value;
-  }
-  if (ALL_DIGITS_RE.test(value)) {
-    throw new Error(
-      `'${value}' is not a valid cursor. Cursors look like "1735689600:0:0". Use "next" / "prev" to navigate pages.`,
-    );
-  }
-  return value;
 }
 
 /**
@@ -449,7 +393,8 @@ export const LIST_BASE_ALIASES: Aliases<string> = { n: "limit", c: "cursor" };
 // Level B: subcommand interception for plural aliases
 // ---------------------------------------------------------------------------
 
-let _subcommandsByRoute: Map<string, Set<string>> | undefined;
+/** Subcommand names by route group, per registered route map. */
+const subcommandsByRoutes = new WeakMap<CliRoutes, Map<string, Set<string>>>();
 
 /**
  * Entry shape returned by Stricli's getAllEntries().
@@ -479,39 +424,32 @@ function collectChildNames(parent: {
 /**
  * Get the subcommand names for a given singular route (e.g. "project" → {"list", "view"}).
  *
- * Lazily walks the Stricli route map on first call. Uses `require()` to break
- * the circular dependency: list-command → app → commands → list-command.
+ * Walks the registered route map once and caches the result for it. With no
+ * route map registered (a command's `func` called directly, as in unit
+ * tests), there are no subcommands to intercept.
  */
 function getSubcommandsForRoute(routeName: string): Set<string> {
-  if (!_subcommandsByRoute) {
-    _subcommandsByRoute = new Map();
-
-    try {
-      const { routes } = _require("../app.js") as {
-        routes: { getAllEntries: () => readonly RouteEntry[] };
-      };
-
-      for (const entry of routes.getAllEntries()) {
-        const target = entry.target as unknown as Record<string, unknown>;
-        if (typeof target?.getAllEntries === "function") {
-          _subcommandsByRoute.set(
-            entry.name.original,
-            collectChildNames(
-              target as { getAllEntries: () => readonly RouteEntry[] },
-            ),
-          );
-        }
-      }
-    } catch (error) {
-      // In test environments (vitest), require("../app.js") may fail because
-      // Node's ESM resolver can't resolve .js→.ts for transitive imports.
-      // Gracefully degrade: interceptSubcommand will treat all targets as
-      // plain values (no subcommand interception).
-      log.debug("Failed to load app routes for subcommand detection", error);
-    }
+  const routes = findRoutes();
+  if (!routes) {
+    return new Set();
   }
-
-  return _subcommandsByRoute.get(routeName) ?? new Set();
+  let byRoute = subcommandsByRoutes.get(routes);
+  if (!byRoute) {
+    byRoute = new Map();
+    for (const entry of routes.getAllEntries()) {
+      const target = entry.target as unknown as Record<string, unknown>;
+      if (typeof target?.getAllEntries === "function") {
+        byRoute.set(
+          entry.name.original,
+          collectChildNames(
+            target as { getAllEntries: () => readonly RouteEntry[] },
+          ),
+        );
+      }
+    }
+    subcommandsByRoutes.set(routes, byRoute);
+  }
+  return byRoute.get(routeName) ?? new Set();
 }
 
 /**
@@ -533,19 +471,21 @@ export function interceptSubcommand(
   stderr: { write(s: string): void },
   routeName: string,
 ): string | undefined {
-  if (!target) {
+  if (!(target && isSubcommandName(target, routeName))) {
     return target;
   }
-  const trimmed = target.trim();
-  if (trimmed && getSubcommandsForRoute(routeName).has(trimmed)) {
-    stderr.write(
-      warning(
-        `Tip: "${trimmed}" is a subcommand. Running: sentry ${routeName} ${trimmed}\n`,
-      ),
-    );
-    return;
-  }
-  return target;
+  stderr.write(
+    warning(
+      `Tip: "${target.trim()}" is a subcommand. Running: sentry ${routeName} ${target.trim()}\n`,
+    ),
+  );
+  return;
+}
+
+/** Whether `arg` names a subcommand of `routeName` (see {@link interceptSubcommand}). */
+function isSubcommandName(arg: string, routeName: string): boolean {
+  const trimmed = arg.trim();
+  return trimmed !== "" && getSubcommandsForRoute(routeName).has(trimmed);
 }
 
 // ---------------------------------------------------------------------------
@@ -652,8 +592,15 @@ export function buildListCommand<
     mergedAliases.c = "cursor";
   }
 
+  // `boundArguments` positionals parse every argument before this wrapper
+  // runs, so a subcommand name is left out of that parse, before it changes
+  // what the other arguments mean
+  const positional = skipLeadingArgument(params.positional, (arg) =>
+    isSubcommandName(arg, routeName),
+  );
   const mergedParams = {
     ...params,
+    ...(positional ? { positional } : {}),
     flags: mergedFlags,
     aliases: mergedAliases,
   };
@@ -665,17 +612,22 @@ export function buildListCommand<
 
     // The first positional arg is always the target (org/project pattern),
     // either a raw string or a parsed value. Intercept it to handle plural
-    // alias confusion.
+    // alias confusion. All list commands use SentryContext which has stderr
+    // at top level
+    const ctx = this as unknown as { stderr: { write(s: string): void } };
+    const skipped = skippedArgument(args[0]);
     const rawTarget = rawPositional(args[0]);
-    if (typeof rawTarget === "string") {
-      // All list commands use SentryContext which has stderr at top level
-      const ctx = this as unknown as { stderr: { write(s: string): void } };
-      if (interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined) {
-        args[0] = undefined;
-      }
+    if (skipped !== undefined) {
+      // The scanner already parsed the other arguments without it
+      interceptSubcommand(skipped, ctx.stderr, routeName);
+    } else if (
+      typeof rawTarget === "string" &&
+      interceptSubcommand(rawTarget, ctx.stderr, routeName) === undefined
+    ) {
+      args[0] = undefined;
     }
     // A dropped bound target becomes an omitted one (auto-detect)
-    const finalArgs = applyBoundPositionals(args, params.positional, this);
+    const finalArgs = applyBoundPositionals(args, positional, this);
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
@@ -737,7 +689,7 @@ function formatListHuman<TEntity, TWithOrg>(
  * encapsulated in the shared org-list framework. The resulting command has:
  * - An optional positional `target` argument
  * - `--limit` / `-n`, `--json`, `--fields`, `--cursor` / `-c` flags
- * - A `func` that calls `parseOrgProjectArg` then `dispatchOrgScopedList`
+ * - A `func` that passes the resolved target to `dispatchOrgScopedList`
  *
  * Rendering is handled automatically via `OutputConfig`:
  * - JSON mode produces paginated envelopes or flat arrays
@@ -778,12 +730,10 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
         readonly fresh: boolean;
         readonly fields?: string[];
       },
-      rawTarget?: string,
+      target: ListCommandTarget,
     ) {
       const { cwd } = this;
-      const { parsed, filter } = config.namesOf
-        ? parseListTarget(rawTarget)
-        : { parsed: parseOrgProjectArg(rawTarget), filter: undefined };
+      const { parsed, filter } = await target.resolved;
       const result = await dispatchOrgScopedList({
         config,
         cwd,
