@@ -9,6 +9,7 @@ import {
   setAuthToken,
 } from "../../src/lib/db/auth.js";
 import { setUserInfo } from "../../src/lib/db/user.js";
+import { captureEnvTokenHost } from "../../src/lib/env-token-host.js";
 import {
   HostScopeError,
   MalformedAuthTokenError,
@@ -609,6 +610,70 @@ describe("serveMcp .sentryclirc URLs", () => {
 
     const { options } = await start(["--access-token=static-token"]);
     expect(options.accessToken).toBe("static-token");
+  });
+
+  describe("with SENTRY_AUTH_TOKEN and a stored login on another host", () => {
+    beforeEach(() => {
+      setAuthToken("cli-session-token", undefined, undefined, {
+        host: "https://sentry.io",
+      });
+    });
+
+    test("serves the env token on the self-hosted rc URL it is configured for", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      captureEnvTokenHost();
+      await inRcDir("https://sentry.example.com");
+
+      const { config, options } = await start([]);
+      expect(config.sentryHost).toBe("sentry.example.com");
+      expect(options.accessToken).toBe("env-token");
+    });
+
+    test("serves an env org token whose claim matches the rc URL", async () => {
+      const token = mintSntrysToken({
+        iat: 1,
+        url: "https://sentry.example.com",
+        org: "acme",
+      });
+      process.env.SENTRY_AUTH_TOKEN = token;
+      captureEnvTokenHost();
+      await inRcDir("https://sentry.example.com");
+
+      const { options } = await start([]);
+      expect(options.accessToken).toBe(token);
+    });
+
+    test("refuses to send an env token with no host claim to the rc URL", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      captureEnvTokenHost();
+      await inRcDir("https://evil.example.com");
+
+      await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+      expect(served.calls).toHaveLength(0);
+    });
+
+    test("refuses an env org token whose claim does not match the rc URL", async () => {
+      process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+        iat: 1,
+        url: "https://sentry.example.com",
+        org: "acme",
+      });
+      captureEnvTokenHost();
+      await inRcDir("https://evil.example.com");
+
+      await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+      expect(served.calls).toHaveLength(0);
+    });
+  });
+
+  test("refuses to send an env token with no host claim to an rc URL without a stored login", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    captureEnvTokenHost();
+    await inRcDir("https://evil.example.com");
+
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    expect(served.calls).toHaveLength(0);
   });
 
   test("serves a static token for an rc URL the user has logged in to", async () => {

@@ -87,11 +87,14 @@ stderr.
 
 A repo-local `.sentryclirc` URL is not a trust source. Unless `--host`/`--url`
 is passed, a non-SaaS `[defaults] url` must match a server you are logged in
-to, the same check every CLI command applies. Otherwise the server refuses to
-start (`HostScopeError`) instead of sending any token to that host. An org
-auth token (`sntrys_`) passed through the deprecated alias is the exception:
-it names the server it was issued for, so it is served when that server
-matches the target and refused when it does not.
+to, the same check every CLI command applies. With `SENTRY_AUTH_TOKEN` set, the
+check uses that token, as serving does: the URL must match the server the token
+is scoped to (its `sntrys_` claim, or `SENTRY_HOST`/`SENTRY_URL` from the
+environment the server started with, never the file). Otherwise the server
+refuses to start (`HostScopeError`) instead of sending any token to that host.
+An org auth token (`sntrys_`) passed through the deprecated alias is the
+exception: it names the server it was issued for, so it is served when that
+server matches the target and refused when it does not.
 
 ## Accounts
 

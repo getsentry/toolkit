@@ -7,6 +7,7 @@ import {
   type RefreshTokenResult,
   refreshToken,
 } from "./db/auth.js";
+import { inheritEnvTokenHost } from "./env-token-host.js";
 import { getEnv, withEnv } from "./env.js";
 import { AuthError, HostScopeError } from "./errors.js";
 import {
@@ -365,7 +366,9 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   // other CLI command, unless an explicit `--host`/`--url` flag overrides the
   // target, or the deprecated token is an org token, whose host claim the
   // credential check below matches against the target. Checked against the
-  // invocation's own credentials, before the deprecated token replaces them.
+  // invocation's own credentials, before the deprecated token replaces them:
+  // an env token wins over a stored login, as it does for serving, but keeps
+  // the host snapshotted at startup, so the rc URL cannot scope it.
   if (
     !(
       hasSentryTarget(flags) ||
@@ -373,7 +376,9 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
     )
   ) {
     const { assertRcUrlTrusted } = await import("./sentryclirc.js");
-    await assertRcUrlTrusted(cwd);
+    const checkEnv = preferEnvToken(env);
+    inheritEnvTokenHost(checkEnv);
+    await withEnv(checkEnv, () => assertRcUrlTrusted(cwd));
   }
 
   const targetEnv = withTargetEnv(env, flags, config);
