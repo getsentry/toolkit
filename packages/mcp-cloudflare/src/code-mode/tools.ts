@@ -143,6 +143,8 @@ export function registerCodeModeTools(
   )) {
     server.registerTool(name, definition, ({ code }) => evaluate(name, code));
   }
+  // As in buildServer(): the catalog is fixed for the request's server.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
 }
 
 /**
