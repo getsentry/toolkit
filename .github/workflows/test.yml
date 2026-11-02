@@ -289,7 +289,7 @@ jobs:
     needs: discover-projects
     if: contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry')
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
     steps:
