@@ -189,7 +189,7 @@ Edit an issue alert rule
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Alert rule ID |
-| `name` | string |  |
+| `name` | string | Alert rule name |
 | `organizationId` | string |  |
 | `createdBy` | string \| null |  |
 | `dateCreated` | string |  |
@@ -395,7 +395,7 @@ Edit a metric alert rule
 | `description` | string \| null |  |
 | `id` | string | Alert rule ID |
 | `projectId` | string \| null |  |
-| `name` | string |  |
+| `name` | string | Alert rule name |
 | `type` | string |  |
 | `workflowIds` | array \| null |  |
 | `dateCreated` | string |  |
