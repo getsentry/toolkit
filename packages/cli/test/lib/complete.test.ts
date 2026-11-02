@@ -895,6 +895,19 @@ describe("getCompletions: fixed values", () => {
     expect(
       await values(["auth", "login", "--scope"], "org:read,org:wr"),
     ).toEqual(["org:read,org:write"]);
+    expect(
+      await values(
+        ["alert", "issues", "create", "--condition"],
+        "first-seen,re",
+      ),
+    ).toEqual([
+      "first-seen,regression",
+      "first-seen,reappeared",
+      "first-seen,resolved",
+    ]);
+    expect(await values(["alert", "issues", "edit", "-c"], "new")).toEqual([
+      "new-high-priority",
+    ]);
   });
 
   test("platform flags complete platforms", async () => {
