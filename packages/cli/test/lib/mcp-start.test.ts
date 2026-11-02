@@ -549,6 +549,8 @@ describe("serveMcp .sentryclirc URLs", () => {
     rcDirs.push(dir);
     workingDir = dir;
     clearSentryCliRcCache();
+    // Boot order: the env-token host is snapshotted before the shim runs.
+    captureEnvTokenHost();
     await applySentryCliRcEnvShim(dir);
   }
 
@@ -802,13 +804,41 @@ describe("serveMcp .sentryclirc URLs", () => {
     expect(served.calls).toHaveLength(0);
   });
 
-  test("serves a static token for an rc URL the user has logged in to", async () => {
+  test("keeps a static token with no host claim off an rc URL the user has logged in to", async () => {
+    // The same as SENTRY_AUTH_TOKEN: the stored login on the rc host gets
+    // past the rc-URL gate, but the static token keeps its startup (SaaS)
+    // host.
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.example.com",
     });
     await inRcDir("https://sentry.example.com");
 
-    const { config } = await start(["--access-token=static-token"]);
+    await expect(serve(["--access-token=static-token"])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
+    await expect(
+      serve(["--access-token=static-token", "--insecure-http"]),
+    ).rejects.toBeInstanceOf(HostScopeError);
+    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    expect(served.calls).toHaveLength(0);
+
+    // An explicit target still scopes it.
+    const { config, options } = await start([
+      "--access-token=static-token",
+      "--host=sentry.example.com",
+    ]);
     expect(config.sentryHost).toBe("sentry.example.com");
+    expect(options.accessToken).toBe("static-token");
+  });
+
+  test("serves a static token on the rc URL its startup SENTRY_URL names", async () => {
+    process.env.SENTRY_URL = "https://sentry.example.com";
+    captureEnvTokenHost();
+    await inRcDir("https://sentry.example.com");
+
+    const { config, options } = await start(["--access-token=static-token"]);
+    expect(config.sentryHost).toBe("sentry.example.com");
+    expect(options.accessToken).toBe("static-token");
   });
 });

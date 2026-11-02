@@ -7,16 +7,17 @@ import {
   getAccountRow,
 } from "./db/accounts.js";
 import {
+  getCredentialContext,
   getEffectiveAccountRow,
   type RefreshTokenResult,
   refreshToken,
 } from "./db/auth.js";
 import {
   getBootConfiguredSentryUrl,
-  inheritEnvTokenHost,
+  scopeEnvTokenToBootHost,
 } from "./env-token-host.js";
 import { getEnv, withEnv } from "./env.js";
-import { AuthError, HostScopeError } from "./errors.js";
+import { AuthError } from "./errors.js";
 import {
   deprecatedFlags,
   type McpFlags,
@@ -25,8 +26,7 @@ import {
 } from "./mcp/args.js";
 import { finalizeMcpConfig } from "./mcp/config.js";
 import { assertRcUrlTrusted, getRcInjectedTokenSource } from "./sentryclirc.js";
-import { parseSntrysClaim } from "./token-claims.js";
-import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
+import { assertCredentialScope } from "./token-host.js";
 
 type McpTarget = {
   sentryHost: string;
@@ -173,15 +173,13 @@ export async function resolveCliMcpCredential(
     applyCredentialPin(requested);
   }
   const result = await refreshToken({ force: options.force });
-  const tokenHost = getActiveTokenHost();
-
-  if (!(tokenHost && isHostTrusted(targetUrl, tokenHost))) {
-    throw new HostScopeError(
-      "Cannot start MCP server with the active CLI credentials",
-      targetUrl,
-      tokenHost,
-    );
-  }
+  // The same host guard the CLI applies to each of its own requests: the
+  // server sends this token to the target.
+  assertCredentialScope(
+    targetUrl,
+    getCredentialContext(),
+    "Cannot start MCP server with the active CLI credentials",
+  );
 
   // At startup, an unusable stored credential falls back to the env token,
   // the same as other CLI commands. Later, that fallback is a different
@@ -291,33 +289,6 @@ function warnDeprecatedAccessToken(source: DeprecatedAccessToken["source"]) {
 }
 
 /**
- * The environment the deprecated token runs under: the same as
- * `SENTRY_AUTH_TOKEN=<token> SENTRY_FORCE_ENV_TOKEN=1`, so it takes the CLI's
- * env-token path and wins over any stored login. It also replaces an env
- * token that is already set, since the flag (or `SENTRY_ACCESS_TOKEN`) is the
- * more explicit choice for this server.
- *
- * The URL is pinned to the MCP target: `--host`/`--url` have always told the
- * MCP server where to send this token, and the env-token snapshot for this
- * copy then scopes the token to that server. An org auth token's own URL
- * claim still wins, so it cannot be sent anywhere else.
- */
-function deprecatedTokenEnv(
-  env: NodeJS.ProcessEnv,
-  token: string,
-  target: McpTarget,
-): NodeJS.ProcessEnv {
-  const aliased: NodeJS.ProcessEnv = { ...env };
-  delete aliased.SENTRY_ACCESS_TOKEN;
-  delete aliased.SENTRY_TOKEN;
-  aliased.SENTRY_AUTH_TOKEN = token;
-  aliased.SENTRY_FORCE_ENV_TOKEN = "1";
-  delete aliased.SENTRY_HOST;
-  aliased.SENTRY_URL = `${target.sentryProtocol}://${target.sentryHost}`;
-  return aliased;
-}
-
-/**
  * The environment with the deprecated `--host`/`--url`/`--insecure-http`
  * target applied as `SENTRY_URL`, the setting they stand in for. The
  * credential check, an env token's host scope, and the fallback login all read
@@ -359,33 +330,44 @@ function mayRescopeEnvToken(flags: McpFlags, target: McpTarget): boolean {
 }
 
 /**
- * The environment a `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) runs under: forced
- * over any stored login, as if `SENTRY_FORCE_ENV_TOKEN=1` were set. An MCP
- * client passes the token in its server config to pick the account, so a
- * stored CLI login must not silently replace it. Other commands keep
- * preferring the stored login.
+ * The environment the client's token runs under: `SENTRY_AUTH_TOKEN` (or
+ * `SENTRY_TOKEN`) forced over any stored login, as if `SENTRY_FORCE_ENV_TOKEN=1`
+ * were set. An MCP client passes the token in its server config to pick the
+ * account, so a stored CLI login must not silently replace it. Other commands
+ * keep preferring the stored login.
+ *
+ * The deprecated `--access-token` / `SENTRY_ACCESS_TOKEN` is an alias for it:
+ * it replaces any env token, as the more explicit choice for this server, and
+ * then takes the same path, with the same host scoping.
  *
  * A token the `.sentryclirc` shim copied in is not forced: it comes from the
  * repository, not the client, so it must not replace the user's login.
  *
- * With `keepStartupHost`, the copy keeps the env token's startup host: by now
- * `SENTRY_URL` can come from a `.sentryclirc` or the persisted default, which
- * must not scope the token (see `inheritEnvTokenHost`). See
+ * With `keepStartupHost`, the token is scoped as if set at startup (see
+ * `scopeEnvTokenToBootHost`): by now `SENTRY_URL` can come from a
+ * `.sentryclirc` or the persisted default, which must not scope it. See
  * {@link mayRescopeEnvToken} for when the server's target may scope it.
  */
-function preferEnvToken(
+function clientTokenEnv(
   env: NodeJS.ProcessEnv,
+  deprecatedToken: string | undefined,
   keepStartupHost: boolean,
 ): NodeJS.ProcessEnv {
   if (
-    !(env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) ||
-    getRcInjectedTokenSource()
+    !deprecatedToken &&
+    (!(env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) ||
+      getRcInjectedTokenSource())
   ) {
     return env;
   }
-  const forced = { ...env, SENTRY_FORCE_ENV_TOKEN: "1" };
+  const forced: NodeJS.ProcessEnv = { ...env, SENTRY_FORCE_ENV_TOKEN: "1" };
+  if (deprecatedToken) {
+    delete forced.SENTRY_ACCESS_TOKEN;
+    delete forced.SENTRY_TOKEN;
+    forced.SENTRY_AUTH_TOKEN = deprecatedToken;
+  }
   if (keepStartupHost) {
-    inheritEnvTokenHost(forced);
+    scopeEnvTokenToBootHost(forced);
   }
   return forced;
 }
@@ -424,25 +406,19 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   // source: without this gate, a token with no host claim would be sent to
   // whatever server the file names. Apply the same rc-URL check as every
   // other CLI command, unless an explicit `--host`/`--url` flag overrides the
-  // target, or the deprecated token is an org token, whose host claim the
-  // credential check below matches against the target. Checked against the
-  // invocation's own credentials, before the deprecated token replaces them:
-  // an env token from the client wins over a stored login, as it does for
-  // serving, but keeps the host snapshotted at startup, so the rc URL cannot
-  // scope it.
-  if (
-    !(
-      hasSentryTarget(flags) ||
-      (deprecatedToken && parseSntrysClaim(deprecatedToken))
-    )
-  ) {
-    await withEnv(preferEnvToken(env, true), () => assertRcUrlTrusted(cwd));
+  // target. Checked against the credential this server will use, scoped to
+  // its startup host, so the rc URL cannot scope it.
+  if (!hasSentryTarget(flags)) {
+    await withEnv(clientTokenEnv(env, deprecatedToken, true), () =>
+      assertRcUrlTrusted(cwd),
+    );
   }
 
-  const targetEnv = withTargetEnv(env, flags, config);
-  const credentialEnv = deprecatedToken
-    ? deprecatedTokenEnv(targetEnv, deprecatedToken, config)
-    : preferEnvToken(targetEnv, !mayRescopeEnvToken(flags, config));
+  const credentialEnv = clientTokenEnv(
+    withTargetEnv(env, flags, config),
+    deprecatedToken,
+    !mayRescopeEnvToken(flags, config),
+  );
 
   // Loaded only now: mcp-core's server, the agent providers, and the MCP
   // telemetry are not needed for --help or setup errors.
