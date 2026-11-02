@@ -40,6 +40,7 @@ import {
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
+import { IssueAlertEditOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled";
@@ -228,6 +229,7 @@ export const editCommand = buildCommand({
   },
   output: {
     human: formatEdited,
+    schema: IssueAlertEditOutputSchema,
   },
   parameters: {
     positional: {

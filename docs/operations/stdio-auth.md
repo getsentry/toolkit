@@ -53,9 +53,12 @@ or `SENTRY_ACCESS_TOKEN`. Both still work, as an alias: the server runs as if
 and takes the same env-token path. It also
 replaces any `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` already in the environment,
 because the flag is the more explicit choice. `--access-token` wins over
-`SENTRY_ACCESS_TOKEN`. Like a plain env token, the alias is sent to the
-configured Sentry instance (an org token's own URL claim still has to match
-it).
+`SENTRY_ACCESS_TOKEN`. Like a plain env token, the alias is scoped to the
+Sentry instance configured at startup (`SENTRY_HOST`/`SENTRY_URL`, or
+`--host`/`--url`), else SaaS; an org token's own URL claim wins. A
+`.sentryclirc` URL or the persisted default URL never scopes it, so the server
+refuses to send it there (`HostScopeError`), even when you have a stored login
+on that server.
 
 Either one prints a single deprecation warning to stderr (stdout carries the
 MCP protocol), without the token:

@@ -10,6 +10,15 @@
  * shows which widget would be removed without modifying the dashboard.
  */
 
+import {
+  boolean,
+  description,
+  looseObject,
+  number,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { numberParser } from "../../../lib/command.js";
@@ -24,6 +33,7 @@ import {
   type DashboardDetail,
   prepareDashboardForUpdate,
 } from "../../../types/dashboard.js";
+import { DryRunOutputField } from "../../../types/index.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
 
@@ -36,6 +46,22 @@ type DeleteFlags = {
   readonly json: boolean;
   readonly fields?: string[];
 };
+
+/** `--fields` / skill-reference schema for the JSON output. */
+const WidgetDeleteOutputSchema = looseObject({
+  dryRun: DryRunOutputField,
+  deleted: optional(
+    pipe(boolean(), description("True when the widget was deleted")),
+  ),
+  widgetTitle: pipe(string(), description("Title of the deleted widget")),
+  widgetCount: pipe(
+    number(),
+    description(
+      "Dashboard widget count after the delete (before it, with --dry-run)",
+    ),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+});
 
 type DeleteResult = {
   dashboard: DashboardDetail;
@@ -70,6 +96,7 @@ export const deleteCommand = buildDeleteCommand(
     },
     output: {
       human: formatWidgetDeleted,
+      schema: WidgetDeleteOutputSchema,
       jsonTransform: (result: DeleteResult, fields?: string[]) =>
         filterFieldsIfSet(
           {

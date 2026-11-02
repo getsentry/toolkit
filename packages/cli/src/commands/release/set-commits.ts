@@ -33,7 +33,7 @@ import {
   isShallowRepository,
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
-import type { SentryRelease } from "../../types/index.js";
+import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const log = logger.withTag("release.set-commits");
@@ -396,6 +396,7 @@ export const setCommitsCommand = buildCommand({
   },
   output: {
     human: formatCommitsSet,
+    schema: SentryReleaseSchema,
   },
   parameters: {
     positional: {

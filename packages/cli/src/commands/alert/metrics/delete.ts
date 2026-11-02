@@ -18,6 +18,7 @@ import {
 import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
+import { MetricAlertDeleteOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
 
@@ -62,6 +63,7 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatDeleted,
+    schema: MetricAlertDeleteOutputSchema,
     jsonTransform: (r: DeleteResult, fields?: string[]) =>
       filterFieldsIfSet(
         {

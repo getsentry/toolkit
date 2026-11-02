@@ -27,6 +27,7 @@ import {
   assignDefaultLayout,
   type DashboardDetail,
   type DashboardWidget,
+  DashboardWidgetChangeOutputSchema,
   DEFAULT_WIDGET_TYPE,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
@@ -172,6 +173,7 @@ export const addCommand = buildCommand({
   },
   output: {
     human: formatWidgetAdded,
+    schema: DashboardWidgetChangeOutputSchema,
   },
   parameters: {
     positional: boundArguments({

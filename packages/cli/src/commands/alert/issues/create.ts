@@ -44,6 +44,7 @@ import {
   validateIssueActions,
   validateIssueTriggers,
 } from "../mutation-utils.js";
+import { IssueAlertCreateOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues create <target> --name <name> --condition <json> --action <json>";
@@ -154,6 +155,7 @@ export const createCommand = buildCommand({
   },
   output: {
     human: formatCreated,
+    schema: IssueAlertCreateOutputSchema,
   },
   parameters: {
     positional: {

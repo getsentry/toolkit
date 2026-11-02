@@ -292,6 +292,24 @@ describe("serveMcp account pinning", () => {
     expect(refreshedWith).toEqual([]);
   });
 
+  test("refuses another user's login over the startup account during startup", async () => {
+    login("a-token", "1");
+    // After the startup pin is taken but before the credential read, another
+    // user replaces the account's credentials in place.
+    refreshHooks.before = () => {
+      refreshHooks.before = undefined;
+      setAuthToken("c-token", 3600, "c-token-refresh", {
+        host: "https://sentry.io",
+      });
+      setUserInfo({ userId: "3", email: "3@example.com" });
+    };
+
+    await expect(serve([])).rejects.toThrow(
+      "The account this MCP server started with is no longer available",
+    );
+    expect(served.calls).toHaveLength(0);
+  });
+
   test("pins the account whose token startup returned, even if the active account changes right after", async () => {
     const a = login("a-token", "1");
     const b = login("b-token", "2");
@@ -749,6 +767,8 @@ describe("serveMcp .sentryclirc URLs", () => {
     rcDirs.push(dir);
     workingDir = dir;
     clearSentryCliRcCache();
+    // Boot order: the env-token host is snapshotted before the shim runs.
+    captureEnvTokenHost();
     await applySentryCliRcEnvShim(dir);
   }
 
@@ -850,6 +870,29 @@ describe("serveMcp .sentryclirc URLs", () => {
       await inRcDir("https://sentry.example.com");
 
       const { config, options } = await start([]);
+      expect(config.sentryHost).toBe("sentry.example.com");
+      expect(options.accessToken).toBe("env-token");
+      // The refresh after an upstream 401 runs under the same scope.
+      await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
+    });
+
+    test("serves the env token over http with --insecure-http on its startup SENTRY_HOST", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env.SENTRY_HOST = "sentry.internal:9000";
+      captureEnvTokenHost();
+
+      const { config, options } = await start(["--insecure-http"]);
+      expect(config.sentryHost).toBe("sentry.internal:9000");
+      expect(config.sentryProtocol).toBe("http");
+      expect(options.accessToken).toBe("env-token");
+    });
+
+    test("scopes the env token to an explicit --host over the rc URL", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      captureEnvTokenHost();
+      await inRcDir("https://evil.example.com");
+
+      const { config, options } = await start(["--host=sentry.example.com"]);
       expect(config.sentryHost).toBe("sentry.example.com");
       expect(options.accessToken).toBe("env-token");
     });
@@ -960,13 +1003,60 @@ describe("serveMcp .sentryclirc URLs", () => {
     expect(served.calls).toHaveLength(0);
   });
 
-  test("serves a static token for an rc URL the user has logged in to", async () => {
+  test("keeps an env token with no host claim off an rc URL the user has logged in to", async () => {
+    // The stored login on the rc host gets past the rc-URL gate; the env
+    // token still wins for serving, so it must keep its startup (SaaS) host.
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    captureEnvTokenHost();
+    await inRcDir("https://sentry.example.com");
+
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    // --insecure-http alone keeps the rc host as the target, so it must not
+    // scope the env token either.
+    await expect(serve(["--insecure-http"])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
+    expect(served.calls).toHaveLength(0);
+  });
+
+  test("keeps a static token with no host claim off an rc URL the user has logged in to", async () => {
+    // The same as SENTRY_AUTH_TOKEN: the stored login on the rc host gets
+    // past the rc-URL gate, but the static token keeps its startup (SaaS)
+    // host.
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.example.com",
     });
     await inRcDir("https://sentry.example.com");
 
-    const { config } = await start(["--access-token=static-token"]);
+    await expect(serve(["--access-token=static-token"])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
+    await expect(
+      serve(["--access-token=static-token", "--insecure-http"]),
+    ).rejects.toBeInstanceOf(HostScopeError);
+    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    expect(served.calls).toHaveLength(0);
+
+    // An explicit target still scopes it.
+    const { config, options } = await start([
+      "--access-token=static-token",
+      "--host=sentry.example.com",
+    ]);
     expect(config.sentryHost).toBe("sentry.example.com");
+    expect(options.accessToken).toBe("static-token");
+  });
+
+  test("serves a static token on the rc URL its startup SENTRY_URL names", async () => {
+    process.env.SENTRY_URL = "https://sentry.example.com";
+    captureEnvTokenHost();
+    await inRcDir("https://sentry.example.com");
+
+    const { config, options } = await start(["--access-token=static-token"]);
+    expect(config.sentryHost).toBe("sentry.example.com");
+    expect(options.accessToken).toBe("static-token");
   });
 });

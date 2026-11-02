@@ -19,6 +19,7 @@ import {
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
+import { IssueAlertDeleteOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues delete <org>/<project>/<rule-id-or-name>";
@@ -70,6 +71,7 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatDeleted,
+    schema: IssueAlertDeleteOutputSchema,
     jsonTransform: (r: DeleteResult, fields?: string[]) =>
       filterFieldsIfSet(
         {

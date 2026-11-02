@@ -5,6 +5,7 @@
  */
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
+import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -16,7 +17,10 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryRelease } from "../../types/index.js";
+import {
+  ReleaseUpdateOutputSchema,
+  type SentryRelease,
+} from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release finalize [<org>/]<version>";
@@ -65,6 +69,12 @@ export const finalizeCommand = buildCommand({
   },
   output: {
     human: formatReleaseFinalized,
+    schema: looseObject({
+      ...ReleaseUpdateOutputSchema.entries,
+      released: optional(
+        pipe(string(), description("Release date to set (--dry-run)")),
+      ),
+    }),
   },
   parameters: {
     positional: {

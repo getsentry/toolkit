@@ -42,6 +42,7 @@ import {
   validateMetricTimeWindow,
 } from "../mutation-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
+import { MetricAlertCreateOutputSchema } from "../output-schemas.js";
 
 type CreateFlags = {
   readonly name: string;
@@ -118,6 +119,7 @@ export const createCommand = buildCommand({
   },
   output: {
     human: formatCreated,
+    schema: MetricAlertCreateOutputSchema,
   },
   parameters: {
     positional: {
