@@ -203,6 +203,8 @@ function skipLeadingGlobalFlag(
 /**
  * Whether `cliArgs` runs the `mcp` command: `mcp` after any leading global
  * flags, or no command at all when `mcp` is the default (`@sentry/mcp-server`).
+ * There, a first word that names no route is `mcp`'s `<org>/<project>` target:
+ * Stricli routes it to the default command. Route names win over a target.
  *
  * The stdio server owns stdout for JSON-RPC and reports its own telemetry, so
  * the runner starts it without the CLI's telemetry, recovery middleware, and
@@ -220,7 +222,10 @@ export function isMcpInvocation(
   for (let index = 0; index < cliArgs.length;) {
     const token = cliArgs[index] ?? "";
     if (!token.startsWith("-")) {
-      return token === "mcp";
+      return (
+        token === "mcp" ||
+        (isDefault && !routes.getRoutingTargetForInput(token))
+      );
     }
     const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
     if (nextIndex === undefined) {

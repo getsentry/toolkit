@@ -96,6 +96,18 @@ describe("isMcpInvocation", () => {
     expect(isMcpInvocation(mcpServerRoutes, ["auth", "status"])).toBe(false);
     expect(isMcpInvocation(mcpServerRoutes, ["help"])).toBe(false);
   });
+
+  test("reads a first word that names no route as the default command's target", () => {
+    expect(isMcpInvocation(mcpServerRoutes, ["acme/web"])).toBe(true);
+    expect(isMcpInvocation(mcpServerRoutes, ["--all-skills", "acme/"])).toBe(
+      true,
+    );
+    expect(isMcpInvocation(mcpServerRoutes, ["mcp", "acme/"])).toBe(true);
+    // Route names win over a target, so they still reach their command.
+    expect(isMcpInvocation(mcpServerRoutes, ["auth"])).toBe(false);
+    // Without `mcp` as the default, a first word is a command, never a target.
+    expect(isMcpInvocation(routes, ["acme/web"])).toBe(false);
+  });
 });
 
 describe("@sentry/mcp-server application", () => {
@@ -117,9 +129,39 @@ describe("@sentry/mcp-server application", () => {
       "all-skills": true,
     });
   });
+
+  test("starts the server for an <org>/<project> target", async () => {
+    await runCli(["acme/web", "--all-skills"], MCP_SERVER);
+
+    expect(stderr).toBe("");
+    expect(mocks.serveMcp).toHaveBeenCalledOnce();
+    expect(mocks.serveMcp.mock.lastCall?.[0]).toMatchObject({
+      "all-skills": true,
+    });
+    expect(mocks.serveMcp.mock.lastCall?.[2]).toEqual({
+      org: "acme",
+      project: "web",
+    });
+    expect(mocks.withTelemetry).not.toHaveBeenCalled();
+  });
+
+  test("rejects a bare slug target with a hint", async () => {
+    await runCli(["acme"], MCP_SERVER);
+
+    expect(mocks.serveMcp).not.toHaveBeenCalled();
+    expect(stderr).toContain("acme/");
+    expect(stdout).toBe("");
+  });
 });
 
 describe("running `mcp`", () => {
+  test("passes the <org>/ target to the server", async () => {
+    await runCli(["mcp", "acme/"], SENTRY_CLI);
+
+    expect(mocks.serveMcp).toHaveBeenCalledOnce();
+    expect(mocks.serveMcp.mock.lastCall?.[2]).toEqual({ org: "acme" });
+  });
+
   test("serves through Stricli, without the CLI's telemetry", async () => {
     await runCli(["mcp", "--access-token=tok"], SENTRY_CLI);
 

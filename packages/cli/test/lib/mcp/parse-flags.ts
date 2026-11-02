@@ -14,25 +14,40 @@ import {
 import { mcpCommand } from "../../../src/commands/mcp.js";
 import {
   type McpFlags,
+  type McpScope,
   splitInlineFlagValues,
 } from "../../../src/lib/mcp/args.js";
 
+type McpPositional = [McpScope?];
+
 type McpParameters = Parameters<
-  typeof buildCommand<McpFlags, [], CommandContext>
+  typeof buildCommand<McpFlags, McpPositional, CommandContext>
 >[0]["parameters"];
+
+/** What `sentry mcp <args>` hands to the server. */
+type McpArgs = { flags: McpFlags; scope?: McpScope };
 
 /** The flags `sentry mcp <args>` hands to the server. Rejects what Stricli rejects. */
 export async function parseMcpFlags(
   args: readonly string[],
 ): Promise<McpFlags> {
-  let parsed: McpFlags | undefined;
+  return (await parseMcpArgs(args)).flags;
+}
+
+/**
+ * The flags and `[<org>/[<project>]]` target `sentry mcp <args>` hands to the
+ * server. Rejects what Stricli rejects, including a target the command's
+ * parser refuses.
+ */
+export async function parseMcpArgs(args: readonly string[]): Promise<McpArgs> {
+  let parsed: McpArgs | undefined;
   let stderr = "";
-  const command = buildCommand<McpFlags, [], CommandContext>({
+  const command = buildCommand<McpFlags, McpPositional, CommandContext>({
     docs: { brief: "Parse sentry mcp flags" },
     parameters: (mcpCommand as unknown as { parameters: McpParameters })
       .parameters,
-    func(flags) {
-      parsed = flags;
+    func(flags, scope) {
+      parsed = { flags, scope };
     },
   });
   await run(
