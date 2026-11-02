@@ -306,6 +306,47 @@ describe("find_organizations", () => {
       expect(requests.slice(2)).toEqual([{ token: "b-token", cursor: "b-2" }]);
     });
 
+    it("continues a multi-login cursor when only one login remains", async () => {
+      const fullPage = Array.from({ length: 25 }, (_, i) => `org-b-${i}`);
+      const requests = mockAccountOrganizations(
+        {
+          "a-token": { first: ["org-a"] },
+          "b-token": { first: fullPage, "b-2": ["org-b-2"] },
+        },
+        { "b-token": { first: "b-2" } },
+      );
+
+      const first = getStructuredContent<{ nextCursor: string | null }>(
+        await findOrganizations.handler(
+          { query: null, cursor: null },
+          routedContext(["a", "b"]),
+        ),
+      );
+      const second = getStructuredContent<{
+        organizations: Array<{ slug: string }>;
+        nextCursor: string | null;
+      }>(
+        await findOrganizations.handler(
+          { query: null, cursor: first.nextCursor },
+          routedContext(["b"]),
+        ),
+      );
+
+      expect(second.organizations.map(({ slug }) => slug)).toEqual(["org-b-2"]);
+      expect(second.nextCursor).toBeNull();
+      expect(requests.slice(2)).toEqual([{ token: "b-token", cursor: "b-2" }]);
+    });
+
+    it("rejects a multi-login cursor without a credential router", async () => {
+      const cursor = `accounts:${btoa(JSON.stringify({ a: "a-2" }))}`;
+      await expect(
+        findOrganizations.handler(
+          { query: null, cursor },
+          getServerContext({ sentryHost: "sentry.io" }),
+        ),
+      ).rejects.toThrow("Invalid cursor");
+    });
+
     it("skips a login the server rejects", async () => {
       mockAccountOrganizations({ "a-token": { first: ["org-a"] } });
 

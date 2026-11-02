@@ -151,10 +151,17 @@ export default defineTool({
   outputSchema: findOrganizationsOutputSchema,
   async handler(params, context: ServerContext) {
     const accounts = await listCredentialContexts(context);
-    if (accounts && accounts.length > 1) {
+    // A cursor from a multi-login listing stays on that path even when
+    // fewer logins remain; it is never a Sentry page cursor.
+    const isAccountsCursor =
+      params.cursor?.startsWith(ACCOUNTS_CURSOR_PREFIX) ?? false;
+    if (accounts && (accounts.length > 1 || isAccountsCursor)) {
       return structuredResult(
         await listAcrossAccounts(accounts, params.query, params.cursor),
       );
+    }
+    if (isAccountsCursor) {
+      throw new UserInputError(INVALID_CURSOR_MESSAGE);
     }
 
     // Organizations are listed from the root host, which returns orgs across
