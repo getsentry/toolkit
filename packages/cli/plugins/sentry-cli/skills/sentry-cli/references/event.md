@@ -19,7 +19,7 @@ View details of one or more events
 
 | Argument | Description |
 |----------|-------------|
-| `<org/project/event-id...>` | [&lt;org&gt;/&lt;project&gt;] &lt;event-id&gt; [&lt;event-id&gt;...] - Target (optional) and one or more event IDs |
+| `<org/project/event-id...>` | [&lt;org&gt;/&lt;project&gt;] [&lt;event-id&gt;...] - Target (optional) and event IDs, or a selector (default: @latest) |
 
 **Flags:**
 - `-w, --web - Open in browser`
@@ -86,6 +86,12 @@ sentry event view my-org/PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac
 
 # View the latest event for an issue
 sentry event view PROJ-ABC
+
+# View the latest event of the most recent unresolved issue in a project
+sentry event view my-org/my-project
+
+# View the latest event of the most frequent issue
+sentry event view @most_frequent
 
 # Open in the browser
 sentry event view abc123def456abc123def456abc12345 -w

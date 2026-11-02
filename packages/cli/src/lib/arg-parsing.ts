@@ -917,6 +917,28 @@ function parseTargetInput<T>(
 export type IssueSelector = "@latest" | "@most_frequent";
 
 /**
+ * What each magic selector picks: described once for `--help` text and
+ * shell completion.
+ */
+export const ISSUE_SELECTORS: Readonly<Record<IssueSelector, string>> = {
+  "@latest": "Most recent unresolved issue",
+  "@most_frequent": "Issue with highest event frequency",
+};
+
+/**
+ * {@link ISSUE_SELECTORS} as `fullDescription` lines of an issue format list,
+ * `  @latest          - Most recent unresolved issue`.
+ *
+ * @param width - Column the selectors are padded to, to align with the
+ *   other lines of the list
+ */
+export function issueSelectorHelp(width = 16): string {
+  return Object.entries(ISSUE_SELECTORS)
+    .map(([selector, picks]) => `  ${selector.padEnd(width)} - ${picks}\n`)
+    .join("");
+}
+
+/**
  * Set of recognized magic selectors (lowercase for case-insensitive matching).
  * Maps normalized selector names to their canonical form.
  */

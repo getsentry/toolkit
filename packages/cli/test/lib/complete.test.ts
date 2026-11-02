@@ -604,6 +604,32 @@ describe("getCompletions: issues", () => {
     expect(await getCompletions(["issue", "view"], "nope/")).toEqual([]);
   });
 
+  test.each([
+    ["issue", "view"],
+    ["event", "view"],
+  ])(
+    "%s %s completes magic selectors, bare or after an org",
+    async (...command) => {
+      await seedOrgs([{ slug: "acme", name: "Acme" }]);
+      cacheCompletionEntities("issue", "acme", [{ value: "CLI-1A" }]);
+
+      expect(await getCompletions(command, "@")).toEqual([
+        { value: "@latest", description: "Most recent unresolved issue" },
+        {
+          value: "@most_frequent",
+          description: "Issue with highest event frequency",
+        },
+      ]);
+      expect(await getCompletions(command, "acme/@M")).toEqual([
+        {
+          value: "acme/@most_frequent",
+          description: "Issue with highest event frequency",
+        },
+      ]);
+      expect(await getCompletions(command, "@nope")).toEqual([]);
+    },
+  );
+
   test("reads the org with the target parser the commands use", async () => {
     await seedOrgs([{ slug: "acme", name: "Acme" }]);
     cacheCompletionEntities("issue", "acme", [{ value: "CLI-1A" }]);

@@ -50,7 +50,7 @@ export const ORG_TARGET = "org" satisfies CompletionTarget;
 /** `org/` prefixes, `org/project` pairs, and project aliases. */
 export const ORG_PROJECT_TARGET = "org/project" satisfies CompletionTarget;
 
-/** {@link ORG_PROJECT_TARGET} plus cached issue short IDs. */
+/** {@link ORG_PROJECT_TARGET} plus cached issue short IDs and magic selectors. */
 export const ISSUE_TARGET = "issue" satisfies CompletionTarget;
 
 /** `org/` prefixes and cached dashboards, in the first positional. */
