@@ -2,10 +2,12 @@ import { normalizeAuthToken } from "./auth-header.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getAccountScope } from "./db/account-scope.js";
 import { accountIdentity, getAccountRow } from "./db/accounts.js";
+import type { CredentialRouter } from "@sentry/mcp-core/types";
 import {
   getEffectiveAccountRow,
   type RefreshTokenResult,
   refreshToken,
+  withStoredAccount,
 } from "./db/auth.js";
 import { inheritEnvTokenHost } from "./env-token-host.js";
 import { getEnv, withEnv } from "./env.js";
@@ -17,6 +19,10 @@ import {
   mergeMcpArgs,
   parseMcpEnv,
 } from "./mcp/args.js";
+import {
+  createMcpAccountRouter,
+  type StoredAccountPin,
+} from "./mcp/account-router.js";
 import { finalizeMcpConfig } from "./mcp/config.js";
 import { assertRcUrlTrusted, getRcInjectedTokenSource } from "./sentryclirc.js";
 import { parseSntrysClaim } from "./token-claims.js";
@@ -404,20 +410,82 @@ export async function serveMcp(
   const { token, pin } = await withEnv(credentialEnv, () =>
     resolveMcpCredentialWithLogin(config),
   );
+  // A static token (`--access-token`, `SENTRY_AUTH_TOKEN`) is the only
+  // credential; a stored login can route calls to the other stored logins.
+  const router =
+    pin.kind === "stored" && !deprecatedToken
+      ? createRouter(config, credentialEnv, pin)
+      : undefined;
+
+  if (router && !config.organizationSlug) {
+    await serveMcpStdio(config, {
+      accessToken: token,
+      credentialRouter: router,
+      env,
+    });
+    return;
+  }
+
+  // `--organization-slug` picks the account once: the one that knows the
+  // organization, else the startup account.
+  const credential = router
+    ? await router.resolve({
+        organizationSlug: config.organizationSlug ?? null,
+      })
+    : undefined;
   await serveMcpStdio(config, {
-    accessToken: token,
+    accessToken: credential?.accessToken ?? token,
     // Force a refresh past the usual threshold: the upstream already rejected
     // the current token, so mirror `--follow`'s refresh-on-401 behavior. The
     // pin keeps the refresh on the startup account. Requests can arrive
     // outside this call's async context, so the credential env is explicit.
-    refreshAccessToken: () =>
-      withEnv(credentialEnv, async () => {
-        const refreshed = await resolveCliMcpCredential(config, {
-          force: true,
-          pin,
-        });
-        return refreshed.token;
-      }),
+    refreshAccessToken:
+      credential?.refresh ??
+      (() =>
+        withEnv(credentialEnv, async () => {
+          const refreshed = await resolveCliMcpCredential(config, {
+            force: true,
+            pin,
+          });
+          return refreshed.token;
+        })),
     env,
+  });
+}
+
+/**
+ * Route tool calls between the stored logins on the MCP server's target
+ * server, defaulting to `pin`, the account the server started with.
+ */
+function createRouter(
+  config: McpTarget,
+  credentialEnv: NodeJS.ProcessEnv,
+  pin: StoredAccountPin,
+): CredentialRouter {
+  // Each read gets its own env copy, so its account scope and memoized
+  // credentials are its own while other calls overlap.
+  const withCredentialEnv = <T>(fn: () => T): T => {
+    const copy: NodeJS.ProcessEnv = { ...credentialEnv };
+    withEnv(credentialEnv, () => inheritEnvTokenHost(copy));
+    return withEnv(copy, fn);
+  };
+  return createMcpAccountRouter({
+    targetUrl: `${config.sentryProtocol}://${config.sentryHost}`,
+    defaultPin: pin,
+    withCredentialEnv,
+    resolvePin: async (accountPin, { force }) => {
+      const resolved = await withCredentialEnv(() =>
+        resolveCliMcpCredential(config, { force, pin: accountPin }),
+      );
+      return resolved.token;
+    },
+    cacheOrgList: (account) =>
+      withEnv(credentialEnv, () =>
+        withStoredAccount(account, async () => {
+          const { listOrganizationsUncached } =
+            await import("./api/organizations.js");
+          await listOrganizationsUncached();
+        }),
+      ),
   });
 }

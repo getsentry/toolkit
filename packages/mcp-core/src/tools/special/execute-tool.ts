@@ -6,6 +6,7 @@ import {
   recordToolFailure,
 } from "../../internal/error-handling";
 import { UserInputError } from "../../errors";
+import { withRoutedCredential } from "../../internal/tool-helpers/credential-routing";
 import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
 import {
@@ -57,9 +58,11 @@ async function executeCatalogToolWithSpan({
           context,
         });
         setToolArgumentAttributes(span, paramsWithConstraints);
-        const output = await tool.handler(
-          paramsWithConstraints as never,
+        const output = await withRoutedCredential(
           context,
+          paramsWithConstraints,
+          async (callContext) =>
+            await tool.handler(paramsWithConstraints as never, callContext),
         );
         span.setStatus({ code: 1 });
         return output;

@@ -2,6 +2,12 @@ import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
+import {
+  type CredentialContext,
+  listCredentialContexts,
+  mapCredentialContexts,
+} from "../../internal/tool-helpers/credential-routing";
+import { UserInputError } from "../../errors";
 import { ParamCursor, ParamSearchQuery } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
@@ -20,8 +26,103 @@ export const findOrganizationsOutputSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
+type OrganizationResult = z.infer<
+  typeof findOrganizationsOutputSchema
+>["organizations"][number];
+
 function normalizeUrl(url: string | undefined): string | null {
   return url?.trim() ? url : null;
+}
+
+function toResult(organization: {
+  slug: string;
+  links?: { organizationUrl?: string; regionUrl?: string };
+}): OrganizationResult {
+  return {
+    slug: organization.slug,
+    webUrl: normalizeUrl(organization.links?.organizationUrl),
+    regionUrl: normalizeUrl(organization.links?.regionUrl),
+  };
+}
+
+/**
+ * With several logins, `nextCursor` carries each account's own cursor,
+ * keyed by credential id, so the next page continues every account that
+ * has more.
+ */
+const ACCOUNTS_CURSOR_PREFIX = "accounts:";
+const INVALID_CURSOR_MESSAGE =
+  "Invalid cursor. Pass the nextCursor returned by the previous find_organizations call.";
+
+function encodeAccountsCursor(cursors: Record<string, string>): string {
+  return `${ACCOUNTS_CURSOR_PREFIX}${btoa(JSON.stringify(cursors))}`;
+}
+
+function decodeAccountsCursor(cursor: string): Record<string, string> {
+  if (!cursor.startsWith(ACCOUNTS_CURSOR_PREFIX)) {
+    throw new UserInputError(INVALID_CURSOR_MESSAGE);
+  }
+  try {
+    const parsed: unknown = JSON.parse(
+      atob(cursor.slice(ACCOUNTS_CURSOR_PREFIX.length)),
+    );
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return Object.fromEntries(
+        Object.entries(parsed).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      );
+    }
+  } catch {
+    // Reported below.
+  }
+  throw new UserInputError(INVALID_CURSOR_MESSAGE);
+}
+
+/**
+ * List organizations from every login and merge them. An organization
+ * several logins can reach is listed once, under the first of them (the
+ * default login first), the same as `sentry org list`.
+ */
+async function listAcrossAccounts(
+  accounts: CredentialContext[],
+  query: string | null,
+  cursor: string | null,
+) {
+  const cursors = cursor ? decodeAccountsCursor(cursor) : undefined;
+  const pending = cursors
+    ? accounts.filter(({ credential }) => Object.hasOwn(cursors, credential.id))
+    : accounts;
+  const pages = await mapCredentialContexts(
+    pending,
+    async ({ credential, context }) =>
+      await apiServiceFromContext(context).listOrganizations({
+        query: query ?? undefined,
+        limit: RESULT_LIMIT,
+        cursor: cursors?.[credential.id],
+      }),
+  );
+  const organizations: OrganizationResult[] = [];
+  const seen = new Set<string>();
+  const nextCursors: Record<string, string> = {};
+  for (const { entry, value } of pages) {
+    for (const organization of value.organizations) {
+      if (seen.has(organization.slug)) {
+        continue;
+      }
+      seen.add(organization.slug);
+      organizations.push(toResult(organization));
+    }
+    if (value.nextCursor !== null) {
+      nextCursors[entry.credential.id] = value.nextCursor;
+    }
+  }
+  const hasMore = Object.keys(nextCursors).length > 0;
+  return {
+    organizations,
+    hasMore,
+    nextCursor: hasMore ? encodeAccountsCursor(nextCursors) : null,
+  };
 }
 
 export default defineTool({
@@ -49,6 +150,13 @@ export default defineTool({
   },
   outputSchema: findOrganizationsOutputSchema,
   async handler(params, context: ServerContext) {
+    const accounts = await listCredentialContexts(context);
+    if (accounts && accounts.length > 1) {
+      return structuredResult(
+        await listAcrossAccounts(accounts, params.query, params.cursor),
+      );
+    }
+
     // Organizations are listed from the root host, which returns orgs across
     // all regions, so no regionUrl is passed here.
     const apiService = apiServiceFromContext(context);
@@ -59,11 +167,7 @@ export default defineTool({
     });
 
     return structuredResult({
-      organizations: organizations.map((organization) => ({
-        slug: organization.slug,
-        webUrl: normalizeUrl(organization.links?.organizationUrl),
-        regionUrl: normalizeUrl(organization.links?.regionUrl),
-      })),
+      organizations: organizations.map(toResult),
       hasMore: nextCursor !== null,
       nextCursor,
     });

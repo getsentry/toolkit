@@ -14,6 +14,7 @@ import { z } from "zod";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthenticationError } from "./api-client";
 import { UserInputError } from "./errors";
+import { apiServiceFromContext } from "./internal/tool-helpers/api";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
 import type { Skill } from "./skills";
@@ -25,7 +26,7 @@ import {
 } from "./test-utils/structured-content";
 import { createExecuteTool } from "./tools/special/execute-tool";
 import type { ToolConfig } from "./tools/types";
-import type { ServerContext } from "./types";
+import type { CredentialRouter, ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
 
 // Mock the Sentry core module
@@ -218,6 +219,211 @@ describe("buildServer", () => {
       }
 
       expect(seenTokens).toEqual(["expired-token", "fresh-token"]);
+    });
+  });
+
+  describe("credential routing", () => {
+    /**
+     * A router with one account per organization: `<org>-token`, refreshed
+     * to `<org>-fresh`. Calls without an organization use `default`.
+     */
+    function createRouter() {
+      const resolved: Array<string | null> = [];
+      const refreshed: string[] = [];
+      const tokens = new Map<string, string>();
+      const router: CredentialRouter = {
+        async resolve({ organizationSlug }) {
+          resolved.push(organizationSlug);
+          const id = organizationSlug ?? "default";
+          // Resolve out of order so overlapping calls interleave.
+          await new Promise((resolve) =>
+            setTimeout(resolve, id === "org-a" ? 20 : 0),
+          );
+          return {
+            id,
+            accessToken: tokens.get(id) ?? `${id}-token`,
+            refresh: async () => {
+              refreshed.push(id);
+              tokens.set(id, `${id}-fresh`);
+              return `${id}-fresh`;
+            },
+          };
+        },
+        async list() {
+          return [];
+        },
+      };
+      return { router, resolved, refreshed };
+    }
+
+    async function withClient<T>(
+      server: ReturnType<typeof buildServer>,
+      fn: (client: Client) => Promise<T>,
+    ): Promise<T> {
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "server-test-client", version: "1" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        return await fn(client);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+
+    const orgTool = (handler: ToolConfig["handler"]) =>
+      createMockTool("org_tool", {
+        inputSchema: {
+          organizationSlug: z.string().optional(),
+          issueUrl: z.string().optional(),
+        },
+        handler,
+      });
+
+    it("sends each overlapping call's request with its own account's token", async () => {
+      const { router } = createRouter();
+      const seen: Array<{ org: string; authorization: string | null }> = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/:org/",
+          ({ params, request }) => {
+            seen.push({
+              org: String(params.org),
+              authorization: request.headers.get("authorization"),
+            });
+            return HttpResponse.json({
+              id: "1",
+              slug: params.org,
+              name: "Org",
+            });
+          },
+        ),
+      );
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: {
+          org_tool: orgTool(async (params, context) => {
+            const org = await apiServiceFromContext(context).getOrganization(
+              String(params.organizationSlug),
+            );
+            return org.slug;
+          }),
+        },
+      });
+
+      await withClient(server, (client) =>
+        Promise.all(
+          ["org-a", "org-b", "org-a", "org-b"].map((organizationSlug) =>
+            client.callTool({
+              name: "org_tool",
+              arguments: { organizationSlug },
+            }),
+          ),
+        ),
+      );
+
+      expect(seen).toHaveLength(4);
+      for (const { org, authorization } of seen) {
+        expect(authorization).toBe(`Bearer ${org}-token`);
+      }
+    });
+
+    it("routes by the organization of a Sentry URL parameter", async () => {
+      const { router, resolved } = createRouter();
+      const tokens: string[] = [];
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: {
+          org_tool: orgTool(async (_params, context) => {
+            tokens.push(context.accessToken);
+            return "ok";
+          }),
+        },
+      });
+
+      await withClient(server, (client) =>
+        client.callTool({
+          name: "org_tool",
+          arguments: { issueUrl: "https://org-b.sentry.io/issues/123/" },
+        }),
+      );
+
+      expect(resolved).toEqual(["org-b"]);
+      expect(tokens).toEqual(["org-b-token"]);
+    });
+
+    it("refreshes only the credential that got the 401", async () => {
+      const { router, refreshed } = createRouter();
+      const onUpstreamUnauthorized = vi.fn();
+      const tokens: string[] = [];
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          credentialRouter: router,
+          onUpstreamUnauthorized,
+        },
+        tools: {
+          org_tool: orgTool(async (_params, context) => {
+            tokens.push(context.accessToken);
+            if (context.accessToken === "org-b-token") {
+              throw new ApiAuthenticationError("Unauthorized");
+            }
+            return "ok";
+          }),
+        },
+      });
+
+      await withClient(server, async (client) => {
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-b" },
+        });
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-b" },
+        });
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-a" },
+        });
+      });
+
+      expect(tokens).toEqual(["org-b-token", "org-b-fresh", "org-a-token"]);
+      expect(refreshed).toEqual(["org-b"]);
+      expect(onUpstreamUnauthorized).not.toHaveBeenCalled();
+    });
+
+    it("routes and refreshes the inner tool of execute_sentry_tool", async () => {
+      const { router, resolved, refreshed } = createRouter();
+      const registry: Record<string, ToolConfig> = {
+        org_tool: orgTool(async (_params, context) => {
+          if (context.accessToken === "org-b-token") {
+            throw new ApiAuthenticationError("Unauthorized");
+          }
+          return "ok";
+        }),
+      };
+      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: registry,
+      });
+
+      await withClient(server, (client) =>
+        client.callTool({
+          name: "execute_sentry_tool",
+          arguments: {
+            name: "org_tool",
+            arguments: { organizationSlug: "org-b" },
+          },
+        }),
+      );
+
+      // The outer call targets no organization; the inner call targets org-b.
+      expect(resolved).toEqual([null, "org-b"]);
+      expect(refreshed).toEqual(["org-b"]);
     });
   });
 

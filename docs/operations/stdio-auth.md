@@ -102,16 +102,33 @@ server matches the target and refused when it does not.
 
 ## Accounts
 
-The credential store can hold several accounts, but each server process uses
-one: the account resolved at startup. With `SENTRY_HOST`/`SENTRY_URL` set, that
-is a stored account on that server; otherwise it is the active account
-(`npx -y @sentry/mcp-server auth switch`). Refreshes after a 401 stay on that account, and tool
-calls never pick a different one, even when another process switches or adds
-accounts. If that account is removed or another user logs in over it, the
-refresh fails and tool calls keep failing until the server restarts. To use
-two accounts at once, configure two
-MCP servers, for example one per host via `SENTRY_HOST`, or one with
-`SENTRY_AUTH_TOKEN`.
+The credential store can hold several accounts. The server starts with one:
+with `SENTRY_HOST`/`SENTRY_URL` set, a stored account on that server;
+otherwise the active account (`npx -y @sentry/mcp-server auth switch`). Calls
+that target no organization use that startup account, and another process
+switching accounts does not change it.
+
+With a stored login, each tool call uses the stored account that knows the
+organization it targets (its `organizationSlug`, or the organization in a
+Sentry URL argument), the same way CLI commands pick an account. No
+`auth switch` or restart is needed. When no stored account is known to reach
+the organization, the server lists the organizations of accounts without a
+fresh cached list once, then routes; an organization no account reaches uses
+the startup account. Only accounts on the server's target server are
+candidates. One call never mixes accounts, and a 401 refreshes only the
+account that made the call. `find_organizations` lists organizations from
+every account, each once, and `whoami` lists every account's user.
+
+Each account is pinned to the user it had when a call first used it. If an
+account is removed or another user logs in over it, calls routed to it fail
+until the server restarts.
+
+Routing is off when the credential is a static token (`SENTRY_AUTH_TOKEN`,
+`--access-token`, `SENTRY_ACCESS_TOKEN`): that token is the only account.
+`--organization-slug` (or an `<org>/` target) picks the account that knows the
+organization once, at startup, and every call uses it. To use accounts on
+different servers at once (say, sentry.io and a self-hosted server), configure
+one MCP server per host via `SENTRY_HOST`.
 
 ## Upgrading From Older `@sentry/mcp-server` Versions
 
@@ -124,11 +141,13 @@ deprecated (see above). `auth status`, `auth list`,
 
 ## Key Files
 
-| File                                        | Purpose                                                       |
-| ------------------------------------------- | ------------------------------------------------------------- |
-| `packages/cli/src/lib/mcp.ts`               | Credential resolution, `--access-token` alias, refresh-on-401 |
-| `packages/cli/src/commands/mcp.ts`          | `mcp` command flags and help                                  |
-| `packages/cli/src/lib/mcp/server.ts`        | Agent providers, telemetry, and stdio startup                 |
-| `packages/cli/src/lib/db/auth.ts`           | CLI token storage and `refreshToken()`                        |
-| `packages/cli/src/lib/token-host.ts`        | Host-scoping checks                                           |
-| `packages/mcp-core/src/transports/stdio.ts` | stdio transport and per-request auth context                  |
+| File                                                                | Purpose                                                       |
+| ------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `packages/cli/src/lib/mcp.ts`                                       | Credential resolution, `--access-token` alias, refresh-on-401 |
+| `packages/cli/src/commands/mcp.ts`                                  | `mcp` command flags and help                                  |
+| `packages/cli/src/lib/mcp/server.ts`                                | Agent providers, telemetry, and stdio startup                 |
+| `packages/cli/src/lib/mcp/account-router.ts`                        | Per-call routing between stored accounts                      |
+| `packages/mcp-core/src/internal/tool-helpers/credential-routing.ts` | Applies `ServerContext.credentialRouter` to tool calls        |
+| `packages/cli/src/lib/db/auth.ts`                                   | CLI token storage and `refreshToken()`                        |
+| `packages/cli/src/lib/token-host.ts`                                | Host-scoping checks                                           |
+| `packages/mcp-core/src/transports/stdio.ts`                         | stdio transport and per-request auth context                  |

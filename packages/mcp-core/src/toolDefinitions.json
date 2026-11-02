@@ -9030,6 +9030,25 @@
           "required": ["id", "name", "email"],
           "additionalProperties": false
         },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": ["string", "null"]
+              },
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "name", "email"],
+            "additionalProperties": false
+          }
+        },
         "sessionConstraints": {
           "anyOf": [
             {
