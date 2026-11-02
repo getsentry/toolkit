@@ -323,6 +323,36 @@ describe("completion seeding from API responses", () => {
     );
   });
 
+  test("attribute keys Sentry defines are stored ahead of the user's", async () => {
+    const attribute = (key: string, source: string) => ({
+      key,
+      name: key,
+      attributeType: "string",
+      attributeSource: { source_type: source },
+    });
+    const userKeys = Array.from({ length: MAX_ENTITIES_PER_ORG }, (_, i) =>
+      attribute(`app.${String(i).padStart(3, "0")}`, "user"),
+    );
+    await seedCompletions(
+      `${API}/trace-items/attributes/?dataset=spans`,
+      json([
+        ...userKeys,
+        attribute("span.op", "sentry"),
+        attribute("span.description", "sentry"),
+      ]),
+    );
+
+    const values = getCachedCompletionEntities("span-attribute", ["acme"]).map(
+      (e) => e.value,
+    );
+    expect(values).toHaveLength(MAX_ENTITIES_PER_ORG);
+    expect(values.slice(0, 3)).toEqual([
+      "span.op",
+      "span.description",
+      "app.000",
+    ]);
+  });
+
   test("ignores other endpoints, failed responses, and bodies that are not JSON", async () => {
     const issue = { shortId: "CLI-1A", title: "Boom" };
     await seedCompletions(`${API}/issues/123/events/`, json([issue]));

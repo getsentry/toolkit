@@ -106,6 +106,36 @@ function structuredOutputToCallToolResult(
 }
 
 /**
+ * Replaces lone UTF-16 surrogates in tool output with U+FFFD.
+ *
+ * Formatters truncate upstream text by UTF-16 index, so a cut can keep only
+ * half of an emoji. `JSON.stringify` writes that half as `\ud83d`, and strict
+ * JSON parsers such as serde_json in Codex reject the message and close the
+ * transport. Normalizing handler output here covers every tool, including
+ * structuredContent and the compatibility text generated from it.
+ */
+function toWellFormedOutput<T>(value: T): T {
+  if (typeof value === "string") {
+    return value.toWellFormed() as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(toWellFormedOutput) as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === Object.prototype || prototype === null) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          key.toWellFormed(),
+          toWellFormedOutput(item),
+        ]),
+      ) as T;
+    }
+  }
+  return value;
+}
+
+/**
  * Creates and configures a complete MCP server with Sentry instrumentation.
  *
  * The server is built with tools filtered based on the granted skills in the context.
@@ -349,11 +379,13 @@ function configureServer({
           }
         }
 
-        const output = await executeToolHandler({
-          tool,
-          params: rawParams,
-          context: contextWithToolAvailability,
-        });
+        const output = toWellFormedOutput(
+          await executeToolHandler({
+            tool,
+            params: rawParams,
+            context: contextWithToolAvailability,
+          }),
+        );
 
         if (activeSpan) {
           activeSpan.setStatus({
@@ -435,9 +467,11 @@ function configureServer({
           content: [
             {
               type: "text" as const,
-              text: await formatErrorForUser(error, {
-                transport: context.transport,
-              }),
+              text: (
+                await formatErrorForUser(error, {
+                  transport: context.transport,
+                })
+              ).toWellFormed(),
             },
           ],
           isError: true,

@@ -152,6 +152,19 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 
+// The post-login warm-up makes its own API requests; tests/lib cover it.
+vi.mock("../../../src/lib/completion-warmup.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/completion-warmup.js")
+  >()),
+  warmCachesAfterLogin: vi.fn(async () => {
+    // no-op
+  }),
+}));
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as completionWarmup from "../../../src/lib/completion-warmup.js";
+
 vi.mock("../../../src/lib/interactive-login.js", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -713,6 +726,45 @@ describe("loginCommand.func --token path", () => {
     // Token was stored and not cleared
     expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(setUserInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test("--token: warms caches once the result is printed", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue(undefined);
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const { context, getStdout } = createContext();
+    let stdoutAtWarmup: string | undefined;
+    const warm = vi.mocked(completionWarmup.warmCachesAfterLogin);
+    warm.mockClear();
+    warm.mockImplementationOnce(async () => {
+      stdoutAtWarmup = getStdout();
+    });
+
+    await func.call(context, {
+      token: "my-token",
+      force: false,
+      timeout: 900,
+    });
+
+    expect(warm).toHaveBeenCalledTimes(1);
+    expect(stdoutAtWarmup).toContain("Authenticated");
+  });
+
+  test("OAuth: warms caches after a successful login", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/tmp/db",
+    });
+    const warm = vi.mocked(completionWarmup.warmCachesAfterLogin);
+    warm.mockClear();
+
+    const { context } = createContext();
+    await func.call(context, { force: false, timeout: 900 });
+
+    expect(warm).toHaveBeenCalledTimes(1);
   });
 
   test("no token: falls through to interactive login", async () => {

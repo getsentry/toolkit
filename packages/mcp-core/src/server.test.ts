@@ -4,6 +4,7 @@ import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
 import { type Span, setUser, startSpan } from "@sentry/core";
 import {
   createDefaultEvent,
+  eventFixture,
   issueFixture,
   mswServer,
   projectFixture,
@@ -317,6 +318,98 @@ describe("buildServer", () => {
       expect(handler).toHaveBeenCalledTimes(1);
     },
   );
+
+  describe("lone surrogates in tool output", () => {
+    // Cutting 119 characters plus an emoji at 120 UTF-16 units keeps only the
+    // emoji's high surrogate. Strict JSON parsers such as serde_json in Codex
+    // reject that lone half and close the transport.
+    const lock = "\u{1F512}";
+    const cutText = `${"x".repeat(119)}${lock}`.slice(0, 120);
+    const replacedText = `${"x".repeat(119)}�`;
+
+    it("replaces a breadcrumb message cut inside an emoji", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/events/latest/",
+          () =>
+            HttpResponse.json({
+              ...eventFixture,
+              entries: [
+                {
+                  type: "breadcrumbs",
+                  data: {
+                    values: [
+                      {
+                        timestamp: "2025-04-08T21:14:52.000Z",
+                        category: "console",
+                        level: "info",
+                        message: `${"x".repeat(119)}${lock} required`,
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+          { once: true },
+        ),
+      );
+
+      const result = await callRegisteredTool(
+        buildServer({ context: baseContext }),
+        "execute_sentry_tool",
+        {
+          name: "get_issue_breadcrumbs",
+          arguments: {
+            organizationSlug: "sentry-mcp-evals",
+            issueId: "CLOUDFLARE-MCP-41",
+          },
+        },
+      );
+
+      const text = getTextContent(result);
+      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text.isWellFormed()).toBe(true);
+    });
+
+    it("replaces them in structured and error output", async () => {
+      const createServer = () =>
+        buildServer({
+          context: baseContext,
+          tools: {
+            structured_tool: createMockTool("structured_tool", {
+              outputSchema: z.object({ preview: z.string() }),
+              handler: async () => structuredResult({ preview: cutText }),
+            }),
+            failing_tool: createMockTool("failing_tool", {
+              handler: async () => {
+                throw new UserInputError(cutText);
+              },
+            }),
+          },
+        });
+
+      const structured = await callRegisteredTool(
+        createServer(),
+        "structured_tool",
+        {},
+      );
+      expect(getStructuredContent(structured)).toEqual({
+        preview: replacedText,
+      });
+      expect(getTextContent(structured)).toBe(
+        getGeneratedTextFromStructuredContent(structured),
+      );
+
+      const failed = await callRegisteredTool(
+        createServer(),
+        "failing_tool",
+        {},
+      );
+      expect(failed).toMatchObject({ isError: true });
+      expect(getTextContent(failed)).toContain(replacedText);
+      expect(getTextContent(failed).isWellFormed()).toBe(true);
+    });
+  });
 
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {

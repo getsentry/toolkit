@@ -107,6 +107,10 @@ Translate upstream API shapes into user-facing terms:
   identifiers needed for follow-up.
 - Drop empty, nullish, or unknown placeholder values before rendering details.
 - Cap long repeated lists and say how many additional items were omitted.
+- Truncate long text with plain `slice`. A cut can leave half of an emoji, and
+  strict JSON clients such as Codex reject that lone surrogate, so the server
+  replaces it with U+FFFD in every tool response. Formatters do not need
+  surrogate-aware slicing.
 - Prefer shared helpers for dates, actors, IDs, and unknown values. If a helper
   emits noisy placeholders for a domain-specific field, filter before calling it.
 
