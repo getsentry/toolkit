@@ -20,6 +20,13 @@ const LINE_BREAK = /\r\n?|\n/g;
  */
 const WWW_AUTOLINK_START = /(\\*)(w)(?=ww\\?\.)/gi;
 
+/**
+ * An escaped `_` between two letters or digits. CommonMark never treats such
+ * an underscore as emphasis, so `text` leaves it unescaped to keep
+ * `snake_case` names readable.
+ */
+const INTRAWORD_UNDERSCORE = /(?<=[\p{L}\p{N}])\\_(?=[\p{L}\p{N}])/gu;
+
 /** Replaces line breaks with spaces, as CommonMark renders them in inline content. */
 function toSingleLine(value: string): string {
   return value.replace(LINE_BREAK, " ");
@@ -83,6 +90,7 @@ export function text(value: string): string {
     { extensions: [gfmToMarkdown()] },
   )
     .replace(/\n$/, "")
+    .replace(INTRAWORD_UNDERSCORE, "_")
     .replace(WWW_AUTOLINK_START, (_, backslashes: string, w: string) => {
       // An odd run ends in a literal backslash that would escape the `&`.
       const escaped = backslashes.length % 2 ? `${backslashes}\\` : backslashes;

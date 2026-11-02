@@ -40,9 +40,13 @@ describe("codeBlock", () => {
 
 describe("text", () => {
   test("escapes inline and block syntax", () => {
-    expect(text("# list_items *and* [links](url)")).toBe(
-      "\\# list\\_items \\*and\\* \\[links]\\(url)",
+    expect(text("# _list_ *and* [links](url)")).toBe(
+      "\\# \\_list\\_ \\*and\\* \\[links]\\(url)",
     );
+  });
+
+  test("leaves underscores inside words unescaped", () => {
+    expect(text("user_id __init__")).toBe("user_id \\_\\_init\\_\\_");
   });
 
   test("escapes raw HTML and character references", () => {

@@ -20,6 +20,7 @@ const markdownArb = string({
   unit: constantFrom(
     ..."\\`*_~[]()<>!#&;|:@.-+=/\"'{}^".split(""),
     "a",
+    "é",
     "1",
     "x",
     "www.",
