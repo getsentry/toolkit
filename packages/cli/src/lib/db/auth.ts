@@ -1043,13 +1043,21 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
  * expired) is never kept over an owner that can. `host` limits the other
  * candidates to that server; when several qualify, the most recently used
  * wins.
+ *
+ * With `keepUnlistedActive: false`, `current` is kept only when it knows
+ * the org: for a caller that has already tried to list its orgs, so a
+ * missing list cannot mean it simply hasn't used the org yet.
  */
 export function findAccountForOrg(
   orgSlug: string,
   orgId: string | undefined,
-  options: { current: AccountRow | undefined; host: string | undefined },
+  options: {
+    current: AccountRow | undefined;
+    host: string | undefined;
+    keepUnlistedActive?: boolean;
+  },
 ): AccountRow | undefined {
-  const { current, host } = options;
+  const { current, host, keepUnlistedActive = true } = options;
   // Usable accounts that know the org, most recently used first.
   const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
   if (owners.length === 0) {
@@ -1058,7 +1066,8 @@ export function findAccountForOrg(
   if (
     current &&
     (owners.some((o) => o.account_id === current.account_id) ||
-      (current.is_active === 1 &&
+      (keepUnlistedActive &&
+        current.is_active === 1 &&
         isAccountRowUsable(current) &&
         !hasCachedOrgList(current.account_id)))
   ) {

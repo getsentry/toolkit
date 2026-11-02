@@ -148,6 +148,9 @@ export function createMcpAccountRouter(
         (row) => row.account_id === defaultPin.accountId,
       ),
       host: targetUrl,
+      // The startup account's orgs are listed before this runs, so a
+      // missing list means the listing failed or it has no orgs.
+      keepUnlistedActive: false,
     });
   }
 
@@ -195,9 +198,8 @@ export function createMcpAccountRouter(
     ) {
       return;
     }
-    // The rule keeps an active account with no org list to rule it out, as
-    // the CLI does after `sentry auth switch`. List the startup account's
-    // orgs first so that never holds every call of a long-running server.
+    // List the startup account's orgs first, so it keeps the orgs it can
+    // reach instead of yielding to another account that has seen them.
     await cacheOrgLists(
       candidates.filter((row) => row.account_id === defaultPin.accountId),
     );

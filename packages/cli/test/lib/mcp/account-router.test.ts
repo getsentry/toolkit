@@ -63,6 +63,7 @@ function createRouter(
   orgsOf: Record<string, string[]>,
   resolvePin: (pin: StoredAccountPin) => Promise<string> = async (pin) =>
     `token-of-${pin.accountId}`,
+  beforeList: (accountId: string) => void = () => {},
 ) {
   const listed: string[] = [];
   const router = createMcpAccountRouter({
@@ -70,9 +71,10 @@ function createRouter(
     defaultPin: { kind: "stored", accountId: defaultAccountId, userId: "1" },
     withCredentialEnv: (fn) => withEnv({ ...process.env }, fn),
     resolvePin,
-    cacheOrgList: (account: StoredAccountRef) => {
+    cacheOrgList: async (account: StoredAccountRef) => {
       listed.push(account.id);
-      return withStoredAccount(account, async () => {
+      beforeList(account.id);
+      return await withStoredAccount(account, async () => {
         seeOrgList(orgsOf[account.id] ?? []);
       });
     },
@@ -145,6 +147,37 @@ describe("createMcpAccountRouter", () => {
       router.resolve({ organizationSlug: "b-org" }),
     ).resolves.toMatchObject({ id: b });
     expect(listed).toEqual([a]);
+  });
+
+  test("routes to a known owner when listing the startup account fails", async () => {
+    await clearAuth();
+    const a = login("a-token", "1");
+    const b = login("b-token", "2");
+    seeOrgList(["b-org"]);
+    setActiveAccount(a);
+    const { router, listed } = createRouter(a, {}, undefined, (id) => {
+      if (id === a) {
+        throw new Error("network down");
+      }
+    });
+
+    await expect(
+      router.resolve({ organizationSlug: "b-org" }),
+    ).resolves.toMatchObject({ id: b });
+    expect(listed).toEqual([a]);
+  });
+
+  test("lists the other accounts when the startup account has no orgs", async () => {
+    await clearAuth();
+    const a = login("a-token", "1");
+    const b = login("b-token", "2");
+    setActiveAccount(a);
+    const { router, listed } = createRouter(a, { [b]: ["b-org"] });
+
+    await expect(
+      router.resolve({ organizationSlug: "b-org" }),
+    ).resolves.toMatchObject({ id: b });
+    expect(listed.sort()).toEqual([a, b].sort());
   });
 
   test("keeps the startup account for an org both accounts know", async () => {
