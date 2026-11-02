@@ -422,7 +422,7 @@ function nodeTextDetails(data: UnknownRecord | null): ReplayTimelineDetail[] {
 }
 
 function formatKey(data: UnknownRecord | null): string | null {
-  const key = asString(data?.key);
+  const key = data?.key === " " ? "Space" : asString(data?.key);
   if (!key) {
     return null;
   }

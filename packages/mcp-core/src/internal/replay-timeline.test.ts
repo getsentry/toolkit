@@ -111,12 +111,18 @@ describe("ReplayTimelineBuilder", () => {
         message: "body",
         data: { key: "Alt", altKey: true },
       }),
+      breadcrumb(4, {
+        category: "ui.keyDown",
+        message: "body",
+        data: { key: " ", ctrlKey: true },
+      }),
     ]);
 
     expect(events.map((event) => event.details[0]?.value)).toEqual([
       "Escape",
       "Ctrl+Enter",
       "Alt",
+      "Ctrl+Space",
     ]);
   });
 
