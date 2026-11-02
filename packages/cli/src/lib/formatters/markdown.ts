@@ -18,6 +18,7 @@
  * See {@link isPlainOutput} in `plain-detect.ts` for the full priority chain.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import chalk from "chalk";
 import { marked, type Token, type Tokens } from "marked";
 import stringWidth from "string-width";
@@ -30,50 +31,35 @@ import { type Alignment, renderTextTable } from "./text-table.js";
 export { isPlainOutput } from "./plain-detect.js";
 
 // ──────────────────────────── Escape helpers ──────────────────────────
+//
+// These are the shared builders from `@sentry/toolkit-core/markdown`, which
+// MCP uses too; their property tests parse the output with the same `marked`
+// this renderer uses. Escaped text never becomes a link: a URL in API data
+// renders as plain text, and deliberate links use explicit link syntax.
+
+/** Escapes a value for a markdown table cell. See `tableCell`. */
+export const escapeMarkdownCell = tableCell;
+
+/** Escapes a value so it renders as the same literal text. See `text`. */
+export const escapeMarkdownInline = text;
+
+/** Formats a value as a code span that keeps every character. See `inlineCode`. */
+export const safeCodeSpan = inlineCode;
+
+/** Indentation a line keeps in {@link escapeMarkdownLines}; four spaces would start a code block. */
+const LINE_INDENT = /^ {0,3}/;
 
 /**
- * Escape a string for safe use inside a markdown table cell.
+ * Escapes a multi-line value as literal text, one line at a time.
  *
- * Collapses newlines, escapes backslashes, pipes, and angle brackets.
- * Angle brackets are backslash-escaped (`\<`/`\>`) so that user-supplied
- * content (e.g. `Expected <string>`) is not parsed as an HTML tag by
- * `marked`, which would silently drop the content via `renderHtmlToken`.
+ * Unlike {@link escapeMarkdownInline}, which puts a value on one line, this
+ * keeps line breaks and up to three spaces of indentation.
  */
-export function escapeMarkdownCell(value: string): string {
+export function escapeMarkdownLines(value: string): string {
   return value
-    .replace(/\n/g, " ")
-    .replace(/\\/g, "\\\\")
-    .replace(/\|/g, "\\|")
-    .replace(/</g, "\\<")
-    .replace(/>/g, "\\>");
-}
-
-/**
- * Escape CommonMark inline emphasis characters.
- *
- * Prevents `_`, `*`, `` ` ``, `[`, `]`, `<`, and `>` from being consumed
- * by the parser. Angle brackets are backslash-escaped (`\<`/`\>`) so that
- * user-supplied content (e.g. `Expected <string> got <number>`) is not
- * silently dropped when `marked` parses the text as HTML tokens.
- */
-export function escapeMarkdownInline(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\*/g, "\\*")
-    .replace(/_/g, "\\_")
-    .replace(/`/g, "\\`")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/</g, "\\<")
-    .replace(/>/g, "\\>");
-}
-
-/**
- * Wrap a string in a backtick code span, sanitising characters that
- * would break the span or surrounding table structure.
- */
-export function safeCodeSpan(value: string): string {
-  return `\`${value.replace(/`/g, "\u02CB").replace(/\|/g, "\u2502").replace(/\n/g, " ")}\``;
+    .split(/\r\n?|\n/)
+    .map((line) => `${LINE_INDENT.exec(line)?.[0] ?? ""}${text(line)}`)
+    .join("\n");
 }
 
 // ──────────────────────── Streaming table helpers ─────────────────────
@@ -120,14 +106,16 @@ export function mdKvTable(
   lines.push("| | |");
   lines.push("|---|---|");
   for (const [label, value] of rows) {
-    // Escape backslashes first, then replace pipes with a Unicode box character
-    // so that backslash-pipe sequences in values don't produce escaped pipes in
-    // the rendered output. Newlines are collapsed to spaces.
-    // Only replace structural characters that break table syntax.
-    // Content escaping (<>, \, _*`) is the caller's responsibility.
-    lines.push(
-      `| **${label}** | ${value.replace(/\n/g, " ").replace(/\|/g, "\u2502")} |`,
-    );
+    // Pipes become a box-drawing │ so they cannot end the cell, even inside a
+    // code span. A pipe escaped by an odd run of backslashes (as from
+    // escapeMarkdownCell) drops that escape, so no backslash shows. Newlines
+    // are collapsed to spaces. Content escaping is the caller's job.
+    const cell = value
+      .replace(/\n/g, " ")
+      .replace(/(\\*)\|/g, (_, slashes: string) =>
+        slashes.length % 2 ? `${slashes.slice(1)}\u2502` : `${slashes}\u2502`,
+      );
+    lines.push(`| **${label}** | ${cell} |`);
   }
   return lines.join("\n");
 }

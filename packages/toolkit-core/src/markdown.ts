@@ -75,7 +75,8 @@ export function codeBlock(value: string, language = ""): string {
  * and syntax that only counts at the start of a line. Line breaks become
  * spaces and surrounding whitespace is dropped, so the value stays on the
  * line it is placed in. Escapes are backslashes only, which `marked` (the
- * CLI renderer) and micromark both resolve. Pipes are not escaped.
+ * CLI renderer) and micromark both resolve. Pipes are not escaped; use
+ * `tableCell` inside a table.
  */
 export function text(value: string): string {
   return toSingleLine(value)
@@ -85,4 +86,15 @@ export function text(value: string): string {
       LINE_START_SYNTAX,
       (syntax) => `${syntax.slice(0, -1)}\\${syntax.slice(-1)}`,
     );
+}
+
+/**
+ * Escapes a value as `text` does, plus pipes, so it stays in its GFM table
+ * cell and renders as the same literal text.
+ *
+ * `text` doubles every backslash, so each `\|` written here is an escaped
+ * pipe, not an escaped backslash followed by a cell delimiter.
+ */
+export function tableCell(value: string): string {
+  return text(value).replace(/\|/g, "\\|");
 }

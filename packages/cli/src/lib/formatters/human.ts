@@ -39,6 +39,7 @@ import {
   colorTag,
   escapeMarkdownCell,
   escapeMarkdownInline,
+  escapeMarkdownLines,
   isPlainOutput,
   mdKvTable,
   mdRow,
@@ -902,7 +903,7 @@ export function formatIssueDetails(issue: SentryIssue): string {
     lines.push("**Message:**");
     lines.push("");
     lines.push(
-      `> ${escapeMarkdownInline(issue.metadata.value).replace(/\n/g, "\n> ")}`,
+      `> ${escapeMarkdownLines(issue.metadata.value).replace(/\n/g, "\n> ")}`,
     );
   }
 
@@ -1917,7 +1918,7 @@ function formatVerificationSection(
     lines.push(`### ${colorTag("red", "✗")} Could not verify credentials`);
     if (verification.error) {
       lines.push("");
-      lines.push(escapeMarkdownInline(verification.error));
+      lines.push(escapeMarkdownLines(verification.error));
     }
   }
 
@@ -2246,7 +2247,7 @@ export function formatFixResult(data: FixResult): string {
     lines.push("");
     lines.push("---");
     lines.push("");
-    lines.push(escapeMarkdownInline(data.instructions));
+    lines.push(escapeMarkdownLines(data.instructions));
   }
 
   // Summary
@@ -2393,7 +2394,7 @@ export function formatUpgradeResult(data: UpgradeResult): string {
       const verb = ACTION_DESCRIPTIONS[data.action];
       if (data.offline) {
         lines.push(
-          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)}${escapeMarkdownInline(" (offline, from cache)")}`,
+          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)} (offline, from cache)`,
         );
       } else if (data.currentVersion !== data.targetVersion) {
         lines.push(

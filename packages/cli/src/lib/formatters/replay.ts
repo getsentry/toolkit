@@ -19,6 +19,7 @@ import {
   escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
+  safeCodeSpan,
 } from "./markdown.js";
 import {
   formatDurationCompactMs,
@@ -472,7 +473,7 @@ function pushTagsSection(lines: string[], replay: ReplayDetails): void {
     a.localeCompare(b),
   )) {
     lines.push(
-      `- \`${escapeMarkdownInline(key)}\`: ${values.map((value) => `\`${escapeMarkdownInline(value)}\``).join(", ")}`,
+      `- ${safeCodeSpan(key)}: ${values.map((value) => safeCodeSpan(value)).join(", ")}`,
     );
   }
 }
@@ -509,7 +510,7 @@ function pushActivitySection(
       event.details.length > 0
         ? ` · ${event.details.map((detail) => escapeMarkdownInline(detail)).join(" · ")}`
         : "";
-    lines.push(`- ${prefix}\`${escapeMarkdownInline(event.label)}\`${details}`);
+    lines.push(`- ${prefix}${safeCodeSpan(event.label)}${details}`);
   }
 }
 

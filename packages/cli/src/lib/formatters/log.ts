@@ -14,7 +14,7 @@ import { buildTraceUrl } from "../sentry-web-urls.js";
 import {
   colorTag,
   escapeMarkdownCell,
-  escapeMarkdownInline,
+  escapeMarkdownLines,
   mdKvTable,
   mdRow,
   mdTableHeader,
@@ -369,7 +369,7 @@ export function formatLogDetails(
     lines.push("");
     lines.push("**Message:**");
     lines.push("");
-    lines.push(`> ${escapeMarkdownInline(log.message).replace(/\n/g, "\n> ")}`);
+    lines.push(`> ${escapeMarkdownLines(log.message).replace(/\n/g, "\n> ")}`);
   }
 
   // Context section

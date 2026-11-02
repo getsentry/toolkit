@@ -622,7 +622,7 @@ describe("buildLogRowCells", () => {
     const log = { ...createTestLog(), email: "user@example.com" };
     const cells = buildLogRowCells(log, true, true, ["email"]);
     expect(cells.length).toBe(5);
-    expect(cells[4]).toContain("user@example.com");
+    expect(renderInlineMarkdown(cells[4] ?? "")).toContain("user@example.com");
   });
 
   test("extra field shows empty for null values", () => {
