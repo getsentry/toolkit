@@ -5,6 +5,7 @@ import {
   getConstraintKeysToFilter,
   getConstraintParametersToInject,
 } from "../../internal/constraint-helpers";
+import { withRoutedCredential } from "../../internal/tool-helpers/credential-routing";
 import { type Skill, isEnabledBySkills } from "../../skills";
 import type { ProjectCapabilities, ServerContext } from "../../types";
 import {
@@ -249,7 +250,12 @@ export async function executeToolHandler({
 }) {
   const paramsWithConstraints = prepareToolParams({ tool, params, context });
 
-  return await tool.handler(paramsWithConstraints as never, context);
+  return await withRoutedCredential(
+    context,
+    paramsWithConstraints,
+    async (callContext) =>
+      await tool.handler(paramsWithConstraints as never, callContext),
+  );
 }
 
 export function prepareToolParams({
