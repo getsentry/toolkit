@@ -34,11 +34,14 @@ import {
 } from "../../../lib/target-positional.js";
 import {
   ISSUE_MATCH_MODES,
+  ISSUE_TRIGGER_NAMES,
   matchToLogicType,
+  parseIssueConditions,
   parseJsonObjectList,
   parseMatchMode,
   triggerLogicType,
-  validateIssueRuleArrays,
+  validateIssueActions,
+  validateIssueTriggers,
 } from "../mutation-utils.js";
 
 const USAGE_HINT =
@@ -110,14 +113,16 @@ export const createCommand = buildCommand({
       "<org>/<project>, an auto-detected project, or a bare project search when " +
       "it resolves to exactly one project.\n\n" +
       "Required fields:\n" +
-      "  --name, --condition (>=1), --action (>=1)\n\n" +
+      "  --name, --action (>=1), and --condition (>=1) or --filter (>=1)\n\n" +
       "Optional fields:\n" +
       "  --frequency, --environment, --filter, --filter-match, --owner\n\n" +
       "Conditions and actions are workflow-native JSON (this targets the\n" +
       "org-scoped workflows endpoint):\n" +
-      "  --condition  a trigger data-condition: {type, comparison, conditionResult}\n" +
+      "  --condition  a trigger data-condition: {type, comparison, conditionResult},\n" +
+      `               or a trigger name: ${ISSUE_TRIGGER_NAMES.join(", ")}\n` +
       "  --action     an action: {type, data, config}\n" +
       "  --filter     an action-filter condition (same shape as --condition)\n\n" +
+      "Without --condition, the alert checks its --filter conditions on every event.\n\n" +
       "Match mode: --filter-match all|any controls how the action-filter\n" +
       "conditions combine. Issue-alert triggers always evaluate as 'any-short'\n" +
       "(they fire on a single error detector), so there is no trigger match flag.",
@@ -132,6 +137,17 @@ export const createCommand = buildCommand({
           "Preview a high-priority alert that emails a user at most every 30 minutes",
         command:
           'sentry alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
+      },
+      {
+        description: "Alert on new issues and regressions, using trigger names",
+        command:
+          'sentry alert issues create my-org/my-project --name \'New or Regressed\' --condition first-seen,regression --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+      },
+      {
+        description:
+          "Alert when an issue sees more than 50 events in a day (filters only, checked on every event)",
+        command:
+          'sentry alert issues create my-org/my-project --name \'Busy Issues\' --filter \'{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\' --frequency 1440',
       },
     ],
   },
@@ -165,7 +181,8 @@ export const createCommand = buildCommand({
         parse: parseText,
         variadic: true,
         optional: true,
-        brief: "Condition object JSON (repeatable, or pass one JSON array)",
+        brief:
+          "Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
@@ -231,11 +248,11 @@ export const createCommand = buildCommand({
       );
     }
 
-    const conditions = parseJsonObjectList(flags.condition, "condition");
+    const conditions = parseIssueConditions(flags.condition);
     const actions = parseJsonObjectList(flags.action, "action");
     const filters = parseJsonObjectList(flags.filter, "filter");
-    validateIssueRuleArrays(conditions, actions, "conditions");
-    validateIssueRuleArrays(conditions, actions, "actions");
+    validateIssueTriggers(conditions, filters);
+    validateIssueActions(actions);
 
     const { org, project } = await target.resolved;
 
@@ -251,7 +268,7 @@ export const createCommand = buildCommand({
       config: { frequency: flags.frequency },
       triggers: {
         logicType: triggerLogicType(),
-        conditions,
+        conditions: conditions ?? [],
       },
       actionFilters: [
         {

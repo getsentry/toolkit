@@ -27,12 +27,14 @@ import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
   ISSUE_MATCH_MODES,
   matchToLogicType,
+  parseIssueConditions,
   parseJsonObjectList,
   parseMatchMode,
   parseStatusFlag,
   RULE_STATUSES,
   triggerLogicType,
-  validateIssueRuleArrays,
+  validateIssueActions,
+  validateIssueTriggers,
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
@@ -86,12 +88,26 @@ function validateIssueEditFlags(flags: EditFlags): void {
   }
 }
 
+/** The rule's action-filter conditions, after the edits applied to `body`. */
+function currentFilterConditions(
+  body: Record<string, unknown>,
+): unknown[] | undefined {
+  const filter: unknown = Array.isArray(body.actionFilters)
+    ? body.actionFilters[0]
+    : undefined;
+  const conditions =
+    filter !== null && typeof filter === "object"
+      ? (filter as Record<string, unknown>).conditions
+      : undefined;
+  return Array.isArray(conditions) ? conditions : undefined;
+}
+
 // per-flag merge with user-only validation
 function applyIssueEdits(
   body: Record<string, unknown>,
   flags: EditFlags,
 ): Record<string, unknown> {
-  const conditions = parseJsonObjectList(flags.condition, "condition");
+  const conditions = parseIssueConditions(flags.condition);
   const actions = parseJsonObjectList(flags.action, "action");
   const filters = parseJsonObjectList(flags.filter, "filter");
 
@@ -161,10 +177,10 @@ function applyIssueEdits(
   }
 
   if (conditions !== undefined) {
-    validateIssueRuleArrays(conditions, actions, "conditions");
+    validateIssueTriggers(conditions, currentFilterConditions(body));
   }
   if (actions !== undefined) {
-    validateIssueRuleArrays(conditions, actions, "actions");
+    validateIssueActions(actions);
   }
   return body;
 }
@@ -233,7 +249,8 @@ export const editCommand = buildCommand({
         parse: parseText,
         variadic: true,
         optional: true,
-        brief: "Condition object JSON (repeatable, or pass one JSON array)",
+        brief:
+          "Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",

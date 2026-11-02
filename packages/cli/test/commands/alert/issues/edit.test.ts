@@ -180,6 +180,72 @@ describe("alert issues edit", () => {
     });
   });
 
+  test("clears triggers when the rule keeps action filters", async () => {
+    const context = createContext();
+    resolveSpy.mockResolvedValue({ targets: [sampleTarget] });
+    getRuleSpy.mockResolvedValue(sampleRule);
+    getDocSpy.mockResolvedValue({
+      id: "42",
+      name: "Rule Alpha",
+      triggers: { logicType: "any-short", conditions: [{ id: "old" }] },
+      actionFilters: [
+        {
+          logicType: "all",
+          conditions: [{ id: "filter-a" }],
+          actions: [{ id: "action-a" }],
+        },
+      ],
+    });
+    putSpy.mockResolvedValue({ id: "42", name: "Rule Alpha", enabled: true });
+    const func = (await editCommand.loader()) as unknown as (
+      this: unknown,
+      flags: EditFlags,
+      arg: string,
+    ) => Promise<void>;
+
+    await func.call(
+      context,
+      { condition: ["[]"], json: true },
+      "test-org/test-project/42",
+    );
+
+    expect(putSpy).toHaveBeenCalledWith(
+      "test-org",
+      "42",
+      expect.objectContaining({
+        triggers: { logicType: "any-short", conditions: [] },
+      }),
+    );
+  });
+
+  test("rejects clearing triggers on a rule without action filters", async () => {
+    const context = createContext();
+    resolveSpy.mockResolvedValue({ targets: [sampleTarget] });
+    getRuleSpy.mockResolvedValue(sampleRule);
+    getDocSpy.mockResolvedValue({
+      id: "42",
+      name: "Rule Alpha",
+      triggers: { logicType: "any-short", conditions: [{ id: "old" }] },
+      actionFilters: [
+        { logicType: "all", conditions: [], actions: [{ id: "action-a" }] },
+      ],
+    });
+    const func = (await editCommand.loader()) as unknown as (
+      this: unknown,
+      flags: EditFlags,
+      arg: string,
+    ) => Promise<void>;
+
+    await expect(
+      func.call(
+        context,
+        { condition: ["[]"], json: true },
+        "test-org/test-project/42",
+      ),
+    ).rejects.toMatchObject({ field: "condition" });
+    expect(putSpy).not.toHaveBeenCalled();
+  });
+
   test("maps the workflow enabled field to a status label in output", async () => {
     const context = createContext();
     resolveSpy.mockResolvedValue({ targets: [sampleTarget] });
