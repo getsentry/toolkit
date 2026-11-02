@@ -17,6 +17,7 @@ import {
   parseMcpEnv,
 } from "./mcp/args.js";
 import { finalizeMcpConfig } from "./mcp/config.js";
+import { assertRcUrlTrusted, getRcInjectedTokenSource } from "./sentryclirc.js";
 import { parseSntrysClaim } from "./token-claims.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 
@@ -323,9 +324,13 @@ function withTargetEnv(
  * client passes the token in its server config to pick the account, so a
  * stored CLI login must not silently replace it. Other commands keep
  * preferring the stored login.
+ *
+ * A token the `.sentryclirc` shim copied in is not forced: it comes from the
+ * repository, not the client, so it must not replace the user's login.
  */
 function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()
+  return (env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) &&
+    !getRcInjectedTokenSource()
     ? { ...env, SENTRY_FORCE_ENV_TOKEN: "1" }
     : env;
 }
@@ -367,15 +372,15 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   // target, or the deprecated token is an org token, whose host claim the
   // credential check below matches against the target. Checked against the
   // invocation's own credentials, before the deprecated token replaces them:
-  // an env token wins over a stored login, as it does for serving, but keeps
-  // the host snapshotted at startup, so the rc URL cannot scope it.
+  // an env token from the client wins over a stored login, as it does for
+  // serving, but keeps the host snapshotted at startup, so the rc URL cannot
+  // scope it.
   if (
     !(
       hasSentryTarget(flags) ||
       (deprecatedToken && parseSntrysClaim(deprecatedToken))
     )
   ) {
-    const { assertRcUrlTrusted } = await import("./sentryclirc.js");
     const checkEnv = preferEnvToken(env);
     inheritEnvTokenHost(checkEnv);
     await withEnv(checkEnv, () => assertRcUrlTrusted(cwd));

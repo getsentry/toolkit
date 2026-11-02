@@ -19,6 +19,10 @@ stored login must not silently replace it.
 2. **Stored login** — the account from `auth login`, used when no env token is
    set.
 
+A `[auth] token` from a repo-local `.sentryclirc` is not forced: it comes from
+the repository, not the MCP client, so a stored login still wins over it, as
+for every other CLI command.
+
 Both go through the CLI's `refreshToken()`, which enforces the same host
 scoping as every CLI command. When a tool call gets a 401 from Sentry, the
 server forces a refresh and later calls use the new token, so a long-running

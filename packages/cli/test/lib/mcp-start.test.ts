@@ -518,10 +518,16 @@ describe("serveMcp deprecated --access-token", () => {
 });
 
 describe("serveMcp .sentryclirc URLs", () => {
-  /** Run from a directory whose `.sentryclirc` points at `url`. */
-  async function inRcDir(url: string): Promise<void> {
+  /**
+   * Run from a directory whose `.sentryclirc` points at `url`, with `token`
+   * as its `[auth] token` if given.
+   */
+  async function inRcDir(url: string, token?: string): Promise<void> {
     const dir = mkdtempSync(join(tmpdir(), "mcp-start-rc-"));
-    writeFileSync(join(dir, ".sentryclirc"), `[defaults]\nurl = ${url}\n`);
+    writeFileSync(
+      join(dir, ".sentryclirc"),
+      `[defaults]\nurl = ${url}\n${token ? `[auth]\ntoken = ${token}\n` : ""}`,
+    );
     rcDirs.push(dir);
     workingDir = dir;
     clearSentryCliRcCache();
@@ -630,6 +636,16 @@ describe("serveMcp .sentryclirc URLs", () => {
       expect(options.accessToken).toBe("env-token");
     });
 
+    test("serves the env token over a token in the same .sentryclirc", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      captureEnvTokenHost();
+      await inRcDir("https://sentry.example.com", "rc-token");
+
+      const { options } = await start([]);
+      expect(options.accessToken).toBe("env-token");
+    });
+
     test("serves an env org token whose claim matches the rc URL", async () => {
       const token = mintSntrysToken({
         iat: 1,
@@ -661,6 +677,56 @@ describe("serveMcp .sentryclirc URLs", () => {
       });
       captureEnvTokenHost();
       await inRcDir("https://evil.example.com");
+
+      await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+      expect(served.calls).toHaveLength(0);
+    });
+  });
+
+  describe("with a .sentryclirc token", () => {
+    // The boot snapshot of the env token is taken before the `.sentryclirc`
+    // shim runs, so it never sees the rc token.
+    beforeEach(() => {
+      captureEnvTokenHost();
+    });
+
+    test("serves the stored login, not the rc token", async () => {
+      setAuthToken("cli-session-token", undefined, undefined, {
+        host: "https://sentry.io",
+      });
+      await inRcDir("https://sentry.io", "rc-token");
+      expect(process.env.SENTRY_AUTH_TOKEN).toBe("rc-token");
+
+      const { options } = await start([]);
+      expect(options.accessToken).toBe("cli-session-token");
+    });
+
+    test("refuses an rc token for an rc URL with no stored login on it", async () => {
+      setAuthToken("cli-session-token", undefined, undefined, {
+        host: "https://sentry.io",
+      });
+      await inRcDir("https://evil.example.com", "rc-token");
+
+      await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+      expect(served.calls).toHaveLength(0);
+    });
+
+    test("refuses an rc token for an rc URL without any stored login", async () => {
+      await inRcDir("https://evil.example.com", "rc-token");
+
+      await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+      expect(served.calls).toHaveLength(0);
+    });
+
+    test("refuses an rc org token whose claim names the rc URL", async () => {
+      await inRcDir(
+        "https://evil.example.com",
+        mintSntrysToken({
+          iat: 1,
+          url: "https://evil.example.com",
+          org: "acme",
+        }),
+      );
 
       await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
       expect(served.calls).toHaveLength(0);
