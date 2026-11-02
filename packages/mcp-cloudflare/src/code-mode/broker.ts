@@ -92,7 +92,7 @@ export class ApiBroker extends RpcTarget {
         "Only the configured Sentry API origin and path prefix are allowed.",
       );
     }
-    if (!this.#options.allowWrites && !READ_METHODS.includes(request.method)) {
+    if (!this.#options.allowWrites && isWriteMethod(request.method)) {
       return deny("Writes are disabled for this MCP connection.");
     }
     const authorized = await this.#options.authorization.authorize(
@@ -182,7 +182,12 @@ export class ApiBroker extends RpcTarget {
   }
 }
 
+/** Whether an HTTP method can change state in Sentry. */
+export function isWriteMethod(method: string): boolean {
+  return !READ_METHODS.includes(method);
+}
+
 /** Whether a recorded call was sent to Sentry as a write. */
 export function isSentWrite(call: ApiCall): boolean {
-  return call.sent && !READ_METHODS.includes(call.method);
+  return call.sent && isWriteMethod(call.method);
 }

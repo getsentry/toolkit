@@ -180,7 +180,8 @@ response payloads. Expected 4xx responses do not create issues.
 
 Failures outside the program, such as the Worker Loader failing or the sandbox
 dying, also use `logIssue`; the tool error ends with the event ID. Program
-errors and the execution deadline do not create issues.
+errors and the execution deadline do not create issues. Every failure keeps the
+tools' declared `{error, stats}` structured shape.
 
 ## Telemetry
 

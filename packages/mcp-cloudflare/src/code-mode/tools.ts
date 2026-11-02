@@ -10,7 +10,7 @@ import type { Skill } from "@sentry/mcp-core/skills";
 import { logIssue } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
 import { ApiAuthorization } from "./authorization";
-import { type ApiCall, ApiBroker, isSentWrite } from "./broker";
+import { type ApiCall, ApiBroker, isSentWrite, isWriteMethod } from "./broker";
 import { ExecutionGate } from "./execution";
 import { configuredUrl, readBoundedBody } from "./http";
 import { SPEC_VERSION, SPEC_TEXT } from "./openapi";
@@ -117,17 +117,23 @@ export function registerCodeModeTools(
           });
       const message =
         error instanceof Error ? error.message : "Code execution failed.";
+      // Same shape as sandbox failures, so the result matches outputSchema.
+      const failure = {
+        error:
+          message.slice(0, 4_000) +
+          hint +
+          (eventId ? ` Event ID: ${eventId}` : ""),
+        stats: {
+          apiCalls: broker?.calls.length ?? 0,
+          writesAttempted:
+            broker?.calls.filter((call) => isWriteMethod(call.method)).length ??
+            0,
+        },
+      };
       return {
         isError: true,
-        content: [
-          {
-            type: "text" as const,
-            text:
-              message.slice(0, 4_000) +
-              hint +
-              (eventId ? ` Event ID: ${eventId}` : ""),
-          },
-        ],
+        content: [{ type: "text" as const, text: JSON.stringify(failure) }],
+        structuredContent: failure,
       };
     } finally {
       execution.close();
