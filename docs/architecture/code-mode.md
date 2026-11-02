@@ -77,15 +77,21 @@ resource access on every request. Code Mode reads neither `grantedScopes` nor
 `upstreamScopes`. Permissions add up: API Write can change issues with **Triage
 Issues** unchecked, or projects and teams with **Manage Projects & Teams**
 unchecked. The consent screen says so and shows the organization scope. Existing
-grants do not gain API skills, and stdio rejects them.
+OAuth grants do not gain API skills, and stdio rejects them. Direct
+`Sentry-Bearer` connections default to all active skills, API Write included,
+because the client already holds the token; `skills` and `disable-skills`
+narrow them.
 
-Before each `sentry.request()`, the broker's `ApiAuthorization` checks:
+Before each `sentry.request()`, the broker (`broker.ts`) checks:
 
 1. The URL keeps the configured origin and `/api/0` prefix, with no encoded
-   separators or traversal segments.
-2. The path and method are a published operation (`access.ts`). HEAD may use a
-   published GET. Unknown or ambiguous paths fail.
-3. Without API Write, only GET, HEAD and OPTIONS reach Sentry.
+   separators.
+2. Without API Write, only reads (GET and HEAD) reach Sentry.
+
+Then its `ApiAuthorization` (`authorization.ts`, `access.ts`) checks:
+
+3. The path and method are a published operation. HEAD may use a published
+   GET. Traversal segments, unknown paths and ambiguous paths fail.
 4. On `/mcp/{org}`, the organization path parameter must be that organization.
    Other organizations, numeric aliases and global object-ID routes fail;
    query parameters cannot stand in for a scoped path.
@@ -161,8 +167,9 @@ Spans are sampled. Two metrics count every execution:
 - `app.code_mode.request` with `method`, `operation` (the path template, or
   `unknown`), `status` and `denied`
 
-The broker records operations outside the sandbox. Concrete URLs, query strings
-and bodies are never recorded.
+The broker records operations outside the sandbox, by path template. Apart from
+the program text itself, concrete URLs, query strings and bodies are not
+recorded.
 
 ## Testing
 

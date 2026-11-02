@@ -8,6 +8,7 @@ import {
   isEnabledBySkills,
   type Skill,
 } from "./skills";
+import { CODE_MODE_SKILLS } from "./code-mode";
 import skillDefinitions from "./skillDefinitions";
 
 function getGeneratedSkillToolNames(skillId: string) {
@@ -32,6 +33,10 @@ function getGeneratedSkillToolDescription(skillId: string, toolName: string) {
 }
 
 describe("skills module", () => {
+  it.each(CODE_MODE_SKILLS)("keeps Code Mode skill %s off stdio", (skill) => {
+    expect(SKILLS[skill].hostedOnly).toBe(true);
+  });
+
   it.each([
     ["api-read", "disabled"],
     ["api-write", "enabled"],

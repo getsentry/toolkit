@@ -319,6 +319,7 @@ async function generateSkillDefinitions() {
 
     return {
       ...skill,
+      toolCount: skillTools.length,
       tools: skillTools,
     };
   });

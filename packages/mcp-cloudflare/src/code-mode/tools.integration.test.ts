@@ -587,6 +587,8 @@ describe("Code Mode on the authenticated MCP", () => {
         status,
         eventId: status === 503 ? "code-mode-event" : null,
       });
+      // Only a 401 means the upstream grant is gone.
+      expect(revokeGrant).not.toHaveBeenCalled();
       if (status === 503) {
         expect(logIssue).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ name: "ApiServerError", status: 503 }),
