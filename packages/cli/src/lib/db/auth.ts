@@ -1009,34 +1009,12 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     if (selectEnvAccountForOrg(orgSlug, orgId)) {
       return;
     }
-    // Usable accounts that know the org, most recently used first.
-    const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
-    if (owners.length === 0) {
-      return;
-    }
     const current = getAuthRow();
-    // Respect the active account unless its fresh cached org list shows it
-    // is not a member: after `sentry auth switch`, an account that simply
-    // hasn't used the org yet must not be overridden by one that has. That
-    // deference is for the user's choice only: an account the configured
-    // server picked by recency yields to one on it that knows the org. An
-    // account that can no longer authenticate (credentials invalidated or
-    // expired) is never kept over an owner that can.
-    if (
-      current &&
-      (owners.some((o) => o.account_id === current.account_id) ||
-        (current.is_active === 1 &&
-          isAccountRowUsable(current) &&
-          !hasCachedOrgList(current.account_id)))
-    ) {
-      return;
-    }
-    const explicitHost = getExplicitServerUrl();
-    const candidates = explicitHost
-      ? owners.filter((o) => isAccountOnServer(o, explicitHost))
-      : owners;
-    const pick = candidates[0];
-    if (!pick?.host) {
+    const pick = findAccountForOrg(orgSlug, orgId, {
+      current,
+      host: getExplicitServerUrl(),
+    });
+    if (!pick?.host || pick.account_id === current?.account_id) {
       return;
     }
     scope.accountId = pick.account_id;
@@ -1048,6 +1026,45 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     // Best-effort: the active account stays in effect.
     log.debug("Could not select an account for the organization", error);
   }
+}
+
+/**
+ * The stored account that should serve an organization: `current` when it
+ * should keep serving it, another usable account that knows the org, or
+ * `undefined` when no usable account is known to reach it. Shared by
+ * {@link selectAccountForOrg} and the MCP server's per-call routing.
+ *
+ * `current` is kept when it knows the org, or when it is the active
+ * account and has no fresh cached org list to rule it out: after `sentry
+ * auth switch`, an account that simply hasn't used the org yet must not be
+ * overridden by one that has. That deference is for the user's choice
+ * only: an account picked by recency yields to one that knows the org. An
+ * account that can no longer authenticate (credentials invalidated or
+ * expired) is never kept over an owner that can. `host` limits the other
+ * candidates to that server; when several qualify, the most recently used
+ * wins.
+ */
+export function findAccountForOrg(
+  orgSlug: string,
+  orgId: string | undefined,
+  options: { current: AccountRow | undefined; host: string | undefined },
+): AccountRow | undefined {
+  const { current, host } = options;
+  // Usable accounts that know the org, most recently used first.
+  const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
+  if (owners.length === 0) {
+    return;
+  }
+  if (
+    current &&
+    (owners.some((o) => o.account_id === current.account_id) ||
+      (current.is_active === 1 &&
+        isAccountRowUsable(current) &&
+        !hasCachedOrgList(current.account_id)))
+  ) {
+    return current;
+  }
+  return host ? owners.find((o) => isAccountOnServer(o, host)) : owners[0];
 }
 
 /**

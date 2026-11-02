@@ -108,7 +108,10 @@ describe("createMcpAccountRouter", () => {
     const a = login("a-token", "1");
     const b = login("b-token", "2");
     setActiveAccount(a);
-    const { router, listed } = createRouter(a, { [b]: ["b-org"] });
+    const { router, listed } = createRouter(a, {
+      [a]: ["a-org"],
+      [b]: ["b-org"],
+    });
 
     const resolved = await Promise.all([
       router.resolve({ organizationSlug: "b-org" }),
@@ -128,6 +131,35 @@ describe("createMcpAccountRouter", () => {
     await router.resolve({ organizationSlug: "missing" });
     await router.resolve({ organizationSlug: "missing" });
     expect(listed.sort()).toEqual([a, b].sort());
+  });
+
+  test("lists the startup account's orgs before keeping it for an org another account knows", async () => {
+    await clearAuth();
+    const a = login("a-token", "1");
+    const b = login("b-token", "2");
+    seeOrgList(["b-org"]);
+    setActiveAccount(a);
+    const { router, listed } = createRouter(a, { [a]: ["a-org"] });
+
+    await expect(
+      router.resolve({ organizationSlug: "b-org" }),
+    ).resolves.toMatchObject({ id: b });
+    expect(listed).toEqual([a]);
+  });
+
+  test("keeps the startup account for an org both accounts know", async () => {
+    await clearAuth();
+    const a = login("a-token", "1");
+    seeOrgList(["shared"]);
+    login("b-token", "2");
+    seeOrgList(["shared"]);
+    setActiveAccount(a);
+    const { router, listed } = createRouter(a, {});
+
+    await expect(
+      router.resolve({ organizationSlug: "shared" }),
+    ).resolves.toMatchObject({ id: a });
+    expect(listed).toEqual([]);
   });
 
   test("skips routing with only the startup account", async () => {

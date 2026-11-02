@@ -111,8 +111,10 @@ switching accounts does not change it.
 With a stored login, each tool call uses the stored account that knows the
 organization it targets (its `organizationSlug`, or the organization in a
 Sentry URL argument), the same way CLI commands pick an account. No
-`auth switch` or restart is needed. When no stored account is known to reach
-the organization, the server lists the organizations of accounts without a
+`auth switch` or restart is needed. The server first lists the startup
+account's organizations when no fresh list is cached, so it is kept only for
+organizations it can reach. When no stored account is known to reach the
+organization, the server lists the organizations of accounts without a
 fresh cached list once, then routes; an organization no account reaches uses
 the startup account. Only accounts on the server's target server are
 candidates. One call never mixes accounts, and a 401 refreshes only the

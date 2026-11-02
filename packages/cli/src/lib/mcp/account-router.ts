@@ -2,11 +2,17 @@
  * Per-call account routing for the stdio MCP server.
  *
  * The CLI stores several logins and picks the one that knows each command's
- * organization (`selectAccountForOrg`). This router gives MCP tool calls the
- * same behavior: mcp-core asks it for the credential of the organization a
- * call targets (`ServerContext.credentialRouter`), and every request of that
- * call uses it. The account the server started with stays the default, for
- * calls that target no organization or one no stored account knows.
+ * organization (`selectAccountForOrg`). This router applies the same rule
+ * (`findAccountForOrg`) to MCP tool calls: mcp-core asks it for the
+ * credential of the organization a call targets
+ * (`ServerContext.credentialRouter`), and every request of that call uses
+ * it. The account the server started with plays the CLI's current account,
+ * for calls that target no organization or one no stored account knows.
+ *
+ * What the CLI does not need, this adds: each account is pinned to its user,
+ * tokens resolve per call, and an org no account is known to reach lists
+ * every account's orgs once, since a server outlives the org cache a single
+ * command reads.
  *
  * Only accounts on the server the MCP server targets are candidates:
  * mcp-core sends every request to that one server.
@@ -21,9 +27,9 @@ import {
   type AccountRow,
   hasCachedOrgList,
   isAccountOnServer,
-  listUsableAccountRowsForOrg,
 } from "../db/accounts.js";
 import {
+  findAccountForOrg,
   listUsableAccountsInScope,
   type StoredAccountRef,
 } from "../db/auth.js";
@@ -129,21 +135,20 @@ export function createMcpAccountRouter(
     }
   }
 
-  /** The candidate the org cache shows can reach the org, default first. */
+  /** The account for the org under the CLI's rule, the default as current. */
   function findOwner(
     organizationSlug: string,
     candidates: AccountRow[],
   ): AccountRow | undefined {
-    const ids = new Set(candidates.map((row) => row.account_id));
     const orgId = NUMERIC_ORG_ID.test(organizationSlug)
       ? organizationSlug
       : undefined;
-    const owners = listUsableAccountRowsForOrg(organizationSlug, orgId).filter(
-      (row) => ids.has(row.account_id),
-    );
-    return (
-      owners.find((row) => row.account_id === defaultPin.accountId) ?? owners[0]
-    );
+    return findAccountForOrg(organizationSlug, orgId, {
+      current: candidates.find(
+        (row) => row.account_id === defaultPin.accountId,
+      ),
+      host: targetUrl,
+    });
   }
 
   /** List the orgs of candidates without a fresh cached list, once at a time. */
@@ -190,6 +195,12 @@ export function createMcpAccountRouter(
     ) {
       return;
     }
+    // The rule keeps an active account with no org list to rule it out, as
+    // the CLI does after `sentry auth switch`. List the startup account's
+    // orgs first so that never holds every call of a long-running server.
+    await cacheOrgLists(
+      candidates.filter((row) => row.account_id === defaultPin.accountId),
+    );
     const owner = findOwner(organizationSlug, candidates);
     if (owner) {
       return owner;
