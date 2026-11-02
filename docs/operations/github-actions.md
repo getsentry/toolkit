@@ -35,13 +35,17 @@ before merging them into `packages/cli/coverage/lcov.info`.
 The merge job installs the CLI dependency set without install scripts; it does
 not build packages or rerun tests.
 
-`CLI E2E (Node 24)` runs independently of the unit tests and project checks. It
-builds the standalone CLI on Node 22 and the npm bundle on Node 24, then tests
-both on Node 24. The project, unit-test, and E2E jobs each build their workspace
-dependencies and run `ci:prepare` once before using the prepared sources. Public
-build and test commands still prepare their own inputs for local use. The final
-`test` gate requires the unit shards, coverage merge, and E2E job whenever the
-CLI is selected, and requires them to be skipped otherwise.
+`CLI E2E (Node 24)` tests the artifacts that ship instead of building its own.
+`CLI binary (linux-x64)` runs the nightly `Build Binary` command and uploads
+`sentry-linux-x64`; the npm runtime job uploads the tarball it validates. The
+E2E job downloads both, runs `ci:prepare` because the tests import CLI sources
+that read generated files, and tests the binary and the tarball's `dist/` on
+Node 24. It builds no workspace packages. The project and unit-test jobs each
+build their workspace dependencies and run `ci:prepare` once before using the
+prepared sources. Public build and test commands still prepare their own inputs
+for local use. The final `test` gate requires the unit shards, coverage merge,
+CLI binary, and E2E job whenever the CLI is selected, and requires them to be
+skipped otherwise.
 
 ### deploy.yml
 
