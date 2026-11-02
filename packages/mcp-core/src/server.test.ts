@@ -2710,7 +2710,16 @@ describe("buildServer", () => {
       expect(replayTool?.name).toBe("get_replay_details");
       expect(
         Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
-      ).toEqual(["regionUrl", "replayId", "replayUrl"]);
+      ).toEqual([
+        "categories",
+        "endOffsetSeconds",
+        "limit",
+        "regionUrl",
+        "replayId",
+        "replayUrl",
+        "skip",
+        "startOffsetSeconds",
+      ]);
     });
   });
 });

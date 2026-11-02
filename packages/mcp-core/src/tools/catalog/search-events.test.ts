@@ -2143,7 +2143,7 @@ describe("search_events", () => {
                 count_dead_clicks: 3,
                 started_at: "2025-01-15T10:00:00Z",
                 browser: { name: "Chrome", version: "131.0.0" },
-                user: { display_name: "Jane Doe" },
+                user: { display_name: "Jane Doe", id: "user-42" },
                 urls: ["/checkout", "/checkout/payment", "/checkout/confirm"],
                 releases: ["frontend@1.2.3"],
                 trace_ids: ["a4d1aae7216b47ff8117cf4e09ce9d0a"],
@@ -2177,7 +2177,7 @@ describe("search_events", () => {
     expect(result).toContain("https://test-org.sentry.io/explore/replays/");
     expect(result).toContain("environment=production&environment=staging");
     expect(result).toContain("Environment: production, staging");
-    expect(result).toContain("Jane Doe");
+    expect(result).toContain("- **User**: Jane Doe (id `user-42`)");
     expect(result).toContain("2 errors");
   });
 

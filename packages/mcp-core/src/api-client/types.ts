@@ -115,8 +115,6 @@ import type {
   ReleaseSchema,
   ReplayDetailsSchema,
   ReplayListResponseSchema,
-  ReplayRecordingEventSchema,
-  ReplayRecordingSegmentsSchema,
   SentryAppComponentListSchema,
   SentryAppExternalRequestOptionsSchema,
   SentryAppInstallationListSchema,
@@ -246,10 +244,6 @@ export type SearchAgentState = z.infer<typeof SearchAgentStateSchema>;
 export type AssignedTo = z.infer<typeof AssignedToSchema>;
 export type ReplayDetails = z.infer<typeof ReplayDetailsSchema>;
 export type ReplayList = z.infer<typeof ReplayListResponseSchema>["data"];
-export type ReplayRecordingEvent = z.infer<typeof ReplayRecordingEventSchema>;
-export type ReplayRecordingSegments = z.infer<
-  typeof ReplayRecordingSegmentsSchema
->;
 
 export type OrganizationList = z.infer<typeof OrganizationListSchema>;
 export type TeamList = z.infer<typeof TeamListSchema>;
