@@ -97,11 +97,21 @@ test.each(["bin.ts", "cli.ts", "index.ts", "mcp-server.ts"])(
 );
 
 test("the __complete fast path loads only light modules", async () => {
-  const { metafile } = await bundleStartup("lib/complete.ts", (specifier) =>
+  const { metafile } = await bundleStartup("complete-bin.ts", (specifier) =>
     COMPLETION_PACKAGES.has(specifier),
   );
   const sourceModules = Object.keys(metafile.inputs).filter(
     (input) => !input.includes("node_modules"),
   );
   expect(sourceModules.length).toBeLessThanOrEqual(COMPLETION_MODULE_BUDGET);
+});
+
+test("the standalone binary's main script loads only builtins", async () => {
+  // It runs before every command, ahead of the CLI or completion chunk
+  const { metafile } = await bundleStartup("sea-main.ts", () => false);
+  expect(Object.keys(metafile.inputs).sort()).toEqual([
+    "src/lib/config-dir.ts",
+    "src/lib/sea-chunk.ts",
+    "src/sea-main.ts",
+  ]);
 });

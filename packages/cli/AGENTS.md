@@ -113,6 +113,12 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
+- **`src/sea-main.ts`** — main script of the standalone binary. `script/build.ts`
+  embeds the CLI (`src/bin.ts`) and the completion engine (`src/complete-bin.ts`)
+  as separate SEA assets, and this bootstrap runs one of them through
+  `src/lib/sea-chunk.ts`, which keeps a V8 code cache for each under
+  `<config dir>/cache/code/`. It must import only `node:` builtins and pure
+  helpers (`test/script/cli-startup.test.ts` lists its modules).
 - **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
   bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
@@ -490,7 +496,9 @@ the arguments that need it.
 The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
 and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
 for `__complete` first and call `runCompletion` without loading `cli.ts`;
-the npm package ships it as the separate `dist/complete.cjs` bundle. That
+the npm package ships it as the separate `dist/complete.cjs` bundle, and the
+standalone binary as a separate SEA asset (`src/complete-bin.ts`), so a TAB
+press never compiles the CLI bundle. That
 graph must stay free of `@sentry/node`, telemetry, the API client, and the
 command tree: the database modules get spans and cache metrics through
 `withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
