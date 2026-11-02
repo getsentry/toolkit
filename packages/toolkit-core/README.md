@@ -157,6 +157,19 @@ runtime cannot read, such as zstd on older Node, so the caller treats it as a
 miss. It is a separate entry point so the policy above stays free of Node
 APIs.
 
+## Markdown
+
+`markdown` builds Markdown for untrusted values. Pick the helper by what the
+value is: `inlineCode` for identifiers and short values, `codeBlock` for
+multi-line data, and `text` for values that should read as prose. Each keeps
+the value inside the line or block it is placed in, so the value cannot add
+headings, list items, links, or other structure. `inlineCode` and `codeBlock`
+need no escaping; `text` escapes with backslashes only and has no runtime
+dependencies. The property tests parse each helper's output with `marked`, the
+parser the CLI renders with (same version, from the workspace catalog), and
+with micromark, the CommonMark reference parser, and check that any input
+round-trips as the same literal value.
+
 ## Resource identity
 
 The `resource-identity` types describe the identifiers shared by organization,

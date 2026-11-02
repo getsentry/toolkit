@@ -5,6 +5,7 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
+import { codeBlock, inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
   DefaultEventSchema,
@@ -428,15 +429,13 @@ function formatExceptionInterfaceOutput(
     // Use the actual exception type and value as the heading
     const exceptionTitle = `${exception.type}${exception.value ? `: ${exception.value}` : ""}`;
 
-    parts.push(index === 0 ? "### Error" : `### ${exceptionTitle}`);
+    parts.push(index === 0 ? "### Error" : `### ${text(exceptionTitle)}`);
     parts.push("");
 
     // Add the error details in a code block for the first exception
     // to maintain backward compatibility
     if (index === 0) {
-      parts.push("```");
-      parts.push(exceptionTitle);
-      parts.push("```");
+      parts.push(codeBlock(exceptionTitle));
       parts.push("");
     }
 
@@ -468,17 +467,17 @@ function formatExceptionInterfaceOutput(
       parts.push("**Stacktrace:**");
     }
 
-    parts.push("```");
     parts.push(
-      frames
-        .map((frame) => {
-          const header = formatFrameHeader(frame, undefined, event.platform);
-          const context = renderInlineContext(frame);
-          return `${header}${context}`;
-        })
-        .join("\n"),
+      codeBlock(
+        frames
+          .map((frame) => {
+            const header = formatFrameHeader(frame, undefined, event.platform);
+            const context = renderInlineContext(frame);
+            return `${header}${context}`;
+          })
+          .join("\n"),
+      ),
     );
-    parts.push("```");
   });
 
   parts.push("");
@@ -569,9 +568,7 @@ function formatCspInterfaceOutput(event: Event, data: any) {
   if (data.original_policy) {
     parts.push("");
     parts.push("**Original Policy:**");
-    parts.push("```");
-    parts.push(data.original_policy);
-    parts.push("```");
+    parts.push(codeBlock(data.original_policy));
   }
 
   parts.push("");
@@ -598,7 +595,7 @@ function formatMessageInterfaceOutput(
     return "";
   }
   const message = data.formatted || data.message || "";
-  return `### Error\n\n${"```"}\n${message}\n${"```"}\n\n`;
+  return `### Error\n\n${codeBlock(message)}\n\n`;
 }
 
 function formatThreadsInterfaceOutput(
@@ -637,17 +634,17 @@ function formatThreadsInterfaceOutput(
     parts.push("**Stacktrace:**");
   }
 
-  parts.push("```");
   parts.push(
-    frames
-      .map((frame) => {
-        const header = formatFrameHeader(frame, undefined, event.platform);
-        const context = renderInlineContext(frame);
-        return `${header}${context}`;
-      })
-      .join("\n"),
+    codeBlock(
+      frames
+        .map((frame) => {
+          const header = formatFrameHeader(frame, undefined, event.platform);
+          const context = renderInlineContext(frame);
+          return `${header}${context}`;
+        })
+        .join("\n"),
+    ),
   );
-  parts.push("```");
   parts.push("");
 
   return parts.join("\n");
@@ -768,17 +765,17 @@ export function formatThreadStacktraceOutput({
     parts.push("**Full Stacktrace:**");
   }
 
-  parts.push("```");
   parts.push(
-    frames
-      .map((frame) => {
-        const header = formatFrameHeader(frame, undefined, event.platform);
-        const context = renderInlineContext(frame);
-        return `${header}${context}`;
-      })
-      .join("\n"),
+    codeBlock(
+      frames
+        .map((frame) => {
+          const header = formatFrameHeader(frame, undefined, event.platform);
+          const context = renderInlineContext(frame);
+          return `${header}${context}`;
+        })
+        .join("\n"),
+    ),
   );
-  parts.push("```");
   parts.push("");
 
   return parts.join("\n");
@@ -1487,9 +1484,7 @@ function formatN1QueryEvidence(
 
     // Show the query pattern - if single line, render as SQL block; if multiple, as list
     if (repeatingLines.length === 1) {
-      parts.push("```sql");
-      parts.push(repeatingLines[0]);
-      parts.push("```");
+      parts.push(codeBlock(repeatingLines[0], "sql"));
       parts.push("");
     } else {
       parts.push("**Repeated operations:**");
@@ -1515,9 +1510,7 @@ function formatN1QueryEvidence(
   if (traceLines.length > 0) {
     parts.push(`### Span Tree (Limited to ${MAX_SPANS_IN_TREE} spans)`);
     parts.push("");
-    parts.push("```");
-    parts.push(...traceLines);
-    parts.push("```");
+    parts.push(codeBlock(traceLines.join("\n")));
     parts.push("");
   } else {
     const spanTree = isValidSpanArray(spansData)
@@ -1527,9 +1520,7 @@ function formatN1QueryEvidence(
     if (spanTree.length > 0) {
       parts.push(`### Span Tree (Limited to ${MAX_SPANS_IN_TREE} spans)`);
       parts.push("");
-      parts.push("```");
-      parts.push(...renderPerformanceSpanTree(spanTree));
-      parts.push("```");
+      parts.push(codeBlock(renderPerformanceSpanTree(spanTree).join("\n")));
       parts.push("");
     } else if (isValidSpanArray(spansData)) {
       // Only show offender summaries if we have spans data but couldn't build a tree
@@ -1865,7 +1856,11 @@ function formatTags(tags: z.infer<typeof EventSchema>["tags"]) {
     return "";
   }
   return `### Tags\n\n${tags
-    .map((tag) => `**${tag.key}**: ${tag.value}`)
+    .map(
+      // A code span cannot be empty, so a null or empty value gets a placeholder.
+      (tag) =>
+        `**${text(tag.key)}**: ${tag.value ? inlineCode(tag.value) : "(empty)"}`,
+    )
     .join("\n")}\n\n`;
 }
 
@@ -2043,19 +2038,19 @@ export function formatIssueOutput({
   if (isPerformanceIssue && issue.metadata) {
     // For performance issues, use metadata for better context
     const issueTitle = issue.metadata.title || issue.title;
-    output += `**Description**: ${issueTitle}\n`;
+    output += `**Description**: ${text(issueTitle)}\n`;
 
     if (issue.metadata.location) {
-      output += `**Location**: ${issue.metadata.location}\n`;
+      output += `**Location**: ${text(issue.metadata.location)}\n`;
     }
     if (issue.metadata.value) {
-      output += `**Query Pattern**: \`${issue.metadata.value}\`\n`;
+      output += `**Query Pattern**: ${inlineCode(issue.metadata.value)}\n`;
     }
   } else {
     // For regular errors and other issues
-    output += `**Description**: ${issue.title}\n`;
+    output += `**Description**: ${text(issue.title)}\n`;
     if (issue.culprit) {
-      output += `**Culprit**: ${issue.culprit}\n`;
+      output += `**Culprit**: ${text(issue.culprit)}\n`;
     }
   }
 
@@ -2077,11 +2072,11 @@ export function formatIssueOutput({
   // Add assignee information if assigned
   if (issue.assignedTo) {
     if (typeof issue.assignedTo === "string") {
-      output += `**Assigned To**: ${issue.assignedTo}\n`;
+      output += `**Assigned To**: ${text(issue.assignedTo)}\n`;
     } else {
       const assignee = issue.assignedTo;
       const type = assignee.type === "team" ? "Team" : "User";
-      output += `**Assigned To**: ${assignee.name} (${type})\n`;
+      output += `**Assigned To**: ${text(assignee.name)} (${type})\n`;
     }
   }
 
@@ -2099,7 +2094,7 @@ export function formatIssueOutput({
   }
 
   output += `**Platform**: ${issue.platform}\n`;
-  output += `**Project**: ${issue.project.name}\n`;
+  output += `**Project**: ${text(issue.project.name)}\n`;
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 

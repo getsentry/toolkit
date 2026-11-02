@@ -28,7 +28,7 @@ async function bundleMarkdown(define: Record<string, string> = {}) {
     define,
     plugins: [
       {
-        // Mirrors the require-alias plugin in script/bundle.ts.
+        // Mirrors script/lib/require-alias-plugin.ts.
         name: "require-alias",
         setup(builder) {
           builder.onLoad({ filter: HIGHLIGHT_MODULE_RE }, async (args) => ({

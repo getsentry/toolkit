@@ -800,6 +800,12 @@ describe("setFlagContext", () => {
     expect(setTagSpy).toHaveBeenCalledWith("flag.token", "[REDACTED]");
   });
 
+  test("redacts the deprecated MCP --access-token value", () => {
+    setFlagContext({ "access-token": "sntryu_secret" });
+    expect(setTagSpy).toHaveBeenCalledWith("flag.access-token", "[REDACTED]");
+    expect(JSON.stringify(setTagSpy.mock.calls)).not.toContain("sntryu_secret");
+  });
+
   test("still sets the tag when token flag is present (presence is useful signal)", () => {
     setFlagContext({ token: "any-token-value" });
     // The tag is set (so we know --token was used), but the value is redacted

@@ -1,4 +1,3 @@
-import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 /**
  * MCP Server Configuration and Request Handling Infrastructure.
  *
@@ -19,8 +18,7 @@ import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/m
  * });
  * ```
  */
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
+import { type CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import {
   getActiveSpan,
   type SpanAttributeValue,
@@ -113,26 +111,50 @@ function structuredOutputToCallToolResult(
  * JSON parsers such as serde_json in Codex reject the message and close the
  * transport. Normalizing handler output here covers every tool, including
  * structuredContent and the compatibility text generated from it.
+ *
+ * Runs on every tool call, so it copies on write: it returns the input itself
+ * when nothing changes, and copies only the arrays and objects on the path to
+ * a replaced string. V8 returns the same string from `toWellFormed()` when it
+ * is already well formed, so the `!==` checks are pointer comparisons.
  */
 function toWellFormedOutput<T>(value: T): T {
   if (typeof value === "string") {
     return value.toWellFormed() as T;
   }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
   if (Array.isArray(value)) {
-    return value.map(toWellFormedOutput) as T;
-  }
-  if (value !== null && typeof value === "object") {
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype === Object.prototype || prototype === null) {
-      return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [
-          key.toWellFormed(),
-          toWellFormedOutput(item),
-        ]),
-      ) as T;
+    let copy: unknown[] | undefined;
+    for (let index = 0; index < value.length; index++) {
+      const next = toWellFormedOutput(value[index]);
+      if (next !== value[index]) {
+        copy ??= [...value];
+        copy[index] = next;
+      }
     }
+    return (copy ?? value) as T;
   }
-  return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  // `for...in` avoids allocating a key list per object on the common path.
+  let entries: [string, unknown][] | undefined;
+  let index = 0;
+  for (const key in record) {
+    if (!Object.hasOwn(record, key)) continue;
+    const item = record[key];
+    const nextKey = key.toWellFormed();
+    const next = toWellFormedOutput(item);
+    if (!entries && (nextKey !== key || next !== item)) {
+      entries = Object.entries(record).slice(0, index);
+    }
+    entries?.push([nextKey, next]);
+    index++;
+  }
+  return (entries ? Object.fromEntries(entries) : value) as T;
 }
 
 /**
@@ -144,7 +166,7 @@ function toWellFormedOutput<T>(value: T): T {
  * @example Usage with stdio transport
  * ```typescript
  * import { buildServer } from "@sentry/mcp-core/server";
- * import { startStdio } from "@sentry/mcp-server/transports/stdio";
+ * import { startStdio } from "@sentry/mcp-core/transports/stdio";
  *
  * const context = {
  *   accessToken: process.env.SENTRY_TOKEN,
@@ -155,58 +177,31 @@ function toWellFormedOutput<T>(value: T): T {
  * };
  *
  * const server = buildServer({ context });
- * await startStdio(server, context);
+ * const { closed } = await startStdio(server, context);
+ * await closed;
  * ```
  *
  */
-type McpServer = LegacyMcpServer | ModernMcpServer;
-
-type BuildServerOptions = {
-  context: ServerContext;
-  experimentalMode?: boolean;
-  tools?: ToolRegistry;
-};
-
-export function buildServer(
-  options: BuildServerOptions & { sdkVersion: "v2" },
-): ModernMcpServer;
-export function buildServer(options: BuildServerOptions): LegacyMcpServer;
 export function buildServer({
   context,
   experimentalMode = false,
   tools: customTools,
-  sdkVersion = "v1",
-}: BuildServerOptions & {
-  sdkVersion?: "v1" | "v2";
+}: {
+  context: ServerContext;
+  experimentalMode?: boolean;
+  tools?: ToolRegistry;
 }): McpServer {
   const contextWithModes: ServerContext = {
     ...context,
     experimentalMode,
   };
-  const serverInfo = {
-    name: MCP_SERVER_NAME,
-    version: LIB_VERSION,
-  };
-  const serverOptions = { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS };
-
-  if (sdkVersion === "v2") {
-    const server = new ModernMcpServer(serverInfo, serverOptions);
-    const registrations = configureServer({
-      server,
-      context: contextWithModes,
-      experimentalMode,
-      tools: customTools,
-    });
-    for (const { name, config, handler } of registrations) {
-      server.registerTool(name, config, handler);
-    }
-    if (registrations.length > 0) {
-      server.server.registerCapabilities({ tools: { listChanged: false } });
-    }
-    return wrapMcpServerWithSentry(server);
-  }
-
-  const server = new LegacyMcpServer(serverInfo, serverOptions);
+  const server = new McpServer(
+    {
+      name: MCP_SERVER_NAME,
+      version: LIB_VERSION,
+    },
+    { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS },
+  );
   const registrations = configureServer({
     server,
     context: contextWithModes,
@@ -435,14 +430,18 @@ function configureServer({
         }
 
         // Upstream 401 during a tool call — route via the transport so it
-        // can revoke the MCP grant; swallow callback errors since the
-        // formatted tool response still needs to land.
+        // can revoke the MCP grant or refresh the token; swallow callback
+        // errors since the formatted tool response still needs to land.
         if (
           isApiAuthenticationErrorDeep(error) &&
           context.onUpstreamUnauthorized
         ) {
           try {
-            await context.onUpstreamUnauthorized();
+            const refreshedToken = await context.onUpstreamUnauthorized();
+            // Handlers read this shared copy, not the caller's context.
+            if (refreshedToken) {
+              contextWithToolAvailability.accessToken = refreshedToken;
+            }
           } catch {}
         }
 

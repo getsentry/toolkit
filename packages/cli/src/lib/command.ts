@@ -38,6 +38,7 @@ import {
   numberParser as stricliNumberParser,
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
+import { asRunningAppCommand } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
@@ -467,7 +468,7 @@ function prepareNativeDocs(
   }
   const rendered = examples
     .map((example) => {
-      const steps = exampleSteps(example);
+      const steps = exampleSteps(example).map(asRunningAppCommand);
       return steps.length === 1
         ? `  ${steps[0]} # ${example.description}`
         : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(

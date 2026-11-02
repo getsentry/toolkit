@@ -3,7 +3,7 @@ import type {
   EmbeddedResource,
   ImageContent,
   TextContent,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/server";
 import type { z } from "zod";
 import type { Scope } from "../permissions";
 import type { Skill } from "../skills";

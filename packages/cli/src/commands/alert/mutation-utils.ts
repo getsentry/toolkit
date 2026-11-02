@@ -7,12 +7,15 @@ import type {
   DatasetFields,
 } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
+import { logger } from "../../lib/logger.js";
 import {
   METRIC_ALERT_DATASET_ALIASES,
   METRIC_ALERT_DATASET_NAMES,
   type MetricAlertDataset,
   metricAlertSource,
 } from "../../types/metric-alert.js";
+
+const log = logger.withTag("alert");
 
 /** Match modes of an issue alert's filter group. */
 export const ISSUE_MATCH_MODES = ["all", "any"] as const;
@@ -181,15 +184,192 @@ export function parseStatusFlag(
   );
 }
 
-function parseJsonValue(raw: string, field: string): unknown {
+/*
+ * Issue-alert triggers whose comparison is a plain boolean: the
+ * `WorkflowTriggerDataConditionHandler`s in getsentry/sentry
+ * (`sentry.workflow_engine.handlers.condition`) with
+ * `comparison_json_schema = {"type": "boolean"}`. Each is fully described by
+ * its type, so `--condition` takes the bare name too.
+ */
+const ISSUE_TRIGGER_TYPES = [
+  "first_seen_event",
+  "regression_event",
+  "reappeared_event",
+  "issue_resolved_trigger",
+  "new_high_priority_issue",
+  "existing_high_priority_issue",
+  "every_event",
+] as const;
+
+type IssueTriggerType = (typeof ISSUE_TRIGGER_TYPES)[number];
+
+/** Short names for {@link ISSUE_TRIGGER_TYPES}, after `-` → `_`. */
+const ISSUE_TRIGGER_ALIASES: Readonly<Record<string, IssueTriggerType>> = {
+  first_seen: "first_seen_event",
+  regression: "regression_event",
+  reappeared: "reappeared_event",
+  resolved: "issue_resolved_trigger",
+  issue_resolved: "issue_resolved_trigger",
+  new_high_priority: "new_high_priority_issue",
+  existing_high_priority: "existing_high_priority_issue",
+};
+
+/**
+ * Trigger names shown in errors and help: each type's first alias (or the
+ * type itself), kebab-cased. `every_event` is accepted but not suggested: an
+ * error that offers it would invite an alert on every event.
+ */
+export const ISSUE_TRIGGER_NAMES = ISSUE_TRIGGER_TYPES.filter(
+  (type) => type !== "every_event",
+).map((type) =>
+  (
+    Object.keys(ISSUE_TRIGGER_ALIASES).find(
+      (alias) => ISSUE_TRIGGER_ALIASES[alias] === type,
+    ) ?? type
+  ).replaceAll("_", "-"),
+);
+
+const ISSUE_TRIGGER_KEYS = new Set(["type", "comparison", "conditionResult"]);
+
+/** One shell word of a JSON value whose double quotes were stripped. */
+const BARE_JSON_TOKEN = /\s*(?:([{}[\]:,])|([\w.+-]+))\s*/y;
+const JSON_NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const JSON_LITERALS = new Set(["true", "false", "null"]);
+/** Separates trigger names in one `--condition first-seen,regression` value. */
+const TRIGGER_NAME_SEPARATOR = /\s*,\s*/;
+
+function resolveTriggerName(name: string): IssueTriggerType | undefined {
+  const normalized = name.trim().toLowerCase().replaceAll("-", "_");
+  if ((ISSUE_TRIGGER_TYPES as readonly string[]).includes(normalized)) {
+    return normalized as IssueTriggerType;
+  }
+  return ISSUE_TRIGGER_ALIASES[normalized];
+}
+
+function triggerCondition(type: IssueTriggerType): Record<string, unknown> {
+  return { type, comparison: true, conditionResult: true };
+}
+
+/**
+ * Re-add the double quotes a shell stripped from a JSON value, as Windows
+ * PowerShell 5.1 does with arguments to native programs:
+ * `{type:first_seen_event}` → `{"type":"first_seen_event"}`.
+ *
+ * Only words of letters, digits, `_`, `.`, `+`, and `-` are re-quoted; any
+ * other character means the original string boundaries are unknown, so it
+ * returns `undefined`. So do two adjacent words (`value:status code`), which
+ * leave invalid JSON. A word that reads as a number or `true`/`false`/`null`
+ * stays one, so callers must only trust the result where that cannot matter.
+ * Objects come back in an array.
+ */
+function requoteBareJson(raw: string): unknown {
+  const text = raw.trim();
+  if (!(text.startsWith("{") || text.startsWith("["))) {
+    return;
+  }
+  let json = "";
+  let index = 0;
+  while (index < text.length) {
+    BARE_JSON_TOKEN.lastIndex = index;
+    const match = BARE_JSON_TOKEN.exec(text);
+    if (!match) {
+      return;
+    }
+    const [, punctuation, word = ""] = match;
+    json +=
+      punctuation ??
+      (JSON_LITERALS.has(word) || JSON_NUMBER.test(word)
+        ? word
+        : JSON.stringify(word));
+    index = BARE_JSON_TOKEN.lastIndex;
+  }
+  try {
+    // Wrap objects so `{...},{...}` (comma-joined) reads as well.
+    return JSON.parse(text.startsWith("{") ? `[${json}]` : json);
+  } catch (error) {
+    log.debug("Re-quoted value is not valid JSON either", error);
+    return;
+  }
+}
+
+/**
+ * Map a re-quoted `--condition` value to trigger conditions, or return
+ * `undefined`. Accepts only boolean triggers with no other keys and no
+ * `false` comparisons: then the type alone determines the object, and
+ * re-quoting cannot have changed what the user meant.
+ */
+function toTriggerConditions(
+  value: unknown,
+): Record<string, unknown>[] | undefined {
+  const entries = Array.isArray(value) ? value : [value];
+  const conditions: Record<string, unknown>[] = [];
+  for (const entry of entries) {
+    if (!isJsonObject(entry)) {
+      return;
+    }
+    const type = ISSUE_TRIGGER_TYPES.find((t) => t === entry.type);
+    const exact =
+      Object.keys(entry).every((key) => ISSUE_TRIGGER_KEYS.has(key)) &&
+      (entry.comparison ?? true) === true &&
+      (entry.conditionResult ?? true) === true;
+    if (!(type && exact)) {
+      return;
+    }
+    conditions.push(triggerCondition(type));
+  }
+  return conditions;
+}
+
+/** `{...},{...}`: several objects joined by commas instead of an array. */
+function parseCommaJoinedObjects(raw: string): unknown[] | undefined {
+  const text = raw.trim();
+  if (!(text.startsWith("{") && text.endsWith("}"))) {
+    return;
+  }
+  try {
+    const parsed: unknown = JSON.parse(`[${text}]`);
+    return Array.isArray(parsed) && parsed.every(isJsonObject)
+      ? parsed
+      : undefined;
+  } catch (error) {
+    log.debug("Value is not comma-joined JSON objects", error);
+    return;
+  }
+}
+
+/** Error for a value that is not JSON and could not be recovered. */
+function invalidJsonError(raw: string, field: string): ValidationError {
+  let message = `${field} must be valid JSON (got ${JSON.stringify(raw)}).`;
+  if (requoteBareJson(raw) !== undefined) {
+    message +=
+      "\n  The shell seems to have stripped the double quotes (Windows PowerShell 5.1" +
+      '\n  does this): escape them as \\" or use PowerShell 7.3+.';
+  }
+  return new ValidationError(message, field);
+}
+
+function parseJsonValue(
+  raw: string,
+  field: string,
+  recover?: (raw: string) => unknown,
+): unknown {
   try {
     return JSON.parse(raw);
-  } catch {
-    throw new ValidationError(
-      `${field} must be valid JSON (got ${JSON.stringify(raw)}).`,
-      field,
-    );
+  } catch (error) {
+    log.debug(`${field} value is not valid JSON`, error);
   }
+  const joined = parseCommaJoinedObjects(raw);
+  if (joined) {
+    log.warn(
+      `Read --${field} ${JSON.stringify(raw)} as a JSON array of ${joined.length} objects.`,
+    );
+    return joined;
+  }
+  const recovered = recover?.(raw);
+  if (recovered !== undefined) {
+    return recovered;
+  }
+  throw invalidJsonError(raw, field);
 }
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
@@ -206,48 +386,109 @@ function toObject(value: unknown, field: string): Record<string, unknown> {
 /**
  * Parse CLI flag values into an array of JSON objects.
  *
- * Accepts a single JSON array string, a single JSON object string,
- * or multiple JSON object strings. Returns `undefined` when absent.
+ * Each value is a JSON object, a JSON array of objects, or objects joined by
+ * commas (`{...},{...}`, read as an array with a warning). `recover` may map a
+ * value that is not JSON to objects instead of failing. Returns `undefined`
+ * when absent.
  */
 export function parseJsonObjectList(
   values: readonly string[] | undefined,
   field: string,
+  recover?: (raw: string) => unknown,
 ): Record<string, unknown>[] | undefined {
   if (!values || values.length === 0) {
     return;
   }
 
-  if (values.length === 1) {
-    const onlyValue = values[0];
-    if (onlyValue === undefined) {
-      return;
-    }
-    const parsed = parseJsonValue(onlyValue, field);
-    if (Array.isArray(parsed)) {
-      return parsed.map((entry) => toObject(entry, field));
-    }
-    return [toObject(parsed, field)];
-  }
-
-  return values.map((value) => toObject(parseJsonValue(value, field), field));
+  return values.flatMap((value) => {
+    const parsed = parseJsonValue(value, field, recover);
+    const entries: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+    return entries.map((entry) => toObject(entry, field));
+  });
 }
 
-/** Require at least one entry in the conditions or actions array. */
-export function validateIssueRuleArrays(
-  conditions: readonly Record<string, unknown>[] | undefined,
-  actions: readonly Record<string, unknown>[] | undefined,
-  field: "conditions" | "actions",
-): void {
-  if (field === "conditions") {
-    if (!conditions || conditions.length === 0) {
+const TRIGGER_USAGE = `Pass a trigger name (${ISSUE_TRIGGER_NAMES.join(", ")}) or JSON like '{"type":"first_seen_event","comparison":true,"conditionResult":true}'.`;
+
+/**
+ * Recover a `--condition` value that is not JSON: trigger names
+ * (`first-seen`, `first_seen_event,regression`) or trigger JSON whose double
+ * quotes a shell stripped. Returns `undefined` when neither applies.
+ */
+function recoverTriggerConditions(
+  raw: string,
+): Record<string, unknown>[] | undefined {
+  const names = raw.split(TRIGGER_NAME_SEPARATOR).map(resolveTriggerName);
+  if (names.every((type): type is IssueTriggerType => type !== undefined)) {
+    return names.map(triggerCondition);
+  }
+  const requoted = requoteBareJson(raw);
+  const conditions =
+    requoted === undefined ? undefined : toTriggerConditions(requoted);
+  if (conditions) {
+    log.warn(
+      `--condition ${JSON.stringify(raw)} is missing its double quotes (the shell stripped them); ` +
+        `using ${JSON.stringify(conditions)}.`,
+    );
+  }
+  return conditions;
+}
+
+/**
+ * Parse `--condition` values into issue-alert trigger conditions.
+ *
+ * Takes everything {@link parseJsonObjectList} does, plus trigger names
+ * (`first-seen`, `regression`, or the API type such as `first_seen_event`),
+ * comma-separated in one value or repeated, and trigger JSON whose double
+ * quotes the shell stripped.
+ */
+export function parseIssueConditions(
+  values: readonly string[] | undefined,
+): Record<string, unknown>[] | undefined {
+  try {
+    return parseJsonObjectList(values, "condition", recoverTriggerConditions);
+  } catch (error) {
+    if (error instanceof ValidationError && error.field === "condition") {
       throw new ValidationError(
-        "Pass at least one --condition JSON object.",
+        `${error.message}\n  ${TRIGGER_USAGE}`,
         "condition",
       );
     }
+    throw error;
+  }
+}
+
+/**
+ * Require an issue alert to have triggers or action filters.
+ *
+ * The workflow engine treats an empty trigger group as triggered by every
+ * event (`process_data_condition_group` in getsentry/sentry), so filters alone
+ * make a valid alert: "every event that matches these filters". With neither,
+ * the alert would fire on every event, which is never what an omitted
+ * `--condition` means, so that stays an error.
+ */
+export function validateIssueTriggers(
+  conditions: readonly Record<string, unknown>[] | undefined,
+  filters: readonly unknown[] | undefined,
+): void {
+  if (conditions && conditions.length > 0) {
     return;
   }
+  if (filters && filters.length > 0) {
+    log.warn(
+      "No --condition trigger: the alert checks its --filter conditions on every event.",
+    );
+    return;
+  }
+  throw new ValidationError(
+    `Pass at least one --condition trigger, or --filter conditions to check on every event.\n  ${TRIGGER_USAGE}`,
+    "condition",
+  );
+}
 
+/** Require at least one entry in the actions array. */
+export function validateIssueActions(
+  actions: readonly Record<string, unknown>[] | undefined,
+): void {
   if (!actions || actions.length === 0) {
     throw new ValidationError(
       "Pass at least one --action JSON object.",

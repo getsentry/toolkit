@@ -71,8 +71,9 @@ export type ServerContext = {
   /**
    * Invoked when a tool call surfaces an upstream 401. Transports wire this
    * to revoke the MCP grant so the session doesn't keep getting wrapper
-   * tokens backed by an upstream token Sentry has already rejected. Callback
-   * errors are swallowed.
+   * tokens backed by an upstream token Sentry has already rejected. Hosts
+   * that can refresh their credential return the new token, which later tool
+   * calls use. Callback errors are swallowed.
    */
-  onUpstreamUnauthorized?: () => void | Promise<void>;
+  onUpstreamUnauthorized?: () => void | string | Promise<void | string>;
 };

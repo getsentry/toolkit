@@ -1,9 +1,4 @@
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { getClient } from "@sentry/core";
-import type {
-  ServerNotification,
-  ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { UserInputError } from "../../errors";
 import {
@@ -285,8 +280,3 @@ export function resolveToolDescription(
 ): string {
   return resolveDescription(tool.description, context);
 }
-
-export type RegisteredToolHandlerExtra = RequestHandlerExtra<
-  ServerRequest,
-  ServerNotification
->;
