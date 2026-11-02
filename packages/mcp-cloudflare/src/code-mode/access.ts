@@ -1,4 +1,8 @@
 import type { ApiOperation } from "@sentry/api/operations";
+import {
+  type ApiPathTemplateMatch,
+  matchApiPathTemplate,
+} from "@sentry/toolkit-core/api-path-template";
 
 export type CatalogOperation = Pick<ApiOperation, "method" | "path">;
 
@@ -6,11 +10,7 @@ export interface CodeModeAccess {
   organizationSlug?: string | null;
 }
 
-interface MatchedPath {
-  pathTemplate: string;
-  parameters: Record<string, string>;
-  literalSegments: number;
-}
+type MatchedPath = ApiPathTemplateMatch & { pathTemplate: string };
 
 function decodePathSegment(segment: string): string {
   let decoded: string;
@@ -27,44 +27,23 @@ function decodePathSegment(segment: string): string {
   return decoded;
 }
 
-/** The most literal published path template matching the URL. */
-function findPath(url: URL, pathTemplates: Iterable<string>): MatchedPath {
-  const segments = url.pathname.split("/").map(decodePathSegment);
+/** The most literal published path template matching a decoded path. */
+function findPath(
+  path: string,
+  pathTemplates: Iterable<string>,
+): MatchedPath | undefined {
   const matches: MatchedPath[] = [];
   for (const pathTemplate of pathTemplates) {
-    const templateSegments = pathTemplate.split("/");
-    if (templateSegments.length !== segments.length) continue;
-    const parameters: Record<string, string> = {};
-    let literalSegments = 0;
-    const matchesPath = templateSegments.every((segment, index) => {
-      const parameter = /^\{([^{}]+)\}$/.exec(segment);
-      if (parameter) {
-        if (!segments[index] || Object.hasOwn(parameters, parameter[1])) {
-          return false;
-        }
-        parameters[parameter[1]] = segments[index];
-        return true;
-      }
-      literalSegments++;
-      return segment === segments[index];
-    });
-    if (matchesPath) {
-      matches.push({ pathTemplate, parameters, literalSegments });
-    }
+    const match = matchApiPathTemplate(pathTemplate, path);
+    if (match) matches.push({ pathTemplate, ...match });
   }
   matches.sort((a, b) => b.literalSegments - a.literalSegments);
-  const match = matches[0];
-  if (!match) {
-    throw new Error(
-      "This API path is not available in the published API schema.",
-    );
-  }
-  if (matches[1]?.literalSegments === match.literalSegments) {
+  if (matches[1] && matches[1].literalSegments === matches[0].literalSegments) {
     throw new Error(
       "This API path matches multiple operations in the API schema.",
     );
   }
-  return match;
+  return matches[0];
 }
 
 /**
@@ -77,11 +56,22 @@ export function authorizeApiRequest(
   method: string,
   catalog: readonly CatalogOperation[],
   access: CodeModeAccess,
-): { pathTemplate: string; organizationSlug?: string } {
-  const { pathTemplate, parameters } = findPath(
-    url,
-    new Set(catalog.map(({ path }) => path)),
-  );
+): { pathTemplate: string; pathname: string; organizationSlug?: string } {
+  const templates = new Set(catalog.map(({ path }) => path));
+  const decoded = url.pathname.split("/").map(decodePathSegment).join("/");
+  let pathname = url.pathname;
+  let match = findPath(decoded, templates);
+  // Most routes end with a slash. Send the canonical path rather than fail.
+  if (!match && !pathname.endsWith("/")) {
+    match = findPath(`${decoded}/`, templates);
+    pathname = `${pathname}/`;
+  }
+  if (!match) {
+    throw new Error(
+      "This API path is not available in the published API schema.",
+    );
+  }
+  const { pathTemplate, parameters } = match;
   const methods = new Set<string>(
     catalog.filter(({ path }) => path === pathTemplate).map((op) => op.method),
   );
@@ -103,5 +93,9 @@ export function authorizeApiRequest(
     );
   }
 
-  return { pathTemplate, ...(organizationSlug ? { organizationSlug } : {}) };
+  return {
+    pathTemplate,
+    pathname,
+    ...(organizationSlug ? { organizationSlug } : {}),
+  };
 }

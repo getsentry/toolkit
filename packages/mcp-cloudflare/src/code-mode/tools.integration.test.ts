@@ -417,15 +417,16 @@ describe("Code Mode on the authenticated MCP", () => {
     expect(apiRequests).toHaveLength(0);
   });
 
-  it("uses the API write grant, regional routing and attribution headers", async () => {
+  it("uses the API write grant, regional routing, the canonical path and attribution headers", async () => {
     apiResponse = (request) =>
       Response.json(
         { saved: JSON.parse(request.body) },
         { headers: { ETag: '"saved-monitor"', Link: "<next-page>; rel=next" } },
       );
+    // Without the trailing slash: the broker sends the published path.
     const result = await execute(
       `async () => sentry.request({
-      method: "PUT", path: "/projects/code-mode-org/web/monitors/billing/", body: {name: "Billing"}
+      method: "PUT", path: "/projects/code-mode-org/web/monitors/billing", body: {name: "Billing"}
     })`,
       { props: { grantedSkills: ["api-write"] } },
     );

@@ -90,8 +90,10 @@ Before each `sentry.request()`, the broker (`broker.ts`) checks:
 
 Then its `ApiAuthorization` (`authorization.ts`, `access.ts`) checks:
 
-3. The path and method are a published operation. HEAD may use a published
-   GET. Traversal segments, unknown paths and ambiguous paths fail.
+3. The path and method are a published operation, matched with the template
+   matcher shared with the CLI. HEAD may use a published GET, and a missing
+   trailing slash is added to the path sent. Traversal segments, unknown paths
+   and ambiguous paths fail.
 4. On `/mcp/{org}`, the organization path parameter must be that organization.
    Other organizations, numeric aliases and global object-ID routes fail;
    query parameters cannot stand in for a scoped path.

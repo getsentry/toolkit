@@ -15,6 +15,10 @@
       "types": "./src/api-path-segment.ts",
       "default": "./src/api-path-segment.ts"
     },
+    "./api-path-template": {
+      "types": "./src/api-path-template.ts",
+      "default": "./src/api-path-template.ts"
+    },
     "./auth-token": {
       "types": "./src/auth-token.ts",
       "default": "./src/auth-token.ts"
