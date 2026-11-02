@@ -1,0 +1,11 @@
+{
+  // Local eval worker only: the hosted Code Mode composition against loopback
+  // API fixtures. Never deployed.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sentry-code-mode-evals",
+  "main": "../../../mcp-cloudflare/src/code-mode/eval-worker.ts",
+  "compatibility_date": "2026-01-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "worker_loaders": [{ "binding": "LOADER" }],
+}

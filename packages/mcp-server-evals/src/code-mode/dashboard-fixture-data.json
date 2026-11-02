@@ -1,0 +1,113 @@
+{
+  "provenance": {
+    "openapiCommit": "803d6de98c9156c15e9ddc1bf9accbac6e24cebc",
+    "backendCommit": "c4b7b5f3502b7f7c2ae8edc9ae1da36c8a1c98a4",
+    "sourceDashboard": "packages/mcp-server-mocks/src/fixtures/dashboard-details.json"
+  },
+  "sourceDashboard": {
+    "id": "101",
+    "title": "Errors Overview",
+    "dateCreated": "2025-04-14T10:15:00.000Z",
+    "createdBy": {
+      "id": "1",
+      "name": "Test User",
+      "email": "user@example.com"
+    },
+    "widgets": [
+      {
+        "id": "201",
+        "title": "Handled Errors",
+        "description": "Handled errors over time",
+        "displayType": "line",
+        "thresholds": null,
+        "interval": "5m",
+        "dateCreated": "2025-04-14T10:16:00.000Z",
+        "dashboardId": "101",
+        "queries": [
+          {
+            "id": "301",
+            "name": "",
+            "fields": ["count()"],
+            "aggregates": ["count()"],
+            "columns": [],
+            "fieldAliases": [],
+            "conditions": "error.handled:true",
+            "orderby": "-count()",
+            "widgetId": "201",
+            "onDemand": [],
+            "isHidden": false,
+            "selectedAggregate": 0,
+            "linkedDashboards": []
+          }
+        ],
+        "limit": null,
+        "widgetType": "error-events",
+        "layout": {
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "minH": 2
+        },
+        "axisRange": null,
+        "legendType": null,
+        "datasetSource": "user",
+        "changedReason": null
+      },
+      {
+        "id": "202",
+        "title": "Top Issues",
+        "description": null,
+        "displayType": "table",
+        "thresholds": null,
+        "interval": "5m",
+        "dateCreated": "2025-04-14T10:18:00.000Z",
+        "dashboardId": "101",
+        "queries": [
+          {
+            "id": "302",
+            "name": "Top Issues",
+            "fields": ["issue", "count()"],
+            "aggregates": ["count()"],
+            "columns": ["issue"],
+            "fieldAliases": [],
+            "conditions": "is:unresolved",
+            "orderby": "-count()",
+            "widgetId": "202",
+            "onDemand": [],
+            "isHidden": false,
+            "selectedAggregate": 0,
+            "linkedDashboards": []
+          }
+        ],
+        "limit": 5,
+        "widgetType": "error-events",
+        "layout": {
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 3,
+          "minH": 2
+        },
+        "axisRange": null,
+        "legendType": null,
+        "datasetSource": "user",
+        "changedReason": null
+      }
+    ],
+    "filters": {
+      "release": ["frontend@1.2.3"]
+    },
+    "permissions": {
+      "isEditableByEveryone": true,
+      "teamsWithEditAccess": []
+    },
+    "isFavorited": true,
+    "projects": [101, 102],
+    "environment": ["production"],
+    "period": "24h",
+    "utc": true,
+    "expired": false,
+    "prebuiltId": null
+  }
+}
