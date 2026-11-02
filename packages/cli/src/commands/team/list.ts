@@ -10,12 +10,12 @@
  * - Cross-org project search (e.g., sentry)
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import {
   listProjectTeams,
   listTeams,
   listTeamsPaginated,
 } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
@@ -34,7 +34,7 @@ type TeamWithOrg = SentryTeam & { orgSlug?: string };
 const TEAM_COLUMNS: Column<TeamWithOrg>[] = [
   { header: "ORG", value: (t) => t.orgSlug || "" },
   { header: "SLUG", value: (t) => t.slug },
-  { header: "NAME", value: (t) => escapeMarkdownCell(t.name) },
+  { header: "NAME", value: (t) => tableCell(t.name) },
   {
     header: "MEMBERS",
     value: (t) => String(t.memberCount ?? ""),

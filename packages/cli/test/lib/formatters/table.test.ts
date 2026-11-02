@@ -5,8 +5,8 @@
  * tables. Tests verify content is present rather than exact text alignment.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { describe, expect, test, vi } from "vitest";
-import { escapeMarkdownCell } from "../../../src/lib/formatters/markdown.js";
 import { type Column, writeTable } from "../../../src/lib/formatters/table.js";
 
 type Row = { name: string; count: number; status: string };
@@ -261,7 +261,7 @@ describe("writeTable (plain mode)", () => {
   test("pipe characters in values are preserved in box-drawing table", () => {
     withPlain(() => {
       const cols: Column<{ v: string }>[] = [
-        { header: "VAL", value: (r) => escapeMarkdownCell(r.v) },
+        { header: "VAL", value: (r) => tableCell(r.v) },
       ];
       const write = vi.fn(() => true);
       writeTable({ write }, [{ v: "a|b" }], cols);

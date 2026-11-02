@@ -10,6 +10,7 @@
  * - project-search → find project across orgs, use its org
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../../context.js";
 import type { MetricAlertRule } from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
@@ -36,10 +37,7 @@ import {
   ValidationError,
   withAuthGuard,
 } from "../../../lib/errors.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-} from "../../../lib/formatters/markdown.js";
+import { colorTag } from "../../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../../lib/formatters/table.js";
 import {
@@ -465,7 +463,7 @@ function formatMetricAlertListHuman(result: MetricAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, orgSlug }) => ({
     id: r.id,
-    name: escapeMarkdownCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name ?? "(untitled)"),
     ...(isMultiOrg && { org: orgSlug }),
     aggregate: r.aggregate,
     dataset: r.dataset,

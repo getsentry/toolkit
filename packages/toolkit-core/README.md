@@ -171,9 +171,7 @@ with micromark, the CommonMark reference parser, and check that any input
 round-trips as the same literal value.
 
 `tableCell` is `text` plus escaped pipes, for a value in a GFM table cell. The
-CLI's `escapeMarkdownInline`, `escapeMarkdownCell`, and `safeCodeSpan` are
-`text`, `tableCell`, and `inlineCode`, so CLI and MCP output escape the same
-way. Escaped text never becomes a literal autolink: a URL in upstream data
+CLI and MCP both import these helpers, so their output escapes the same way. Escaped text never becomes a literal autolink: a URL in upstream data
 stays plain text.
 
 ## Resource identity

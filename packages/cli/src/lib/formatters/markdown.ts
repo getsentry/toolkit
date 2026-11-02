@@ -18,7 +18,7 @@
  * See {@link isPlainOutput} in `plain-detect.ts` for the full priority chain.
  */
 
-import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
+import { text } from "@sentry/toolkit-core/markdown";
 import chalk from "chalk";
 import { marked, type Token, type Tokens } from "marked";
 import stringWidth from "string-width";
@@ -32,19 +32,11 @@ export { isPlainOutput } from "./plain-detect.js";
 
 // ──────────────────────────── Escape helpers ──────────────────────────
 //
-// These are the shared builders from `@sentry/toolkit-core/markdown`, which
-// MCP uses too; their property tests parse the output with the same `marked`
-// this renderer uses. Escaped text never becomes a link: a URL in API data
-// renders as plain text, and deliberate links use explicit link syntax.
-
-/** Escapes a value for a markdown table cell. See `tableCell`. */
-export const escapeMarkdownCell = tableCell;
-
-/** Escapes a value so it renders as the same literal text. See `text`. */
-export const escapeMarkdownInline = text;
-
-/** Formats a value as a code span that keeps every character. See `inlineCode`. */
-export const safeCodeSpan = inlineCode;
+// Escape untrusted values with `text`, `tableCell`, and `inlineCode` from
+// `@sentry/toolkit-core/markdown`, which MCP uses too; their property tests
+// parse the output with the same `marked` this renderer uses. Escaped text
+// never becomes a link: a URL in API data renders as plain text, and
+// deliberate links use explicit link syntax.
 
 /** Indentation a line keeps in {@link escapeMarkdownLines}; four spaces would start a code block. */
 const LINE_INDENT = /^ {0,3}/;
@@ -52,8 +44,8 @@ const LINE_INDENT = /^ {0,3}/;
 /**
  * Escapes a multi-line value as literal text, one line at a time.
  *
- * Unlike {@link escapeMarkdownInline}, which puts a value on one line, this
- * keeps line breaks and up to three spaces of indentation.
+ * Unlike `text` from `@sentry/toolkit-core/markdown`, which puts a value on
+ * one line, this keeps line breaks and up to three spaces of indentation.
  */
 export function escapeMarkdownLines(value: string): string {
   return value
@@ -100,7 +92,7 @@ const KV_CELL_TOKEN = /\\[\s\S]|(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)|\|/g;
  * Make a Markdown label or value safe for an {@link mdKvTable} cell.
  *
  * Pipes become a box-drawing │ so they cannot end the cell, even inside a
- * code span. An escaped pipe (`\|`, as from escapeMarkdownCell) becomes │
+ * code span. An escaped pipe (`\|`, as from `tableCell`) becomes │
  * without its backslash. Inside a code span, backslashes are literal and
  * stay. Newlines are collapsed to spaces. Content escaping is the caller's job.
  */

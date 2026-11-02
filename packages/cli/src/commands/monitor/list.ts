@@ -12,8 +12,8 @@
  * - Cross-org project search (e.g., sentry)
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { listMonitors, listMonitorsPaginated } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
@@ -53,9 +53,9 @@ export function formatSchedule(monitor: MonitorWithOrg): string {
 const MONITOR_COLUMNS: Column<MonitorWithOrg>[] = [
   { header: "ID", value: (m) => m.id },
   { header: "SLUG", value: (m) => m.slug },
-  { header: "NAME", value: (m) => escapeMarkdownCell(m.name) },
+  { header: "NAME", value: (m) => tableCell(m.name) },
   { header: "STATUS", value: (m) => m.status },
-  { header: "SCHEDULE", value: (m) => escapeMarkdownCell(formatSchedule(m)) },
+  { header: "SCHEDULE", value: (m) => tableCell(formatSchedule(m)) },
 ];
 
 /** Shared config that plugs into the org-list framework. */

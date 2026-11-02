@@ -5,6 +5,7 @@
  * when several are logged in.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
@@ -34,7 +35,6 @@ import { getAllOrgRegions } from "../../lib/db/regions.js";
 import { ApiError, AuthError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
 import { getNestedValue } from "../../lib/formatters/json.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { filterByName } from "../../lib/list-filter.js";
@@ -185,7 +185,7 @@ function formatOrgListHuman(entries: OrgListEntry[]): string {
     )
     .map(([header, path]) => ({
       header,
-      value: (e) => escapeMarkdownCell(cellOf(e, path) ?? ""),
+      value: (e) => tableCell(cellOf(e, path) ?? ""),
     }));
 
   const parts: string[] = [];

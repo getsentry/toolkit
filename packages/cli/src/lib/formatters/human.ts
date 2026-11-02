@@ -9,6 +9,7 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import prettyMs from "pretty-ms";
 import type {
   DashboardDetail,
@@ -37,15 +38,12 @@ import { formatAccountLabel } from "./accounts.js";
 import { type FixabilityTier, muted } from "./colors.js";
 import {
   colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
   escapeMarkdownLines,
   isPlainOutput,
   mdKvTable,
   mdRow,
   mdTableHeader,
   renderMarkdown,
-  safeCodeSpan,
 } from "./markdown.js";
 import { sparkline } from "./sparkline.js";
 import { colorizeSql, isDbSpanOp } from "./sql.js";
@@ -560,13 +558,13 @@ function formatIdCell(
  * @returns Cell string
  */
 function formatIssueCell(issue: SentryIssue, compact = false): string {
-  const title = `**${escapeMarkdownInline(issue.title)}**`;
+  const title = `**${text(issue.title)}**`;
   if (compact) {
     return title;
   }
   const subtitle = formatIssueSubtitle(issue.metadata);
   if (subtitle) {
-    return `${title}\n${colorTag("muted", escapeMarkdownInline(subtitle))}`;
+    return `${title}\n${colorTag("muted", text(subtitle))}`;
   }
   return title;
 }
@@ -807,7 +805,7 @@ function formatPriorityLabel(priority?: string | null): string {
 export function formatIssueDetails(issue: SentryIssue): string {
   const lines: string[] = [];
 
-  lines.push(`## ${issue.shortId}: ${escapeMarkdownInline(issue.title ?? "")}`);
+  lines.push(`## ${issue.shortId}: ${text(issue.title ?? "")}`);
   lines.push("");
 
   // Key-value details as a table
@@ -840,25 +838,21 @@ export function formatIssueDetails(issue: SentryIssue): string {
   kvRows.push(["Type", issue.type ?? "unknown"]);
   kvRows.push([
     "Assignee",
-    escapeMarkdownInline(String(issue.assignedTo?.name ?? "Unassigned")),
+    text(String(issue.assignedTo?.name ?? "Unassigned")),
   ]);
 
   if (issue.project) {
     kvRows.push([
       "Project",
-      `${escapeMarkdownInline(issue.project.name ?? "(unknown)")} (${safeCodeSpan(issue.project.slug ?? "")})`,
+      `${text(issue.project.name ?? "(unknown)")} (${inlineCode(issue.project.slug ?? "")})`,
     ]);
   }
 
   const firstReleaseVersion = issue.firstRelease?.shortVersion;
   const lastReleaseVersion = issue.lastRelease?.shortVersion;
   if (firstReleaseVersion || lastReleaseVersion) {
-    const first = escapeMarkdownInline(
-      stringifyUnknown(firstReleaseVersion ?? ""),
-    );
-    const last = escapeMarkdownInline(
-      stringifyUnknown(lastReleaseVersion ?? ""),
-    );
+    const first = text(stringifyUnknown(firstReleaseVersion ?? ""));
+    const last = text(stringifyUnknown(lastReleaseVersion ?? ""));
     if (firstReleaseVersion && lastReleaseVersion) {
       if (firstReleaseVersion === lastReleaseVersion) {
         kvRows.push(["Release", first]);
@@ -878,20 +872,20 @@ export function formatIssueDetails(issue: SentryIssue): string {
   if (issue.firstSeen) {
     let firstSeenLine = new Date(issue.firstSeen).toLocaleString();
     if (firstReleaseVersion) {
-      firstSeenLine += ` (in ${escapeMarkdownCell(stringifyUnknown(firstReleaseVersion))})`;
+      firstSeenLine += ` (in ${tableCell(stringifyUnknown(firstReleaseVersion))})`;
     }
     kvRows.push(["First seen", firstSeenLine]);
   }
   if (issue.lastSeen) {
     let lastSeenLine = new Date(issue.lastSeen).toLocaleString();
     if (lastReleaseVersion && lastReleaseVersion !== firstReleaseVersion) {
-      lastSeenLine += ` (in ${escapeMarkdownCell(stringifyUnknown(lastReleaseVersion))})`;
+      lastSeenLine += ` (in ${tableCell(stringifyUnknown(lastReleaseVersion))})`;
     }
     kvRows.push(["Last seen", lastSeenLine]);
   }
 
   if (issue.culprit) {
-    kvRows.push(["Culprit", safeCodeSpan(issue.culprit)]);
+    kvRows.push(["Culprit", inlineCode(issue.culprit)]);
   }
 
   kvRows.push(["Link", issue.permalink ?? ""]);
@@ -931,7 +925,7 @@ function formatStackFrameMarkdown(frame: StackFrame): string {
   const col = frame.colNo ?? "?";
   const inAppTag = frame.inApp ? " `[in-app]`" : "";
 
-  lines.push(`${safeCodeSpan(`at ${fn} (${file}:${line}:${col})`)}${inAppTag}`);
+  lines.push(`${inlineCode(`at ${fn} (${file}:${line}:${col})`)}${inAppTag}`);
 
   if (frame.context && frame.context.length > 0) {
     lines.push("");
@@ -956,7 +950,7 @@ function formatExceptionValueMarkdown(exception: ExceptionValue): string {
 
   const type = exception.type || "Error";
   const value = exception.value || "";
-  lines.push(`**${safeCodeSpan(`${type}: ${value}`)}**`);
+  lines.push(`**${inlineCode(`${type}: ${value}`)}**`);
 
   if (exception.mechanism) {
     const handled = exception.mechanism.handled ? "handled" : "unhandled";
@@ -1034,8 +1028,8 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
     }
 
     // Escape special markdown characters that would break the table cell
-    const safeMessage = escapeMarkdownCell(message);
-    const safeCategory = escapeMarkdownCell(breadcrumb.category ?? "default");
+    const safeMessage = tableCell(message);
+    const safeCategory = tableCell(breadcrumb.category ?? "default");
 
     lines.push(mdRow([timestamp, level, safeCategory, safeMessage]).trimEnd());
   }
@@ -1379,8 +1373,8 @@ export function formatEventDetails(
     // The heading is copy-pasted into `event view`. A short prefix is not
     // searchable, so include the full ID unless the caller already did.
     const heading = header.includes(event.eventID)
-      ? `## ${escapeMarkdownInline(header)}`
-      : `## ${escapeMarkdownInline(header)} (\`${event.eventID}\`)`;
+      ? `## ${text(header)}`
+      : `## ${text(header)} (\`${event.eventID}\`)`;
     sections.push(heading);
     sections.push("");
 
@@ -1394,12 +1388,12 @@ export function formatEventDetails(
       ]);
     }
     if (event.location) {
-      infoKvRows.push(["Location", safeCodeSpan(event.location)]);
+      infoKvRows.push(["Location", inlineCode(event.location)]);
     }
 
     const traceCtx = event.contexts?.trace;
     if (traceCtx?.trace_id) {
-      infoKvRows.push(["Trace", safeCodeSpan(traceCtx.trace_id)]);
+      infoKvRows.push(["Trace", inlineCode(traceCtx.trace_id)]);
     }
 
     if (event.sdk?.name || event.sdk?.version) {
@@ -1475,10 +1469,7 @@ export function formatEventDetails(
       sections.push(mdTableHeader(["Key", "Value"]).trimEnd());
       for (const tag of event.tags) {
         sections.push(
-          mdRow([
-            `\`${tag.key}\``,
-            escapeMarkdownCell(String(tag.value)),
-          ]).trimEnd(),
+          mdRow([`\`${tag.key}\``, tableCell(String(tag.value))]).trimEnd(),
         );
       }
     }
@@ -1498,14 +1489,12 @@ export function formatEventDetails(
 export function formatOrgDetails(org: SentryOrganization): string {
   const lines: string[] = [];
 
-  lines.push(
-    `## ${escapeMarkdownInline(org.slug)}: ${escapeMarkdownInline(org.name || "(unnamed)")}`,
-  );
+  lines.push(`## ${text(org.slug)}: ${text(org.name || "(unnamed)")}`);
   lines.push("");
 
   const kvRows: [string, string][] = [];
   kvRows.push(["Slug", `\`${org.slug || "(none)"}\``]);
-  kvRows.push(["Name", escapeMarkdownInline(org.name || "(unnamed)")]);
+  kvRows.push(["Name", text(org.name || "(unnamed)")]);
   kvRows.push(["ID", String(org.id)]);
   if (org.dateCreated) {
     kvRows.push(["Created", new Date(org.dateCreated).toLocaleString()]);
@@ -1543,14 +1532,12 @@ export function formatProjectDetails(
 ): string {
   const lines: string[] = [];
 
-  lines.push(
-    `## ${escapeMarkdownInline(project.slug)}: ${escapeMarkdownInline(project.name || "(unnamed)")}`,
-  );
+  lines.push(`## ${text(project.slug)}: ${text(project.name || "(unnamed)")}`);
   lines.push("");
 
   const kvRows: [string, string][] = [];
   kvRows.push(["Slug", `\`${project.slug || "(none)"}\``]);
-  kvRows.push(["Name", escapeMarkdownInline(project.name || "(unnamed)")]);
+  kvRows.push(["Name", text(project.name || "(unnamed)")]);
   kvRows.push(["ID", String(project.id)]);
   kvRows.push(["Platform", project.platform || "Not set"]);
   kvRows.push(["DSN", `\`${dsn || "No DSN available"}\``]);
@@ -1565,7 +1552,7 @@ export function formatProjectDetails(
     );
     kvRows.push([
       "Organization",
-      `${escapeMarkdownInline(orgName)} (${safeCodeSpan(project.organization.slug)})`,
+      `${text(orgName)} (${inlineCode(project.organization.slug)})`,
     ]);
   }
   if (project.firstEvent) {
@@ -1776,21 +1763,19 @@ export function formatLogoutResult(data: LogoutResult): string {
     removedLabel = data.all
       ? ` of all ${removed.length} accounts`
       : ` of ${removed.length} accounts (${removed
-          .map((a) => escapeMarkdownInline(formatAccountLabel(a)))
+          .map((a) => text(formatAccountLabel(a)))
           .join(", ")})`;
   } else if (only) {
-    removedLabel = ` of ${escapeMarkdownInline(formatAccountLabel(only))}`;
+    removedLabel = ` of ${text(formatAccountLabel(only))}`;
   }
   lines.push(
     `${colorTag("green", "✓")} Logged out${removedLabel} successfully.`,
   );
   if (data.configPath) {
-    lines.push(`Credentials removed from: ${safeCodeSpan(data.configPath)}`);
+    lines.push(`Credentials removed from: ${inlineCode(data.configPath)}`);
   }
   if (data.activeAccount) {
-    lines.push(
-      `Now using: ${escapeMarkdownInline(formatAccountLabel(data.activeAccount))}`,
-    );
+    lines.push(`Now using: ${text(formatAccountLabel(data.activeAccount))}`);
   }
   return renderMarkdown(lines.join("\n\n"));
 }
@@ -1806,7 +1791,7 @@ type AuthStatusData = import("../../commands/auth/status.js").AuthStatusData;
 function formatAuthHeader(source: string): string {
   if (source.startsWith("env:")) {
     const varName = source.slice("env:".length);
-    return `## ${colorTag("green", "✓")} Authenticated via ${escapeMarkdownInline(varName)} environment variable`;
+    return `## ${colorTag("green", "✓")} Authenticated via ${text(varName)} environment variable`;
   }
   return `## ${colorTag("green", "✓")} Authenticated`;
 }
@@ -1830,18 +1815,18 @@ function buildAuthDetailRows(data: AuthStatusData): [string, string][] {
   const isEnv = data.source.startsWith("env:");
 
   if (data.configPath) {
-    rows.push(["Config", safeCodeSpan(data.configPath)]);
+    rows.push(["Config", inlineCode(data.configPath)]);
   }
   if (data.user) {
     rows.push(["User", formatUserIdentity(data.user)]);
   }
   if (data.host) {
-    rows.push(["Server", escapeMarkdownInline(data.host)]);
+    rows.push(["Server", text(data.host)]);
   }
   if (data.accounts !== undefined && data.accounts > 1) {
     rows.push([
       "Accounts",
-      `${data.accounts} stored (${safeCodeSpan("sentry auth list")})`,
+      `${data.accounts} stored (${inlineCode("sentry auth list")})`,
     ]);
   }
   if (data.token) {
@@ -1850,7 +1835,7 @@ function buildAuthDetailRows(data: AuthStatusData): [string, string][] {
     const isOAuthAccessToken =
       data.token.refreshEnabled || data.token.expiresAt !== undefined;
     const tokenLabel = authTokenLabel(isEnv, isOAuthAccessToken);
-    rows.push([tokenLabel, safeCodeSpan(data.token.display)]);
+    rows.push([tokenLabel, inlineCode(data.token.display)]);
     if (data.token.expiresAt) {
       rows.push([
         "Access token expires",
@@ -1876,10 +1861,10 @@ function formatDefaultsSection(
 ): string {
   const rows: [string, string][] = [];
   if (defaults.organization) {
-    rows.push(["Organization", safeCodeSpan(defaults.organization)]);
+    rows.push(["Organization", inlineCode(defaults.organization)]);
   }
   if (defaults.project) {
-    rows.push(["Project", safeCodeSpan(defaults.project)]);
+    rows.push(["Project", inlineCode(defaults.project)]);
   }
   if (rows.length === 0) {
     return "";
@@ -1906,9 +1891,7 @@ function formatVerificationSection(
     if (orgs.length > 0) {
       lines.push("");
       for (const org of orgs.slice(0, MAX_VERIFY_DISPLAY)) {
-        lines.push(
-          `- ${escapeMarkdownInline(org.name)} (${safeCodeSpan(org.slug)})`,
-        );
+        lines.push(`- ${text(org.name)} (${inlineCode(org.slug)})`);
       }
       if (orgs.length > MAX_VERIFY_DISPLAY) {
         lines.push(`- *… and ${orgs.length - MAX_VERIFY_DISPLAY} more*`);
@@ -1976,20 +1959,18 @@ function formatEnvTokenSection(
       : "set but not used (using OAuth credentials)";
   }
   const rows: [string, string][] = [
-    ["Env var", safeCodeSpan(envToken.envVar)],
+    ["Env var", inlineCode(envToken.envVar)],
     ["Status", status],
   ];
   if (envToken.host) {
-    rows.push(["Server", escapeMarkdownInline(envToken.host)]);
+    rows.push(["Server", text(envToken.host)]);
   }
   const user = envToken.user;
   const who = user?.name ?? user?.username ?? user?.email;
   if (who) {
     rows.push([
       "User",
-      escapeMarkdownInline(
-        user?.email && user.email !== who ? `${who} <${user.email}>` : who,
-      ),
+      text(user?.email && user.email !== who ? `${who} <${user.email}>` : who),
     ]);
   }
   return `\n${mdKvTable(rows, "Environment Token")}`;
@@ -2033,8 +2014,8 @@ export type ProjectCreatedResult = {
 export function formatProjectCreated(result: ProjectCreatedResult): string {
   const lines: string[] = [];
   const dry = result.dryRun === true;
-  const nameEsc = escapeMarkdownInline(result.project.name);
-  const orgEsc = escapeMarkdownInline(result.orgSlug);
+  const nameEsc = text(result.project.name);
+  const orgEsc = text(result.orgSlug);
 
   // Heading
   if (dry) {
@@ -2056,28 +2037,28 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   if (result.teamSource === "auto-created") {
     lines.push(
       dry
-        ? `> **Note:** Would create team '${escapeMarkdownInline(result.teamSlug)}' (org has no teams).`
-        : `> **Note:** Created team '${escapeMarkdownInline(result.teamSlug)}' (org had no teams).`,
+        ? `> **Note:** Would create team '${text(result.teamSlug)}' (org has no teams).`
+        : `> **Note:** Created team '${text(result.teamSlug)}' (org had no teams).`,
     );
     lines.push("");
   } else if (result.teamSource === "auto-selected") {
     lines.push(
       dry
-        ? `> **Note:** Would use team '${escapeMarkdownInline(result.teamSlug)}'. See all teams: \`sentry team list\``
-        : `> **Note:** Using team '${escapeMarkdownInline(result.teamSlug)}'. See all teams: \`sentry team list\``,
+        ? `> **Note:** Would use team '${text(result.teamSlug)}'. See all teams: \`sentry team list\``
+        : `> **Note:** Using team '${text(result.teamSlug)}'. See all teams: \`sentry team list\``,
     );
     lines.push("");
   }
 
   const kvRows: [string, string][] = [
     ["Project", nameEsc],
-    ["Slug", safeCodeSpan(result.project.slug)],
-    ["Org", safeCodeSpan(result.orgSlug)],
-    ["Team", safeCodeSpan(result.teamSlug)],
+    ["Slug", inlineCode(result.project.slug)],
+    ["Org", inlineCode(result.orgSlug)],
+    ["Team", inlineCode(result.teamSlug)],
     ["Platform", result.project.platform || result.requestedPlatform],
   ];
   if (result.dsn) {
-    kvRows.push(["DSN", safeCodeSpan(result.dsn)]);
+    kvRows.push(["DSN", inlineCode(result.dsn)]);
   }
   if (result.url) {
     kvRows.push(["URL", result.url]);
@@ -2133,18 +2114,18 @@ export type ProjectDeleteResult = {
  * @returns Rendered terminal string
  */
 export function formatProjectDeleted(result: ProjectDeleteResult): string {
-  const nameEsc = escapeMarkdownInline(result.projectName);
+  const nameEsc = text(result.projectName);
   const qualifiedSlug = `${result.orgSlug}/${result.projectSlug}`;
 
   if (result.dryRun) {
     return renderMarkdown(
-      `Would delete project '${nameEsc}' (${safeCodeSpan(qualifiedSlug)}).\n\n` +
+      `Would delete project '${nameEsc}' (${inlineCode(qualifiedSlug)}).\n\n` +
         `URL: ${result.url}`,
     );
   }
 
   return renderMarkdown(
-    `Deleted project '${nameEsc}' (${safeCodeSpan(qualifiedSlug)}).`,
+    `Deleted project '${nameEsc}' (${inlineCode(qualifiedSlug)}).`,
   );
 }
 
@@ -2184,9 +2165,9 @@ function formatFixCategory(issues: FixIssue[], heading: string): string {
 
   for (const issue of issues) {
     const marker = issueMarker(issue);
-    const desc = escapeMarkdownInline(issue.description);
+    const desc = text(issue.description);
     if (issue.repairMessage && issue.repaired !== undefined) {
-      lines.push(`- ${marker} ${escapeMarkdownInline(issue.repairMessage)}`);
+      lines.push(`- ${marker} ${text(issue.repairMessage)}`);
     } else {
       lines.push(`- ${marker} ${desc}`);
     }
@@ -2209,7 +2190,7 @@ export function formatFixResult(data: FixResult): string {
   const lines: string[] = [];
 
   // Header
-  lines.push(`## Database: ${safeCodeSpan(data.dbPath)}`);
+  lines.push(`## Database: ${inlineCode(data.dbPath)}`);
   lines.push("");
   lines.push(`Schema version: ${data.schemaVersion}`);
 
@@ -2394,32 +2375,32 @@ export function formatUpgradeResult(data: UpgradeResult): string {
       const verb = ACTION_DESCRIPTIONS[data.action];
       if (data.offline) {
         lines.push(
-          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)} (offline, from cache)`,
+          `${colorTag("green", "✓")} ${verb} to ${inlineCode(data.targetVersion)} (offline, from cache)`,
         );
       } else if (data.currentVersion !== data.targetVersion) {
         lines.push(
-          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)} ${escapeMarkdownInline(`(from ${data.currentVersion})`)}`,
+          `${colorTag("green", "✓")} ${verb} to ${inlineCode(data.targetVersion)} ${text(`(from ${data.currentVersion})`)}`,
         );
       } else {
         lines.push(
-          `${colorTag("green", "✓")} ${verb} to ${safeCodeSpan(data.targetVersion)}`,
+          `${colorTag("green", "✓")} ${verb} to ${inlineCode(data.targetVersion)}`,
         );
       }
       break;
     }
     case "up-to-date":
       lines.push(
-        `${colorTag("green", "✓")} Already up to date (${safeCodeSpan(data.currentVersion)})`,
+        `${colorTag("green", "✓")} Already up to date (${inlineCode(data.currentVersion)})`,
       );
       break;
     case "checked": {
       if (data.currentVersion === data.targetVersion) {
         lines.push(
-          `${colorTag("green", "✓")} You are already on the target version (${safeCodeSpan(data.currentVersion)})`,
+          `${colorTag("green", "✓")} You are already on the target version (${inlineCode(data.currentVersion)})`,
         );
       } else {
         lines.push(
-          `Latest: ${safeCodeSpan(data.targetVersion)} (current: ${safeCodeSpan(data.currentVersion)})`,
+          `Latest: ${inlineCode(data.targetVersion)} (current: ${inlineCode(data.currentVersion)})`,
         );
       }
       break;
@@ -2436,12 +2417,12 @@ export function formatUpgradeResult(data: UpgradeResult): string {
   // Compact metadata line instead of a full table — method and channel
   // are lightweight diagnostics that don't warrant box-drawing borders.
   const meta = `Method: ${data.method} · Channel: ${data.channel}`;
-  lines.push(`  ${colorTag("muted", escapeMarkdownInline(meta))}`);
+  lines.push(`  ${colorTag("muted", text(meta))}`);
 
   // Append warnings with ⚠ markers
   if (data.warnings && data.warnings.length > 0) {
     for (const warning of data.warnings) {
-      lines.push(`${colorTag("yellow", "⚠")} ${escapeMarkdownInline(warning)}`);
+      lines.push(`${colorTag("yellow", "⚠")} ${text(warning)}`);
     }
   }
 
@@ -2467,7 +2448,7 @@ export function formatDashboardCreated(result: {
   url: string;
 }): string {
   const lines: string[] = [
-    `Created dashboard '${escapeMarkdownInline(result.title)}' (ID: ${result.id})`,
+    `Created dashboard '${text(result.title)}' (ID: ${result.id})`,
     "",
     `URL: ${result.url}`,
   ];
@@ -2484,7 +2465,7 @@ export function formatWidgetAdded(result: {
 }): string {
   const widgetCount = result.dashboard.widgets?.length ?? 0;
   const lines: string[] = [
-    `Added widget '${escapeMarkdownInline(result.widget.title)}' to dashboard (now ${widgetCount} widgets)`,
+    `Added widget '${text(result.widget.title)}' to dashboard (now ${widgetCount} widgets)`,
   ];
   const layoutLine = formatWidgetLayoutLine(result.widget);
   if (layoutLine) {
@@ -2507,14 +2488,14 @@ export function formatWidgetDeleted(result: {
   const widgetCount = result.dashboard.widgets?.length ?? 0;
   if (result.dryRun) {
     const lines: string[] = [
-      `Would remove widget '${escapeMarkdownInline(result.widgetTitle)}' from dashboard (currently ${widgetCount} widgets)`,
+      `Would remove widget '${text(result.widgetTitle)}' from dashboard (currently ${widgetCount} widgets)`,
       "",
       `URL: ${result.url}`,
     ];
     return renderMarkdown(lines.join("\n"));
   }
   const lines: string[] = [
-    `Removed widget '${escapeMarkdownInline(result.widgetTitle)}' from dashboard (now ${widgetCount} widgets)`,
+    `Removed widget '${text(result.widgetTitle)}' from dashboard (now ${widgetCount} widgets)`,
     "",
     `URL: ${result.url}`,
   ];
@@ -2542,7 +2523,7 @@ export function formatWidgetEdited(result: {
   url: string;
 }): string {
   const lines: string[] = [
-    `Updated widget '${escapeMarkdownInline(result.widget.title)}' in dashboard ${result.dashboard.id}`,
+    `Updated widget '${text(result.widget.title)}' in dashboard ${result.dashboard.id}`,
   ];
   const layoutLine = formatWidgetLayoutLine(result.widget);
   if (layoutLine) {
@@ -2596,18 +2577,18 @@ function buildDefaultsShowRows(data: DefaultsResult): [string, string][] {
   const tipsLabel = d.tips ?? "on (default)";
 
   return [
-    ["Organization", d.organization ? safeCodeSpan(d.organization) : notSet],
-    ["Project", d.project ? safeCodeSpan(d.project) : notSet],
+    ["Organization", d.organization ? inlineCode(d.organization) : notSet],
+    ["Project", d.project ? inlineCode(d.project) : notSet],
     [
       "Telemetry",
-      `${escapeMarkdownInline(String(telLabel))}${telemetryOverrideNote(data.telemetryEffective)}`,
+      `${text(String(telLabel))}${telemetryOverrideNote(data.telemetryEffective)}`,
     ],
-    ["Agent Skills", escapeMarkdownInline(String(agentSkillsLabel))],
-    ["Graphics", escapeMarkdownInline(String(graphicsLabel))],
-    ["Tips", escapeMarkdownInline(String(tipsLabel))],
-    ["URL", d.url ? safeCodeSpan(d.url) : notSet],
-    ["Headers", d.headers ? safeCodeSpan(d.headers) : notSet],
-    ["CA Certificate", d["ca-cert"] ? safeCodeSpan(d["ca-cert"]) : notSet],
+    ["Agent Skills", text(String(agentSkillsLabel))],
+    ["Graphics", text(String(graphicsLabel))],
+    ["Tips", text(String(tipsLabel))],
+    ["URL", d.url ? inlineCode(d.url) : notSet],
+    ["Headers", d.headers ? inlineCode(d.headers) : notSet],
+    ["CA Certificate", d["ca-cert"] ? inlineCode(d["ca-cert"]) : notSet],
   ];
 }
 
@@ -2623,7 +2604,7 @@ export function formatDefaultsResult(data: DefaultsResult): string {
       const label =
         DEFAULT_LABELS[data.changed?.key ?? ""] ?? data.changed?.key;
       return renderMarkdown(
-        `${colorTag("green", "✓")} Default ${escapeMarkdownInline(label ?? "setting")} set to ${safeCodeSpan(String(data.changed?.newValue))}`,
+        `${colorTag("green", "✓")} Default ${text(label ?? "setting")} set to ${inlineCode(String(data.changed?.newValue))}`,
       );
     }
 
@@ -2631,7 +2612,7 @@ export function formatDefaultsResult(data: DefaultsResult): string {
       const label =
         DEFAULT_LABELS[data.changed?.key ?? ""] ?? data.changed?.key;
       return renderMarkdown(
-        `${colorTag("green", "✓")} Default ${escapeMarkdownInline(label ?? "setting")} cleared`,
+        `${colorTag("green", "✓")} Default ${text(label ?? "setting")} cleared`,
       );
     }
 
@@ -2681,7 +2662,7 @@ function formatComponentLine(component: StatusComponent): string {
   const tag = COMPONENT_STATUS_TAGS[component.status] ?? "yellow";
   const label =
     COMPONENT_STATUS_LABELS[component.status] ?? capitalize(component.status);
-  return `${colorTag(tag, "●")} ${escapeMarkdownInline(component.name)} — ${label}`;
+  return `${colorTag(tag, "●")} ${text(component.name)} — ${label}`;
 }
 
 /**
@@ -2693,9 +2674,7 @@ export function formatSentryStatus(data: SentryStatus): string {
 
   const indicatorTag = STATUS_INDICATOR_TAGS[data.indicator] ?? "yellow";
   const icon = data.indicator === "none" ? "✓" : "●";
-  lines.push(
-    `## ${colorTag(indicatorTag, icon)} ${escapeMarkdownInline(data.description)}`,
-  );
+  lines.push(`## ${colorTag(indicatorTag, icon)} ${text(data.description)}`);
   lines.push("");
 
   if (data.incidents.length > 0) {
@@ -2703,9 +2682,9 @@ export function formatSentryStatus(data: SentryStatus): string {
     lines.push("");
     for (const incident of data.incidents) {
       lines.push(
-        `- **${escapeMarkdownInline(incident.name)}** (${escapeMarkdownInline(incident.impact)} impact, ${escapeMarkdownInline(incident.status)})`,
+        `- **${text(incident.name)}** (${text(incident.impact)} impact, ${text(incident.status)})`,
       );
-      lines.push(`  ${safeCodeSpan(incident.shortlink)}`);
+      lines.push(`  ${inlineCode(incident.shortlink)}`);
     }
     lines.push("");
   }
@@ -2723,7 +2702,7 @@ export function formatSentryStatus(data: SentryStatus): string {
     lines.push("");
   }
 
-  lines.push(`See ${safeCodeSpan(data.url)} for full details.`);
+  lines.push(`See ${inlineCode(data.url)} for full details.`);
 
   return renderMarkdown(lines.join("\n"));
 }
