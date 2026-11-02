@@ -7,6 +7,7 @@
  */
 
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { textParser } from "../../lib/completion-target.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
@@ -208,7 +209,7 @@ export function parseLimit(value: string): number {
 export const EVENTS_FLAGS = {
   limit: {
     kind: "parsed",
-    parse: parseLimit,
+    parse: textParser(parseLimit),
     brief: `Number of events (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
     default: String(LIST_DEFAULT_LIMIT),
   },

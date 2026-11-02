@@ -2,13 +2,16 @@ import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { pointDefaultUrlAtAccount } from "../../lib/account-selection.js";
-import {
-  getCurrentUser,
-  getUserRegions,
-  listOrganizationsUncached,
-} from "../../lib/api-client.js";
+import { getCurrentUser, getUserRegions } from "../../lib/api-client.js";
 import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  ACCOUNT_SERVER_TARGET,
+  choiceListParser,
+  completingParser,
+  parseText,
+} from "../../lib/completion-target.js";
+import { warmCachesAfterLogin } from "../../lib/completion-warmup.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import {
   getAccountIdToReplace,
@@ -24,7 +27,8 @@ import {
 import {
   getAccountRow,
   isAccountRowUsable,
-  splitAccountSelector,
+  parseLoginEmail,
+  splitLoginTarget,
 } from "../../lib/db/accounts.js";
 import { getDbPath } from "../../lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../lib/db/user.js";
@@ -48,6 +52,7 @@ import {
   toLoginUser,
 } from "../../lib/interactive-login.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   buildHostRefusalMessage,
   isLoginHostTrusted,
@@ -61,6 +66,7 @@ import {
   type SentryCliRcConfig,
 } from "../../lib/sentryclirc.js";
 import { registerLoginTrustAnchor } from "../../lib/token-host.js";
+import { SENTRY_SCOPES } from "../../lib/api-scope.js";
 
 const log = logger.withTag("auth.login");
 
@@ -157,55 +163,6 @@ function resolveLoginScope(flags: LoginFlags): string | undefined {
  * and full URLs; returns the normalized origin.
  */
 /** @internal exported for testing */
-/**
- * Parse the optional `email` argument of `sentry auth login`: an email, or
- * `<email>:<server>` (the notation `sentry org list` shows, e.g.
- * `jane@acme.com:sentry.acme.com`) to also pick the server like `--url`.
- * Returns the trimmed argument; {@link splitLoginTarget} splits it.
- *
- * @throws {ValidationError} when the value is not an email address, or the
- *   server part is not a valid URL
- */
-export function parseLoginEmail(raw: string): string {
-  const target = raw.trim();
-  splitLoginTarget(target, raw);
-  return target;
-}
-
-/**
- * Split a `sentry auth login` target into its email and, for
- * `<email>:<server>`, the server's normalized origin. Uses the same
- * {@link splitAccountSelector} as `--account`, plus an email check.
- *
- * @throws {ValidationError} when either part is invalid
- */
-export function splitLoginTarget(
-  target: string,
-  raw = target,
-): { email: string; url?: string } {
-  const parts = splitAccountSelector(target);
-  if (!(parts && isEmailAddress(parts.who))) {
-    throw new ValidationError(
-      `Expected an email address, or <email>:<server> with a valid server, to log in as; got '${raw}'.`,
-      "email",
-    );
-  }
-  return parts.server
-    ? { email: parts.who, url: parts.server }
-    : { email: parts.who };
-}
-
-/** One `@` with text on both sides, and no whitespace. */
-function isEmailAddress(value: string): boolean {
-  const at = value.indexOf("@");
-  return (
-    at > 0 &&
-    at < value.length - 1 &&
-    value.indexOf("@", at + 1) === -1 &&
-    !/\s/.test(value)
-  );
-}
-
 /**
  * Apply the server of an `<email>:<server>` login target as `--url`.
  *
@@ -442,7 +399,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Interactive TTY: prompt user to confirm re-authentication
     const userInfo = getUserInfo();
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
-    const confirmed = await log.prompt(
+    const confirmed = await prompt(
       `Already authenticated as ${identity}. Add another account? ` +
         "(The current account stays saved; see 'sentry auth list'. Use --force to replace it.)",
       { type: "confirm", initial: false },
@@ -588,7 +545,7 @@ export const loginCommand = buildCommand({
     flags: {
       token: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Authenticate using an API token instead of OAuth",
         optional: true,
       },
@@ -607,7 +564,7 @@ export const loginCommand = buildCommand({
       },
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Sentry instance URL to authenticate against (e.g. https://sentry.example.com). " +
           "Required for self-hosted; defaults to SaaS (https://sentry.io).",
@@ -622,7 +579,7 @@ export const loginCommand = buildCommand({
       },
       scope: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(SENTRY_SCOPES),
         brief:
           "Request specific OAuth scopes (repeatable, comma-separated). " +
           "E.g. --scope project:read --scope org:read. Overrides the default scope set.",
@@ -759,10 +716,10 @@ export const loginCommand = buildCommand({
         await removeAccount(replacedAccountId);
       }
 
-      // Warm the org + region cache so the first real command is fast.
-      // Fire-and-forget — login already succeeded, caching is best-effort.
-      warmOrgCache();
-      return yield new CommandOutput(result);
+      yield new CommandOutput(result);
+      // Login already succeeded and is printed; warming is best-effort.
+      await warmCachesAfterLogin();
+      return;
     }
 
     // OAuth device flow (host scope recorded via completeOAuthFlow → setAuthToken)
@@ -775,28 +732,11 @@ export const loginCommand = buildCommand({
 
     if (result) {
       persistLoginUrlAsDefault(flags.url, effectiveHost);
-      warmOrgCache();
       yield new CommandOutput(result);
+      await warmCachesAfterLogin();
       return { hint: rcTokenHint(rcConfig, effectiveHost) };
     }
     // Error already displayed by runInteractiveLogin
     process.exitCode = 1;
   },
 });
-
-/**
- * Pre-populate the org + region SQLite cache in the background.
- *
- * Called after successful authentication so that the first real command
- * doesn't pay the cold-start cost of `getUserRegions()` + fan-out to
- * each region's org list endpoint (~800ms on a typical SaaS account).
- *
- * Failures are silently ignored — the cache will be populated lazily
- * on the next command that needs it.
- */
-function warmOrgCache(): void {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  listOrganizationsUncached().catch(() => {
-    // Best-effort: cache warming failure doesn't affect the login result
-  });
-}

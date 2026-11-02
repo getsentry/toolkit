@@ -3,8 +3,8 @@
  *
  * ## Why this exists
  *
- * All human-facing timestamps in the CLI — the `[tag 6:28:59 AM]` log prefix
- * emitted by consola, and every `toLocaleString()`/`toLocaleTimeString()` call
+ * All human-facing timestamps in the CLI — the `[tag 06:28:59]` log prefix
+ * emitted by the logger, and every `toLocaleString()`/`toLocaleTimeString()` call
  * in the formatters — are rendered by the JavaScript runtime using its notion
  * of the "local" timezone. That notion comes from ICU/`process.env.TZ`.
  *
@@ -252,33 +252,4 @@ export function initTimezone(): string | null {
 
   process.env.TZ = zone;
   return zone;
-}
-
-/**
- * Format a `Date` as a local-time clock string for the log prefix.
- *
- * Renders 24-hour `HH:MM:SS` in the machine's local timezone. Unlike consola's
- * default `date.toLocaleTimeString()` this does **not** depend on ICU being
- * able to resolve a zone: it derives the local wall-clock time from the UTC
- * time and `getTimezoneOffset()`, which reflects the OS offset even in runtimes
- * that cache a stale UTC formatter (observed under some SEA/Bun builds). After
- * {@link initTimezone} has set `TZ`, `getTimezoneOffset()` returns the corrected
- * offset, so this stays consistent with the rest of the CLI's output.
- *
- * The 24-hour format also removes the AM/PM ambiguity of the previous prefix,
- * which is friendlier for logs shared across regions.
- *
- * @param date - The log record's timestamp
- * @returns A `HH:MM:SS` string in local time (e.g. `"06:28:59"`)
- */
-export function formatLogTime(date: Date): string {
-  // getTimezoneOffset() is minutes behind UTC (positive west of UTC). Shifting
-  // the epoch by it and reading UTC getters yields local wall-clock components
-  // without relying on the ICU formatter.
-  const localMs = date.getTime() - date.getTimezoneOffset() * 60_000;
-  const local = new Date(localMs);
-  const hh = String(local.getUTCHours()).padStart(2, "0");
-  const mm = String(local.getUTCMinutes()).padStart(2, "0");
-  const ss = String(local.getUTCSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
 }

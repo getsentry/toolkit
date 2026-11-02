@@ -15,12 +15,15 @@ import {
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
 import {
+  CURSOR_KEYWORDS,
   formatProjectTarget,
   looksLikeIssueShortId,
   type ParsedOrgProject,
+  parseCursorFlag,
   rejectIssueCommandTokenListTarget,
 } from "../../lib/arg-parsing.js";
 
+import { choiceParser } from "../../lib/completion-target.js";
 import { getActiveEnvVarName, isEnvTokenActive } from "../../lib/db/auth.js";
 import {
   advancePaginationState,
@@ -58,12 +61,10 @@ import {
   appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
-  CURSOR_KEYWORDS,
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
   listTargetPositional,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
@@ -1723,7 +1724,7 @@ export const listCommand = buildListCommand("issue", {
       limit: buildListLimitFlag("issues"),
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief:
           "Sort by: recommended, date, new, freq, user (default: recommended on sentry.io, else date)",
         optional: true,

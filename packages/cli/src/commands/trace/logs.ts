@@ -13,7 +13,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET, textParser } from "../../lib/completion-target.js";
 import { toSearchQueryError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { formatLogTable } from "../../lib/formatters/log.js";
@@ -216,7 +216,7 @@ export const logsCommand = buildCommand({
       },
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of log entries (<=${LIST_MAX_LIMIT})`,
         default: "100", // Logs are high-volume; 25 is too stingy for debugging
       },

@@ -476,10 +476,60 @@ export function validateLimit(value: string, min = 1, max = 1000): number {
 }
 
 // ---------------------------------------------------------------------------
+// Cursor flag parsing (shared by list commands)
+// ---------------------------------------------------------------------------
+
+/** Matches strings that are all digits — used to detect invalid cursor values */
+const ALL_DIGITS_RE = /^\d+$/;
+
+/** The `--cursor` navigation keywords shell completion offers. */
+export const CURSOR_NAVIGATION = ["next", "prev", "first"] as const;
+
+/**
+ * Navigation keywords accepted by `--cursor`.
+ *
+ * - `"next"` / `"last"` — advance to the next page
+ * - `"prev"` / `"previous"` — go back to the previous page
+ * - `"first"` — jump back to the first page
+ *
+ * `"last"` is a silent alias for `"next"` preserved for muscle-memory compat.
+ */
+export const CURSOR_KEYWORDS: ReadonlySet<string> = new Set([
+  ...CURSOR_NAVIGATION,
+  "last",
+  "previous",
+]);
+
+/**
+ * Parse and validate a `--cursor` flag value.
+ *
+ * Accepts navigation keywords (`"next"`, `"prev"`, `"previous"`, `"first"`,
+ * `"last"`) and opaque Sentry cursor strings (e.g. `"1735689600:0:0"`).
+ * Rejects bare integers early — they are never valid cursors and would
+ * produce a cryptic 400 from the API.
+ *
+ * Shared by `LIST_CURSOR_FLAG` (`list-command.ts`) and commands that define
+ * their own cursor flag with a custom `brief`.
+ *
+ * @throws Error when value is a bare integer
+ */
+export function parseCursorFlag(value: string): string {
+  if (CURSOR_KEYWORDS.has(value)) {
+    return value;
+  }
+  if (ALL_DIGITS_RE.test(value)) {
+    throw new Error(
+      `'${value}' is not a valid cursor. Cursors look like "1735689600:0:0". Use "next" / "prev" to navigate pages.`,
+    );
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
 // Log sort direction parsing (shared by log list, trace logs)
 // ---------------------------------------------------------------------------
 
-const VALID_LOG_SORT_DIRECTIONS: readonly LogSortDirection[] = [
+export const VALID_LOG_SORT_DIRECTIONS: readonly LogSortDirection[] = [
   "newest",
   "oldest",
 ];
@@ -500,6 +550,9 @@ export function parseLogSort(value: string): LogSortDirection {
 
 /** Default span depth when no value is provided */
 const DEFAULT_SPAN_DEPTH = 3;
+
+/** The words `--spans` accepts besides a depth. */
+export const SPAN_DEPTH_KEYWORDS = ["all", "no"] as const;
 
 /**
  * Parse span depth flag value.

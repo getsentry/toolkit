@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText, parseUrl } from "../../lib/completion-target.js";
 import {
   colorTag,
   escapeMarkdownInline,
@@ -79,13 +80,13 @@ export const finalizeCommand = buildCommand({
     flags: {
       released: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Custom release timestamp (ISO 8601). Defaults to now.",
         optional: true,
       },
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for the release",
         optional: true,
       },

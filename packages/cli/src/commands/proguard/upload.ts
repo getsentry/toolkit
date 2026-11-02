@@ -13,6 +13,7 @@ import type { SentryContext } from "../../context.js";
 import type { ProguardMapping } from "../../lib/api/proguard.js";
 import { uploadProguardMappings } from "../../lib/api/proguard.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -190,14 +191,14 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Paths to ProGuard/R8 mapping files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       uuid: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Force a specific UUID instead of computing from file content " +
           "(only valid with a single file)",

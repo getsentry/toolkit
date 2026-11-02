@@ -5,9 +5,9 @@ import {
 } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MAX_MCP_REQUEST_BODY_SIZE,
-  MAX_MCP_TOOL_INPUT_ELEMENTS,
-} from "@sentry/mcp-core/constants";
+  MAX_MCP_REQUEST_BODY_BYTES,
+  MAX_TOOL_INPUT_ELEMENTS,
+} from "@sentry/toolkit-core/mcp-limits";
 import * as Sentry from "@sentry/cloudflare";
 import * as logging from "@sentry/mcp-core/telem/logging";
 import { getSpec, SPEC_VERSION } from "../../code-mode/openapi";
@@ -401,7 +401,7 @@ describe("Code Mode on the authenticated MCP", () => {
     {
       shape: "object keys",
       unused: Object.fromEntries(
-        Array.from({ length: MAX_MCP_TOOL_INPUT_ELEMENTS + 1 }, (_, index) => [
+        Array.from({ length: MAX_TOOL_INPUT_ELEMENTS + 1 }, (_, index) => [
           `key${index}`,
           null,
         ]),
@@ -409,7 +409,7 @@ describe("Code Mode on the authenticated MCP", () => {
     },
     {
       shape: "array elements",
-      unused: { values: Array(MAX_MCP_TOOL_INPUT_ELEMENTS + 1).fill(null) },
+      unused: { values: Array(MAX_TOOL_INPUT_ELEMENTS + 1).fill(null) },
     },
   ])(
     "rejects excessive nested $shape before executing code",
@@ -423,7 +423,7 @@ describe("Code Mode on the authenticated MCP", () => {
       });
       expect(result.isError).toBe(true);
       expect(result.content[0]?.text).toContain(
-        `maximum of ${MAX_MCP_TOOL_INPUT_ELEMENTS} elements`,
+        `maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
       );
       expect(apiRequests).toEqual([]);
     },
@@ -436,7 +436,7 @@ describe("Code Mode on the authenticated MCP", () => {
         "tools/call",
         {
           name: "execute_sentry_code",
-          arguments: { code: "x".repeat(MAX_MCP_REQUEST_BODY_SIZE) },
+          arguments: { code: "x".repeat(MAX_MCP_REQUEST_BODY_BYTES) },
         },
         { protocolVersion },
       );
@@ -451,7 +451,7 @@ describe("Code Mode on the authenticated MCP", () => {
         id: null,
         error: {
           code: -32000,
-          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_SIZE} bytes`,
+          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_BYTES} bytes`,
         },
       });
       expect(apiRequests).toEqual([]);

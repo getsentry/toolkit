@@ -11,6 +11,7 @@ import {
   listProjectDsns,
 } from "../../lib/api/projects.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiTargetContextKey,
@@ -344,8 +345,9 @@ export const listCommand = buildListCommand("dsn", {
     flags: {
       limit: {
         ...buildListLimitFlag("DSNs"),
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT),
+        ),
       },
     },
     aliases: { n: "limit" },

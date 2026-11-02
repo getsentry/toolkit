@@ -14,17 +14,19 @@
 
 import type { ExportedHandler } from "@cloudflare/workers-types";
 import * as Sentry from "@sentry/cloudflare";
-import { MAX_MCP_REQUEST_BODY_SIZE } from "@sentry/mcp-core/constants";
 import { buildServer } from "@sentry/mcp-core/server";
 import {
   ACTIVE_SKILLS,
-  parseSkills,
   type Skill,
+  parseSkills,
 } from "@sentry/mcp-core/skills";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
+import {
+  MAX_MCP_REQUEST_BODY_BYTES,
+  boundMcpRequestBody,
+} from "@sentry/toolkit-core/mcp-limits";
 import { createMcpHandler } from "agents/mcp/server";
-import { limitMcpRequestBody } from "../../code-mode/http";
 import { registerCodeModeTools } from "../../code-mode/tools";
 import { annotateResponseMetric } from "../metrics";
 import {
@@ -33,15 +35,16 @@ import {
   getOAuthGrantTelemetry,
   OAUTH_GRANT_REVOKED_REASON_ATTRIBUTE,
 } from "../oauth/telemetry";
-import type { Env, WorkerProps } from "../types";
+import type { WorkerProps } from "../types";
+import type { Env } from "../types";
 import {
-  checkRateLimit,
   MCP_RATE_LIMIT_EXCEEDED_MESSAGE,
+  checkRateLimit,
 } from "../utils/rate-limiter";
 import { setSentryUserFromRequest } from "../utils/sentry-user";
 import {
-  resolveUtmSourceFromRequest,
   UTM_SOURCE_ATTRIBUTE,
+  resolveUtmSourceFromRequest,
 } from "./attribution";
 import { resolveClientFamily } from "./client-family";
 import { verifyConstraintsAccess } from "./constraint-utils";
@@ -459,8 +462,13 @@ async function handleAuthenticatedMcpRequest(
       auth.kind === "oauth" ? auth.onUpstreamUnauthorized : undefined,
   };
 
-  const boundedRequest = await limitMcpRequestBody(request);
-  if (boundedRequest instanceof Response) return boundedRequest;
+  // `createMcpHandler` from agents only forwards `maxRequestBodySize` to the
+  // SDK v2 lane. Its legacy-request classification and legacy compatibility
+  // lane still read up to the SDK's 4 MiB default, so bound every lane here.
+  const boundedRequest = await boundMcpRequestBody(request);
+  if (boundedRequest instanceof Response) {
+    return boundedRequest;
+  }
 
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
@@ -476,10 +484,10 @@ async function handleAuthenticatedMcpRequest(
     },
     {
       route: url.pathname,
-      maxRequestBodySize: MAX_MCP_REQUEST_BODY_SIZE,
       // The Agents handler rejects browser Origins by default except localhost.
       // Permit only the hostname serving this authenticated endpoint.
       allowedOriginHostnames: [url.hostname],
+      maxRequestBodySize: MAX_MCP_REQUEST_BODY_BYTES,
     },
   )(boundedRequest, env, ctx);
 }

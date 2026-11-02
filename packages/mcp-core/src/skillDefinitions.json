@@ -5,7 +5,7 @@
     "description": "Read-only access to core Sentry data: issues, events, traces, replays, releases, cron monitors, uptime monitors, metric monitors, profiles, documentation, and project metadata",
     "defaultEnabled": true,
     "order": 1,
-    "toolCount": 47,
+    "toolCount": 48,
     "tools": [
       {
         "name": "find_alert_rules",
@@ -238,6 +238,11 @@
         "requiredScopes": ["event:read"]
       },
       {
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "whoami",
         "description": "Identify the authenticated user in Sentry.\n\nUse this tool when you need to:\n- Get the user's name and email address.",
         "requiredScopes": []
@@ -250,7 +255,7 @@
     "description": "Sentry's AI debugger that helps you analyze, root cause, and fix issues",
     "defaultEnabled": true,
     "order": 2,
-    "toolCount": 17,
+    "toolCount": 18,
     "tools": [
       {
         "name": "analyze_issue_with_seer",
@@ -333,6 +338,11 @@
         "requiredScopes": ["event:read"]
       },
       {
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "whoami",
         "description": "Identify the authenticated user in Sentry.\n\nUse this tool when you need to:\n- Get the user's name and email address.",
         "requiredScopes": []
@@ -346,7 +356,7 @@
     "defaultEnabled": false,
     "deprecated": true,
     "order": 3,
-    "toolCount": 6,
+    "toolCount": 7,
     "tools": [
       {
         "name": "find_organizations",
@@ -374,6 +384,11 @@
         "requiredScopes": []
       },
       {
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "whoami",
         "description": "Identify the authenticated user in Sentry.\n\nUse this tool when you need to:\n- Get the user's name and email address.",
         "requiredScopes": []
@@ -386,7 +401,7 @@
     "description": "Resolve, assign, and update issues",
     "defaultEnabled": false,
     "order": 4,
-    "toolCount": 25,
+    "toolCount": 26,
     "tools": [
       {
         "name": "add_issue_note",
@@ -499,6 +514,11 @@
         "requiredScopes": ["event:read"]
       },
       {
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "unlink_issue",
         "description": "Remove an external ticket or GitHub pull request reference from a Sentry issue by URL.\nRemoves only the Sentry association. It does not delete the external ticket or the Sentry issue, or change resolution status.\nSupports native integrations and installed Sentry Apps. Repeating the request is safe: not_linked means the association is absent, whether removed by this call or already absent.\n<examples>\nunlink_issue(organizationSlug='my-org', issueId='PROJECT-123', externalIssueUrl='https://github.com/example/repo/issues/42')\n</examples>",
         "requiredScopes": ["event:write", "org:read"]
@@ -521,7 +541,7 @@
     "description": "Create and modify projects, teams, DSNs, cron monitor environments, uptime monitors, metric monitors, and alert rules",
     "defaultEnabled": false,
     "order": 5,
-    "toolCount": 23,
+    "toolCount": 24,
     "tools": [
       {
         "name": "add_team_to_project",
@@ -609,6 +629,11 @@
         "requiredScopes": ["project:write", "team:read", "org:read"]
       },
       {
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "update_alert_rule",
         "description": "Update a Sentry Alert (workflow), including notification actions and connections.\nUse get_alert_rule with kind='issue' first to inspect the complete triggers and actionFilters configuration.\nUse get_alert_options to discover notification actions, integrations, conditions, and available sources.\nOmit fields to leave them unchanged. Pass null to clear owner or environment.\ntriggers replaces the trigger conditions. actionFilters replaces ALL action groups: copy the complete configuration, retain existing IDs, and change only the intended values. Omitted groups, conditions, and actions are removed.\nFor Slack or Microsoft Teams, change config.targetDisplay to the channel name and use integrationId for the workspace or team. Sentry resolves the channel ID. Slack also accepts an explicit new targetIdentifier; a copied old ID is cleared when the name or workspace changes.\nOther actions use their provider's config and data. For Discord, PagerDuty, Opsgenie, and email, update targetIdentifier to the channel, service, team, or recipient ID; changing only its display name does not change the destination.\nUse addProjectSlugs/removeProjectSlugs to connect/disconnect a project's issue stream. Other monitors in that project remain connected. Use addDetectorIds/removeDetectorIds for individual monitors. Unmentioned connections are preserved.\nMetric Monitor detection queries and thresholds are separate operations.\nAll-project connections require Sentry's all-project feature and an API token with org:write in addition to alerts:write.\nA project-constrained session can only edit alerts affecting that project exclusively.\nRequires alerts:write; reconnect OAuth if the existing token lacks it.\n<examples>\nupdate_alert_rule(organizationSlug='my-org', ruleIdOrName='12345', status='disabled')\nupdate_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='Notify backend team', frequencyMinutes=30)\n</examples>",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
@@ -647,7 +672,7 @@
     "defaultEnabled": false,
     "hostedOnly": true,
     "order": 6,
-    "toolCount": 6,
+    "toolCount": 7,
     "tools": [
       {
         "name": "execute_sentry_code",
@@ -675,6 +700,11 @@
         "requiredScopes": []
       },
       {
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+        "requiredScopes": []
+      },
+      {
         "name": "whoami",
         "description": "Identify the authenticated user in Sentry.\n\nUse this tool when you need to:\n- Get the user's name and email address.",
         "requiredScopes": []
@@ -688,7 +718,7 @@
     "defaultEnabled": false,
     "hostedOnly": true,
     "order": 7,
-    "toolCount": 6,
+    "toolCount": 7,
     "tools": [
       {
         "name": "execute_sentry_code",
@@ -713,6 +743,11 @@
       {
         "name": "search_sentry_api",
         "description": "Discover Sentry HTTP API operations by executing a JavaScript async arrow function against the global spec. The configured OpenAPI document has schemas inline; no $ref resolution is needed. No network or API calls are available.\nSearch using the user's product terms across operation metadata: paths may use different internal names. Each spec.paths[path] has optional path-level parameters and HTTP-method operations. Operations have optional operationId, summary, description, tags (string[]), parameters, requestBody and responses. spec.tags, when present, describes categories with name, description and optional x-sidebar-name.\nFirst return a short list of matching methods, paths and summaries. If results are empty or unrelated, inspect categories and broaden the terms before trying API routes. Then inspect the selected operation's descriptions, parameters, requestBody and relevant response fields. Path-level parameters also apply; operation parameters override them by name and in. Do not return whole paths, the full spec or sliced JSON strings. Return only needed fields; the result limit is 50,000 bytes.\nDiscovery example: async () => {\n  const term = \"release\";\n  const results = [];\n  for (const [path, item] of Object.entries(spec.paths)) {\n    for (const [method, op] of Object.entries(item)) {\n      if (![\"get\", \"post\", \"put\", \"patch\", \"delete\", \"head\", \"options\", \"trace\"].includes(method)) continue;\n      const text = [path, op.operationId, op.summary, op.description, ...(op.tags ?? [])].join(\" \").toLowerCase();\n      if (text.includes(term.toLowerCase())) results.push({method, path, operationId: op.operationId, summary: op.summary, tags: op.tags});\n    }\n  }\n  return results;\n}\nCategories example: async () => spec.tags?.length ? spec.tags : [...new Set(Object.values(spec.paths).flatMap(item => Object.entries(item).filter(([method]) => [\"get\", \"post\", \"put\", \"patch\", \"delete\", \"head\", \"options\", \"trace\"].includes(method)).flatMap(([, op]) => op.tags ?? [])))].map(name => ({name}))\nSchema example: async () => { const path = \"/api/0/organizations/{organization_id_or_slug}/releases/\"; const item = spec.paths[path]; const op = item.post; return {description: op.description, pathParameters: item.parameters, operationParameters: op.parameters, requestBody: op.requestBody}; }",
+        "requiredScopes": []
+      },
+      {
+        "name": "submit_feedback_to_sentry_team",
+        "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
         "requiredScopes": []
       },
       {

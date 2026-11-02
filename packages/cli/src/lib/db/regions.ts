@@ -13,13 +13,12 @@
 import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
-import { recordCacheHit } from "../telemetry.js";
 import {
   getAccountIdForIdentity,
   getCredentialContext,
   getIdentityFingerprint,
 } from "./auth.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, recordCacheHit } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 const log = logger.withTag("db.regions");

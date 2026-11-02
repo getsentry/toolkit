@@ -1,5 +1,3 @@
-import { MAX_MCP_REQUEST_BODY_SIZE } from "@sentry/mcp-core/constants";
-
 export function configuredUrl(value: string): URL {
   const url = new URL(value);
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
@@ -51,28 +49,4 @@ export async function readBoundedBody(
     offset += chunk.byteLength;
   }
   return result;
-}
-
-/** Agents' legacy transport does not forward the SDK's maxRequestBodySize. */
-export async function limitMcpRequestBody(
-  request: Request,
-): Promise<Request | Response> {
-  if (request.method !== "POST") return request;
-  try {
-    const body = await readBoundedBody(request.body, MAX_MCP_REQUEST_BODY_SIZE);
-    return new Request(request, { method: "POST", body });
-  } catch (error) {
-    if (!(error instanceof BodySizeLimitError)) throw error;
-    return Response.json(
-      {
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: -32000,
-          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_SIZE} bytes`,
-        },
-      },
-      { status: 413 },
-    );
-  }
 }

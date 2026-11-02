@@ -14,6 +14,11 @@ import {
 } from "../../lib/api-client.js";
 import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
+  DATASET_FIELDS,
+  type DatasetCompletion,
+  type DatasetFields,
+} from "../../lib/completion-target.js";
+import {
   ApiError,
   ResolutionError,
   ValidationError,
@@ -24,8 +29,11 @@ import { logger } from "../../lib/logger.js";
 import { resolveOrgOnlyTarget } from "../../lib/resolve-target.js";
 import { isAllDigits } from "../../lib/utils.js";
 import {
+  AGGREGATE_ALIASES,
+  aggregateFunctionsOf,
   type DashboardWidget,
   DISPLAY_TYPES,
+  mapWidgetTypeToDataset,
   parseAggregate,
   parseSortExpression,
   parseWidgetInput,
@@ -614,6 +622,44 @@ const DATASET_ALIASES: Record<string, string> = {
   // `metricsEnhanced` is a legacy API synonym and may appear in older docs.
   metrics: "tracemetrics",
   metricsenhanced: "tracemetrics",
+};
+
+/**
+ * What `--query`, `--sort`, and `--group-by` complete on a widget type: the
+ * fields of the dataset it queries, and the aggregate functions
+ * `validateAggregateNames` accepts on it, with the aliases that resolve to
+ * them. `undefined` for a widget type that queries no dataset.
+ */
+function widgetFields(type: string): DatasetFields | undefined {
+  const dataset = mapWidgetTypeToDataset(type);
+  if (!(dataset && dataset in DATASET_FIELDS)) {
+    return;
+  }
+  const functions = aggregateFunctionsOf(type);
+  return {
+    entity: DATASET_FIELDS[dataset as keyof typeof DATASET_FIELDS].entity,
+    functions: [
+      ...functions,
+      ...Object.entries(AGGREGATE_ALIASES)
+        .filter(([, canonical]) => functions.includes(canonical))
+        .map(([alias]) => alias),
+    ],
+  };
+}
+
+/**
+ * What `--query`, `--sort`, and `--group-by` complete, by the widget type
+ * `--dataset` names. Without `--dataset`, `widget edit` keeps the widget's,
+ * so it completes every type's; `widget add` sets the spans default.
+ */
+export const WIDGET_FIELD_COMPLETION: DatasetCompletion = {
+  datasets: Object.fromEntries(
+    WIDGET_TYPES.flatMap((type) => {
+      const fields = widgetFields(type);
+      return fields ? [[type, fields]] : [];
+    }),
+  ),
+  aliases: DATASET_ALIASES,
 };
 
 /**

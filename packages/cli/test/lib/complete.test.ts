@@ -6,7 +6,16 @@
  * cache interaction tests.
  */
 
-import { describe, expect, test } from "vitest";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   completeAliases,
   completeOrgSlashProject,
@@ -15,9 +24,11 @@ import {
   completeProjectSlugs,
   getCompletions,
 } from "../../src/lib/complete.js";
+import { setAuthToken } from "../../src/lib/db/auth.js";
 import { cacheCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setProjectAliases } from "../../src/lib/db/project-aliases.js";
 import { setCachedProject } from "../../src/lib/db/project-cache.js";
+import { setUserInfo } from "../../src/lib/db/user.js";
 import {
   type OrgRegionEntry,
   setOrgRegions,
@@ -90,8 +101,8 @@ describe("getCompletions: context detection", () => {
 
   test("returns nothing for the value of a flag without a completer", async () => {
     await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
-    expect(await getCompletions(["issue", "list", "--cursor"], "")).toEqual([]);
-    expect(await getCompletions(["issue", "list", "-c"], "")).toEqual([]);
+    expect(await getCompletions(["issue", "list", "--limit"], "")).toEqual([]);
+    expect(await getCompletions(["issue", "list", "-n"], "")).toEqual([]);
     // Once the value is given, the next word is a target again.
     expect(
       (await getCompletions(["issue", "list", "--period", "7d"], "")).length,
@@ -722,5 +733,684 @@ describe("getCompletions: dashboards", () => {
         (await getCompletions(command, "acme/")).map((c) => c.value),
       ).toEqual(["acme/12"]);
     }
+  });
+});
+
+/** Values of the completions for `words` and `partial`. */
+async function values(words: string[], partial: string): Promise<string[]> {
+  return (await getCompletions(words, partial)).map((c) => c.value);
+}
+
+describe("getCompletions: paths", () => {
+  // A file, a dotfile, a directory, and a link to it
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "complete-paths-"));
+    writeFileSync(join(dir, "app.wasm"), "");
+    writeFileSync(join(dir, ".env"), "");
+    mkdirSync(join(dir, "dist"));
+    symlinkSync(join(dir, "dist"), join(dir, "out"));
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("file positionals list files and directories, directories with a slash", async () => {
+    expect(await values(["wasm-split"], `${dir}/`)).toEqual([
+      `${dir}/app.wasm`,
+      `${dir}/dist/`,
+      `${dir}/out/`,
+    ]);
+    expect(await values(["wasm-split"], `${dir}/a`)).toEqual([
+      `${dir}/app.wasm`,
+    ]);
+  });
+
+  test("dotfiles are listed only for a partial starting with a dot", async () => {
+    expect(await values(["wasm-split"], `${dir}/.`)).toEqual([`${dir}/.env`]);
+  });
+
+  test("directory positionals list directories only", async () => {
+    expect(await values(["sourcemap", "upload"], `${dir}/`)).toEqual([
+      `${dir}/dist/`,
+      `${dir}/out/`,
+    ]);
+  });
+
+  test("init completes targets, or directories once the word looks like a path", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme Inc" }]);
+    expect(await values(["init"], "ac")).toEqual(["acme/"]);
+    expect(await values(["init"], `${dir}/`)).toEqual([
+      `${dir}/dist/`,
+      `${dir}/out/`,
+    ]);
+    // Bare names would be read as a target, so a path keeps its prefix
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      expect(await values(["init", "acme/"], ".")).toEqual([
+        "./dist/",
+        "./out/",
+      ]);
+      // After a target, only a directory can follow
+      expect(await values(["init", "acme/"], "d")).toEqual(["./dist/"]);
+      // After a directory, only a target can follow; after both, nothing
+      expect(await values(["init", "./dist"], "ac")).toEqual(["acme/"]);
+      expect(await values(["init", "./dist"], "./")).toEqual([]);
+      expect(await values(["init", "acme/", "./dist"], "")).toEqual([]);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  test("a partial in a missing directory completes nothing", async () => {
+    expect(await values(["wasm-split"], `${dir}/missing/a`)).toEqual([]);
+  });
+});
+
+describe("getCompletions: fixed values", () => {
+  test("choice positionals complete their values by prefix", async () => {
+    expect(await values(["cli", "completion"], "")).toEqual([
+      "bash",
+      "zsh",
+      "fish",
+    ]);
+    expect(await values(["cli", "completion"], "z")).toEqual(["zsh"]);
+    expect(await values(["cli", "upgrade"], "n")).toEqual(["nightly"]);
+  });
+
+  test("a variadic choice positional completes its first word only", async () => {
+    expect(await values(["cli", "defaults"], "tel")).toEqual(["telemetry"]);
+    expect(await values(["cli", "defaults", "telemetry"], "")).toEqual([]);
+  });
+
+  test("enum flags complete their values", async () => {
+    expect(await values(["event", "send", "--level"], "w")).toEqual([
+      "warning",
+    ]);
+  });
+
+  test("text positionals complete nothing", async () => {
+    expect(await getCompletions(["cli", "feedback"], "")).toEqual([]);
+  });
+
+  test("flags of shared parsers complete the values those parsers accept", async () => {
+    expect(await values(["issue", "list", "--cursor"], "")).toEqual([
+      "next",
+      "prev",
+      "first",
+    ]);
+    expect(await values(["log", "list", "--sort"], "o")).toEqual(["oldest"]);
+    expect(await values(["trace", "view", "--spans"], "")).toEqual([
+      "all",
+      "no",
+    ]);
+    expect(await values(["cli", "setup", "--channel"], "n")).toEqual([
+      "nightly",
+    ]);
+  });
+
+  test("flags of a command's own parsers complete their values", async () => {
+    expect(await values(["issue", "list", "--sort"], "f")).toEqual(["freq"]);
+    expect(await values(["api", "-X"], "P")).toEqual(["POST", "PUT", "PATCH"]);
+  });
+
+  test("--fields completes the next field of the list", async () => {
+    expect(await values(["issue", "view", "--fields"], "id,ti")).toEqual([
+      "id,title",
+    ]);
+    expect(
+      await values(["issue", "view", "--fields"], "id,title,"),
+    ).not.toContain("id,title,id");
+    expect(await values(["issue", "view", "--fields"], "project.s")).toEqual([
+      "project.slug",
+    ]);
+  });
+
+  test("list flags complete fixed values one item at a time", async () => {
+    expect(
+      await values(["auth", "login", "--scope"], "org:read,org:wr"),
+    ).toEqual(["org:read,org:write"]);
+  });
+
+  test("platform flags complete platforms", async () => {
+    const [best] = await values(["project", "list", "--platform"], "python-dj");
+    expect(best).toBe("python-django");
+    expect(await values(["event", "send", "--platform"], "")).toContain(
+      "javascript",
+    );
+  });
+});
+
+describe("getCompletions: command paths", () => {
+  test("help completes route names one segment per word", async () => {
+    expect(await getCompletions(["help"], "aler")).toEqual([
+      { value: "alert", description: expect.any(String) },
+    ]);
+    expect(await values(["help", "alert"], "")).toEqual(["issues", "metrics"]);
+    expect(await values(["help", "alert", "issues"], "l")).toEqual(["list"]);
+    expect(await values(["help", "alert", "issues", "list"], "")).toEqual([]);
+  });
+
+  test("words naming a nested route group complete its subcommands", async () => {
+    expect(await values(["alert", "issues"], "")).toContain("list");
+    expect(await values(["dashboard", "widget"], "e")).toEqual(["edit"]);
+    // The shell scripts complete the first two levels themselves.
+    expect(await values(["alert"], "")).toEqual([]);
+  });
+});
+
+describe("getCompletions: flag names", () => {
+  test("a partial starting with - completes the command's flags with their briefs", async () => {
+    expect(await getCompletions(["issue", "list"], "--li")).toEqual([
+      { value: "--limit", description: "Maximum number of issues to list" },
+    ]);
+    const all = await values(["issue", "list"], "-");
+    // Booleans and aliases too, but not hidden flags
+    expect(all).toEqual(expect.arrayContaining(["--json", "--limit", "-n"]));
+    expect(all).not.toContain("--log-level");
+    expect(await values(["issue", "list"], "--")).not.toContain("-n");
+  });
+
+  test("nested commands complete their own flags", async () => {
+    expect(await values(["alert", "issues", "list"], "--li")).toEqual([
+      "--limit",
+    ]);
+    expect(await values(["dashboard", "widget", "add"], "--q")).toEqual([
+      "--query",
+    ]);
+  });
+
+  test("flags already given are left out, by any spelling", async () => {
+    for (const given of [["--limit", "5"], ["-n", "5"], ["--limit=5"]]) {
+      const remaining = await values(["issue", "list", ...given], "-");
+      expect(remaining).not.toContain("--limit");
+      expect(remaining).not.toContain("-n");
+    }
+    expect(await values(["issue", "list", "--json"], "--j")).toEqual([]);
+  });
+
+  test("variadic flags may be given again", async () => {
+    expect(
+      await values(["alert", "issues", "create", "--action", "{}"], "--act"),
+    ).toEqual(["--action"]);
+  });
+
+  test("a flag after one that takes a value is a flag, not its value", async () => {
+    expect(await values(["issue", "list", "--limit"], "--j")).toEqual([
+      "--json",
+    ]);
+  });
+});
+
+describe("getCompletions: accounts", () => {
+  function addAccount(host: string, email: string, userId: string): void {
+    setAuthToken(`token-${userId}-${host}`, undefined, undefined, {
+      host,
+      newAccount: true,
+    });
+    setUserInfo({ userId, email });
+  }
+
+  test("completes stored accounts, qualified by server when ambiguous", async () => {
+    addAccount("https://sentry.io", "jane@acme.com", "1");
+    addAccount("https://sentry.io", "bob@other.dev", "2");
+    addAccount("https://sentry.example.com", "bob@other.dev", "3");
+
+    expect(await getCompletions(["auth", "switch"], "jane")).toEqual([
+      { value: "jane@acme.com", description: "sentry.io" },
+    ]);
+    expect((await values(["auth", "logout"], "bob")).sort()).toEqual([
+      "bob@other.dev:sentry.example.com",
+      "bob@other.dev:sentry.io",
+    ]);
+  });
+});
+
+describe("getCompletions: flag values that name cached entities", () => {
+  test("completes a flag from the org the target names, else every org", async () => {
+    await seedOrgs([
+      { slug: "acme", name: "Acme" },
+      { slug: "beta", name: "Beta" },
+    ]);
+    cacheCompletionEntities("environment", "acme", [{ value: "production" }]);
+    cacheCompletionEntities("environment", "beta", [
+      { value: "staging" },
+      { value: "production" },
+    ]);
+    const create = ["alert", "metrics", "create"];
+
+    expect(await values([...create, "acme/cli", "--environment"], "")).toEqual([
+      "production",
+    ]);
+    expect((await values([...create, "--environment"], "")).sort()).toEqual([
+      "production",
+      "staging",
+    ]);
+  });
+
+  test("completes the last item of a comma-separated list", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("environment", "acme", [
+      { value: "production" },
+      { value: "staging" },
+    ]);
+
+    expect(
+      await values(["release", "list", "--environment"], "production,"),
+    ).toEqual(["production,staging"]);
+  });
+
+  test("completes owners as team actors, matched by team slug", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("owner", "acme", [
+      { value: "team:7", label: "#backend" },
+      { value: "team:9", label: "#frontend" },
+    ]);
+
+    expect(
+      await getCompletions(["alert", "issues", "create", "--owner"], "back"),
+    ).toEqual([{ value: "team:7", description: "#backend" }]);
+  });
+
+  test("issue link completes integrations, apps, and app form fields", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("integration", "acme", [
+      { value: "99", label: "Jira: acme-jira" },
+    ]);
+    cacheCompletionEntities("sentry-app", "acme", [
+      { value: "linear", label: "Linear" },
+    ]);
+    cacheCompletionEntities("app-link-field", "acme", [
+      { value: "priority=", label: "tracker, required" },
+      { value: "priority=high", label: "tracker, required" },
+    ]);
+
+    expect(
+      await getCompletions(["issue", "link", "--integration"], "jira"),
+    ).toEqual([{ value: "99", description: "Jira: acme-jira" }]);
+    expect(await values(["issue", "unlink", "--app"], "")).toEqual(["linear"]);
+    expect(await values(["issue", "link", "--field"], "prio")).toContain(
+      "priority=",
+    );
+    expect(await values(["issue", "link", "--field"], "priority=h")).toEqual([
+      "priority=high",
+    ]);
+  });
+
+  test("issue merge --into completes issues", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("issue", "acme", [{ value: "CLI-1A" }]);
+
+    expect(
+      await values(["issue", "merge", "CLI-1A", "CLI-2B", "--into"], "CLI"),
+    ).toContain("CLI-1A");
+  });
+
+  test("monitor run completes a monitor slug, then nothing for the command", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("monitor", "acme", [
+      { value: "nightly", label: "Nightly job" },
+    ]);
+
+    expect(await values(["monitor", "run"], "")).toEqual(["nightly"]);
+    expect(await values(["monitor", "run", "nightly", "--"], "")).toEqual([]);
+  });
+
+  test("completes comma-separated project slugs of the target org", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    await seedProjects([
+      {
+        orgId: "1",
+        projectId: "10",
+        orgSlug: "acme",
+        projectSlug: "cli",
+        projectName: "CLI",
+      },
+      {
+        orgId: "1",
+        projectId: "11",
+        orgSlug: "acme",
+        projectSlug: "web",
+        projectName: "Web",
+      },
+    ]);
+
+    expect(
+      await values(["release", "create", "acme/1.0.0", "--project"], "cli,"),
+    ).toEqual(["cli,web"]);
+    // The hidden --project every command takes completes one slug
+    expect(await values(["issue", "list", "acme/", "--project"], "w")).toEqual([
+      "web",
+    ]);
+  });
+
+  test("issue tags completes the tag keys seen on issues", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("tag-key", "acme", [
+      { value: "browser.name", label: "Browser.Name" },
+      { value: "release", label: "Release" },
+    ]);
+
+    expect(
+      await getCompletions(["issue", "tags", "acme/CLI-1A"], "brow"),
+    ).toEqual([{ value: "browser.name", description: "Browser.Name" }]);
+  });
+});
+
+describe("getCompletions: issue archive --until", () => {
+  const until = (partial: string) =>
+    values(["issue", "archive", "CLI-1", "--until"], partial);
+
+  test("offers the keywords and duration presets", async () => {
+    expect(await until("")).toEqual(
+      expect.arrayContaining(["forever", "auto", "1h", "7d"]),
+    );
+    expect(await until("f")).toEqual(["forever"]);
+  });
+
+  test("completes a number to counts and durations", async () => {
+    expect(await until("10")).toEqual([
+      "10x",
+      "10u",
+      "10s",
+      "10m",
+      "10h",
+      "10d",
+      "10w",
+    ]);
+  });
+
+  test("offers a count's window, which completes like a duration", async () => {
+    expect(await until("10x")).toEqual(["10x", "10x/"]);
+    expect(await until("10x/")).toEqual(
+      expect.arrayContaining(["10x/1h", "10x/24h"]),
+    );
+    expect(await until("10u/5")).toEqual(
+      expect.arrayContaining(["10u/5m", "10u/5h"]),
+    );
+  });
+});
+
+describe("getCompletions: api endpoints", () => {
+  test("completes API paths one segment at a time", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+
+    expect(await values(["api"], "organiz")).toEqual(["organizations/"]);
+    expect(await getCompletions(["api"], "organizations/")).toEqual([
+      { value: "organizations/acme/", description: "Acme" },
+    ]);
+    const orgPaths = await values(["api"], "organizations/acme/iss");
+    expect(orgPaths).toContain("organizations/acme/issues/");
+    expect(
+      orgPaths.every((path) => path.startsWith("organizations/acme/iss")),
+    ).toBe(true);
+  });
+
+  test("keeps the /api/0/ prefix as typed", async () => {
+    expect(await values(["api"], "/api/0/organiz")).toEqual([
+      "/api/0/organizations/",
+    ]);
+  });
+});
+
+describe("getCompletions: account servers", () => {
+  test("completes the servers of stored accounts", async () => {
+    setAuthToken("token-1", undefined, undefined, {
+      host: "https://sentry.example.com",
+      newAccount: true,
+    });
+    setUserInfo({ userId: "1", email: "jane@acme.com" });
+
+    expect(
+      await getCompletions(["auth", "switch", "--url"], "https://sentry.ex"),
+    ).toEqual([
+      { value: "https://sentry.example.com", description: "jane@acme.com" },
+    ]);
+  });
+});
+
+describe("getCompletions: fixed values from the modules that validate them", () => {
+  test("metric alert windows, grid positions, providers, and aggregations", async () => {
+    expect(
+      await values(["alert", "metrics", "create", "--time-window"], "1"),
+    ).toEqual(["1", "10", "15", "120", "1440"]);
+    expect(await values(["dashboard", "widget", "add", "--col"], "")).toEqual([
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+    ]);
+    expect(
+      await values(["dashboard", "widget", "edit", "--width"], "6"),
+    ).toEqual(["6"]);
+    expect(await values(["build", "upload", "--vcs-provider"], "git")).toEqual([
+      "github",
+      "github_enterprise",
+      "gitlab",
+    ]);
+    expect(await values(["explore", "--agg"], "p9")).toEqual([
+      "p90",
+      "p95",
+      "p99",
+    ]);
+    // A spans widget unless --dataset names another
+    expect(
+      await values(["dashboard", "widget", "add", "--query"], "count"),
+    ).toEqual(["count", "count_unique"]);
+    expect(
+      await values(
+        ["dashboard", "widget", "add", "--dataset", "errors", "-q"],
+        "count",
+      ),
+    ).toEqual(["count", "count_unique", "count_if", "count_at_least"]);
+    expect(
+      await values(["dashboard", "widget", "edit", "--sort"], "ep"),
+    ).toEqual(["eps", "epm"]);
+  });
+
+  test("event send --user offers the keys with their own User field", async () => {
+    expect(await values(["event", "send", "--user"], "")).toEqual([
+      "id:",
+      "email:",
+      "ip_address:",
+      "username:",
+    ]);
+  });
+
+  test("sourcemap --ext completes the default extensions as a list", async () => {
+    expect(await values(["sourcemap", "inject", "--ext"], ".js,.m")).toEqual([
+      ".js,.mjs",
+    ]);
+  });
+});
+
+describe("getCompletions: fields and aggregates of the --dataset given", () => {
+  async function seedFields(): Promise<void> {
+    await seedOrgs([
+      { slug: "acme", name: "Acme" },
+      { slug: "beta", name: "Beta" },
+    ]);
+    cacheCompletionEntities("span-attribute", "acme", [
+      { value: "span.duration", label: "number" },
+      { value: "http.method", label: "string" },
+    ]);
+    cacheCompletionEntities("span-attribute", "beta", [
+      { value: "cache.hit", label: "boolean" },
+    ]);
+    cacheCompletionEntities("log-attribute", "acme", [
+      { value: "severity", label: "string" },
+    ]);
+    cacheCompletionEntities("tag-key", "acme", [
+      { value: "browser.name", label: "Browser.Name" },
+    ]);
+  }
+
+  test("explore --field completes the default dataset's tag keys and aggregates", async () => {
+    await seedFields();
+
+    expect(await getCompletions(["explore", "acme/", "-F"], "brow")).toEqual([
+      { value: "browser.name", description: "Browser.Name" },
+    ]);
+    expect(await values(["explore", "acme/", "--field"], "count_")).toEqual([
+      "count_unique()",
+      "count_if()",
+      "count_at_least()",
+    ]);
+  });
+
+  test("the fields follow --dataset, by name, alias, or with =", async () => {
+    await seedFields();
+
+    expect(
+      await values(["explore", "acme/", "--dataset", "spans", "-F"], "span"),
+    ).toEqual(["span.duration"]);
+    expect(
+      await values(["explore", "acme/", "-d", "log", "--field"], ""),
+    ).toContain("severity");
+    expect(
+      await values(
+        ["explore", "acme/", "--dataset=transactions", "-F"],
+        "http",
+      ),
+    ).toEqual(["http.method"]);
+    expect(await values(["explore", "acme/", "-d", "nope", "-F"], "")).toEqual(
+      [],
+    );
+  });
+
+  test("a function typed in full completes calls with each field", async () => {
+    await seedFields();
+    const field = ["explore", "acme/", "-d", "spans", "-F"];
+
+    expect(await values(field, "p95")).toEqual([
+      "p95()",
+      "p95(span.duration)",
+      "p95(http.method)",
+    ]);
+    expect(await getCompletions(field, "p95(span.d")).toEqual([
+      { value: "p95(span.duration)", description: "number" },
+    ]);
+    expect(await values(field, "nope(")).toEqual([]);
+  });
+
+  test("fields are scoped to the target's org, else every org", async () => {
+    await seedFields();
+
+    const groupBy = ["dashboard", "widget", "add", "--group-by"];
+
+    expect(
+      await values(["dashboard", "widget", "add", "beta/", "D", "-g"], ""),
+    ).toEqual(["cache.hit"]);
+    expect((await values(groupBy, "")).sort()).toEqual([
+      "cache.hit",
+      "http.method",
+      "span.duration",
+    ]);
+  });
+
+  test("replays complete the fields the CLI renders, and sort by their own", async () => {
+    const field = await values(["explore", "-d", "replays", "-F"], "count_e");
+    expect(field).toContain("count_errors");
+    expect(field.every((value) => !value.endsWith(")"))).toBe(true);
+    expect(await values(["explore", "-d", "replays", "-s"], "started")).toEqual(
+      ["started_at"],
+    );
+  });
+
+  test("inside fn(, fields match one segment at a time", async () => {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("span-attribute", "acme", [
+      { value: "span.op", label: "string" },
+      { value: "span.duration", label: "number" },
+    ]);
+    const field = ["explore", "acme/", "-d", "spans", "-F"];
+
+    // The typed segment never matches past the candidate's: `d` is not `op`
+    expect(await values(field, "avg(span.d")).toEqual(["avg(span.duration)"]);
+    // A typo within the segment being typed still matches
+    expect(await values(field, "avg(span.duraton")).toEqual([
+      "avg(span.duration)",
+    ]);
+    expect((await values(field, "avg(span.")).sort()).toEqual([
+      "avg(span.duration)",
+      "avg(span.op)",
+    ]);
+  });
+
+  test("alert --aggregate completes the calls metric alerts accept", async () => {
+    await seedFields();
+    const create = ["alert", "metrics", "create", "acme/", "--dataset", "span"];
+
+    expect(await values([...create, "--aggregate"], "span")).toEqual([]);
+    expect(await values([...create, "--aggregate"], "p9")).toEqual([
+      "p90()",
+      "p95()",
+      "p99()",
+    ]);
+    expect(await values([...create, "--aggregate"], "fail")).toEqual([
+      "failure_count()",
+      "failure_rate()",
+    ]);
+    expect(await values([...create, "--aggregate"], "avg(span.d")).toEqual([
+      "avg(span.duration)",
+    ]);
+    // Not an alert function, though widgets take it
+    expect(await values([...create, "--aggregate"], "any")).toEqual([]);
+  });
+
+  test("alert --aggregate narrows to each dataset's aggregates", async () => {
+    await seedFields();
+    const aggregate = (dataset: string) => [
+      "alert",
+      "metrics",
+      "create",
+      "acme/",
+      "--dataset",
+      dataset,
+      "--aggregate",
+    ];
+
+    // Logs have no formulas: no epm, failure_rate, or p100
+    expect(await values(aggregate("logs"), "p10")).toEqual([]);
+    expect(await values(aggregate("log"), "e")).toEqual([]);
+    // Errors take no column but user, release, dist, not their tag keys
+    expect(await values(aggregate("errors"), "")).toEqual([
+      "count()",
+      "count_unique(user)",
+      "count_unique(release)",
+      "count_unique(dist)",
+    ]);
+    expect(await values(aggregate("errors"), "count_unique(u")).toEqual([
+      "count_unique(user)",
+    ]);
+    // Crash rate takes only crash-free percentages
+    expect(await values(aggregate("sessions"), "")).toEqual([
+      "percentage(sessions_crashed,sessions)",
+      "percentage(users_crashed,users)",
+    ]);
+    expect(await values(aggregate("metrics"), "percentage(u")).toEqual([
+      "percentage(users_crashed,users)",
+    ]);
+  });
+
+  test("dashboard widgets complete shorthand aggregates and group-by columns", async () => {
+    await seedFields();
+    const add = ["dashboard", "widget", "add", "acme/", "My Dashboard"];
+
+    expect(await values([...add, "--query"], "p95:span.d")).toEqual([
+      "p95:span.duration",
+    ]);
+    expect(await values([...add, "-q"], "nope:")).toEqual([]);
+    expect(await values([...add, "--group-by"], "http")).toEqual([
+      "http.method",
+    ]);
+    expect(
+      await values([...add, "--dataset", "error-events", "-g"], "brow"),
+    ).toEqual(["browser.name"]);
+    // Trace metric aggregates name a metric, so no function completes
+    expect(await values([...add, "--dataset", "metrics", "-q"], "")).toEqual(
+      [],
+    );
   });
 });

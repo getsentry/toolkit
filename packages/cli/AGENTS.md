@@ -225,6 +225,15 @@ export const myRoute = buildRouteMap({
 });
 ```
 
+**Reading the command tree:** code in `src/lib/` reads the top-level route map
+with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
+`app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
+import would pull every command into any bundle built from one of them.
+`app.ts` registers its map with `setRoutes()`; a test that needs the real tree
+imports `src/app.js`. `test/lib/route-registry.test.ts` fails when a module in
+`src/lib/` reaches `app.ts`; the only exception is `sdk-invoke.ts`, the
+library-mode runner that executes the whole application.
+
 ### Positional Arguments
 
 Required identifiers (trace IDs, span IDs) should be **positional args**, not
@@ -382,33 +391,114 @@ grammar knows no kind of ID: the command's `ID_KINDS` entry tells it what an
 ID looks like, so the syntax cannot drift between commands. It accepts any
 input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
 
-**Shell completion:** Target positionals that take an org, project, issue, or
-dashboard are tagged with a completion kind from `src/lib/completion-target.ts`
-(`ORG_PROJECT_TARGET` completes `org/`, `org/project`, and project aliases;
-`ORG_TARGET` org slugs only; `ISSUE_TARGET` adds cached issue short IDs;
-`DASHBOARD_TARGET` cached dashboards). The bound parsers above
-(`boundPositional(kind, …)`, `boundArguments({ kind, … })`) carry the kind, so
-the `target-positional.ts` parsers behind `listTargetPositional`,
-`issuePositional`, and `releaseParameter` complete the right values. Shared
-value parsers are not tagged where they live; `PARSER_TARGETS` in
-`completion-target.ts` lists them instead, so every flag that parses with
-`sanitizeIssueQuery` completes issue search terms
-(`is:unr` → `is:unresolved`) and every flag that parses with `parsePeriod`
-completes relative periods. Fixed values (search keys, period units) come
-from the modules that define them through `COMPLETION_VALUES`.
-Issue and dashboard suggestions come from the `completion_cache` table. The
+**Shell completion:** Every visible positional and every visible
+value-taking flag declares a completion kind, a key of `COMPLETERS` in
+`src/lib/complete.ts`; `test/lib/completion-coverage.test.ts` walks the
+route tree and fails, naming the command and the placeholder or flag, for
+any without one. The `sentry-cli/require-completion-parser` lint rule
+rejects, in `src/commands/` and `src/lib/`, the parsers that cannot carry a
+kind: built-ins (`parse: String`, `Number`, `Boolean`, `Date`, `parseInt`,
+`JSON.parse`, …), inline functions (`parse: (value) => …`), and
+`boundArguments` without a `kind`. A flag with nothing to suggest says so
+with `parseText` or `textParser(parse)`. The rare parameter that must stay
+without a kind goes in `lint-rules/completion-exemptions.json` with its
+file, command, parameter (`--flag` or `<placeholder>`), and reason; both the
+lint rule and the coverage test read it, and the test fails on an entry
+that no longer needs exempting. An `oxlint-disable-next-line
+sentry-cli/require-completion-parser -- reason` comment silences only the
+lint rule; the coverage test cannot see comments, so the parameter still
+needs a kind or an allow-list entry. Pick the parser by what the argument
+takes:
+
+| Argument | Parser | Completes |
+|----------|--------|-----------|
+| Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
+| File or directory path (`--output`, `--ignore-file`) | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
+| Directory | `parseDirectoryPath` | directories only |
+| Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
+| Fixed values | `choiceParser(values)`, or `choiceParser(values, parse)` to keep a command's own validating parser (`choiceParser(VALID_SORT_VALUES, parseSort)`). Take the values from the module that defines them | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). Without `parse` the parser returns its input, so the command still validates it |
+| Comma-separated fixed values (`--scope`, `--features`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
+| Platform | `parsePlatform` | platform identifiers, common ones first |
+| Something that already exists in Sentry, as a flag value (`--environment`, `--release`, `--team`, `--owner`, `--integration`, `--app`, `--dsn`, `--workflow`, `--project`, `issue tags <key>`) | `parseEnvironment`, `parseEnvironmentList`, `parseRelease`, `parseTeam`, `parseOwner` (`team:<id>`), `parseIntegration`, `parseSentryApp`, `parseAppLinkField` (`name=value`), `parseDsn`, `parseWorkflowList`, `parseProjectSlug`, `parseProjectList`, `parseTagKey` | cached entities of the org the command's target names, else of every org, each once; the `*List` parsers complete the last item of a comma-separated list |
+| Field or aggregate of a dataset (`explore --field`/`--sort`, `dashboard widget --group-by`/`--query`/`--sort`, `alert metrics --aggregate`) | `fieldParser`, `fieldOrAggregateParser`, `aggregateParser` (`fn(field)`), or `aggregateShorthandParser` (`fn:field`), given a `DatasetCompletion`: what completes on each dataset (start from `DATASET_FIELDS`), the command's `--dataset` aliases, and its default dataset | the fields of the dataset the `--dataset` typed names (else the default; every dataset when there is none): cached attribute keys of spans, logs, and trace metrics, cached issue tag keys for errors, or a fixed set (replays), matched one `.` segment at a time (`span.d` finds `span.duration`, never `span.op`); then its whole aggregates (`aggregates`), and its aggregate functions as `fn()`, and `fn(field)` once a name is typed in full (`p95` → `p95(span.duration)`). Widgets take the functions of `aggregateFunctionsOf` in `types/dashboard.ts`; `alert metrics --aggregate` takes the narrower ones metric alerts accept (`METRIC_ALERT_FIELD_COMPLETION`). A word starting with `-` completes flag names, so a descending sort's `-` is typed after completing |
+| Issue as a flag value (`issue merge --into`) | `parseIssueReference` | what `ISSUE_TARGET` completes |
+| Git ref, commit, or repository (`--base-ref`, `--head-sha`, `--repo`, `--commit REPO@SHA`, `set-commits --from`) | `parseVcsRef` (branch and tag names as the remote knows them), `parseGitRef` (refs git resolves locally), `parseGitCommit`, `parseGitRepo` (`owner/repo` of the remotes), `parseRepoCommitList` | read from git in the shell's directory; nothing outside a work tree |
+| A structured value with its own grammar (`issue archive --until`, `api <endpoint>`) | `parseArchiveUntil`, `parseApiEndpoint` | the grammar: `forever`, `auto`, `10x`, `10x/5m`, …; API schema paths one segment at a time, with cached orgs and projects for their placeholders |
+| Local session (`local session view`, `local event list`, …) | `parseLocalSession` | the running Local daemon's session IDs, described by label and state, then labels only one session has (none with whitespace). Read from `local-sessions.json`, an owner-only snapshot the daemon rewrites when a session is created, closed, or expires and removes on shutdown; it holds IDs, labels, states, and expiries, never capabilities, and is ignored once its daemon's PID has exited. `<session envelope>` and `<session event>` complete only the session: envelope and event IDs exist only in the daemon's memory |
+| Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`, `org list --account`) |
+| CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |
+| URL | `parseUrl` (the command validates it) | nothing |
+| Free text, IDs with no cache, names of new things | `parseText` | nothing. Before reaching for it, check whether the value is really free: a value with a fixed set (in the module that validates it), a grammar, or a source (cache, git, schema) gets a kind that completes it |
+| Numbers and other values a command parses itself (`parsePort`, `parseLimit`) | `textParser(parse)` | nothing |
+
+Import the pre-tagged parsers; never tag `String` or write
+`withCompletionTarget` in a command (the lint rules above reject it there),
+and never leave `parse: String` on a flag. Org, project, and issue targets
+stay bound parsers. `enum` flags complete their `values` like
+`choiceParser`. `buildCommand` tags the injected `--fields` once: with an
+output schema, it completes the schema's field paths, nested ones in dot
+notation (`--fields id,ti` → `id,title`, `project.s` → `project.slug`);
+without one, nothing.
+
+Shared value parsers are not tagged where they live; `PARSER_TARGETS` in
+`completion-target.ts` lists them instead, with a kind or the values they
+accept, so every flag that parses with `sanitizeIssueQuery` completes issue
+search terms (`is:unr` → `is:unresolved`), every flag that parses with
+`parsePeriod` completes relative periods, `parseCursorFlag` completes
+`next`/`prev`/`first`, `parseLogSort` its directions, `numberParser`
+nothing, and `parseLoginEmail` completes stored accounts. Fixed values
+(search keys, period units) come from the modules that define them
+through `COMPLETION_VALUES`. A new shared parser goes in `PARSER_TARGETS`;
+its module must not import `completion-target.ts`, or the two would load
+in a cycle.
+Cached entities (issues, dashboards, environments, releases, teams,
+monitors, alert workflows, integrations, Sentry Apps and their issue-link
+form fields, DSNs, issue tag keys, attribute keys of each trace item
+dataset) come from the `completion_cache` table. The
 authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
 `src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
-operations it lists (by URL template, type-checked against the SDK), so API
-functions never seed by hand. To complete a new entity type, add it to
-`CompletionEntityKind`, its operations in `completion-seed.ts`, a tagged
-parser, and an `entityCompleter` entry in `src/lib/complete.ts`.
-`pnpm run generate:completions` collects these into the gitignored
-`src/generated/completion-targets.json` that the `__complete` fast path reads.
-Completers that need a parser (`arg-parsing.ts`, the search grammar) import
-it when called, so the fast path only loads it for the arguments that need
-it. `project create` keeps its dedicated `name:platform` completer in
-`src/lib/complete.ts`.
+operations it lists (by URL template, type-checked against the SDK, and the
+query parameters that pick what a response holds, such as the attribute
+keys' `dataset`), so API functions never seed by hand. Attribute keys are
+also fetched ahead of time by `src/lib/completion-warmup.ts`, which
+`auth login` and `cli setup` call: the default org plus up to three
+recently used orgs, all datasets in parallel, aborted after a second. To complete a new
+entity type, add it to `CompletionEntityKind`, its operations in `completion-seed.ts` (one
+response may seed several kinds), a tagged parser, and an `entityCompleter`
+(target positionals) or `flagEntityCompleter` (flag values) entry in
+`src/lib/complete.ts`. To add a
+kind that is not an entity, add its entry to `COMPLETERS`
+(`src/lib/complete.ts`), whose keys are the `CompletionTarget` type, a
+`*_TARGET` name for it in `completion-target.ts`, and a pre-tagged parser.
+`pnpm run generate:completions` collects every command's kinds, choice
+values, and visible flags (with briefs and aliases), and every route group's
+subcommands, into the gitignored `src/generated/completion-targets.json`
+that the `__complete` fast path reads. Words that name a nested route group
+(`alert issues`) complete its subcommands, and a partial starting with `-`
+completes the command's flags not given yet. The bash, zsh, and fish
+scripts (`src/lib/completions.ts`) embed only the command and subcommand
+names and ask `__complete` for every later word, so every shell completes
+every depth the same way. Completers must stay light (synchronous `node:fs`
+reads, SQLite, no network); ones that need a parser (`arg-parsing.ts`, the
+search grammar) import it when called, so the fast path only loads it for
+the arguments that need it.
+
+The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
+and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
+for `__complete` first and call `runCompletion` without loading `cli.ts`;
+the npm package ships it as the separate `dist/complete.cjs` bundle. That
+graph must stay free of `@sentry/node`, telemetry, the API client, and the
+command tree: the database modules get spans and cache metrics through
+`withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
+telemetry lazily and skip it when telemetry is off (`runCompletion` turns it
+off; `dist/complete.cjs` is built with `SENTRY_CLI_COMPLETION_BUILD` set to
+`true`, so the bundle leaves telemetry out), and `logger.ts` takes the Sentry
+reporter from `initSentry`.
+`test/script/cli-startup.test.ts` bundles the graph and fails on any package
+not in its `COMPLETION_PACKAGES` list, naming the importer, or on more source
+modules than `COMPLETION_MODULE_BUDGET`. Defer a heavy dependency with a
+dynamic `import()` in the completer that needs it rather than adding it to
+the list.
 
 ### Multiple Values in Arguments
 

@@ -15,6 +15,7 @@ import { isatty } from "node:tty";
 import { getProductTrials, startProductTrial } from "./api-client.js";
 import { SeerError, type SeerErrorReason } from "./errors.js";
 import { logger } from "./logger.js";
+import { prompt } from "./prompt.js";
 import { buildBillingUrl } from "./sentry-web-urls.js";
 import { findAvailableTrial } from "./trials.js";
 
@@ -60,7 +61,7 @@ export function isTrialEligible(error: unknown): error is SeerError {
  * 2. Show context message + prompt user for confirmation
  * 3. Start the trial via API
  *
- * Uses consola logger for all output (not raw stderr writes).
+ * Uses the logger for all output (not raw stderr writes).
  *
  * @param orgSlug - Organization slug
  * @param reason - The SeerError reason (for context message)
@@ -99,7 +100,7 @@ export async function promptAndStartTrial(
   }
 
   const daysText = trial.lengthDays ? `${trial.lengthDays}-day ` : "";
-  const confirmed = await log.prompt(
+  const confirmed = await prompt(
     `A free ${daysText}Seer trial is available. Start trial?`,
     { type: "confirm", initial: true },
   );

@@ -30,7 +30,8 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
-import { MAX_MCP_TOOL_INPUT_ELEMENTS, MCP_SERVER_NAME } from "./constants";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
+import { MCP_SERVER_NAME } from "./constants";
 import {
   formatErrorForUser,
   isExpectedToolError,
@@ -105,6 +106,36 @@ function structuredOutputToCallToolResult(
 }
 
 /**
+ * Replaces lone UTF-16 surrogates in tool output with U+FFFD.
+ *
+ * Formatters truncate upstream text by UTF-16 index, so a cut can keep only
+ * half of an emoji. `JSON.stringify` writes that half as `\ud83d`, and strict
+ * JSON parsers such as serde_json in Codex reject the message and close the
+ * transport. Normalizing handler output here covers every tool, including
+ * structuredContent and the compatibility text generated from it.
+ */
+function toWellFormedOutput<T>(value: T): T {
+  if (typeof value === "string") {
+    return value.toWellFormed() as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(toWellFormedOutput) as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === Object.prototype || prototype === null) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          key.toWellFormed(),
+          toWellFormedOutput(item),
+        ]),
+      ) as T;
+    }
+  }
+  return value;
+}
+
+/**
  * Creates and configures a complete MCP server with Sentry instrumentation.
  *
  * The server is built with tools filtered based on the granted skills in the context.
@@ -156,11 +187,10 @@ export function buildServer({
     name: MCP_SERVER_NAME,
     version: LIB_VERSION,
   };
+  const serverOptions = { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS };
 
   if (sdkVersion === "v2") {
-    const server = new ModernMcpServer(serverInfo, {
-      maxToolInputElements: MAX_MCP_TOOL_INPUT_ELEMENTS,
-    });
+    const server = new ModernMcpServer(serverInfo, serverOptions);
     const registrations = configureServer({
       server,
       context: contextWithModes,
@@ -176,7 +206,7 @@ export function buildServer({
     return wrapMcpServerWithSentry(server);
   }
 
-  const server = new LegacyMcpServer(serverInfo);
+  const server = new LegacyMcpServer(serverInfo, serverOptions);
   const registrations = configureServer({
     server,
     context: contextWithModes,
@@ -349,11 +379,13 @@ function configureServer({
           }
         }
 
-        const output = await executeToolHandler({
-          tool,
-          params: rawParams,
-          context: contextWithToolAvailability,
-        });
+        const output = toWellFormedOutput(
+          await executeToolHandler({
+            tool,
+            params: rawParams,
+            context: contextWithToolAvailability,
+          }),
+        );
 
         if (activeSpan) {
           activeSpan.setStatus({
@@ -435,9 +467,11 @@ function configureServer({
           content: [
             {
               type: "text" as const,
-              text: await formatErrorForUser(error, {
-                transport: context.transport,
-              }),
+              text: (
+                await formatErrorForUser(error, {
+                  transport: context.transport,
+                })
+              ).toWellFormed(),
             },
           ],
           isError: true,

@@ -11,6 +11,11 @@ import {
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  ACCOUNT_SERVER_TARGET,
+  completingParser,
+  parseAccountSelector,
+} from "../../lib/completion-target.js";
+import {
   type AccountSummary,
   getAccountRow,
   isAccountOnServer,
@@ -123,7 +128,7 @@ export const logoutCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Only match accounts on this server (disambiguates the same email on several servers)",
         optional: true,
@@ -135,7 +140,7 @@ export const logoutCommand = buildCommand({
         placeholder: "account",
         brief:
           "Accounts to log out of (email, username, user ID, or account ID; comma-separated), or 'all'",
-        parse: String,
+        parse: parseAccountSelector,
       },
     },
   },

@@ -1,10 +1,13 @@
 import { CODE_MODE_SKILLS } from "@sentry/mcp-core/code-mode";
-import { MAX_MCP_REQUEST_BODY_SIZE } from "@sentry/mcp-core/constants";
 import { buildServer } from "@sentry/mcp-core/server";
 import { ALL_SKILLS, type Skill } from "@sentry/mcp-core/skills";
 import type { ServerContext } from "@sentry/mcp-core/types";
+import {
+  MAX_MCP_REQUEST_BODY_BYTES,
+  boundMcpRequestBody,
+} from "@sentry/toolkit-core/mcp-limits";
 import { createMcpHandler } from "agents/mcp/server";
-import { configuredUrl, limitMcpRequestBody } from "./http";
+import { configuredUrl } from "./http";
 import { registerCodeModeTools } from "./tools";
 
 interface EvalEnv {
@@ -54,7 +57,7 @@ export default {
       });
     }
 
-    const boundedRequest = await limitMcpRequestBody(request);
+    const boundedRequest = await boundMcpRequestBody(request);
     if (boundedRequest instanceof Response) return boundedRequest;
     return await createMcpHandler(
       () => {
@@ -70,7 +73,7 @@ export default {
         registerCodeModeTools(server, env.LOADER, context);
         return server;
       },
-      { route, maxRequestBodySize: MAX_MCP_REQUEST_BODY_SIZE },
+      { route, maxRequestBodySize: MAX_MCP_REQUEST_BODY_BYTES },
     )(boundedRequest, env, ctx);
   },
 } satisfies ExportedHandler<EvalEnv>;

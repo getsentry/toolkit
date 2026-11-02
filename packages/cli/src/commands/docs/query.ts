@@ -1,5 +1,6 @@
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { detectDocsContext } from "../../lib/docs-context.js";
 import { queryDocs } from "../../lib/docs-service.js";
 import { ValidationError } from "../../lib/errors.js";
@@ -57,7 +58,7 @@ export const queryCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Natural-language docs question",
-        parse: String,
+        parse: parseText,
         placeholder: "question",
       },
     },

@@ -6,6 +6,8 @@
  */
 
 import { describe, expect, test } from "vitest";
+// Registers the CLI route map the help output is built from.
+import "../../src/app.js";
 import { bannerLinesForWidth, formatBanner } from "../../src/lib/banner.js";
 import { withEnv } from "../../src/lib/env.js";
 import { introspectAllCommands, printCustomHelp } from "../../src/lib/help.js";

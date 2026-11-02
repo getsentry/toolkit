@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -83,7 +84,7 @@ export const restoreCommand = buildCommand({
     flags: {
       revision: {
         kind: "parsed",
-        parse: (value: string) => {
+        parse: textParser((value: string) => {
           const revision = value.trim();
           if (!revision) {
             throw new ValidationError(
@@ -92,7 +93,7 @@ export const restoreCommand = buildCommand({
             );
           }
           return revision;
-        },
+        }),
         brief: "Revision ID to restore",
       },
     },

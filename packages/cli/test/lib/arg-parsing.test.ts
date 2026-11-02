@@ -12,6 +12,7 @@ import {
   detectSwappedViewArgs,
   looksLikeIssueShortId,
   normalizeSlug,
+  parseCursorFlag,
   parseListTargetInput,
   parseOrgProjectArg,
   parseSlashSeparatedArg,
@@ -1932,5 +1933,27 @@ describe("splitNewlineArg", () => {
 
   test("returns empty array for whitespace-only input", () => {
     expect(splitNewlineArg("  \n  \n  ")).toEqual([]);
+  });
+});
+
+describe("parseCursorFlag", () => {
+  test("passes through 'last' keyword", () => {
+    expect(parseCursorFlag("last")).toBe("last");
+  });
+
+  test("passes through valid cursor strings", () => {
+    expect(parseCursorFlag("1735689600:0:0")).toBe("1735689600:0:0");
+    expect(parseCursorFlag("abc:def:0")).toBe("abc:def:0");
+  });
+
+  test("rejects bare integer strings", () => {
+    expect(() => parseCursorFlag("12345")).toThrow("not a valid cursor");
+    expect(() => parseCursorFlag("0")).toThrow("not a valid cursor");
+    expect(() => parseCursorFlag("999999999")).toThrow("not a valid cursor");
+  });
+
+  test("accepts strings with digits and other characters", () => {
+    expect(parseCursorFlag("123abc")).toBe("123abc");
+    expect(parseCursorFlag("abc123")).toBe("abc123");
   });
 });

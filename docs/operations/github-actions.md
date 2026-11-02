@@ -18,8 +18,9 @@ docs depend on `sentry`). Root-level changes and non-PR events check every
 enabled project. Each project has its own build, lint, typecheck, test, policy,
 and E2E steps when those scripts exist. The always-present `test` job checks
 discovery, installation, repository quality, and every selected project.
-Package-specific exceptions live in `package.json#sentryCi`; the standalone
-smoke-test suite remains in its own workflow.
+Package-specific checks and exceptions live in `package.json#sentryCi`; see
+[Package CI checks](#package-ci-checks). The standalone smoke-test suite remains
+in its own workflow.
 
 ### deploy.yml
 
@@ -97,6 +98,52 @@ artifacts for 30 days.
 Runs the label publisher's regression tests when its workflow or tests change.
 Covers label replacement, stale revisions, failed classifications, and concurrent
 label creation.
+
+## Package CI checks
+
+Add a check for one workspace package to that package's `package.json`, not to
+a new workflow. `scripts/ci-projects.mjs` reads each package's scripts and its
+`sentryCi` object, and `test.yml` runs the result for every pull request that
+changes the package or one of its workspace dependencies. A path-filtered
+workflow for one package duplicates that selection and is not a required check.
+
+Each step runs a package script. Without a `sentryCi` override, the first
+script that exists is used:
+
+| Field        | Default scripts                | Notes                                                                           |
+| ------------ | ------------------------------ | ------------------------------------------------------------------------------- |
+| `prepare`    | `ci:prepare`                   | Runs before the build.                                                          |
+| `build`      | `build`                        |                                                                                 |
+| `lint`       | `lint`                         |                                                                                 |
+| `typecheck`  | `typecheck`, `tsc`, `check`    |                                                                                 |
+| `test`       | `test:ci`, `test:unit`, `test` |                                                                                 |
+| `policy`     | `ci:policy`                    |                                                                                 |
+| `e2e`        | `ci:e2e`, `test:e2e`           | Runs on Node 24 after the other steps.                                          |
+| `npmRuntime` | none                           | Runs the script, packs the package, and runs its binary on Node 20, 22, and 24. |
+
+Set a field to a script name to override it, or to `false` to skip it. The
+other fields are:
+
+- `coverage`, `junit`: report paths the job verifies, or `false`.
+- `dependencies`: extra workspace packages whose changes select this one.
+- `enabled`: `false` removes the package from the matrix.
+- `roles`: names that `node scripts/ci-projects.mjs --roles NAME` resolves to
+  the package name and path, so a specialized workflow need not hard-code them.
+
+For example, `@sentry/logger` and `@sentry/mcp-server` check their packed
+tarballs from a clean consumer project:
+
+```json
+{
+  "sentryCi": { "e2e": "test:package" },
+  "scripts": { "test:package": "bash test/package/check.sh" }
+}
+```
+
+A new workflow fits only when the matrix job cannot run the check: another
+operating system, a deployment, secrets, or pull request comments and labels.
+`scripts/workflow-policy.test.mjs` fails for a workflow that runs on pull
+requests unless its list names that workflow and the reason.
 
 ## Required Secrets
 

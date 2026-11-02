@@ -28,6 +28,7 @@ import {
 } from "../../lib/api-client.js";
 import { parseOrgProjectInput } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseTeam, PROJECT_SPEC_TARGET } from "../../lib/completion-target.js";
 import {
   ApiError,
   CliError,
@@ -719,6 +720,7 @@ export const createCommand = buildCommand({
   parameters: {
     positional: boundArguments({
       placeholder: "name:platform",
+      kind: PROJECT_SPEC_TARGET,
       brief: "One or more project name and platform pairs",
       parse: parseProjectSpecs,
       resolve: (input: ProjectSpecsInput, context: SentryContext) =>
@@ -727,7 +729,7 @@ export const createCommand = buildCommand({
     flags: {
       team: {
         kind: "parsed",
-        parse: String,
+        parse: parseTeam,
         brief: "Team to create the project under",
         optional: true,
       },
