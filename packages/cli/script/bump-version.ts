@@ -2,24 +2,19 @@
 /**
  * Version Bump Script
  *
- * Handles version bumping for releases, keeping package.json and plugin.json in sync.
- * Extracted from .craft.yml inline scripts for maintainability.
+ * Sets the CLI version to CRAFT_NEW_VERSION and keeps package.json,
+ * plugin.json, and the tracked skill frontmatter in sync.
+ *
+ * Craft runs this as the preReleaseCommand twice per release: once with the
+ * release version, and once after publishing with the next development
+ * version (`postReleaseBump` in .craft.yml). Craft commits and pushes the
+ * development version itself.
  *
  * Usage:
- *   node --experimental-strip-types script/bump-version.ts --pre   # Pre-release: set CRAFT_NEW_VERSION
- *   node --experimental-strip-types script/bump-version.ts --post  # Post-release: bump to next dev version
- *
- * Pre-release (--pre):
- *   - Sets package.json version to CRAFT_NEW_VERSION
- *   - Updates plugin.json version (strips prerelease suffix)
- *
- * Post-release (--post):
- *   - Bumps package.json to next preminor with -dev prerelease
- *   - Updates plugin.json version
- *   - Commits and pushes if there are changes
+ *   CRAFT_NEW_VERSION=1.0.0 node --experimental-strip-types script/bump-version.ts --pre
  */
 
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -119,50 +114,11 @@ function preRelease(): void {
   writePluginJson(plugin);
 
   console.log(`Updated plugin.json to ${plugin.version}`);
-}
-
-/**
- * Post-release: Bump to next dev version, commit and push
- */
-function postRelease(): void {
-  console.log("Bumping to next development version");
-
-  // Bump package.json to next preminor with -dev prerelease
-  exec("npm --no-git-tag-version version preminor --preid=dev");
-
-  // Read the new version from package.json
-  const pkg = JSON.parse(readFileSync("package.json", "utf-8")) as {
-    version: string;
-  };
-  console.log(`package.json bumped to ${pkg.version}`);
-
-  // Update plugin.json
-  const plugin = readPluginJson();
-  plugin.version = stripPrerelease(pkg.version);
-  writePluginJson(plugin);
-  console.log(`Updated plugin.json to ${plugin.version}`);
 
   // The generator embeds package.json's version in every tracked skill file.
   // Sync only its frontmatter here: the full generator needs an API schema that
-  // is gitignored and may not exist in Craft's post-release checkout.
-  syncSkillVersions(pkg.version);
-
-  // Commit and push if there are changes
-  // Use spawnSync to check exit code without throwing
-  const diffResult = spawnSync("git", ["diff", "--quiet"], {
-    stdio: "inherit",
-  });
-  if (diffResult.status !== 0) {
-    console.log("Committing version bump");
-    exec(
-      'git commit -anm "meta: Bump new development version\n\n#skip-changelog"',
-    );
-    exec("git pull --rebase");
-    exec("git push");
-    console.log("Pushed version bump");
-  } else {
-    console.log("No changes to commit");
-  }
+  // is gitignored and may not exist in Craft's checkout.
+  syncSkillVersions(version);
 }
 
 /**
@@ -170,40 +126,20 @@ function postRelease(): void {
  */
 function printUsage(): void {
   console.log(`
-Usage: node --experimental-strip-types script/bump-version.ts <mode>
+Usage: node --experimental-strip-types script/bump-version.ts --pre
 
-Modes:
-  --pre   Pre-release: set version from CRAFT_NEW_VERSION env var
-  --post  Post-release: bump to next dev version, commit and push
+Sets package.json, plugin.json, and the CLI skill versions to the
+CRAFT_NEW_VERSION environment variable.
 
-Examples:
+Example:
   CRAFT_NEW_VERSION=1.0.0 node --experimental-strip-types script/bump-version.ts --pre
-  node --experimental-strip-types script/bump-version.ts --post
 `);
 }
 
 // Main
-const args = process.argv.slice(2);
-
-function parseMode(): "pre" | "post" | null {
-  if (args.includes("--pre")) {
-    return "pre";
-  }
-  if (args.includes("--post")) {
-    return "post";
-  }
-  return null;
-}
-
-const mode = parseMode();
-
-if (!mode) {
+if (!process.argv.slice(2).includes("--pre")) {
   printUsage();
   process.exit(1);
 }
 
-if (mode === "pre") {
-  preRelease();
-} else {
-  postRelease();
-}
+preRelease();
