@@ -100,7 +100,7 @@ Then its `ApiAuthorization` (`authorization.ts`, `access.ts`) checks:
 
 Allowed requests go through `SentryApiService`, like every other tool: the
 organization's regional host, MCP client attribution and the bearer header. Only
-`accept`, `content-type`, `if-match` and `if-none-match` cross from the sandbox.
+`accept` and `content-type` cross from the sandbox.
 Redirects are not followed. A 401 invokes the unauthorized callback once.
 
 Project-constrained connections (`/mcp/{org}/{project}`) do not get Code Mode.
