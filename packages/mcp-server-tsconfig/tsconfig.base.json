@@ -3,7 +3,7 @@
   "display": "Default",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "ES2024.String"],
     "module": "ESNext",
     "preserveWatchOutput": true,
 

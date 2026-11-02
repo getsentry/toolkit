@@ -72,6 +72,7 @@ wrangler.log
 *.junit.xml
 coverage
 *.lcov
+.vitest/
 
 # Sentry Config File
 .env.sentry-build-plugin

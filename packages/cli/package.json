@@ -26,6 +26,7 @@
   },
   "files": [
     "dist/bin.cjs",
+    "dist/complete.cjs",
     "dist/index.cjs",
     "dist/index.mjs",
     "dist/index.d.cts",
@@ -103,6 +104,7 @@
     "@mastra/client-js": "^1.38.0",
     "@sentry/api": "catalog:",
     "@sentry/core": "catalog:",
+    "@sentry/logger": "workspace:*",
     "@sentry/mcp-server": "workspace:*",
     "@sentry/node": "catalog:",
     "@sentry/search-syntax": "catalog:",
@@ -120,11 +122,10 @@
     "@types/react": "^19.2.17",
     "@types/semver": "^7.7.1",
     "@types/yauzl": "3.4.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "catalog:",
     "binpatch": "^0.4.2",
     "chalk": "^5.6.2",
     "cli-highlight": "^2.1.11",
-    "consola": "^3.4.2",
     "esbuild": "^0.28.1",
     "fast-check": "^4.8.0",
     "fflate": "^0.8.3",
@@ -154,7 +155,7 @@
     "typescript": "catalog:",
     "uuidv7": "^1.2.1",
     "valibot": "^1.4.2",
-    "vitest": "^4.1.11",
+    "vitest": "catalog:",
     "wrap-ansi": "^10.0.0",
     "yauzl": "3.4.0"
   }

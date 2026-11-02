@@ -18,6 +18,11 @@ import {
   waitForSnapshotArchive,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  parseDirectoryPath,
+  parseText,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import { getDefaultProject } from "../../lib/db/defaults.js";
 import {
   ApiError,
@@ -179,26 +184,26 @@ export const downloadCommand = buildCommand({
     flags: {
       "app-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "App identifier (e.g. my-app) to resolve the latest baseline; mutually exclusive with --snapshot-id",
         optional: true,
       },
       "snapshot-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Direct snapshot artifact ID; mutually exclusive with --app-id",
         optional: true,
       },
       branch: {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Git branch filter (only with --app-id)",
         optional: true,
       },
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: `Directory for extracted images (default: ${DEFAULT_OUTPUT})`,
         optional: true,
       },

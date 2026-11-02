@@ -9,6 +9,7 @@ import type { SentryContext } from "../../context.js";
 import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { textParser } from "../../lib/completion-target.js";
 import type { DashboardViewData } from "../../lib/formatters/dashboard.js";
 import { createDashboardViewRenderer } from "../../lib/formatters/dashboard.js";
 import { ClearScreen, CommandOutput } from "../../lib/formatters/output.js";
@@ -225,7 +226,7 @@ export const viewCommand = buildCommand({
       fresh: FRESH_FLAG,
       refresh: {
         kind: "parsed",
-        parse: parseRefresh,
+        parse: textParser(parseRefresh),
         brief: "Auto-refresh interval in seconds (default: 60, min: 10)",
         optional: true,
         inferEmpty: true,

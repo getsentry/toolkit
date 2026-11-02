@@ -10,6 +10,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "sentryCi": {
+    "e2e": "test:package"
+  },
   "license": "FSL-1.1-ALv2",
   "author": "Sentry",
   "homepage": "https://github.com/getsentry/sentry-mcp",
@@ -47,6 +50,7 @@
     "start": "tsx src/index.ts",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "test:package": "bash test/package/check.sh",
     "test:watch": "vitest",
     "tsc": "tsc --noEmit"
   },

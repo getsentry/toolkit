@@ -6,14 +6,13 @@
  * `getEffectiveAccountRow`), for display and to set Sentry user context.
  */
 
-import { withDbSpan } from "../telemetry.js";
 import {
   deleteAccountRows,
   isAccountOnServer,
   listAccountRows,
 } from "./accounts.js";
 import { getEffectiveAccountRow } from "./auth.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, withDbSpan } from "./index.js";
 
 export type UserInfo = {
   userId: string;

@@ -25,6 +25,7 @@ import {
   updateIssueStatus,
 } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -149,7 +150,10 @@ export const resolveCommand = buildCommand({
     flags: {
       in: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser([
+          RESOLVE_NEXT_RELEASE_SENTINEL,
+          RESOLVE_COMMIT_SENTINEL,
+        ]),
         brief: `Resolve in a release, next release, or commit ('<version>' | '${RESOLVE_NEXT_RELEASE_SENTINEL}' | '${RESOLVE_COMMIT_SENTINEL}' | '${RESOLVE_COMMIT_EXPLICIT_PREFIX}<repo>@<sha>')`,
         optional: true,
       },

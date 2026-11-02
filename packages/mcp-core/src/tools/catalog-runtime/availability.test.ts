@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { getClient } from "@sentry/core";
+import { describe, expect, it, vi } from "vitest";
 import type { Skill } from "../../skills";
 import { getServerContext } from "../../test-setup";
 import type { ServerContext } from "../../types";
@@ -13,6 +14,11 @@ import {
   getSearchableTools,
   prepareToolParams,
 } from "./availability";
+
+vi.mock("@sentry/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/core")>();
+  return { ...actual, getClient: vi.fn(actual.getClient) };
+});
 
 function getProjectManagementContext(
   constraints: Partial<ServerContext["constraints"]> = {},
@@ -71,6 +77,24 @@ describe("catalog availability", () => {
         "add_team_to_project",
         "remove_team_from_project",
       ]),
+    );
+  });
+
+  it("shows submit_feedback_to_sentry_team only when Sentry telemetry has a DSN", () => {
+    const context = getServerContext({
+      grantedSkills: new Set<Skill>(["inspect"]),
+    });
+
+    vi.mocked(getClient).mockReturnValueOnce(undefined);
+    expect(getSearchableToolNames(context)).not.toContain(
+      "submit_feedback_to_sentry_team",
+    );
+
+    vi.mocked(getClient).mockReturnValueOnce({
+      getDsn: () => ({ host: "o1.ingest.sentry.io" }),
+    } as unknown as ReturnType<typeof getClient>);
+    expect(getSearchableToolNames(context)).toContain(
+      "submit_feedback_to_sentry_team",
     );
   });
 

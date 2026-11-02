@@ -211,6 +211,159 @@ tester.run(
   },
 );
 
+tester.run(
+  "require-completion-parser",
+  plugin.rules["require-completion-parser"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "const flags = { limit: { kind: 'parsed', parse: textParser(Number), brief: 'Limit' } };",
+      },
+      {
+        filename: commands,
+        code: "const flags = { query: { kind: 'parsed', parse: parseText, brief: 'Query' }, sort: { kind: 'parsed', parse: choiceParser(SORTS, parseSort), brief: 'Sort' } };",
+      },
+      {
+        // boundArguments declares its completion kind next to its parser
+        filename: commands,
+        code: "boundArguments({ placeholder: 'issue', brief: 'Issue', kind: ISSUE_TARGET, parse: (raw) => parseIssues(raw), resolve });",
+      },
+      {
+        // Not a command parameter
+        filename: commands,
+        code: "const schema = { parse: (value) => value };",
+      },
+      {
+        // Outside command definitions and their helpers
+        filename: "/repo/packages/cli/script/example.ts",
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+      },
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "--port",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        filename: commands,
+        code: "const positional = { kind: 'tuple', parameters: [{ placeholder: 'when', brief: 'When', parse: Date }] };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "<when>",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        // A flag with a placeholder is still named by its flag name
+        filename: commands,
+        code: "const flags = { method: { kind: 'parsed', parse: String, brief: 'Method', placeholder: 'method' } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "--method",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        filename: commands,
+        code: "const positional = { kind: 'array', parameter: { placeholder: 'path', brief: 'Path', parse: String } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "<path>",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { name: { kind: 'parsed', parse: String, brief: 'Name' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { data: { kind: 'parsed', parse: JSON.parse, brief: 'Data' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: (value) => Number(value), brief: 'Port' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse(value) { return Number(value); }, brief: 'Port' } };",
+        errors: 1,
+      },
+      {
+        // Positionals too, and lib helpers that build parameters
+        filename: source,
+        code: "const positional = { kind: 'tuple', parameters: [{ placeholder: 'count', brief: 'Count', parse: parseInt }] };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "boundArguments({ placeholder: 'issue', brief: 'Issue', parse: (raw) => parseIssues(raw), resolve });",
+        errors: 1,
+      },
+      {
+        // An exemption covers only the parameter it names
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "--limit",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+        errors: 1,
+      },
+    ],
+  },
+);
+
 tester.run("no-raw-metadata-queries", plugin.rules["no-raw-metadata-queries"], {
   valid: [
     {

@@ -1,0 +1,4 @@
+{
+  "$comment": "Parameters exempt from shell completion coverage: the sentry-cli/require-completion-parser lint rule and test/lib/completion-coverage.test.ts both read this list. Each entry names the file that defines the parameter, the command path, the parameter (--flag or <placeholder>), and why it has no completion kind. Prefer parseText or textParser(parse) over an entry here; see \"Shell completion\" in packages/cli/AGENTS.md.",
+  "exemptions": []
+}

@@ -500,6 +500,46 @@ export function extractSchemaFields(schema: GenericSchema): SchemaFieldInfo[] {
   });
 }
 
+/** Wrapper types {@link objectsOf} looks through to the schema they hold. */
+const WRAPPER_TYPES = new Set(["optional", "nullable", "nullish", "array"]);
+
+/**
+ * The object schemas a value of `schema` can be: through pipes, wrappers,
+ * array items (`--fields` paths reach into arrays), and union members.
+ */
+function objectsOf(schema: ValibotSchemaNode): ValibotSchemaNode[] {
+  const node = unwrapPipe(schema);
+  if (WRAPPER_TYPES.has(node.type)) {
+    const inner = node.wrapped ?? node.item;
+    return inner ? objectsOf(inner) : [];
+  }
+  if (node.type === "union") {
+    return (node.options as ValibotSchemaNode[]).flatMap(objectsOf);
+  }
+  return node.entries ? [node] : [];
+}
+
+/**
+ * Every field path a valibot schema describes, in `--fields` dot notation:
+ * each top-level field, then the fields of nested objects
+ * (`metadata.title`), parents before children.
+ *
+ * @param schema - A valibot schema (typically `object({...})`)
+ */
+export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
+  const paths = new Set<string>();
+  const visit = (node: ValibotSchemaNode, prefix: string) => {
+    for (const { entries = {} } of objectsOf(node)) {
+      for (const [name, field] of Object.entries(entries)) {
+        paths.add(`${prefix}${name}`);
+        visit(field, `${prefix}${name}.`);
+      }
+    }
+  };
+  visit(schema as unknown as ValibotSchemaNode, "");
+  return [...paths];
+}
+
 /**
  * Find a `description()` pipe action for a field schema.
  *

@@ -19,7 +19,11 @@ import {
   parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
+import {
+  choiceParser,
+  ORG_PROJECT_TARGET,
+  textParser,
+} from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -666,7 +670,7 @@ export const listCommand = buildListCommand("span", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of spans (<=${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -679,7 +683,7 @@ export const listCommand = buildListCommand("span", {
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief: `Sort order: ${VALID_SORT_VALUES.join(", ")}`,
         default: DEFAULT_SORT,
       },

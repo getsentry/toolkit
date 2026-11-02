@@ -11,6 +11,7 @@ import {
   updateIssueStatus,
 } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseArchiveUntil } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -398,7 +399,7 @@ export const archiveCommand = buildCommand({
     flags: {
       until: {
         kind: "parsed",
-        parse: String,
+        parse: parseArchiveUntil,
         brief:
           "Condition for unarchival: forever, auto, 30m, 10x, 10u, 10x/5m, etc.",
         optional: true,

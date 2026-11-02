@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, test } from "vitest";
 import { BUNDLE_BIN_PATH, ensureBundleBuilt } from "./bundle-setup.js";
@@ -186,6 +186,33 @@ describe("npm bundle", () => {
     // Must not contain module resolution errors
     expect(output).not.toContain("Cannot find module");
     expect(output).not.toContain("MODULE_NOT_FOUND");
+  }, 15_000);
+
+  test("__complete runs from dist/complete.cjs without loading the CLI", async () => {
+    // Print the modules the run loaded, so the test sees what a TAB press pays for
+    const { stdout, stderr, exitCode } = await spawnCollect(
+      "node",
+      [
+        "-e",
+        `process.on("exit", () => process.stderr.write(JSON.stringify(Object.keys(require.cache))));
+        process.argv.splice(1, 0, ${JSON.stringify(BUNDLE_BIN_PATH)});
+        require(process.argv[1]);`,
+        "__complete",
+        "issue",
+        "list",
+        "--period",
+        "",
+      ],
+      { cwd: ROOT_DIR },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("24h\tLast 24 hours");
+    const loaded = (JSON.parse(stderr) as string[]).map((path) =>
+      basename(path),
+    );
+    expect(loaded).toContain("complete.cjs");
+    expect(loaded).not.toContain("index.cjs");
   }, 15_000);
 
   test("Ink sidecar can be imported and exports mountApp", async () => {

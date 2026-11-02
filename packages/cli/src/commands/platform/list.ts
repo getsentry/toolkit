@@ -14,6 +14,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parsePlatform } from "../../lib/completion-target.js";
 import { OutputError } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/colors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -58,7 +59,7 @@ export const listCommand = buildCommand({
     flags: {
       search: {
         kind: "parsed",
-        parse: String,
+        parse: parsePlatform,
         brief: "Filter platforms by substring",
         optional: true,
       },

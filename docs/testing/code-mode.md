@@ -156,10 +156,10 @@ coverage. Result projection is available but not automatic semantic truncation.
 ## Limits and failures
 
 Each execution has a 20-call fetch budget, 30-second deadline, 50,000-byte
-result limit and 2,000,000-byte upstream response limit. The HTTP MCP SDK rejects
-tool arguments with more than 10,000 array elements or object keys before
-validation. A bounded reader rejects request bodies over 1 MiB before dispatch,
-including legacy clients whose Agents transport omits the SDK body-limit option.
+result limit and 2,000,000-byte upstream response limit. The hosted MCP's shared
+limits in `@sentry/toolkit-core/mcp-limits` also apply: tool arguments over
+10,000 array elements or object keys are rejected before validation, and request
+bodies over 1 MiB are rejected before dispatch on every transport lane.
 
 Dynamic Worker CPU and subrequest limits are configured through the
 [Cloudflare API](https://developers.cloudflare.com/dynamic-workers/usage/limits/).

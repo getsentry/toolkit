@@ -3,6 +3,8 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
+// Registers the CLI route map that command API references are read from.
+import "../../src/app.js";
 import { schemaCommand } from "../../src/commands/schema.js";
 import type { SentryContext } from "../../src/context.js";
 import { getAllEndpoints } from "../../src/lib/api-schema.js";
