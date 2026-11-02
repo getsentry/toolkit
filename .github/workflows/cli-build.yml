@@ -445,6 +445,7 @@ jobs:
     if: always()
     needs: [build-binary, build-npm, test-npm, test-e2e]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     steps:
       - name: Require the CLI build and E2E tests
