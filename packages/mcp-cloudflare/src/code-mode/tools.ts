@@ -9,10 +9,10 @@ import {
 import type { Skill } from "@sentry/mcp-core/skills";
 import { logIssue } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
+import { readBoundedStream } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthorization } from "./authorization";
 import { type ApiCall, ApiBroker, isSentWrite, isWriteMethod } from "./broker";
 import { ExecutionGate } from "./execution";
-import { configuredUrl, readBoundedBody } from "./http";
 import { SPEC_VERSION, SPEC_TEXT } from "./openapi";
 import { sandboxSource } from "./sandbox";
 
@@ -69,12 +69,11 @@ export function registerCodeModeTools(
     let outcome: Outcome = "ok";
     try {
       const value = await execution.run(async () => {
-        const apiBase = configuredUrl(apiBaseUrl).toString().replace(/\/$/, "");
         const workerCode = {
           compatibilityDate: "2026-01-12",
           mainModule: "worker.js",
           modules: {
-            "worker.js": sandboxSource(execute ? apiBase : undefined),
+            "worker.js": sandboxSource(execute ? apiBaseUrl : undefined),
             "user.js": `export default (${code});`,
             ...(execute ? {} : { "spec.json.txt": { text: SPEC_TEXT } }),
           },
@@ -87,7 +86,8 @@ export function registerCodeModeTools(
           .load(workerCode)
           .getEntrypoint<Sandbox>()
           .run(broker, execution.deadline);
-        const body = await readBoundedBody(response.body, 55_000);
+        const body = await readBoundedStream(response.body, 55_000);
+        if (!body) throw new Error("The sandbox result exceeds 55,000 bytes.");
         return codeModeResultSchema.parse(
           JSON.parse(new TextDecoder().decode(body)),
         );

@@ -36,11 +36,22 @@ export async function readBoundedBody(
   ) {
     return undefined;
   }
-  if (request.body === null) {
+  return await readBoundedStream(request.body, MAX_MCP_REQUEST_BODY_BYTES);
+}
+
+/**
+ * Reads a stream, stopping as soon as it exceeds `maxBytes`. Returns
+ * `undefined` when it does, and an empty body for `null`.
+ */
+export async function readBoundedStream(
+  stream: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer> | undefined> {
+  if (stream === null) {
     return new Uint8Array();
   }
 
-  const reader = request.body.getReader();
+  const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
   for (;;) {
@@ -49,7 +60,7 @@ export async function readBoundedBody(
       break;
     }
     received += value.byteLength;
-    if (received > MAX_MCP_REQUEST_BODY_BYTES) {
+    if (received > maxBytes) {
       await reader.cancel();
       return undefined;
     }

@@ -1,9 +1,9 @@
 import { RpcTarget } from "cloudflare:workers";
 import { ApiServerError } from "@sentry/mcp-core/api-client";
 import { logIssue } from "@sentry/mcp-core/telem/logging";
+import { readBoundedStream } from "@sentry/toolkit-core/mcp-limits";
 import type { ApiAuthorization } from "./authorization";
 import type { ExecutionGate } from "./execution";
-import { configuredUrl, readBoundedBody } from "./http";
 
 export interface BrokerOptions {
   accessToken: string;
@@ -77,7 +77,7 @@ export class ApiBroker extends RpcTarget {
       call.denied = detail;
       return Response.json({ detail }, { status });
     };
-    const base = configuredUrl(this.#options.apiBaseUrl);
+    const base = new URL(this.#options.apiBaseUrl);
     const requested = new URL(request.url);
     const prefix = base.pathname.replace(/\/$/, "");
     if (
@@ -169,7 +169,12 @@ export class ApiBroker extends RpcTarget {
       const value = response.headers.get(name);
       if (value) responseHeaders.set(name, value);
     }
-    const body = await readBoundedBody(response.body, 2_000_000);
+    const body = await readBoundedStream(response.body, 2_000_000);
+    if (!body) {
+      throw new Error(
+        "Response exceeds 2,000,000 bytes. Narrow the query or use pagination.",
+      );
+    }
     return new Response(
       [204, 205, 304].includes(response.status) || request.method === "HEAD"
         ? null
