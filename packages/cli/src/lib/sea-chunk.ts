@@ -120,11 +120,19 @@ function readCodeCache(path: string): Buffer | undefined {
   }
 }
 
-/** Delete all but the {@link MAX_CACHED_BUILDS} newest caches of a chunk. */
+/** Suffix of the code cache files for this platform and architecture. */
+const PLATFORM_SUFFIX = `-${process.platform}-${process.arch}.bin`;
+
+/**
+ * Delete all but the {@link MAX_CACHED_BUILDS} newest caches of a chunk on
+ * this platform. Caches for other architectures belong to other binaries
+ * sharing the directory, so they are left alone.
+ */
 function pruneCodeCaches(cacheDir: string, chunkName: string): void {
   const caches = readdirSync(cacheDir)
     .filter(
-      (entry) => entry.startsWith(`${chunkName}-`) && entry.endsWith(".bin"),
+      (entry) =>
+        entry.startsWith(`${chunkName}-`) && entry.endsWith(PLATFORM_SUFFIX),
     )
     .map((entry) => {
       const path = join(cacheDir, entry);
@@ -186,7 +194,7 @@ export function runSeaChunk(
   // A shared config directory can serve binaries for several platforms (an
   // x64 binary under Rosetta next to an arm64 one), and V8 rejects a cache
   // made on another CPU architecture.
-  const fileName = `${chunk.name}-${chunk.buildId}-${process.platform}-${process.arch}.bin`;
+  const fileName = `${chunk.name}-${chunk.buildId}${PLATFORM_SUFFIX}`;
   const cachedData =
     cacheDir === undefined
       ? undefined

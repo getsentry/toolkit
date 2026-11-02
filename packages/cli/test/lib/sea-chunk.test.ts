@@ -1,4 +1,5 @@
 import {
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
@@ -149,6 +150,22 @@ describe("runSeaChunk", () => {
       `cli-b4${SUFFIX}`,
       `cli-b5${SUFFIX}`,
     ]);
+  });
+
+  test("leaves the caches of other architectures alone", () => {
+    const otherArch = `cli-b0-${process.platform}-other-arch.bin`;
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, otherArch), "");
+    const time = new Date(Date.now() - 10_000);
+    utimesSync(join(cacheDir, otherArch), time, time);
+    for (const buildId of ["b1", "b2", "b3", "b4"]) {
+      runToExit(chunk("module.exports.v = 1;", buildId), cacheDir);
+    }
+
+    expect(readdirSync(cacheDir)).toContain(otherArch);
+    expect(
+      readdirSync(cacheDir).filter((entry) => entry.endsWith(SUFFIX)),
+    ).toHaveLength(3);
   });
 
   test("runs without a cache when the directory cannot be written", () => {
