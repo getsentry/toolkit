@@ -13,7 +13,7 @@ import { ApiAuthorization } from "./authorization";
 import { type ApiCall, ApiBroker, isSentWrite } from "./broker";
 import { ExecutionGate } from "./execution";
 import { configuredUrl, readBoundedBody } from "./http";
-import { SPEC_COMMIT, SPEC_TEXT } from "./openapi";
+import { SPEC_VERSION, SPEC_TEXT } from "./openapi";
 import { sandboxSource } from "./sandbox";
 
 declare class Sandbox extends WorkerEntrypoint {
@@ -113,7 +113,7 @@ export function registerCodeModeTools(
         ? undefined
         : logIssue(error, {
             loggerScope: ["code-mode", "execution"],
-            extra: { tool, specCommit: SPEC_COMMIT },
+            extra: { tool, specVersion: SPEC_VERSION },
           });
       const message =
         error instanceof Error ? error.message : "Code execution failed.";
@@ -159,7 +159,7 @@ function recordExecution(
   span?.setAttributes({
     "gen_ai.tool.call.arguments.code": code,
     "app.code_mode.outcome": outcome,
-    "app.code_mode.spec_commit": SPEC_COMMIT,
+    "app.code_mode.spec_version": SPEC_VERSION,
     ...(calls
       ? {
           "app.code_mode.api_calls": calls.length,

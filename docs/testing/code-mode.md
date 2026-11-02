@@ -110,23 +110,25 @@ to arbitrary operations. The backend references are
 
 The schema ships with the deploy, as Cloudflare's Code Mode server does: nothing
 fetches or syncs it at runtime. `src/code-mode/generated/openapi.json.txt` is
-Sentry's published `openapi-derefed.json` at the commit in
-`src/code-mode/generated/source.json` (currently
-`803d6de98c9156c15e9ddc1bf9accbac6e24cebc`), minified and ASCII-escaped. It is a
+the published `openapi-derefed.json` of the `@sentry/api` release in the pnpm
+catalog, minified and ASCII-escaped; `source.json` records the release. The CLI
+builds `sentry api` and `sentry schema` from the same release through
+`@sentry/api/operations`, which omits the request and response schemas that
+`search_sentry_api` needs, so Code Mode ships the full document. It is a
 Workers Text module: the main Worker parses it once per isolate, on first use,
 for authorization, and each search sandbox receives the same text as its own
-module and parses it there. This is the same artifact family the CLI consumes.
-The pinned snapshot contains 159 paths / 254 operations, not every Sentry
-feature or internal endpoint.
+module and parses it there. Release 0.428.0 contains 173 paths / 273
+operations, not every Sentry feature or internal endpoint.
 
-Bump the pin in a pull request so the regenerated schema is reviewed:
+To move to a new release, bump `@sentry/api` in the catalog, install, and
+regenerate in the same pull request:
 
 ```bash
-pnpm --filter @sentry/mcp-cloudflare generate:openapi --commit <sha>
+pnpm --filter @sentry/mcp-cloudflare generate:openapi
 ```
 
-Without `--commit`, the script rewrites the current pin. Never edit the
-generated files by hand.
+`src/code-mode/openapi.test.ts` fails when the shipped operations differ from
+the installed `@sentry/api`. Never edit the generated files by hand.
 
 Tool descriptions guide searches across paths, operation IDs, summaries,
 descriptions and tags. Empty or unrelated results should lead to broader metadata
@@ -189,7 +191,7 @@ read back from its trace:
   tool's arguments
 - `app.code_mode.outcome` - `ok`, `error` (the program failed or returned an
   error), `timeout` or `internal_error`
-- `app.code_mode.spec_commit` - the schema commit the deploy shipped
+- `app.code_mode.spec_version` - the `@sentry/api` release whose schema the deploy shipped
 - `app.code_mode.api_calls`, `app.code_mode.writes` - calls seen by the broker
   and writes it sent to Sentry (execute only)
 - `app.code_mode.operations` - JSON list of `METHOD template status`, with

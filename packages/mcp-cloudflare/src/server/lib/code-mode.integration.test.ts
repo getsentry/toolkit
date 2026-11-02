@@ -10,7 +10,7 @@ import {
 } from "@sentry/mcp-core/constants";
 import * as Sentry from "@sentry/cloudflare";
 import * as logging from "@sentry/mcp-core/telem/logging";
-import { getSpec, SPEC_COMMIT } from "../../code-mode/openapi";
+import { getSpec, SPEC_VERSION } from "../../code-mode/openapi";
 import type { Env, WorkerProps } from "../types";
 import mcpHandler from "./mcp-handler";
 
@@ -1140,7 +1140,7 @@ describe("Code Mode telemetry", () => {
     expect(attributes).toMatchObject({
       "gen_ai.tool.call.arguments.code": code,
       "app.code_mode.outcome": "ok",
-      "app.code_mode.spec_commit": SPEC_COMMIT,
+      "app.code_mode.spec_version": SPEC_VERSION,
       "app.code_mode.api_calls": 3,
       "app.code_mode.writes": 1,
     });
@@ -1180,7 +1180,7 @@ describe("Code Mode telemetry", () => {
     expect(attributes).toEqual({
       "gen_ai.tool.call.arguments.code": code,
       "app.code_mode.outcome": "ok",
-      "app.code_mode.spec_commit": SPEC_COMMIT,
+      "app.code_mode.spec_version": SPEC_VERSION,
     });
   });
 
@@ -1215,7 +1215,7 @@ describe("Code Mode telemetry", () => {
       expect.objectContaining({ message: "Loader unavailable" }),
       {
         loggerScope: ["code-mode", "execution"],
-        extra: { tool: "execute_sentry_code", specCommit: SPEC_COMMIT },
+        extra: { tool: "execute_sentry_code", specVersion: SPEC_VERSION },
       },
     );
     expect(attributes["app.code_mode.outcome"]).toBe("internal_error");

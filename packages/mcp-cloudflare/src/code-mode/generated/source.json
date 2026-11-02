@@ -1,5 +1,6 @@
 {
+  "package": "@sentry/api",
+  "version": "0.428.0",
   "repository": "getsentry/sentry-api-schema",
-  "commit": "803d6de98c9156c15e9ddc1bf9accbac6e24cebc",
   "path": "openapi-derefed.json"
 }
