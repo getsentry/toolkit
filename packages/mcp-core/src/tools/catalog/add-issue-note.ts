@@ -39,9 +39,9 @@ export default defineTool({
   skills: ["triage"],
   requiredScopes: ["event:write"],
   description: [
-    "Add a human-visible comment to a Sentry issue's activity feed.",
+    "Add a comment to a Sentry issue's activity feed.",
     "",
-    "Use this tool when the user explicitly asks to leave a note/comment, or when a triage workflow needs to record a user-approved explanation.",
+    "Use this tool to record findings, context, or decisions on an issue.",
     "",
     "<examples>",
     "add_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')",
