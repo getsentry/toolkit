@@ -1337,6 +1337,9 @@ describe("viewCommand.func", () => {
     const resolveOrgSpy = vi
       .spyOn(resolveTarget, "resolveOrg")
       .mockResolvedValue({ org: "my-org" });
+    const getProjectByIdSpy = vi
+      .spyOn(apiClient, "getProject")
+      .mockResolvedValue({ id: "4510776311808000", slug: "frontend" } as never);
     const findLatestSpy = vi
       .spyOn(apiClient, "findLatestProjectEventId")
       .mockResolvedValue(VALID_EVENT_ID);
@@ -1356,7 +1359,9 @@ describe("viewCommand.func", () => {
       "my-org/frontend",
     );
 
-    expect(findLatestSpy).toHaveBeenCalledWith("my-org", "frontend");
+    // Selected by numeric ID, not `project:<slug>` (#1317)
+    expect(getProjectByIdSpy).toHaveBeenCalledWith("my-org", "frontend");
+    expect(findLatestSpy).toHaveBeenCalledWith("my-org", 4510776311808000);
     expect(getEventSpy).toHaveBeenCalledWith(
       "my-org",
       "frontend",
@@ -1368,6 +1373,7 @@ describe("viewCommand.func", () => {
     expect(output.eventID).toBe(VALID_EVENT_ID);
 
     resolveOrgSpy.mockRestore();
+    getProjectByIdSpy.mockRestore();
     findLatestSpy.mockRestore();
   });
 
@@ -1375,6 +1381,9 @@ describe("viewCommand.func", () => {
     const resolveOrgSpy = vi
       .spyOn(resolveTarget, "resolveOrg")
       .mockResolvedValue({ org: "my-org" });
+    const getProjectByIdSpy = vi
+      .spyOn(apiClient, "getProject")
+      .mockResolvedValue({ id: "42", slug: "frontend" } as never);
     const findLatestSpy = vi
       .spyOn(apiClient, "findLatestProjectEventId")
       .mockResolvedValue(undefined);
@@ -1388,9 +1397,11 @@ describe("viewCommand.func", () => {
         "my-org/frontend",
       ),
     ).rejects.toThrow(ResolutionError);
+    expect(findLatestSpy).toHaveBeenCalledWith("my-org", 42);
     expect(getEventSpy).not.toHaveBeenCalled();
 
     resolveOrgSpy.mockRestore();
+    getProjectByIdSpy.mockRestore();
     findLatestSpy.mockRestore();
   });
 

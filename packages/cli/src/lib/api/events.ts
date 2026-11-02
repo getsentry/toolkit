@@ -84,25 +84,29 @@ export async function getEvent(
 /**
  * Find the ID of a project's most recent error event.
  *
- * Queries the org Events endpoint (`dataset=errors`) filtered to the project,
- * newest first. Used by `event view <org>/<project>` when no event ID is
- * given, so the command shows the project's latest event.
+ * Queries the org Events endpoint (`dataset=errors`) for the project, newest
+ * first. Used by `event view <org>/<project>` when no event ID is given, so
+ * the command shows the project's latest event.
+ *
+ * The project is selected by its numeric ID (the `project` param), not a
+ * `project:<slug>` filter, which only matches projects that are actively
+ * selected and returns nothing for the others (#1317).
  *
  * @param orgSlug - Organization slug
- * @param projectSlug - Project slug
+ * @param projectId - Numeric project ID
  * @param statsPeriod - How far back to look
  * @returns The event ID, or `undefined` when the project has no error events
  *   in the period
  */
 export async function findLatestProjectEventId(
   orgSlug: string,
-  projectSlug: string,
+  projectId: number,
   statsPeriod = "14d",
 ): Promise<string | undefined> {
   const { data } = await queryEvents(orgSlug, {
     dataset: "errors",
     fields: ["id", "timestamp"],
-    query: `project:${projectSlug}`,
+    project: [projectId],
     sort: "-timestamp",
     limit: 1,
     statsPeriod,

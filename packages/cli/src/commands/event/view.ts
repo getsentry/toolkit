@@ -11,6 +11,7 @@ import {
   findLatestProjectEventId,
   getEvent,
   getIssueByShortId,
+  getProject,
   getIssueInOrg,
   getLatestEvent,
   ISSUE_DETAIL_COLLAPSE,
@@ -968,7 +969,18 @@ async function resolveProjectLatestEvent(
     .info(
       `No event ID given. Fetching the latest event in ${org}/${project}...`,
     );
-  const eventId = await findLatestProjectEventId(org, project);
+  // Select the project by numeric ID: a `project:<slug>` filter finds
+  // nothing in projects that are not actively selected (#1317)
+  const { id: projectId } = await getProject(org, project);
+  const numericProjectId = Number(projectId);
+  if (!(projectId && Number.isInteger(numericProjectId))) {
+    throw new ResolutionError(
+      `Project '${org}/${project}'`,
+      "has no numeric ID in the API response",
+      `sentry event view ${org}/${project} <event-id>`,
+    );
+  }
+  const eventId = await findLatestProjectEventId(org, numericProjectId);
   if (!eventId) {
     throw new ResolutionError(
       `Project '${org}/${project}'`,
