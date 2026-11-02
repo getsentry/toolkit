@@ -23,8 +23,11 @@ import { initTimezone } from "./lib/timezone.js";
 
 /** What a binary runs: its application. */
 export type CliEntry = {
-  /** Load the application. Loading it registers its routes. */
-  readonly loadApp: () => Promise<{
+  /**
+   * Load the application for the CLI arguments, which may leave out the
+   * commands they don't run. Loading it registers its routes.
+   */
+  readonly loadApp: (args: readonly string[]) => Promise<{
     app: CliApplication;
     routes: CliRoutes;
   }>;
@@ -306,7 +309,7 @@ export async function runCli(
   cliArgs: string[],
   entry: CliEntry,
 ): Promise<void> {
-  const { app, routes } = await entry.loadApp();
+  const { app, routes } = await entry.loadApp(cliArgs);
   if (isMcpInvocation(routes, cliArgs)) {
     await runMcpServer(app, cliArgs);
     return;
