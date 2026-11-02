@@ -18,6 +18,11 @@ import {
   parseSentryLinkHeader,
 } from "@sentry/api";
 import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
+import { operations } from "@sentry/api/operations";
+import {
+  createIdempotentOperationMatcher,
+  selectIdempotentWrites,
+} from "@sentry/toolkit-core/api-client/idempotent-operations";
 import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
   type ApiTarget,
@@ -330,7 +335,12 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
  * own headers, including Authorization, so the transport only retries; as
  * before, it adds no timeout.
  */
-const transport = createApiTransport({ retry: REQUEST_RETRY_POLICY });
+const transport = createApiTransport({
+  retry: REQUEST_RETRY_POLICY,
+  isIdempotent: createIdempotentOperationMatcher(() =>
+    selectIdempotentWrites(operations),
+  ),
+});
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.
