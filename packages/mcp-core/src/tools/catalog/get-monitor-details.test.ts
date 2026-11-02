@@ -64,12 +64,12 @@ describe("get_monitor_details", () => {
 
       ## Recent Check-Ins
 
-      - 2025-04-14T02:00:13.000Z: ok, 13.2s, production
+      - 2025-04-14T02:00:13.000Z: ok, 13200ms, production
       - 2025-04-14T02:05:00.000Z: missed, staging
 
       ## Stats
 
-      - 2025-04-14T02:00:00.000Z: ok=1, error=0, missed=0, timeout=0, unknown=0, duration=13.2
+      - 2025-04-14T02:00:00.000Z: ok=1, error=0, missed=0, timeout=0, unknown=0, duration=13200
       - 2025-04-15T02:00:00.000Z: ok=0, error=0, missed=1, timeout=0, unknown=0, duration=0
 
       ## Response Notes
