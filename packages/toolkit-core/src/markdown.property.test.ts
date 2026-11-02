@@ -170,6 +170,64 @@ describe.each(parsers)("with %s", (_, parse) => {
   });
 });
 
+/** Parses a single heading with micromark; returns its literal text. */
+function headingMicromark(markdown: string): string {
+  const root = fromMarkdown(markdown, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  });
+  const [heading] = root.children;
+  expect(root.children).toHaveLength(1);
+  if (heading?.type !== "heading") {
+    throw new Error(`expected heading, got ${heading?.type}`);
+  }
+  return heading.children
+    .map((node) => {
+      if (node.type === "text") return node.value;
+      // See parseMicromark: mdast-util-gfm links literal URLs after parsing.
+      if (node.type === "link") {
+        return node.children.map((c) => ("value" in c ? c.value : "")).join("");
+      }
+      throw new Error(`unexpected ${node.type} node`);
+    })
+    .join("");
+}
+
+/** Parses a single heading with marked; returns its literal text. */
+function headingMarked(markdown: string): string {
+  const tokens = marked.lexer(markdown).filter((t) => t.type !== "space");
+  const [heading] = tokens;
+  expect(tokens).toHaveLength(1);
+  if (heading?.type !== "heading") {
+    throw new Error(`expected heading, got ${heading?.type}`);
+  }
+  return (heading.tokens as Token[])
+    .map((token) => {
+      if (token.type === "text" || token.type === "escape") return token.text;
+      throw new Error(`unexpected ${token.type} token`);
+    })
+    .join("");
+}
+
+describe.each([
+  ["marked", headingMarked],
+  ["micromark", headingMicromark],
+] as const)("text in a heading with %s", (_, parseHeading) => {
+  test("round-trips any value, including trailing hashes", () => {
+    fcAssert(
+      property(
+        markdownArb.filter((value) => singleLine(value).trim() !== ""),
+        (value) => {
+          expect(parseHeading(`### ${text(value)}\n`)).toBe(
+            singleLine(value).trim(),
+          );
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  });
+});
+
 describe("codeBlock", () => {
   test("round-trips any value as one code block with micromark", () => {
     fcAssert(

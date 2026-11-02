@@ -63,6 +63,11 @@ describe("text", () => {
     );
   });
 
+  test("escapes a trailing run of hashes that would close a heading", () => {
+    expect(text("unexpected token ##")).toBe("unexpected token \\##");
+    expect(text("issue #42")).toBe("issue #42");
+  });
+
   test("escapes syntax that only counts at the start of a line", () => {
     expect(text("1. one")).toBe("1\\. one");
     expect(text("  + two ")).toBe("\\+ two");

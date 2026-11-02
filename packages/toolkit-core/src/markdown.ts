@@ -13,11 +13,12 @@ const LINE_BREAK = /\r\n?|\n/g;
  * Characters `text` escapes wherever they appear, or in the context the
  * lookahead names: an `&` that starts a character reference, the `:` of a
  * `scheme://` URL, and the `.` of a `www.` domain, so GFM cannot start a
- * literal autolink. An `_` between two letters or digits is never emphasis
- * and stays as is.
+ * literal autolink, and a trailing run of `#` after a space, which would close
+ * an ATX heading. An `_` between two letters or digits is never emphasis and
+ * stays as is.
  */
 const INLINE_SYNTAX =
-  /[\\`*[\]<>~@]|&(?=#?[a-z0-9]+;)|:(?=\/\/)|(?<=www)\.|(?<=^|[^\p{L}\p{N}])_|_(?=$|[^\p{L}\p{N}])/giu;
+  /[\\`*[\]<>~@]|&(?=#?[a-z0-9]+;)|:(?=\/\/)|(?<=www)\.|(?<=\s)#(?=#*$)|(?<=^|[^\p{L}\p{N}])_|_(?=$|[^\p{L}\p{N}])/giu;
 
 /** Syntax that only counts at the start of a line: headings, quotes, lists, rules. */
 const LINE_START_SYNTAX = /^(?:[#+=-]|\d{1,9}[.)])/;
