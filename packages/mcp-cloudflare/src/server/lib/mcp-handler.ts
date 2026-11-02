@@ -477,7 +477,6 @@ async function handleAuthenticatedMcpRequest(
       const server = buildServer({
         context: serverContext,
         experimentalMode: isExperimentalMode,
-        sdkVersion: "v2",
       });
       registerCodeModeTools(server, env.LOADER, serverContext);
       return server;

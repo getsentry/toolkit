@@ -1,4 +1,4 @@
-import { CODE_MODE_SKILLS } from "@sentry/mcp-core/code-mode";
+import { isCodeModeSkill } from "@sentry/mcp-core/code-mode";
 import { buildServer } from "@sentry/mcp-core/server";
 import { ALL_SKILLS, type Skill } from "@sentry/mcp-core/skills";
 import type { ServerContext } from "@sentry/mcp-core/types";
@@ -7,7 +7,6 @@ import {
   boundMcpRequestBody,
 } from "@sentry/toolkit-core/mcp-limits";
 import { createMcpHandler } from "agents/mcp/server";
-import { configuredUrl } from "./http";
 import { registerCodeModeTools } from "./tools";
 
 interface EvalEnv {
@@ -16,9 +15,7 @@ interface EvalEnv {
   API_BASE_URL: string;
 }
 
-const CATALOG_SKILLS = ALL_SKILLS.filter(
-  (skill) => !CODE_MODE_SKILLS.some((codeModeSkill) => codeModeSkill === skill),
-);
+const CATALOG_SKILLS = ALL_SKILLS.filter((skill) => !isCodeModeSkill(skill));
 
 /** What each eval surface's connection granted. */
 const SURFACES: Record<string, Skill[]> = {
@@ -46,7 +43,7 @@ export default {
       ?.match(/^Bearer\s+(\S+)$/i)?.[1];
     if (!token) return new Response("Bearer token required", { status: 401 });
 
-    const api = configuredUrl(env.API_BASE_URL);
+    const api = new URL(env.API_BASE_URL);
     if (
       api.protocol !== "http:" ||
       !["localhost", "127.0.0.1", "[::1]"].includes(api.hostname) ||
@@ -69,7 +66,7 @@ export default {
           constraints: {},
           transport: "http",
         };
-        const server = buildServer({ sdkVersion: "v2", context });
+        const server = buildServer({ context });
         registerCodeModeTools(server, env.LOADER, context);
         return server;
       },

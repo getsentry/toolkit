@@ -113,6 +113,12 @@ Translate upstream API shapes into user-facing terms:
   surrogate-aware slicing.
 - Prefer shared helpers for dates, actors, IDs, and unknown values. If a helper
   emits noisy placeholders for a domain-specific field, filter before calling it.
+- Render untrusted values with `@sentry/toolkit-core/markdown`, chosen by what
+  the value is: `inlineCode` for identifiers, slugs, queries, and short values,
+  `codeBlock` for multi-line data such as messages and stack traces, and `text`
+  for values that should read as prose. Each keeps the value inside its line or
+  block, so upstream data cannot add headings, list items, or links. Prefer
+  `inlineCode`: it needs no escaping, so the model reads the value unchanged.
 
 When changing Sentry API endpoint usage, validate the upstream behavior in
 `~/src/sentry` as required by [../../AGENTS.md](../../AGENTS.md). API schemas

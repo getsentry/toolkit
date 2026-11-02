@@ -308,10 +308,6 @@ const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
 The system only refreshes MCP tokens. It does not rotate upstream Sentry OAuth
 tokens anymore.
 
-Refresh preserves `upstreamScopes` from the original Sentry token response.
-Older grants and responses that omit `scope` leave this metadata unknown;
-refresh does not infer it from MCP skills or the requested scope set.
-
 1. **MCP Token Refresh**: MCP clients exchange an MCP refresh token for a new MCP access token
 2. **Sentry Token Reuse**: The worker keeps reusing the cached Sentry access token while it is still valid
 3. **Stale grant rejection**: Grants missing required stored props like `refreshToken` are treated as stale and revoked
@@ -435,8 +431,6 @@ an independent, additive permission: it allows API writes even when Triage Issue
 or Manage Projects & Teams is unchecked, subject to Sentry permissions and the
 connection's organization scope. Project-constrained sessions do not offer
 Code Mode skills.
-Project consent preserves previously remembered API Read/Write choices for the
-next organization consent without adding them to the project's grant.
 
 Note: These describe the MCP OAuth server, not Sentry's OAuth endpoints.
 

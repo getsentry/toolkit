@@ -8,6 +8,7 @@
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
 import { triggerSolutionPlanning } from "../../lib/api-client.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ApiError, CliError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -211,8 +212,7 @@ export const planCommand = buildCommand({
       "generates a solution plan with specific implementation steps to fix the issue.\n\n" +
       "Use --force to regenerate a plan even if one already exists.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector  - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +

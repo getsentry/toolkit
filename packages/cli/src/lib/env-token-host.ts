@@ -193,6 +193,23 @@ export function getTrustedEnvTokenHost(): string | undefined {
   return snapshot.host;
 }
 
+/**
+ * Give `derived`, a copy of the current environment, the env-token host this
+ * environment snapshotted instead of one re-read from the copy. By now the
+ * copy's `SENTRY_HOST`/`SENTRY_URL` can come from a `.sentryclirc`, which must
+ * not scope the env token.
+ */
+export function inheritEnvTokenHost(derived: NodeJS.ProcessEnv): void {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
+    captureEnvTokenHost();
+  }
+  const snapshot = snapshotState.byEnv.get(env);
+  if (snapshot) {
+    snapshotState.byEnv.set(derived, snapshot);
+  }
+}
+
 /** Only the explicit URL captured at boot may migrate a legacy stored login. */
 export function getBootConfiguredSentryUrl(): string | undefined {
   const env = getEnv();

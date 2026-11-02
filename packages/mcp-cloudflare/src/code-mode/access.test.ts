@@ -1,92 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { authorizeApiRequest } from "./access";
+import { authorizeApiRequest, type CatalogOperation } from "./access";
 
 const dashboardPath =
   "/api/0/organizations/{organization_id_or_slug}/dashboards/";
-const monitorPath =
-  "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/monitors/{monitor_id_or_slug}/";
-const releasePath = "/api/0/organizations/{organization_id_or_slug}/releases/";
 const issuePath =
   "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/";
 
-// Scope excerpts from the pinned Sentry OpenAPI. In particular, dashboard
-// writes accept org:read upstream, while monitor and release writes do not.
-const spec = {
-  paths: {
-    [dashboardPath]: {
-      get: {
-        security: [{ auth_token: ["org:admin", "org:read", "org:write"] }],
-      },
-      post: {
-        security: [{ auth_token: ["org:admin", "org:read", "org:write"] }],
-      },
-    },
-    [monitorPath]: {
-      put: {
-        security: [
-          { auth_token: ["alerts:write", "project:admin", "project:write"] },
-        ],
-      },
-    },
-    [releasePath]: {
-      post: {
-        security: [
-          {
-            auth_token: [
-              "org:ci",
-              "project:admin",
-              "project:releases",
-              "project:write",
-            ],
-          },
-        ],
-      },
-    },
-    [issuePath]: {
-      put: { security: [{ auth_token: ["event:admin", "event:write"] }] },
-    },
-    "/api/0/issues/{issue_id}/": {
-      get: {
-        security: [
-          { auth_token: ["event:admin", "event:read", "event:write"] },
-        ],
-      },
-    },
-  },
-};
+const catalog: CatalogOperation[] = [
+  { method: "GET", path: dashboardPath },
+  { method: "POST", path: dashboardPath },
+  { method: "PUT", path: issuePath },
+  { method: "GET", path: "/api/0/issues/{issue_id}/" },
+];
 
 function request(path: string, method: string, organizationSlug?: string) {
-  return authorizeApiRequest(new URL(path, "https://sentry.io"), method, spec, {
-    organizationSlug,
-  });
+  return authorizeApiRequest(
+    new URL(path, "https://sentry.io"),
+    method,
+    catalog,
+    { organizationSlug },
+  );
 }
 
 describe("authorizeApiRequest", () => {
-  it("accepts a published read and HEAD fallback", () => {
+  it("accepts published operations and HEAD on a published GET", () => {
     expect(
       request("/api/0/organizations/example/dashboards/?cursor=next", "GET"),
-    ).toEqual({
-      pathTemplate: dashboardPath,
-      organizationSlug: "example",
-    });
+    ).toEqual({ pathTemplate: dashboardPath, organizationSlug: "example" });
     expect(
       request("/api/0/organizations/example/dashboards/", "HEAD").pathTemplate,
     ).toBe(dashboardPath);
-  });
-
-  it("leaves upstream scopes to Sentry for published writes", () => {
     expect(
-      request("/api/0/organizations/example/dashboards/", "POST").pathTemplate,
-    ).toBe(dashboardPath);
-    expect(
-      request("/api/0/projects/example/frontend/monitors/import/", "PUT")
-        .pathTemplate,
-    ).toBe(monitorPath);
-    expect(
-      request("/api/0/organizations/example/releases/", "POST").pathTemplate,
-    ).toBe(releasePath);
-    expect(
-      request("/api/0/organizations/example/issues/123/", "PUT").pathTemplate,
+      request("/api/0/organizations/example/issues/123/", "put").pathTemplate,
     ).toBe(issuePath);
   });
 
@@ -144,40 +89,19 @@ describe("authorizeApiRequest", () => {
   });
 
   it("does not fall back to a generic route when a literal route denies access", () => {
-    const overlappingSpec = {
-      paths: {
-        "/api/0/organizations/{organization_id_or_slug}/": {
-          get: { security: [{ auth_token: ["org:read"] }] },
-        },
-        "/api/0/organizations/settings/": {
-          post: { security: [{ auth_token: ["org:write"] }] },
-        },
-      },
-    };
     expect(() =>
       authorizeApiRequest(
         new URL("https://sentry.io/api/0/organizations/settings/"),
         "GET",
-        overlappingSpec,
+        [
+          {
+            method: "GET",
+            path: "/api/0/organizations/{organization_id_or_slug}/",
+          },
+          { method: "POST", path: "/api/0/organizations/settings/" },
+        ],
         {},
       ),
     ).toThrow("HTTP method");
-  });
-
-  it("requires a catalog but does not use security metadata as an MCP grant", () => {
-    const url = new URL(
-      "https://sentry.io/api/0/organizations/example/dashboards/",
-    );
-    expect(() => authorizeApiRequest(url, "GET", {}, {})).toThrow(
-      "operation catalog",
-    );
-    expect(
-      authorizeApiRequest(
-        url,
-        "GET",
-        { paths: { [dashboardPath]: { get: {} } } },
-        {},
-      ).pathTemplate,
-    ).toBe(dashboardPath);
   });
 });

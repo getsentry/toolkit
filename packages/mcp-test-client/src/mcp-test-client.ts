@@ -6,8 +6,12 @@ import { startNewTrace, startSpan } from "@sentry/core";
 import { logSuccess } from "./logger.js";
 import type { MCPConnection, MCPConfig } from "./types.js";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { LIB_VERSION } from "./version.js";
-import { buildStdioServerLaunchConfig } from "./transport.js";
+import {
+  buildStdioServerCommand,
+  buildStdioServerLaunchConfig,
+} from "./transport.js";
 
 export async function connectToMCPServer(
   config: MCPConfig,
@@ -26,17 +30,20 @@ export async function connectToMCPServer(
       },
       async (span) => {
         try {
-          // Resolve the path to the mcp-server binary
-          const __dirname = dirname(fileURLToPath(import.meta.url));
-          const mcpServerPath = join(
-            __dirname,
-            "../../mcp-server/dist/index.js",
+          const server = buildStdioServerCommand(
+            config,
+            join(dirname(fileURLToPath(import.meta.url)), "../.."),
           );
+          if (server.bundlePath && !existsSync(server.bundlePath)) {
+            throw new Error(
+              `${server.bundlePath} not found. Build it with \`pnpm --filter @sentry/mcp-server run bundle\`.`,
+            );
+          }
           const launchConfig = buildStdioServerLaunchConfig(config);
 
           const transport = new Experimental_StdioMCPTransport({
-            command: "node",
-            args: [mcpServerPath, ...launchConfig.args],
+            command: server.command,
+            args: [...server.args, ...launchConfig.args],
             env: launchConfig.env,
           });
 

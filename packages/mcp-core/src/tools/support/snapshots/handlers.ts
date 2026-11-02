@@ -1,7 +1,4 @@
-import type {
-  ImageContent,
-  TextContent,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { ImageContent, TextContent } from "@modelcontextprotocol/server";
 import type { SentryApiService } from "../../../api-client";
 import { UserInputError } from "../../../errors";
 import {

@@ -26,6 +26,16 @@ issue short ID to open that event. The issue resolves the project; omitting the
 event ID selects the latest event. Invalid event IDs return an error instead of
 selecting the latest event.
 
+## Selecting an event without an ID
+
+`sentry event view` takes the issue selectors `@latest` (the most recent
+unresolved issue) and `@most_frequent`, and shows the selected issue's latest
+event. Without an event ID it uses `@latest`, so `sentry event view` and
+`sentry event view my-org/my-project` show the latest event of the most recent
+unresolved issue. A selector looks in the given org (`my-org/@latest`) or project
+(`my-org/my-project/@most_frequent`), otherwise in the auto-detected org, as it
+does for `sentry issue view`.
+
 ## Attachments
 
 `sentry event view --json` lists an event's attachment metadata. Download an

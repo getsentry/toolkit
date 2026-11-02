@@ -113,10 +113,6 @@
       "types": "./dist/internal/tool-helpers/resolve-region-url.d.ts",
       "default": "./dist/internal/tool-helpers/resolve-region-url.js"
     },
-    "./internal/tool-helpers/validate-region-url": {
-      "types": "./dist/internal/tool-helpers/validate-region-url.d.ts",
-      "default": "./dist/internal/tool-helpers/validate-region-url.js"
-    },
     "./internal/agents/callEmbeddedAgent": {
       "types": "./dist/internal/agents/callEmbeddedAgent.d.ts",
       "default": "./dist/internal/agents/callEmbeddedAgent.js"
@@ -152,6 +148,10 @@
     "./scopes": {
       "types": "./dist/scopes.d.ts",
       "default": "./dist/scopes.js"
+    },
+    "./transports/stdio": {
+      "types": "./dist/transports/stdio.d.ts",
+      "default": "./dist/transports/stdio.js"
     }
   },
   "scripts": {
@@ -171,6 +171,7 @@
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.6",
     "@ai-sdk/provider-utils": "^4.0.11",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@sentry/mcp-server-mocks": "workspace:*",
     "@sentry/mcp-server-tsconfig": "workspace:*",
     "msw": "catalog:",
@@ -183,7 +184,6 @@
     "@ai-sdk/openai": "catalog:",
     "@logtape/logtape": "^1.1.1",
     "@logtape/sentry": "^1.1.1",
-    "@modelcontextprotocol/sdk": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@sentry/api": "catalog:",
     "@sentry/core": "catalog:",

@@ -2,17 +2,17 @@ import type { WorkerEntrypoint } from "cloudflare:workers";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as Sentry from "@sentry/cloudflare";
 import {
-  CODE_MODE_SKILLS,
   codeModeResultSchema,
   getCodeModeToolDefinitions,
+  isCodeModeSkill,
 } from "@sentry/mcp-core/code-mode";
 import type { Skill } from "@sentry/mcp-core/skills";
 import { logIssue } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
+import { readBoundedStream } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthorization } from "./authorization";
 import { type ApiCall, ApiBroker, isSentWrite, isWriteMethod } from "./broker";
 import { ExecutionGate } from "./execution";
-import { configuredUrl, readBoundedBody } from "./http";
 import { SPEC_VERSION, SPEC_TEXT } from "./openapi";
 import { sandboxSource } from "./sandbox";
 
@@ -38,9 +38,7 @@ export function registerCodeModeTools(
   context: ServerContext,
 ): void {
   const skills = new Set<Skill>(
-    [...(context.grantedSkills ?? [])].filter((skill) =>
-      CODE_MODE_SKILLS.some((allowedSkill) => skill === allowedSkill),
-    ),
+    [...(context.grantedSkills ?? [])].filter(isCodeModeSkill),
   );
   // A project route can mutate shared resources (e.g. release files). OpenAPI
   // does not prove project isolation, so retain the existing scoped tools only.
@@ -55,7 +53,6 @@ export function registerCodeModeTools(
     const execution = new ExecutionGate();
     const broker = execute
       ? new ApiBroker({
-          accessToken: context.accessToken,
           execution,
           apiBaseUrl,
           allowWrites,
@@ -69,12 +66,11 @@ export function registerCodeModeTools(
     let outcome: Outcome = "ok";
     try {
       const value = await execution.run(async () => {
-        const apiBase = configuredUrl(apiBaseUrl).toString().replace(/\/$/, "");
         const workerCode = {
           compatibilityDate: "2026-01-12",
           mainModule: "worker.js",
           modules: {
-            "worker.js": sandboxSource(execute ? apiBase : undefined),
+            "worker.js": sandboxSource(execute ? apiBaseUrl : undefined),
             "user.js": `export default (${code});`,
             ...(execute ? {} : { "spec.json.txt": { text: SPEC_TEXT } }),
           },
@@ -87,7 +83,8 @@ export function registerCodeModeTools(
           .load(workerCode)
           .getEntrypoint<Sandbox>()
           .run(broker, execution.deadline);
-        const body = await readBoundedBody(response.body, 55_000);
+        const body = await readBoundedStream(response.body, 55_000);
+        if (!body) throw new Error("The sandbox result exceeds 55,000 bytes.");
         return codeModeResultSchema.parse(
           JSON.parse(new TextDecoder().decode(body)),
         );

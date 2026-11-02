@@ -21,14 +21,13 @@
     "eval:ci": "vitest run --reporter=vitest-evals/reporter --reporter=junit --reporter=json --outputFile.json=eval-results.json --outputFile.junit=eval.junit.xml"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
     "wrangler": "catalog:"
   },
   "dependencies": {
     "@ai-sdk/mcp": "catalog:",
     "@ai-sdk/openai": "catalog:",
-    "@modelcontextprotocol/sdk": "catalog:",
     "@sentry/mcp-core": "workspace:*",
-    "@sentry/mcp-server": "workspace:*",
     "@sentry/mcp-server-mocks": "workspace:*",
     "@sentry/mcp-server-tsconfig": "workspace:*",
     "ai": "catalog:",

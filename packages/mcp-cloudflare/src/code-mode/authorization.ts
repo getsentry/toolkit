@@ -1,9 +1,7 @@
-import { resolveRegionUrlForOrganization } from "@sentry/mcp-core/internal/tool-helpers/resolve-region-url";
-import { validateRegionUrl } from "@sentry/mcp-core/internal/tool-helpers/validate-region-url";
+import { apiServiceForOrganization } from "@sentry/mcp-core/internal/tool-helpers/resolve-region-url";
 import type { ServerContext } from "@sentry/mcp-core/types";
-import { USER_AGENT } from "@sentry/mcp-core/version";
 import { authorizeApiRequest } from "./access";
-import { getSpec } from "./openapi";
+import { OPERATIONS } from "./openapi";
 
 export type AuthorizationResult =
   | { url: string; headers: Record<string, string>; pathTemplate: string }
@@ -18,6 +16,10 @@ export class ApiAuthorization {
     this.#context = context;
   }
 
+  /**
+   * The URL and headers, Authorization included, for an allowed request.
+   * Routing and headers come from the same API service the other tools use.
+   */
   async authorize(url: string, method: string): Promise<AuthorizationResult> {
     const target = new URL(url);
     let organizationSlug: string | undefined;
@@ -26,7 +28,7 @@ export class ApiAuthorization {
       ({ organizationSlug, pathTemplate } = authorizeApiRequest(
         target,
         method,
-        getSpec(),
+        OPERATIONS,
         { organizationSlug: this.#context.constraints.organizationSlug },
       ));
     } catch (error) {
@@ -34,30 +36,14 @@ export class ApiAuthorization {
         error: error instanceof Error ? error.message : "API access denied.",
       };
     }
-    if (organizationSlug) {
-      const regionUrl = await resolveRegionUrlForOrganization({
-        context: this.#context,
-        organizationSlug,
-      });
-      if (regionUrl) {
-        target.host = validateRegionUrl(
-          regionUrl,
-          this.#context.sentryHost ?? "sentry.io",
-        );
-        target.protocol = "https:";
-      }
-    }
-    const headers: Record<string, string> = { "User-Agent": USER_AGENT };
-    for (const [field, header] of [
-      ["clientId", "X-Sentry-MCP-Client-Id"],
-      ["clientName", "X-Sentry-MCP-Client-Name"],
-      ["clientFamily", "X-Sentry-MCP-Client-Family"],
-      ["utmSource", "X-Sentry-MCP-Utm-Source"],
-    ] as const) {
-      const value = this.#context[field];
-      if (value) headers[header] = value;
-    }
-    return { url: target.toString(), headers, pathTemplate };
+    const { origin, headers } = (
+      await apiServiceForOrganization(this.#context, organizationSlug)
+    ).requestTarget();
+    return {
+      url: new URL(`${target.pathname}${target.search}`, origin).toString(),
+      headers,
+      pathTemplate,
+    };
   }
 
   async onUnauthorized(): Promise<void> {

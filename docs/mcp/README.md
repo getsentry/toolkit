@@ -1,6 +1,6 @@
 # Sentry MCP Documentation
 
-MCP spans `packages/mcp-core/`, `packages/mcp-server/`, and
+MCP spans `packages/mcp-core/`, `packages/mcp-server/` (built from `packages/cli/`), and
 `packages/mcp-cloudflare/`, with mocks, evals, and a test client in neighboring
 packages. Its guides stay in root `docs/` because no single MCP package owns
 them. The [Toolkit index](../README.md) also links the CLI and shared guides.
@@ -17,8 +17,8 @@ them. The [Toolkit index](../README.md) also links the CLI and shared guides.
   [error handling](../contributing/error-handling.md) — MCP client conventions.
 - [Testing](../testing/overview.md), [stdio](../testing/stdio.md), and
   [remote](../testing/remote.md) — tests and transport QA.
-- [HTTP Code Mode](../testing/code-mode.md) — runtime integration, permissions,
-  and safety validation.
+- [HTTP Code Mode](../architecture/code-mode.md) — sandbox, permissions,
+  schema and telemetry of the hosted Code Mode tools.
 - [Code Mode evaluations](../testing/code-mode-evals.md) — agent discovery,
   stateful API fixtures, task verification and historical results.
 

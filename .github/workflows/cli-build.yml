@@ -289,6 +289,19 @@ jobs:
         with:
           name: npm-package
           path: packages/cli/*.tgz
+      # Every CLI release also publishes @sentry/mcp-server at the same version.
+      - name: Bundle mcp-server
+        run: pnpm --filter @sentry/mcp-server run bundle
+      - name: Test mcp-server bundle
+        run: pnpm --filter @sentry/mcp-server run test:bundle
+      - name: Pack mcp-server
+        working-directory: packages/mcp-server
+        run: npm pack
+      - name: Upload mcp-server npm artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mcp-server-npm-package
+          path: packages/mcp-server/*.tgz
 
   test-npm:
     name: Test npm Package (Node ${{ matrix.node }})

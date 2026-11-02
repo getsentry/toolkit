@@ -16,7 +16,7 @@ const CONFIG = path.join(
 );
 const CODE_MODE_TOOLS = ["search_sentry_api", "execute_sentry_code"];
 const TOP_LEVEL_TOOL_NAMES: string[] = TOOL_DEFINITIONS.filter(
-  (tool) => tool.surface === "direct",
+  (tool) => tool.surface === "direct" && !CODE_MODE_TOOLS.includes(tool.name),
 ).map((tool) => tool.name);
 
 type Worker = Awaited<ReturnType<typeof unstable_dev>>;
