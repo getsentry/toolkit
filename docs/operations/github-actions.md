@@ -22,6 +22,10 @@ Package-specific checks and exceptions live in `package.json#sentryCi`; see
 [Package CI checks](#package-ci-checks). The standalone smoke-test suite remains
 in its own workflow.
 
+CLI build jobs read `SENTRY_CLIENT_ID` from the repository variable. Pull requests
+from forks don't receive it, so the jobs fall back to `test-client-id`, the same
+placeholder Local E2E uses. `test.yml` publishes no build artifacts.
+
 ### deploy.yml
 
 Runs after a successful `Test` push run on `main`. Checks out the tested commit
