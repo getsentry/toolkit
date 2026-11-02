@@ -656,6 +656,17 @@ describe("serveMcp .sentryclirc URLs", () => {
       await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
     });
 
+    test("serves the env token over http with --insecure-http on its startup SENTRY_HOST", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env.SENTRY_HOST = "sentry.internal:9000";
+      captureEnvTokenHost();
+
+      const { config, options } = await start(["--insecure-http"]);
+      expect(config.sentryHost).toBe("sentry.internal:9000");
+      expect(config.sentryProtocol).toBe("http");
+      expect(options.accessToken).toBe("env-token");
+    });
+
     test("scopes the env token to an explicit --host over the rc URL", async () => {
       process.env.SENTRY_AUTH_TOKEN = "env-token";
       captureEnvTokenHost();
@@ -783,6 +794,11 @@ describe("serveMcp .sentryclirc URLs", () => {
     await inRcDir("https://sentry.example.com");
 
     await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    // --insecure-http alone keeps the rc host as the target, so it must not
+    // scope the env token either.
+    await expect(serve(["--insecure-http"])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
     expect(served.calls).toHaveLength(0);
   });
 

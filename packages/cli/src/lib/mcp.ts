@@ -11,7 +11,10 @@ import {
   type RefreshTokenResult,
   refreshToken,
 } from "./db/auth.js";
-import { inheritEnvTokenHost } from "./env-token-host.js";
+import {
+  getBootConfiguredSentryUrl,
+  inheritEnvTokenHost,
+} from "./env-token-host.js";
 import { getEnv, withEnv } from "./env.js";
 import { AuthError, HostScopeError } from "./errors.js";
 import {
@@ -337,6 +340,25 @@ function withTargetEnv(
 }
 
 /**
+ * Whether the env token may be scoped to the server's target instead of its
+ * startup host: for an explicit `--host`/`--url`, or for `--insecure-http` on
+ * the host the startup `SENTRY_HOST`/`SENTRY_URL` named, which only changes the
+ * protocol. `--insecure-http` on any other configured host (a `.sentryclirc`
+ * URL or the persisted default) must not.
+ */
+function mayRescopeEnvToken(flags: McpFlags, target: McpTarget): boolean {
+  if (hasSentryTarget(flags)) {
+    return true;
+  }
+  const bootUrl = getBootConfiguredSentryUrl();
+  return (
+    !!flags["insecure-http"] &&
+    bootUrl !== undefined &&
+    new URL(bootUrl).host === target.sentryHost
+  );
+}
+
+/**
  * The environment a `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) runs under: forced
  * over any stored login, as if `SENTRY_FORCE_ENV_TOKEN=1` were set. An MCP
  * client passes the token in its server config to pick the account, so a
@@ -346,13 +368,15 @@ function withTargetEnv(
  * A token the `.sentryclirc` shim copied in is not forced: it comes from the
  * repository, not the client, so it must not replace the user's login.
  *
- * A copy of the current environment keeps the env token's startup host: by
- * now its `SENTRY_URL` can come from a `.sentryclirc` or the persisted
- * default, which must not scope the token (see `inheritEnvTokenHost`). A copy
- * of an explicit `--host`/`--url` target (`withTargetEnv`) is scoped to that
- * target instead.
+ * With `keepStartupHost`, the copy keeps the env token's startup host: by now
+ * `SENTRY_URL` can come from a `.sentryclirc` or the persisted default, which
+ * must not scope the token (see `inheritEnvTokenHost`). See
+ * {@link mayRescopeEnvToken} for when the server's target may scope it.
  */
-function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+function preferEnvToken(
+  env: NodeJS.ProcessEnv,
+  keepStartupHost: boolean,
+): NodeJS.ProcessEnv {
   if (
     !(env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) ||
     getRcInjectedTokenSource()
@@ -360,7 +384,7 @@ function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     return env;
   }
   const forced = { ...env, SENTRY_FORCE_ENV_TOKEN: "1" };
-  if (env === getEnv()) {
+  if (keepStartupHost) {
     inheritEnvTokenHost(forced);
   }
   return forced;
@@ -412,13 +436,13 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
       (deprecatedToken && parseSntrysClaim(deprecatedToken))
     )
   ) {
-    await withEnv(preferEnvToken(env), () => assertRcUrlTrusted(cwd));
+    await withEnv(preferEnvToken(env, true), () => assertRcUrlTrusted(cwd));
   }
 
   const targetEnv = withTargetEnv(env, flags, config);
   const credentialEnv = deprecatedToken
     ? deprecatedTokenEnv(targetEnv, deprecatedToken, config)
-    : preferEnvToken(targetEnv);
+    : preferEnvToken(targetEnv, !mayRescopeEnvToken(flags, config));
 
   // Loaded only now: mcp-core's server, the agent providers, and the MCP
   // telemetry are not needed for --help or setup errors.
