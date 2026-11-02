@@ -102,14 +102,10 @@ export class ApiBroker extends RpcTarget {
     if ("error" in authorized) return deny(authorized.error);
     call.operation = authorized.pathTemplate;
     // Only API-relevant input headers cross the boundary. Authorization and
-    // attribution always come from the trusted side.
+    // attribution always come from the trusted side. `sentry.request()` sets
+    // no conditional headers, so Sentry never answers 304.
     const headers = new Headers();
-    for (const name of [
-      "accept",
-      "content-type",
-      "if-match",
-      "if-none-match",
-    ]) {
+    for (const name of ["accept", "content-type"]) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
     }
@@ -175,7 +171,7 @@ export class ApiBroker extends RpcTarget {
       );
     }
     return new Response(
-      [204, 205, 304].includes(response.status) || request.method === "HEAD"
+      [204, 205].includes(response.status) || request.method === "HEAD"
         ? null
         : body,
       {
