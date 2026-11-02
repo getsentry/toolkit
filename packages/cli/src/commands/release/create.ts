@@ -4,6 +4,7 @@
  * Create a new Sentry release.
  */
 
+import { looseObject } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -21,10 +22,32 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryRelease } from "../../types/index.js";
+import {
+  DryRunOutputField,
+  type SentryRelease,
+  SentryReleaseSchema,
+} from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release create [<org>/]<version>";
+
+/**
+ * JSON output: the created release, or with `--dry-run` the release that
+ * would be created, in the same shape (`projects` as `{ slug }` objects).
+ */
+const ReleaseCreateOutputSchema = looseObject({
+  ...SentryReleaseSchema.entries,
+  dryRun: DryRunOutputField,
+});
+
+/** The release `--dry-run` reports: the request body, shaped like a release. */
+type ReleaseCreateDryRun = Pick<
+  SentryRelease,
+  "version" | "ref" | "url" | "dateReleased"
+> & {
+  dryRun: true;
+  projects: { slug: string }[];
+};
 
 function formatReleaseCreated(release: SentryRelease): string {
   const lines: string[] = [];
@@ -97,20 +120,21 @@ export const createCommand = buildCommand({
     ],
   },
   output: {
-    human: (data: Record<string, unknown>) => {
-      if (data.dryRun) {
-        const projects = (data.projects as string[]) || [];
+    human: (data: SentryRelease | ReleaseCreateDryRun) => {
+      if ("dryRun" in data && data.dryRun) {
+        const projects = data.projects.map((p) => p.slug);
         return renderMarkdown(
-          `Would create release ${safeCodeSpan(String(data.version))}` +
+          `Would create release ${safeCodeSpan(data.version)}` +
             (projects.length > 0
               ? ` in projects: ${projects.join(", ")}`
               : "") +
-            (data.finalize ? " (finalized)" : "") +
+            (data.dateReleased ? " (finalized)" : "") +
             " (dry run)",
         );
       }
       return formatReleaseCreated(data as SentryRelease);
     },
+    schema: ReleaseCreateOutputSchema,
   },
   parameters: {
     positional: {
@@ -181,16 +205,15 @@ export const createCommand = buildCommand({
 
     // Dry-run mode: show what would be created without calling the API
     if (flags["dry-run"]) {
-      yield new CommandOutput({
+      const preview: ReleaseCreateDryRun = {
         dryRun: true,
         version,
-        projects: flags.project
-          ? flags.project.split(",").map((p) => p.trim())
-          : [],
-        finalize: flags.finalize,
-        ref: flags.ref,
-        url: flags.url,
-      });
+        projects: (body.projects ?? []).map((slug) => ({ slug })),
+        ref: body.ref,
+        url: body.url,
+        dateReleased: body.dateReleased,
+      };
+      yield new CommandOutput<SentryRelease | ReleaseCreateDryRun>(preview);
       return { hint: "Dry run — no release was created." };
     }
 

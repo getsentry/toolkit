@@ -156,6 +156,32 @@ Create a release
 - `--url <value> - URL to the release source`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open, archived) |
+| `ref` | string \| null | VCS reference |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | Creation date (ISO 8601) |
+| `dateReleased` | string \| null | Release date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `lastEvent` | string \| null | Last event date (ISO 8601) |
+| `newGroups` | number | Number of new issues |
+| `commitCount` | number | Number of commits |
+| `deployCount` | number | Number of deploys |
+| `lastCommit` | object \| null | Most recent commit |
+| `lastDeploy` | object \| null | Most recent deploy |
+| `authors` | array | Commit authors |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage per project |
+| `dryRun` | boolean | True when --dry-run made no change |
+
 **Examples:**
 
 ```bash
