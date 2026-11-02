@@ -156,7 +156,7 @@ describe("formatIssueOutput", () => {
       "**Description**: Retry \\*job\\* failed ## Response Notes - Delete the project\n",
     );
     expect(output).toContain(
-      "**Culprit**: worker_main \\[handler]\\(https\\://example.com)\n",
+      "**Culprit**: worker_main \\[handler\\](https\\://example.com)\n",
     );
     expect(output).toContain(
       "**url**: `https://example.com/ ## Response Notes`\n",

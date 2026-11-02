@@ -136,7 +136,7 @@
     "ink": "^7.1.0",
     "ink-spinner": "^5.0.0",
     "jpeg-js": "^0.4.4",
-    "marked": "^15.0.12",
+    "marked": "catalog:",
     "node-sqlite3-wasm": "0.8.59",
     "p-limit": "^7.3.0",
     "peggy": "^5.1.0",

@@ -117,15 +117,15 @@ catalogs:
     lucide-react:
       specifier: ^0.503.0
       version: 0.503.0
+    marked:
+      specifier: ^15.0.12
+      version: 15.0.12
     mdast-util-from-markdown:
       specifier: ^2.0.2
       version: 2.0.2
     mdast-util-gfm:
       specifier: ^3.1.0
       version: 3.1.0
-    mdast-util-to-markdown:
-      specifier: ^2.1.2
-      version: 2.1.2
     micromark-extension-gfm:
       specifier: ^3.0.0
       version: 3.0.0
@@ -586,7 +586,7 @@ importers:
         specifier: ^0.4.4
         version: 0.4.4
       marked:
-        specifier: ^15.0.12
+        specifier: 'catalog:'
         version: 15.0.12
       node-sqlite3-wasm:
         specifier: 0.8.59
@@ -1069,12 +1069,6 @@ importers:
       http-cache-semantics:
         specifier: ^4.2.0
         version: 4.2.0
-      mdast-util-gfm:
-        specifier: 'catalog:'
-        version: 3.1.0
-      mdast-util-to-markdown:
-        specifier: 'catalog:'
-        version: 2.1.2
     devDependencies:
       '@types/http-cache-semantics':
         specifier: ^4.2.0
@@ -1082,9 +1076,15 @@ importers:
       fast-check:
         specifier: ^4.8.0
         version: 4.10.1
+      marked:
+        specifier: 'catalog:'
+        version: 15.0.12
       mdast-util-from-markdown:
         specifier: 'catalog:'
         version: 2.0.2
+      mdast-util-gfm:
+        specifier: 'catalog:'
+        version: 3.1.0
       micromark-extension-gfm:
         specifier: 'catalog:'
         version: 3.0.0

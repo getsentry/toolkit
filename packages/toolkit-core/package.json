@@ -89,14 +89,14 @@
     "@sentry/api": "catalog:",
     "@sentry/search-syntax": "catalog:",
     "@standard-schema/spec": "1.1.0",
-    "http-cache-semantics": "^4.2.0",
-    "mdast-util-gfm": "catalog:",
-    "mdast-util-to-markdown": "catalog:"
+    "http-cache-semantics": "^4.2.0"
   },
   "devDependencies": {
     "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
+    "marked": "catalog:",
     "mdast-util-from-markdown": "catalog:",
+    "mdast-util-gfm": "catalog:",
     "micromark-extension-gfm": "catalog:",
     "typescript": "catalog:",
     "valibot": "^1.4.2",

@@ -164,10 +164,11 @@ value is: `inlineCode` for identifiers and short values, `codeBlock` for
 multi-line data, and `text` for values that should read as prose. Each keeps
 the value inside the line or block it is placed in, so the value cannot add
 headings, list items, links, or other structure. `inlineCode` and `codeBlock`
-need no escaping; `text` escapes with
-[`mdast-util-to-markdown`](https://github.com/syntax-tree/mdast-util-to-markdown)
-and its GFM extension. The property tests parse each helper's output with
-micromark and check that any input round-trips as the same literal value.
+need no escaping; `text` escapes with backslashes only and has no runtime
+dependencies. The property tests parse each helper's output with `marked`, the
+parser the CLI renders with (same version, from the workspace catalog), and
+with micromark, the CommonMark reference parser, and check that any input
+round-trips as the same literal value.
 
 ## Resource identity
 

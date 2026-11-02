@@ -41,7 +41,7 @@ describe("codeBlock", () => {
 describe("text", () => {
   test("escapes inline and block syntax", () => {
     expect(text("# _list_ *and* [links](url)")).toBe(
-      "\\# \\_list\\_ \\*and\\* \\[links]\\(url)",
+      "\\# \\_list\\_ \\*and\\* \\[links\\](url)",
     );
   });
 
@@ -50,14 +50,21 @@ describe("text", () => {
   });
 
   test("escapes raw HTML and character references", () => {
-    expect(text("<script> &lt;")).toBe("\\<script> \\&lt;");
+    expect(text("<script> &lt;")).toBe("\\<script\\> \\&lt;");
   });
 
   test("keeps multi-line values on one line", () => {
     expect(text("line one\n\n- line two")).toBe("line one  - line two");
   });
 
-  test("writes the start of a www domain as a character reference", () => {
-    expect(text("see www.example.com")).toBe("see &#x77;ww\\.example.com");
+  test("keeps literal URLs, www domains, and emails from linking", () => {
+    expect(text("see http://a.io www.b.io c@d.io")).toBe(
+      "see http\\://a.io www\\.b.io c\\@d.io",
+    );
+  });
+
+  test("escapes syntax that only counts at the start of a line", () => {
+    expect(text("1. one")).toBe("1\\. one");
+    expect(text("  + two ")).toBe("\\+ two");
   });
 });

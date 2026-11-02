@@ -7,25 +7,20 @@
  * value inside the surrounding construct, so a value cannot add headings,
  * list items, links, or other Markdown structure to the output.
  */
-import { gfmToMarkdown } from "mdast-util-gfm";
-import { toMarkdown } from "mdast-util-to-markdown";
-
 const LINE_BREAK = /\r\n?|\n/g;
 
 /**
- * The first `w` of a `www.` domain, with any backslashes before it. GFM reads
- * a literal `www.` autolink from the raw source, so escapes inside it would
- * show up as backslashes. A character reference for this `w` keeps the parser
- * from starting one.
+ * Characters `text` escapes wherever they appear, or in the context the
+ * lookahead names: an `&` that starts a character reference, the `:` of a
+ * `scheme://` URL, and the `.` of a `www.` domain, so GFM cannot start a
+ * literal autolink. An `_` between two letters or digits is never emphasis
+ * and stays as is.
  */
-const WWW_AUTOLINK_START = /(\\*)(w)(?=ww\\?\.)/gi;
+const INLINE_SYNTAX =
+  /[\\`*[\]<>~@]|&(?=#?[a-z0-9]+;)|:(?=\/\/)|(?<=www)\.|(?<=^|[^\p{L}\p{N}])_|_(?=$|[^\p{L}\p{N}])/giu;
 
-/**
- * An escaped `_` between two letters or digits. CommonMark never treats such
- * an underscore as emphasis, so `text` leaves it unescaped to keep
- * `snake_case` names readable.
- */
-const INTRAWORD_UNDERSCORE = /(?<=[\p{L}\p{N}])\\_(?=[\p{L}\p{N}])/gu;
+/** Syntax that only counts at the start of a line: headings, quotes, lists, rules. */
+const LINE_START_SYNTAX = /^(?:[#+=-]|\d{1,9}[.)])/;
 
 /** Replaces line breaks with spaces, as CommonMark renders them in inline content. */
 function toSingleLine(value: string): string {
@@ -74,26 +69,19 @@ export function codeBlock(value: string, language = ""): string {
 /**
  * Escapes a value so it renders as the same literal text.
  *
- * Escaping is context-aware and covers CommonMark and GitHub Flavored
- * Markdown, including emphasis, links, raw HTML, character references, and
- * strikethrough. A GFM renderer may still link a `www.` domain, but the link
- * text stays the same. Line breaks become spaces, so the value stays on the
- * line it is placed in. Pipes are not escaped; this is not a table cell
- * escaper.
+ * Covers CommonMark and GitHub Flavored Markdown: emphasis, code spans,
+ * links, raw HTML, character references, strikethrough, literal autolinks,
+ * and syntax that only counts at the start of a line. Line breaks become
+ * spaces and surrounding whitespace is dropped, so the value stays on the
+ * line it is placed in. Escapes are backslashes only, which `marked` (the
+ * CLI renderer) and micromark both resolve. Pipes are not escaped.
  */
 export function text(value: string): string {
-  return toMarkdown(
-    {
-      type: "paragraph",
-      children: [{ type: "text", value: toSingleLine(value) }],
-    },
-    { extensions: [gfmToMarkdown()] },
-  )
-    .replace(/\n$/, "")
-    .replace(INTRAWORD_UNDERSCORE, "_")
-    .replace(WWW_AUTOLINK_START, (_, backslashes: string, w: string) => {
-      // An odd run ends in a literal backslash that would escape the `&`.
-      const escaped = backslashes.length % 2 ? `${backslashes}\\` : backslashes;
-      return `${escaped}&#x${w.charCodeAt(0).toString(16)};`;
-    });
+  return toSingleLine(value)
+    .trim()
+    .replace(INLINE_SYNTAX, (char) => `\\${char}`)
+    .replace(
+      LINE_START_SYNTAX,
+      (syntax) => `${syntax.slice(0, -1)}\\${syntax.slice(-1)}`,
+    );
 }
