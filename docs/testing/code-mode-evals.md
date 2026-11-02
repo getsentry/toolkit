@@ -130,6 +130,33 @@ creation, cache reads and output remain separate. Do not count cached tokens as
 free or sum aggregate and per-message usage. Subscription billing is not inferred
 from client-reported dollar estimates.
 
+## Hosted composition, 2026-11-02
+
+The first run through the hosted registration and `ApiAuthorization`, with the
+shipped `@sentry/api` 0.428.0 schema (173 paths / 273 operations). Claude Code
+2.1.316, `--model opus` resolved to `claude-opus-5-5`, medium effort. Codex was
+not run. Averages are per run; API calls include the policy's organization
+lookups.
+
+| Task                  | Surface            | Passed | MCP calls | API calls | Time |
+| --------------------- | ------------------ | ------ | --------- | --------- | ---- |
+| `dashboard`           | `catalog-and-code` | 3/3    | 3.0       | 16.0      | 19 s |
+| `dashboard`           | `catalog`          | 0/1    | 6.0       | 2.0       | 22 s |
+| `dashboard`           | `code-mode`        | 3/3    | 3.0       | 15.3      | 21 s |
+| `release`             | `catalog-and-code` | 3/3    | 3.3       | 10.7      | 17 s |
+| `repositories`        | `catalog-and-code` | 3/3    | 2.7       | 4.0       | 19 s |
+| `alert`               | `catalog-and-code` | 3/3    | 4.7       | 9.3       | 28 s |
+| `monitor`             | `catalog-and-code` | 5/5    | 4.2       | 10.0      | 25 s |
+| `release-recovery`    | `catalog-and-code` | 5/5    | 4.0       | 10.4      | 21 s |
+| `repositories-retry`  | `catalog-and-code` | 5/5    | 3.6       | 6.0       | 22 s |
+| `repositories-denied` | `catalog-and-code` | 5/5    | 3.2       | 3.0       | 18 s |
+
+The catalog-only control fails as intended: the catalog cannot copy
+dashboards. No run requested an operation outside the shipped schema, so the
+policy refused nothing. API errors are the injected faults, plus one 404 per
+release run when the agent checked whether the release already existed. Reports
+are under `.cache/code-mode/http-<task>-claude-<surface>.json`.
+
 ## Historical dashboard evidence
 
 The following pilot results predate the hosted authorization boundary and RPC
