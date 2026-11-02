@@ -15,7 +15,7 @@ const CONFIG = path.join(
   "packages/mcp-server-evals/src/code-mode/wrangler.jsonc",
 );
 const CODE_MODE_TOOLS = ["search_sentry_api", "execute_sentry_code"];
-const TOP_LEVEL_TOOL_NAMES = TOOL_DEFINITIONS.filter(
+const TOP_LEVEL_TOOL_NAMES: string[] = TOOL_DEFINITIONS.filter(
   (tool) => tool.surface === "direct",
 ).map((tool) => tool.name);
 
@@ -85,8 +85,9 @@ async function rpc(
   return envelope.result;
 }
 
+const byName = (a: string, b: string) => a.localeCompare(b);
 const toolNames = (result: { tools: Array<{ name: string }> }) =>
-  result.tools.map((tool) => tool.name).sort();
+  result.tools.map((tool) => tool.name).sort(byName);
 
 beforeAll(async () => {
   fixture = await createDashboardFixture();
@@ -102,10 +103,10 @@ afterAll(async () => {
 
 it("grants each surface like a hosted connection", async () => {
   expect(toolNames(await rpc("tools/list"))).toEqual(
-    [...TOP_LEVEL_TOOL_NAMES, ...CODE_MODE_TOOLS].sort(),
+    [...TOP_LEVEL_TOOL_NAMES, ...CODE_MODE_TOOLS].sort(byName),
   );
   expect(toolNames(await rpc("tools/list", {}, "/catalog/mcp"))).toEqual(
-    [...TOP_LEVEL_TOOL_NAMES].sort(),
+    [...TOP_LEVEL_TOOL_NAMES].sort(byName),
   );
   // A connection that granted only API Write keeps the foundational tools.
   expect(toolNames(await rpc("tools/list", {}, "/code-mode/mcp"))).toEqual(
