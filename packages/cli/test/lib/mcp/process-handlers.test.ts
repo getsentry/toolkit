@@ -12,6 +12,8 @@ vi.mock("@sentry/node", async (importOriginal) => ({
 
 const { installProcessHandlers } =
   await import("../../../src/lib/mcp/server.js");
+const { installStreamErrorHandlers } =
+  await import("../../../src/lib/stream-errors.js");
 
 type Handler = (...args: unknown[]) => void;
 
@@ -42,6 +44,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  process.exitCode = undefined;
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -69,5 +72,39 @@ describe("installProcessHandlers", () => {
     handlers.get("SIGINT")?.();
     await settle();
     expect(exit).toHaveBeenCalledWith(0);
+  });
+
+  test("a fatal error exits non-zero when its report hits a closed stderr", async () => {
+    // The code each exit would end the process with: its argument, or
+    // `process.exitCode` when it has none.
+    const codes: unknown[] = [];
+    exit.mockImplementation(((code?: number) => {
+      codes.push(code ?? process.exitCode ?? 0);
+    }) as typeof process.exit);
+    let stderrError: Handler | undefined;
+    vi.spyOn(process.stderr, "on").mockImplementation(((
+      event: string,
+      handler: Handler,
+    ) => {
+      if (event === "error") {
+        stderrError = handler;
+      }
+      return process.stderr;
+    }) as typeof process.stderr.on);
+    vi.spyOn(process.stdout, "on").mockImplementation(
+      (() => process.stdout) as typeof process.stdout.on,
+    );
+    installStreamErrorHandlers();
+    const exitAfterError = installProcessHandlers();
+    // The client closed its pipes: writing the report raises EPIPE.
+    vi.mocked(console.error).mockImplementation(() => {
+      stderrError?.(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+    });
+
+    exitAfterError(new Error("boom"), "Server error:");
+    await settle();
+
+    expect(codes[0]).toBe(1);
+    expect(codes).not.toContain(0);
   });
 });

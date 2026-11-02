@@ -298,6 +298,9 @@ export function installProcessHandlers(): (
       process.exit(1);
     }
     exiting = true;
+    // Record the failure first: writing to a closed stderr below raises EPIPE,
+    // whose stream handler exits with the recorded code (see stream-errors.ts).
+    process.exitCode = 1;
 
     // If the client closed every pipe, console.error can throw EPIPE inside
     // this handler and recurse forever (getsentry/sentry-mcp#1274).
