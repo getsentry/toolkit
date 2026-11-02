@@ -5,11 +5,12 @@ on:
     branches:
       - main
       - release/cli/**
+  pull_request:
   workflow_dispatch:
 
 concurrency:
   group: cli-build-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -25,7 +26,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v7
       - name: Compute version from the commit timestamp
         id: version
         run: node scripts/cli-nightly-version.mjs
@@ -39,21 +40,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: darwin-arm64
-            os: macos-latest
-          - target: darwin-x64
-            os: ubuntu-latest
-          - target: linux-x64
-            os: ubuntu-latest
-          - target: linux-arm64
-            os: ubuntu-latest
-          - target: windows-x64
-            os: ubuntu-latest
+        # Pull requests build the Linux binary the E2E tests run against.
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"linux-x64","os":"ubuntu-latest"}]' || '[{"target":"darwin-arm64","os":"macos-latest"},{"target":"darwin-x64","os":"ubuntu-latest"},{"target":"linux-x64","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-latest"},{"target":"windows-x64","os":"ubuntu-latest"}]') }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .github/node-versions/22
           cache: pnpm
@@ -118,7 +110,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm --filter sentry run build -- --target ${{ matrix.target }}
       - name: Smoke test
-        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64'
+        if: matrix.target == 'darwin-arm64'
         env:
           SENTRY_AUTH_TOKEN: ""
           SENTRY_TOKEN: ""
@@ -140,14 +132,25 @@ jobs:
         shell: bash
         run: rcodesign verify packages/cli/dist-bin/sentry-darwin-arm64
       - name: Upload binary artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v7
         with:
           name: sentry-${{ matrix.target }}
           path: |
             packages/cli/dist-bin/sentry-*
             !packages/cli/dist-bin/*.gz
+      - name: Upload generated CLI sources
+        if: matrix.target == 'linux-x64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-generated
+          path: |
+            packages/cli/src/generated/
+            packages/cli/src/sdk.generated.ts
+            packages/cli/src/sdk.generated.d.cts
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload compressed artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v7
         with:
           name: sentry-${{ matrix.target }}-gz
           path: packages/cli/dist-bin/*.gz
@@ -166,7 +169,7 @@ jobs:
       from-version: ${{ steps.generate.outputs.from-version }}
     steps:
       - name: Download binaries and compressed artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@v8
         with:
           pattern: sentry-*-*
           path: new-binaries
@@ -185,7 +188,7 @@ jobs:
           patches-dir: patches
       - name: Upload patches
         if: steps.generate.outputs.has-patches == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v7
         with:
           name: sentry-patches
           path: patches/*.patch
@@ -204,13 +207,13 @@ jobs:
       packages: write
     steps:
       - name: Download compressed binaries
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@v8
         with:
           pattern: sentry-*-gz
           path: artifacts
           merge-multiple: true
       - name: Download binaries for patch integrity annotations
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@v8
         with:
           pattern: sentry-*-*
           path: binaries
@@ -218,7 +221,7 @@ jobs:
       - name: Download optional delta patches
         id: patches
         continue-on-error: true
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@v8
         with:
           name: sentry-patches
           path: patches
@@ -260,9 +263,9 @@ jobs:
     timeout-minutes: 20
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || startsWith(github.ref, 'refs/heads/release/cli/') && 'cli-release' || '' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .github/node-versions/22
           cache: pnpm
@@ -282,7 +285,7 @@ jobs:
         working-directory: packages/cli
         run: npm pack
       - name: Upload npm artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-package
           path: packages/cli/*.tgz
@@ -295,7 +298,7 @@ jobs:
         working-directory: packages/mcp-server
         run: npm pack
       - name: Upload mcp-server npm artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v7
         with:
           name: mcp-server-npm-package
           path: packages/mcp-server/*.tgz
@@ -310,12 +313,12 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .github/node-versions/${{ matrix.node }}
       - name: Download npm artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@v8
         with:
           name: npm-package
           path: packages/cli
@@ -330,8 +333,53 @@ jobs:
           npm install --ignore-scripts --prefix "$RUNNER_TEMP/npm-smoke" "$GITHUB_WORKSPACE/$package_file"
           node "$RUNNER_TEMP/npm-smoke/node_modules/sentry/dist/bin.cjs" --help
 
+  test-e2e:
+    name: E2E Tests (Node 24)
+    needs: [build-binary, build-npm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node-versions/24
+          cache: pnpm
+      - run: pnpm --filter 'sentry...' install --frozen-lockfile
+      # The tests import CLI sources that read the generated files.
+      - name: Download generated CLI sources
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-generated
+          path: packages/cli/src
+      - name: Download Linux binary
+        uses: actions/download-artifact@v8
+        with:
+          name: sentry-linux-x64
+          path: packages/cli/dist-bin
+      - name: Download npm package
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/npm-package
+      - name: Unpack the binary and npm bundle
+        run: |
+          chmod +x packages/cli/dist-bin/sentry-linux-x64
+          tar -xzf "$RUNNER_TEMP"/npm-package/sentry-*.tgz -C packages/cli --strip-components=1 package/dist
+      - name: Run E2E tests
+        env:
+          SENTRY_CLI_BINARY: ${{ github.workspace }}/packages/cli/dist-bin/sentry-linux-x64
+        run: |
+          test -x "$SENTRY_CLI_BINARY"
+          test -s packages/cli/dist/bin.cjs
+          test -s packages/cli/dist/index.cjs
+          pnpm --filter sentry exec vitest run test/e2e
+
   build-docs:
     name: Build Docs
+    if: github.event_name != 'pull_request'
     needs: build-binary
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -340,9 +388,9 @@ jobs:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       PUBLIC_SENTRY_ENVIRONMENT: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/cli/')) && 'production' || 'development' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .github/node-versions/24
           cache: pnpm
@@ -360,7 +408,7 @@ jobs:
       - name: Build docs
         run: pnpm --filter sentry-cli-docs run build
       - name: Download Linux binary
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@v8
         with:
           name: sentry-linux-x64
           path: dist-bin
@@ -387,7 +435,25 @@ jobs:
           printf '%s\n' '{"version":3}' > "$output_dir/.vercel/output/config.json"
           (cd "$output_dir" && zip -qr "$GITHUB_WORKSPACE/vercel.zip" .vercel)
       - name: Upload docs artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v7
         with:
           name: vercel
           path: vercel.zip
+
+  build-status:
+    name: Build status
+    if: always()
+    needs: [build-binary, build-npm, test-npm, test-e2e]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require the CLI build and E2E tests
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [[ "$result" != success ]]; then
+              echo "::error::A required Build job finished with: $result"
+              exit 1
+            fi
+          done

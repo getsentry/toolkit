@@ -36,13 +36,26 @@ before merging them into `packages/cli/coverage/lcov.info`.
 The merge job installs the CLI dependency set without install scripts; it does
 not build packages or rerun tests.
 
-`CLI E2E (Node 24)` runs independently of the unit tests and project checks. It
-builds the standalone CLI on Node 22 and the npm bundle on Node 24, then tests
-both on Node 24. The project, unit-test, and E2E jobs each build their workspace
-dependencies and run `ci:prepare` once before using the prepared sources. Public
-build and test commands still prepare their own inputs for local use. The final
-`test` gate requires the unit shards, coverage merge, and E2E job whenever the
-CLI is selected, and requires them to be skipped otherwise.
+The project and unit-test jobs each build their workspace dependencies and run
+`ci:prepare` once before using the prepared sources. Public build and test
+commands still prepare their own inputs for local use. The final `test` gate
+requires the unit shards and coverage merge whenever the CLI is selected, and
+requires them to be skipped otherwise. The CLI E2E tests run in
+[cli-build.yml](#cli-buildyml), against the artifacts that workflow builds.
+
+### cli-build.yml
+
+Runs on pull requests, pushes to `main` and `release/cli/**`, and manual
+dispatch. It builds the CLI artifacts that ship: `Build Binary` builds every
+target on `main` and release branches, and only `linux-x64` on pull requests.
+`Build npm Package` packs the npm package. `E2E Tests (Node 24)` downloads the
+Linux binary, the npm package, and the generated sources from those jobs and
+runs `test/e2e` against them without building anything. `Build status` fails
+unless the builds, the npm package tests, and the E2E tests passed.
+
+Nightly delta patches and the GHCR nightly publish only on pushes to `main`.
+Releases take this workflow's artifacts (see `.craft.yml`), so a release ships
+the binaries and package that its E2E run tested.
 
 ### deploy.yml
 
@@ -164,6 +177,9 @@ project:
 
 A new workflow fits only when the matrix job cannot run the check: another
 operating system, a deployment, secrets, or pull request comments and labels.
+The CLI's E2E tests are the exception: they must run against the binaries and
+npm package that `cli-build.yml` builds for nightlies and releases, so
+`packages/cli` sets `sentryCi.e2e` to `false` and that workflow runs them.
 `scripts/workflow-policy.test.mjs` fails for a workflow that runs on pull
 requests unless its list names that workflow and the reason.
 

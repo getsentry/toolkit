@@ -14,8 +14,10 @@ CLI releases build it from that workspace. Start here for repository guides:
   [command conventions](../../packages/cli/CONTRIBUTING.md) — implementation
   details and command design.
 - [CLI build workflow](../../.github/workflows/cli-build.yml) and
-  [release configuration](../../.craft.yml) — binaries, npm packaging, and
-  release-gated website artifacts.
+  [release configuration](../../.craft.yml) — binaries, npm packaging,
+  release-gated website artifacts, and the E2E tests that run against those
+  artifacts on pull requests, `main`, and release branches. A failing E2E run on
+  `main` fails the Build run, which the nightly watchdog below reports.
 - [CLI nightly watchdog](../../.github/workflows/cli-nightly-watchdog.yml) —
   hourly and after each main Build, checks for stuck or failed Build runs and a
   GHCR `nightly` that lags main. It keeps one open alert issue while unhealthy,

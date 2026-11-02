@@ -284,47 +284,6 @@ jobs:
       - name: Verify coverage
         run: test -s packages/cli/coverage/lcov.info
 
-  cli-e2e:
-    name: CLI E2E (Node 24)
-    needs: discover-projects
-    if: contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      SENTRY_CLIENT_ID: ${{ vars.SENTRY_CLIENT_ID }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .github/node-versions/22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build project dependencies
-        run: pnpm --filter 'sentry^...' --if-present run build
-      - run: pnpm --filter sentry run ci:prepare
-      - name: Build standalone CLI
-        run: pnpm --filter sentry run tsx script/build.ts --single
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .github/node-versions/24
-      - name: Build npm bundle
-        run: pnpm --filter sentry run tsx script/bundle.ts
-      - name: Run E2E tests on Node 24
-        env:
-          SENTRY_CLI_BINARY: ${{ github.workspace }}/packages/cli/dist-bin/sentry-linux-x64
-        run: |
-          test -x "$SENTRY_CLI_BINARY"
-          test -s packages/cli/dist/bin.cjs
-          test -s packages/cli/dist/index.cjs
-          pnpm --filter sentry exec vitest run test/e2e
-      - name: Check generated files
-        run: |
-          git diff --exit-code
-          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
-
   npm-runtime:
     name: NPM package (${{ matrix.name }})
     needs: discover-projects
@@ -399,7 +358,6 @@ jobs:
         cli-asset-catalog,
         cli-unit,
         cli-coverage,
-        cli-e2e,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -416,7 +374,6 @@ jobs:
           ASSET_CATALOG_SELECTED: ${{ contains(fromJSON(needs.discover-projects.outputs.matrix).include.*.name, 'sentry') }}
           CLI_UNIT_RESULT: ${{ needs.cli-unit.result }}
           CLI_COVERAGE_RESULT: ${{ needs.cli-coverage.result }}
-          CLI_E2E_RESULT: ${{ needs.cli-e2e.result }}
         run: |
           test "$DISCOVER_RESULT" = success
           test "$INSTALL_RESULT" = success
@@ -438,4 +395,3 @@ jobs:
           test "$ASSET_CATALOG_RESULT" = "$expected"
           test "$CLI_UNIT_RESULT" = "$expected"
           test "$CLI_COVERAGE_RESULT" = "$expected"
-          test "$CLI_E2E_RESULT" = "$expected"
