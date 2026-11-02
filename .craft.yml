@@ -17,8 +17,6 @@ workspaces:
     versioning:
       policy: auto
     preReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --pre'
-    # After a release, Craft reruns preReleaseCommand with the next minor
-    # `-dev.0` version, then commits and pushes it.
     postReleaseBump: true
     releaseBranchPrefix: release/cli
     artifactProvider:

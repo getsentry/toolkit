@@ -104,6 +104,60 @@ function structuredOutputToCallToolResult(
 }
 
 /**
+ * Replaces lone UTF-16 surrogates in tool output with U+FFFD.
+ *
+ * Formatters truncate upstream text by UTF-16 index, so a cut can keep only
+ * half of an emoji. `JSON.stringify` writes that half as `\ud83d`, and strict
+ * JSON parsers such as serde_json in Codex reject the message and close the
+ * transport. Normalizing handler output here covers every tool, including
+ * structuredContent and the compatibility text generated from it.
+ *
+ * Runs on every tool call, so it copies on write: it returns the input itself
+ * when nothing changes, and copies only the arrays and objects on the path to
+ * a replaced string. V8 returns the same string from `toWellFormed()` when it
+ * is already well formed, so the `!==` checks are pointer comparisons.
+ */
+function toWellFormedOutput<T>(value: T): T {
+  if (typeof value === "string") {
+    return value.toWellFormed() as T;
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    let copy: unknown[] | undefined;
+    for (let index = 0; index < value.length; index++) {
+      const next = toWellFormedOutput(value[index]);
+      if (next !== value[index]) {
+        copy ??= [...value];
+        copy[index] = next;
+      }
+    }
+    return (copy ?? value) as T;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  // `for...in` avoids allocating a key list per object on the common path.
+  let entries: [string, unknown][] | undefined;
+  let index = 0;
+  for (const key in record) {
+    if (!Object.hasOwn(record, key)) continue;
+    const item = record[key];
+    const nextKey = key.toWellFormed();
+    const next = toWellFormedOutput(item);
+    if (!entries && (nextKey !== key || next !== item)) {
+      entries = Object.entries(record).slice(0, index);
+    }
+    entries?.push([nextKey, next]);
+    index++;
+  }
+  return (entries ? Object.fromEntries(entries) : value) as T;
+}
+
+/**
  * Creates and configures a complete MCP server with Sentry instrumentation.
  *
  * The server is built with tools filtered based on the granted skills in the context.
@@ -320,11 +374,13 @@ function configureServer({
           }
         }
 
-        const output = await executeToolHandler({
-          tool,
-          params: rawParams,
-          context: contextWithToolAvailability,
-        });
+        const output = toWellFormedOutput(
+          await executeToolHandler({
+            tool,
+            params: rawParams,
+            context: contextWithToolAvailability,
+          }),
+        );
 
         if (activeSpan) {
           activeSpan.setStatus({
@@ -410,9 +466,11 @@ function configureServer({
           content: [
             {
               type: "text" as const,
-              text: await formatErrorForUser(error, {
-                transport: context.transport,
-              }),
+              text: (
+                await formatErrorForUser(error, {
+                  transport: context.transport,
+                })
+              ).toWellFormed(),
             },
           ],
           isError: true,

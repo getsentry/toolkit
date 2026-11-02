@@ -604,6 +604,32 @@ describe("getCompletions: issues", () => {
     expect(await getCompletions(["issue", "view"], "nope/")).toEqual([]);
   });
 
+  test.each([
+    ["issue", "view"],
+    ["event", "view"],
+  ])(
+    "%s %s completes magic selectors, bare or after an org",
+    async (...command) => {
+      await seedOrgs([{ slug: "acme", name: "Acme" }]);
+      cacheCompletionEntities("issue", "acme", [{ value: "CLI-1A" }]);
+
+      expect(await getCompletions(command, "@")).toEqual([
+        { value: "@latest", description: "Most recent unresolved issue" },
+        {
+          value: "@most_frequent",
+          description: "Issue with highest event frequency",
+        },
+      ]);
+      expect(await getCompletions(command, "acme/@M")).toEqual([
+        {
+          value: "acme/@most_frequent",
+          description: "Issue with highest event frequency",
+        },
+      ]);
+      expect(await getCompletions(command, "@nope")).toEqual([]);
+    },
+  );
+
   test("reads the org with the target parser the commands use", async () => {
     await seedOrgs([{ slug: "acme", name: "Acme" }]);
     cacheCompletionEntities("issue", "acme", [{ value: "CLI-1A" }]);
@@ -869,6 +895,19 @@ describe("getCompletions: fixed values", () => {
     expect(
       await values(["auth", "login", "--scope"], "org:read,org:wr"),
     ).toEqual(["org:read,org:write"]);
+    expect(
+      await values(
+        ["alert", "issues", "create", "--condition"],
+        "first-seen,re",
+      ),
+    ).toEqual([
+      "first-seen,regression",
+      "first-seen,reappeared",
+      "first-seen,resolved",
+    ]);
+    expect(await values(["alert", "issues", "edit", "-c"], "new")).toEqual([
+      "new-high-priority",
+    ]);
   });
 
   test("platform flags complete platforms", async () => {
