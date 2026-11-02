@@ -24,8 +24,9 @@ export class ApiAuthorization {
     const target = new URL(url);
     let organizationSlug: string | undefined;
     let pathTemplate: string;
+    let pathname: string;
     try {
-      ({ organizationSlug, pathTemplate } = authorizeApiRequest(
+      ({ organizationSlug, pathTemplate, pathname } = authorizeApiRequest(
         target,
         method,
         OPERATIONS,
@@ -40,7 +41,7 @@ export class ApiAuthorization {
       await apiServiceForOrganization(this.#context, organizationSlug)
     ).requestTarget();
     return {
-      url: new URL(`${target.pathname}${target.search}`, origin).toString(),
+      url: new URL(`${pathname}${target.search}`, origin).toString(),
       headers,
       pathTemplate,
     };

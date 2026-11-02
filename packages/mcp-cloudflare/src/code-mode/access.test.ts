@@ -26,7 +26,11 @@ describe("authorizeApiRequest", () => {
   it("accepts published operations and HEAD on a published GET", () => {
     expect(
       request("/api/0/organizations/example/dashboards/?cursor=next", "GET"),
-    ).toEqual({ pathTemplate: dashboardPath, organizationSlug: "example" });
+    ).toEqual({
+      pathTemplate: dashboardPath,
+      pathname: "/api/0/organizations/example/dashboards/",
+      organizationSlug: "example",
+    });
     expect(
       request("/api/0/organizations/example/dashboards/", "HEAD").pathTemplate,
     ).toBe(dashboardPath);
@@ -51,6 +55,7 @@ describe("authorizeApiRequest", () => {
     }
     expect(request("/api/0/issues/123/", "GET")).toEqual({
       pathTemplate: "/api/0/issues/{issue_id}/",
+      pathname: "/api/0/issues/123/",
     });
   });
 
@@ -61,8 +66,14 @@ describe("authorizeApiRequest", () => {
     expect(() =>
       request("/api/0/organizations/example/dashboards/", "DELETE"),
     ).toThrow("HTTP method");
+  });
+
+  it("adds a missing trailing slash to match and send the canonical path", () => {
+    expect(
+      request("/api/0/organizations/example/dashboards", "GET").pathname,
+    ).toBe("/api/0/organizations/example/dashboards/");
     expect(() =>
-      request("/api/0/organizations/example/dashboards", "GET"),
+      request("/api/0/organizations/example/dashboards//", "GET"),
     ).toThrow("published API schema");
   });
 

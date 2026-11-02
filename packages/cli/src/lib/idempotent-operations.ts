@@ -7,6 +7,7 @@
  * so the CLI does not hard-code which assemble calls may retry.
  */
 
+import { matchApiPathTemplate } from "@sentry/toolkit-core/api-path-template";
 import generated from "../generated/idempotent-operations.json";
 
 /** A non-safe operation Sentry marks idempotent. */
@@ -17,24 +18,7 @@ export type IdempotentOperation = {
   path: string;
 };
 
-type Matcher = { method: string; pattern: RegExp };
-
-const TEMPLATE_SEGMENT = /^\{[^/]+\}$/;
-const REGEXP_SPECIAL = /[.*+?^${}()|[\]\\]/g;
-
-function toMatcher({ method, path }: IdempotentOperation): Matcher {
-  const source = path
-    .split("/")
-    .map((segment) =>
-      TEMPLATE_SEGMENT.test(segment)
-        ? "[^/]+"
-        : segment.replace(REGEXP_SPECIAL, "\\$&"),
-    )
-    .join("/");
-  return { method: method.toUpperCase(), pattern: new RegExp(`^${source}$`) };
-}
-
-let matchers: Matcher[] | undefined;
+const operations = generated as IdempotentOperation[];
 
 /**
  * Whether Sentry marks this request's operation idempotent.
@@ -57,9 +41,9 @@ export function isIdempotentOperation(method: string, url: string): boolean {
   const apiPath = pathname.slice(apiIndex);
   const normalized = apiPath.endsWith("/") ? apiPath : `${apiPath}/`;
   const upper = method.toUpperCase();
-
-  matchers ??= (generated as IdempotentOperation[]).map(toMatcher);
-  return matchers.some(
-    (matcher) => matcher.method === upper && matcher.pattern.test(normalized),
+  return operations.some(
+    (operation) =>
+      operation.method === upper &&
+      matchApiPathTemplate(operation.path, normalized) !== undefined,
   );
 }
