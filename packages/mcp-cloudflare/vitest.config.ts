@@ -25,7 +25,6 @@ export default defineConfig({
   ],
   test: {
     include: ["src/**/*.test.ts"],
-    exclude: ["src/code-mode/**"],
     setupFiles: ["src/test-setup.ts"],
     fileParallelism: false,
     minWorkers: 1,

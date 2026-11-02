@@ -29,6 +29,10 @@
       "types": "./dist/api-client/index.d.ts",
       "default": "./dist/api-client/index.js"
     },
+    "./code-mode": {
+      "types": "./dist/code-mode.d.ts",
+      "default": "./dist/code-mode.js"
+    },
     "./constants": {
       "types": "./dist/constants.d.ts",
       "default": "./dist/constants.js"

@@ -76,7 +76,7 @@ This script:
 1. Imports all tools from `packages/mcp-core/src/tools/index.ts`
 2. Imports all skills from `packages/mcp-core/src/skills.ts`
 3. Writes `toolDefinitions.json` and `skillDefinitions.json` to `packages/mcp-core/src/`
-4. Updates `allowedTools` in both `plugins/sentry-mcp/agents/sentry-mcp.md` and `plugins/sentry-mcp-experimental/agents/sentry-mcp.md`, using the default-grant direct surface for each plugin mode plus hosted Code Mode names from `packages/mcp-cloudflare/src/code-mode/definitions.ts`. These hosted tools are not added to core/stdio JSON definitions. Optional-skill tools remain reachable through `search_sentry_tools` and `execute_sentry_tool` when available.
+4. Updates `allowedTools` in both `plugins/sentry-mcp/agents/sentry-mcp.md` and `plugins/sentry-mcp-experimental/agents/sentry-mcp.md`, using the default-grant direct surface for each plugin mode plus hosted Code Mode names from `packages/mcp-core/src/code-mode.ts`. These hosted tools are not added to core/stdio JSON definitions. Optional-skill tools remain reachable through `search_sentry_tools` and `execute_sentry_tool` when available.
 
 The script runs automatically as a `prebuild` and `pretest` hook in `packages/mcp-core/package.json`. Run it explicitly after:
 

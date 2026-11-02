@@ -1,33 +1,20 @@
-import { configuredUrl, readBoundedBody } from "./http";
+import source from "./generated/source.json";
+import specText from "./generated/openapi.json.txt";
 
-export const SENTRY_OPENAPI_URL =
-  "https://raw.githubusercontent.com/getsentry/sentry-api-schema/803d6de98c9156c15e9ddc1bf9accbac6e24cebc/openapi-derefed.json";
+/**
+ * The pinned, pre-dereferenced Sentry OpenAPI schema, shipped with the deploy.
+ * `scripts/generate-openapi-spec.mjs` writes it; nothing fetches it at runtime.
+ * It is a Text module, so loading it costs a string, not a parse.
+ */
+export const SPEC_TEXT: string = specText;
 
-let cachedSpec: { url: string; promise: Promise<object> } | undefined;
+/** The sentry-api-schema commit the schema comes from. */
+export const SPEC_COMMIT: string = source.commit;
 
-/** Share the trusted schema between discovery and authorization; retry failed loads. */
-export async function getSpec(url: string): Promise<object> {
-  configuredUrl(url);
-  if (cachedSpec?.url === url) return await cachedSpec.promise;
-  const promise = (async () => {
-    const response = await fetch(url, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok)
-      throw new Error(`OpenAPI could not be loaded (HTTP ${response.status}).`);
-    const body = await readBoundedBody(response.body, 30_000_000);
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(body));
-    if (!parsed || typeof parsed !== "object" || !("paths" in parsed)) {
-      throw new Error("The configured OpenAPI document has no paths object.");
-    }
-    return parsed;
-  })();
-  cachedSpec = { url, promise };
-  try {
-    return await promise;
-  } catch (error) {
-    cachedSpec = undefined;
-    throw error;
-  }
+let spec: Record<string, unknown> | undefined;
+
+/** The parsed schema for authorization, parsed once per isolate on first use. */
+export function getSpec(): Record<string, unknown> {
+  spec ??= JSON.parse(SPEC_TEXT) as Record<string, unknown>;
+  return spec;
 }

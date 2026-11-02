@@ -25,13 +25,12 @@
     "cf:versions:upload": "npx wrangler versions upload",
     "preview": "vite preview",
     "cf-typegen": "wrangler types",
+    "generate:openapi": "node scripts/generate-openapi-spec.mjs",
     "test": "vitest run",
-    "test:code-mode": "vitest run --config=src/code-mode/vitest.config.ts",
-    "tsc:code-mode": "tsc --project src/code-mode/tsconfig.json",
-    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml && pnpm run test:code-mode",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "vitest",
     "tsc": "tsc --noEmit",
-    "tsc:ci": "tsc -b && pnpm run tsc:code-mode"
+    "tsc:ci": "tsc -b"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.13.15",

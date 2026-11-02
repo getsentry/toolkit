@@ -6,7 +6,7 @@ import skillDefinitions, {
   type SkillDefinition,
 } from "@sentry/mcp-core/skillDefinitions";
 import { logError, logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
-import { CODE_MODE_SKILLS } from "../../code-mode/definitions";
+import { CODE_MODE_SKILLS } from "@sentry/mcp-core/code-mode";
 import { parseResourceMcpConstraints } from "../oauth/resource-scope";
 import {
   type OAuthState,

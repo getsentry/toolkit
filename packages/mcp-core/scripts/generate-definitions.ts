@@ -20,7 +20,7 @@ const skillsModule = await import("../src/skills.ts");
 const toolTypesModule = await import("../src/tools/types.ts");
 // Hosted-only tools belong in remote plugin allowlists, not core/stdio exports.
 const { CODE_MODE_TOOL_NAMES, CODE_MODE_SKILLS, getCodeModeToolDefinitions } =
-  await import("../../mcp-cloudflare/src/code-mode/definitions.ts");
+  await import("../src/code-mode.ts");
 
 function writeJson(file: string, data: unknown) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -290,7 +290,6 @@ async function generateSkillDefinitions() {
     if (CODE_MODE_SKILLS.some((skillId) => skillId === skill.id)) {
       const definitions = getCodeModeToolDefinitions({
         allowWrites: skill.id === "api-write",
-        authorizationRequired: true,
       });
       for (const [name, definition] of Object.entries(definitions)) {
         skillTools.push({
@@ -368,7 +367,7 @@ function isUpToDate(outDir: string): boolean {
     path.join(__dirname, "../src/skills.ts"),
     path.join(__dirname, "../src/tools/surfaces.ts"),
     path.join(__dirname, "../src/tools/types.ts"),
-    path.join(__dirname, "../../mcp-cloudflare/src/code-mode/definitions.ts"),
+    path.join(__dirname, "../src/code-mode.ts"),
     path.join(
       __dirname,
       "../src/internal/tool-helpers/tool-call-formatting.ts",
