@@ -51,11 +51,9 @@
   "packageManager": "pnpm@10.11.0",
   "sentryCi": {
     "build": false,
-    "coverage": "coverage/lcov.info",
     "e2e": false,
     "npmRuntime": "bundle",
-    "policy": "ci:policy",
-    "test": "ci:test:unit",
+    "test": false,
     "typecheck": "ci:typecheck"
   },
   "scripts": {

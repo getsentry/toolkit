@@ -26,14 +26,22 @@ from `.github/node-versions/`. The npm runtime job calls the self-contained
 `sentryCi.npmRuntime` build command once, then validates the same package on
 all three Node versions.
 
-`CLI E2E (Node 24)` runs independently of the CLI project job. It builds the
-standalone CLI on Node 22, then builds the npm bundle and tests both on Node 24.
-Dependencies and generated sources are prepared once per job. The CLI project
-job runs typechecks, unit tests, and coverage without rebuilding the standalone
-or repeating generation. Public build and test commands still prepare their own
-inputs for local use. The final `test` gate
-requires E2E to pass whenever the CLI is selected, and requires it to be skipped
-otherwise.
+When the CLI is selected, its lint, typecheck, and policy checks run in the
+project job. Unit tests run on Node 22 in three parallel shards, with the same
+test directories and coverage as `pnpm --filter sentry test:unit`. Shards install
+only the CLI and its workspace dependencies, retaining install scripts. Each
+uploads a Vitest blob report; `CLI coverage` requires a report from every shard
+before merging them into `packages/cli/coverage/lcov.info`.
+The merge job installs the CLI dependency set without install scripts; it does
+not build packages or rerun tests.
+
+`CLI E2E (Node 24)` runs independently of the unit tests and project checks. It
+builds the standalone CLI on Node 22 and the npm bundle on Node 24, then tests
+both on Node 24. The project, unit-test, and E2E jobs each build their workspace
+dependencies and run `ci:prepare` once before using the prepared sources. Public
+build and test commands still prepare their own inputs for local use. The final
+`test` gate requires the unit shards, coverage merge, and E2E job whenever the
+CLI is selected, and requires them to be skipped otherwise.
 
 ### deploy.yml
 
