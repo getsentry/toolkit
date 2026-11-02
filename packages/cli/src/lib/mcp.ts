@@ -1,7 +1,11 @@
 import { normalizeAuthToken } from "./auth-header.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getAccountScope } from "./db/account-scope.js";
-import { accountIdentity, getAccountRow } from "./db/accounts.js";
+import {
+  type AccountRow,
+  accountIdentity,
+  getAccountRow,
+} from "./db/accounts.js";
 import {
   getEffectiveAccountRow,
   type RefreshTokenResult,
@@ -79,6 +83,18 @@ const ACCOUNT_CHANGED_MESSAGE =
 const ENV_PIN: McpCredentialPin = { kind: "env" };
 
 /**
+ * Whether `row` still belongs to the pinned user. A login can replace an
+ * account's credentials in place, so the account ID alone is not enough when
+ * the account recorded a user.
+ */
+function isPinnedUser(
+  row: AccountRow,
+  pin: Extract<McpCredentialPin, { kind: "stored" }>,
+): boolean {
+  return !pin.userId || row.user_id === pin.userId;
+}
+
+/**
  * Point this process's credential reads at the pinned credential, or fail
  * closed when it is gone. The host check alone cannot tell two accounts on
  * the same server apart.
@@ -91,9 +107,7 @@ function applyCredentialPin(pin: McpCredentialPin): void {
     return;
   }
   const row = getAccountRow(pin.accountId);
-  // A login can replace an account's credentials in place, so also require
-  // the same user when the account recorded one.
-  if (!row?.token || (pin.userId && row.user_id !== pin.userId)) {
+  if (!(row?.token && isPinnedUser(row, pin))) {
     throw new AuthError("expired", ACCOUNT_CHANGED_MESSAGE, {
       skipAutoAuth: true,
     });
@@ -116,7 +130,9 @@ function startupPin(): McpCredentialPin | undefined {
 /**
  * Whether `result` is the pinned credential. A stored pin must match the
  * account row's current credential: if the row vanished mid-refresh, the
- * CLI falls back to another account, and that token must not be used.
+ * CLI falls back to another account, and that token must not be used. The
+ * row must also still belong to the pinned user, in case a login replaced it
+ * between the pin and the credential read.
  */
 function isPinnedCredential(
   result: RefreshTokenResult,
@@ -130,7 +146,9 @@ function isPinnedCredential(
   }
   // SQLite yields null, not undefined, for a missing row.
   const row = getAccountRow(pin.accountId);
-  return row ? accountIdentity(row) === result.identity : false;
+  return row
+    ? isPinnedUser(row, pin) && accountIdentity(row) === result.identity
+    : false;
 }
 
 /**
@@ -327,12 +345,25 @@ function withTargetEnv(
  *
  * A token the `.sentryclirc` shim copied in is not forced: it comes from the
  * repository, not the client, so it must not replace the user's login.
+ *
+ * A copy of the current environment keeps the env token's startup host: by
+ * now its `SENTRY_URL` can come from a `.sentryclirc` or the persisted
+ * default, which must not scope the token (see `inheritEnvTokenHost`). A copy
+ * of an explicit `--host`/`--url` target (`withTargetEnv`) is scoped to that
+ * target instead.
  */
 function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return (env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) &&
-    !getRcInjectedTokenSource()
-    ? { ...env, SENTRY_FORCE_ENV_TOKEN: "1" }
-    : env;
+  if (
+    !(env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) ||
+    getRcInjectedTokenSource()
+  ) {
+    return env;
+  }
+  const forced = { ...env, SENTRY_FORCE_ENV_TOKEN: "1" };
+  if (env === getEnv()) {
+    inheritEnvTokenHost(forced);
+  }
+  return forced;
 }
 
 /**
@@ -381,9 +412,7 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
       (deprecatedToken && parseSntrysClaim(deprecatedToken))
     )
   ) {
-    const checkEnv = preferEnvToken(env);
-    inheritEnvTokenHost(checkEnv);
-    await withEnv(checkEnv, () => assertRcUrlTrusted(cwd));
+    await withEnv(preferEnvToken(env), () => assertRcUrlTrusted(cwd));
   }
 
   const targetEnv = withTargetEnv(env, flags, config);

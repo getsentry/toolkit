@@ -242,6 +242,24 @@ describe("serveMcp account pinning", () => {
     expect(refreshedWith).toEqual([]);
   });
 
+  test("refuses another user's login over the startup account during startup", async () => {
+    login("a-token", "1");
+    // After the startup pin is taken but before the credential read, another
+    // user replaces the account's credentials in place.
+    refreshHooks.before = () => {
+      refreshHooks.before = undefined;
+      setAuthToken("c-token", 3600, "c-token-refresh", {
+        host: "https://sentry.io",
+      });
+      setUserInfo({ userId: "3", email: "3@example.com" });
+    };
+
+    await expect(serve([])).rejects.toThrow(
+      "The account this MCP server started with is no longer available",
+    );
+    expect(served.calls).toHaveLength(0);
+  });
+
   test("pins the account whose token startup returned, even if the active account changes right after", async () => {
     const a = login("a-token", "1");
     const b = login("b-token", "2");
@@ -634,6 +652,18 @@ describe("serveMcp .sentryclirc URLs", () => {
       const { config, options } = await start([]);
       expect(config.sentryHost).toBe("sentry.example.com");
       expect(options.accessToken).toBe("env-token");
+      // The refresh after an upstream 401 runs under the same scope.
+      await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
+    });
+
+    test("scopes the env token to an explicit --host over the rc URL", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      captureEnvTokenHost();
+      await inRcDir("https://evil.example.com");
+
+      const { config, options } = await start(["--host=sentry.example.com"]);
+      expect(config.sentryHost).toBe("sentry.example.com");
+      expect(options.accessToken).toBe("env-token");
     });
 
     test("serves the env token over a token in the same .sentryclirc", async () => {
@@ -737,6 +767,20 @@ describe("serveMcp .sentryclirc URLs", () => {
     process.env.SENTRY_AUTH_TOKEN = "env-token";
     captureEnvTokenHost();
     await inRcDir("https://evil.example.com");
+
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    expect(served.calls).toHaveLength(0);
+  });
+
+  test("keeps an env token with no host claim off an rc URL the user has logged in to", async () => {
+    // The stored login on the rc host gets past the rc-URL gate; the env
+    // token still wins for serving, so it must keep its startup (SaaS) host.
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    captureEnvTokenHost();
+    await inRcDir("https://sentry.example.com");
 
     await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
     expect(served.calls).toHaveLength(0);
