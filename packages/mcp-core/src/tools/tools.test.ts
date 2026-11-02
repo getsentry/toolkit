@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, test } from "vitest";
+import { getCodeModeToolDefinitions } from "../code-mode.js";
 import catalogTools from "./catalog/index.js";
 import {
   findIncompatibleJsonSchemaUnions,
@@ -54,6 +55,17 @@ test(`all tool descriptions under maximum length`, () => {
       assert(
         length < DESCRIPTION_MAX_LENGTH,
         `${tool.name} description must be less than ${DESCRIPTION_MAX_LENGTH} characters in ${experimentalMode ? "experimental" : "stable"} mode (was ${length})`,
+      );
+    }
+  }
+  // Hosted Code Mode tools are registered outside the tool registry.
+  for (const allowWrites of [false, true]) {
+    for (const [name, { description }] of Object.entries(
+      getCodeModeToolDefinitions({ allowWrites }),
+    )) {
+      assert(
+        description.length < DESCRIPTION_MAX_LENGTH,
+        `${name} description must be less than ${DESCRIPTION_MAX_LENGTH} characters (was ${description.length})`,
       );
     }
   }
