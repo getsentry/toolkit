@@ -5,8 +5,8 @@ through the real MCP transport and Dynamic Worker runtime. Sentry API responses
 come from stateful local fixtures; an independent verifier checks persisted
 state rather than accepting the agent's success claim.
 
-See [HTTP Code Mode](code-mode.md) for the runtime, permissions and deployment
-boundary. These evaluations do not exercise hosted OAuth or authorize production
+See [HTTP Code Mode](../architecture/code-mode.md) for the runtime and
+permissions. These evaluations do not exercise hosted OAuth or authorize production
 writes. Historical successes are not fresh evaluations of every later runtime
 change. SDK comparisons remain future work.
 
