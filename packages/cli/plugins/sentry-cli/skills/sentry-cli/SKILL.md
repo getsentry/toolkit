@@ -452,6 +452,7 @@ View, list, and send Sentry events
 - `sentry event view <org/project/event-id...>` — View details of one or more events
 - `sentry event list <issue>` — List events for an issue
 - `sentry event send <target-or-file...>` — Send a Sentry event
+- `sentry event analytics [<org/project>]` — Analytics for events Sentry dropped
 
 → Full flags and examples: `references/event.md`
 

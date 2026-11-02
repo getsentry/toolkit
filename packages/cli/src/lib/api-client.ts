@@ -53,6 +53,10 @@ export {
   restoreDashboardRevision,
   updateDashboard,
 } from "./api/dashboards.js";
+export {
+  type DroppedEventsOptions,
+  getDroppedEvents,
+} from "./api/dropped-events.js";
 export { isNotFoundApiError } from "./api/error-guards.js";
 export {
   findEventAcrossOrgs,

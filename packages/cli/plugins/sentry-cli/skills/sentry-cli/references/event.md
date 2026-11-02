@@ -240,4 +240,46 @@ sentry event send my-project -m "Test"
 sentry event send my-org/my-project -m "Test"
 ```
 
+### `sentry event analytics [<org/project>]`
+
+Analytics for events Sentry dropped
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/&lt;project&gt; or &lt;project&gt; (search) |
+
+**Flags:**
+- `-d, --dataset <value> - Dropped-data type: errors, spans, logs, metrics - (default: "errors")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "24h")`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | string | Drop outcome code (e.g. rate_limited, filtered) |
+| `label` | string | Human-readable outcome label |
+| `reason` | string | Drop reason within the outcome (e.g. spike_protection) |
+| `category` | string | Data category (e.g. error, span) |
+| `events` | number | Events dropped for this slice |
+| `share` | number | Fraction of total volume (0-1), not a percentage string |
+| `tags` | array | Drop classification: intentional or unintentional |
+
+**Examples:**
+
+```bash
+# Dropped-event analytics for a project
+sentry event analytics my-org/my-project
+
+# Analytics for a different dataset
+sentry event analytics my-org/my-project --dataset spans
+
+# Widen the time range
+sentry event analytics my-org/my-project --period 7d
+
+# Select specific JSON fields
+sentry event analytics my-org/my-project --json --fields outcome,reason,events
+```
+
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
