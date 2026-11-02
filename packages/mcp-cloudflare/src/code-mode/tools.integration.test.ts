@@ -776,22 +776,43 @@ describe("Code Mode sandbox", () => {
     expect(sent("POST")).toHaveLength(1);
   });
 
-  it("exposes HTTP details on caught errors", async () => {
-    failPosts(403);
+  it("exposes HTTP details on caught errors, even with a body that is not JSON", async () => {
+    apiResponse = ({ method }) =>
+      method === "POST"
+        ? Response.json({ title: ["This field is required."] }, { status: 403 })
+        : new Response("<html>Not found</html>", {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
     const result = await execute(
       `async () => {
-        try { await sentry.request({method: "POST", path: "${dashboards}", body: {}}); }
-        catch (error) { return {status: error.status, method: error.method, path: error.path, data: error.data}; }
+        const caught = [];
+        for (const request of [
+          {method: "POST", path: "${dashboards}", body: {}},
+          {path: "${dashboards}"},
+        ]) {
+          try { await sentry.request(request); }
+          catch (error) { caught.push({status: error.status, method: error.method, path: error.path, data: error.data}); }
+        }
+        return caught;
       }`,
       writer,
     );
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent?.result).toEqual({
-      status: 403,
-      method: "POST",
-      path: dashboardsPath,
-      data: { title: ["This field is required."] },
-    });
+    expect(result.structuredContent?.result).toEqual([
+      {
+        status: 403,
+        method: "POST",
+        path: dashboardsPath,
+        data: { title: ["This field is required."] },
+      },
+      {
+        status: 404,
+        method: "GET",
+        path: dashboardsPath,
+        data: "<html>Not found</html>",
+      },
+    ]);
   });
 
   it.each([
