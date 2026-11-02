@@ -6,6 +6,7 @@ vi.mock("node:child_process", () => ({
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
 }));
 
+import { ValidationError } from "../../src/lib/errors.js";
 import { getCommitLog } from "../../src/lib/git.js";
 
 /** Extract the argv passed to the mocked git invocation. */
@@ -103,6 +104,23 @@ describe("getCommitLog pathspec argv", () => {
     );
     expect(() => getCommitLog("/repo", { from: "bogus-ref" })).toThrow(
       "git rev-parse bogus-ref",
+    );
+  });
+
+  test("throws ValidationError outside a git repository", () => {
+    const gitError = Object.assign(new Error("Command failed"), {
+      stderr:
+        "fatal: not a git repository (or any of the parent directories): .git\n",
+    });
+    execFileSyncMock.mockImplementation(() => {
+      throw gitError;
+    });
+
+    expect(() => getCommitLog("/not-a-repo", { depth: 20 })).toThrow(
+      ValidationError,
+    );
+    expect(() => getCommitLog("/not-a-repo", { depth: 20 })).toThrow(
+      "Not a git repository. Run this command from within a git working tree.",
     );
   });
 

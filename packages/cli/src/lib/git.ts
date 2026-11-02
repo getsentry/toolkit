@@ -39,6 +39,19 @@ function isUnknownGitRefError(error: unknown): boolean {
   );
 }
 
+/** Message for git commands run outside a git work tree. */
+const NOT_A_GIT_REPOSITORY_MESSAGE =
+  "Not a git repository. Run this command from within a git working tree.";
+
+/** Return true when git stderr says the cwd is not inside a repository. */
+function isNotGitRepositoryError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("stderr" in error)) {
+    return false;
+  }
+  const stderr = String((error as ExecFileSyncError).stderr ?? "");
+  return stderr.includes("not a git repository");
+}
+
 /** Commit data structure matching the Sentry releases API */
 export type GitCommit = {
   id: string;
@@ -140,10 +153,7 @@ export function getHeadCommit(cwd?: string): string {
   try {
     return git(["rev-parse", "HEAD"], cwd);
   } catch {
-    throw new ValidationError(
-      "Not a git repository. Run this command from within a git working tree.",
-      "git",
-    );
+    throw new ValidationError(NOT_A_GIT_REPOSITORY_MESSAGE, "git");
   }
 }
 
@@ -238,6 +248,9 @@ export function getCommitLog(
         "from",
         "Range is always <ref>..HEAD — checkout the current release tag first.",
       );
+    }
+    if (isNotGitRepositoryError(error)) {
+      throw new ValidationError(NOT_A_GIT_REPOSITORY_MESSAGE, "git");
     }
     throw error;
   }
