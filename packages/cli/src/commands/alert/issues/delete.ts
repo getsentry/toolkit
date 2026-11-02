@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../../context.js";
 import { deleteIssueAlertRule } from "../../../lib/api-client.js";
 import { ContextError, ValidationError } from "../../../lib/errors.js";
+import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
 import {
@@ -18,6 +19,7 @@ import {
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
+import { IssueAlertDeleteOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues delete <org>/<project>/<rule-id-or-name>";
@@ -69,22 +71,18 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatDeleted,
-    jsonTransform: (r: DeleteResult) =>
-      r.dryRun
-        ? {
-            dryRun: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          }
-        : {
-            deleted: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          },
+    schema: IssueAlertDeleteOutputSchema,
+    jsonTransform: (r: DeleteResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        {
+          ...(r.dryRun ? { dryRun: true } : { deleted: true }),
+          org: r.org,
+          project: r.project,
+          id: r.ruleId,
+          name: r.name,
+        },
+        fields,
+      ),
   },
   parameters: {
     positional: {

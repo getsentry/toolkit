@@ -35,7 +35,10 @@ import {
   buildDashboardsListUrl,
   buildDashboardUrl,
 } from "../../lib/sentry-web-urls.js";
-import type { DashboardListItem } from "../../types/dashboard.js";
+import {
+  type DashboardListItem,
+  DashboardListItemSchema,
+} from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
   type DashboardListArguments,
@@ -415,6 +418,7 @@ export const listCommand = buildListCommand("dashboard", {
   output: {
     human: formatDashboardListHuman,
     jsonTransform: jsonTransformDashboardList,
+    schema: DashboardListItemSchema,
   },
   parameters: {
     positional: dashboardListArguments("sentry dashboard list <org>/"),

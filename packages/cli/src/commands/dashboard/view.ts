@@ -5,6 +5,17 @@
  * Supports --refresh for auto-refreshing live display.
  */
 
+import {
+  array,
+  description,
+  looseObject,
+  number,
+  object,
+  optional,
+  pipe,
+  string,
+  unknown,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
@@ -31,9 +42,11 @@ import {
   type TimeRange,
   timeRangeToSeconds,
 } from "../../lib/time-range.js";
-import type {
-  DashboardWidget,
-  WidgetDataResult,
+import {
+  type DashboardWidget,
+  DashboardWidgetLayoutSchema,
+  DashboardWidgetQuerySchema,
+  type WidgetDataResult,
 } from "../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
@@ -93,6 +106,59 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
     signal.addEventListener("abort", onAbort, { once: true });
   });
 }
+
+/** JSON fields of {@link DashboardViewData}, for `--fields`. */
+const DashboardViewOutputSchema = object({
+  id: pipe(string(), description("Dashboard ID")),
+  title: pipe(string(), description("Dashboard title")),
+  period: pipe(string(), description("Time range of the widget data")),
+  fetchedAt: pipe(
+    string(),
+    description("When the data was fetched (ISO 8601)"),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+  dateCreated: optional(
+    pipe(string(), description("Creation date (ISO 8601)")),
+  ),
+  environment: optional(
+    pipe(array(string()), description("Environment filter")),
+  ),
+  widgets: pipe(
+    array(
+      object({
+        title: pipe(string(), description("Widget title")),
+        displayType: pipe(string(), description("Display type")),
+        widgetType: optional(pipe(string(), description("Dataset"))),
+        description: optional(
+          pipe(string(), description("Markdown content of a text widget")),
+        ),
+        layout: optional(DashboardWidgetLayoutSchema),
+        queries: optional(array(DashboardWidgetQuerySchema)),
+        data: pipe(
+          looseObject({
+            type: pipe(
+              string(),
+              description(
+                "Result kind: timeseries, table, scalar, text, unsupported, or error",
+              ),
+            ),
+            series: optional(array(unknown())),
+            columns: optional(array(unknown())),
+            rows: optional(array(unknown())),
+            value: optional(number()),
+            previousValue: optional(number()),
+            unit: optional(unknown()),
+            content: optional(string()),
+            reason: optional(string()),
+            message: optional(string()),
+          }),
+          description("Widget query result"),
+        ),
+      }),
+    ),
+    description("Widgets with their query results"),
+  ),
+});
 
 /**
  * Build the DashboardViewData from a dashboard and its widget query results.
@@ -211,6 +277,7 @@ export const viewCommand = buildCommand({
   output: {
     human: createDashboardViewRenderer,
     jsonExclude: ["rendererPreference", "graphicsCap"],
+    schema: DashboardViewOutputSchema,
   },
   parameters: {
     positional: dashboardArguments({

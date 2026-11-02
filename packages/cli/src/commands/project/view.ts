@@ -5,6 +5,7 @@
  * Supports monorepos with multiple detected projects.
  */
 
+import { description, looseObject, nullable, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
@@ -39,7 +40,7 @@ import {
   orgProjectTarget,
   type TargetContext,
 } from "../../lib/target-positional.js";
-import type { SentryProject } from "../../types/index.js";
+import { type SentryProject, SentryProjectSchema } from "../../types/index.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -357,6 +358,10 @@ export const viewCommand = buildCommand({
   output: {
     human: formatProjectViewHuman,
     jsonTransform: jsonTransformProjectView,
+    schema: looseObject({
+      ...SentryProjectSchema.entries,
+      dsn: pipe(nullable(string()), description("Primary DSN")),
+    }),
   },
   parameters: {
     positional: {

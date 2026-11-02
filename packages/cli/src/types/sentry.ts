@@ -30,10 +30,14 @@ import type {
 } from "@sentry/toolkit-core/resource-identity";
 import {
   vBaseTeam,
+  vDeployResponse,
   vEventAttachmentDetailsResponse,
   vGetOrganizationIssueResponse,
   vGroupEventsResponseDict,
   vIssueEventDetailsResponse,
+  vOrganizationProjectResponseDict,
+  vOrganizationSummary,
+  vOrgReleaseResponse,
 } from "@sentry/api/valibot";
 import {
   array,
@@ -84,6 +88,54 @@ export type SentryOrganization = Partial<SdkOrganizationList[number]> &
     orgRole?: string;
   };
 
+const sdkOrg = vOrganizationSummary.entries;
+
+/**
+ * `--fields` / SKILL.md documentation schema for an organization.
+ *
+ * Like {@link SentryTeamSchema}, it is not used for runtime validation: it
+ * curates the user-facing fields of the auto-generated `vOrganizationSummary`
+ * (the list-organizations item). Only core identifiers are required.
+ */
+export const SentryOrganizationSchema = looseObject({
+  id: pipe(string(), description("Organization ID")),
+  slug: pipe(string(), description("Organization slug")),
+  name: pipe(string(), description("Organization name")),
+  dateCreated: optional(
+    pipe(sdkOrg.dateCreated, description("Creation date (ISO 8601)")),
+  ),
+  status: optional(pipe(sdkOrg.status, description("Organization status"))),
+  isEarlyAdopter: optional(
+    pipe(
+      sdkOrg.isEarlyAdopter,
+      description("Whether the org is an early adopter"),
+    ),
+  ),
+  require2FA: optional(
+    pipe(sdkOrg.require2FA, description("Whether members must use 2FA")),
+  ),
+  features: optional(pipe(sdkOrg.features, description("Enabled features"))),
+  avatar: optional(pipe(sdkOrg.avatar, description("Avatar"))),
+  links: optional(
+    pipe(sdkOrg.links, description("Organization and region URLs")),
+  ),
+  hasAuthProvider: optional(
+    pipe(sdkOrg.hasAuthProvider, description("Whether SSO is configured")),
+  ),
+  allowMemberInvite: optional(
+    pipe(sdkOrg.allowMemberInvite, description("Whether members can invite")),
+  ),
+  allowMemberProjectCreation: optional(
+    pipe(
+      sdkOrg.allowMemberProjectCreation,
+      description("Whether members can create projects"),
+    ),
+  ),
+  orgRole: optional(
+    pipe(string(), description("Your role in the organization")),
+  ),
+});
+
 // Project
 
 /** Element type of the SDK's list-projects response */
@@ -123,6 +175,61 @@ export type SentryProject = Partial<SdkProjectListItem> &
      */
     status?: string;
   };
+
+const sdkProject = vOrganizationProjectResponseDict.item.entries;
+
+/**
+ * `--fields` / SKILL.md documentation schema for a project.
+ *
+ * Curates the user-facing fields of the auto-generated list-projects item,
+ * like {@link SentryOrganizationSchema}; not used for runtime validation.
+ */
+export const SentryProjectSchema = looseObject({
+  id: pipe(string(), description("Project ID")),
+  slug: pipe(string(), description("Project slug")),
+  name: pipe(string(), description("Project name")),
+  platform: optional(pipe(sdkProject.platform, description("Platform"))),
+  platforms: optional(
+    pipe(sdkProject.platforms, description("Platforms seen in events")),
+  ),
+  dateCreated: optional(
+    pipe(sdkProject.dateCreated, description("Creation date (ISO 8601)")),
+  ),
+  firstEvent: optional(
+    pipe(sdkProject.firstEvent, description("First event date (ISO 8601)")),
+  ),
+  status: optional(pipe(string(), description("Project status"))),
+  isBookmarked: optional(
+    pipe(sdkProject.isBookmarked, description("Whether you bookmarked it")),
+  ),
+  isMember: optional(
+    pipe(sdkProject.isMember, description("Whether you are a member")),
+  ),
+  hasAccess: optional(
+    pipe(sdkProject.hasAccess, description("Whether you have access")),
+  ),
+  features: optional(
+    pipe(sdkProject.features, description("Enabled features")),
+  ),
+  team: optional(pipe(sdkProject.team, description("Owning team"))),
+  teams: optional(pipe(sdkProject.teams, description("Teams with access"))),
+  environments: optional(
+    pipe(sdkProject.environments, description("Environments seen")),
+  ),
+  latestRelease: optional(
+    pipe(sdkProject.latestRelease, description("Latest release")),
+  ),
+  organization: optional(
+    pipe(
+      looseObject({
+        id: pipe(string(), description("Organization ID")),
+        slug: pipe(string(), description("Organization slug")),
+        name: optional(pipe(string(), description("Organization name"))),
+      }),
+      description("Organization (detail responses only)"),
+    ),
+  ),
+});
 
 // Issue Constants
 
@@ -736,6 +843,81 @@ export type SentryRelease = Partial<SdkReleaseResponse> & {
   version: string;
 };
 
+const sdkRelease = vOrgReleaseResponse.entries;
+
+/**
+ * `--fields` / SKILL.md documentation schema for a release.
+ *
+ * Curates the user-facing fields of the auto-generated `vOrgReleaseResponse`,
+ * like {@link SentryOrganizationSchema}; not used for runtime validation.
+ */
+export const SentryReleaseSchema = looseObject({
+  id: optional(pipe(sdkRelease.id, description("Release ID"))),
+  version: pipe(string(), description("Release version")),
+  shortVersion: optional(
+    pipe(sdkRelease.shortVersion, description("Shortened version")),
+  ),
+  versionInfo: optional(
+    pipe(sdkRelease.versionInfo, description("Parsed version information")),
+  ),
+  status: optional(
+    pipe(sdkRelease.status, description("Release status (open, archived)")),
+  ),
+  ref: optional(pipe(sdkRelease.ref, description("VCS reference"))),
+  url: optional(pipe(sdkRelease.url, description("Release URL"))),
+  dateCreated: optional(
+    pipe(sdkRelease.dateCreated, description("Creation date (ISO 8601)")),
+  ),
+  dateReleased: optional(
+    pipe(sdkRelease.dateReleased, description("Release date (ISO 8601)")),
+  ),
+  firstEvent: optional(
+    pipe(sdkRelease.firstEvent, description("First event date (ISO 8601)")),
+  ),
+  lastEvent: optional(
+    pipe(sdkRelease.lastEvent, description("Last event date (ISO 8601)")),
+  ),
+  newGroups: optional(
+    pipe(sdkRelease.newGroups, description("Number of new issues")),
+  ),
+  commitCount: optional(
+    pipe(sdkRelease.commitCount, description("Number of commits")),
+  ),
+  deployCount: optional(
+    pipe(sdkRelease.deployCount, description("Number of deploys")),
+  ),
+  lastCommit: optional(
+    pipe(sdkRelease.lastCommit, description("Most recent commit")),
+  ),
+  lastDeploy: optional(
+    pipe(sdkRelease.lastDeploy, description("Most recent deploy")),
+  ),
+  authors: optional(pipe(sdkRelease.authors, description("Commit authors"))),
+  owner: optional(pipe(sdkRelease.owner, description("Release owner"))),
+  projects: optional(
+    pipe(sdkRelease.projects, description("Projects in the release")),
+  ),
+  adoptionStages: optional(
+    pipe(sdkRelease.adoptionStages, description("Adoption stage per project")),
+  ),
+});
+
+/** The `dryRun: true` marker of a mutation's `--dry-run` JSON output. */
+export const DryRunOutputField = optional(
+  pipe(boolean(), description("True when --dry-run made no change")),
+);
+
+/**
+ * JSON output of the release commands that update a release (`archive`,
+ * `restore`): the updated release, or `{ dryRun, version, org }` with
+ * `--dry-run`.
+ */
+export const ReleaseUpdateOutputSchema = looseObject({
+  ...SentryReleaseSchema.entries,
+  dryRun: DryRunOutputField,
+  org: optional(pipe(string(), description("Organization slug (--dry-run)"))),
+});
+
 // Deploy
 
 /**
@@ -750,6 +932,26 @@ export type SentryDeploy = Partial<SdkDeployResponse> & {
   id: string;
   environment: string;
 };
+
+/** `--fields` / SKILL.md documentation schema for a deploy. */
+export const SentryDeploySchema = looseObject({
+  id: pipe(string(), description("Deploy ID")),
+  environment: pipe(string(), description("Environment")),
+  name: optional(pipe(vDeployResponse.entries.name, description("Name"))),
+  url: optional(pipe(vDeployResponse.entries.url, description("Deploy URL"))),
+  dateStarted: optional(
+    pipe(
+      vDeployResponse.entries.dateStarted,
+      description("Start date (ISO 8601)"),
+    ),
+  ),
+  dateFinished: optional(
+    pipe(
+      vDeployResponse.entries.dateFinished,
+      description("Finish date (ISO 8601)"),
+    ),
+  ),
+});
 
 // Issue
 

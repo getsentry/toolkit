@@ -194,6 +194,7 @@ export const myCommand = buildCommand({
 - Functions are `async *func()` generators — yield `new CommandOutput(data)`, return `{ hint }`.
 - `output.human` receives the same data object that gets serialized to JSON — no divergent-data paths.
 - The wrapper auto-injects `--json` and `--fields` flags. Do NOT add your own `json` flag.
+- A `jsonTransform` replaces the default `--fields` filtering, so it must apply its `fields` argument (`filterFieldsIfSet` from `lib/formatters/json.ts`, or per item for list envelopes). The `sentry-cli/json-transform-uses-fields` lint rule rejects one that never reads it ([#1808](https://github.com/getsentry/toolkit/issues/1808)). Drop a transform that only returns its input; the default path already filters.
 - Do NOT use `stdout.write()` or `if (flags.json)` branching — the wrapper handles it.
 
 ### Command File Structure

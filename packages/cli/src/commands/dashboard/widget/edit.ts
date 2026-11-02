@@ -20,6 +20,7 @@ import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type DashboardDetail,
   type DashboardWidget,
+  DashboardWidgetChangeOutputSchema,
   type DashboardWidgetQuery,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
@@ -231,6 +232,7 @@ export const editCommand = buildCommand({
   },
   output: {
     human: formatWidgetEdited,
+    schema: DashboardWidgetChangeOutputSchema,
   },
   parameters: {
     positional: dashboardArguments({

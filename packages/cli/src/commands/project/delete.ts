@@ -31,6 +31,7 @@ import {
   formatProjectDeleted,
   type ProjectDeleteResult,
 } from "../../lib/formatters/human.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -151,22 +152,23 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatProjectDeleted,
-    jsonTransform: (result: ProjectDeleteResult) => {
-      if (result.dryRun) {
-        return {
-          dryRun: true,
-          org: result.orgSlug,
-          project: result.projectSlug,
-          name: result.projectName,
-          url: result.url,
-        };
-      }
-      return {
-        deleted: true,
-        org: result.orgSlug,
-        project: result.projectSlug,
-      };
-    },
+    jsonTransform: (result: ProjectDeleteResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        result.dryRun
+          ? {
+              dryRun: true,
+              org: result.orgSlug,
+              project: result.projectSlug,
+              name: result.projectName,
+              url: result.url,
+            }
+          : {
+              deleted: true,
+              org: result.orgSlug,
+              project: result.projectSlug,
+            },
+        fields,
+      ),
   },
   parameters: {
     positional: {

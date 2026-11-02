@@ -8,6 +8,7 @@
  */
 
 import { inlineCode } from "@sentry/toolkit-core/markdown";
+import { boolean, description, object, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { deleteRelease, getRelease } from "../../lib/api-client.js";
 import { ApiError } from "../../lib/errors.js";
@@ -19,6 +20,7 @@ import {
   isConfirmationBypassed,
 } from "../../lib/mutate-command.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
+import { DryRunOutputField } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release delete [<org>/]<version>";
@@ -100,6 +102,12 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatReleaseDeleted,
+    schema: object({
+      deleted: pipe(boolean(), description("Whether the release was deleted")),
+      org: pipe(string(), description("Organization slug")),
+      version: pipe(string(), description("Release version")),
+      dryRun: DryRunOutputField,
+    }),
   },
   parameters: {
     positional: {

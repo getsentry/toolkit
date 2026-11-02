@@ -23,7 +23,7 @@ import {
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
-import type { SentryRelease } from "../../types/index.js";
+import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release view [<org>/]<version>";
@@ -179,6 +179,7 @@ export const viewCommand = buildCommand({
   },
   output: {
     human: formatReleaseDetails,
+    schema: SentryReleaseSchema,
   },
   parameters: {
     positional: {
