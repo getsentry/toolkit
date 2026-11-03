@@ -77,7 +77,9 @@ Only tool names and server instructions load at session start; the model calls
 - `ENABLE_TOOL_SEARCH` accepts `true`, `false`, `auto`, and `auto:N`.
 - Older models load everything up front. So do sessions with
   `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, HIPAA sessions, and Azure Foundry.
-- A server can keep chosen tools loaded with `_meta["anthropic/alwaysLoad"]`.
+- A server can keep chosen tools loaded with `_meta["anthropic/alwaysLoad"]`,
+  for example `get_sentry_resource`. The key is specific to Claude Code, and
+  long-term support is uncertain.
 - Description caps: 4,096 characters for upfront tools and server instructions,
   16,384 for deferred tools.
 - No fixed tool cap; the context window is the limit.
@@ -131,56 +133,13 @@ returns the top 5 matches.
   grouping (`github.copilot.chat.virtualTools.threshold`) is the fallback.
 - Subagents do not use tool search.
 
-## Decision: Search/Execute Pattern
-
-`surfaces.ts` keeps the direct surface small "until tool search is standard in
-every mainstream harness." For tier 1, that condition is now met:
-
-- Every tier 1 surface defers MCP tools by default.
-- Each gate is a model or version floor (GPT-5.4+, Claude 4+, current Cursor
-  builds), not an opt-in setting.
-
-Tier 2 has no blockers:
-
-- OpenCode and Pi keep schemas out of context through Code Mode. Sentry tools
-  are then called from generated JavaScript rather than as direct tool calls.
-- VS Code is the only partial case. With non-search models it loads every
-  schema. Our ~73 catalog tools still fit under its 128-tool cap, at a higher
-  token cost.
-
-So we can list catalog tools directly in `tools/list` and retire
-`search_sentry_tools` and `execute_sentry_tool`. Requirements for that change:
-
-- **Descriptions are the search index.** Codex uses BM25, VS Code uses
-  embeddings, and Cursor and Claude Code match on names and descriptions. A
-  tool the model should find needs its main keywords in its name and the first
-  sentence of its description. Keep deferred descriptions under Claude Code's
-  16,384-character cap.
-- **Keep core tools loaded.** Mark the current `TOP_LEVEL_TOOL_NAMES` set with
-  `_meta["anthropic/alwaysLoad"]` (Claude Code), so the main workflows do not
-  need a search round trip.
-- **Do not paginate `tools/list`.** The Cursor IDE drops every page after the
-  first.
-- **Revisit the tool-count constraint.** The ≤20 target and hard limit of 25 in
-  `AGENTS.md`, and the Cursor 45-tool note in the architecture overview, exist
-  because of upfront loading. Update them in the same change, and keep the
-  `pnpm run measure-tokens` budget so clients without search stay usable.
-- **Skill gates still apply.** Native search only finds tools the server lists.
-  Tools filtered out by skills, such as `create_project` behind
-  `project-management`
-  ([#1844](https://github.com/getsentry/toolkit/issues/1844)), stay invisible
-  either way. Fix discoverability for gated tools separately.
-
-### Open Questions
+## Open Questions
 
 - Which `codex-rs` version the current Codex desktop app bundles.
 - Whether Claude Desktop connectors (in-process SDK servers) are deferred.
 - Whether the Cursor IDE pagination bug is fixed, and whether Cursor offers an
   opt-out.
 - How the Claude and Codex agent harnesses inside VS Code handle deferral.
-
-Before the switch, confirm the open questions with the `mcp-qa` skill in each
-tier 1 client.
 
 ## References
 
