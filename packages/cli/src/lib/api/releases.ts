@@ -17,8 +17,11 @@ import {
 } from "@sentry/api";
 import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
 import type { SentryDeploy, SentryRelease } from "../../types/index.js";
+import { getCiCheckout } from "../ci.js";
+import { getEnv } from "../env.js";
 import { ApiError, ValidationError, validationError } from "../errors.js";
 import { getHeadCommit, getRepositoryName } from "../git.js";
+import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
@@ -31,6 +34,8 @@ import {
 } from "./infrastructure.js";
 import { getProject } from "./projects.js";
 import { listRepositoriesPaginated } from "./repositories.js";
+
+const log = logger.withTag("api.releases");
 
 /**
  * List releases in an organization with pagination control.
@@ -426,45 +431,76 @@ async function getPreviousReleaseCommit(
 export const NO_REPO_INTEGRATIONS_MESSAGE =
   "No repository integrations configured for this organization.";
 
+/** Where `--auto` found the repository and commit to associate. */
+type AutoCheckout = {
+  /** Repository path, e.g. `owner/repo`. */
+  repository: string;
+  /** Commit from the CI environment; read from git HEAD when absent. */
+  commit?: string;
+};
+
+/**
+ * Find the repository to match for `--auto`: the `origin` remote, or the
+ * repository and commit that the CI provider exposes when the build has no
+ * git checkout (Docker builds that exclude `.git`).
+ *
+ * @throws {ValidationError} When neither source names a repository
+ */
+function resolveAutoCheckout(cwd?: string): AutoCheckout {
+  const remoteRepo = getRepositoryName(cwd);
+  if (remoteRepo) {
+    return { repository: remoteRepo };
+  }
+
+  const ci = getCiCheckout(getEnv());
+  if (ci) {
+    log.info(
+      `No 'origin' git remote found. Using ${ci.repository}@${ci.commit.slice(0, 12)} from ${ci.source}.`,
+    );
+    return { repository: ci.repository, commit: ci.commit };
+  }
+
+  throw validationError(
+    "Could not determine the repository from the local git remote or CI variables. --auto matches the 'origin' remote (or the repository named by CI variables such as GITHUB_REPOSITORY) against your Sentry repositories.",
+    [
+      "git remote add origin <url>",
+      "sentry release set-commits <version> --local",
+      "sentry release set-commits <version> --commit owner/repo@abc123",
+    ],
+    "repository",
+  );
+}
+
 /**
  * Set commits on a release using auto-discovery mode.
  *
- * Looks up the org's repositories by the name from the local git remote URL to
- * find the corresponding Sentry repo, then sends a refs payload with the HEAD
- * commit SHA. This is the equivalent of the reference sentry-cli's `--auto`
- * mode.
+ * Looks up the org's repositories by the name from the local git remote URL
+ * (or the repository the CI provider exposes when there is no git checkout)
+ * to find the corresponding Sentry repo, then sends a refs payload with the
+ * HEAD commit SHA. This is the equivalent of the reference sentry-cli's
+ * `--auto` mode.
  *
  * The lookup asks the server to filter by name instead of walking every page,
  * since orgs can have tens of thousands of repositories. Servers that ignore
  * the filter return every repository, which the exact name match still handles.
  *
  * Requires a GitHub/GitLab/Bitbucket integration configured in Sentry
- * AND a local git repository whose origin remote matches a Sentry repo.
+ * AND a git origin remote or CI variables naming a matching Sentry repo.
  *
  * @param orgSlug - Organization slug
  * @param version - Release version
  * @param cwd - Working directory to discover git remote and HEAD from
  * @returns Updated release detail with commit count
  * @throws {ApiError} When the org has no repository integrations (404)
- * @throws {ValidationError} When local git remote is missing or doesn't match any Sentry repo
+ * @throws {ValidationError} When no repository can be determined or none matches a Sentry repo
  */
 export async function setCommitsAuto(
   orgSlug: string,
   version: string,
   cwd?: string,
 ): Promise<SentryRelease> {
-  const localRepo = getRepositoryName(cwd);
-  if (!localRepo) {
-    throw validationError(
-      "Could not determine the repository from the local git remote. --auto matches the 'origin' remote against your Sentry repositories, so it needs a git checkout with an 'origin' remote configured.",
-      [
-        "git remote add origin <url>",
-        "sentry release set-commits <version> --local",
-        "sentry release set-commits <version> --commit owner/repo@abc123",
-      ],
-      "repository",
-    );
-  }
+  const checkout = resolveAutoCheckout(cwd);
+  const localRepo = checkout.repository;
 
   // The previous release's commit only depends on the org and version, not
   // on which repository matches, so fetch it concurrently with the repository
@@ -490,7 +526,7 @@ export async function setCommitsAuto(
       (r) => r.name.toLowerCase() === localRepoLower,
     );
     if (match) {
-      const headCommit = getHeadCommit(cwd);
+      const headCommit = checkout.commit ?? getHeadCommit(cwd);
       const previousCommit = await previousCommitPromise;
       const ref: {
         repository: string;
