@@ -20,6 +20,94 @@ const DROP_OUTCOMES = [
   "cardinality_limited",
 ] as const;
 
+const DURATION_UNIT_SECONDS: Record<string, number> = {
+  s: 1,
+  m: 60,
+  h: 3600,
+  d: 86_400,
+  w: 604_800,
+};
+
+// The outcomes query behind events-dropped needs whole-minute buckets that
+// divide one day, with at most 1000 buckets across the range. Fallbacks when
+// the requested interval breaks one of those rules:
+const VALID_INTERVALS = [
+  "1m",
+  "5m",
+  "10m",
+  "15m",
+  "30m",
+  "1h",
+  "2h",
+  "3h",
+  "4h",
+  "6h",
+  "12h",
+  "1d",
+] as const;
+const MAX_BUCKETS = 1000;
+const ONE_DAY_SECONDS = 86_400;
+
+function parseDurationSeconds(value: string): number | undefined {
+  const match = /^(\d+)([smhdw])$/.exec(value);
+  return match ? Number(match[1]) * DURATION_UNIT_SECONDS[match[2]] : undefined;
+}
+
+function getRangeSeconds(params: {
+  statsPeriod: string | null;
+  start: string | null;
+  end: string | null;
+}): number | undefined {
+  if (params.start && params.end) {
+    const rangeMs = Date.parse(params.end) - Date.parse(params.start);
+    return rangeMs > 0 ? rangeMs / 1000 : undefined;
+  }
+  return params.statsPeriod
+    ? parseDurationSeconds(params.statsPeriod)
+    : undefined;
+}
+
+/**
+ * Pick the interval to send: the requested one when Sentry accepts it,
+ * otherwise the smallest accepted interval at least as large, with a note.
+ */
+export function resolveDroppedEventsInterval(
+  interval: string | null,
+  rangeSeconds: number | undefined,
+): { interval?: string; intervalNote?: string } {
+  if (!interval) {
+    return {};
+  }
+  const requestedSeconds = parseDurationSeconds(interval);
+  if (requestedSeconds === undefined) {
+    return {
+      intervalNote: `Ignored interval '${interval}' because it is not a duration such as '1h'; Sentry picked the interval for the range.`,
+    };
+  }
+  const fitsRange = (seconds: number) =>
+    rangeSeconds === undefined || rangeSeconds / seconds <= MAX_BUCKETS;
+  if (
+    requestedSeconds % 60 === 0 &&
+    ONE_DAY_SECONDS % requestedSeconds === 0 &&
+    fitsRange(requestedSeconds)
+  ) {
+    return { interval };
+  }
+  const candidates = VALID_INTERVALS.map((value) => ({
+    value,
+    seconds: parseDurationSeconds(value)!,
+  }));
+  const chosen =
+    candidates.find(
+      ({ seconds }) => seconds >= requestedSeconds && fitsRange(seconds),
+    ) ?? candidates[candidates.length - 1];
+
+  return {
+    interval: chosen.value,
+    intervalNote: `Used interval '${chosen.value}' instead of '${interval}': Sentry needs whole-minute buckets that divide one day, with at most ${MAX_BUCKETS} buckets in the time range.`,
+  };
+}
+
 const droppedBucketSchema = z.object({
   outcome: z.string(),
   reason: z.string(),
@@ -33,6 +121,10 @@ const droppedBucketSchema = z.object({
 export const findDroppedEventsOutputSchema = z.object({
   dataset: z.string(),
   interval: z.number(),
+  intervalNote: z
+    .string()
+    .optional()
+    .describe("Set when the requested interval was replaced or ignored."),
   droppedEvents: z.array(droppedBucketSchema),
   acceptedEvents: z.array(droppedBucketSchema),
 });
@@ -105,7 +197,7 @@ export default defineTool({
       .string()
       .trim()
       .describe(
-        "Bucket size, e.g. '1h', '1d'. Omit to let Sentry pick for the range.",
+        "Bucket size from '1m' to '1d', e.g. '1h'. Omit to let Sentry pick for the range.",
       )
       .nullable()
       .default(null),
@@ -151,11 +243,16 @@ export default defineTool({
       projectId = String(project.id);
     }
 
+    const { interval, intervalNote } = resolveDroppedEventsInterval(
+      params.interval,
+      getRangeSeconds(params),
+    );
+
     const response = await apiService.getDroppedEvents({
       organizationSlug,
       dataset: params.dataset,
       projectId,
-      interval: params.interval ?? undefined,
+      interval,
       statsPeriod: params.statsPeriod ?? undefined,
       start: params.start ?? undefined,
       end: params.end ?? undefined,
@@ -184,6 +281,7 @@ export default defineTool({
     return structuredResult({
       dataset: response.meta.dataset,
       interval: response.meta.interval,
+      ...(intervalNote ? { intervalNote } : {}),
       droppedEvents: response.droppedEvents.map(toBucket),
       acceptedEvents: response.acceptedEvents.map(toBucket),
     });
