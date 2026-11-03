@@ -442,7 +442,7 @@ type AutoCheckout = {
 /**
  * Find the repository to match for `--auto`: the `origin` remote, or the
  * repository and commit that the CI provider exposes when the build has no
- * git checkout (Docker builds that exclude `.git`).
+ * git checkout (Vercel, Docker builds that exclude `.git`).
  *
  * @throws {ValidationError} When neither source names a repository
  */
@@ -452,7 +452,8 @@ function resolveAutoCheckout(cwd?: string): AutoCheckout {
     return { repository: remoteRepo };
   }
 
-  const ci = getCiCheckout(getEnv());
+  const env = getEnv();
+  const ci = getCiCheckout(env);
   if (ci) {
     log.info(
       `No 'origin' git remote found. Using ${ci.repository}@${ci.commit.slice(0, 12)} from ${ci.source}.`,
@@ -468,6 +469,9 @@ function resolveAutoCheckout(cwd?: string): AutoCheckout {
       "sentry release set-commits <version> --commit owner/repo@abc123",
     ],
     "repository",
+    env.VERCEL
+      ? "Vercel builds have no .git directory, and --auto only reads VERCEL_GIT_* in production builds. Use --commit to associate commits from preview builds."
+      : undefined,
   );
 }
 

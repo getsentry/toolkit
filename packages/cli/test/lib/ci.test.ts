@@ -35,6 +35,21 @@ describe("getCiCheckout", () => {
     });
   });
 
+  test("joins Vercel's owner and slug in production builds", () => {
+    const vercel = {
+      VERCEL_GIT_REPO_OWNER: "acme",
+      VERCEL_GIT_REPO_SLUG: "web",
+      VERCEL_GIT_COMMIT_SHA: sha,
+    };
+    expect(
+      getCiCheckout({ ...vercel, VERCEL_TARGET_ENV: "production" }),
+    ).toMatchObject({ repository: "acme/web", commit: sha });
+    // Preview builds are skipped, matching @sentry/bundler-plugins.
+    expect(
+      getCiCheckout({ ...vercel, VERCEL_TARGET_ENV: "preview" }),
+    ).toBeUndefined();
+  });
+
   test("keeps GitLab subgroups", () => {
     expect(
       getCiCheckout({

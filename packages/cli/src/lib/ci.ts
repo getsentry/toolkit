@@ -80,6 +80,17 @@ const CI_CHECKOUT_PROVIDERS: ReadonlyArray<{
     commit: (env) => env.BITBUCKET_COMMIT,
   },
   {
+    // Production builds only, like @sentry/bundler-plugins: preview builds
+    // diff against the branch's stem commit, so associating their commits
+    // notifies the authors of unrelated pull requests.
+    source: "VERCEL_GIT_REPO_OWNER/VERCEL_GIT_REPO_SLUG/VERCEL_GIT_COMMIT_SHA",
+    repository: (env) =>
+      env.VERCEL_TARGET_ENV === "production"
+        ? joinRepo(env.VERCEL_GIT_REPO_OWNER, env.VERCEL_GIT_REPO_SLUG)
+        : undefined,
+    commit: (env) => env.VERCEL_GIT_COMMIT_SHA,
+  },
+  {
     source: "RENDER_GIT_REPO_SLUG/RENDER_GIT_COMMIT",
     repository: (env) => env.RENDER_GIT_REPO_SLUG,
     commit: (env) => env.RENDER_GIT_COMMIT,
@@ -119,10 +130,10 @@ const CI_CHECKOUT_PROVIDERS: ReadonlyArray<{
  * Read the repository and commit that the CI or hosting provider exposes for
  * the current build.
  *
- * Builds often run without a git checkout: Docker builds usually exclude
- * `.git`. `set-commits --auto` uses this when there is no
- * `origin` remote to read. Commits that are not a full 40-character SHA
- * are skipped.
+ * Builds often run without a git checkout: Vercel strips `.git`, and Docker
+ * builds usually exclude it. `set-commits --auto` uses this when there is no
+ * `origin` remote to read. Commits that are not a full 40-character SHA are
+ * skipped.
  *
  * @param env - The active environment: `getEnv()` in library code, or
  *   `this.env` in a command. In library mode this is the SDK's isolated
