@@ -165,6 +165,25 @@ describe("applyDefaultOrganization", () => {
     expect(requests).toHaveLength(0);
   });
 
+  it("defaults a required slug even when the tool's url is an external one", async () => {
+    serveOrganizations([organization("solo-org")]);
+    const uptimeLikeTool: ToolConfig<any> = {
+      ...requiredOrgTool,
+      name: "uptime_like_tool",
+      inputSchema: {
+        organizationSlug: ParamOrganizationSlug,
+        url: z.string().url(),
+      },
+    };
+
+    await expect(
+      prepare(uptimeLikeTool, { url: "https://example.com/health" }),
+    ).resolves.toEqual({
+      organizationSlug: "solo-org",
+      url: "https://example.com/health",
+    });
+  });
+
   it("fails with a ready-to-run retry when there are several organizations", async () => {
     serveOrganizations([
       organization("org-a"),

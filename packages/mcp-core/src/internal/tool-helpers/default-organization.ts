@@ -209,8 +209,8 @@ function formatMultipleOrganizationsError(
 }
 
 /**
- * Fill `organizationSlug` when a call omits it and names no Sentry URL that
- * carries the organization. Runs after constraint injection, so an
+ * Fill `organizationSlug` when a call omits it and, for a tool where it is
+ * optional, names no Sentry URL that carries the organization. Runs after constraint injection, so an
  * org-scoped session never reaches it.
  *
  * - One reachable organization: the call uses it, and its `regionUrl` when
@@ -231,14 +231,16 @@ export async function applyDefaultOrganization({
   context: ServerContext;
 }): Promise<Record<string, unknown>> {
   const organizationSchema = tool.inputSchema.organizationSlug;
-  if (
-    !organizationSchema ||
-    !isMissing(params.organizationSlug) ||
-    getTargetOrganizationSlug(params) !== null
-  ) {
+  if (!organizationSchema || !isMissing(params.organizationSlug)) {
     return params;
   }
   const isRequired = isOrganizationSlugRequired(organizationSchema);
+  // A Sentry URL can stand in for an optional slug. A tool that requires the
+  // slug never reads it from a URL, and its `url` may be an external one
+  // (such as an uptime monitor's target), so only optional slugs check it.
+  if (!isRequired && getTargetOrganizationSlug(params) !== null) {
+    return params;
+  }
 
   let reachable: ReachableOrganizations;
   try {
