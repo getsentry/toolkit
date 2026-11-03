@@ -19,7 +19,7 @@
  * formatter — there is no divergent-data path.
  */
 
-import { type GenericSchema, getDescription } from "valibot";
+import { type GenericSchema, getDescription, type InferOutput } from "valibot";
 import type { Writer } from "../../types/index.js";
 import { plainSafeMuted } from "./human.js";
 import { filterFields, formatJson } from "./json.js";
@@ -102,15 +102,24 @@ type JsonExcludeKey<T> = T extends readonly (infer Item)[]
   : keyof T & string;
 
 /**
- * Output configuration declared on `buildCommand` for automatic rendering.
- *
- * When present, `--json` and `--fields` flags are injected and the wrapper
- * auto-renders yielded {@link CommandOutput} values.
- *
- * @typeParam T - Type of data the command yields (used by `human` formatter
- *   and serialized as-is to JSON)
+ * The JSON value `--fields` operates on: the data, or each item when the
+ * data is an array.
  */
-export type OutputConfig<T> = {
+type JsonItem<T> = T extends readonly (infer Item)[] ? Item : T;
+
+/**
+ * Holds when the JSON data satisfies `S`, so every field the schema
+ * documents exists on the data with a matching type. Otherwise it requires
+ * a property no schema has, and the error shows the schema's output type.
+ */
+type SchemaMatches<T, S extends GenericSchema> = [JsonItem<T>] extends [
+  InferOutput<S>,
+]
+  ? unknown
+  : { "~outputMismatch": InferOutput<S> };
+
+/** Fields shared by both forms of {@link OutputConfig}. */
+type OutputConfigBase<T> = {
   /**
    * Human-readable renderer.
    *
@@ -126,39 +135,57 @@ export type OutputConfig<T> = {
    * (e.g. pre-formatted terminal strings) and should not appear
    * in the JSON contract.
    *
-   * Ignored when {@link jsonTransform} is set — the transform is
-   * responsible for shaping the final JSON output.
+   * Ignored when {@link OutputConfig.jsonTransform} is set — the transform
+   * is responsible for shaping the final JSON output.
    */
   jsonExclude?: ReadonlyArray<JsonExcludeKey<T>>;
-  /**
-   * Custom JSON serialization transform.
-   *
-   * When set, replaces the default JSON output path entirely.
-   * The function receives the raw command data and the parsed `--fields`
-   * list, and returns the final object to serialize.
-   *
-   * This is useful for list commands that wrap items in a
-   * `{ data, hasMore, nextCursor }` envelope and need per-element
-   * field filtering rather than top-level filtering.
-   *
-   * When `jsonTransform` is set, `jsonExclude` is ignored.
-   */
-  jsonTransform?: (data: T, fields?: string[]) => unknown;
-  /**
-   * Valibot schema describing the shape of JSON output (after transform/exclude).
-   * Declare it once and derive the command's output type from it; see
-   * "Declaring Command Output" in `packages/cli/AGENTS.md`.
-   *
-   * For list commands with {@link jsonTransform}, this should describe the
-   * **item** type (what `--fields` operates on), not the envelope.
-   *
-   * Used for:
-   * - `--help` output: appends available JSON fields to the command description
-   * - `sentry help <cmd>`: structured field documentation
-   * - `generate-skill.ts`: SKILL.md field tables for AI agents
-   */
-  schema?: GenericSchema;
 };
+
+/**
+ * Output configuration declared on `buildCommand` for automatic rendering.
+ *
+ * When present, `--json` and `--fields` flags are injected and the wrapper
+ * auto-renders yielded {@link CommandOutput} values.
+ *
+ * `schema` is a valibot schema describing the JSON output. Declare it once
+ * and derive the command's output type from it; see "Declaring Command
+ * Output" in `packages/cli/AGENTS.md`. It drives `--help`, `sentry help
+ * <cmd>`, `--fields` completion, and the SKILL.md field tables.
+ *
+ * Without `jsonTransform`, the data (each item for array data) must satisfy
+ * `schema`, so a documented field the command doesn't produce is a compile
+ * error. With `jsonTransform`, `schema` describes the transform's **item**
+ * (what `--fields` operates on), which the types can't see, so it isn't
+ * checked.
+ *
+ * @typeParam T - Type of data the command yields (used by `human` formatter
+ *   and serialized as-is to JSON)
+ * @typeParam S - Type of `schema`, inferred by the command builders
+ */
+export type OutputConfig<
+  T,
+  S extends GenericSchema = GenericSchema,
+> = OutputConfigBase<T> &
+  (
+    | { jsonTransform?: undefined; schema?: S & SchemaMatches<T, S> }
+    | {
+        /**
+         * Custom JSON serialization transform.
+         *
+         * When set, replaces the default JSON output path entirely.
+         * The function receives the raw command data and the parsed
+         * `--fields` list, and returns the final object to serialize.
+         *
+         * This is useful for list commands that wrap items in a
+         * `{ data, hasMore, nextCursor }` envelope and need per-element
+         * field filtering rather than top-level filtering.
+         *
+         * When `jsonTransform` is set, `jsonExclude` is ignored.
+         */
+        jsonTransform: (data: T, fields?: string[]) => unknown;
+        schema?: GenericSchema;
+      }
+  );
 
 /**
  * Yield type for commands with {@link OutputConfig}.

@@ -133,7 +133,7 @@ export const deleteCommand = buildDeleteCommand({
 
     // Dry-run mode: show what would be deleted
     if (flags["dry-run"]) {
-      yield new CommandOutput<DeleteResult>({
+      yield new CommandOutput({
         deleted: false,
         org,
         version,
@@ -153,7 +153,7 @@ export const deleteCommand = buildDeleteCommand({
         `Type '${version}' to permanently delete this release${deployInfo}:`,
       );
       if (!confirmed) {
-        yield new CommandOutput<DeleteResult>({
+        yield new CommandOutput({
           deleted: false,
           org,
           version,
@@ -167,6 +167,6 @@ export const deleteCommand = buildDeleteCommand({
     } catch (error) {
       throw enrichDeleteError(error, org, version);
     }
-    yield new CommandOutput<DeleteResult>({ deleted: true, org, version });
+    yield new CommandOutput({ deleted: true, org, version });
   },
 });

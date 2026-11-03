@@ -25,12 +25,14 @@ List product trials
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `name` | string | CLI trial name (e.g. seer), or "plan" for the plan trial |
 | `category` | string | Trial category (e.g. seerUsers, seerAutofix) |
-| `startDate` | string \| null | Start date (ISO 8601) |
-| `endDate` | string \| null | End date (ISO 8601) |
-| `reasonCode` | number | Reason code |
+| `status` | string | Trial status |
+| `daysRemaining` | number \| null | Days left on an active trial |
 | `isStarted` | boolean | Whether the trial has started |
 | `lengthDays` | number \| null | Trial duration in days |
+| `startDate` | string \| null | Start date (ISO 8601) |
+| `endDate` | string \| null | End date (ISO 8601) |
 
 **Examples:**
 

@@ -517,7 +517,7 @@ export const uploadCommand = buildCommand({
     const { selective, allImageNames } = await resolveSelective(flags, images);
     // A complete name list makes zero uploaded images a valid all-unchanged run.
     if (images.length === 0 && allImageNames === undefined) {
-      yield new CommandOutput<SnapshotUploadResult>({
+      yield new CommandOutput({
         imagesFound: 0,
         uploaded: 0,
         skipped: 0,
@@ -547,7 +547,7 @@ export const uploadCommand = buildCommand({
     });
     const snapshot = await createPreprodSnapshot(org, project, manifest);
 
-    yield new CommandOutput<SnapshotUploadResult>({
+    yield new CommandOutput({
       imagesFound: images.length,
       uploaded,
       skipped,

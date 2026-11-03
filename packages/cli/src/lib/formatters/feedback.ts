@@ -13,7 +13,6 @@ import type {
   FeedbackViewResult,
   SentryEvent,
   SentryFeedback,
-  SentryIssue,
 } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails } from "./human.js";
@@ -33,21 +32,21 @@ const FEEDBACK_UNSAFE_TERMINAL_RE =
   /[\x00-\x09\x0b\x0c\x0e-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 /** Confirm resolution using the updated Feedback's terminal-safe identifier. */
-export function formatResolvedFeedback(feedback: SentryIssue): string {
+export function formatResolvedFeedback(feedback: SentryFeedback): string {
   return renderMarkdown(
     `Resolved feedback ${feedbackCodeSpan(feedback.shortId)}.`,
   );
 }
 
 /** Confirm reopening using the updated Feedback's terminal-safe identifier. */
-export function formatReopenedFeedback(feedback: SentryIssue): string {
+export function formatReopenedFeedback(feedback: SentryFeedback): string {
   return renderMarkdown(
     `Reopened feedback ${feedbackCodeSpan(feedback.shortId)}.`,
   );
 }
 
 /** Confirm spam using the updated Feedback's terminal-safe identifier. */
-export function formatSpamFeedback(feedback: SentryIssue): string {
+export function formatSpamFeedback(feedback: SentryFeedback): string {
   return renderMarkdown(
     `Marked feedback ${feedbackCodeSpan(feedback.shortId)} as spam.`,
   );

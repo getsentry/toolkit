@@ -224,7 +224,7 @@ export const resolveCommand = buildCommand({
       }
     }
 
-    yield new CommandOutput<ResolveCommandResult>({
+    yield new CommandOutput({
       total: files.length,
       resolved,
       withDebugId,

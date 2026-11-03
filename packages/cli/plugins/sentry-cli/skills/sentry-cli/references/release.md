@@ -178,7 +178,7 @@ Create a release
 | `lastDeploy` | object \| null | Most recent deploy |
 | `authors` | array | Commit authors |
 | `owner` | object \| null | Release owner |
-| `projects` | array | Projects in the release |
+| `projects` | array | Projects in the release (only slug with --dry-run) |
 | `adoptionStages` | object \| null | Adoption stage per project |
 | `dryRun` | boolean | True when --dry-run made no change |
 

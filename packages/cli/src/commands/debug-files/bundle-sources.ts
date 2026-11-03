@@ -153,7 +153,7 @@ export const bundleSourcesCommand = buildCommand({
       // this.process === the global process in production (see buildContext);
       // using it here keeps the exit-code observable in tests.
       this.process.exitCode = 1;
-      yield new CommandOutput<BundleSourcesResult>({
+      yield new CommandOutput({
         path,
         outputPath: null,
         debugId: result.debugId,
@@ -174,7 +174,7 @@ export const bundleSourcesCommand = buildCommand({
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, result.bundle);
 
-    yield new CommandOutput<BundleSourcesResult>({
+    yield new CommandOutput({
       path,
       outputPath,
       debugId: result.debugId,

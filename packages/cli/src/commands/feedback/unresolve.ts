@@ -3,13 +3,13 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { updateIssueStatus } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { formatReopenedFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
 import { SentryFeedbackSchema } from "../../types/index.js";
 import { type FeedbackTarget, feedbackPositional } from "./positional.js";
+import { updateFeedbackStatus } from "./utils.js";
 
 export const unresolveCommand = buildCommand({
   docs: {
@@ -52,11 +52,8 @@ export const unresolveCommand = buildCommand({
   },
   async *func(this: SentryContext, _flags, target: FeedbackTarget) {
     disableResponseCache();
-    const { org, feedback } = await target.resolved;
-    const updated = await updateIssueStatus(feedback.id, "unresolved", {
-      orgSlug: org,
-    });
-
-    yield new CommandOutput(updated);
+    yield new CommandOutput(
+      await updateFeedbackStatus(await target.resolved, "unresolved"),
+    );
   },
 });

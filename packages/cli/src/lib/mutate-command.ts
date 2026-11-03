@@ -18,6 +18,7 @@
 
 import { isatty } from "node:tty";
 import type { Command, CommandContext } from "@stricli/core";
+import type { GenericSchema } from "valibot";
 import type { ParsedOrgProject } from "./arg-parsing.js";
 import {
   buildCommand,
@@ -313,12 +314,13 @@ export function buildDeleteCommand<
   const ARGS extends readonly unknown[] = [],
   const CONTEXT extends CommandContext = CommandContext,
   OUTPUT = never,
+  SCHEMA extends GenericSchema = GenericSchema,
 >(
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
     readonly docs: CommandDocumentation;
     readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
-    readonly output?: OutputConfig<OUTPUT>;
+    readonly output?: OutputConfig<OUTPUT, SCHEMA>;
     readonly auth?: boolean;
   },
   options?: DeleteCommandOptions,

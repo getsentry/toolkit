@@ -251,7 +251,7 @@ export const downloadCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<SnapshotDownloadResult>({
+    yield new CommandOutput({
       org,
       snapshotId,
       output,

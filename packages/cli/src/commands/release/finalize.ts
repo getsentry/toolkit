@@ -137,7 +137,7 @@ export const finalizeCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput<FinalizeOutput>({
+      yield new CommandOutput({
         dryRun: true,
         version,
         org,
@@ -153,7 +153,7 @@ export const finalizeCommand = buildCommand({
       body.url = flags.url;
     }
     const release = await updateRelease(org, version, body);
-    yield new CommandOutput<FinalizeOutput>(release);
+    yield new CommandOutput(release);
     const hint = detectedFrom ? `Detected from ${detectedFrom}` : undefined;
     return { hint };
   },

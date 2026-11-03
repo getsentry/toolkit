@@ -37,6 +37,7 @@ import {
   buildCommand as stricliCommand,
   numberParser as stricliNumberParser,
 } from "@stricli/core";
+import type { GenericSchema } from "valibot";
 import type { Writer } from "../types/index.js";
 import { asRunningAppCommand } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
@@ -162,6 +163,7 @@ type LocalCommandBuilderArguments<
   ARGS extends BaseArgs,
   CONTEXT extends CommandContext,
   OUTPUT,
+  SCHEMA extends GenericSchema,
 > = {
   readonly parameters?: Record<string, unknown>;
   readonly docs: CommandDocumentation;
@@ -185,7 +187,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  readonly output?: OutputConfig<OUTPUT>;
+  readonly output?: OutputConfig<OUTPUT, SCHEMA>;
   /**
    * Whether the command requires authentication. Defaults to `true`.
    *
@@ -560,8 +562,15 @@ export function buildCommand<
   const ARGS extends BaseArgs = [],
   const CONTEXT extends CommandContext = CommandContext,
   OUTPUT = never,
+  SCHEMA extends GenericSchema = GenericSchema,
 >(
-  builderArgs: LocalCommandBuilderArguments<FLAGS, ARGS, CONTEXT, OUTPUT>,
+  builderArgs: LocalCommandBuilderArguments<
+    FLAGS,
+    ARGS,
+    CONTEXT,
+    OUTPUT,
+    SCHEMA
+  >,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
   // The wrapper renders whatever the generator yields; the builder

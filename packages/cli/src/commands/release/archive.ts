@@ -100,7 +100,7 @@ export const archiveCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput<ReleaseUpdateOutput>({
+      yield new CommandOutput({
         dryRun: true,
         version,
         org,
@@ -111,7 +111,7 @@ export const archiveCommand = buildCommand({
     const release = await updateRelease(org, version, {
       status: "archived",
     });
-    yield new CommandOutput<ReleaseUpdateOutput>(release);
+    yield new CommandOutput(release);
     const hint = detectedFrom ? `Detected from ${detectedFrom}` : undefined;
     return { hint };
   },

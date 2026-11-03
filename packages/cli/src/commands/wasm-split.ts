@@ -203,7 +203,7 @@ export const wasmSplitCommand = buildCommand({
       return {};
     }
 
-    yield new CommandOutput<WasmSplitResult>({
+    yield new CommandOutput({
       buildId: formatBuildId(result.buildId),
       input,
       ...(result.moduleChanged ? { output } : {}),
