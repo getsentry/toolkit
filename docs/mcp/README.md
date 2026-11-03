@@ -5,6 +5,11 @@ MCP spans `packages/mcp-core/`, `packages/mcp-server/` (built from `packages/cli
 packages. Its guides stay in root `docs/` because no single MCP package owns
 them. The [Toolkit index](../README.md) also links the CLI and shared guides.
 
+## Supported Clients
+
+- [Supported harnesses](harnesses.md) — tier 1 and tier 2 agent harnesses we
+  design for, and their native MCP tool search support.
+
 ## Develop and Test
 
 - [Architecture](../architecture/overview.md) — MCP packages and transports.
