@@ -11,7 +11,6 @@
  */
 
 import { tableCell } from "@sentry/toolkit-core/markdown";
-import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
@@ -61,6 +60,8 @@ import {
   jsonTransformListResult,
   type ListCommandMeta,
   type ListResult,
+  orgListItemSchema,
+  type WithOrg,
 } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
@@ -103,7 +104,7 @@ type ProjectListFlags = ListFlags & { readonly filter?: string };
  * operate on projects before org context is attached.
  * The canonical exported type with required orgSlug lives in api-client.ts.
  */
-type ProjectWithOrg = SentryProject & { orgSlug?: string };
+type ProjectWithOrg = WithOrg<SentryProject>;
 
 /**
  * Fetch projects for a single organization (all pages).
@@ -922,10 +923,7 @@ export const listCommand = buildListCommand("project", {
       return parts.join("");
     },
     jsonTransform: jsonTransformListResult,
-    schema: looseObject({
-      ...SentryProjectSchema.entries,
-      orgSlug: optional(pipe(string(), description("Organization slug"))),
-    }),
+    schema: orgListItemSchema(SentryProjectSchema),
   } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
   parameters: {
     positional: listTargetPositional({ names: true, multi: true }),

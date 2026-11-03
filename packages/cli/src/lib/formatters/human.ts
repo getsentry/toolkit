@@ -12,8 +12,9 @@ import * as Sentry from "@sentry/node";
 import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import prettyMs from "pretty-ms";
 import type {
-  DashboardDetail,
   DashboardWidget,
+  DashboardWidgetChangeOutput,
+  DashboardWidgetDeleteOutput,
 } from "../../types/dashboard.js";
 import type {
   BreadcrumbsEntry,
@@ -2458,11 +2459,7 @@ export function formatDashboardCreated(result: {
 /**
  * Format a widget add result for human-readable output.
  */
-export function formatWidgetAdded(result: {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-}): string {
+export function formatWidgetAdded(result: DashboardWidgetChangeOutput): string {
   const widgetCount = result.dashboard.widgets?.length ?? 0;
   const lines: string[] = [
     `Added widget '${text(result.widget.title)}' to dashboard (now ${widgetCount} widgets)`,
@@ -2479,13 +2476,10 @@ export function formatWidgetAdded(result: {
  * Format a widget deletion result for human-readable output.
  * Supports dry-run mode — shows what would be removed without removing it.
  */
-export function formatWidgetDeleted(result: {
-  dashboard: DashboardDetail;
-  widgetTitle: string;
-  url: string;
-  dryRun?: boolean;
-}): string {
-  const widgetCount = result.dashboard.widgets?.length ?? 0;
+export function formatWidgetDeleted(
+  result: DashboardWidgetDeleteOutput,
+): string {
+  const { widgetCount } = result;
   if (result.dryRun) {
     const lines: string[] = [
       `Would remove widget '${text(result.widgetTitle)}' from dashboard (currently ${widgetCount} widgets)`,
@@ -2517,11 +2511,9 @@ function formatWidgetLayoutLine(widget: DashboardWidget): string {
 /**
  * Format a widget edit result for human-readable output.
  */
-export function formatWidgetEdited(result: {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-}): string {
+export function formatWidgetEdited(
+  result: DashboardWidgetChangeOutput,
+): string {
   const lines: string[] = [
     `Updated widget '${text(result.widget.title)}' in dashboard ${result.dashboard.id}`,
   ];

@@ -42,7 +42,11 @@ import {
   validateMetricTimeWindow,
 } from "../mutation-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
-import { MetricAlertCreateOutputSchema } from "../output-schemas.js";
+import {
+  type MetricAlertCreateBody,
+  type MetricAlertCreateOutput,
+  MetricAlertCreateOutputSchema,
+} from "../output-schemas.js";
 
 type CreateFlags = {
   readonly name: string;
@@ -60,16 +64,7 @@ type CreateFlags = {
   readonly fields?: string[];
 };
 
-type CreateResult = {
-  org: string;
-  id?: string;
-  name: string;
-  status?: "active" | "disabled";
-  dryRun?: boolean;
-  body?: Record<string, unknown>;
-};
-
-function formatCreated(result: CreateResult): string {
+function formatCreated(result: MetricAlertCreateOutput): string {
   if (result.dryRun) {
     return `Would create metric alert rule '${result.name}' in ${result.org}.`;
   }
@@ -236,7 +231,7 @@ export const createCommand = buildCommand({
 
     const orgSlug = await target.resolved;
 
-    const body: Record<string, unknown> = {
+    const body: MetricAlertCreateBody = {
       name: flags.name,
       query,
       aggregate: flags.aggregate,
@@ -264,7 +259,7 @@ export const createCommand = buildCommand({
         name: flags.name,
         dryRun: true,
         body,
-      } satisfies CreateResult);
+      } satisfies MetricAlertCreateOutput);
       return { hint: "Dry run - no metric alert rule was created." };
     }
 
@@ -274,6 +269,6 @@ export const createCommand = buildCommand({
       id: stringifyUnknown(created.id ?? ""),
       name: stringifyUnknown(created.name ?? flags.name),
       status: metricAlertStatusLabel(created.status),
-    } satisfies CreateResult);
+    } satisfies MetricAlertCreateOutput);
   },
 });

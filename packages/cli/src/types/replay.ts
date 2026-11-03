@@ -402,23 +402,31 @@ export const ReplayRelatedTraceSchema = pipe(
   description("Replay-related trace"),
 );
 
+/**
+ * Fields `replay view` adds to the replay in its JSON output. The command's
+ * data type (`ReplayViewData`) is derived from them.
+ */
+export const ReplayViewOutputFields = object({
+  org: pipe(string(), description("Organization slug")),
+  activity: pipe(
+    array(ReplayActivityEventSchema),
+    description("Summarized replay activity"),
+  ),
+  relatedIssues: pipe(
+    array(ReplayRelatedIssueSchema),
+    description("Replay-related issues"),
+  ),
+  relatedTraces: pipe(
+    array(ReplayRelatedTraceSchema),
+    description("Replay-related traces"),
+  ),
+});
+
 /** Replay view output with related context and summarized activity. */
 export const ReplayViewOutputSchema = pipe(
   object({
     ...ReplayDetailsOutputSchema.entries,
-    org: pipe(string(), description("Organization slug")),
-    activity: pipe(
-      array(ReplayActivityEventSchema),
-      description("Summarized replay activity"),
-    ),
-    relatedIssues: pipe(
-      array(ReplayRelatedIssueSchema),
-      description("Replay-related issues"),
-    ),
-    relatedTraces: pipe(
-      array(ReplayRelatedTraceSchema),
-      description("Replay-related traces"),
-    ),
+    ...ReplayViewOutputFields.entries,
   }),
   description("Replay view output"),
 );

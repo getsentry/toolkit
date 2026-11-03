@@ -2,24 +2,22 @@
  * Issue view output types and formatters.
  */
 
-import type { SentryEvent, SentryIssue } from "../../types/index.js";
+import type { InferOutput } from "valibot";
+import type { IssueViewOutputFields, SentryIssue } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails, formatIssueDetails } from "./human.js";
 import { filterFields } from "./json.js";
 import { renderMarkdown } from "./markdown.js";
 
-/** Data rendered for one issue. */
-export type SingleIssueViewData = {
-  /** Resolved organization slug, or null when resolution was unscoped. */
-  org: string | null;
+/**
+ * Data rendered for one issue: the issue, and the fields JSON output adds to
+ * it ({@link IssueViewOutputFields}: the resolved org, or null when
+ * resolution was unscoped; the latest event, or null when it could not be
+ * loaded; related replays; the trace, or null when unavailable).
+ */
+export type SingleIssueViewData = InferOutput<typeof IssueViewOutputFields> & {
   /** Full issue details. */
   issue: SentryIssue;
-  /** Latest event, or null when it could not be loaded. */
-  event: SentryEvent | null;
-  /** Related Session Replay identifiers. */
-  replayIds: string[];
-  /** Trace context from the latest event, or null when unavailable. */
-  trace: { traceId: string; spans: unknown[] } | null;
   /** Pre-formatted span tree lines for human output only. */
   spanTreeLines?: string[];
 };

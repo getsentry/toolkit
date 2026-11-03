@@ -5,7 +5,7 @@
  */
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
-import { looseObject } from "valibot";
+import { looseObject, object } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -25,10 +25,14 @@ import {
   DryRunOutputField,
   type SentryRelease,
   SentryReleaseSchema,
+  type WithOutputFields,
 } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release create [<org>/]<version>";
+
+/** The field `--dry-run` adds to the release it reports. */
+const ReleaseCreateOutputFields = object({ dryRun: DryRunOutputField });
 
 /**
  * JSON output: the created release, or with `--dry-run` the release that
@@ -36,17 +40,16 @@ const USAGE_HINT = "sentry release create [<org>/]<version>";
  */
 const ReleaseCreateOutputSchema = looseObject({
   ...SentryReleaseSchema.entries,
-  dryRun: DryRunOutputField,
+  ...ReleaseCreateOutputFields.entries,
 });
 
 /** The release `--dry-run` reports: the request body, shaped like a release. */
-type ReleaseCreateDryRun = Pick<
-  SentryRelease,
-  "version" | "ref" | "url" | "dateReleased"
-> & {
-  dryRun: true;
-  projects: { slug: string }[];
-};
+type ReleaseCreateDryRun = WithOutputFields<
+  Pick<SentryRelease, "version" | "ref" | "url" | "dateReleased"> & {
+    projects: { slug: string }[];
+  },
+  typeof ReleaseCreateOutputFields
+>;
 
 function formatReleaseCreated(release: SentryRelease): string {
   const lines: string[] = [];

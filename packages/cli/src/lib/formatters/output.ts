@@ -134,7 +134,9 @@ export type OutputConfig<T> = {
    */
   jsonTransform?: (data: T, fields?: string[]) => unknown;
   /**
-   * Zod schema describing the shape of JSON output (after transform/exclude).
+   * Valibot schema describing the shape of JSON output (after transform/exclude).
+   * Declare it once and derive the command's output type from it; see
+   * "Declaring Command Output" in `packages/cli/AGENTS.md`.
    *
    * For list commands with {@link jsonTransform}, this should describe the
    * **item** type (what `--fields` operates on), not the envelope.
@@ -353,7 +355,7 @@ type ValibotSchemaNode = {
   type: string;
   /** Inner schema for wrapper types (optional / nullable / nullish). */
   wrapped?: ValibotSchemaNode;
-  /** Member schemas for union / picklist. */
+  /** Member schemas for union / variant / picklist. */
   options?: unknown[];
   /** Item schema for array. */
   item?: ValibotSchemaNode;
@@ -461,7 +463,10 @@ function valibotTypeToString(input: ValibotSchemaNode): {
       : `${inner.type} | null`;
     return { type: nullableType, optional: true };
   }
-  if (schema.type === "union" && schema.options?.length) {
+  if (
+    (schema.type === "union" || schema.type === "variant") &&
+    schema.options?.length
+  ) {
     return resolveValibotUnion(schema.options as ValibotSchemaNode[]);
   }
 
@@ -505,7 +510,8 @@ const WRAPPER_TYPES = new Set(["optional", "nullable", "nullish", "array"]);
 
 /**
  * The object schemas a value of `schema` can be: through pipes, wrappers,
- * array items (`--fields` paths reach into arrays), and union members.
+ * array items (`--fields` paths reach into arrays), and union and variant
+ * members.
  */
 function objectsOf(schema: ValibotSchemaNode): ValibotSchemaNode[] {
   const node = unwrapPipe(schema);
@@ -513,7 +519,7 @@ function objectsOf(schema: ValibotSchemaNode): ValibotSchemaNode[] {
     const inner = node.wrapped ?? node.item;
     return inner ? objectsOf(inner) : [];
   }
-  if (node.type === "union") {
+  if (node.type === "union" || node.type === "variant") {
     return (node.options as ValibotSchemaNode[]).flatMap(objectsOf);
   }
   return node.entries ? [node] : [];

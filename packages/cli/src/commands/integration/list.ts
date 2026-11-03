@@ -15,7 +15,7 @@ import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import {
   type SentryIntegration,
   SentryIntegrationSchema,
@@ -25,7 +25,7 @@ import {
 export const PAGINATION_KEY = "integration-list";
 
 /** Integration with its organization context for display */
-type IntegrationWithOrg = SentryIntegration & { orgSlug?: string };
+type IntegrationWithOrg = WithOrg<SentryIntegration>;
 
 /** Column definitions for the integration table. */
 const INTEGRATION_COLUMNS: Column<IntegrationWithOrg>[] = [

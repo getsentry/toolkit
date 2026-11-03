@@ -9,6 +9,8 @@
 
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
+import type { InferOutput } from "valibot";
+import type { AccountSummarySchema } from "../../types/account.js";
 import { normalizeUrl } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { fuzzyMatch } from "../fuzzy.js";
@@ -35,24 +37,12 @@ export type AccountRow = {
   last_used_at: number;
 };
 
-/** Public, secret-free view of a stored account. */
-export type AccountSummary = {
-  id: string;
-  active: boolean;
-  host: string | undefined;
-  userId: string | undefined;
-  email: string | undefined;
-  username: string | undefined;
-  name: string | undefined;
-  /** Whether the stored credential can still be used (or refreshed). */
-  usable: boolean;
-  expiresAt: number | undefined;
-  /**
-   * Set for the virtual account of an env token (`SENTRY_AUTH_TOKEN` or
-   * `SENTRY_TOKEN`), which is never stored: the variable providing it.
-   */
-  envVar?: string;
-};
+/**
+ * Public, secret-free view of a stored account. Type-only import of the
+ * schema: the `__complete` fast path loads this module and must not load
+ * valibot.
+ */
+export type AccountSummary = InferOutput<typeof AccountSummarySchema>;
 
 /** Prefix of an env token's virtual account id, e.g. `env:SENTRY_AUTH_TOKEN`. */
 export const ENV_ACCOUNT_ID_PREFIX = "env:";
