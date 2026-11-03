@@ -27,6 +27,7 @@ import {
   boundMcpRequestBody,
 } from "@sentry/toolkit-core/mcp-limits";
 import { createMcpHandler } from "agents/mcp/server";
+import { registerCodeModeTools } from "../../code-mode/tools";
 import { annotateResponseMetric } from "../metrics";
 import {
   ACCESS_METHOD_ATTRIBUTE,
@@ -472,11 +473,14 @@ async function handleAuthenticatedMcpRequest(
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
   return await createMcpHandler(
-    () =>
-      buildServer({
+    () => {
+      const server = buildServer({
         context: serverContext,
         experimentalMode: isExperimentalMode,
-      }),
+      });
+      registerCodeModeTools(server, env.LOADER, serverContext);
+      return server;
+    },
     {
       route: url.pathname,
       // The Agents handler rejects browser Origins by default except localhost.

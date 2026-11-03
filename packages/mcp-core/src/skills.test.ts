@@ -8,6 +8,7 @@ import {
   isEnabledBySkills,
   type Skill,
 } from "./skills";
+import { CODE_MODE_SKILLS } from "./code-mode";
 import skillDefinitions from "./skillDefinitions";
 
 function getGeneratedSkillToolNames(skillId: string) {
@@ -32,6 +33,19 @@ function getGeneratedSkillToolDescription(skillId: string, toolName: string) {
 }
 
 describe("skills module", () => {
+  it.each(CODE_MODE_SKILLS)("keeps Code Mode skill %s off stdio", (skill) => {
+    expect(SKILLS[skill].hostedOnly).toBe(true);
+  });
+
+  it.each([
+    ["api-read", "disabled"],
+    ["api-write", "enabled"],
+  ])("describes Code Mode for %s with writes %s", (skillId, writeState) => {
+    expect(
+      getGeneratedSkillToolDescription(skillId, "execute_sentry_code"),
+    ).toContain(`Writes are ${writeState}.`);
+  });
+
   it("does not advertise workflow-only tools in generated skill prompts", () => {
     for (const skill of skillDefinitions) {
       expect(skill.tools?.map((tool) => tool.name) ?? []).not.toContain(
@@ -86,6 +100,8 @@ describe("skills module", () => {
         "seer",
         "triage",
         "project-management",
+        "api-read",
+        "api-write",
       ]);
       expect(ACTIVE_SKILLS).not.toContain("docs");
     });

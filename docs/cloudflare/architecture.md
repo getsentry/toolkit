@@ -96,6 +96,15 @@ const mcpClient = await experimental_createMCPClient({
 - Prompt metadata endpoint
 - Error handling with fallbacks
 
+### Hosted MCP Code Mode
+
+The authenticated hosted MCP also registers `search_sentry_api` and
+`execute_sentry_code` for connections granted API Read or API Write. The
+client's model writes the code; a Dynamic Worker from the `LOADER` binding runs
+it without network access, and an RPC broker in the parent Worker sends the
+allowed Sentry API requests with the user's token. See
+[HTTP Code Mode](../architecture/code-mode.md).
+
 ### 4. AI Assistant
 
 GPT-4 integration with Sentry-specific system prompt:

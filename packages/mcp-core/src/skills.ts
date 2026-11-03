@@ -11,7 +11,9 @@ export type Skill =
   | "triage"
   | "project-management"
   | "seer"
-  | "docs";
+  | "docs"
+  | "api-read"
+  | "api-write";
 
 // Central registry with metadata (used by OAuth UI)
 export interface SkillDefinition {
@@ -20,6 +22,7 @@ export interface SkillDefinition {
   description: string;
   defaultEnabled: boolean;
   deprecated?: boolean;
+  hostedOnly?: boolean;
   order: number;
   toolCount?: number; // Number of tools enabled by this skill (calculated dynamically)
 }
@@ -64,6 +67,24 @@ export const SKILLS: Record<Skill, SkillDefinition> = {
       "Create and modify projects, teams, DSNs, cron monitor environments, uptime monitors, metric monitors, and alert rules",
     defaultEnabled: false,
     order: 5,
+  },
+  "api-read": {
+    id: "api-read",
+    name: "API Read",
+    description:
+      "Read data through the Sentry API using Code Mode. Your Sentry permissions still apply.",
+    defaultEnabled: false,
+    hostedOnly: true,
+    order: 6,
+  },
+  "api-write": {
+    id: "api-write",
+    name: "API Write",
+    description:
+      "Read, create, modify, and delete data through the Sentry API. Includes API Read.",
+    defaultEnabled: false,
+    hostedOnly: true,
+    order: 7,
   },
 };
 

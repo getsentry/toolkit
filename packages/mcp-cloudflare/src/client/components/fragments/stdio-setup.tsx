@@ -7,7 +7,7 @@ import InstallTabs, { Tab } from "./install-tabs";
 
 const mcpServerName = import.meta.env.DEV ? "sentry-dev" : "sentry";
 const orderedSkills = [...skillDefinitions]
-  .filter((skill) => !skill.deprecated)
+  .filter((skill) => !skill.deprecated && !skill.hostedOnly)
   .sort((a, b) => a.order - b.order);
 
 export default function StdioSetup() {

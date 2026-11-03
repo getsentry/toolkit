@@ -10,6 +10,7 @@ import {
   ACTIVE_SKILLS,
   ALL_SKILLS,
   parseSkills,
+  SKILLS,
   type Skill,
 } from "@sentry/mcp-core/skills";
 import {
@@ -69,12 +70,34 @@ function validated<T>(validate: () => T): T {
   }
 }
 
+/** Skills stdio can serve: hosted-only skills (Code Mode) need the hosted MCP. */
+export const STDIO_SKILLS = ALL_SKILLS.filter(
+  (skill) => !SKILLS[skill].hostedOnly,
+);
+const ACTIVE_STDIO_SKILLS = ACTIVE_SKILLS.filter(
+  (skill) => !SKILLS[skill].hostedOnly,
+);
+
 export function formatInvalidSkills(
   invalid: string[],
   source?: string,
 ): string {
   const prefix = source ? `${source} provided` : "Invalid skills provided";
-  return `${prefix}: ${invalid.join(", ")}\nAvailable skills: ${ALL_SKILLS.join(", ")}`;
+  return `${prefix}: ${invalid.join(", ")}\nAvailable skills: ${STDIO_SKILLS.join(", ")}`;
+}
+
+function parseStdioSkills(input: string, source?: string): Set<Skill> {
+  const { valid, invalid } = parseSkills(input);
+  if (invalid.length > 0) {
+    throw new ValidationError(formatInvalidSkills(invalid, source));
+  }
+  const hosted = [...valid].filter((skill) => SKILLS[skill].hostedOnly);
+  if (hosted.length > 0) {
+    throw new ValidationError(
+      `These skills are available only on the hosted MCP: ${hosted.join(", ")}.`,
+    );
+  }
+  return valid;
 }
 
 /** Resolve the Sentry host from `--url` or `--host`, defaulting to sentry.io. */
@@ -105,12 +128,9 @@ function resolveSkills(input: McpMergedArgs, sentryHost: string): Set<Skill> {
 
   let finalSkills: Set<Skill>;
   if (input.allSkills) {
-    finalSkills = new Set<Skill>(ACTIVE_SKILLS);
+    finalSkills = new Set<Skill>(ACTIVE_STDIO_SKILLS);
   } else if (input.skills) {
-    const { valid, invalid } = parseSkills(input.skills);
-    if (invalid.length > 0) {
-      throw new ValidationError(formatInvalidSkills(invalid));
-    }
+    const valid = parseStdioSkills(input.skills);
     if (valid.size === 0) {
       throw new ValidationError(
         "Invalid skills provided. No valid skills found.",
@@ -118,21 +138,17 @@ function resolveSkills(input: McpMergedArgs, sentryHost: string): Set<Skill> {
     }
     finalSkills = valid;
   } else {
-    finalSkills = new Set<Skill>(ACTIVE_SKILLS);
+    finalSkills = new Set<Skill>(ACTIVE_STDIO_SKILLS);
     if (!isSentryHost(sentryHost)) {
       finalSkills.delete("seer");
     }
   }
 
   if (input.disableSkills) {
-    const { valid: skillsToDisable, invalid } = parseSkills(
+    const skillsToDisable = parseStdioSkills(
       input.disableSkills,
+      "--disable-skills",
     );
-    if (invalid.length > 0) {
-      throw new ValidationError(
-        formatInvalidSkills(invalid, "--disable-skills"),
-      );
-    }
     for (const skill of skillsToDisable) {
       finalSkills.delete(skill);
     }

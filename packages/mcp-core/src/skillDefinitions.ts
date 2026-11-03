@@ -7,6 +7,7 @@ export interface SkillDefinition {
   description: string;
   defaultEnabled: boolean;
   deprecated?: boolean;
+  hostedOnly?: boolean;
   order: number;
   toolCount?: number;
   tools?: Array<{

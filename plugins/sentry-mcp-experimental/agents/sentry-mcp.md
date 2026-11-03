@@ -11,6 +11,7 @@ mcpServers:
   - sentry
 allowedTools:
   - analyze_issue_with_seer
+  - execute_sentry_code
   - execute_sentry_tool
   - find_organizations
   - find_projects
@@ -21,6 +22,7 @@ allowedTools:
   - search_metrics
   - search_profiles
   - search_replays
+  - search_sentry_api
   - search_sentry_tools
   - search_traces
 ---

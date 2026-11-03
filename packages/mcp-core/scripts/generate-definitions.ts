@@ -18,6 +18,14 @@ const toolsModule = await import("../src/tools/index.ts");
 const surfacesModule = await import("../src/tools/surfaces.ts");
 const skillsModule = await import("../src/skills.ts");
 const toolTypesModule = await import("../src/tools/types.ts");
+// Code Mode tools are hosted-only: registered by mcp-cloudflare, not by the
+// tool registry, so their definitions are added here.
+const {
+  CODE_MODE_TOOL_NAMES,
+  CODE_MODE_SKILLS,
+  getCodeModeToolDefinitions,
+  isCodeModeSkill,
+} = await import("../src/code-mode.ts");
 
 function writeJson(file: string, data: unknown) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -27,17 +35,20 @@ function ensureDirExists(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-function zodFieldMapToJsonSchema(
-  fieldMap: Record<string, ZodTypeAny>,
-): unknown {
-  if (!fieldMap || Object.keys(fieldMap).length === 0) return {};
-  const obj = z.object(fieldMap);
-  const { $schema: _, ...jsonSchema } = z.toJSONSchema(obj, {
-    io: "input",
+function toJsonSchema(schema: ZodTypeAny, io: "input" | "output"): unknown {
+  const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema, {
+    io,
     target: "draft-7",
     unrepresentable: "any",
   });
   return jsonSchema;
+}
+
+function zodFieldMapToJsonSchema(
+  fieldMap: Record<string, ZodTypeAny>,
+): unknown {
+  if (!fieldMap || Object.keys(fieldMap).length === 0) return {};
+  return toJsonSchema(z.object(fieldMap), "input");
 }
 
 // Plugin variants whose agent frontmatter gets synced by this script.
@@ -166,13 +177,7 @@ function generateToolDefinitions({
       // Export full JSON Schema under inputSchema for external docs
       inputSchema: jsonSchema,
       outputSchema: t.outputSchema
-        ? (({ $schema: _, ...jsonSchema }) => jsonSchema)(
-            z.toJSONSchema(t.outputSchema, {
-              io: "output",
-              target: "draft-7",
-              unrepresentable: "any",
-            }),
-          )
+        ? toJsonSchema(t.outputSchema, "output")
         : undefined,
       // Preserve tool access requirements for UIs/docs
       requiredScopes: t.requiredScopes,
@@ -181,7 +186,19 @@ function generateToolDefinitions({
       surface,
     };
   });
-  return defs.filter(isNonNull).sort(byName);
+  const codeModeDefs = Object.entries(
+    getCodeModeToolDefinitions({ allowWrites: true }),
+  ).map(([name, definition]) => ({
+    name,
+    description: definition.description,
+    inputSchema: toJsonSchema(definition.inputSchema, "input"),
+    outputSchema: toJsonSchema(definition.outputSchema, "output"),
+    // Sentry checks API permissions per operation, not as one fixed scope.
+    requiredScopes: [],
+    skills: [...CODE_MODE_SKILLS],
+    surface: "direct" as const,
+  }));
+  return [...defs.filter(isNonNull), ...codeModeDefs].sort(byName);
 }
 
 // Skills
@@ -194,6 +211,7 @@ async function generateSkillDefinitions() {
         description: string;
         defaultEnabled: boolean;
         deprecated?: boolean;
+        hostedOnly?: boolean;
         order: number;
         toolCount?: number;
       }>
@@ -283,11 +301,25 @@ async function generateSkillDefinitions() {
       });
     }
 
+    if (isCodeModeSkill(skill.id)) {
+      const definitions = getCodeModeToolDefinitions({
+        allowWrites: skill.id === "api-write",
+      });
+      for (const [name, definition] of Object.entries(definitions)) {
+        skillTools.push({
+          name,
+          description: definition.description,
+          requiredScopes: [],
+        });
+      }
+    }
+
     // Sort tools alphabetically by name
     skillTools.sort((a, b) => a.name.localeCompare(b.name));
 
     return {
       ...skill,
+      toolCount: skillTools.length,
       tools: skillTools,
     };
   });
@@ -349,6 +381,7 @@ function isUpToDate(outDir: string): boolean {
     path.join(__dirname, "../src/skills.ts"),
     path.join(__dirname, "../src/tools/surfaces.ts"),
     path.join(__dirname, "../src/tools/types.ts"),
+    path.join(__dirname, "../src/code-mode.ts"),
     path.join(
       __dirname,
       "../src/internal/tool-helpers/tool-call-formatting.ts",
@@ -415,12 +448,16 @@ async function main() {
     const experimentalDirectTools = experimentalTools.filter(
       (tool) => tool.surface === "direct",
     );
-    const toolNames = directTools
-      .filter(isEnabledByDefaultSkills)
-      .map((t) => t.name);
-    const experimentalToolNames = experimentalDirectTools
-      .filter(isEnabledByDefaultSkills)
-      .map((t) => t.name);
+    const toolNames = [
+      ...directTools.filter(isEnabledByDefaultSkills).map((t) => t.name),
+      ...CODE_MODE_TOOL_NAMES,
+    ].sort();
+    const experimentalToolNames = [
+      ...experimentalDirectTools
+        .filter(isEnabledByDefaultSkills)
+        .map((t) => t.name),
+      ...CODE_MODE_TOOL_NAMES,
+    ].sort();
 
     let agentsSynced = 0;
     for (const agentConfig of agentConfigs()) {

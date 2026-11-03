@@ -107,6 +107,12 @@ describe("finalizeMcpConfig", () => {
   );
 
   // Skills tests
+  it.each(["api-read", "api-write"])("rejects hosted-only %s", (skill) => {
+    const message = `available only on the hosted MCP: ${skill}`;
+    expect(() => finalize({ skills: `inspect,${skill}` })).toThrow(message);
+    expect(() => finalize({ disableSkills: skill })).toThrow(message);
+  });
+
   it("throws on invalid skills", () => {
     expect(() =>
       finalize({

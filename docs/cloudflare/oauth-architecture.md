@@ -420,7 +420,17 @@ remains valid RFC 8414 metadata.
 
 When a constrained OAuth request includes `resource=/mcp/{org}` or
 `resource=/mcp/{org}/{project}`, the approval page surfaces that scope to the
-user as a "Session scope" banner before permissions are granted.
+user before permissions are granted. Organization-only and unconstrained
+connections show an "Organization scope" banner; project-constrained
+connections retain the "Session scope" banner. The unconstrained banner
+explicitly covers all organizations authorized by the upstream token.
+
+New consent forms leave API Write unchecked, while signed remembered selections
+remain preselected for the same client. API Write's warning explains that it is
+an independent, additive permission: it allows API writes even when Triage Issues
+or Manage Projects & Teams is unchecked, subject to Sentry permissions and the
+connection's organization scope. Project-constrained sessions do not offer
+Code Mode skills.
 
 Note: These describe the MCP OAuth server, not Sentry's OAuth endpoints.
 
@@ -446,6 +456,12 @@ Direct mode intentionally does not:
 
 The caller owns token lifetime and refresh. `Authorization: Bearer ...` remains
 reserved for MCP OAuth access tokens.
+
+Direct requests default to all active skills, including API Read and API Write:
+the client already holds the upstream token. Sentry enforces that token's scopes
+and resource permissions, and MCP connection constraints still apply. The
+`skills` and `disable-skills` parameters can narrow access; the OAuth consent
+screen's unchecked API Write default does not apply to direct tokens.
 
 ## Integration Between MCP OAuth and MCP Server
 

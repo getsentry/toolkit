@@ -23,9 +23,9 @@ import {
 } from "../lib/mcp/args.js";
 
 /**
- * mcp-core's `ALL_SKILLS`, copied so the command tree does not import
- * mcp-core: docs generation and `pnpm run cli` load every command without
- * building it. A test fails if this list drifts.
+ * `STDIO_SKILLS` from lib/mcp/config.ts, copied so the command tree does not
+ * import mcp-core: docs generation and `pnpm run cli` load every command
+ * without building it. A test fails if this list drifts.
  */
 export const MCP_SKILL_NAMES = [
   "inspect",

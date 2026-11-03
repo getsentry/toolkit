@@ -1533,6 +1533,74 @@
     "surface": "catalog"
   },
   {
+    "name": "execute_sentry_code",
+    "description": "Execute a JavaScript async arrow function with sentry.request({method?, path, query?, body?}); find operations with search_sentry_api. method defaults to GET; path is relative to /api/0 (full paths work); query values may be arrays (repeated); null/undefined are omitted; body is JSON. Requests return {status, headers, body}; headers.link paginates. Non-2xx responses throw an Error with status, method, path, headers and data; on 403, headers[\"www-authenticate\"] may show insufficient_scope, otherwise the cause is unknown.\nCredentials stay outside the sandbox; fetch is disabled. Only documented operations within this connection's API permission and organization are allowed, and Sentry still enforces the token's scopes and the user's permissions; other routes cannot bypass a denial.\nBefore writing, read the operation's request contract and update semantics, and read the current resource over HTTP: other MCP tools return transformed views. A GET response is not a write template; resending a value can change child resources. Send required fields and the requested changes, not unchanged optional fields. Do not assume PUT replaces everything or that omitted fields stay unchanged, and never turn a missing field into an empty list or null. When nested collections must be resent, keep their IDs, values and relationships. If preservation is unclear, read more documentation or report it. Re-read to verify writes; after an unexpected side effect, report the state instead of attempting speculative repairs.\nCombine dependent requests, pagination and verification in one program, await every sentry.request() before returning, and return only the fields the user needs.\nLimits: 20 API calls, 30 seconds, 50,000 output bytes, 2 MB per response. Writes are enabled. No retries and no rollback: inspect state before retrying a write.\nExample: async () => { const response = await sentry.request({path: \"/organizations/\"}); return {organizations: response.body.map(({slug, name}) => ({slug, name})), pagination: response.headers.link}; }",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30000,
+          "description": "JavaScript async arrow function using sentry.request"
+        }
+      },
+      "required": ["code"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "result": {},
+        "error": {
+          "type": "string"
+        },
+        "httpError": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "number"
+            },
+            "method": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "headers": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["status", "method", "path", "headers"],
+          "additionalProperties": false
+        },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "apiCalls": {
+              "type": "number"
+            },
+            "writesAttempted": {
+              "type": "number"
+            }
+          },
+          "required": ["apiCalls", "writesAttempted"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["stats"],
+      "additionalProperties": false
+    },
+    "requiredScopes": [],
+    "skills": ["api-read", "api-write"],
+    "surface": "direct"
+  },
+  {
     "name": "execute_sentry_tool",
     "description": "Execute an available Sentry MCP tool discovered through search_sentry_tools.\n\nUse this tool when you need to:\n- Call a Sentry operation returned by search_sentry_tools\n- Execute a tool by name using arguments that match its returned schema\n\n<examples>\nexecute_sentry_tool(name='find_projects', arguments={ organizationSlug: 'my-org' })\nexecute_sentry_tool(name='whoami', arguments={})\n</examples>\n\n<hints>\n- Use search_sentry_tools first if you are not sure which name or arguments to pass.\n- Arguments are validated against the target tool's schema before execution.\n- Active organization, project, and region constraints are injected automatically.\n</hints>",
     "inputSchema": {
@@ -1556,7 +1624,15 @@
       "required": ["name"]
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -2654,7 +2730,15 @@
       "additionalProperties": false
     },
     "requiredScopes": ["org:read"],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -2733,7 +2817,15 @@
       "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -5581,7 +5673,15 @@
       "additionalProperties": false
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "catalog"
   },
   {
@@ -6134,7 +6234,15 @@
       "required": ["organizationSlug", "runToken", "update"]
     },
     "requiredScopes": ["org:read"],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "catalog"
   },
   {
@@ -7461,6 +7569,74 @@
     "surface": "direct"
   },
   {
+    "name": "search_sentry_api",
+    "description": "Discover Sentry HTTP API operations by running a JavaScript async arrow function against the global spec, an OpenAPI document with schemas inline (no $ref). No network or API calls are available.\nSearch the user's terms across paths, operationId, summary, description and tags; paths may use internal names. spec.paths[path] holds optional path-level parameters and one operation per HTTP method, with parameters, requestBody and responses. spec.tags lists categories.\nFirst return a short list of matching methods, paths and summaries. If nothing fits, inspect categories and broaden the terms before guessing routes. Then inspect the chosen operation's description, parameters (they override path-level ones by name and in), requestBody and needed response fields. Return only needed fields, not the full spec or sliced JSON; the limit is 50,000 bytes.\nDiscovery example: async () => {\n  const term = \"release\";\n  const results = [];\n  for (const [path, item] of Object.entries(spec.paths)) {\n    for (const [method, op] of Object.entries(item)) {\n      if (![\"get\", \"post\", \"put\", \"patch\", \"delete\", \"head\", \"options\", \"trace\"].includes(method)) continue;\n      const text = [path, op.operationId, op.summary, op.description, ...(op.tags ?? [])].join(\" \").toLowerCase();\n      if (text.includes(term.toLowerCase())) results.push({method, path, operationId: op.operationId, summary: op.summary, tags: op.tags});\n    }\n  }\n  return results;\n}\nCategories example: async () => spec.tags?.length ? spec.tags : [...new Set(Object.values(spec.paths).flatMap(item => Object.entries(item).filter(([method]) => [\"get\", \"post\", \"put\", \"patch\", \"delete\", \"head\", \"options\", \"trace\"].includes(method)).flatMap(([, op]) => op.tags ?? [])))].map(name => ({name}))\nSchema example: async () => { const path = \"/api/0/organizations/{organization_id_or_slug}/releases/\"; const item = spec.paths[path]; const op = item.post; return {description: op.description, pathParameters: item.parameters, operationParameters: op.parameters, requestBody: op.requestBody}; }",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30000,
+          "description": "JavaScript async arrow function, e.g. async () => Object.keys(spec.paths)"
+        }
+      },
+      "required": ["code"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "result": {},
+        "error": {
+          "type": "string"
+        },
+        "httpError": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "number"
+            },
+            "method": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "headers": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["status", "method", "path", "headers"],
+          "additionalProperties": false
+        },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "apiCalls": {
+              "type": "number"
+            },
+            "writesAttempted": {
+              "type": "number"
+            }
+          },
+          "required": ["apiCalls", "writesAttempted"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["stats"],
+      "additionalProperties": false
+    },
+    "requiredScopes": [],
+    "skills": ["api-read", "api-write"],
+    "surface": "direct"
+  },
+  {
     "name": "search_sentry_tools",
     "description": "Search the available Sentry MCP tool catalog by name and description.\n\nMany Sentry operations are intentionally not exposed as top-level tools. Use this for any Sentry-related task when you do not see an obvious direct tool, including long-tail inspection, project management, documentation lookup, preprod snapshots, attachments, DSNs, releases, teams, and issue-specific pivots.\n\nUse this tool when you need to:\n- Find the right Sentry operation for a task\n- Discover catalog tools and their schemas for a task\n- Inspect the executable JSON input schema for an available tool\n\n<examples>\nsearch_sentry_tools(query='list projects')\nsearch_sentry_tools(query='issue details')\nsearch_sentry_tools(query='find dsn', limit=5)\nsearch_sentry_tools(query='snapshot image')\n</examples>\n\n<hints>\n- Results only include tools available in the current session.\n- If a Sentry operation is not listed as a direct tool, search here before deciding it is unavailable.\n- Returned schemas already account for active organization, project, and region constraints.\n- Use the returned name and schema when executing a catalog result.\n- This tool returns structured JSON. Do not parse markdown from its text content.\n</hints>",
     "inputSchema": {
@@ -7541,7 +7717,15 @@
       "additionalProperties": false
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "direct"
   },
   {
@@ -7672,7 +7856,15 @@
       "additionalProperties": false
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "catalog"
   },
   {
@@ -9133,7 +9325,15 @@
       "additionalProperties": false
     },
     "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "skills": [
+      "inspect",
+      "seer",
+      "docs",
+      "triage",
+      "project-management",
+      "api-read",
+      "api-write"
+    ],
     "surface": "catalog"
   }
 ]

@@ -86,3 +86,17 @@ export async function resolveRegionUrlForOrganization({
     return null;
   }
 }
+
+/**
+ * The API service for one request: on the organization's region when the
+ * request names one, on the configured host otherwise.
+ */
+export async function apiServiceForOrganization(
+  context: ServerContext,
+  organizationSlug?: string,
+) {
+  const regionUrl = organizationSlug
+    ? await resolveRegionUrlForOrganization({ context, organizationSlug })
+    : null;
+  return apiServiceFromContext(context, { regionUrl: regionUrl ?? undefined });
+}

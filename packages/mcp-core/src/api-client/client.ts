@@ -818,6 +818,14 @@ export class SentryApiService {
     return headers;
   }
 
+  /**
+   * Origin and headers, Authorization included, for a request built outside
+   * this client. Code Mode forwards sandbox requests with these.
+   */
+  requestTarget(): { origin: string; headers: Record<string, string> } {
+    return { origin: this.origin(), headers: this.requestHeaders() };
+  }
+
   private origin(host: string = this.host): string {
     return `${this.protocol}://${host}`;
   }

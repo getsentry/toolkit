@@ -60,6 +60,7 @@ export type WorkerProps = {
 export interface Env {
   NODE_ENV: string;
   ASSETS: Fetcher;
+  LOADER: WorkerLoader;
   OAUTH_KV: KVNamespace;
   MCP_CACHE: KVNamespace;
   COOKIE_SECRET: string;
