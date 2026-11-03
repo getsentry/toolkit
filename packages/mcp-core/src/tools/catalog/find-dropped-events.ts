@@ -1,3 +1,8 @@
+import {
+  MINUTE_STATS_INTERVALS,
+  ONE_DAY_SECONDS,
+  statsPeriodToSeconds,
+} from "@sentry/toolkit-core/stats-period";
 import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -20,38 +25,8 @@ const DROP_OUTCOMES = [
   "cardinality_limited",
 ] as const;
 
-const DURATION_UNIT_SECONDS: Record<string, number> = {
-  s: 1,
-  m: 60,
-  h: 3600,
-  d: 86_400,
-  w: 604_800,
-};
-
-// The outcomes query behind events-dropped needs whole-minute buckets that
-// divide one day, with at most 1000 buckets across the range. Fallbacks when
-// the requested interval breaks one of those rules:
-const VALID_INTERVALS = [
-  "1m",
-  "5m",
-  "10m",
-  "15m",
-  "30m",
-  "1h",
-  "2h",
-  "3h",
-  "4h",
-  "6h",
-  "12h",
-  "1d",
-] as const;
+// The outcomes query behind events-dropped allows at most this many buckets.
 const MAX_BUCKETS = 1000;
-const ONE_DAY_SECONDS = 86_400;
-
-function parseDurationSeconds(value: string): number | undefined {
-  const match = /^(\d+)([smhdw])$/.exec(value);
-  return match ? Number(match[1]) * DURATION_UNIT_SECONDS[match[2]] : undefined;
-}
 
 function getRangeSeconds(params: {
   statsPeriod: string | null;
@@ -63,7 +38,7 @@ function getRangeSeconds(params: {
     return rangeMs > 0 ? rangeMs / 1000 : undefined;
   }
   return params.statsPeriod
-    ? parseDurationSeconds(params.statsPeriod)
+    ? statsPeriodToSeconds(params.statsPeriod)
     : undefined;
 }
 
@@ -78,7 +53,7 @@ export function resolveDroppedEventsInterval(
   if (!interval) {
     return {};
   }
-  const requestedSeconds = parseDurationSeconds(interval);
+  const requestedSeconds = statsPeriodToSeconds(interval);
   if (requestedSeconds === undefined) {
     return {
       intervalNote: `Ignored interval '${interval}' because it is not a duration such as '1h'; Sentry picked the interval for the range.`,
@@ -93,9 +68,9 @@ export function resolveDroppedEventsInterval(
   ) {
     return { interval };
   }
-  const candidates = VALID_INTERVALS.map((value) => ({
+  const candidates = MINUTE_STATS_INTERVALS.map((value) => ({
     value,
-    seconds: parseDurationSeconds(value)!,
+    seconds: statsPeriodToSeconds(value)!,
   }));
   const chosen =
     candidates.find(

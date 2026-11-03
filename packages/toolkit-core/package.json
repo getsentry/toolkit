@@ -67,6 +67,10 @@
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
     },
+    "./stats-period": {
+      "types": "./src/stats-period.ts",
+      "default": "./src/stats-period.ts"
+    },
     "./api-client/response-cache": {
       "types": "./src/api-client/response-cache/index.ts",
       "default": "./src/api-client/response-cache/index.ts"

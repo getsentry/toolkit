@@ -14,6 +14,7 @@ import {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
+import { statsPeriodToSeconds } from "@sentry/toolkit-core/stats-period";
 
 import { array, safeParse } from "valibot";
 
@@ -270,29 +271,8 @@ const MIN_TERM_WIDTH = 80;
 /** Fallback terminal width for non-TTY — mirrors formatter DEFAULT_TERM_WIDTH. */
 const DEFAULT_TERM_WIDTH = 100;
 
-const PERIOD_UNITS: Record<string, number> = {
-  s: 1,
-  m: 60,
-  h: 3600,
-  d: 86_400,
-  w: 604_800,
-};
-
-const PERIOD_RE = /^(\d+)([smhdw])$/;
-
 /** Parse a Sentry period string (e.g., "24h", "7d") into seconds. */
-export function periodToSeconds(period: string): number | undefined {
-  const match = PERIOD_RE.exec(period);
-  if (!match) {
-    return;
-  }
-  const value = Number(match[1]);
-  const unit = PERIOD_UNITS[match[2] ?? ""];
-  if (!unit) {
-    return;
-  }
-  return value * unit;
-}
+export const periodToSeconds = statsPeriodToSeconds;
 
 /**
  * Valid Sentry API interval values, ascending.
