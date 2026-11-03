@@ -31,14 +31,14 @@ useTestConfigDir("human-details-");
 
 // Helper to strip ANSI codes for content testing
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 // Mock data factories
 
 function createMockOrg(
-  overrides: Partial<SentryOrganization> = {}
+  overrides: Partial<SentryOrganization> = {},
 ): SentryOrganization {
   return {
     id: "123",
@@ -53,7 +53,7 @@ function createMockOrg(
 }
 
 function createMockProject(
-  overrides: Partial<SentryProject & { orgSlug?: string }> = {}
+  overrides: Partial<SentryProject & { orgSlug?: string }> = {},
 ): SentryProject & { orgSlug?: string } {
   return {
     id: "456",
@@ -214,7 +214,7 @@ describe("formatProjectDetails", () => {
     // fired; a stray cached display name would show up between the
     // "Organization" label and `(acme-only-slug)`.
     expect(result).toMatch(
-      /Organization\s*\S\s*acme-only-slug\s*\(\s*acme-only-slug\s*\)/
+      /Organization\s*\S\s*acme-only-slug\s*\(\s*acme-only-slug\s*\)/,
     );
   });
 
@@ -538,7 +538,7 @@ describe("formatEventDetails", () => {
 
   test("includes custom header text", () => {
     const result = stripAnsi(
-      formatEventDetails(createMockEvent(), "My Custom Header")
+      formatEventDetails(createMockEvent(), "My Custom Header"),
     );
     expect(result).toContain("My Custom Header");
   });
@@ -552,7 +552,7 @@ describe("formatEventDetails", () => {
 
   test("includes location when present", () => {
     const result = stripAnsi(
-      formatEventDetails(createMockEvent({ location: "app/main.py" }))
+      formatEventDetails(createMockEvent({ location: "app/main.py" })),
     );
     expect(result).toContain("Location");
     expect(result).toContain("app/main.py");
@@ -563,8 +563,8 @@ describe("formatEventDetails", () => {
       formatEventDetails(
         createMockEvent({
           contexts: { trace: { trace_id: "aabbccdd11223344" } },
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Trace");
     expect(result).toContain("aabbccdd11223344");
@@ -575,8 +575,8 @@ describe("formatEventDetails", () => {
       formatEventDetails(
         createMockEvent({
           sdk: { name: "sentry.javascript.browser", version: "7.0.0" },
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("SDK");
     expect(result).toContain("sentry.javascript.browser");
@@ -588,8 +588,8 @@ describe("formatEventDetails", () => {
       formatEventDetails(
         createMockEvent({
           release: { version: "1.0.0", shortVersion: "1.0.0" },
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Release");
     expect(result).toContain("1.0.0");
@@ -605,8 +605,8 @@ describe("formatEventDetails", () => {
             id: "42",
             ip_address: "192.168.1.1",
           },
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("User");
     expect(result).toContain("test@example.com");
@@ -622,8 +622,8 @@ describe("formatEventDetails", () => {
             email: "test@example.com",
             geo: { city: "Berlin", region: "Berlin", country_code: "DE" },
           },
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Location");
     expect(result).toContain("Berlin");
@@ -639,8 +639,8 @@ describe("formatEventDetails", () => {
             os: { name: "Windows", version: "11" },
             device: { family: "Desktop", brand: "Apple" },
           },
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Environment");
     expect(result).toContain("Chrome");
@@ -662,8 +662,8 @@ describe("formatEventDetails", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Request");
     expect(result).toContain("POST https://api.example.com/users");
@@ -699,8 +699,8 @@ describe("formatEventDetails", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Stack Trace");
     expect(result).toContain("TypeError: Cannot read property");
@@ -742,8 +742,8 @@ describe("formatEventDetails", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("const x = 1");
     expect(result).toContain("throw new Error");
@@ -778,8 +778,8 @@ describe("formatEventDetails", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Breadcrumbs");
     expect(result).toContain("navigation");
@@ -800,13 +800,13 @@ describe("formatEventDetails", () => {
           ],
         }),
         "Latest Event",
-        "https://acme.sentry.io/issues/789/"
-      )
+        "https://acme.sentry.io/issues/789/",
+      ),
     );
     expect(result).toContain("Replay");
     expect(result).toContain("346789a703f6454384f1de473b8b9fcc");
     expect(result).toContain(
-      "https://acme.sentry.io/explore/replays/346789a703f6454384f1de473b8b9fcc/"
+      "https://acme.sentry.io/explore/replays/346789a703f6454384f1de473b8b9fcc/",
     );
   });
 
@@ -822,8 +822,8 @@ describe("formatEventDetails", () => {
           ],
         }),
         "Latest Event",
-        "https://acme.sentry.io/issues/789/"
-      )
+        "https://acme.sentry.io/issues/789/",
+      ),
     );
     expect(result).toContain("346789a703f6454384f1de473b8b9fcc");
   });
@@ -838,8 +838,8 @@ describe("formatEventDetails", () => {
           tags: [],
         }),
         "Latest Event",
-        "https://acme.sentry.io/issues/789/"
-      )
+        "https://acme.sentry.io/issues/789/",
+      ),
     );
     expect(result).toContain("346789a703f6454384f1de473b8b9fcc");
   });
@@ -852,8 +852,8 @@ describe("formatEventDetails", () => {
             { key: "browser", value: "Chrome 120" },
             { key: "os", value: "Windows 11" },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Tags");
     expect(result).toContain("browser");
@@ -862,7 +862,7 @@ describe("formatEventDetails", () => {
 
   test("handles minimal event", () => {
     const result = formatEventDetails(
-      createMockEvent({ dateReceived: undefined })
+      createMockEvent({ dateReceived: undefined }),
     );
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
@@ -885,8 +885,8 @@ describe("formatEventDetails", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("/home");
     expect(result).toContain("/profile");
@@ -907,8 +907,8 @@ describe("formatEventDetails", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
     expect(result).not.toContain(longMsg);
     expect(result).toContain("...");
@@ -919,8 +919,8 @@ describe("formatEventDetails", () => {
       formatEventDetails(
         createMockEvent({
           entries: [{ type: "breadcrumbs", data: { values: [] } }],
-        })
-      )
+        }),
+      ),
     );
     expect(result).not.toContain("Breadcrumbs");
   });
@@ -930,8 +930,8 @@ describe("formatEventDetails", () => {
       formatEventDetails(
         createMockEvent({
           user: { name: "John Doe" },
-        })
-      )
+        }),
+      ),
     );
     expect(result).toContain("Name");
     expect(result).toContain("John Doe");
@@ -944,7 +944,7 @@ describe("formatEventDetails", () => {
 
   test("skips environment section when no contexts", () => {
     const result = stripAnsi(
-      formatEventDetails(createMockEvent({ contexts: null }))
+      formatEventDetails(createMockEvent({ contexts: null })),
     );
     expect(result).not.toContain("Environment");
   });
@@ -954,8 +954,8 @@ describe("formatEventDetails", () => {
       formatEventDetails(
         createMockEvent({
           entries: [{ type: "request", data: {} }],
-        })
-      )
+        }),
+      ),
     );
     expect(result).not.toContain("Request");
   });

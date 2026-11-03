@@ -23,6 +23,11 @@ import {
   uploadCodeMappings,
 } from "../../lib/api/code-mappings.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseGitRepo,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -89,7 +94,7 @@ function formatUploadResult(data: CodeMappingsUploadResult): string {
  * Read and validate the code mappings JSON file.
  */
 async function readAndValidateMappings(
-  path: string
+  path: string,
 ): Promise<Array<{ stackRoot: string; sourceRoot: string }>> {
   let content: string;
   try {
@@ -99,19 +104,19 @@ async function readAndValidateMappings(
     if (code === "ENOENT") {
       throw new ValidationError(
         `Code mappings file '${path}' does not exist.`,
-        "path"
+        "path",
       );
     }
     if (code === "EISDIR") {
       throw new ValidationError(
         `Path '${path}' is a directory, not a code mappings file.`,
-        "path"
+        "path",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `Cannot read code mappings file '${path}': ${msg}`,
-      "path"
+      "path",
     );
   }
 
@@ -121,21 +126,21 @@ async function readAndValidateMappings(
   } catch {
     throw new ValidationError(
       `Invalid code mappings file '${path}': not valid JSON`,
-      "path"
+      "path",
     );
   }
 
   if (!Array.isArray(parsed)) {
     throw new ValidationError(
       `Invalid code mappings file '${path}': expected a JSON array`,
-      "path"
+      "path",
     );
   }
 
   if (parsed.length === 0) {
     throw new ValidationError(
       `Code mappings file '${path}' contains no mappings`,
-      "path"
+      "path",
     );
   }
 
@@ -152,7 +157,7 @@ async function readAndValidateMappings(
         .join(", ");
       throw new ValidationError(
         `Invalid code mapping at index ${i}: ${issues}`,
-        "path"
+        "path",
       );
     }
     mappings.push(result.output);
@@ -174,12 +179,26 @@ export const uploadCommand = buildCommand({
       "and stack trace linking.\n\n" +
       "The input file must be a JSON array of objects with `stackRoot` and " +
       "`sourceRoot` fields.\n\n" +
-      "Usage:\n" +
-      "  sentry code-mappings upload mappings.json\n" +
-      "  sentry code-mappings upload mappings.json --repo owner/repo\n" +
-      "  sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop\n" +
-      "  sentry code-mappings upload mappings.json --json\n\n" +
       "Requires an Organization Token with `org:ci` scope.",
+    examples: [
+      {
+        description: "Upload code mappings from a JSON file",
+        command: "sentry code-mappings upload mappings.json",
+      },
+      {
+        description: "Specify the repository explicitly",
+        command: "sentry code-mappings upload mappings.json --repo owner/repo",
+      },
+      {
+        description: "Specify the repository and default branch",
+        command:
+          "sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry code-mappings upload mappings.json --json",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -190,7 +209,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the code mappings JSON file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -198,14 +217,14 @@ export const uploadCommand = buildCommand({
     flags: {
       repo: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief:
           "Repository name (e.g., owner/repo). Auto-detected from git remote if omitted.",
         optional: true,
       },
       "default-branch": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief:
           "Default branch name. Auto-detected from git remote HEAD if omitted.",
         optional: true,
@@ -218,7 +237,7 @@ export const uploadCommand = buildCommand({
       repo?: string;
       "default-branch"?: string;
     },
-    mappingPath: string
+    mappingPath: string,
   ) {
     // 1. Read and validate the mappings file
     const mappings = await readAndValidateMappings(mappingPath);
@@ -243,7 +262,7 @@ export const uploadCommand = buildCommand({
         [
           "Could not auto-detect repository from git remotes",
           "Provide --repo explicitly",
-        ]
+        ],
       );
     }
 
@@ -253,7 +272,7 @@ export const uploadCommand = buildCommand({
       inferDefaultBranch(repoInfo?.remote ?? "origin", this.cwd);
 
     log.info(
-      `Uploading ${mappings.length} code mapping(s) for ${org}/${project} → ${repository}`
+      `Uploading ${mappings.length} code mapping(s) for ${org}/${project} → ${repository}`,
     );
 
     // 5. Upload

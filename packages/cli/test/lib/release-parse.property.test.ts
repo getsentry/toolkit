@@ -2,7 +2,8 @@ import { array, constantFrom, assert as fcAssert, property } from "fast-check";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   parseReleaseArg,
-  resolveReleaseTarget,
+  type ReleaseTarget,
+  releaseParameter,
 } from "../../src/commands/release/parse.js";
 import { ContextError, ValidationError } from "../../src/lib/errors.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
@@ -14,11 +15,11 @@ vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../src/lib/resolve-target.js";
 
 const slugChars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -37,7 +38,7 @@ const slugWithHyphensArb = array(constantFrom(...`${slugChars}-`.split("")), {
 
 const versionArb = array(
   constantFrom(..."0123456789.abcdefghijklmnopqrstuvwxyz-+@".split("")),
-  { minLength: 1, maxLength: 20 }
+  { minLength: 1, maxLength: 20 },
 ).map((chars) => chars.join(""));
 
 describe("property: parseReleaseArg", () => {
@@ -52,7 +53,7 @@ describe("property: parseReleaseArg", () => {
           expect(result.version).toBe(input);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -66,9 +67,9 @@ describe("property: parseReleaseArg", () => {
           // so the whole string should be the version
           expect(result.version).toBe(version);
           expect(result.orgSlug).toBeUndefined();
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -82,9 +83,9 @@ describe("property: parseReleaseArg", () => {
           const result = parseReleaseArg(input, "test");
           expect(result.orgSlug).toBe(slug);
           expect(result.version).toBe(version);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -96,9 +97,9 @@ describe("property: parseReleaseArg", () => {
           const result = parseReleaseArg(version, "test");
           expect(result.orgSlug).toBeUndefined();
           expect(result.version).toBe(version);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -133,7 +134,7 @@ describe("unit: parseReleaseArg edge cases", () => {
   });
 });
 
-describe("unit: resolveReleaseTarget", () => {
+describe("unit: releaseParameter", () => {
   let resolveOrgSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -145,36 +146,41 @@ describe("unit: resolveReleaseTarget", () => {
   });
 
   const USAGE = "sentry release archive [<org>/]<version>";
+  const { parse } = releaseParameter(USAGE, "Release version");
+  const bind = (raw?: string): ReleaseTarget =>
+    parse.call({ cwd: "/tmp" }, raw);
+
+  test("parses the version and org without resolving", () => {
+    expect(bind("my-org/1.0.0").parsed).toEqual({
+      orgSlug: "my-org",
+      version: "1.0.0",
+    });
+    expect(resolveOrgSpy).not.toHaveBeenCalled();
+  });
 
   test("resolves version and org from a target", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
-    const result = await resolveReleaseTarget("my-org/1.0.0", USAGE, "/tmp");
+    const result = await bind("my-org/1.0.0").resolved;
     expect(result).toEqual({ version: "1.0.0", org: "my-org" });
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
   });
 
   test("forwards detectedFrom from the resolved org", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org", detectedFrom: "DSN" });
-    const result = await resolveReleaseTarget("1.0.0", USAGE, "/tmp");
+    const result = await bind("1.0.0").resolved;
     expect(result.detectedFrom).toBe("DSN");
   });
 
-  test("throws ContextError when target is undefined", async () => {
-    await expect(
-      resolveReleaseTarget(undefined, USAGE, "/tmp")
-    ).rejects.toThrow(ContextError);
+  test("throws ContextError when parsing an omitted target", () => {
+    expect(() => bind(undefined)).toThrow(ContextError);
   });
 
-  test("throws ContextError when target is whitespace", async () => {
-    await expect(resolveReleaseTarget("   ", USAGE, "/tmp")).rejects.toThrow(
-      "Release version"
-    );
+  test("throws ContextError when parsing a whitespace target", () => {
+    expect(() => bind("   ")).toThrow("Release version");
   });
 
   test("throws ContextError when org cannot be resolved", async () => {
     resolveOrgSpy.mockResolvedValue(null);
-    await expect(resolveReleaseTarget("1.0.0", USAGE, "/tmp")).rejects.toThrow(
-      ContextError
-    );
+    await expect(bind("1.0.0").resolved).rejects.toThrow(ContextError);
   });
 });

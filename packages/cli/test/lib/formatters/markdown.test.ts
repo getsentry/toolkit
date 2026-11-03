@@ -6,19 +6,18 @@
  * renderInlineMarkdown().
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import { describe, expect, test } from "vitest";
 import {
   colorTag,
   divider,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
+  escapeMarkdownLines,
   isPlainOutput,
   mdKvTable,
   mdRow,
   mdTableHeader,
   renderInlineMarkdown,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../../src/lib/formatters/markdown.js";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +26,7 @@ import {
 
 /** Strip ANSI escape codes for content-only assertions */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI codes use control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -40,7 +39,7 @@ function withEnv(
     >
   >,
   isTTY: boolean | undefined,
-  fn: () => void
+  fn: () => void,
 ): void {
   const savedEnv: Record<string, string | undefined> = {};
   const savedTTY = process.stdout.isTTY;
@@ -87,7 +86,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -97,7 +96,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -113,7 +112,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -123,7 +122,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -159,7 +158,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -177,7 +176,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -199,7 +198,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -213,7 +212,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -227,7 +226,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -241,7 +240,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
   });
@@ -257,7 +256,7 @@ describe("isPlainOutput", () => {
         false,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
 
@@ -271,7 +270,7 @@ describe("isPlainOutput", () => {
         true,
         () => {
           expect(isPlainOutput()).toBe(false);
-        }
+        },
       );
     });
 
@@ -285,7 +284,7 @@ describe("isPlainOutput", () => {
         undefined,
         () => {
           expect(isPlainOutput()).toBe(true);
-        }
+        },
       );
     });
   });
@@ -371,38 +370,37 @@ describe("renderInlineMarkdown", () => {
 });
 
 // ---------------------------------------------------------------------------
-// escapeMarkdownCell
+// tableCell
 // ---------------------------------------------------------------------------
 
-describe("escapeMarkdownCell", () => {
-  test("escapes pipe characters", () => {
-    expect(escapeMarkdownCell("foo|bar")).toBe("foo\\|bar");
+describe("tableCell", () => {
+  /** Renders `cell` as the first cell of a one-row table, in plain mode. */
+  function renderCell(cell: string): string {
+    let out = "";
+    withEnv({ SENTRY_PLAIN_OUTPUT: "1" }, false, () => {
+      out = renderMarkdown(`| a | b |\n|---|---|\n| ${cell} | end |`);
+    });
+    return out;
+  }
+
+  test("escapes pipes so the value stays in its cell", () => {
+    expect(tableCell("foo|bar")).toBe("foo\\|bar");
+    const rendered = renderCell(tableCell("a|b\\|c"));
+    expect(rendered).toContain("a|b\\|c");
+    expect(rendered).toContain("end");
   });
 
-  test("escapes backslashes before pipes", () => {
-    expect(escapeMarkdownCell("a\\|b")).toBe("a\\\\\\|b");
+  test("escapes Markdown syntax as well as pipes", () => {
+    expect(tableCell("*bold* <html>")).toBe("\\*bold\\* \\<html\\>");
+    expect(renderCell(tableCell("*bold* <html>"))).toContain("*bold* <html>");
   });
 
-  test("returns unchanged string when no special chars", () => {
-    expect(escapeMarkdownCell("hello world")).toBe("hello world");
+  test("puts multi-line values on one line", () => {
+    expect(tableCell("a\nb\nc")).toBe("a b c");
   });
 
   test("handles empty string", () => {
-    expect(escapeMarkdownCell("")).toBe("");
-  });
-
-  test("replaces newlines with a space to preserve row structure", () => {
-    expect(escapeMarkdownCell("line1\nline2")).toBe("line1 line2");
-    expect(escapeMarkdownCell("a\nb\nc")).toBe("a b c");
-  });
-
-  test("handles multiple pipes", () => {
-    const result = escapeMarkdownCell("a|b|c");
-    expect(result).toBe("a\\|b\\|c");
-  });
-
-  test("escapes angle brackets with backslash", () => {
-    expect(escapeMarkdownCell("<html>")).toBe("\\<html\\>");
+    expect(tableCell("")).toBe("");
   });
 });
 
@@ -495,6 +493,28 @@ describe("mdKvTable", () => {
     const result = mdKvTable([["Only", "Row"]]);
     expect(result).toContain("| **Only** | Row |");
   });
+
+  test("keeps a literal backslash before a pipe in a code span or raw value", () => {
+    expect(mdKvTable([["Culprit", inlineCode("a\\|b")]])).toContain(
+      "| **Culprit** | `a\\\u2502b` |",
+    );
+    expect(mdKvTable([["Raw", "a\\\\|b `\\`|`"]])).toContain(
+      "| **Raw** | a\\\\\u2502b `\\`\u2502` |",
+    );
+  });
+
+  test("keeps a pipe in a label inside its cell", () => {
+    expect(mdKvTable([[text("a|b"), "v"]])).toContain("| **a\u2502b** | v |");
+  });
+
+  test("shows a pipe from tableCell without its backslash", () => {
+    expect(mdKvTable([["Org", tableCell("a|b")]])).toContain(
+      "| **Org** | a\u2502b |",
+    );
+    expect(mdKvTable([["Path", text("a\\|b")]])).toContain(
+      "| **Path** | a\\\\\u2502b |",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -543,84 +563,83 @@ describe("colorTag", () => {
 });
 
 // ---------------------------------------------------------------------------
-// escapeMarkdownInline
+// text
 // ---------------------------------------------------------------------------
 
-describe("escapeMarkdownInline", () => {
-  test("escapes underscores", () => {
-    expect(escapeMarkdownInline("hello_world")).toBe("hello\\_world");
+describe("text", () => {
+  /** Renders inline Markdown in plain mode. */
+  function renderPlain(md: string): string {
+    let out = "";
+    withEnv({ SENTRY_PLAIN_OUTPUT: "1" }, false, () => {
+      out = renderInlineMarkdown(md);
+    });
+    return out;
+  }
+
+  test.each([
+    "*bold* _em_ `code` [link](url)",
+    "Expected <string> got <number>",
+    "a\\b ~~strike~~ &amp; # not a heading",
+    "https://spotlightjs.com/_astro/ui-core.js",
+  ])("renders %j as the same literal text", (value) => {
+    expect(renderPlain(text(value))).toBe(value);
   });
 
-  test("escapes asterisks", () => {
-    expect(escapeMarkdownInline("*bold*")).toBe("\\*bold\\*");
+  test("leaves underscores inside words unescaped", () => {
+    expect(text("hello_world")).toBe("hello_world");
   });
 
-  test("escapes backticks", () => {
-    expect(escapeMarkdownInline("`code`")).toBe("\\`code\\`");
-  });
-
-  test("escapes square brackets", () => {
-    expect(escapeMarkdownInline("[link]")).toBe("\\[link\\]");
-  });
-
-  test("escapes backslashes", () => {
-    expect(escapeMarkdownInline("a\\b")).toBe("a\\\\b");
+  test("does not turn a URL into a link", () => {
+    expect(text("see https://example.com")).toBe("see https\\://example.com");
   });
 
   test("returns unchanged string with no special chars", () => {
-    expect(escapeMarkdownInline("hello world")).toBe("hello world");
-  });
-
-  test("escapes angle brackets with backslash", () => {
-    expect(escapeMarkdownInline("<unknown>")).toBe("\\<unknown\\>");
+    expect(text("hello world")).toBe("hello world");
   });
 
   test("angle brackets survive round-trip through renderInlineMarkdown", () => {
     withEnv({ SENTRY_PLAIN_OUTPUT: "0", NO_COLOR: undefined }, false, () => {
-      const escaped = escapeMarkdownInline("<unknown>");
+      const escaped = text("<unknown>");
       const result = stripAnsi(renderInlineMarkdown(escaped));
       expect(result).toBe("<unknown>");
     });
   });
+});
 
-  test("URLs with underscores render without backslashes", () => {
-    withEnv({ SENTRY_PLAIN_OUTPUT: "0", NO_COLOR: undefined }, false, () => {
-      const escaped = escapeMarkdownInline(
-        "https://spotlightjs.com/_astro/ui-core.js"
+describe("escapeMarkdownLines", () => {
+  test("keeps line breaks and indentation up to three spaces", () => {
+    expect(escapeMarkdownLines("Run:\n  chown *x*\n      deep")).toBe(
+      "Run:\n  chown \\*x\\*\n   deep",
+    );
+  });
+
+  test("renders each line as the same literal text", () => {
+    withEnv({ SENTRY_PLAIN_OUTPUT: "1" }, false, () => {
+      expect(renderMarkdown(escapeMarkdownLines("# one\n- two"))).toBe(
+        "# one\n- two",
       );
-      const result = stripAnsi(renderInlineMarkdown(escaped));
-      expect(result).not.toContain("\\_");
-      expect(result).toContain("_astro");
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// safeCodeSpan
+// inlineCode
 // ---------------------------------------------------------------------------
 
-describe("safeCodeSpan", () => {
+describe("inlineCode", () => {
   test("wraps value in backticks", () => {
-    expect(safeCodeSpan("hello")).toBe("`hello`");
+    expect(inlineCode("hello")).toBe("`hello`");
   });
 
-  test("replaces internal backticks with modifier letter", () => {
-    const result = safeCodeSpan("a`b");
-    expect(result).not.toContain("`b");
-    expect(result.startsWith("`")).toBe(true);
-    expect(result.endsWith("`")).toBe(true);
-  });
-
-  test("replaces pipe with unicode vertical bar", () => {
-    const result = safeCodeSpan("a|b");
-    expect(result).not.toContain("|");
-    expect(result).toContain("\u2502");
+  test("keeps backticks and pipes in the value", () => {
+    expect(inlineCode("a`b|c")).toBe("``a`b|c``");
+    withEnv({ SENTRY_PLAIN_OUTPUT: "1" }, false, () => {
+      expect(renderInlineMarkdown(inlineCode("a`b|c"))).toBe("a`b|c");
+    });
   });
 
   test("replaces newlines with spaces", () => {
-    const result = safeCodeSpan("line1\nline2");
-    expect(result).not.toContain("\n");
-    expect(result).toContain("line1 line2");
+    expect(inlineCode("line1\nline2")).toBe("`line1 line2`");
   });
 });
 

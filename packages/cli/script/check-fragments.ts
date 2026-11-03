@@ -7,7 +7,13 @@
  *   2. Every fragment file corresponds to an existing route (or is index.md)
  *   3. Fragment files don't accidentally contain frontmatter or the generated marker
  *   4. Top-level fragments (e.g., configuration.md) exist
- *   5. Fragment content covers all subcommands in a route (warnings only)
+ *   5. Fragment content covers all subcommands in a route (errors with
+ *      --strict, which `pnpm run check:fragments` passes). A command is
+ *      covered by its own docs.examples, a workflow example step that runs
+ *      it, or a mention in the fragment
+ *   6. Fragments don't contain Examples sections (examples belong in docs.examples)
+ *   7. Fragment shell code blocks don't run `sentry` commands unless marked
+ *      with `<!-- allow-commands: <reason> -->` (see fragment-commands.ts)
  *
  * Usage:
  *   tsx script/check-fragments.ts            # Warnings for missing subcommands
@@ -17,19 +23,21 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
+import { findFragmentCommandIssues } from "./fragment-commands.js";
+import { markdownHeadings } from "./markdown.js";
 import { DOCS_FRAGMENTS } from "./paths.js";
 
 // Ensure skill-content stub exists (see generate-command-docs.ts for rationale)
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
 const skillContentExists = await access(SKILL_CONTENT_PATH).then(
   () => true,
-  () => false
+  () => false,
 );
 if (!skillContentExists) {
   mkdirSync("src/generated", { recursive: true });
   await writeFile(
     SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: [string, string][] = [];\n"
+    "export const SKILL_FILES: [string, string][] = [];\n",
   );
 }
 
@@ -48,7 +56,7 @@ const isStrict = process.argv.includes("--strict");
 
 const routeMap = routes as unknown as RouteMap;
 const allRoutes = extractAllRoutes(routeMap).filter(
-  (r) => !SKIP_ROUTES.has(r.name)
+  (r) => !SKIP_ROUTES.has(r.name),
 );
 const routeNames = new Set(allRoutes.map((r) => r.name));
 
@@ -58,7 +66,7 @@ const expectedFragments = new Set([...routeNames, "index"]);
 let fragmentFiles: string[];
 try {
   fragmentFiles = readdirSync(FRAGMENTS_DIR).filter((f) =>
-    MD_EXTENSION_RE.test(f)
+    MD_EXTENSION_RE.test(f),
   );
 } catch {
   console.error(`ERROR: Fragment directory not found: ${FRAGMENTS_DIR}`);
@@ -66,7 +74,7 @@ try {
 }
 
 const actualFragments = new Set(
-  fragmentFiles.map((f) => f.replace(MD_EXTENSION_RE, ""))
+  fragmentFiles.map((f) => f.replace(MD_EXTENSION_RE, "")),
 );
 
 const errors: string[] = [];
@@ -75,7 +83,7 @@ const errors: string[] = [];
 for (const name of expectedFragments) {
   if (!actualFragments.has(name)) {
     errors.push(
-      `Missing fragment: ${FRAGMENTS_DIR}/${name}.md (route "${name}" exists but has no fragment file)`
+      `Missing fragment: ${FRAGMENTS_DIR}/${name}.md (route "${name}" exists but has no fragment file)`,
     );
   }
 }
@@ -84,10 +92,13 @@ for (const name of expectedFragments) {
 for (const name of actualFragments) {
   if (!expectedFragments.has(name)) {
     errors.push(
-      `Stale fragment: ${FRAGMENTS_DIR}/${name}.md (no matching route found — delete it or add the route)`
+      `Stale fragment: ${FRAGMENTS_DIR}/${name}.md (no matching route found — delete it or add the route)`,
     );
   }
 }
+
+/** Matches heading text that starts an Examples section. */
+const EXAMPLES_HEADING_RE = /^examples?\b/i;
 
 // Check 3: Fragment content validation
 for (const file of fragmentFiles) {
@@ -95,14 +106,28 @@ for (const file of fragmentFiles) {
 
   if (content.includes("---\ntitle:") || content.startsWith("---\n")) {
     errors.push(
-      `Fragment contains frontmatter: ${FRAGMENTS_DIR}/${file} (fragments should only contain custom content, not YAML frontmatter)`
+      `Fragment contains frontmatter: ${FRAGMENTS_DIR}/${file} (fragments should only contain custom content, not YAML frontmatter)`,
     );
   }
 
   if (content.includes(GENERATED_END_MARKER)) {
     errors.push(
-      `Fragment contains generated marker: ${FRAGMENTS_DIR}/${file} (the "${GENERATED_END_MARKER}" marker should not appear in fragment files)`
+      `Fragment contains generated marker: ${FRAGMENTS_DIR}/${file} (the "${GENERATED_END_MARKER}" marker should not appear in fragment files)`,
     );
+  }
+
+  if (
+    markdownHeadings(content).some(({ text }) =>
+      EXAMPLES_HEADING_RE.test(text.trim()),
+    )
+  ) {
+    errors.push(
+      `Fragment contains an Examples section: ${FRAGMENTS_DIR}/${file} (move command examples to the command's docs.examples metadata so they appear in help, generated docs, and skills)`,
+    );
+  }
+
+  for (const { line, message } of findFragmentCommandIssues(content)) {
+    errors.push(`${FRAGMENTS_DIR}/${file}:${line}: ${message}`);
   }
 }
 
@@ -119,11 +144,11 @@ for (const name of REQUIRED_TOP_LEVEL_FRAGMENTS) {
   const path = `${TOP_LEVEL_FRAGMENTS_DIR}/${name}.md`;
   const exists = await access(path).then(
     () => true,
-    () => false
+    () => false,
   );
   if (!exists) {
     errors.push(
-      `Missing top-level fragment: ${path} (required for generated ${name}.md page)`
+      `Missing top-level fragment: ${path} (required for generated ${name}.md page)`,
     );
   }
 }
@@ -133,13 +158,6 @@ for (const name of REQUIRED_TOP_LEVEL_FRAGMENTS) {
 // ---------------------------------------------------------------------------
 
 const warnings: string[] = [];
-
-const FENCED_CODE_BLOCK_RE = /^(`{3,}|~{3,}).*\n[\s\S]*?\n\1\s*$/gm;
-
-/** Strip fenced code blocks from markdown to avoid matching bash comments as headings. */
-function stripCodeBlocks(md: string): string {
-  return md.replace(FENCED_CODE_BLOCK_RE, "");
-}
 
 /**
  * Check whether a fragment mentions a specific subcommand.
@@ -156,7 +174,7 @@ function fragmentMentionsSubcommand(
   content: string,
   routeName: string,
   command: { path: string },
-  isDefaultCommand: boolean
+  isDefaultCommand: boolean,
 ): boolean {
   // Extract the subcommand portion after "sentry <route>"
   const subPath = command.path.slice(`sentry ${routeName} `.length);
@@ -175,22 +193,19 @@ function fragmentMentionsSubcommand(
   if (isDefaultCommand) {
     const bareRouteRe = new RegExp(
       `sentry\\s+${routeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*$|[^\\w-])`,
-      "im"
+      "im",
     );
     if (bareRouteRe.test(lower)) {
       return true;
     }
   }
 
-  // Check 3: Heading that mentions the leaf name (outside code blocks)
-  const proseOnly = stripCodeBlocks(content);
+  // Check 3: Heading (levels 1-4, outside code blocks) that mentions the leaf name
   const escapedLeaf = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const headingRe = new RegExp(`^#{1,4}\\s+.*\\b${escapedLeaf}\\b`, "im");
-  if (headingRe.test(proseOnly)) {
-    return true;
-  }
-
-  return false;
+  const leafRe = new RegExp(`\\b${escapedLeaf}\\b`, "i");
+  return markdownHeadings(content).some(
+    ({ depth, text }) => depth <= 4 && leafRe.test(text),
+  );
 }
 
 /**
@@ -261,8 +276,21 @@ for (const [routeName, route] of multiCommandRoutes) {
 
   const defaultCmd = getDefaultCommandName(routeName);
 
+  // Workflow examples (multi-step `docs.examples`) document every command
+  // they run, not only the command that owns them.
+  const exampleSteps = route.commands.flatMap((cmd) =>
+    cmd.examples.flatMap((example) =>
+      example.split("\n").filter((line) => !line.startsWith("#")),
+    ),
+  );
+  const runByExample = (path: string) =>
+    exampleSteps.some((step) => step === path || step.startsWith(`${path} `));
+
   const missing: string[] = [];
   for (const cmd of route.commands) {
+    if (cmd.examples.length > 0 || runByExample(cmd.path)) {
+      continue;
+    }
     const sub = cmd.path.slice(`sentry ${routeName} `.length);
     const leaf = sub.split(" ").at(-1) ?? sub;
     const isDefault = leaf === defaultCmd;
@@ -275,7 +303,7 @@ for (const [routeName, route] of multiCommandRoutes) {
     const msg =
       `Fragment missing subcommand coverage: ${fragmentPath}\n` +
       `    Not documented: ${missing.join(", ")}\n` +
-      `    Hint: add a heading or code example for each (e.g., "sentry ${routeName} ${missing[0]}")`;
+      `    Hint: add docs.examples to each command, or mention it in a heading or prose (e.g., "sentry ${routeName} ${missing[0]}")`;
     if (isStrict) {
       errors.push(msg);
     } else {
@@ -290,7 +318,7 @@ for (const [routeName, route] of multiCommandRoutes) {
 
 if (warnings.length > 0) {
   console.warn(
-    `\n${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`
+    `\n${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`,
   );
   for (const w of warnings) {
     console.warn(`  ⚠ ${w}`);
@@ -306,8 +334,8 @@ if (errors.length > 0) {
 }
 
 console.log(
-  `\nAll ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`
+  `\nAll ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`,
 );
 console.log(
-  `All ${REQUIRED_TOP_LEVEL_FRAGMENTS.length} top-level fragment(s) valid`
+  `All ${REQUIRED_TOP_LEVEL_FRAGMENTS.length} top-level fragment(s) valid`,
 );

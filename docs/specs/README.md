@@ -40,6 +40,7 @@ When adding a new feature specification:
    to reference it
 
 **Important Guidelines**:
+
 - Keep specs in a single file under `docs/specs/`
 - Focus on WHAT and WHY, not HOW
 - Include code examples for interfaces and usage

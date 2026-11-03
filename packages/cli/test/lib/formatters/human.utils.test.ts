@@ -21,17 +21,14 @@ import {
   formatStatusLabel,
   maskToken,
 } from "../../../src/lib/formatters/human.js";
+import { stripColorTags } from "../../../src/lib/formatters/markdown.js";
+import { stripAnsi as stripTerminalCodes } from "../../../src/lib/formatters/plain-detect.js";
 import { formatRelativeTime } from "../../../src/lib/formatters/time-utils.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
-// Helper to strip ANSI codes and markdown color tags for content testing.
-// Strips color tags first to avoid incomplete multi-character sanitization
-// (ANSI removal could otherwise join fragments into tag-like sequences).
+// Normalize styling for text assertions; this is not HTML sanitization.
 function stripAnsi(str: string): string {
-  let result = str.replace(/<\/?[a-z]+>/g, "");
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
-  result = result.replace(/\x1b\[[0-9;]*m/g, "");
-  return result;
+  return stripTerminalCodes(stripColorTags(str));
 }
 
 // Status Formatting
@@ -102,6 +99,10 @@ describe("formatRelativeTime", () => {
     expect(stripAnsi(result).trim()).toBe("—");
   });
 
+  test("returns em-dash for an unparseable date", () => {
+    expect(stripAnsi(formatRelativeTime("not-a-date")).trim()).toBe("—");
+  });
+
   test("formats minutes ago for recent times", () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const result = stripAnsi(formatRelativeTime(fiveMinutesAgo));
@@ -110,7 +111,7 @@ describe("formatRelativeTime", () => {
 
   test("formats hours ago for times within 24 hours", () => {
     const threeHoursAgo = new Date(
-      Date.now() - 3 * 60 * 60 * 1000
+      Date.now() - 3 * 60 * 60 * 1000,
     ).toISOString();
     const result = stripAnsi(formatRelativeTime(threeHoursAgo));
     expect(result.trim()).toMatch(/^\d+h ago$/);
@@ -118,7 +119,7 @@ describe("formatRelativeTime", () => {
 
   test("formats days ago for times within 3 days", () => {
     const twoDaysAgo = new Date(
-      Date.now() - 2 * 24 * 60 * 60 * 1000
+      Date.now() - 2 * 24 * 60 * 60 * 1000,
     ).toISOString();
     const result = stripAnsi(formatRelativeTime(twoDaysAgo));
     expect(result.trim()).toMatch(/^\d+d ago$/);
@@ -126,7 +127,7 @@ describe("formatRelativeTime", () => {
 
   test("formats short date for times older than 3 days", () => {
     const tenDaysAgo = new Date(
-      Date.now() - 10 * 24 * 60 * 60 * 1000
+      Date.now() - 10 * 24 * 60 * 60 * 1000,
     ).toISOString();
     const result = stripAnsi(formatRelativeTime(tenDaysAgo));
     // Should be like "Jan 18" or "Dec 5"
@@ -167,26 +168,26 @@ describe("maskToken", () => {
   test("property: masked token never reveals middle characters", async () => {
     const longTokenArb = stringMatching(/^[a-zA-Z0-9_]{13,50}$/);
 
-    await fcAssert(
+    fcAssert(
       property(longTokenArb, (token) => {
         const masked = maskToken(token);
         // Should show first 8, then ..., then last 4
         expect(masked).toBe(
-          `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
+          `${token.substring(0, 8)}...${token.substring(token.length - 4)}`,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("property: short tokens are completely masked", async () => {
     const shortTokenArb = stringMatching(/^[a-zA-Z0-9]{1,12}$/);
 
-    await fcAssert(
+    fcAssert(
       property(shortTokenArb, (token) => {
         expect(maskToken(token)).toBe("****");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -264,12 +265,12 @@ describe("formatDuration", () => {
   });
 
   test("property: duration formatting always contains a time unit", async () => {
-    await fcAssert(
+    fcAssert(
       property(nat({ max: 86_400 * 60 }), (seconds) => {
         const result = formatDuration(seconds);
         expect(result).toMatch(/minute|hour|day|week/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -300,23 +301,23 @@ describe("formatExpiration", () => {
   });
 
   test("property: expired times always return 'Expired'", async () => {
-    await fcAssert(
+    fcAssert(
       property(integer({ min: 1, max: 1_000_000 }), (msAgo) => {
         const pastTime = Date.now() - msAgo;
         expect(formatExpiration(pastTime)).toBe("Expired");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("property: future times always include 'remaining'", async () => {
-    await fcAssert(
+    fcAssert(
       property(integer({ min: 60_000, max: 86_400_000 }), (msAhead) => {
         const futureTime = Date.now() + msAhead;
         const result = formatExpiration(futureTime);
         expect(result).toContain("remaining");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

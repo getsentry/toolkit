@@ -5,14 +5,11 @@
  * absolute authenticated API URL. JSON output never carries file bytes.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { EventAttachmentDetailsResponse } from "@sentry/api";
-import type { SentryEvent } from "../types/index.js";
+import type { EventViewAttachment, SentryEvent } from "../types/index.js";
 import { listEventAttachments } from "./api-client.js";
-import {
-  escapeMarkdownInline,
-  renderMarkdown,
-  safeCodeSpan,
-} from "./formatters/markdown.js";
+import { renderMarkdown } from "./formatters/markdown.js";
 import { formatBytes } from "./formatters/numbers.js";
 import { logger } from "./logger.js";
 import { resolveOrgRegion } from "./region.js";
@@ -24,10 +21,6 @@ const log = logger.withTag("event.view");
 type EventWithOptionalProject = SentryEvent & {
   project?: string | { slug?: string | null } | null;
   projectSlug?: string | null;
-};
-
-export type EventViewAttachment = EventAttachmentDetailsResponse & {
-  download: string;
 };
 
 type AttachmentTarget = {
@@ -70,7 +63,7 @@ function trimTrailingSlashes(value: string): string {
 
 function attachmentDownloadUrl(
   target: AttachmentTarget,
-  attachmentId: string
+  attachmentId: string,
 ): string {
   const origin = trimTrailingSlashes(target.apiBase);
   const path = [
@@ -110,7 +103,7 @@ async function resolveAttachmentApiBase(org: string): Promise<string> {
 export async function loadEventAttachments(
   org: string,
   project: string | undefined,
-  eventId: string
+  eventId: string,
 ): Promise<EventViewAttachment[]> {
   if (!project) {
     return [];
@@ -144,21 +137,21 @@ function formatAttachment(attachment: EventAttachmentDetailsResponse): string {
   const details = [attachment.mimetype, formatBytes(attachment.size)]
     .filter(Boolean)
     .join(", ");
-  const name = escapeMarkdownInline(attachment.name);
-  return `- ${name}${details ? ` (${escapeMarkdownInline(details)})` : ""} — ${safeCodeSpan(attachment.id)}`;
+  const name = text(attachment.name);
+  return `- ${name}${details ? ` (${text(details)})` : ""} — ${inlineCode(attachment.id)}`;
 }
 
 /**
  * Human-readable attachments section, or empty string when there are none.
  */
 export function formatEventAttachments(
-  attachments: EventAttachmentDetailsResponse[]
+  attachments: EventAttachmentDetailsResponse[],
 ): string {
   if (attachments.length === 0) {
     return "";
   }
   return renderMarkdown(
-    ["### Attachments", "", ...attachments.map(formatAttachment)].join("\n")
+    ["### Attachments", "", ...attachments.map(formatAttachment)].join("\n"),
   );
 }
 
@@ -166,7 +159,7 @@ export function formatEventAttachments(
  * Footer hint with a copy-pasteable download command for the first attachment.
  */
 export function attachmentDownloadHint(
-  attachments: EventViewAttachment[]
+  attachments: EventViewAttachment[],
 ): string | undefined {
   const [first] = attachments;
   if (!first) {

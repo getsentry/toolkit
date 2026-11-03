@@ -1,15 +1,23 @@
+import { z } from "zod";
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type {
   Issue,
   ReplayDetails,
-  ReplayRecordingEvent,
-  ReplayRecordingSegments,
   SentryApiService,
   TraceMeta,
 } from "../../api-client";
-import { UserInputError } from "../../errors";
+import { ApiClientError } from "../../api-client";
+import { ConfigurationError, UserInputError } from "../../errors";
+import {
+  REPLAY_TIMELINE_CATEGORIES,
+  ReplayTimelineBuilder,
+  type ReplayTimelineCategory,
+  type ReplayTimelineEvent,
+} from "../../internal/replay-timeline";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { resolveRegionUrlForOrganization } from "../../internal/tool-helpers/resolve-region-url";
+import { formatAvailableToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
 import { parseSentryUrl } from "../../internal/url-helpers";
 import { resolveScopedOrganizationSlug } from "../../internal/url-scope";
 import {
@@ -18,23 +26,15 @@ import {
   ParamReplayId,
   ParamReplayUrl,
 } from "../../schema";
+import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
+import { formatReplayUser } from "../support/search-events/replays";
 
 interface ResolvedReplayParams {
   organizationSlug: string;
   replayId: string;
 }
-
-interface ReplayActivityEvent {
-  timestampMs: number | null;
-  label: string;
-  details: string[];
-}
-
-type ReplayRecordingPayload = NonNullable<
-  NonNullable<ReplayRecordingEvent["data"]>["payload"]
->;
 
 interface RelatedReplayIssue {
   eventId: string;
@@ -46,9 +46,30 @@ interface RelatedReplayTrace {
   traceMeta: TraceMeta | null;
 }
 
-const MAX_ACTIVITY_EVENTS = 6;
+type ReplayRecording =
+  | { status: "unavailable"; reason: string }
+  | {
+      status: "loaded";
+      events: ReplayTimelineEvent[];
+      segmentsRead: number;
+      truncated: boolean;
+    };
+
+interface TimelineRequest {
+  categories: ReplayTimelineCategory[] | null;
+  startOffsetSeconds: number | null;
+  endOffsetSeconds: number | null;
+  limit: number;
+  skip: number;
+}
+
 const MAX_RELATED_ERRORS = 3;
 const MAX_RELATED_TRACES = 2;
+const DEFAULT_TIMELINE_LIMIT = 50;
+const MAX_TIMELINE_LIMIT = 200;
+// Five pages of the recording-segments endpoint. Long sessions can exceed
+// this; the response says so instead of presenting a partial timeline as whole.
+const MAX_REPLAY_SEGMENTS = 500;
 
 export default defineTool({
   name: "get_replay_details",
@@ -56,30 +77,70 @@ export default defineTool({
   requiredScopes: ["org:read", "project:read", "event:read"],
   requiredCapabilities: ["replays"],
   description: [
-    "Get high-level information about a specific Sentry replay by URL or replay ID.",
+    "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.",
     "",
     "USE THIS TOOL WHEN USERS:",
     "- Share a replay URL",
-    "- Ask what happened in a specific replay",
-    "- Want a concise replay summary plus the next issue or trace lookups to run",
+    "- Ask what happened in a replay, or what a user saw and clicked",
+    "- Need the moments before an error, a dead click, or the end of a session",
     "",
     "<examples>",
-    "### With replay URL",
-    "```",
     "get_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')",
-    "```",
-    "",
-    "### With organization and replay ID",
-    "```",
-    "get_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f')",
-    "```",
+    "get_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)",
+    "get_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)",
     "</examples>",
+    "",
+    "<hints>",
+    "- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds",
+    "- The timeline header counts every recorded event, so you can see what to ask for next",
+    "</hints>",
   ].join("\n"),
   inputSchema: {
     replayUrl: ParamReplayUrl.optional(),
     organizationSlug: ParamOrganizationSlug.optional(),
     replayId: ParamReplayId.optional(),
     regionUrl: ParamRegionUrl.nullable().optional(),
+    categories: z
+      .array(z.enum(REPLAY_TIMELINE_CATEGORIES))
+      .min(1)
+      .nullable()
+      .optional()
+      .describe(
+        "Timeline categories to show. Default: notable events only (navigations, clicks, inputs, console warnings and errors, failed requests, feedback). Naming a category shows all of its events, such as every request for 'network' or every log level for 'console'.",
+      ),
+    startOffsetSeconds: z
+      .number()
+      .nullable()
+      .optional()
+      .describe(
+        "Start of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+      ),
+    endOffsetSeconds: z
+      .number()
+      .nullable()
+      .optional()
+      .describe(
+        "End of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+      ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_TIMELINE_LIMIT)
+      .nullable()
+      .optional()
+      .describe(
+        `Maximum timeline events to return (1-${MAX_TIMELINE_LIMIT}, default ${DEFAULT_TIMELINE_LIMIT}).`,
+      ),
+    skip: z
+      .number()
+      .int()
+      .min(0)
+      .nullable()
+      .optional()
+      .describe(
+        "Number of matching timeline events to skip. Use the value a previous response gives to continue past the limit.",
+      ),
   },
   annotations: {
     readOnlyHint: true,
@@ -102,6 +163,13 @@ export default defineTool({
       replayId: resolved.replayId,
     });
 
+    const timelineRequest: TimelineRequest = {
+      categories: params.categories ?? null,
+      startOffsetSeconds: params.startOffsetSeconds ?? null,
+      endOffsetSeconds: params.endOffsetSeconds ?? null,
+      limit: params.limit ?? DEFAULT_TIMELINE_LIMIT,
+      skip: params.skip ?? 0,
+    };
     const replay = await apiService.getReplayDetails({
       organizationSlug: resolved.organizationSlug,
       replayId: resolved.replayId,
@@ -113,19 +181,11 @@ export default defineTool({
       projectSlug: context.constraints.projectSlug,
     });
 
-    const isArchived = replay.is_archived === true;
-    const projectId =
-      replay.project_id != null ? String(replay.project_id) : null;
-    const hasSegments = (replay.count_segments ?? 0) > 0;
-
-    const [{ segments }, relatedIssues, relatedTraces] = await Promise.all([
-      fetchReplaySegments({
+    const [recording, relatedIssues, relatedTraces] = await Promise.all([
+      fetchReplayRecording({
         apiService,
         organizationSlug: resolved.organizationSlug,
-        replayId: resolved.replayId,
-        projectId,
-        isArchived,
-        hasSegments,
+        replay,
       }),
       fetchReplayIssues({
         apiService,
@@ -139,14 +199,25 @@ export default defineTool({
       }),
     ]);
 
+    // Replay URLs also reach this handler through get_sentry_resource, so only
+    // suggest a follow-up call when this tool is reachable in the session.
+    const canContinue =
+      formatAvailableToolCallInstruction({
+        toolName: "get_replay_details",
+        experimentalMode: context.experimentalMode ?? false,
+        availableToolNames: context.availableToolNames,
+        directToolNames: context.directToolNames,
+      }) !== null;
+
     return formatReplayOutput({
       replay,
       organizationSlug: resolved.organizationSlug,
       replayUrl:
         params.replayUrl ??
         apiService.getReplayUrl(resolved.organizationSlug, replay.id),
-      segments,
-      isArchived,
+      recording,
+      timelineRequest,
+      canContinue,
       relatedIssues,
       relatedTraces,
     });
@@ -220,43 +291,153 @@ async function assertReplayWithinProjectConstraint({
   }
 }
 
+async function fetchReplayRecording({
+  apiService,
+  organizationSlug,
+  replay,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  replay: ReplayDetails;
+}): Promise<ReplayRecording> {
+  if (replay.is_archived === true) {
+    return {
+      status: "unavailable",
+      reason: "Recording is archived and not available for playback.",
+    };
+  }
+  if (replay.project_id == null || (replay.count_segments ?? 0) === 0) {
+    return { status: "unavailable", reason: "No recording was captured." };
+  }
+
+  const builder = new ReplayTimelineBuilder();
+  try {
+    const { segmentsRead, truncated } =
+      await apiService.visitReplayRecordingSegments(
+        {
+          organizationSlug,
+          projectSlugOrId: String(replay.project_id),
+          replayId: replay.id,
+          maxSegments: MAX_REPLAY_SEGMENTS,
+        },
+        (events) => builder.addSegment(events),
+      );
+    return {
+      status: "loaded",
+      events: builder.build(),
+      segmentsRead,
+      truncated,
+    };
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      return {
+        status: "unavailable",
+        reason: `The recording could not be loaded: ${error.message}`,
+      };
+    }
+    if (!(error instanceof ConfigurationError)) {
+      logIssue(error, {
+        loggerScope: ["tools", "get-replay-details", "recording"],
+        contexts: {
+          request: { organizationSlug, replayId: replay.id },
+        },
+      });
+    }
+    return {
+      status: "unavailable",
+      reason: "The recording could not be loaded because of a Sentry error.",
+    };
+  }
+}
+
+async function fetchReplayIssues({
+  apiService,
+  organizationSlug,
+  errorIds,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  errorIds: string[];
+}): Promise<RelatedReplayIssue[]> {
+  const ids = errorIds.slice(0, MAX_RELATED_ERRORS);
+
+  return await Promise.all(
+    ids.map(async (eventId) => {
+      try {
+        const [issue] = await apiService.listIssues({
+          organizationSlug,
+          query: eventId,
+          limit: 1,
+        });
+        return { eventId, issue: issue ?? null };
+      } catch {
+        return { eventId, issue: null };
+      }
+    }),
+  );
+}
+
+async function fetchReplayTraces({
+  apiService,
+  organizationSlug,
+  traceIds,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  traceIds: string[];
+}): Promise<RelatedReplayTrace[]> {
+  const ids = traceIds.slice(0, MAX_RELATED_TRACES);
+
+  return await Promise.all(
+    ids.map(async (traceId) => {
+      try {
+        const traceMeta = await apiService.getTraceMeta({
+          organizationSlug,
+          traceId,
+        });
+        return { traceId, traceMeta };
+      } catch {
+        return { traceId, traceMeta: null };
+      }
+    }),
+  );
+}
+
 function formatReplayOutput({
   replay,
   organizationSlug,
   replayUrl,
-  segments,
-  isArchived,
+  recording,
+  timelineRequest,
+  canContinue,
   relatedIssues,
   relatedTraces,
 }: {
   replay: ReplayDetails;
   organizationSlug: string;
   replayUrl: string;
-  segments: ReplayRecordingSegments | null;
-  isArchived: boolean;
+  recording: ReplayRecording;
+  timelineRequest: TimelineRequest;
+  canContinue: boolean;
   relatedIssues: RelatedReplayIssue[];
   relatedTraces: RelatedReplayTrace[];
 }): string {
   const lines: string[] = [];
-  const user =
-    replay.user?.display_name ??
-    replay.user?.email ??
-    replay.user?.username ??
-    replay.user?.id ??
-    "Anonymous User";
   const device =
     replay.device?.name ??
     replay.device?.model ??
     replay.device?.family ??
     null;
-  const activityEvents = extractReplayActivityEvents(segments);
 
-  // Summary
   lines.push(`# Replay ${replay.id} in **${organizationSlug}**`);
   lines.push("");
   lines.push("## Summary");
   lines.push("");
   lines.push(`- **Replay URL**: ${replayUrl}`);
+  const startedAtMs = parseTimestampMs(replay.started_at);
+  if (startedAtMs !== null) {
+    lines.push(`- **Started**: ${formatTimestamp(startedAtMs)}`);
+  }
   lines.push(
     `- **Duration**: ${replay.duration != null ? formatDurationSeconds(replay.duration) : "Unknown"}`,
   );
@@ -267,7 +448,7 @@ function formatReplayOutput({
   lines.push(
     `- **OS**: ${formatNameVersion(replay.os?.name, replay.os?.version)}`,
   );
-  lines.push(`- **User**: ${user}`);
+  lines.push(`- **User**: ${formatReplayUser(replay)}`);
   if (replay.urls.length > 0) {
     lines.push(`- **URLs**: ${replay.urls.slice(0, 3).join(", ")}`);
   }
@@ -288,34 +469,22 @@ function formatReplayOutput({
   if (replay.count_segments != null) {
     lines.push(`- **Recording Segments**: ${replay.count_segments}`);
   }
-  lines.push(`- **Archived**: ${isArchived ? "Yes" : "No"}`);
+  lines.push(`- **Archived**: ${replay.is_archived === true ? "Yes" : "No"}`);
   if (replay.has_viewed != null) {
     lines.push(`- **Viewed**: ${replay.has_viewed ? "Yes" : "No"}`);
   }
 
-  // Activity
   lines.push("");
-  lines.push("## Activity");
+  lines.push("## Timeline");
   lines.push("");
-
-  if (isArchived) {
-    lines.push("Recording is archived and not available for playback.");
-  } else if (activityEvents.length > 0) {
-    const startTime = activityEvents[0]?.timestampMs ?? null;
-    for (const event of activityEvents) {
-      const prefix =
-        event.timestampMs !== null && startTime !== null
-          ? `${formatRelativeTime(event.timestampMs - startTime)} · `
-          : "";
-      const details =
-        event.details.length > 0 ? ` · ${event.details.join(" · ")}` : "";
-      lines.push(`- ${prefix}\`${event.label}\`${details}`);
-    }
+  if (recording.status === "unavailable") {
+    lines.push(recording.reason);
   } else {
-    lines.push("No activity events recorded.");
+    lines.push(
+      ...formatTimeline({ replay, recording, timelineRequest, canContinue }),
+    );
   }
 
-  // Related
   const hasRelated = relatedIssues.length > 0 || relatedTraces.length > 0;
   if (hasRelated) {
     lines.push("");
@@ -346,6 +515,174 @@ function formatReplayOutput({
   return lines.join("\n");
 }
 
+function formatTimeline({
+  replay,
+  recording,
+  timelineRequest,
+  canContinue,
+}: {
+  replay: ReplayDetails;
+  recording: Extract<ReplayRecording, { status: "loaded" }>;
+  timelineRequest: TimelineRequest;
+  canContinue: boolean;
+}): string[] {
+  const { events } = recording;
+  const lines: string[] = [];
+  const startedAtMs = parseTimestampMs(replay.started_at);
+  const replayStartMs = startedAtMs ?? events[0]?.timestampMs ?? 0;
+  const replayEndMs =
+    parseTimestampMs(replay.finished_at) ??
+    (startedAtMs !== null && replay.duration != null
+      ? startedAtMs + replay.duration * 1000
+      : (events.at(-1)?.timestampMs ?? replayStartMs));
+
+  const resolveOffset = (offsetSeconds: number | null): number | null => {
+    if (offsetSeconds === null) {
+      return null;
+    }
+    return offsetSeconds < 0
+      ? replayEndMs + offsetSeconds * 1000
+      : replayStartMs + offsetSeconds * 1000;
+  };
+  const windowStartMs = resolveOffset(timelineRequest.startOffsetSeconds);
+  const windowEndMs = resolveOffset(timelineRequest.endOffsetSeconds);
+  if (
+    windowStartMs !== null &&
+    windowEndMs !== null &&
+    windowStartMs > windowEndMs
+  ) {
+    throw new UserInputError(
+      "`startOffsetSeconds` must resolve to a time before `endOffsetSeconds`.",
+    );
+  }
+
+  const categories = timelineRequest.categories
+    ? new Set(timelineRequest.categories)
+    : null;
+  const matching = events.filter(
+    (event) =>
+      (categories ? categories.has(event.category) : event.notable) &&
+      (windowStartMs === null || event.timestampMs >= windowStartMs) &&
+      (windowEndMs === null || event.timestampMs <= windowEndMs),
+  );
+  const shownEnd = timelineRequest.skip + timelineRequest.limit;
+  const shown = matching.slice(timelineRequest.skip, shownEnd);
+  const offset = (timestampMs: number) => timestampMs - replayStartMs;
+
+  lines.push(`**Recorded**: ${formatActivityCounts(events)}`);
+  const showing = [
+    categories
+      ? `categories ${timelineRequest.categories?.join(", ")}`
+      : "notable events",
+  ];
+  if (windowStartMs !== null || windowEndMs !== null) {
+    showing.push(
+      `from ${formatOffset(offset(windowStartMs ?? replayStartMs))} to ${formatOffset(offset(windowEndMs ?? replayEndMs))}`,
+    );
+  }
+  showing.push(
+    shown.length > 0 && timelineRequest.skip > 0
+      ? `events ${timelineRequest.skip + 1}-${timelineRequest.skip + shown.length} of ${matching.length}`
+      : `${shown.length} of ${matching.length} events`,
+  );
+  lines.push(`**Showing**: ${showing.join(" · ")}`);
+  lines.push("");
+
+  if (shown.length === 0) {
+    lines.push(
+      events.length === 0
+        ? "No user activity was found in the recording."
+        : "No events match this window and these categories.",
+    );
+  }
+  for (const event of shown) {
+    lines.push(formatTimelineEvent(event, offset(event.timestampMs)));
+  }
+
+  const notes: string[] = [];
+  const remaining = matching.length - shownEnd;
+  if (remaining > 0 && canContinue) {
+    notes.push(
+      `${remaining} more events match. Call \`get_replay_details\` again with the same arguments and \`skip: ${shownEnd}\` to continue.`,
+    );
+  }
+  if (recording.truncated) {
+    notes.push(
+      `Only the first ${recording.segmentsRead} of ${replay.count_segments ?? "the"} recording segments were read, so later activity is missing.`,
+    );
+  }
+  if (notes.length > 0) {
+    lines.push("");
+    lines.push(...notes);
+  }
+
+  return lines;
+}
+
+function formatTimelineEvent(
+  event: ReplayTimelineEvent,
+  offsetMs: number,
+): string {
+  const parts = [formatOffset(offsetMs), `**${event.label}**`];
+  if (event.target) {
+    parts.push(inlineCode(event.target));
+  }
+  for (const detail of event.details) {
+    parts.push(`${detail.label}: ${inlineCode(detail.value)}`);
+  }
+  return `- ${parts.join(" · ")}`;
+}
+
+/** Counts every recorded event by kind, so callers know what else to ask for. */
+function formatActivityCounts(events: ReplayTimelineEvent[]): string {
+  if (events.length === 0) {
+    return "no user activity";
+  }
+  const counts = new Map<string, number>();
+  let failedRequests = 0;
+  for (const event of events) {
+    counts.set(event.label, (counts.get(event.label) ?? 0) + 1);
+    if (event.problem === "failed request") {
+      failedRequests += 1;
+    }
+  }
+  return [...counts.entries()]
+    .map(([label, count]) =>
+      label === "request"
+        ? `${count} × request (${failedRequests} failed)`
+        : `${count} × ${label}`,
+    )
+    .join(" · ");
+}
+
+/** Formats a replay offset like the Sentry replay player: `01:07.3`. */
+function formatOffset(offsetMs: number): string {
+  const sign = offsetMs < 0 ? "-" : "";
+  const totalTenths = Math.floor(Math.abs(offsetMs) / 100);
+  const tenths = totalTenths % 10;
+  const totalSeconds = Math.floor(totalTenths / 10);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / 3600);
+  const mmss = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
+  return `${sign}${hours > 0 ? `${hours}:` : ""}${mmss}`;
+}
+
+function parseTimestampMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatTimestamp(timestampMs: number): string {
+  return new Date(timestampMs)
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, " UTC");
+}
+
 function formatDurationSeconds(durationSeconds: number): string {
   if (durationSeconds < 60) {
     return `${durationSeconds}s`;
@@ -356,92 +693,6 @@ function formatDurationSeconds(durationSeconds: number): string {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-async function fetchReplaySegments({
-  apiService,
-  organizationSlug,
-  replayId,
-  projectId,
-  isArchived,
-  hasSegments,
-}: {
-  apiService: SentryApiService;
-  organizationSlug: string;
-  replayId: string;
-  projectId: string | null;
-  isArchived: boolean;
-  hasSegments: boolean;
-}): Promise<{
-  segments: ReplayRecordingSegments | null;
-}> {
-  if (isArchived || !projectId || !hasSegments) {
-    return { segments: null };
-  }
-
-  try {
-    const segments = await apiService.getReplayRecordingSegments({
-      organizationSlug,
-      projectSlugOrId: projectId,
-      replayId,
-    });
-    return { segments };
-  } catch {
-    return { segments: null };
-  }
-}
-
-async function fetchReplayIssues({
-  apiService,
-  organizationSlug,
-  errorIds,
-}: {
-  apiService: SentryApiService;
-  organizationSlug: string;
-  errorIds: string[];
-}): Promise<RelatedReplayIssue[]> {
-  const ids = errorIds.slice(0, MAX_RELATED_ERRORS);
-
-  return Promise.all(
-    ids.map(async (eventId) => {
-      try {
-        const [issue] = await apiService.listIssues({
-          organizationSlug,
-          query: eventId,
-          limit: 1,
-        });
-        return { eventId, issue: issue ?? null };
-      } catch {
-        return { eventId, issue: null };
-      }
-    }),
-  );
-}
-
-async function fetchReplayTraces({
-  apiService,
-  organizationSlug,
-  traceIds,
-}: {
-  apiService: SentryApiService;
-  organizationSlug: string;
-  traceIds: string[];
-}): Promise<RelatedReplayTrace[]> {
-  const ids = traceIds.slice(0, MAX_RELATED_TRACES);
-
-  return Promise.all(
-    ids.map(async (traceId) => {
-      try {
-        const traceMeta = await apiService.getTraceMeta({
-          organizationSlug,
-          traceId,
-        });
-        return { traceId, traceMeta };
-      } catch {
-        return { traceId, traceMeta: null };
-      }
-    }),
-  );
-}
-
 function formatNameVersion(
   name?: string | null,
   version?: string | null,
@@ -450,156 +701,4 @@ function formatNameVersion(
     return `${name} ${version}`;
   }
   return name ?? version ?? "Unknown";
-}
-
-function extractReplayActivityEvents(
-  segments: ReplayRecordingSegments | null,
-): ReplayActivityEvent[] {
-  if (!segments) {
-    return [];
-  }
-
-  const events: ReplayActivityEvent[] = [];
-
-  for (const segment of segments) {
-    for (const event of segment) {
-      const replayEvent = summarizeReplayEvent(event);
-      if (replayEvent) {
-        events.push(replayEvent);
-      }
-      if (events.length >= MAX_ACTIVITY_EVENTS) {
-        return events;
-      }
-    }
-  }
-
-  return events;
-}
-
-function summarizeReplayEvent(
-  event: ReplayRecordingEvent,
-): ReplayActivityEvent | null {
-  const timestampMs = getEventTimestampMillis(event.timestamp);
-  const data = event.data;
-  const tag = data?.tag ?? "";
-  const payload = data?.payload ?? null;
-
-  if (tag) {
-    const replayEvent = summarizeTaggedReplayEvent(tag, payload);
-    if (replayEvent) {
-      return { timestampMs, ...replayEvent };
-    }
-  }
-
-  if (event.type !== undefined && data) {
-    const href = data.href ?? null;
-    if (href) {
-      return {
-        timestampMs,
-        label: "page.view",
-        details: [`href=${href}`],
-      };
-    }
-  }
-
-  return null;
-}
-
-function summarizeTaggedReplayEvent(
-  tag: string,
-  payload: ReplayRecordingPayload | null,
-): Omit<ReplayActivityEvent, "timestampMs"> | null {
-  if (tag === "performanceSpan") {
-    const op = firstString(payload?.op);
-    const description = firstString(payload?.description);
-    const durationMs = payload?.data?.duration ?? null;
-
-    if (description || op) {
-      return {
-        label: op ?? "performanceSpan",
-        details: [
-          description ? `description=${description}` : null,
-          durationMs !== null ? `duration_ms=${durationMs}` : null,
-        ].filter((value): value is string => value !== null),
-      };
-    }
-  }
-
-  if (tag === "ui.click") {
-    const message = firstString(payload?.message, payload?.description);
-    if (message) {
-      return {
-        label: tag,
-        details: [`message=${quoteDetail(message)}`],
-      };
-    }
-  }
-
-  const knownKeys = ["message", "description", "category", "type"] as const;
-  const details: string[] = [];
-  for (const key of knownKeys) {
-    const value = firstString(payload?.[key]);
-    if (value) {
-      details.push(`${key}=${quoteDetail(value)}`);
-    }
-  }
-  const extra = summarizeObject(payload, new Set<string>(knownKeys));
-  if (extra) {
-    details.push(extra);
-  }
-
-  return details.length > 0 ? { label: tag, details } : null;
-}
-
-function getEventTimestampMillis(value: unknown): number | null {
-  if (typeof value !== "number") {
-    return null;
-  }
-  return value > 1e12 ? value : value * 1000;
-}
-
-function formatRelativeTime(offsetMs: number): string {
-  const offsetSeconds = Math.max(0, Math.round(offsetMs / 1000));
-  if (offsetSeconds < 60) {
-    return `T+${offsetSeconds}s`;
-  }
-
-  const minutes = Math.floor(offsetSeconds / 60);
-  const seconds = offsetSeconds % 60;
-  return seconds > 0 ? `T+${minutes}m ${seconds}s` : `T+${minutes}m`;
-}
-
-function summarizeObject(
-  value: Record<string, unknown> | null,
-  excludedKeys: ReadonlySet<string> = new Set(),
-): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const entries = Object.entries(value)
-    .filter(
-      ([key, nested]) =>
-        !excludedKeys.has(key) &&
-        (typeof nested === "string" || typeof nested === "number"),
-    )
-    .slice(0, 3)
-    .map(([key, nested]) => `${key}=${nested}`);
-
-  return entries.length > 0
-    ? `payload=${quoteDetail(entries.join(", "))}`
-    : null;
-}
-
-function firstString(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-  return null;
-}
-
-function quoteDetail(value: string): string {
-  return JSON.stringify(value.trim());
 }

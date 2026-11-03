@@ -25,7 +25,7 @@ import { formatVerifications, verifyPlannedCommands } from "./verify.js";
 function evaluateDeterministic(
   name: string,
   def: CriterionDef,
-  plan: AgentPlan
+  plan: AgentPlan,
 ): CriterionResult {
   const allCommands = plan.commands.map((c) => c.command.toLowerCase());
 
@@ -33,7 +33,7 @@ function evaluateDeterministic(
   if (def["anti-patterns"]) {
     for (const pattern of def["anti-patterns"]) {
       const found = allCommands.find((cmd) =>
-        cmd.includes(pattern.toLowerCase())
+        cmd.includes(pattern.toLowerCase()),
       );
       if (found) {
         return {
@@ -85,7 +85,7 @@ async function evaluateWithLLMJudge(
   client: LLMClient,
   prompt: string,
   plan: AgentPlan,
-  verificationSummary: string
+  verificationSummary: string,
 ): Promise<CriterionResult> {
   const commandList = plan.commands
     .map((c, i) => `${i + 1}. \`${c.command}\` — ${c.purpose}`)
@@ -124,7 +124,7 @@ or
       client,
       client.judgeModel,
       [{ role: "user", content: judgePrompt }],
-      512
+      512,
     );
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -163,7 +163,7 @@ or
 export async function judgePlan(
   client: LLMClient,
   testCase: TestCase,
-  plan: AgentPlan | null
+  plan: AgentPlan | null,
 ): Promise<CaseResult> {
   // If the planner failed to produce a plan, fail all criteria
   if (!plan) {
@@ -202,7 +202,7 @@ export async function judgePlan(
     client,
     testCase.prompt,
     plan,
-    verificationSummary
+    verificationSummary,
   );
   criteria.push(llmVerdict);
 

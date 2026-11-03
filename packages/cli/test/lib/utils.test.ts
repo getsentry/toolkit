@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { isAllDigits, slugify } from "../../src/lib/utils.js";
+import {
+  countChar,
+  isAllDigits,
+  parseHttpUrl,
+  slugify,
+} from "../../src/lib/utils.js";
 
 describe("slugify", () => {
   describe("JSDoc examples (canonical alignment)", () => {
@@ -95,6 +100,18 @@ describe("slugify", () => {
   });
 });
 
+describe("countChar", () => {
+  test("counts every occurrence", () => {
+    expect(countChar("org/project/rule", "/")).toBe(2);
+    expect(countChar("//a//", "/")).toBe(4);
+  });
+
+  test("returns 0 when the character is absent", () => {
+    expect(countChar("rule-name", "/")).toBe(0);
+    expect(countChar("", "/")).toBe(0);
+  });
+});
+
 describe("isAllDigits", () => {
   test("returns true for pure digits", () => {
     expect(isAllDigits("0")).toBe(true);
@@ -109,5 +126,25 @@ describe("isAllDigits", () => {
     expect(isAllDigits("12.3")).toBe(false);
     expect(isAllDigits("-1")).toBe(false);
     expect(isAllDigits(" 123")).toBe(false);
+  });
+});
+
+describe("parseHttpUrl", () => {
+  test.each([
+    "https://github.com/example/app/issues/42",
+    "http://tracker.example.com/browse/PROJ-7?view=detail#comments",
+  ])("parses %s", (value) => {
+    expect(parseHttpUrl(value)?.href).toBe(value);
+  });
+
+  test.each([
+    "not-a-url",
+    "/relative/path",
+    "file:///tmp/issue",
+    "javascript:alert(1)",
+    "https://user:secret@example.com/issue/42",
+    "https://token@example.com/issue/42",
+  ])("rejects %s", (value) => {
+    expect(parseHttpUrl(value)).toBeUndefined();
   });
 });

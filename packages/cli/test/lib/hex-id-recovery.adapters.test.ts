@@ -25,7 +25,7 @@ let originalFetch: typeof globalThis.fetch;
 
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://sentry.io");
 });
 
@@ -218,7 +218,7 @@ describe("adapter query params", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     });
 

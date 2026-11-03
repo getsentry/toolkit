@@ -5,7 +5,7 @@
  * isPlainOutput() is true, and delegate to real @clack/prompts when false.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as clack from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {

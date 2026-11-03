@@ -4,7 +4,7 @@ import unauthorizedFixture from "../fixtures/errors/unauthorized.json";
 export type RouteHandler = (
   req: Request,
   params: Record<string, string>,
-  serverUrl: string
+  serverUrl: string,
 ) => MockResponse | Promise<MockResponse>;
 
 export type MockResponse = {
@@ -18,6 +18,7 @@ export type MockRoute = {
   /** Path pattern with optional :params (e.g., "/api/0/organizations/:orgSlug/") */
   path: string;
   /** Static response body, or handler function for dynamic responses */
+  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- documents the accepted shapes
   response: unknown | RouteHandler;
   /** HTTP status code (default: 200) */
   status?: number;
@@ -32,6 +33,7 @@ type CompiledRoute = {
   method: string;
   pattern: RegExp;
   paramNames: string[];
+  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- documents the accepted shapes
   response: unknown | RouteHandler;
   status: number;
 };
@@ -55,7 +57,7 @@ function compilePath(path: string): { pattern: RegExp; paramNames: string[] } {
 function matchRoute(
   method: string,
   pathname: string,
-  routes: CompiledRoute[]
+  routes: CompiledRoute[],
 ): { route: CompiledRoute; params: Record<string, string> } | null {
   for (const route of routes) {
     if (route.method !== method) {
@@ -95,7 +97,7 @@ function isAuthorized(req: Request, validTokens: string[]): boolean {
 /** Convert a Node.js IncomingMessage to a Web API Request. */
 async function toWebRequest(
   req: IncomingMessage,
-  baseUrl: string
+  baseUrl: string,
 ): Promise<Request> {
   const url = `${baseUrl}${req.url ?? "/"}`;
   const headers = new Headers();
@@ -119,7 +121,7 @@ async function toWebRequest(
 
 export function createMockServer(
   routes: MockRoute[],
-  options: MockServerOptions = {}
+  options: MockServerOptions = {},
 ): MockServer {
   let server: Server | null = null;
   let port = 0;
@@ -141,7 +143,7 @@ export function createMockServer(
     },
 
     async start() {
-      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: test mock server requires branching for route matching
+      // test mock server requires branching for route matching
       server = createServer(async (nodeReq, nodeRes) => {
         const serverUrl = `http://localhost:${port}`;
         const req = await toWebRequest(nodeReq, serverUrl);
@@ -166,7 +168,7 @@ export function createMockServer(
               responseData = await (route.response as RouteHandler)(
                 req,
                 params,
-                serverUrl
+                serverUrl,
               );
             } else {
               responseData = { body: route.response, status: route.status };

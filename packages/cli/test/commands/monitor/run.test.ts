@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { runCommand } from "../../../src/commands/monitor/run.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as transport from "../../../src/lib/envelope/transport.js";
 import { CliError, ValidationError } from "../../../src/lib/errors.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -52,7 +52,7 @@ describe("monitor runCommand.func()", () => {
       "my-job",
       NODE,
       "-e",
-      "process.exit(0)"
+      "process.exit(0)",
     );
 
     expect(sendSpy).toHaveBeenCalledTimes(2);
@@ -75,8 +75,8 @@ describe("monitor runCommand.func()", () => {
         "my-job",
         NODE,
         "-e",
-        "process.exit(3)"
-      )
+        "process.exit(3)",
+      ),
     ).rejects.toMatchObject({ exitCode: 3 });
 
     expect(sendSpy).toHaveBeenCalledTimes(2);
@@ -93,7 +93,7 @@ describe("monitor runCommand.func()", () => {
       "env-check-job",
       NODE,
       "-e",
-      "process.exit(process.env.SENTRY_MONITOR_SLUG === 'env-check-job' ? 0 : 1)"
+      "process.exit(process.env.SENTRY_MONITOR_SLUG === 'env-check-job' ? 0 : 1)",
     );
     // No throw => exit 0 => env var was present and correct.
     const closeBody = sendSpy.mock.calls[1]?.[1] as string;
@@ -111,8 +111,8 @@ describe("monitor runCommand.func()", () => {
         "my-job",
         NODE,
         "-e",
-        "process.exit(0)"
-      )
+        "process.exit(0)",
+      ),
     ).resolves.toBeUndefined();
     expect(sendSpy).toHaveBeenCalledTimes(2);
   });
@@ -130,7 +130,7 @@ describe("monitor runCommand.func()", () => {
       "scheduled-job",
       NODE,
       "-e",
-      "process.exit(0)"
+      "process.exit(0)",
     );
 
     const openBody = sendSpy.mock.calls[0]?.[1] as string;
@@ -143,14 +143,14 @@ describe("monitor runCommand.func()", () => {
   test("missing command throws ValidationError", async () => {
     const { ctx } = makeContext();
     await expect(
-      func.call(ctx, { dsn: SAAS_DSN, environment: "production" }, "my-job")
+      func.call(ctx, { dsn: SAAS_DSN, environment: "production" }, "my-job"),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   test("missing monitor slug throws ValidationError", async () => {
     const { ctx } = makeContext();
     await expect(
-      func.call(ctx, { dsn: SAAS_DSN, environment: "production" })
+      func.call(ctx, { dsn: SAAS_DSN, environment: "production" }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -163,8 +163,8 @@ describe("monitor runCommand.func()", () => {
         "my-job",
         NODE,
         "-e",
-        "process.exit(0)"
-      )
+        "process.exit(0)",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
     // No check-ins sent because validation fails before any send.
     expect(sendSpy).not.toHaveBeenCalled();
@@ -177,8 +177,8 @@ describe("monitor runCommand.func()", () => {
         ctx,
         { dsn: SAAS_DSN, environment: "production" },
         "my-job",
-        "this-binary-does-not-exist-xyz"
-      )
+        "this-binary-does-not-exist-xyz",
+      ),
     ).rejects.toBeInstanceOf(CliError);
     // Both check-ins are still sent; the close one reports an error.
     expect(sendSpy).toHaveBeenCalledTimes(2);

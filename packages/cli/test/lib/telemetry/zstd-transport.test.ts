@@ -69,14 +69,14 @@ function buildMockHttpModule(response: MockResponseShape): {
       };
       req.write = (chunk: Buffer | string) => {
         captured.chunks.push(
-          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
         );
         return true;
       };
       req.end = (chunk?: Buffer | string) => {
         if (chunk !== undefined) {
           captured.chunks.push(
-            Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+            Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
           );
         }
         // Fire the response on next tick so the caller has time to
@@ -197,7 +197,7 @@ describe("makeCompressedTransport", () => {
     expect(response.statusCode).toBe(429);
     expect(response.headers?.["retry-after"]).toBe("60");
     expect(response.headers?.["x-sentry-rate-limits"]).toBe(
-      "60:error:organization"
+      "60:error:organization",
     );
   });
 
@@ -226,7 +226,7 @@ describe("makeCompressedTransport", () => {
 
     // Array collapsed to first element
     expect(response.headers?.["x-sentry-rate-limits"]).toBe(
-      "30:transaction:organization"
+      "30:transaction:organization",
     );
   });
 
@@ -365,14 +365,14 @@ describe("normalizeBody", () => {
     const src = new Uint8Array([1, 2, 3, 4, 5]);
     const buf = normalizeBody(src);
     expect(buf.length).toBe(5);
-    expect(Array.from(buf)).toEqual([1, 2, 3, 4, 5]);
+    expect([...buf]).toEqual([1, 2, 3, 4, 5]);
   });
 
   test("Uint8Array with non-zero byteOffset", () => {
     const backing = new Uint8Array([9, 9, 1, 2, 3, 9, 9]);
     const view = new Uint8Array(backing.buffer, 2, 3);
     const buf = normalizeBody(view);
-    expect(Array.from(buf)).toEqual([1, 2, 3]);
+    expect([...buf]).toEqual([1, 2, 3]);
   });
 
   test("empty string", () => {
@@ -560,7 +560,7 @@ describe("shouldFallbackToDefault", () => {
       shouldFallbackToDefault(httpsUrl, {
         ...opts,
         proxy: "http://proxy.internal:3128",
-      })
+      }),
     ).toBe(true);
   });
 

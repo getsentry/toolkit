@@ -50,7 +50,7 @@ describe("findNode / findHermesc", () => {
     expect(findNode({})).toBe("node");
     expect(findHermesc({ HERMES_CLI_PATH: "/h" })).toBe("/h");
     expect(findHermesc({ PODS_ROOT: "/pods" })).toBe(
-      "/pods/hermes-engine/destroot/bin/hermesc"
+      "/pods/hermes-engine/destroot/bin/hermesc",
     );
   });
 });
@@ -59,7 +59,7 @@ describe("expandXcodeVars", () => {
   test("expands parenthesized and braced references", () => {
     const vars = { FOO: "hello world" };
     expect(expandXcodeVars("A$(FOO)B", vars)).toBe("Ahello worldB");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal Xcode ${VAR} syntax under test
+    // literal Xcode ${VAR} syntax under test
     expect(expandXcodeVars("A${FOO}B", vars)).toBe("Ahello worldB");
     expect(expandXcodeVars("$(MISSING)", vars)).toBe("");
   });
@@ -102,7 +102,7 @@ describe("discoverInfoPlist", () => {
         <key>CFBundleIdentifier</key><string>com.example.$(SUFFIX)</string>
         <key>CFBundleShortVersionString</key><string>2.0.0</string>
         <key>CFBundleVersion</key><string>42</string>
-      </dict></plist>`
+      </dict></plist>`,
     );
     const plist = await discoverInfoPlist(
       {
@@ -110,7 +110,7 @@ describe("discoverInfoPlist", () => {
         INFOPLIST_FILE: "Info.plist",
         SUFFIX: "app",
       },
-      dir
+      dir,
     );
     expect(plist).toEqual({
       name: "MyApp",
@@ -129,7 +129,7 @@ describe("discoverInfoPlist", () => {
         MARKETING_VERSION: "1.0.0",
         CURRENT_PROJECT_VERSION: "7",
       },
-      "/tmp"
+      "/tmp",
     );
     expect(plist).toMatchObject({ bundleId: "com.example.app", build: "7" });
   });
@@ -140,7 +140,7 @@ describe("resolveReleaseAndDist", () => {
     const result = await resolveReleaseAndDist(
       { SENTRY_RELEASE: "app@1.0", SENTRY_DIST: "100" },
       "/tmp",
-      false
+      false,
     );
     expect(result).toEqual({ release: "app@1.0", dist: "100" });
   });
@@ -159,7 +159,7 @@ describe("resolveReleaseAndDist", () => {
         CURRENT_PROJECT_VERSION: "55",
       },
       "/tmp",
-      false
+      false,
     );
     expect(result).toEqual({
       dist: "55",
@@ -169,7 +169,7 @@ describe("resolveReleaseAndDist", () => {
 
   test("throws when the identity cannot be determined", async () => {
     await expect(resolveReleaseAndDist({}, "/tmp", false)).rejects.toThrow(
-      /Could not determine release/
+      /Could not determine release/,
     );
   });
 });
@@ -180,7 +180,7 @@ describe("discoverInfoPlist: INFOPLIST_PREPROCESS", () => {
       PLIST_XML.replace("NAME", "Pre")
         .replace("BUNDLE", "com.pre.app")
         .replace("VERSION", "9.9")
-        .replace("BUILD", "99")
+        .replace("BUILD", "99"),
     );
     const plist = await discoverInfoPlist(
       {
@@ -190,7 +190,7 @@ describe("discoverInfoPlist: INFOPLIST_PREPROCESS", () => {
         INFOPLIST_PREPROCESSOR_DEFINITIONS: "DEBUG=1",
       },
       "/tmp",
-      true
+      true,
     );
     expect(plist).toEqual({
       name: "Pre",
@@ -201,7 +201,7 @@ describe("discoverInfoPlist: INFOPLIST_PREPROCESS", () => {
     expect(execMock).toHaveBeenCalledWith(
       "cc",
       expect.arrayContaining(["-xc", "-P", "-E", "-DDEBUG=1"]),
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -218,7 +218,7 @@ describe("discoverInfoPlist: INFOPLIST_PREPROCESS", () => {
         CURRENT_PROJECT_VERSION: "1",
       },
       "/does-not-exist",
-      false
+      false,
     );
     expect(execMock).not.toHaveBeenCalled();
     expect(plist).toMatchObject({ bundleId: "com.fallback.app" });
@@ -236,7 +236,7 @@ describe("discoverInfoPlist: xcodebuild discovery (outside Xcode)", () => {
       PLIST_XML.replace("NAME", "MyApp")
         .replace("BUNDLE", "com.xcbuild.app")
         .replace("VERSION", "4.2.0")
-        .replace("BUILD", "7")
+        .replace("BUILD", "7"),
     );
 
     execMock.mockImplementation((_cmd: string, args?: readonly string[]) => {
@@ -263,7 +263,7 @@ describe("discoverInfoPlist: xcodebuild discovery (outside Xcode)", () => {
     expect(execMock).toHaveBeenCalledWith(
       "xcodebuild",
       expect.arrayContaining(["-configuration", "Release"]),
-      expect.anything()
+      expect.anything(),
     );
   });
 

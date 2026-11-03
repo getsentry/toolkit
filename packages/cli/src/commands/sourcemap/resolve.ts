@@ -7,12 +7,18 @@
  * `sentry-cli sourcemaps resolve` command without mutating any files.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
+import {
   colorTag,
-  escapeMarkdownCell,
   mdKvTable,
   renderMarkdown,
 } from "../../lib/formatters/markdown.js";
@@ -20,6 +26,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   assertDirectoryReadable,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   resolveDirectorySourcemaps,
 } from "../../lib/sourcemap/inject.js";
 
@@ -57,7 +64,7 @@ type ResolveCommandResult = {
  */
 function describeMapStatus(file: ResolveFileEntry): string {
   if (file.mapPath) {
-    return escapeMarkdownCell(file.mapPath);
+    return tableCell(file.mapPath);
   }
   if (file.inline) {
     return colorTag("muted", "inline (data: URL)");
@@ -81,7 +88,7 @@ function formatResolveResult(data: ResolveCommandResult): string {
       ["JS files", String(data.total)],
       ["With sourcemap", String(data.resolved)],
       ["With debug ID", String(data.withDebugId)],
-    ])
+    ]),
   );
 
   if (data.files.length > 0) {
@@ -90,10 +97,10 @@ function formatResolveResult(data: ResolveCommandResult): string {
     lines.push("| --- | --- | --- |");
     for (const file of data.files) {
       const debugId = file.debugId
-        ? escapeMarkdownCell(file.debugId)
+        ? tableCell(file.debugId)
         : colorTag("muted", "—");
       lines.push(
-        `| ${escapeMarkdownCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`
+        `| ${tableCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`,
       );
     }
   }
@@ -110,11 +117,22 @@ export const resolveCommand = buildCommand({
       ".map file, external sourceMappingURL directive, inline data: URL, or " +
       "none) and whether a Sentry debug ID has been injected.\n\n" +
       "This command never modifies files. Use it to debug why " +
-      "`sentry sourcemap upload` may not find the expected sourcemaps.\n\n" +
-      "Usage:\n" +
-      "  sentry sourcemap resolve ./dist\n" +
-      "  sentry sourcemap resolve ./build --ext .js,.mjs\n" +
-      "  sentry sourcemap resolve ./out --json",
+      "`sentry sourcemap upload` may not find the expected sourcemaps.",
+    examples: [
+      {
+        description:
+          "Report how each JS file's sourcemap resolves and whether a debug ID is injected",
+        command: "sentry sourcemap resolve ./dist",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry sourcemap resolve ./dist --json",
+      },
+      {
+        description: "Only scan some extensions",
+        command: "sentry sourcemap resolve ./build --ext .js,.mjs",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,
@@ -127,7 +145,7 @@ export const resolveCommand = buildCommand({
       parameters: [
         {
           brief: "Directory to scan for JS files",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],
@@ -135,20 +153,20 @@ export const resolveCommand = buildCommand({
     flags: {
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },
@@ -161,7 +179,7 @@ export const resolveCommand = buildCommand({
       ignore?: string;
       "ignore-file"?: string;
     },
-    dir: string
+    dir: string,
   ) {
     await assertDirectoryReadable(dir);
 
@@ -175,13 +193,13 @@ export const resolveCommand = buildCommand({
       : undefined;
     const ignoreMatcher = await buildIgnoreMatcher(
       ignorePatterns,
-      flags["ignore-file"]
+      flags["ignore-file"],
     );
 
     const resolutions = await resolveDirectorySourcemaps(
       dir,
       extSet,
-      ignoreMatcher
+      ignoreMatcher,
     );
 
     const absDir = resolvePath(dir);

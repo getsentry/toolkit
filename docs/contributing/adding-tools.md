@@ -20,6 +20,7 @@ We also expect upstream consumers (Claude Code plugins, Cursor, etc.) to use **t
 Target ~20 publicly visible tools. Never exceed 25. AI agents have limited tool slots (Cursor caps at 45 total across all providers), so Sentry MCP cannot consume all available slots.
 
 Before adding a new tool, consider if it could be:
+
 1. Combined with an existing tool
 2. Implemented as a parameter variant
 3. Added to the searchable catalog instead of the top-level MCP surface
@@ -45,6 +46,7 @@ Do not add search-only summaries or catalog-only schemas. `search_sentry_tools` 
 ## Tool Structure
 
 Each tool consists of:
+
 1. **Tool Module** - Single file in `src/tools/catalog/your-tool-name.ts` with definition and handler
 2. **Tests** - Unit tests in `src/tools/catalog/your-tool-name.test.ts`, including a baseline happy-path inline snapshot
 3. **Mocks** - API responses in `mcp-server-mocks`
@@ -107,6 +109,7 @@ an absent hint is a silent gap. Read-only tools must set `destructiveHint: false
 (not leave it undefined).
 
 **Available annotations:**
+
 - `readOnlyHint` (boolean): Tool doesn't modify data
 - `destructiveHint` (boolean): Tool may modify/delete existing data
 - `idempotentHint` (boolean, optional): Repeated calls with same arguments have no additional effect
@@ -138,9 +141,16 @@ annotations: {
 }
 ```
 
+The catalog gives every tool with `readOnlyHint: true` and
+`openWorldHint: true` a shared `fresh` input (`ParamFresh`), except the docs
+tools, which do not call the Sentry API. Do not declare `fresh` yourself. A
+call with `fresh: true` runs the handler in a request scope where the shared
+transport skips cached reads, and the handler never sees the input.
+
 ### Writing LLM-Friendly Descriptions
 
 Critical for LLM success:
+
 - Start with "Use this tool when you need to:"
 - Include concrete examples
 - Reference related tools
@@ -173,7 +183,7 @@ async handler(params, context: ServerContext) {
 
   // 5. Format response
   let output = `# Results in **${params.organizationSlug}**\n\n`;
-  
+
   if (data.length === 0) {
     return output + "No results found.\n";
   }
@@ -222,9 +232,9 @@ describe("your_tool_name", () => {
         accessToken: "test-token",
         userId: "1",
         organizationSlug: null,
-      }
+      },
     );
-    
+
     expect(result).toMatchInlineSnapshot(`
       "# Results in **test-org**
       
@@ -235,6 +245,7 @@ describe("your_tool_name", () => {
 ```
 
 **Testing Requirements:**
+
 - Input validation (see [../testing/overview.md](../testing/overview.md#testing-error-cases))
 - Error handling (use patterns from [error-handling.md](error-handling.md))
 - Output formatting with snapshots
@@ -246,8 +257,9 @@ describe("your_tool_name", () => {
 - API integration with MSW mocks
 
 **After changing output, update snapshots:**
+
 ```bash
-cd packages/mcp-server
+cd packages/mcp-core
 pnpm vitest --run -u
 ```
 
@@ -264,7 +276,7 @@ In `packages/mcp-server-mocks/src/handlers/`:
     if (!params.org) {
       return HttpResponse.json("Invalid org", { status: 400 });
     }
-    
+
     // Return fixture
     return HttpResponse.json(yourDataFixture);
   }
@@ -282,7 +294,7 @@ describeEval("your-tool", {
   data: async () => [
     {
       input: `Primary use case in ${FIXTURES.organizationSlug}`,
-      expected: "Expected response"
+      expected: "Expected response",
     },
     // Maximum 2-3 scenarios!
   ],
@@ -359,7 +371,7 @@ async handler(params, context) {
         sort: params.sort,
         statsPeriod: params.period,
       };
-  
+
   // Tool executes either the repaired request or the direct parameters.
   const results = await apiService.searchEvents({
     query: request.query,
@@ -368,7 +380,7 @@ async handler(params, context) {
     sort: request.sort,
     statsPeriod: request.statsPeriod,
   });
-  
+
   return formatResults(results);
 }
 ```
@@ -390,6 +402,7 @@ of hiding them behind an un-repaired direct search.
 ### Error Handling Philosophy
 
 **DO NOT retry internally**. When the embedded agent fails:
+
 1. Throw a clear `UserInputError` or `LLMProviderError` with specific guidance
 2. Let the calling agent (Claude/Cursor) see the error
 3. The calling agent can retry with corrections if needed
@@ -463,13 +476,13 @@ The `search_docs` tool demonstrates this pattern:
 // In the Worker (routes/search.ts)
 export default new Hono().post("/", async (c) => {
   const { query, maxResults } = await c.req.json();
-  
+
   // Access Worker-specific bindings
   const results = await c.env.AI.autorag("sentry-docs").aiSearch({
     query,
     max_num_results: maxResults,
   });
-  
+
   return c.json({ results });
 });
 
@@ -478,15 +491,15 @@ search_docs: async (context, params) => {
   const response = await fetch(`${context.host}/api/search`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${context.accessToken}`,
+      Authorization: `Bearer ${context.accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(params),
   });
-  
+
   const data = await response.json();
   // Format and return results
-}
+};
 ```
 
 This pattern works with both Cloudflare-hosted and stdio transports.

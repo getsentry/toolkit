@@ -24,7 +24,8 @@ function summaryCall(calls: MockCall[]): WizardSummary | undefined {
 function warnMessages(calls: MockCall[]): string[] {
   return calls
     .filter(
-      (c): c is Extract<MockCall, { kind: "log.warn" }> => c.kind === "log.warn"
+      (c): c is Extract<MockCall, { kind: "log.warn" }> =>
+        c.kind === "log.warn",
     )
     .map((c) => c.message);
 }
@@ -33,7 +34,7 @@ function errorMessages(calls: MockCall[]): string[] {
   return calls
     .filter(
       (c): c is Extract<MockCall, { kind: "log.error" }> =>
-        c.kind === "log.error"
+        c.kind === "log.error",
     )
     .map((c) => c.message);
 }
@@ -41,7 +42,8 @@ function errorMessages(calls: MockCall[]): string[] {
 function infoMessages(calls: MockCall[]): string[] {
   return calls
     .filter(
-      (c): c is Extract<MockCall, { kind: "log.info" }> => c.kind === "log.info"
+      (c): c is Extract<MockCall, { kind: "log.info" }> =>
+        c.kind === "log.info",
     )
     .map((c) => c.message);
 }
@@ -49,7 +51,8 @@ function infoMessages(calls: MockCall[]): string[] {
 function feedbackOutcomes(calls: MockCall[]): string[] {
   return calls
     .filter(
-      (c): c is Extract<MockCall, { kind: "feedback" }> => c.kind === "feedback"
+      (c): c is Extract<MockCall, { kind: "feedback" }> =>
+        c.kind === "feedback",
     )
     .map((c) => c.outcome);
 }
@@ -75,7 +78,7 @@ describe("formatResult", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -105,8 +108,8 @@ describe("formatResult", () => {
     expect(feedbackOutcomes(calls)).toEqual(["success"]);
     expect(
       infoMessages(calls).some((message) =>
-        message.includes("one of the first")
-      )
+        message.includes("one of the first"),
+      ),
     ).toBe(false);
   });
 
@@ -127,7 +130,7 @@ describe("formatResult", () => {
           warnings: ["Source maps not configured", "Missing DSN"],
         },
       },
-      ui
+      ui,
     );
 
     const warns = warnMessages(calls);
@@ -156,7 +159,7 @@ describe("formatResult", () => {
           changedFiles: [],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -173,7 +176,7 @@ describe("formatResult", () => {
           changedFiles: [{ action: "create", path: "instrument.ts" }],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -205,7 +208,7 @@ describe("formatResult completion payload", () => {
           changedFiles: [{ action: "create", path: "instrument.ts" }],
         },
       },
-      ui
+      ui,
     );
 
     const completion = summaryCall(calls)?.completion;
@@ -229,7 +232,7 @@ describe("formatResult completion payload", () => {
         result: { orgSlug: "acme", projectSlug: "my-app", projectId: "4507" },
       },
       ui,
-      { verified: true, kind: "envelope", eventId: "abc123def" }
+      { verified: true, kind: "envelope", eventId: "abc123def" },
     );
 
     const completion = summaryCall(calls)?.completion;
@@ -248,7 +251,7 @@ describe("formatResult completion payload", () => {
           sentryProjectUrl: "https://acme.sentry.io/settings/projects/api/",
         },
       },
-      ui
+      ui,
     );
 
     const completion = summaryCall(calls)?.completion;
@@ -263,7 +266,7 @@ describe("formatResult completion payload", () => {
         status: "success",
         result: { platform: "python", sentryProjectUrl: "not-a-url" },
       },
-      ui
+      ui,
     );
 
     const completion = summaryCall(calls)?.completion;
@@ -293,12 +296,12 @@ describe("formatResult with locally-captured project identity", () => {
       },
       ui,
       undefined,
-      identity
+      identity,
     );
 
     const completion = summaryCall(calls)?.completion;
     expect(completion?.issuesUrl).toBe(
-      "https://acme.sentry.io/issues/?project=4507"
+      "https://acme.sentry.io/issues/?project=4507",
     );
     expect(completion?.projectName).toBe("my-app");
   });
@@ -317,7 +320,7 @@ describe("formatResult with locally-captured project identity", () => {
       },
       ui,
       undefined,
-      identity
+      identity,
     );
 
     const completion = summaryCall(calls)?.completion;
@@ -333,7 +336,7 @@ describe("formatResult with locally-captured project identity", () => {
       { status: "success", result: { platform: "next.js" } },
       ui,
       undefined,
-      identity
+      identity,
     );
 
     const summary = summaryCall(calls);
@@ -354,7 +357,7 @@ describe("formatResult with locally-captured project identity", () => {
         projectSlug: "my-app",
         projectId: "(dry-run)",
         url: "https://sentry.io/dry-run",
-      }
+      },
     );
 
     const completion = summaryCall(calls)?.completion;
@@ -380,7 +383,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -403,7 +406,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -420,7 +423,7 @@ describe("formatResult with featureBlurbs", () => {
           features: ["errorMonitoring", "sessionReplay"],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -452,7 +455,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -479,7 +482,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -506,7 +509,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -530,7 +533,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -555,7 +558,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -579,7 +582,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -600,7 +603,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -624,7 +627,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -646,7 +649,7 @@ describe("formatResult with featureBlurbs", () => {
           ],
         },
       },
-      ui
+      ui,
     );
 
     const summary = summaryCall(calls);
@@ -681,7 +684,7 @@ describe("formatError", () => {
     formatError({ status: "failed" }, ui);
 
     expect(errorMessages(calls)).toContain(
-      "Wizard failed with an unknown error"
+      "Wizard failed with an unknown error",
     );
   });
 
@@ -702,11 +705,11 @@ describe("formatError", () => {
           commands: ["npm install @sentry/node"],
         },
       },
-      ui
+      ui,
     );
 
     expect(
-      warnMessages(calls).some((m) => m.includes("$ npm install @sentry/node"))
+      warnMessages(calls).some((m) => m.includes("$ npm install @sentry/node")),
     ).toBe(true);
   });
 
@@ -715,7 +718,7 @@ describe("formatError", () => {
     formatError({ status: "failed", result: { exitCode: 50 } }, ui);
 
     expect(warnMessages(calls).some((m) => m.includes("verification"))).toBe(
-      true
+      true,
     );
   });
 
@@ -727,7 +730,7 @@ describe("formatError", () => {
         status: "failed",
         result: { docsUrl },
       },
-      ui
+      ui,
     );
 
     // Pull every URL out of the info messages and check the docs URL
@@ -737,7 +740,7 @@ describe("formatError", () => {
     // explicit (and silences the false positive).
     const urlRe = /https?:\/\/[^\s)]+/g;
     const seenUrls = infoMessages(calls).flatMap(
-      (msg) => msg.match(urlRe) ?? []
+      (msg) => msg.match(urlRe) ?? [],
     );
     expect(seenUrls).toContain(docsUrl);
   });

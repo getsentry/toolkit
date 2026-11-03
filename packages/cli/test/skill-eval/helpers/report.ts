@@ -25,7 +25,7 @@ function formatModelResult(model: ModelResult, threshold: number): string {
   const pct = (model.score * 100).toFixed(1);
   const status = model.score >= threshold ? "PASS" : "FAIL";
   lines.push(
-    `${status} ${model.model}: ${model.totalPassed}/${model.totalCases} cases (${pct}%)`
+    `${status} ${model.model}: ${model.totalPassed}/${model.totalCases} cases (${pct}%)`,
   );
   lines.push("");
 
@@ -61,7 +61,7 @@ export function printReport(report: EvalReport): void {
 /** Write the full eval report to a JSON file */
 export async function writeJsonReport(
   report: EvalReport,
-  path: string
+  path: string,
 ): Promise<void> {
   await writeFile(path, JSON.stringify(report, null, 2));
   console.log(`Results written to ${path}`);

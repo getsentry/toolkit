@@ -13,7 +13,7 @@
  */
 
 import { ValidationError } from "../errors.js";
-import { CURSOR_KEYWORDS } from "../list-command.js";
+import { CURSOR_KEYWORDS } from "../arg-parsing.js";
 import type { ResolvedTarget } from "../resolve-target.js";
 import { getApiBaseUrl } from "../sentry-client.js";
 import { getDatabase } from "./index.js";
@@ -39,14 +39,14 @@ type PaginationCursorRow = {
  * Pagination state for a (command, context) pair.
  *
  * The `stack` array contains one entry per visited page:
- * - `stack[0]` = `""` (first page, no cursor)
+ * - `stack[0]` = `""` (first page) or an explicit cursor that began the walk
  * - `stack[1]` = cursor for page 2
  * - `stack[N]` = cursor for page N+1
  *
  * `index` is the page the user is currently viewing (0-based).
  */
 export type PaginationState = {
-  /** Array of page-start cursors. Index 0 is always `""` (first page). */
+  /** Page-start cursors; index 0 is the first visited page, normally `""`. */
   stack: string[];
   /** Index of the currently viewed page (0-based). */
   index: number;
@@ -66,12 +66,12 @@ export type PaginationState = {
  */
 export function getPaginationState(
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): PaginationState | undefined {
   const db = getDatabase();
   const row = db
     .query(
-      "SELECT cursor_stack, page_index, expires_at FROM pagination_cursors WHERE command_key = ? AND context = ?"
+      "SELECT cursor_stack, page_index, expires_at FROM pagination_cursors WHERE command_key = ? AND context = ?",
     )
     .get(commandKey, contextKey) as PaginationCursorRow | undefined;
 
@@ -81,7 +81,7 @@ export function getPaginationState(
 
   if (row.expires_at <= Date.now()) {
     db.query(
-      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?"
+      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
     ).run(commandKey, contextKey);
     return;
   }
@@ -91,11 +91,11 @@ export function getPaginationState(
   // first page by deleting the bad row and returning a cache miss.
   const stack = safeParseJson<string[]>(
     row.cursor_stack,
-    (value): value is string[] => Array.isArray(value)
+    (value): value is string[] => Array.isArray(value),
   );
   if (!stack) {
     db.query(
-      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?"
+      "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
     ).run(commandKey, contextKey);
     return;
   }
@@ -115,7 +115,7 @@ function savePaginationState(
   commandKey: string,
   contextKey: string,
   state: PaginationState,
-  ttlMs = CURSOR_TTL_MS
+  ttlMs = CURSOR_TTL_MS,
 ): void {
   const db = getDatabase();
   runUpsert(
@@ -128,7 +128,7 @@ function savePaginationState(
       page_index: state.index,
       expires_at: Date.now() + ttlMs,
     },
-    ["command_key", "context"]
+    ["command_key", "context"],
   );
 }
 
@@ -169,7 +169,7 @@ export type ResolvedCursor = {
 export function resolveCursor(
   cursorFlag: string | undefined,
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): ResolvedCursor {
   if (!cursorFlag) {
     // No --cursor flag → fresh start. Use "first" so advancePaginationState
@@ -194,7 +194,7 @@ export function resolveCursor(
     if (!state || state.index + 1 >= state.stack.length) {
       throw new ValidationError(
         "No next page saved for this query. Run without --cursor first.",
-        "cursor"
+        "cursor",
       );
     }
     const nextCursor = state.stack[state.index + 1] as string;
@@ -208,7 +208,7 @@ export function resolveCursor(
   if (!state || state.index <= 0) {
     throw new ValidationError(
       "Already on the first page — cannot go back further.",
-      "cursor"
+      "cursor",
     );
   }
   const prevCursor = state.stack[state.index - 1] as string;
@@ -239,18 +239,22 @@ export function resolveCursor(
  * @param contextKey - Serialized query context
  * @param direction - Which direction the user navigated
  * @param nextCursor - Cursor for the page after the one just displayed (undefined if last page)
+ * @param currentCursor - Exact cursor used for this page, including any bookmark;
+ *   `""` means the first page. Omit to retain the existing stack entry.
  */
 export function advancePaginationState(
   commandKey: string,
   contextKey: string,
   direction: CursorDirection,
-  nextCursor: string | undefined
+  nextCursor: string | undefined,
+  currentCursor?: string,
 ): void {
   const state = getPaginationState(commandKey, contextKey);
 
   if (!state) {
     // First page ever — initialise the stack
-    const stack = nextCursor ? ["", nextCursor] : [""];
+    const first = currentCursor ?? "";
+    const stack = nextCursor ? [first, nextCursor] : [first];
     savePaginationState(commandKey, contextKey, { stack, index: 0 });
     return;
   }
@@ -260,6 +264,9 @@ export function advancePaginationState(
       const newIndex = state.index + 1;
       // Truncate anything beyond the new position (back-then-forward scenario)
       const stack = state.stack.slice(0, newIndex + 1);
+      if (currentCursor !== undefined) {
+        stack[newIndex] = currentCursor;
+      }
       if (nextCursor) {
         stack[newIndex + 1] = nextCursor;
       }
@@ -274,6 +281,9 @@ export function advancePaginationState(
       const newIndex = Math.max(0, state.index - 1);
       // Refresh the "next" entry from this position in case data shifted
       const stack = [...state.stack];
+      if (currentCursor !== undefined) {
+        stack[newIndex] = currentCursor;
+      }
       if (nextCursor) {
         stack[newIndex + 1] = nextCursor;
       }
@@ -286,7 +296,8 @@ export function advancePaginationState(
     }
 
     case "first": {
-      const stack = nextCursor ? ["", nextCursor] : [""];
+      const first = currentCursor ?? "";
+      const stack = nextCursor ? [first, nextCursor] : [first];
       savePaginationState(commandKey, contextKey, { stack, index: 0 });
       break;
     }
@@ -306,11 +317,11 @@ export function advancePaginationState(
  */
 export function clearPaginationState(
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): void {
   const db = getDatabase();
   db.query(
-    "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?"
+    "DELETE FROM pagination_cursors WHERE command_key = ? AND context = ?",
   ).run(commandKey, contextKey);
 }
 
@@ -325,7 +336,7 @@ export function clearPaginationState(
  */
 export function hasPreviousPage(
   commandKey: string,
-  contextKey: string
+  contextKey: string,
 ): boolean {
   const state = getPaginationState(commandKey, contextKey);
   return !!state && state.index > 0;
@@ -375,7 +386,7 @@ export function escapeContextKeyValue(value: string): string {
 export function buildPaginationContextKey(
   type: string,
   scope: string,
-  params?: Record<string, string | undefined>
+  params?: Record<string, string | undefined>,
 ): string {
   let key = `host:${getApiBaseUrl()}|type:${type}:${scope}`;
   if (params) {
@@ -450,7 +461,7 @@ export function decodeCompoundCursor(raw: string): (string | null)[] {
  */
 export function decodeTargetCursors(
   raw: string | undefined,
-  sortedKeys: readonly string[]
+  sortedKeys: readonly string[],
 ): { startCursors: Map<string, string>; exhausted: Set<string> } {
   const startCursors = new Map<string, string>();
   const exhausted = new Set<string>();
@@ -479,7 +490,7 @@ export function decodeTargetCursors(
  */
 export function buildMultiTargetContextKey(
   targets: ResolvedTarget[],
-  filters?: { sort?: string; query?: string; period?: string; limit?: number }
+  filters?: { sort?: string; query?: string; period?: string; limit?: number },
 ): string {
   const host = getApiBaseUrl();
   const targetFingerprint = targets
@@ -523,7 +534,7 @@ export function buildMultiTargetContextKey(
  */
 export function buildMultiOrgContextKey(
   orgs: string[],
-  query: string | undefined
+  query: string | undefined,
 ): string {
   const sortedOrgs = [...orgs].sort().map(escapeContextKeyValue).join(",");
   return buildPaginationContextKey("multi-org", sortedOrgs, { q: query });

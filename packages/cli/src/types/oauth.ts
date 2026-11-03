@@ -40,7 +40,7 @@ export const TokenResponseSchema = looseObject({
       id: string(),
       name: nullable(string()),
       email: nullable(string()),
-    })
+    }),
   ),
 });
 

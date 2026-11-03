@@ -7,6 +7,7 @@
 
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
+import { parseFilePath, parseText } from "../lib/completion-target.js";
 import { CliError, EXIT } from "../lib/errors.js";
 
 export const sendEnvelopeCommand = buildCommand({
@@ -26,14 +27,14 @@ export const sendEnvelopeCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Path(s) to envelope file(s)",
-        parse: String,
+        parse: parseFilePath,
         optional: true,
       },
     },
     flags: {
       dsn: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "DSN",
         optional: true,
       },
@@ -45,7 +46,7 @@ export const sendEnvelopeCommand = buildCommand({
       },
     },
   },
-  // biome-ignore lint/correctness/useYield lint/suspicious/useAwait: deprecation shim — throws before yielding
+  // oxlint-disable-next-line require-yield -- deprecation shim — throws before yielding
   async *func(
     this: SentryContext,
     _flags: { dsn?: string; raw?: boolean },
@@ -55,7 +56,7 @@ export const sendEnvelopeCommand = buildCommand({
     throw new CliError(
       "`sentry send-envelope` has been removed.\n" +
         `Use: sentry event send --raw${fileArgs}`,
-      EXIT.GENERAL
+      EXIT.GENERAL,
     );
   },
 });

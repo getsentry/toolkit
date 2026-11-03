@@ -7,7 +7,7 @@
   "compatibility_flags": [
     "nodejs_compat",
     "nodejs_compat_populate_process_env",
-    "global_fetch_strictly_public"
+    "global_fetch_strictly_public",
   ],
   "vars": {
     "COOKIE_SECRET": "test-cookie-secret-32-characters",
@@ -16,16 +16,16 @@
     "SENTRY_HOST": "sentry.io",
     "OPENROUTER_API_KEY": "test-openrouter-key",
     "OPENROUTER_MODEL": "openai/gpt-5.6-luna",
-    "EMBEDDED_AGENT_PROVIDER": "openrouter"
+    "EMBEDDED_AGENT_PROVIDER": "openrouter",
   },
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",
-      "id": "test-oauth-kv"
-    }
+      "id": "test-oauth-kv",
+    },
   ],
   // Disable observability to avoid OTel issues in tests
   "observability": {
-    "enabled": false
-  }
+    "enabled": false,
+  },
 }

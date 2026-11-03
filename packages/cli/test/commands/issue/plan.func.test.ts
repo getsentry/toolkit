@@ -14,20 +14,22 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
 import { isatty } from "node:tty";
 import { planCommand } from "../../../src/commands/issue/plan.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 import { triggerSolutionPlanning } from "../../../src/lib/api-client.js";
 import { CliError } from "../../../src/lib/errors.js";
 import { logger } from "../../../src/lib/logger.js";
+import { prompt } from "../../../src/lib/prompt.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
 
 vi.mock("node:tty", () => ({ isatty: vi.fn() }));
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
 
 vi.mock("../../../src/lib/api-client.js", () => ({
   triggerSolutionPlanning: vi.fn(async () => ({})),
@@ -77,11 +79,10 @@ describe("issue plan waiting-for-user-response", () => {
     vi.clearAllMocks();
     resolveSpy = vi.spyOn(issueUtils, "resolveOrgAndIssueId");
     analyzeSpy = vi.spyOn(issueUtils, "ensureRootCauseAnalysis");
-    promptSpy = vi.fn();
-    // The command prompts through a tagged logger, so intercept withTag.
+    promptSpy = vi.mocked(prompt);
+    promptSpy.mockReset();
     vi.spyOn(logger, "withTag").mockReturnValue({
       info: vi.fn(),
-      prompt: promptSpy,
     } as unknown as ReturnType<typeof logger.withTag>);
     resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
   });
@@ -101,7 +102,7 @@ describe("issue plan waiting-for-user-response", () => {
   test("confirms the root cause and continues to planning when interactive", async () => {
     vi.mocked(isatty).mockReturnValue(true);
     analyzeSpy.mockResolvedValue(
-      waitingState([sampleCause(0, "First"), sampleCause(1, "Second")])
+      waitingState([sampleCause(0, "First"), sampleCause(1, "Second")]),
     );
     promptSpy.mockResolvedValue(true);
     const solutionSpy = vi
@@ -112,7 +113,7 @@ describe("issue plan waiting-for-user-response", () => {
 
     expect(promptSpy).toHaveBeenCalledWith(
       "Generate a solution plan for it?",
-      expect.objectContaining({ type: "confirm" })
+      expect.objectContaining({ type: "confirm" }),
     );
     expect(triggerSolutionPlanning).toHaveBeenCalledWith("test-org", "1", 42);
     expect(solutionSpy).toHaveBeenCalled();
@@ -130,7 +131,7 @@ describe("issue plan waiting-for-user-response", () => {
   test("throws when the user cancels the prompt", async () => {
     vi.mocked(isatty).mockReturnValue(true);
     analyzeSpy.mockResolvedValue(waitingState([sampleCause(0, "A cause")]));
-    // consola returns a cancel symbol (non-boolean) when cancelled.
+    // The prompt returns a cancel symbol (non-boolean) when cancelled.
     promptSpy.mockResolvedValue(Symbol("clack:cancel"));
 
     await expect(runPlan(createMockContext())).rejects.toBeInstanceOf(CliError);
@@ -186,7 +187,7 @@ describe("issue plan after solution planning", () => {
     pollSpy.mockResolvedValue({ status: "ERROR", run_id: 42, steps: [] });
 
     await expect(runPlan(createMockContext())).rejects.toThrow(
-      /Plan creation failed/
+      /Plan creation failed/,
     );
   });
 
@@ -194,7 +195,7 @@ describe("issue plan after solution planning", () => {
     pollSpy.mockResolvedValue({ status: "CANCELLED", run_id: 42, steps: [] });
 
     await expect(runPlan(createMockContext())).rejects.toThrow(
-      /Plan creation was cancelled/
+      /Plan creation was cancelled/,
     );
   });
 

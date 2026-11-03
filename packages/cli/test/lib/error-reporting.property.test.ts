@@ -20,7 +20,7 @@ import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 /** Lowercase alphanumeric slug with optional hyphens. */
 const slugArb = array(
   constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789-".split("")),
-  { minLength: 1, maxLength: 25 }
+  { minLength: 1, maxLength: 25 },
 )
   .map((chars) => chars.join(""))
   .filter((s) => !(s.startsWith("-") || s.endsWith("-")) && s.length > 0);
@@ -30,7 +30,7 @@ const hyphenatedSlugArb = slugArb.filter((s) => s.includes("-"));
 
 /** 32-character lowercase hex id (trace/event/log id). */
 const hexIdArb = stringMatching(/^[0-9a-f]{32}$/).filter(
-  (s) => s.length === 32
+  (s) => s.length === 32,
 );
 
 /** Arbitrary numeric id across the full range (small issue IDs to large). */
@@ -45,7 +45,7 @@ describe("extractResourceKind — property tests", () => {
         expect(ka).toBe(kb);
         expect(ka).toBe("Project");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -53,10 +53,10 @@ describe("extractResourceKind — property tests", () => {
     fcAssert(
       property(slugArb, (slug) => {
         expect(extractResourceKind(`Project '${slug}'`)).toBe(
-          extractResourceKind(`Project "${slug}"`)
+          extractResourceKind(`Project "${slug}"`),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -64,10 +64,10 @@ describe("extractResourceKind — property tests", () => {
     fcAssert(
       property(numericIdArb, numericIdArb, (id1, id2) => {
         expect(extractResourceKind(`Issue ${id1} not found.`)).toBe(
-          extractResourceKind(`Issue ${id2} not found.`)
+          extractResourceKind(`Issue ${id2} not found.`),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -75,10 +75,10 @@ describe("extractResourceKind — property tests", () => {
     fcAssert(
       property(hexIdArb, hexIdArb, (h1, h2) => {
         expect(extractResourceKind(`Trace ${h1} not found`)).toBe(
-          extractResourceKind(`Trace ${h2} not found`)
+          extractResourceKind(`Trace ${h2} not found`),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -88,7 +88,7 @@ describe("extractResourceKind — property tests", () => {
         const once = extractResourceKind(`Project '${slug}' not found.`);
         expect(extractResourceKind(once)).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -97,15 +97,15 @@ describe("extractResourceKind — property tests", () => {
       property(slugArb, slugArb, slugArb, slugArb, (o1, p1, o2, p2) => {
         expect(
           extractResourceKind(
-            `Project '${p1}' not found in organization '${o1}'`
-          )
+            `Project '${p1}' not found in organization '${o1}'`,
+          ),
         ).toBe(
           extractResourceKind(
-            `Project '${p2}' not found in organization '${o2}'`
-          )
+            `Project '${p2}' not found in organization '${o2}'`,
+          ),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -113,13 +113,13 @@ describe("extractResourceKind — property tests", () => {
     fcAssert(
       property(slugArb, slugArb, slugArb, slugArb, (o1, p1, o2, p2) => {
         expect(extractResourceKind(`not found in ${o1}/${p1}`)).toBe(
-          extractResourceKind(`not found in ${o2}/${p2}`)
+          extractResourceKind(`not found in ${o2}/${p2}`),
         );
         expect(extractResourceKind(`not found in ${o1}/${p1}`)).toBe(
-          "not found"
+          "not found",
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -127,10 +127,10 @@ describe("extractResourceKind — property tests", () => {
     fcAssert(
       property(integer({ min: 1, max: 99 }), numericIdArb, (small, large) => {
         expect(extractResourceKind(`Issue ${small} not found.`)).toBe(
-          extractResourceKind(`Issue ${large} not found.`)
+          extractResourceKind(`Issue ${large} not found.`),
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -138,11 +138,11 @@ describe("extractResourceKind — property tests", () => {
     fcAssert(
       property(slugArb, slugArb, (a, b) => {
         expect(extractResourceKind(`not found in ${a}`)).toBe(
-          extractResourceKind(`not found in ${b}`)
+          extractResourceKind(`not found in ${b}`),
         );
         expect(extractResourceKind(`not found in ${a}`)).toBe("not found");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -150,11 +150,11 @@ describe("extractResourceKind — property tests", () => {
     fcAssert(
       property(hyphenatedSlugArb, hyphenatedSlugArb, (a, b) => {
         expect(extractResourceKind(`Organization ${a}`)).toBe(
-          extractResourceKind(`Organization ${b}`)
+          extractResourceKind(`Organization ${b}`),
         );
         expect(extractResourceKind(`Organization ${a}`)).toBe("Organization");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -167,11 +167,11 @@ describe("extractResourceKind — property tests", () => {
         slugArb,
         (n1, s1, n2, s2) => {
           expect(extractResourceKind(`Dashboard ${n1} in ${s1}`)).toBe(
-            extractResourceKind(`Dashboard ${n2} in ${s2}`)
+            extractResourceKind(`Dashboard ${n2} in ${s2}`),
           );
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

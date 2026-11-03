@@ -51,13 +51,13 @@ describe("restoreDashboardRevision", () => {
     apiRequestToRegionMock.mockResolvedValue({ data: dashboard });
 
     await expect(
-      restoreDashboardRevision("test-org", "123", "42")
+      restoreDashboardRevision("test-org", "123", "42"),
     ).resolves.toBe(dashboard);
 
     expect(apiRequestToRegionMock).toHaveBeenCalledWith(
       "https://us.sentry.io",
       "/organizations/test-org/dashboards/123/revisions/42/restore/",
-      expect.objectContaining({ method: "POST" })
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });
@@ -256,5 +256,81 @@ describe("queryAllWidgets", () => {
     expect(results.get(0)).toEqual({ type: "text", content: "First" });
     expect(results.get(1)).toEqual({ type: "text", content: "Second" });
     expect(results.get(2)).toEqual({ type: "text", content: "Third" });
+  });
+});
+
+describe("widget sort resolution", () => {
+  const REGION = "https://us.sentry.io";
+
+  test("sorts error table widgets by their first aggregate", async () => {
+    apiRequestToRegionMock.mockReset();
+    apiRequestToRegionMock.mockResolvedValue({ data: { data: [], meta: {} } });
+    const dashboard = makeDashboard([
+      {
+        title: "Top failures",
+        displayType: "table",
+        widgetType: "error-events",
+        queries: [
+          {
+            fields: ["failure.node", "count()"],
+            columns: ["failure.node"],
+            aggregates: ["count()"],
+            conditions: "",
+            orderby: "",
+          },
+        ],
+      },
+    ]);
+
+    await queryAllWidgets(REGION, "test-org", dashboard);
+
+    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
+      REGION,
+      "/organizations/test-org/events/",
+      expect.objectContaining({
+        params: expect.objectContaining({
+          dataset: "errors",
+          field: ["failure.node", "count()"],
+          sort: "-count()",
+        }),
+      }),
+    );
+  });
+
+  test("selects the aggregate for grouped error timeseries so the sort is accepted", async () => {
+    apiRequestToRegionMock.mockReset();
+    apiRequestToRegionMock.mockResolvedValue({ data: {} });
+    const dashboard = makeDashboard([
+      {
+        title: "Errors by node",
+        displayType: "line",
+        widgetType: "error-events",
+        limit: 5,
+        queries: [
+          {
+            fields: [],
+            columns: ["failure.node"],
+            aggregates: ["count()"],
+            conditions: "",
+            orderby: "-count()",
+          },
+        ],
+      },
+    ]);
+
+    await queryAllWidgets(REGION, "test-org", dashboard);
+
+    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
+      REGION,
+      "/organizations/test-org/events-stats/",
+      expect.objectContaining({
+        params: expect.objectContaining({
+          dataset: "errors",
+          field: ["failure.node", "count()"],
+          sort: "-count()",
+          topEvents: 5,
+        }),
+      }),
+    );
   });
 });

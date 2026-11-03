@@ -14,21 +14,32 @@
  */
 
 import type {
+  EventAttachmentDetailsResponse,
   IssueEventDetailsResponse,
   DeployResponse as SdkDeployResponse,
   GetOrganizationIssueResponse as SdkIssueDetail,
+  ListOrganizationIssuesResponse as SdkIssueList,
   ListOrganizations as SdkOrganizationList,
   ProjectKey as SdkProjectKey,
   OrganizationProjectResponseDict as SdkProjectList,
   OrgReleaseResponse as SdkReleaseResponse,
   BaseTeam as SdkTeam,
 } from "@sentry/api";
+import { DryRunOutputField, opaque, type WithOutputFields } from "./output.js";
+import type {
+  SentryIssueIdentity,
+  SentryNamedResource,
+} from "@sentry/toolkit-core/resource-identity";
 import {
   vBaseTeam,
+  vDeployResponse,
   vEventAttachmentDetailsResponse,
   vGetOrganizationIssueResponse,
   vGroupEventsResponseDict,
   vIssueEventDetailsResponse,
+  vOrganizationProjectResponseDict,
+  vOrganizationSummary,
+  vOrgReleaseResponse,
 } from "@sentry/api/valibot";
 import {
   array,
@@ -71,15 +82,61 @@ import {
  * Organization.flags.disable_member_project_creation is set — project creation
  * requires org:write scope or team:admin on the target team.
  */
-export type SentryOrganization = Partial<SdkOrganizationList[number]> & {
-  id: string;
-  slug: string;
-  name: string;
-  /** False when org admins have restricted project creation to owners/managers/team-admins. Default for new orgs. */
-  allowMemberProjectCreation?: boolean;
-  /** The authenticated user's role in this org ("member", "admin", "manager", "owner"). */
-  orgRole?: string;
-};
+export type SentryOrganization = Partial<SdkOrganizationList[number]> &
+  SentryNamedResource<string> & {
+    /** False when org admins have restricted project creation to owners/managers/team-admins. Default for new orgs. */
+    allowMemberProjectCreation?: boolean;
+    /** The authenticated user's role in this org ("member", "admin", "manager", "owner"). */
+    orgRole?: string;
+  };
+
+const sdkOrg = vOrganizationSummary.entries;
+
+/**
+ * `--fields` / SKILL.md documentation schema for an organization.
+ *
+ * Like {@link SentryTeamSchema}, it is not used for runtime validation: it
+ * curates the user-facing fields of the auto-generated `vOrganizationSummary`
+ * (the list-organizations item). Only core identifiers are required.
+ */
+export const SentryOrganizationSchema = looseObject({
+  id: pipe(string(), description("Organization ID")),
+  slug: pipe(string(), description("Organization slug")),
+  name: pipe(string(), description("Organization name")),
+  dateCreated: optional(
+    pipe(sdkOrg.dateCreated, description("Creation date (ISO 8601)")),
+  ),
+  status: optional(pipe(sdkOrg.status, description("Organization status"))),
+  isEarlyAdopter: optional(
+    pipe(
+      sdkOrg.isEarlyAdopter,
+      description("Whether the org is an early adopter"),
+    ),
+  ),
+  require2FA: optional(
+    pipe(sdkOrg.require2FA, description("Whether members must use 2FA")),
+  ),
+  features: optional(pipe(sdkOrg.features, description("Enabled features"))),
+  avatar: optional(pipe(sdkOrg.avatar, description("Avatar"))),
+  links: optional(
+    pipe(sdkOrg.links, description("Organization and region URLs")),
+  ),
+  hasAuthProvider: optional(
+    pipe(sdkOrg.hasAuthProvider, description("Whether SSO is configured")),
+  ),
+  allowMemberInvite: optional(
+    pipe(sdkOrg.allowMemberInvite, description("Whether members can invite")),
+  ),
+  allowMemberProjectCreation: optional(
+    pipe(
+      sdkOrg.allowMemberProjectCreation,
+      description("Whether members can create projects"),
+    ),
+  ),
+  orgRole: optional(
+    pipe(string(), description("Your role in the organization")),
+  ),
+});
 
 // Project
 
@@ -93,35 +150,88 @@ type SdkProjectListItem = SdkProjectList[number];
  * The `organization` field is present in detail responses but absent in list responses,
  * so it is declared as an optional extension.
  */
-export type SentryProject = Partial<SdkProjectListItem> & {
-  id: string;
-  slug: string;
-  name: string;
-  /**
-   * Organization context (present in detail responses, absent in list).
-   *
-   * `name` is optional because `getProject()` passes `?collapse=organization`
-   * to skip full-org serialization on the server (~400-500ms faster). The
-   * collapsed payload only carries `{id, slug}`. Callers needing a display
-   * name should use `resolveOrgDisplayName()` which falls back to the
-   * cached organizations list.
-   */
-  organization?: {
-    id: string;
-    slug: string;
-    name?: string;
-    [key: string]: unknown;
+export type SentryProject = Partial<SdkProjectListItem> &
+  SentryNamedResource<string> & {
+    /**
+     * Organization context (present in detail responses, absent in list).
+     *
+     * `name` is optional because `getProject()` passes `?collapse=organization`
+     * to skip full-org serialization on the server (~400-500ms faster). The
+     * collapsed payload only carries `{id, slug}`. Callers needing a display
+     * name should use `resolveOrgDisplayName()` which falls back to the
+     * cached organizations list.
+     */
+    organization?: {
+      id: string;
+      slug: string;
+      name?: string;
+      [key: string]: unknown;
+    };
+    /**
+     * Project status (returned by API but not in the OpenAPI spec).
+     *
+     * Overlay convention: the SDK type (`SdkProjectListItem`) carries every
+     * documented field; this overlay adds ONLY fields the API returns but the
+     * spec omits, each a backend `@extend_schema` candidate. Keep it minimal —
+     * do not restate fields the SDK already types.
+     */
+    status?: string;
   };
-  /**
-   * Project status (returned by API but not in the OpenAPI spec).
-   *
-   * Overlay convention: the SDK type (`SdkProjectListItem`) carries every
-   * documented field; this overlay adds ONLY fields the API returns but the
-   * spec omits, each a backend `@extend_schema` candidate. Keep it minimal —
-   * do not restate fields the SDK already types.
-   */
-  status?: string;
-};
+
+const sdkProject = vOrganizationProjectResponseDict.item.entries;
+
+/**
+ * `--fields` / SKILL.md documentation schema for a project.
+ *
+ * Curates the user-facing fields of the auto-generated list-projects item,
+ * like {@link SentryOrganizationSchema}; not used for runtime validation.
+ */
+export const SentryProjectSchema = looseObject({
+  id: pipe(string(), description("Project ID")),
+  slug: pipe(string(), description("Project slug")),
+  name: pipe(string(), description("Project name")),
+  platform: optional(pipe(sdkProject.platform, description("Platform"))),
+  platforms: optional(
+    pipe(sdkProject.platforms, description("Platforms seen in events")),
+  ),
+  dateCreated: optional(
+    pipe(sdkProject.dateCreated, description("Creation date (ISO 8601)")),
+  ),
+  firstEvent: optional(
+    pipe(sdkProject.firstEvent, description("First event date (ISO 8601)")),
+  ),
+  status: optional(pipe(string(), description("Project status"))),
+  isBookmarked: optional(
+    pipe(sdkProject.isBookmarked, description("Whether you bookmarked it")),
+  ),
+  isMember: optional(
+    pipe(sdkProject.isMember, description("Whether you are a member")),
+  ),
+  hasAccess: optional(
+    pipe(sdkProject.hasAccess, description("Whether you have access")),
+  ),
+  features: optional(
+    pipe(sdkProject.features, description("Enabled features")),
+  ),
+  team: optional(pipe(sdkProject.team, description("Owning team"))),
+  teams: optional(pipe(sdkProject.teams, description("Teams with access"))),
+  environments: optional(
+    pipe(sdkProject.environments, description("Environments seen")),
+  ),
+  latestRelease: optional(
+    pipe(sdkProject.latestRelease, description("Latest release")),
+  ),
+  organization: optional(
+    pipe(
+      looseObject({
+        id: pipe(string(), description("Organization ID")),
+        slug: pipe(string(), description("Organization slug")),
+        name: optional(pipe(string(), description("Organization name"))),
+      }),
+      description("Organization (detail responses only)"),
+    ),
+  ),
+});
 
 // Issue Constants
 
@@ -166,34 +276,38 @@ export type IssueLevel = (typeof ISSUE_LEVELS)[number];
  * The `metadata` field is overridden from the SDK's discriminated union to a single
  * object with all optional fields, matching how the API actually returns data.
  */
-export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> & {
-  id: string;
-  shortId: string;
-  title: string;
-  /** Issue metadata (value, filename, function, etc.) */
-  metadata?: {
-    value?: string;
-    type?: string;
-    filename?: string;
-    function?: string;
-    title?: string;
-    display_title_with_tree_label?: boolean;
-    [key: string]: unknown;
+export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> &
+  SentryIssueIdentity<string> & {
+    /** Issue metadata (value, filename, function, etc.) */
+    metadata?: {
+      value?: string;
+      type?: string;
+      filename?: string;
+      function?: string;
+      title?: string;
+      display_title_with_tree_label?: boolean;
+      [key: string]: unknown;
+    };
+    /** Issue substatus (not in OpenAPI spec) */
+    substatus?: string | null;
+    /** Issue priority (not in OpenAPI spec) */
+    priority?: string;
+    /** Whether the issue is unhandled (not in OpenAPI spec) */
+    isUnhandled?: boolean;
+    /** Platform of the issue (not in OpenAPI spec) */
+    platform?: string;
+    /**
+     * Seer AI fixability score (0-1). Higher = easier to fix automatically.
+     * `null` when Seer has not analyzed this issue; absent when the org has Seer disabled.
+     */
+    seerFixabilityScore?: number | null;
+    /**
+     * Seen-stats scoped to the query's event-level filters (e.g. `release:`).
+     * Returned by the issues-list endpoint only when `filtered` isn't
+     * collapsed; `null` when the query has no such filters.
+     */
+    filtered?: SdkIssueList[number]["filtered"];
   };
-  /** Issue substatus (not in OpenAPI spec) */
-  substatus?: string | null;
-  /** Issue priority (not in OpenAPI spec) */
-  priority?: string;
-  /** Whether the issue is unhandled (not in OpenAPI spec) */
-  isUnhandled?: boolean;
-  /** Platform of the issue (not in OpenAPI spec) */
-  platform?: string;
-  /**
-   * Seer AI fixability score (0-1). Higher = easier to fix automatically.
-   * `null` when Seer has not analyzed this issue; absent when the org has Seer disabled.
-   */
-  seerFixabilityScore?: number | null;
-};
 
 /**
  * Valibot schema describing the key fields of a {@link SentryIssue} for JSON output.
@@ -233,136 +347,135 @@ export const SentryIssueSchema = pipe(
         "project",
         "metadata",
         "assignedTo",
-      ])
+      ]),
     ).entries,
     id: pipe(string(), description("Numeric issue ID")),
     shortId: pipe(
       string(),
-      description("Human-readable short ID (e.g. PROJ-ABC)")
+      description("Human-readable short ID (e.g. PROJ-ABC)"),
     ),
     title: pipe(string(), description("Issue title")),
     culprit: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.culprit,
-        description("Culprit string")
-      )
+        description("Culprit string"),
+      ),
     ),
     count: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.count,
-        description("Total event count")
-      )
+        description("Total event count"),
+      ),
     ),
     userCount: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.userCount,
-        description("Number of affected users")
-      )
+        description("Number of affected users"),
+      ),
     ),
     firstSeen: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.firstSeen,
-        description("First occurrence (ISO 8601)")
-      )
+        description("First occurrence (ISO 8601)"),
+      ),
     ),
     lastSeen: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.lastSeen,
-        description("Most recent occurrence (ISO 8601)")
-      )
+        description("Most recent occurrence (ISO 8601)"),
+      ),
     ),
     level: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.level,
-        description("Severity level")
-      )
+        description("Severity level"),
+      ),
     ),
     status: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.status,
-        description("Issue status")
-      )
+        description("Issue status"),
+      ),
     ),
     permalink: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.permalink,
-        description("URL to the issue in Sentry")
-      )
+        description("URL to the issue in Sentry"),
+      ),
     ),
     project: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.project,
-        description("Project info")
-      )
+        description("Project info"),
+      ),
     ),
     metadata: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.metadata,
-        description("Issue metadata")
-      )
+        description("Issue metadata"),
+      ),
     ),
     assignedTo: optional(
       pipe(
         vGetOrganizationIssueResponse.entries.assignedTo,
-        description("Assigned user or team")
-      )
+        description("Assigned user or team"),
+      ),
     ),
     priority: optional(pipe(string(), description("Triage priority"))),
     platform: optional(pipe(string(), description("Platform"))),
     substatus: optional(
-      pipe(nullable(string()), description("Issue substatus"))
+      pipe(nullable(string()), description("Issue substatus")),
     ),
     isUnhandled: optional(
-      pipe(boolean(), description("Whether the issue is unhandled"))
+      pipe(boolean(), description("Whether the issue is unhandled")),
     ),
     seerFixabilityScore: optional(
-      pipe(nullable(number()), description("Seer AI fixability score (0-1)"))
+      pipe(nullable(number()), description("Seer AI fixability score (0-1)")),
     ),
   }),
-  description("Sentry issue")
+  description("Sentry issue"),
 );
+
+/**
+ * Fields `issue view` adds to the issue in its JSON output. The command's
+ * data type (`SingleIssueViewData`) is derived from them.
+ */
+export const IssueViewOutputFields = object({
+  event: pipe(
+    nullable(opaque<SentryEvent>()),
+    description(
+      "Latest event for the issue (full detail). Select named fields with " +
+        "`--fields event.id,event.title` to avoid pulling the whole payload; " +
+        "the `request` entry may include live session data.",
+    ),
+  ),
+  org: pipe(nullable(string()), description("Organization slug")),
+  replayIds: pipe(array(string()), description("Related Session Replay IDs")),
+  trace: pipe(
+    nullable(
+      object({
+        traceId: pipe(string(), description("Trace ID from the latest event")),
+        spans: pipe(array(unknown()), description("Span tree data")),
+      }),
+    ),
+    description("Trace context from the latest event's span tree"),
+  ),
+});
 
 /**
  * Documentation-oriented schema for `issue view` JSON output.
  *
  * The view command's jsonTransform spreads all issue fields at the top level
- * and adds enrichment fields (`event`, `org`, `replayIds`, `trace`). This
- * schema describes that flattened shape for `--help`, `sentry help issue view`,
- * and SKILL.md field table generation.
+ * and adds {@link IssueViewOutputFields}. This schema describes that
+ * flattened shape for `--help`, `sentry help issue view`, and SKILL.md field
+ * table generation.
  */
 export const IssueViewOutputSchema = pipe(
   looseObject({
     ...SentryIssueSchema.entries,
-    event: optional(
-      pipe(
-        nullable(unknown()),
-        description(
-          "Latest event for the issue (full detail). Select named fields with " +
-            "`--fields event.id,event.title` to avoid pulling the whole payload; " +
-            "the `request` entry may include live session data."
-        )
-      )
-    ),
-    org: optional(pipe(nullable(string()), description("Organization slug"))),
-    replayIds: optional(
-      pipe(array(string()), description("Related Session Replay IDs"))
-    ),
-    trace: optional(
-      pipe(
-        nullable(
-          object({
-            traceId: pipe(
-              string(),
-              description("Trace ID from the latest event")
-            ),
-            spans: pipe(array(unknown()), description("Span tree data")),
-          })
-        ),
-        description("Trace context from the latest event's span tree")
-      )
-    ),
+    ...IssueViewOutputFields.entries,
   }),
-  description("Issue view output")
+  description("Issue view output"),
 );
 
 // Event
@@ -415,12 +528,45 @@ export type SentryEvent = Omit<
   culprit?: string | null;
 };
 
-const EventViewAttachmentSchema = looseObject({
-  ...vEventAttachmentDetailsResponse.entries,
+/** Fields `event view` adds to each attachment of the event. */
+const EventViewAttachmentFields = object({
   download: pipe(
     string(),
     url(),
-    description("Absolute authenticated API URL for the attachment bytes")
+    description("Absolute authenticated API URL for the attachment bytes"),
+  ),
+});
+
+const EventViewAttachmentSchema = looseObject({
+  ...vEventAttachmentDetailsResponse.entries,
+  ...EventViewAttachmentFields.entries,
+});
+
+/** An event attachment with its authenticated download URL. */
+export type EventViewAttachment = WithOutputFields<
+  EventAttachmentDetailsResponse,
+  typeof EventViewAttachmentFields
+>;
+
+/**
+ * Fields `event view` adds to the event in its JSON output. The command's
+ * data type (`SingleEventViewData`) is derived from them.
+ */
+export const EventViewOutputFields = object({
+  trace: pipe(
+    nullable(
+      object({
+        traceId: pipe(string(), description("Trace ID")),
+        spans: pipe(array(unknown()), description("Span tree data")),
+      }),
+    ),
+    description("Trace context, or null when unavailable"),
+  ),
+  attachments: pipe(
+    array(EventViewAttachmentSchema),
+    description(
+      "Event attachments; each includes metadata and an absolute authenticated download URL",
+    ),
   ),
 });
 
@@ -428,30 +574,16 @@ const EventViewAttachmentSchema = looseObject({
  * Documentation schema for the flattened `event view` JSON output.
  *
  * Event API fields remain optional because responses vary by event type. The
- * CLI always adds `trace` and `attachments`; multi-event output is an array of
- * this shape.
+ * CLI always adds {@link EventViewOutputFields}; multi-event output is an
+ * array of this shape.
  */
 export const EventViewOutputSchema = pipe(
   looseObject({
     ...partial(vIssueEventDetailsResponse).entries,
     eventID: pipe(string(), description("UUID-format event ID")),
-    trace: pipe(
-      nullable(
-        object({
-          traceId: pipe(string(), description("Trace ID")),
-          spans: pipe(array(unknown()), description("Span tree data")),
-        })
-      ),
-      description("Trace context, or null when unavailable")
-    ),
-    attachments: pipe(
-      array(EventViewAttachmentSchema),
-      description(
-        "Event attachments; each includes metadata and an absolute authenticated download URL"
-      )
-    ),
+    ...EventViewOutputFields.entries,
   }),
-  description("Event view output")
+  description("Event view output"),
 );
 
 // Issue Event (list endpoint)
@@ -516,59 +648,59 @@ export const IssueEventSchema = pipe(
     id: pipe(string(), description("Internal event ID")),
     "event.type": pipe(
       string(),
-      description("Event type (error, default, transaction)")
+      description("Event type (error, default, transaction)"),
     ),
     groupID: optional(
-      pipe(_IssueEventElement.entries.groupID, description("Group (issue) ID"))
+      pipe(_IssueEventElement.entries.groupID, description("Group (issue) ID")),
     ),
     eventID: pipe(string(), description("UUID-format event ID")),
     projectID: optional(
-      pipe(_IssueEventElement.entries.projectID, description("Project ID"))
+      pipe(_IssueEventElement.entries.projectID, description("Project ID")),
     ),
     message: optional(
-      pipe(_IssueEventElement.entries.message, description("Event message"))
+      pipe(_IssueEventElement.entries.message, description("Event message")),
     ),
     title: optional(
-      pipe(_IssueEventElement.entries.title, description("Event title"))
+      pipe(_IssueEventElement.entries.title, description("Event title")),
     ),
     location: optional(
       pipe(
         _IssueEventElement.entries.location,
-        description("Source location (file:line)")
-      )
+        description("Source location (file:line)"),
+      ),
     ),
     culprit: optional(
       pipe(
         _IssueEventElement.entries.culprit,
-        description("Culprit function/module")
-      )
+        description("Culprit function/module"),
+      ),
     ),
     user: optional(
-      pipe(_IssueEventElement.entries.user, description("User context"))
+      pipe(_IssueEventElement.entries.user, description("User context")),
     ),
     tags: optional(
-      pipe(_IssueEventElement.entries.tags, description("Event tags"))
+      pipe(_IssueEventElement.entries.tags, description("Event tags")),
     ),
     platform: optional(
       pipe(
         _IssueEventElement.entries.platform,
-        description("Platform (python, javascript, etc.)")
-      )
+        description("Platform (python, javascript, etc.)"),
+      ),
     ),
     dateCreated: optional(
       pipe(
         _IssueEventElement.entries.dateCreated,
-        description("ISO 8601 creation timestamp")
-      )
+        description("ISO 8601 creation timestamp"),
+      ),
     ),
     crashFile: optional(
-      pipe(_IssueEventElement.entries.crashFile, description("Crash file URL"))
+      pipe(_IssueEventElement.entries.crashFile, description("Crash file URL")),
     ),
     metadata: optional(
-      pipe(_IssueEventElement.entries.metadata, description("Event metadata"))
+      pipe(_IssueEventElement.entries.metadata, description("Event metadata")),
     ),
   }),
-  description("Issue event (list endpoint)")
+  description("Issue event (list endpoint)"),
 );
 
 // Project Keys (DSN)
@@ -686,19 +818,19 @@ export const TraceMetaSchema = pipe(
         object({
           "transaction.event_id": pipe(
             nullable(string()),
-            description("Transaction event ID")
+            description("Transaction event ID"),
           ),
           "count()": pipe(number(), description("Transaction child count")),
-        })
+        }),
       ),
-      description("Per-transaction child counts")
+      description("Per-transaction child counts"),
     ),
     span_count_map: pipe(
       record(string(), number()),
-      description("Span counts grouped by operation")
+      description("Span counts grouped by operation"),
     ),
   }),
-  description("Trace metadata")
+  description("Trace metadata"),
 );
 
 export type TraceMeta = InferOutput<typeof TraceMetaSchema>;
@@ -731,6 +863,87 @@ export type SentryRelease = Partial<SdkReleaseResponse> & {
   version: string;
 };
 
+const sdkRelease = vOrgReleaseResponse.entries;
+
+/**
+ * `--fields` / SKILL.md documentation schema for a release.
+ *
+ * Curates the user-facing fields of the auto-generated `vOrgReleaseResponse`,
+ * like {@link SentryOrganizationSchema}; not used for runtime validation.
+ */
+export const SentryReleaseSchema = looseObject({
+  id: optional(pipe(sdkRelease.id, description("Release ID"))),
+  version: pipe(string(), description("Release version")),
+  shortVersion: optional(
+    pipe(sdkRelease.shortVersion, description("Shortened version")),
+  ),
+  versionInfo: optional(
+    pipe(sdkRelease.versionInfo, description("Parsed version information")),
+  ),
+  status: optional(
+    pipe(sdkRelease.status, description("Release status (open, archived)")),
+  ),
+  ref: optional(pipe(sdkRelease.ref, description("VCS reference"))),
+  url: optional(pipe(sdkRelease.url, description("Release URL"))),
+  dateCreated: optional(
+    pipe(sdkRelease.dateCreated, description("Creation date (ISO 8601)")),
+  ),
+  dateReleased: optional(
+    pipe(sdkRelease.dateReleased, description("Release date (ISO 8601)")),
+  ),
+  firstEvent: optional(
+    pipe(sdkRelease.firstEvent, description("First event date (ISO 8601)")),
+  ),
+  lastEvent: optional(
+    pipe(sdkRelease.lastEvent, description("Last event date (ISO 8601)")),
+  ),
+  newGroups: optional(
+    pipe(sdkRelease.newGroups, description("Number of new issues")),
+  ),
+  commitCount: optional(
+    pipe(sdkRelease.commitCount, description("Number of commits")),
+  ),
+  deployCount: optional(
+    pipe(sdkRelease.deployCount, description("Number of deploys")),
+  ),
+  lastCommit: optional(
+    pipe(sdkRelease.lastCommit, description("Most recent commit")),
+  ),
+  lastDeploy: optional(
+    pipe(sdkRelease.lastDeploy, description("Most recent deploy")),
+  ),
+  authors: optional(pipe(sdkRelease.authors, description("Commit authors"))),
+  owner: optional(pipe(sdkRelease.owner, description("Release owner"))),
+  projects: optional(
+    pipe(sdkRelease.projects, description("Projects in the release")),
+  ),
+  adoptionStages: optional(
+    pipe(sdkRelease.adoptionStages, description("Adoption stage per project")),
+  ),
+});
+
+/**
+ * Fields the release commands that update a release (`archive`, `restore`,
+ * `finalize`) add with `--dry-run`, which prints `{ dryRun, version, org }`
+ * instead of the updated release.
+ */
+export const ReleaseUpdateOutputFields = object({
+  dryRun: DryRunOutputField,
+  org: optional(pipe(string(), description("Organization slug (--dry-run)"))),
+});
+
+/** JSON output of `release archive` and `release restore`. */
+export const ReleaseUpdateOutputSchema = looseObject({
+  ...SentryReleaseSchema.entries,
+  ...ReleaseUpdateOutputFields.entries,
+});
+
+/** The updated release, or the `--dry-run` preview. */
+export type ReleaseUpdateOutput = WithOutputFields<
+  SentryRelease,
+  typeof ReleaseUpdateOutputFields
+>;
+
 // Deploy
 
 /**
@@ -745,6 +958,26 @@ export type SentryDeploy = Partial<SdkDeployResponse> & {
   id: string;
   environment: string;
 };
+
+/** `--fields` / SKILL.md documentation schema for a deploy. */
+export const SentryDeploySchema = looseObject({
+  id: pipe(string(), description("Deploy ID")),
+  environment: pipe(string(), description("Environment")),
+  name: optional(pipe(vDeployResponse.entries.name, description("Name"))),
+  url: optional(pipe(vDeployResponse.entries.url, description("Deploy URL"))),
+  dateStarted: optional(
+    pipe(
+      vDeployResponse.entries.dateStarted,
+      description("Start date (ISO 8601)"),
+    ),
+  ),
+  dateFinished: optional(
+    pipe(
+      vDeployResponse.entries.dateFinished,
+      description("Finish date (ISO 8601)"),
+    ),
+  ),
+});
 
 // Issue
 
@@ -947,7 +1180,7 @@ export const SentryLogSchema = pipe(
       unknown(),
       transform(Number),
       number(),
-      description("Nanosecond-precision timestamp")
+      description("Nanosecond-precision timestamp"),
     ),
     /** Log message content */
     message: optional(nullable(pipe(string(), description("Log message")))),
@@ -956,16 +1189,16 @@ export const SentryLogSchema = pipe(
       nullable(
         pipe(
           string(),
-          description("Severity level (error, warning, info, debug)")
-        )
-      )
+          description("Severity level (error, warning, info, debug)"),
+        ),
+      ),
     ),
     /** Trace ID for correlation with traces */
     trace: optional(
-      nullable(pipe(string(), description("Trace ID for correlation")))
+      nullable(pipe(string(), description("Trace ID for correlation"))),
     ),
   }),
-  description("Sentry log")
+  description("Sentry log"),
 );
 
 export type SentryLog = InferOutput<typeof SentryLogSchema>;
@@ -976,7 +1209,7 @@ export const LogsResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1027,7 +1260,7 @@ export const DetailedSentryLogSchema = pipe(
     /** OpenTelemetry instrumentation scope name */
     "sentry.otel.instrumentation_scope.name": optional(nullable(string())),
   }),
-  description("Detailed Sentry log")
+  description("Detailed Sentry log"),
 );
 
 export type DetailedSentryLog = InferOutput<typeof DetailedSentryLogSchema>;
@@ -1038,7 +1271,7 @@ export const DetailedLogsResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1058,7 +1291,13 @@ export type DetailedLogsResponse = InferOutput<
  */
 export const TraceItemAttributeSchema = variant("type", [
   object({ name: string(), type: literal("str"), value: string() }),
-  object({ name: string(), type: literal("int"), value: number() }),
+  // Sentry serializes int64 values as strings to avoid precision loss
+  // (e.g. project_id: "4508608809533441"); keep them as strings.
+  object({
+    name: string(),
+    type: literal("int"),
+    value: union([number(), string()]),
+  }),
   object({ name: string(), type: literal("float"), value: number() }),
   object({ name: string(), type: literal("bool"), value: boolean() }),
   // "array" is gated by organizations:trace-item-details-array-fields in Sentry backend
@@ -1117,7 +1356,7 @@ export const TraceLogSchema = pipe(
     /** Log message content */
     message: optional(nullable(string())),
   }),
-  description("Trace log")
+  description("Trace log"),
 );
 
 export type TraceLog = InferOutput<typeof TraceLogSchema>;
@@ -1129,7 +1368,7 @@ export const TraceLogsResponseSchema = looseObject({
     looseObject({
       fields: optional(record(string(), string())),
       units: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1157,7 +1396,7 @@ export const TransactionListItemSchema = pipe(
     /** Project slug */
     project: pipe(string(), description("Project slug")),
   }),
-  description("Transaction list item")
+  description("Transaction list item"),
 );
 
 export type TransactionListItem = InferOutput<typeof TransactionListItemSchema>;
@@ -1168,7 +1407,7 @@ export const TransactionsResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1181,27 +1420,27 @@ export const SpanListItemSchema = pipe(
   looseObject({
     id: pipe(string(), description("Span ID")),
     parent_span: optional(
-      nullable(pipe(string(), description("Parent span ID")))
+      nullable(pipe(string(), description("Parent span ID"))),
     ),
     "span.op": optional(
       nullable(
-        pipe(string(), description("Span operation (e.g. http.client, db)"))
-      )
+        pipe(string(), description("Span operation (e.g. http.client, db)")),
+      ),
     ),
     description: optional(
-      nullable(pipe(string(), description("Span description")))
+      nullable(pipe(string(), description("Span description"))),
     ),
     "span.duration": optional(
-      nullable(pipe(number(), description("Duration (ms)")))
+      nullable(pipe(number(), description("Duration (ms)"))),
     ),
     timestamp: pipe(string(), description("Timestamp (ISO 8601)")),
     project: pipe(string(), description("Project slug")),
     transaction: optional(
-      nullable(pipe(string(), description("Transaction name")))
+      nullable(pipe(string(), description("Transaction name"))),
     ),
     trace: pipe(string(), description("Trace ID")),
   }),
-  description("Span list item")
+  description("Span list item"),
 );
 
 export type SpanListItem = InferOutput<typeof SpanListItemSchema>;
@@ -1212,7 +1451,7 @@ export const SpansResponseSchema = object({
   meta: optional(
     looseObject({
       fields: optional(record(string(), string())),
-    })
+    }),
   ),
 });
 
@@ -1237,23 +1476,61 @@ export const SentryRepositorySchema = pipe(
     url: pipe(nullable(string()), description("Repository URL")),
     provider: pipe(
       RepositoryProviderSchema,
-      description("Version control provider")
+      description("Version control provider"),
     ),
     status: pipe(string(), description("Integration status")),
     // Optional metadata
     dateCreated: optional(
-      pipe(string(), description("Creation date (ISO 8601)"))
+      pipe(string(), description("Creation date (ISO 8601)")),
     ),
     integrationId: optional(pipe(string(), description("Integration ID"))),
     externalSlug: optional(
-      nullable(pipe(string(), description("External slug (e.g. org/repo)")))
+      nullable(pipe(string(), description("External slug (e.g. org/repo)"))),
     ),
     externalId: optional(nullable(pipe(string(), description("External ID")))),
   }),
-  description("Sentry repository")
+  description("Sentry repository"),
 );
 
 export type SentryRepository = InferOutput<typeof SentryRepositorySchema>;
+
+// Integrations
+
+/** Provider summary embedded in an installed integration. */
+export const IntegrationProviderSchema = looseObject({
+  key: pipe(string(), description("Provider key (e.g. github, slack)")),
+  name: pipe(string(), description("Provider display name")),
+});
+
+/**
+ * An integration installed on a Sentry organization.
+ *
+ * Returned by `/organizations/{org}/integrations/`. The list includes
+ * integrations that are pending deletion, so `organizationIntegrationStatus`
+ * can be `active`, `disabled`, or `pending_deletion`.
+ */
+export const SentryIntegrationSchema = pipe(
+  looseObject({
+    id: pipe(string(), description("Integration ID")),
+    name: pipe(string(), description("Integration name (e.g. GitHub org)")),
+    domainName: pipe(
+      nullable(string()),
+      description("External domain (e.g. github.com/getsentry)"),
+    ),
+    provider: pipe(IntegrationProviderSchema, description("Provider")),
+    status: pipe(string(), description("Integration status")),
+    organizationIntegrationStatus: pipe(
+      string(),
+      description("Status of the install in this organization"),
+    ),
+    externalId: optional(
+      pipe(string(), description("Provider-side installation ID")),
+    ),
+  }),
+  description("Installed Sentry integration"),
+);
+
+export type SentryIntegration = InferOutput<typeof SentryIntegrationSchema>;
 
 // Cron Monitor
 
@@ -1268,53 +1545,53 @@ export type SentryRepository = InferOutput<typeof SentryRepositorySchema>;
 export const MonitorConfigSchema = pipe(
   looseObject({
     schedule_type: optional(
-      pipe(string(), description("Schedule type: 'crontab' or 'interval'"))
+      pipe(string(), description("Schedule type: 'crontab' or 'interval'")),
     ),
     schedule: optional(
       pipe(
         union([string(), array(union([string(), number()]))]),
-        description("Crontab string or [value, unit] interval tuple")
-      )
+        description("Crontab string or [value, unit] interval tuple"),
+      ),
     ),
     timezone: optional(
       nullable(
-        pipe(string(), description("Schedule timezone (tz database string)"))
-      )
+        pipe(string(), description("Schedule timezone (tz database string)")),
+      ),
     ),
     checkin_margin: optional(
       nullable(
         pipe(
           number(),
-          description("Allowed minutes after the expected check-in time")
-        )
-      )
+          description("Allowed minutes after the expected check-in time"),
+        ),
+      ),
     ),
     max_runtime: optional(
       nullable(
         pipe(
           number(),
-          description("Allowed minutes a check-in may run before timing out")
-        )
-      )
+          description("Allowed minutes a check-in may run before timing out"),
+        ),
+      ),
     ),
     failure_issue_threshold: optional(
       nullable(
         pipe(
           number(),
-          description("Consecutive failures before an issue is created")
-        )
-      )
+          description("Consecutive failures before an issue is created"),
+        ),
+      ),
     ),
     recovery_threshold: optional(
       nullable(
         pipe(
           number(),
-          description("Consecutive successes before an issue is resolved")
-        )
-      )
+          description("Consecutive successes before an issue is resolved"),
+        ),
+      ),
     ),
   }),
-  description("Monitor configuration")
+  description("Monitor configuration"),
 );
 
 export type MonitorConfig = InferOutput<typeof MonitorConfigSchema>;
@@ -1334,16 +1611,16 @@ export const SentryMonitorSchema = pipe(
     name: pipe(string(), description("Monitor name")),
     status: pipe(
       string(),
-      description("Monitor status (e.g. active, disabled)")
+      description("Monitor status (e.g. active, disabled)"),
     ),
     isMuted: optional(
-      pipe(boolean(), description("Whether the monitor is muted"))
+      pipe(boolean(), description("Whether the monitor is muted")),
     ),
     config: optional(
-      pipe(MonitorConfigSchema, description("Schedule configuration"))
+      pipe(MonitorConfigSchema, description("Schedule configuration")),
     ),
     dateCreated: optional(
-      pipe(string(), description("Creation date (ISO 8601)"))
+      pipe(string(), description("Creation date (ISO 8601)")),
     ),
     project: optional(
       pipe(
@@ -1352,11 +1629,11 @@ export const SentryMonitorSchema = pipe(
           slug: optional(pipe(string(), description("Project slug"))),
           name: optional(pipe(string(), description("Project name"))),
         }),
-        description("Owning project")
-      )
+        description("Owning project"),
+      ),
     ),
   }),
-  description("Sentry monitor")
+  description("Sentry monitor"),
 );
 
 export type SentryMonitor = InferOutput<typeof SentryMonitorSchema>;
@@ -1380,22 +1657,25 @@ export const SentryTeamSchema = looseObject({
       "isMember",
       "teamRole",
       "memberCount",
-    ])
+    ]),
   ).entries,
   id: pipe(string(), description("Team ID")),
   slug: pipe(string(), description("Team slug")),
   name: pipe(string(), description("Team name")),
   dateCreated: optional(
-    pipe(vBaseTeam.entries.dateCreated, description("Creation date (ISO 8601)"))
+    pipe(
+      vBaseTeam.entries.dateCreated,
+      description("Creation date (ISO 8601)"),
+    ),
   ),
   isMember: optional(
-    pipe(vBaseTeam.entries.isMember, description("Whether you are a member"))
+    pipe(vBaseTeam.entries.isMember, description("Whether you are a member")),
   ),
   teamRole: optional(
-    pipe(vBaseTeam.entries.teamRole, description("Your role in the team"))
+    pipe(vBaseTeam.entries.teamRole, description("Your role in the team")),
   ),
   memberCount: optional(
-    pipe(vBaseTeam.entries.memberCount, description("Number of members"))
+    pipe(vBaseTeam.entries.memberCount, description("Number of members")),
   ),
 });
 
@@ -1413,11 +1693,7 @@ export const SentryTeamSchema = looseObject({
  * schema and type are allowed to diverge: the schema curates a user-facing
  * subset of fields, the type follows the SDK's structural superset.
  */
-export type SentryTeam = Partial<SdkTeam> & {
-  id: string;
-  slug: string;
-  name: string;
-};
+export type SentryTeam = Partial<SdkTeam> & SentryNamedResource<string>;
 
 // Product Trials
 
@@ -1427,7 +1703,7 @@ export const ProductTrialSchema = pipe(
     /** Trial category (e.g., "seerUsers", "seerAutofix") */
     category: pipe(
       string(),
-      description("Trial category (e.g. seerUsers, seerAutofix)")
+      description("Trial category (e.g. seerUsers, seerAutofix)"),
     ),
     /** ISO date when the trial started, null if not started */
     startDate: pipe(nullable(string()), description("Start date (ISO 8601)")),
@@ -1440,7 +1716,7 @@ export const ProductTrialSchema = pipe(
     /** Duration of the trial in days, null if unknown */
     lengthDays: pipe(nullable(number()), description("Trial duration in days")),
   }),
-  description("Product trial")
+  description("Product trial"),
 );
 
 export type ProductTrial = InferOutput<typeof ProductTrialSchema>;

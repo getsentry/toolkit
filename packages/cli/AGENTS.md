@@ -16,7 +16,7 @@ Guidelines for AI agents working in this codebase.
 
 ### Key Features
 
-- **DSN Auto-Detection** - Scans `.env` files and source code (JS, Python, Go, Java, Ruby, PHP) to find Sentry DSNs
+- **DSN Auto-Detection** - Scans `.env` files and source code (any file type in `TEXT_EXTENSIONS`, `src/lib/scan/constants.ts`) to find Sentry DSNs
 - **Project Root Detection** - Walks up from CWD to find project boundaries using VCS, language, and build markers
 - **Directory Name Inference** - Fallback project matching using bidirectional word boundary matching
 - **Multi-Region Support** - Automatic region detection with fan-out to regional APIs (us.sentry.io, de.sentry.io)
@@ -28,7 +28,7 @@ Guidelines for AI agents working in this codebase.
 
 Before working on this codebase, read the Cursor rules:
 
-- **`.cursor/rules/ultracite.mdc`** - Code style, formatting, linting rules
+- **`.cursor/rules/oxc.mdc`** - Code style, formatting, linting rules
 
 ## Quick Reference: Commands
 
@@ -39,7 +39,7 @@ Before working on this codebase, read the Cursor rules:
 # Development
 pnpm install                             # Install dependencies (from repo root)
 pnpm run dev                             # Run CLI in dev mode
-pnpm run cli -- <args>                   # Run the CLI with arguments
+pnpm run cli <args>                      # Run the CLI with arguments
 
 # Build
 pnpm run build                           # Build for current platform
@@ -49,7 +49,7 @@ pnpm run build:all                       # Build for all platforms
 pnpm run typecheck                       # Check types (tsc)
 
 # Linting & Formatting
-pnpm run lint                            # Check for issues (Biome)
+pnpm run lint                            # Check Oxlint and Oxfmt
 pnpm run lint:fix                        # Auto-fix issues (run before committing)
 
 # Testing (Vitest)
@@ -104,7 +104,7 @@ const result = execFileSync("id", ["-u", "username"], { encoding: "utf-8", stdio
 
 The full project-structure tree — including the live command/subcommand list and the
 domain API modules — is generated from the route tree and lives in
-[`apps/cli-docs/src/content/docs/contributing.md`](apps/cli-docs/src/content/docs/contributing.md)
+[`apps/cli-docs/src/content/docs/contributing.md`](../../apps/cli-docs/src/content/docs/contributing.md)
 (the `project-structure` block produced by `script/generate-docs-sections.ts`). It is
 kept in sync automatically, so it is **not** duplicated here to avoid drift. For the
 current command list run `ls src/commands/` or `sentry --help`.
@@ -113,24 +113,54 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
+- **`src/app-for-args.ts`** — picks the application for a run. When the first
+  argument names a top-level route, it loads only that route through
+  `src/generated/route-loaders.ts`, which `script/generate-route-loaders.ts`
+  writes from the route map and imports in `app.ts` (`generate:routes`, part of
+  `generate:docs`). Anything else, and `help`, `schema`, and `cli`, which read
+  the whole tree with `getRoutes()`, loads `app.ts`. Add commands to `app.ts`
+  only; a new top-level command that reads the whole tree goes in
+  `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
+- **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
+  and the standalone binary. `script/lib/split-bundle.ts` builds the CLI
+  (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
+  every lazy `_require()` (telemetry, syntax highlighting, the field-list
+  parser) starts a chunk, so a command loads only its own code. The
+  completion engine (`src/complete-bin.ts`) is one file of its own. The main
+  script runs one of them through `src/lib/chunk-loader.ts`, which reads the
+  chunks from files next to it (npm) or from SEA assets (binary) and keeps a V8
+  code cache for each under `<config dir>/cache/code/`. It must import only
+  `node:` builtins and pure helpers (`test/script/cli-startup.test.ts` lists
+  its modules). `script/lib/chunk-build.ts` holds the build steps both
+  packages share: debug IDs, sourcemap upload, and the main script.
+- **`src/index.ts`** — the library (`createSentrySDK`). It imports no command
+  and no CLI runner: each SDK call loads only the top-level routes it runs
+  (`src/sdk-app.ts`, the SDK's `app-for-args.ts`), from the same split chunks
+  in `dist/index.cjs` and `dist/index.mjs`.
+- **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
+  bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
+  only the CLI needs; the bundle script fails on commands, markdown rendering,
+  agent skills, completions, terminal images, and the SQLite WASM fallback.
 - **`src/commands/`** — one directory per command group (`agent-conversation`,
   `alert`, `auth`, `build`, `cli`, `code-mappings`, `dart-symbol-map`,
-  `dashboard`, `debug-files`, `docs`, `event`, `feedback`, `issue`, `local`,
+  `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
   `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
-  `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `schema.ts`,
-  `wasm-split.ts`).
+  `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
+  `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
+  `send-envelope.ts`).
 - **`src/lib/`** — shared utilities. Key subtrees: `api/` (domain API modules),
-  `db/` (SQLite layer), `dsn/` (DSN detection, with per-language extractors under
-  `dsn/languages/`), and `formatters/` (output formatting). See the file-locations
-  table below and the JSDoc in each module for details.
+  `db/` (SQLite layer), `dsn/` (DSN detection with one language-agnostic regex),
+  `scan/` (file walker and scanned extensions), and `formatters/` (output
+  formatting). See the file-locations table below and the JSDoc in each module
+  for details.
 - **`src/types/`** — TypeScript types and Valibot schemas.
 - **`test/`** — tests mirroring `src/` (unit, `*.property.test.ts`,
   `*.model-based.test.ts`, `e2e/`, `fixtures/`, `mocks/`).
 - **`../../apps/cli-docs/`** — documentation site (Astro + Starlight);
   **`script/`** — build/utility scripts; **`.cursor/rules/`** — Cursor AI rules;
-  **`biome.jsonc`** — lint config.
+  **`lint-rules/cli-oxlint-plugin.js`** — CLI-specific lint rules.
 
 ## Key Patterns
 
@@ -174,6 +204,7 @@ export const myCommand = buildCommand({
 - Functions are `async *func()` generators — yield `new CommandOutput(data)`, return `{ hint }`.
 - `output.human` receives the same data object that gets serialized to JSON — no divergent-data paths.
 - The wrapper auto-injects `--json` and `--fields` flags. Do NOT add your own `json` flag.
+- A `jsonTransform` replaces the default `--fields` filtering, so it must apply its `fields` argument (`filterFieldsIfSet` from `lib/formatters/json.ts`, or per item for list envelopes). The `sentry-cli/json-transform-uses-fields` lint rule rejects one that never reads it ([#1808](https://github.com/getsentry/toolkit/issues/1808)). Drop a transform that only returns its input; the default path already filters.
 - Do NOT use `stdout.write()` or `if (flags.json)` branching — the wrapper handles it.
 
 ### Command File Structure
@@ -188,6 +219,31 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
 Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+
+### Declaring Command Output
+
+`output.schema` drives `--fields` completion, the JSON field table in `--help`, and the skill references. Nothing validates output against it, so declare each field once and derive the TypeScript type from the schema; the compiler then keeps the two in sync ([#1824](https://github.com/getsentry/toolkit/issues/1824)).
+
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
+- **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/types/output.ts`) when the fields sit on (or override) an API object.
+- Type the command's data with the derived type: the `human` formatter's parameter, and `yield new CommandOutput<Output>(…)` where the yielded value is not already typed. A field added to the schema without the code that sets it, or removed while code still sets it, is then a compile error.
+- Reuse the shared fields: `DryRunOutputField`, `orgListItemSchema`/`WithOrg` (`lib/org-list.ts`) for org-scoped lists, `opaque<T>()` for a field the docs leave opaque but the code types (a full event payload).
+- Data only the human formatter needs (pre-rendered lines, a resolved target) stays out of the schema; keep it outside the derived type or strip it with `jsonExclude`.
+
+```typescript
+const DeployOutputFields = object({
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+
+output: {
+  human: (deploy: DeployOutput) => …,
+  schema: looseObject({ ...SentryDeploySchema.entries, ...DeployOutputFields.entries }),
+},
+```
+
+Reference: `src/commands/release/deploy.ts`, `src/commands/alert/output-schemas.ts`, `ReplayViewOutputFields` in `src/types/replay.ts`.
 
 ### Route Maps (Stricli)
 
@@ -223,20 +279,285 @@ export const myRoute = buildRouteMap({
 });
 ```
 
+**Reading the command tree:** code in `src/lib/` reads the top-level route map
+with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
+`app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
+import would pull every command into any bundle built from one of them.
+`app.ts` registers its map with `setRoutes()`; a test that needs the real tree
+imports `src/app.js`. A run whose first argument names a top-level route
+registers a map with only that route (see `src/app-for-args.ts`), so code that
+needs routes other than the running one's must run under a `FULL_TREE_ROUTES`
+command. `test/lib/route-registry.test.ts` fails when a module in
+`src/lib/` reaches `app.ts`; the only exception is `sdk-invoke.ts`, the
+library-mode runner that executes the whole application.
+
 ### Positional Arguments
 
-Use `parseSlashSeparatedArg` from `src/lib/arg-parsing.ts` for the standard `[<org>/<project>/]<id>` pattern. Required identifiers (trace IDs, span IDs) should be **positional args**, not flags.
+Required identifiers (trace IDs, span IDs) should be **positional args**, not
+flags. Every command that takes trace, span, replay, log, or event IDs parses
+them with `parseIdArguments` (or `parseIdArgument` for exactly one) from
+`src/lib/id-arguments.ts`, so they all take the same forms:
+
+- `<id>`, `<org>/<id>`, `<org>/<project>/<id>`, `<target> <id>`, a Sentry URL
+- `<id> <org>/<project>`, reversed, with a warning
+- more IDs after any of those (with `multiple`), each maybe repeating the
+  target; one argument may hold several lines, or IDs after a space
+- extra arguments are ignored with a warning; slashes pasted after an ID are
+  ignored
+
+The command passes its kind of ID from `ID_KINDS` (what the ID looks like,
+how to validate it, which part of a URL holds one) and how it takes IDs:
+`optional` when it can list a project's items instead (`log list`,
+`span list`), `needsProject` when `<x>/<id>` should name project `<x>`
+rather than org `<x>`, `validate: false` to recover malformed IDs once the
+target is known. The result is a `target` string for `parseOrgProjectInput`
+and the IDs. Add a kind to `ID_KINDS` rather than validating IDs in a command;
+the `sentry-cli/no-ad-hoc-id-arguments` lint rule rejects hand-written ID
+parsing (`parseSlashSeparatedArg`, `HEX_ID_RE`, ...) in commands and kinds
+defined outside `ID_KINDS`. A kind without names gets a hint to search
+(`search`) when text is passed for an ID: `validate()` throws it, so it comes
+after any recovery.
+
+Some kinds name items without an ID (`IdKind.names`): a dashboard by its
+title (`ID_KINDS.dashboard`; unquoted words after a target are one title),
+an issue by search text (`ID_KINDS.issue`). Then what is not an ID
+comes back as `name`. A bare first word before a name comes back as
+`nameWithTarget` too: the parser does not decide whether it names an org, so
+dashboard commands check once they resolve (`resolveDashboardInput`), and
+fall back to the whole input as the title. Dashboard commands take
+`dashboardArguments` from `commands/dashboard/arguments.ts`; `dashboard list`
+reads a target and a title filter instead (`parseDashboardListArgs`).
+`event view` checks for an issue before an event ID, with
+`ID_KINDS.issue.distinctForm` (`parseEventViewInput`).
+`test/lib/argument-conventions.test.ts` feeds the same inputs to every
+command that takes IDs, issues, or releases, through the command's own
+positional; add a new command to its tables, and encode a legitimate
+difference (such as `needsProject`) in its row.
+
+**Issue positionals:** issue IDs, short IDs, selectors, issue URLs, and
+search text are parsed by `parseIssueArgument` (`src/lib/issue-arguments.ts`)
+with `ID_KINDS.issue`. An identifier is one whole token, which
+`src/lib/issue-identifier.ts` takes apart with `grammar/issue-argument.pegjs`;
+text with spaces is a search, which resolves to the one issue it matches.
+A command that takes one issue declares `issuePositional({ command })` (or
+`issueParameter` inside a tuple) from `src/commands/issue/positional.ts`: `func` takes an
+`IssueTarget` and awaits `target.resolved` for the org and issue. A command
+that resolves it another way (`resolveOrgAndIssueId`, or recovery hints that
+keep its other arguments) passes `requireIssueArgument(target.parsed, ...)`
+instead of the raw string.
+A command that takes several issues (`issue view`, `issue explain`,
+`issue merge`) declares `issuesPositional(...)`: every whitespace-separated
+word is an issue (no search text), parsed before `func` runs, and `func`
+resolves each `IssueArgument` from `await issues.resolved` itself.
 
 ```typescript
-import { parseSlashSeparatedArg, parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
 
-// "my-org/my-project/abc123" → { id: "abc123", targetArg: "my-org/my-project" }
-const { id, targetArg } = parseSlashSeparatedArg(first, "Trace ID", USAGE_HINT);
-const parsed = parseOrgProjectArg(targetArg);
-// parsed.type: "auto-detect" | "explicit" | "project-search" | "org-all"
+// ["my-org/my-project/abc123..."] → { target: "my-org/my-project", id: "abc123...", warnings: [] }
+const { target, id, baseUrl, warnings } = parseIdArgument(args, ID_KINDS.replay, {
+  usageHint: USAGE_HINT,
+});
+const parsed = parseOrgProjectInput(target);
 ```
 
-Reference: `span/list.ts`, `trace/view.ts`, `event/view.ts`
+Reference: `replay/view.ts`, `span/view.ts`, `log/view.ts`, and
+`trace-target.ts` for trace targets.
+
+**Target positionals:** A single `[<org>/][<project>]` positional uses a
+parser from `src/lib/target-positional.ts`, which binds the resolver:
+`orgOptionalTarget` (org, optional project), `projectBoundTarget` (one org and
+project), or `orgProjectTarget(resolve)` for a command-specific resolver (see
+`project view`). An org alone (`org view`) uses `orgTarget`; a
+`boundArguments` parser reads one with `parseOrgInput` and resolves it with
+`resolveOrgInput` (see `trial start`). `func` takes the matching type
+(`OrgOptionalTarget`, `ProjectBoundTarget`, `OrgProjectTarget<R>`,
+`OrgTarget`), reads the parsed form as
+`target.parsed` (e.g. `target.parsed.type`), and gets the org and project
+with `await target.resolved`. It never calls `parseOrgProjectArg` or a resolver
+itself, and an omitted target arrives as auto-detect. The
+`sentry-cli/require-target-resolution` lint rule fails a function that takes
+one of these types and never reads `.resolved`. It also rejects, in commands,
+what leaves a target for `func` to parse: `parseOrgProjectArg`, the
+`resolve*FromArg` helpers, and `withCompletionTarget` (the bound parsers tag
+the kind). Neither rule has an allow-list: no command may
+parse a target or an ID by hand.
+
+**Release positionals:** `[<org>/]<version>` uses
+`releaseParameter(USAGE_HINT, brief)` from `src/commands/release/parse.ts`
+inside a tuple positional. `func` takes a `ReleaseTarget` and gets
+`{ version, org, detectedFrom }` from `await target.resolved`; a blank version
+fails the parse.
+
+**Alert rule positionals:** `<org>/<project>/<rule-id-or-name>` (issue
+alerts) and `<org>/<rule-id-or-name>` (metric alerts) use
+`issueRuleParameter` / `metricRuleParameter` from the alert `rule-resolve.ts`
+files inside a tuple positional. Rule names may contain spaces, so they keep
+their own syntax instead of `ID_KINDS`. `func` takes an `AlertRuleArgument`
+and gets `{ ref, target }` from `await rule.resolved`.
+
+List commands take their target from `listTargetPositional()` in
+`src/lib/list-command.ts` (`LIST_TARGET_POSITIONAL`,
+`LIST_ORG_TARGET_POSITIONAL`, or `listTargetPositional({ orgScoped, names,
+multi })` for org-only completion, name globs, and comma-separated projects).
+`dispatchOrgScopedList` resolves each target mode its own way, so `func`
+takes a `ListCommandTarget` and passes `const { parsed, filter } = await
+target.resolved` to it; resolving only applies a pasted URL's server. The
+lint rule covers `ListCommandTarget` too.
+
+Resolvers need no command name: they read it from `this.commandPrefix`, which
+Stricli's `forCommand` and the SDK invoker set (test mock contexts set it
+too). In a destructive command (`buildDeleteCommand`, or `buildCommand` with
+`destructive: true`), an auto-detected target fails before `func` runs, so
+those commands don't call `requireExplicitTarget` for it.
+
+`boundPositional` in `src/lib/positional-parse.ts` builds these parsers.
+Stricli runs the parse in its argument scanner, so invalid input fails like
+any other argument: `Failed to parse "<input>" for <placeholder>: …` and exit
+code 252. The parse must have no side effects; anything that changes state
+(such as applying a pasted Sentry URL's server) goes in the resolver, which
+runs on the first `resolved` read, inside `func` after the auth guard.
+`target.raw` is what the user typed; shared code that handles any positional
+uses `rawPositional(value)`. `buildCommand` runs these parsers on positionals
+that arrive as strings or are omitted, so the SDK invoke path and tests that
+call `command.loader()` keep passing raw strings.
+
+**Arity-dependent positionals:** when what an argument means depends on how
+many were given (`[<org>/<project>] <replay-id>`, `log list`'s optional
+trailing trace ID), declare the positional with `boundArguments` from
+`src/lib/positional-parse.ts` (see `replayArguments` in `replay/view.ts`,
+`log list`, and `trace view`). It is an array positional whose `parse` sees every argument at
+once and whose `resolve` binds like a target positional's: `func` takes one
+`BoundArguments<Parsed, Resolved>` (alias it per command and add the alias to
+the lint rule's type list), reads `target.parsed`, and awaits
+`target.resolved`. A Stricli parser sees one argument at a time, so
+`buildCommand` runs the parse before `func` (and before the auth guard). A
+parse error becomes Stricli's `ArgumentParseError`, which prints and exits
+252 like a scanner error; next to a `help` argument it turns into the
+command's help instead. The same purity rule applies: return a pasted URL's server
+(`baseUrl`) and any warnings from the parse, and apply them in `resolve`
+(`parseTraceTargetInput` and `parseDualModeInput` in `trace-target.ts` do
+this for trace targets). Commands that recover a malformed ID (`trace view`,
+`span view`, `log view`, `event view`) parse it unvalidated and validate or recover it in
+`resolve`, which can look the prefix up: `parseTraceArgumentsInput` and
+`resolveTraceArguments` do this for trace IDs. A missing ID or a bad target
+still fails the parse.
+
+Which argument is the ID and which is its target is decided by
+`grammar/id-arguments.pegjs`, not by counting arguments in TypeScript. The
+grammar knows no kind of ID: the command's `ID_KINDS` entry tells it what an
+ID looks like, so the syntax cannot drift between commands. It accepts any
+input; errors come from `parseIdArguments`, never Peggy's own syntax errors.
+
+**Shell completion:** Every visible positional and every visible
+value-taking flag declares a completion kind, a key of `COMPLETERS` in
+`src/lib/complete.ts`; `test/lib/completion-coverage.test.ts` walks the
+route tree and fails, naming the command and the placeholder or flag, for
+any without one. The `sentry-cli/require-completion-parser` lint rule
+rejects, in `src/commands/` and `src/lib/`, the parsers that cannot carry a
+kind: built-ins (`parse: String`, `Number`, `Boolean`, `Date`, `parseInt`,
+`JSON.parse`, …), inline functions (`parse: (value) => …`), and
+`boundArguments` without a `kind`. A flag with nothing to suggest says so
+with `parseText` or `textParser(parse)`. The rare parameter that must stay
+without a kind goes in `lint-rules/completion-exemptions.json` with its
+file, command, parameter (`--flag` or `<placeholder>`), and reason; both the
+lint rule and the coverage test read it, and the test fails on an entry
+that no longer needs exempting. An `oxlint-disable-next-line
+sentry-cli/require-completion-parser -- reason` comment silences only the
+lint rule; the coverage test cannot see comments, so the parameter still
+needs a kind or an allow-list entry. Pick the parser by what the argument
+takes:
+
+| Argument | Parser | Completes |
+|----------|--------|-----------|
+| Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
+| File or directory path (`--output`, `--ignore-file`) | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
+| Directory | `parseDirectoryPath` | directories only |
+| Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
+| Fixed values | `choiceParser(values)`, or `choiceParser(values, parse)` to keep a command's own validating parser (`choiceParser(VALID_SORT_VALUES, parseSort)`). Take the values from the module that defines them | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). Without `parse` the parser returns its input, so the command still validates it |
+| Comma-separated fixed values (`--scope`, `--features`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
+| Platform | `parsePlatform` | platform identifiers, common ones first |
+| Something that already exists in Sentry, as a flag value (`--environment`, `--release`, `--team`, `--owner`, `--integration`, `--app`, `--dsn`, `--workflow`, `--project`, `issue tags <key>`) | `parseEnvironment`, `parseEnvironmentList`, `parseRelease`, `parseTeam`, `parseOwner` (`team:<id>`), `parseIntegration`, `parseSentryApp`, `parseAppLinkField` (`name=value`), `parseDsn`, `parseWorkflowList`, `parseProjectSlug`, `parseProjectList`, `parseTagKey` | cached entities of the org the command's target names, else of every org, each once; the `*List` parsers complete the last item of a comma-separated list |
+| Field or aggregate of a dataset (`explore --field`/`--sort`, `dashboard widget --group-by`/`--query`/`--sort`, `alert metrics --aggregate`) | `fieldParser`, `fieldOrAggregateParser`, `aggregateParser` (`fn(field)`), or `aggregateShorthandParser` (`fn:field`), given a `DatasetCompletion`: what completes on each dataset (start from `DATASET_FIELDS`), the command's `--dataset` aliases, and its default dataset | the fields of the dataset the `--dataset` typed names (else the default; every dataset when there is none): cached attribute keys of spans, logs, and trace metrics, cached issue tag keys for errors, or a fixed set (replays), matched one `.` segment at a time (`span.d` finds `span.duration`, never `span.op`); then its whole aggregates (`aggregates`), and its aggregate functions as `fn()`, and `fn(field)` once a name is typed in full (`p95` → `p95(span.duration)`). Widgets take the functions of `aggregateFunctionsOf` in `types/dashboard.ts`; `alert metrics --aggregate` takes the narrower ones metric alerts accept (`METRIC_ALERT_FIELD_COMPLETION`). A word starting with `-` completes flag names, so a descending sort's `-` is typed after completing |
+| Issue as a flag value (`issue merge --into`) | `parseIssueReference` | what `ISSUE_TARGET` completes |
+| Git ref, commit, or repository (`--base-ref`, `--head-sha`, `--repo`, `--commit REPO@SHA`, `set-commits --from`) | `parseVcsRef` (branch and tag names as the remote knows them), `parseGitRef` (refs git resolves locally), `parseGitCommit`, `parseGitRepo` (`owner/repo` of the remotes), `parseRepoCommitList` | read from git in the shell's directory; nothing outside a work tree |
+| A structured value with its own grammar (`issue archive --until`, `api <endpoint>`) | `parseArchiveUntil`, `parseApiEndpoint` | the grammar: `forever`, `auto`, `10x`, `10x/5m`, …; API schema paths one segment at a time, with cached orgs and projects for their placeholders |
+| Local session (`local session view`, `local event list`, …) | `parseLocalSession` | the running Local daemon's session IDs, described by label and state, then labels only one session has (none with whitespace). Read from `local-sessions.json`, an owner-only snapshot the daemon rewrites when a session is created, closed, or expires and removes on shutdown; it holds IDs, labels, states, and expiries, never capabilities, and is ignored once its daemon's PID has exited. `<session envelope>` and `<session event>` complete only the session: envelope and event IDs exist only in the daemon's memory |
+| Stored account | `parseAccountSelector` | stored accounts (`auth switch`, `auth logout`, `org list --account`) |
+| CLI command path | `parseCommandPath` | route names, one segment per word (`help`) |
+| URL | `parseUrl` (the command validates it) | nothing |
+| Free text, IDs with no cache, names of new things | `parseText` | nothing. Before reaching for it, check whether the value is really free: a value with a fixed set (in the module that validates it), a grammar, or a source (cache, git, schema) gets a kind that completes it |
+| Numbers and other values a command parses itself (`parsePort`, `parseLimit`) | `textParser(parse)` | nothing |
+
+Import the pre-tagged parsers; never tag `String` or write
+`withCompletionTarget` in a command (the lint rules above reject it there),
+and never leave `parse: String` on a flag. Org, project, and issue targets
+stay bound parsers. `enum` flags complete their `values` like
+`choiceParser`. `buildCommand` tags the injected `--fields` once: with an
+output schema, it completes the schema's field paths, nested ones in dot
+notation (`--fields id,ti` → `id,title`, `project.s` → `project.slug`);
+without one, nothing.
+
+Shared value parsers are not tagged where they live; `PARSER_TARGETS` in
+`completion-target.ts` lists them instead, with a kind or the values they
+accept, so every flag that parses with `sanitizeIssueQuery` completes issue
+search terms (`is:unr` → `is:unresolved`), every flag that parses with
+`parsePeriod` completes relative periods, `parseCursorFlag` completes
+`next`/`prev`/`first`, `parseLogSort` its directions, `numberParser`
+nothing, and `parseLoginEmail` completes stored accounts. Fixed values
+(search keys, period units) come from the modules that define them
+through `COMPLETION_VALUES`. A new shared parser goes in `PARSER_TARGETS`;
+its module must not import `completion-target.ts`, or the two would load
+in a cycle.
+Cached entities (issues, dashboards, environments, releases, teams,
+monitors, alert workflows, integrations, Sentry Apps and their issue-link
+form fields, DSNs, issue tag keys, attribute keys of each trace item
+dataset) come from the `completion_cache` table. The
+authenticated fetch in `src/lib/sentry-client.ts` offers every API response to
+`src/lib/api/completion-seed.ts`, which stores entities from the `@sentry/api`
+operations it lists (by URL template, type-checked against the SDK, and the
+query parameters that pick what a response holds, such as the attribute
+keys' `dataset`), so API functions never seed by hand. Attribute keys are
+also fetched ahead of time by `src/lib/completion-warmup.ts`, which
+`auth login` and `cli setup` call: the default org plus up to three
+recently used orgs, all datasets in parallel, aborted after a second. To complete a new
+entity type, add it to `CompletionEntityKind`, its operations in `completion-seed.ts` (one
+response may seed several kinds), a tagged parser, and an `entityCompleter`
+(target positionals) or `flagEntityCompleter` (flag values) entry in
+`src/lib/complete.ts`. To add a
+kind that is not an entity, add its entry to `COMPLETERS`
+(`src/lib/complete.ts`), whose keys are the `CompletionTarget` type, a
+`*_TARGET` name for it in `completion-target.ts`, and a pre-tagged parser.
+`pnpm run generate:completions` collects every command's kinds, choice
+values, and visible flags (with briefs and aliases), and every route group's
+subcommands, into the gitignored `src/generated/completion-targets.json`
+that the `__complete` fast path reads. Words that name a nested route group
+(`alert issues`) complete its subcommands, and a partial starting with `-`
+completes the command's flags not given yet. The bash, zsh, and fish
+scripts (`src/lib/completions.ts`) embed only the command and subcommand
+names and ask `__complete` for every later word, so every shell completes
+every depth the same way. Completers must stay light (synchronous `node:fs`
+reads, SQLite, no network); ones that need a parser (`arg-parsing.ts`, the
+search grammar) import it when called, so the fast path only loads it for
+the arguments that need it.
+
+The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
+and what that module imports. `src/bin.ts` and the main script of both
+packages (`src/chunk-main.ts`) check for `__complete` first and run
+`runCompletion` without loading `cli.ts`: both ship it as a separate bundle
+(`src/complete-bin.ts`, `complete.cjs`) that shares no chunk with the CLI, so a
+TAB press never loads a CLI chunk. That
+graph must stay free of `@sentry/node`, telemetry, the API client, and the
+command tree: the database modules get spans and cache metrics through
+`withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
+telemetry lazily and skip it when telemetry is off (`runCompletion` turns it
+off; `dist/complete.cjs` is built with `SENTRY_CLI_COMPLETION_BUILD` set to
+`true`, so the bundle leaves telemetry out), and `logger.ts` takes the Sentry
+reporter from `initSentry`.
+`test/script/cli-startup.test.ts` bundles the graph and fails on any package
+not in its `COMPLETION_PACKAGES` list, naming the importer, or on more source
+modules than `COMPLETION_MODULE_BUDGET`. Defer a heavy dependency with a
+dynamic `import()` in the completer that needs it rather than adding it to
+the list.
 
 ### Multiple Values in Arguments
 
@@ -248,6 +569,12 @@ Split by argument type — do not mix the conventions:
   values on commas; commas may be part of the value. Every project passed to
   `project create` requires a `name:platform` pair — there is no space-separated
   form, with or without an explicit org. Project names cannot contain whitespace.
+- **Exception: opted-in `org/project` list selectors.** Commands whose API can
+  query several projects together may parse their single optional target token
+  as a list because Sentry slugs cannot contain commas. For example,
+  `issue list acme/web,api` selects two projects. Pass
+  `{ multi: true }` to `parseOrgProjectArg`; never enable it for
+  mutation or single-project commands.
 - **Optional flags → comma-separated (sometimes also repeatable).** Split the
   flag value on `,`: `--features errors,tracing`, set-commits `--path a,b`,
   `auth login --scope a,b`. Use `value.split(",")` (repeatable array flags:
@@ -259,13 +586,23 @@ Reference: `project/create.ts`, `release/set-commits.ts` (`--path`), `auth/login
 
 All non-trivial human output must use the markdown rendering pipeline:
 
-- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `escapeMarkdownCell()`, `renderMarkdown()`
+- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `renderMarkdown()`, and `text()`, `tableCell()`, `inlineCode()` from `@sentry/toolkit-core/markdown`
 - **NEVER** use raw `muted()` / chalk in output strings — use `colorTag("muted", text)` inside markdown
 - Tree-structured output (box-drawing characters) that can't go through `renderMarkdown()` should use the `plainSafeMuted` pattern: `isPlainOutput() ? text : muted(text)`
 - `isPlainOutput()` precedence: `SENTRY_PLAIN_OUTPUT` > `NO_COLOR` > `FORCE_COLOR` (TTY only) > `!isTTY`
 - `isPlainOutput()` lives in `src/lib/formatters/plain-detect.ts` (re-exported from `markdown.ts` for compat)
 
 Reference: `formatters/trace.ts` (`formatAncestorChain`), `formatters/human.ts` (`plainSafeMuted`)
+
+### Parsing Markdown
+
+Never parse markdown structure (headings, code fences, lists) with regexes. Use the `marked` lexer, which is already a dependency:
+
+- Scripts: use the helpers in `script/markdown.ts` (`markdownHeadings()`, `blankCodeBlocks()`), or `marked.lexer()` directly for other token types.
+- Runtime code: follow `src/lib/formatters/markdown.ts` and `src/lib/release-notes.ts`.
+- Regexes are fine on the plain text of a parsed token, such as matching heading text.
+
+The `sentry-cli/no-regex-markdown-parsing` lint rule flags regexes that match headings or code fences in `src/` and `script/`.
 
 ### Create & Delete Command Standards
 
@@ -394,24 +731,43 @@ that fits your use case):
 **Auto-pagination for large limits:**
 
 When `--limit` exceeds `API_MAX_PER_PAGE` (100), list commands MUST transparently
-fetch multiple pages to fill the requested limit. Cap `perPage` at
-`Math.min(flags.limit, API_MAX_PER_PAGE)` and loop until `results.length >= limit`
-or pages are exhausted. This matches the `listIssuesAllPages` pattern.
+fetch multiple pages to fill the requested limit. Always do this with
+`paginate()` from `src/lib/api/infrastructure.ts`; never write the cursor loop
+yourself. The `sentry-cli/no-manual-pagination` lint rule rejects loops that
+follow cursors and count toward a limit.
 
 ```typescript
-const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
-for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-  const { data, nextCursor } = await listPaginated(org, { perPage, cursor });
-  results.push(...data);
-  if (results.length >= flags.limit || !nextCursor) break;
-  cursor = nextCursor;
-}
+const { data, nextCursor } = await paginate(
+  { limit: flags.limit, cursor },
+  (perPage, pageCursor) =>
+    listPaginated(org, { perPage, cursor: pageCursor }),
+);
 ```
 
-Never pass a `per_page` value larger than `API_MAX_PER_PAGE` to the API — the
-server silently caps it, causing the command to return fewer items than requested.
+Pass `perPage` to the request unchanged. Sentry's page-number paginators
+(`OffsetPaginator`, used by projects, teams, members, repositories, and
+dashboard revisions) encode the page size in the cursor
+(`<per_page>:<page>:<is_prev>`), so a cursor is only valid with the
+`per_page` that produced it. `paginate()` reads that page size back from the
+cursor, so a later `-c next` reuses it even when `--limit` changes. A fresh
+walk splits `--limit` evenly over the fewest requests (201 → 3 × 67).
 
-Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/list.ts`
+The cursors `paginate()` returns are Sentry cursors, so every CLI version and
+the API accept them, and stored `-c next` history works across upgrades and
+downgrades. When a call stops inside a page, the cursor points at that page
+and records how many of its rows were already returned in `is_prev`, in
+binary with `_0` for 1 and `0` for 0 after a leading `0` (`84:2:0_00_000_00`
+skips 82 = `0b1010010` rows). Sentry parses `is_prev` with Python's `int()`,
+which reads any zeros joined by single underscores as 0, so it is still a
+next-page cursor. `encodeSkip()` in `src/lib/api/infrastructure.ts` documents
+the format.
+`paginate()` refetches the page and skips them; anything else that sends the
+cursor (with the page size it encodes, if any) gets those rows again, never
+fewer. Keep returned cursors valid Sentry
+cursors. Test pagination changes against the paginator models in
+`test/lib/paginate.property.test.ts`.
+
+Reference template: `trace/list.ts`, `span/list.ts`, `dashboard/revisions.ts`
 
 ### ID Validation
 
@@ -428,13 +784,19 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 ### Generated Docs & Skills
 
-All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:command-docs` then `generate:skill`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:completions`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
-- **Command docs** (`docs/src/content/docs/commands/*.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `docs/src/fragments/commands/`.
+- **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- Edit fragments in `docs/src/fragments/commands/` for custom examples and guides.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
+- **Target syntax belongs to the positional**: describe accepted target forms in the positional `brief` (use `ORG_ALL_TARGET_BRIEF` or `PROJECT_TARGET_BRIEF` from `src/lib/list-command.ts` for `[<org>/][<project>]` targets), not in a `Target patterns:` block. The brief renders in `--help`, the generated docs, and the skill references.
+- Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
+- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `command` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
+- Don't restate a value flag's `default` in its `brief`; help and docs already show it (`test/lib/flag-briefs.test.ts`).
+- `pnpm run check:doc-examples` also checks string-literal `sdk.run(…)` calls in TypeScript fences and `@example` JSDoc (`src/index.ts`). They are found by parsing with the TypeScript compiler (`script/sdk-run-calls.ts`); don't add regex-based source parsing.
+- Lists that mirror code (scanned DSN extensions, alias examples, destructive commands, detected agents, the `library-usage.md` `sdk.run()` sample built from `issue list` examples) are generated sections in `script/generate-docs-sections.ts`; add new mirrors there instead of hand-writing them.
 
 ### Valibot Schemas for Validation
 
@@ -530,7 +892,7 @@ CliError (base, exitCode=1)
 - Pass `alternatives: []` when defaults are irrelevant (e.g., for missing Trace ID, Event ID)
 - Use `" and "` in `resource` for plural grammar: `"Trace ID and span ID"` → "are required"
 
-**CI enforcement:** `pnpm run check:errors` scans for `ContextError` with multiline commands and `CliError` with ad-hoc "Try:" strings. Silent `catch` blocks are enforced separately by the `no-silent-catch` Biome plugin (see below).
+**CI enforcement:** `pnpm run check:errors` scans for `ContextError` with multiline commands and `CliError` with ad-hoc "Try:" strings. Silent `catch` blocks are enforced separately by the `no-silent-catch` CLI Oxlint rule (see below).
 
 ```typescript
 // Usage examples
@@ -552,7 +914,7 @@ Reference: `resolveDashboardId()` in `src/commands/dashboard/resolve.ts`.
 
 ### Catch Block Logging
 
-Silent `catch` blocks are prohibited in `src/` production code. Biome's `noEmptyBlockStatements` catches syntactically empty `catch {}` blocks, but blocks with only a `return` statement and no logging are equally problematic — errors vanish silently, making debugging impossible.
+Silent `catch` blocks are prohibited in `src/` production code. Both empty `catch {}` blocks and blocks that only return without logging discard errors and make debugging impossible.
 
 Every `catch` block must either:
 1. Re-throw the error
@@ -574,17 +936,17 @@ catch (error) {
 
 Use `logger.withTag("command-name")` for tagged logging in command files.
 
-**CI enforcement:** the `no-silent-catch` Biome plugin
-(`lint-rules/no-silent-catch.grit`, registered in `biome.jsonc`) flags `catch`
+**CI enforcement:** the `no-silent-catch` CLI Oxlint rule
+(`lint-rules/cli-oxlint-plugin.js`, registered in the root `.oxlintrc.json`) flags `catch`
 blocks — statement and `.catch()` form — that are empty, comment-only, or
 return-only without surfacing the error. The pre-existing backlog is
 grandfathered in place with inline
-`// biome-ignore lint/plugin: <reason>` comments. Because `pnpm run lint` runs
-with `--error-on-warnings`, an *orphaned* suppression (left behind when a
-grandfathered catch is fixed) fails as `suppressions/unused` — so the backlog
+`// oxlint-disable-next-line sentry-cli/no-silent-catch -- <reason>` comments.
+Because `pnpm run lint` reports unused suppressions as errors, an *orphaned*
+suppression (left behind when a grandfathered catch is fixed) fails — so the backlog
 can only shrink, the same ratchet the old JSON baseline provided, with no
 separate script or baseline file to maintain. Fix a grandfathered catch by
-adding logging/re-throwing and deleting its `biome-ignore` line; only add a new
+adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
 
 ### Auto-Recovery for Wrong Entity Types
@@ -636,7 +998,7 @@ Before creating a new `src/lib/*.ts` utility file, check whether existing shared
 | Table/markdown output | `src/lib/formatters/` directory |
 | Pagination | `src/lib/db/pagination.ts`, `src/lib/list-command.ts` |
 | Error classes | `src/lib/errors.ts` (never create ad-hoc error types) |
-| Search query building | `src/lib/search-query.ts`, `src/lib/arg-parsing.ts` |
+| Search query building | `src/lib/search-query.ts` (wraps `@sentry/toolkit-core/search-query`), `src/lib/arg-parsing.ts` |
 
 If an existing module covers ≥80% of what you need, extend it with new exported functions rather than creating a new file. New files are appropriate when the domain is genuinely new (e.g., `replay-search.ts` for replay-specific field resolution).
 
@@ -672,20 +1034,24 @@ Commands select a capability wrapper instead of performing API lookups:
   organization or a project.
 - `resolveOrgOnlyTarget()` / `resolveOrgOnlyFromArg()` return the effective
   organization while preserving project-first precedence for bare targets.
+- `resolveProjectIdsInOrg()` / `findProjectsInOrg()` resolve a
+  comma-separated `org/a,b` selector: numeric IDs for a single request
+  (unknown slugs are an error), or the projects themselves plus the slugs
+  that returned 404.
 
 Do not call `findProjectsBySlug()` or implement org fallback directly in a
 command. `sentry init` is the intentional not-found exception: it calls the
 classifier with fuzzy recovery disabled, then treats `not-found` as a new
 project name. Issue-short-ID recovery in `commands/issue/utils.ts` is not CLI
 target resolution and may perform its own project lookup. The
-`no-direct-target-resolution` Biome plugin enforces this command-layer
+`no-direct-target-resolution` CLI Oxlint rule enforces this command-layer
 boundary.
 
 ### List Command Infrastructure
 
 Two abstraction levels exist for list commands:
 
-1. **`src/lib/list-command.ts`** — `buildOrgListCommand` factory + shared Stricli parameter constants (`LIST_TARGET_POSITIONAL`, `LIST_JSON_FLAG`, `LIST_CURSOR_FLAG`, `buildListLimitFlag`). Use this for simple entity lists like `team list` and `repo list`.
+1. **`src/lib/list-command.ts`** — `buildOrgListCommand` factory + shared Stricli parameter constants (`LIST_TARGET_POSITIONAL` and `listTargetPositional`, `LIST_JSON_FLAG`, `LIST_CURSOR_FLAG`, `buildListLimitFlag`). Use this for simple entity lists like `team list` and `repo list`.
 
 2. **`src/lib/org-list.ts`** — `dispatchOrgScopedList` with `OrgListConfig` and a 4-mode handler map: `auto-detect`, `explicit`, `org-all`, `project-search`. Complex commands (`project list`, `issue list`) call `dispatchOrgScopedList` with an `overrides` map directly instead of using `buildOrgListCommand`.
 
@@ -1011,7 +1377,7 @@ vi.mock("./some-module", () => ({
 | Add config types | `src/types/config.ts` |
 | Add Seer types | `src/types/seer.ts` |
 | Add utility | `src/lib/` |
-| Add DSN language support | `src/lib/dsn/languages/` |
+| Add DSN language support | `TEXT_EXTENSIONS` in `src/lib/scan/constants.ts` |
 | Add DB operations | `src/lib/db/` |
 | Build scripts | `script/` |
 | Add property tests | `test/lib/<name>.property.test.ts` |
@@ -1019,8 +1385,9 @@ vi.mock("./some-module", () => ({
 | Add unit tests | `test/` (mirror `src/` structure) |
 | Add E2E tests | `test/e2e/` |
 | Test helpers | `test/model-based/helpers.ts` |
-| Add documentation | `docs/src/content/docs/` |
-| Hand-written command doc content | `docs/src/fragments/commands/` |
+| Add documentation | `apps/cli-docs/src/content/docs/` |
+| Command examples | `docs.examples` on the command |
+| Hand-written command doc content (guides, caveats) | `apps/cli-docs/src/fragments/commands/` |
 
 ## Automated Fix PRs (BugBot / agents)
 

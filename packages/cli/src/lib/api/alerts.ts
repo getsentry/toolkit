@@ -11,11 +11,24 @@ import {
   createOrganizationWorkflow,
   deleteOrganizationDetector,
   getOrganizationDetector,
+  type GetOrganizationDetectorResponse,
   getOrganizationWorkflow,
+  type GetOrganizationWorkflowResponse,
   listOrganizationDetectors,
   updateOrganizationDetector,
   updateOrganizationWorkflow,
 } from "@sentry/api";
+import {
+  METRIC_MONITOR_PRIORITY,
+  METRIC_MONITOR_SOURCES,
+  type MetricMonitorSource,
+} from "@sentry/toolkit-core/metric-monitor";
+import {
+  isDetectorConditionList,
+  type MetricTriggers,
+  metricAlertDatasetName,
+  metricAlertSource,
+} from "../../types/metric-alert.js";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -53,7 +66,12 @@ export type IssueAlertRule = {
 };
 
 /** A single metric alert rule (threshold-based, org-scoped) */
-export type MetricAlertRule = {
+export type MetricAlertRule = Partial<
+  Pick<
+    GetOrganizationDetectorResponse,
+    "config" | "conditionGroup" | "workflowIds"
+  >
+> & {
   id: string;
   name: string;
   /** 0/"0"/absent = active, 1/"1" = disabled */
@@ -89,6 +107,10 @@ type MetricDetector = {
   owner?: { type: string; name?: string; id?: string } | string | null;
   dateCreated?: string;
   dataSources?: Record<string, unknown>[] | null;
+  /** Detection settings (`detectionType`, `comparisonDelta`, …), kept on edit. */
+  config?: Record<string, unknown> | null;
+  conditionGroup?: GetOrganizationDetectorResponse["conditionGroup"];
+  workflowIds?: GetOrganizationDetectorResponse["workflowIds"];
 };
 
 /**
@@ -162,7 +184,7 @@ function pickDetectorOwner(owner: MetricDetector["owner"]): string | null {
  * nested `snubaQuery`) doesn't flatten everything to empty.
  */
 function resolveThresholdSource(
-  source: Record<string, unknown>
+  source: Record<string, unknown>,
 ): Record<string, unknown> {
   const asRecord = (value: unknown): Record<string, unknown> | undefined =>
     value && typeof value === "object" && !Array.isArray(value)
@@ -187,7 +209,7 @@ function resolveThresholdSource(
 }
 
 function mapDetectorToMetricAlertRule(
-  detector: MetricDetector
+  detector: MetricDetector,
 ): MetricAlertRule {
   const source = detector.dataSources?.[0] ?? {};
   const nested = resolveThresholdSource(source);
@@ -205,7 +227,10 @@ function mapDetectorToMetricAlertRule(
     status: detector.enabled === false ? 1 : 0,
     query: pickDetectorString(nested.query),
     aggregate: pickDetectorString(nested.aggregate),
-    dataset: pickDetectorString(nested.dataset),
+    dataset: metricAlertDatasetName(
+      pickDetectorString(nested.dataset),
+      Array.isArray(nested.eventTypes) ? nested.eventTypes : [],
+    ),
     timeWindow: timeWindowSeconds > 0 ? Math.round(timeWindowSeconds / 60) : 0,
     environment,
     owner: pickDetectorOwner(detector.owner),
@@ -221,8 +246,8 @@ function mapDetectorToMetricAlertRule(
 // `/projects/{org}/{project}/rules/` endpoint was deprecated on 2026-05-14 and
 // now returns HTTP 410 during recurring brownouts (getsentry/cli#1182). The
 // workflows endpoint returns rule-shaped payloads, so the existing
-// `IssueAlertRule` shape is preserved. Mutations (create/update/delete) still
-// use the legacy endpoint pending a follow-up migration.
+// `IssueAlertRule` shape is preserved. Mutations (create/update/delete) also
+// use the org-scoped workflows endpoint.
 
 /**
  * Keep only workflows that are attached to a detector.
@@ -232,7 +257,7 @@ function mapDetectorToMetricAlertRule(
  * with no `detectorIds`. Mirrors the sentry-mcp filter of the same name.
  */
 function filterAttachedIssueAlertRules(
-  rules: IssueAlertRule[]
+  rules: IssueAlertRule[],
 ): IssueAlertRule[] {
   return rules.filter((rule) => (rule.detectorIds ?? []).length > 0);
 }
@@ -248,7 +273,7 @@ function filterAttachedIssueAlertRules(
 export async function listIssueAlertsPaginated(
   orgSlug: string,
   projectSlug: string,
-  options: { perPage?: number; cursor?: string } = {}
+  options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<IssueAlertRule[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data, headers } = await apiRequestToRegion<IssueAlertRule[]>(
@@ -261,7 +286,7 @@ export async function listIssueAlertsPaginated(
         per_page: options.perPage,
         cursor: options.cursor,
       },
-    }
+    },
   );
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
   return { data: filterAttachedIssueAlertRules(data), nextCursor };
@@ -274,8 +299,8 @@ export async function listIssueAlertsPaginated(
  */
 export async function getIssueAlertWorkflowDocument(
   orgSlug: string,
-  workflowId: string
-): Promise<Record<string, unknown>> {
+  workflowId: string,
+): Promise<GetOrganizationWorkflowResponse> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await getOrganizationWorkflow({
     ...config,
@@ -284,9 +309,9 @@ export async function getIssueAlertWorkflowDocument(
       workflow_id: Number(workflowId),
     },
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<GetOrganizationWorkflowResponse>(
     result,
-    "Failed to fetch issue alert rule"
+    "Failed to fetch issue alert rule",
   );
 }
 
@@ -299,7 +324,7 @@ export async function getIssueAlertWorkflowDocument(
  */
 export async function resolveErrorDetectorId(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<number> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await listOrganizationDetectors({
@@ -309,7 +334,7 @@ export async function resolveErrorDetectorId(
   });
   const detectors = unwrapResult<Array<{ id: string | number }>>(
     result,
-    "Failed to resolve error detector"
+    "Failed to resolve error detector",
   );
   const detector = detectors[0];
   if (!detector) {
@@ -317,7 +342,7 @@ export async function resolveErrorDetectorId(
       `No error detector found for project '${projectSlug}'`,
       404,
       undefined,
-      `/organizations/${orgSlug}/detectors/`
+      `/organizations/${orgSlug}/detectors/`,
     );
   }
   return Number(detector.id);
@@ -337,13 +362,13 @@ export async function resolveErrorDetectorId(
 export async function getIssueAlertRule(
   orgSlug: string,
   projectSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<IssueAlertRule> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   const { data } = await apiRequestToRegion<IssueAlertRule[]>(
     regionUrl,
     `/organizations/${orgSlug}/workflows/`,
-    { params: { projectSlug, id: ruleId, per_page: 1 } }
+    { params: { projectSlug, id: ruleId, per_page: 1 } },
   );
   const rule = filterAttachedIssueAlertRules(data)[0];
   if (!rule) {
@@ -351,7 +376,7 @@ export async function getIssueAlertRule(
       `Issue alert rule '${ruleId}' not found`,
       404,
       undefined,
-      `/organizations/${orgSlug}/workflows/`
+      `/organizations/${orgSlug}/workflows/`,
     );
   }
   return rule;
@@ -384,7 +409,7 @@ const METRIC_DETECTOR_QUERY = "type:metric_issue";
  */
 export async function listMetricAlertsPaginated(
   orgSlug: string,
-  options: { perPage?: number; cursor?: string } = {}
+  options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<MetricAlertRule[]>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await listOrganizationDetectors({
@@ -404,7 +429,7 @@ export async function listMetricAlertsPaginated(
   });
   const { data, nextCursor } = unwrapPaginatedResult<MetricDetector[]>(
     result,
-    "Failed to list metric alert rules"
+    "Failed to list metric alert rules",
   );
   return { data: data.map(mapDetectorToMetricAlertRule), nextCursor };
 }
@@ -413,7 +438,8 @@ export async function listMetricAlertsPaginated(
  * Get a single metric alert rule by ID.
  *
  * Reads from the org-scoped `/detectors/{id}/` endpoint and maps the detector
- * onto the flat `MetricAlertRule` shape.
+ * onto the flat `MetricAlertRule` shape, preserving native detection settings,
+ * conditions, and workflow links for inspection. List results stay compact.
  *
  * The `/detectors/{id}/` endpoint returns any detector kind (uptime, cron,
  * error, …), unlike the `type:metric_issue`-filtered list. A non-metric id is
@@ -426,8 +452,22 @@ export async function listMetricAlertsPaginated(
  */
 export async function getMetricAlertRule(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<MetricAlertRule> {
+  const detector = await getMetricDetector(orgSlug, ruleId);
+  return {
+    ...mapDetectorToMetricAlertRule(detector),
+    config: detector.config ?? undefined,
+    conditionGroup: detector.conditionGroup,
+    workflowIds: detector.workflowIds,
+  };
+}
+
+/** Fetch a metric-issue detector, rejecting other detector kinds with a 404. */
+async function getMetricDetector(
+  orgSlug: string,
+  ruleId: string,
+): Promise<MetricDetector> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await getOrganizationDetector({
     ...config,
@@ -443,17 +483,17 @@ export async function getMetricAlertRule(
   });
   const data = unwrapResult<MetricDetector>(
     result,
-    `Failed to get metric alert rule '${ruleId}'`
+    `Failed to get metric alert rule '${ruleId}'`,
   );
   if (data.type !== undefined && data.type !== "metric_issue") {
     throw new ApiError(
       `Metric alert rule '${ruleId}' not found`,
       404,
       `Detector '${ruleId}' is of type '${data.type}', not a metric alert.`,
-      `/organizations/${orgSlug}/detectors/${encodeURIComponent(ruleId)}/`
+      `/organizations/${orgSlug}/detectors/${encodeURIComponent(ruleId)}/`,
     );
   }
-  return mapDetectorToMetricAlertRule(data);
+  return data;
 }
 
 // Issue alert write operations
@@ -469,13 +509,13 @@ export async function getMetricAlertRule(
  */
 export async function deleteIssueAlertRule(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<void> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   await apiRequestToRegionNoContent(
     regionUrl,
     `/organizations/${orgSlug}/workflows/${encodeURIComponent(ruleId)}/`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
 }
 
@@ -488,7 +528,7 @@ export async function deleteIssueAlertRule(
 export async function updateIssueAlertRule(
   orgSlug: string,
   workflowId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationWorkflow({
@@ -505,7 +545,7 @@ export async function updateIssueAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    "Failed to update issue alert rule"
+    "Failed to update issue alert rule",
   );
 }
 
@@ -518,7 +558,7 @@ export async function updateIssueAlertRule(
  */
 export async function createIssueAlertRule(
   orgSlug: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await createOrganizationWorkflow({
@@ -532,7 +572,7 @@ export async function createIssueAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    "Failed to create issue alert rule"
+    "Failed to create issue alert rule",
   );
 }
 
@@ -546,28 +586,70 @@ export async function createIssueAlertRule(
 // command layer unchanged while the transport moves off the retiring
 // `/alert-rules/` endpoint (getsentry/cli#1274, #1277).
 
-/**
- * Datasets whose events flow through the error/transaction pipeline
- * (`queryType: 0`) rather than the trace-item pipeline (`queryType: 1`).
- */
-const ERROR_LIKE_DATASETS = new Set(["errors", "events"]);
+/** Native data source fields sent on a detector write. */
+type DetectorSourceFields = Omit<MetricMonitorSource, "dataset"> & {
+  readonly dataset: string;
+};
 
-/** Detector `queryType` for a metric alert dataset. */
-function datasetQueryType(dataset: string): 0 | 1 {
-  return ERROR_LIKE_DATASETS.has(dataset.trim().toLowerCase()) ? 0 : 1;
+/**
+ * Resolve the native data source fields for a flat metric alert body.
+ *
+ * CLI dataset names come from the shared dataset table. Any other (native)
+ * dataset comes from the edit baseline built by `getMetricAlertRuleDocument`,
+ * which carries the stored `eventTypes`/`queryType`. Missing event types stay
+ * empty rather than defaulting to spans, so an edit never re-targets an
+ * ambiguous EAP monitor onto `trace_item_span`.
+ */
+function detectorSourceFields(
+  body: Record<string, unknown>,
+): DetectorSourceFields {
+  const dataset = pickDetectorString(body.dataset);
+  const named = metricAlertSource(dataset);
+  if (named) {
+    return named;
+  }
+  const stored = body as Partial<DetectorSourceFields>;
+  return {
+    queryType: stored.queryType ?? METRIC_MONITOR_SOURCES.spans.queryType,
+    eventTypes: stored.eventTypes ?? [],
+    dataset,
+  };
 }
 
 /**
- * Default `eventTypes` for a metric alert dataset.
+ * Translate parsed triggers into detector condition-group conditions.
  *
- * Error-like datasets track `error`/`default` events; everything else measures
- * spans. The backend accepts an explicit `eventTypes` on the data source and
- * derives the internal query type from `queryType`.
+ * Threshold triggers become one threshold condition each plus the single
+ * resolution condition the metric detector validator requires. Resolution uses
+ * the first `resolveThreshold` given, else the critical (or first) alert
+ * threshold. Native conditions pass through untouched.
  */
-function datasetEventTypes(dataset: string): string[] {
-  return ERROR_LIKE_DATASETS.has(dataset.trim().toLowerCase())
-    ? ["error", "default"]
-    : ["trace_item_span"];
+function buildDetectorConditions(
+  triggers: MetricTriggers,
+): readonly Record<string, unknown>[] {
+  if (isDetectorConditionList(triggers)) {
+    return triggers;
+  }
+
+  const below = triggers.some((trigger) => trigger.thresholdType === 1);
+  const conditions: Record<string, unknown>[] = triggers.map((trigger) => ({
+    type: below ? "lt" : "gt",
+    comparison: trigger.alertThreshold,
+    conditionResult: METRIC_MONITOR_PRIORITY[trigger.label ?? "critical"],
+  }));
+
+  const critical =
+    triggers.find((trigger) => (trigger.label ?? "critical") === "critical") ??
+    triggers[0];
+  const resolveThreshold =
+    triggers.find((trigger) => trigger.resolveThreshold != null)
+      ?.resolveThreshold ?? critical?.alertThreshold;
+  conditions.push({
+    type: below ? "gte" : "lte",
+    comparison: resolveThreshold,
+    conditionResult: METRIC_MONITOR_PRIORITY.resolved,
+  });
+  return conditions;
 }
 
 /**
@@ -578,17 +660,17 @@ function datasetEventTypes(dataset: string): string[] {
  * conversion in `mapDetectorToMetricAlertRule`.
  */
 function buildDetectorDataSource(
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Record<string, unknown> {
-  const dataset = typeof body.dataset === "string" ? body.dataset : "";
+  const native = detectorSourceFields(body);
   const timeWindowMinutes =
     typeof body.timeWindow === "number" ? body.timeWindow : 0;
   const source: Record<string, unknown> = {
     aggregate: typeof body.aggregate === "string" ? body.aggregate : "",
-    dataset,
+    dataset: native.dataset,
     query: typeof body.query === "string" ? body.query : "",
-    queryType: datasetQueryType(dataset),
-    eventTypes: datasetEventTypes(dataset),
+    queryType: native.queryType,
+    eventTypes: [...native.eventTypes],
     timeWindow: timeWindowMinutes * 60,
   };
   if (typeof body.environment === "string" && body.environment !== "") {
@@ -597,31 +679,47 @@ function buildDetectorDataSource(
   return source;
 }
 
+function isDetectorConfig(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Translate a flat metric alert body into the nested detector write payload.
  *
  * The flat body is what the create/edit commands assemble (and the edit merge
- * baseline, which reuses the `MetricAlertRule` shape). Trigger objects are
- * passed through verbatim as the condition group's conditions — their
- * `alertThreshold`/`actions` shape is already validated command-side. `status`
- * (0 active / 1 disabled) maps onto the detector's `enabled` boolean.
+ * baseline, which reuses the `MetricAlertRule` shape). Triggers are translated
+ * into detector conditions by {@link buildDetectorConditions}; `workflowIds`
+ * connects existing alerts. `status` (0 active / 1 disabled) maps onto the
+ * detector's `enabled` boolean.
  */
 function buildDetectorBody(
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Record<string, unknown> {
+  // create/edit store triggers already parsed by parseMetricTriggers.
+  const triggers = body.triggers as MetricTriggers | undefined;
+  // Threshold triggers are static thresholds. Otherwise edits carry the stored
+  // config so percent and dynamic detectors keep their detection mode, and
+  // creates default to static.
+  const keepStoredConfig =
+    isDetectorConfig(body.detectorConfig) &&
+    !(triggers && !isDetectorConditionList(triggers));
   const detectorBody: Record<string, unknown> = {
     name: typeof body.name === "string" ? body.name : "",
     type: "metric_issue",
     dataSources: [buildDetectorDataSource(body)],
-    config: { detectionType: "static" },
+    config: keepStoredConfig
+      ? body.detectorConfig
+      : { detectionType: "static" },
   };
 
-  const triggers = Array.isArray(body.triggers) ? body.triggers : undefined;
   if (triggers) {
     detectorBody.conditionGroup = {
       logicType: "any",
-      conditions: triggers,
+      conditions: buildDetectorConditions(triggers),
     };
+  }
+  if (Array.isArray(body.workflowIds)) {
+    detectorBody.workflowIds = body.workflowIds;
   }
 
   if (body.status !== undefined) {
@@ -646,12 +744,13 @@ function buildDetectorBody(
 function resolveDetectorProject(body: Record<string, unknown>): string {
   const projects = Array.isArray(body.projects) ? body.projects : [];
   const project = projects.find(
-    (value): value is string => typeof value === "string" && value.trim() !== ""
+    (value): value is string =>
+      typeof value === "string" && value.trim() !== "",
   );
   if (!project) {
     throw new ValidationError(
       "A project is required to create a metric alert rule (pass --project).",
-      "project"
+      "project",
     );
   }
   return project;
@@ -665,7 +764,7 @@ function resolveDetectorProject(body: Record<string, unknown>): string {
  */
 export async function deleteMetricAlertRule(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<void> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await deleteOrganizationDetector({
@@ -690,13 +789,30 @@ export async function deleteMetricAlertRule(
  * `MetricAlertRule` shape, then hands the merged body to `putMetricAlertRule`,
  * which translates it into the nested detector document. Returning the flat
  * shape (rather than the raw detector) keeps the command-side merge coherent.
+ * The stored `eventTypes`/`queryType` ride along so an edit of a data source
+ * the CLI does not model (e.g. `trace_item_metric`) keeps its signal, and the
+ * stored detector `config` rides along as `detectorConfig` so an edit keeps a
+ * percent or dynamic detector's detection mode.
  */
 export async function getMetricAlertRuleDocument(
   orgSlug: string,
-  ruleId: string
+  ruleId: string,
 ): Promise<Record<string, unknown>> {
-  const rule = await getMetricAlertRule(orgSlug, ruleId);
-  return { ...rule };
+  const detector = await getMetricDetector(orgSlug, ruleId);
+  const source = resolveThresholdSource(detector.dataSources?.[0] ?? {});
+  const document: Record<string, unknown> = {
+    ...mapDetectorToMetricAlertRule(detector),
+  };
+  if (Array.isArray(source.eventTypes)) {
+    document.eventTypes = source.eventTypes;
+  }
+  if (typeof source.queryType === "number") {
+    document.queryType = source.queryType;
+  }
+  if (isDetectorConfig(detector.config)) {
+    document.detectorConfig = detector.config;
+  }
+  return document;
 }
 
 /**
@@ -708,7 +824,7 @@ export async function getMetricAlertRuleDocument(
 export async function putMetricAlertRule(
   orgSlug: string,
   ruleId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationDetector({
@@ -729,7 +845,7 @@ export async function putMetricAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    `Failed to update metric alert rule '${ruleId}'`
+    `Failed to update metric alert rule '${ruleId}'`,
   );
 }
 
@@ -741,7 +857,7 @@ export async function putMetricAlertRule(
  */
 export async function createMetricAlertRule(
   orgSlug: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const projectSlug = resolveDetectorProject(body);
   const config = await getOrgSdkConfig(orgSlug);
@@ -757,6 +873,6 @@ export async function createMetricAlertRule(
   });
   return unwrapResult<Record<string, unknown>>(
     result,
-    "Failed to create metric alert rule"
+    "Failed to create metric alert rule",
   );
 }

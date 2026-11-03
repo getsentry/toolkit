@@ -1,8 +1,8 @@
 /** Delta upgrade discovery and application backed by binpatch. */
 
 import { join } from "node:path";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
+import * as Sentry from "@sentry/node";
 import {
   applyPatchChainInMemory,
   extractStableChain as binpatchExtractStableChain,
@@ -43,6 +43,7 @@ import {
 import { CLI_VERSION } from "./constants.js";
 import { customFetch } from "./custom-ca.js";
 import { getConfigDir } from "./db/index.js";
+import { extractInputUrl } from "./fetch-input.js";
 import { formatBytes } from "./formatters/numbers.js";
 import { logger } from "./logger.js";
 import { makeByteProgress, type SetMessage } from "./progress.js";
@@ -55,7 +56,7 @@ export type {
   PatchChain,
   StableChainInfo,
 } from "binpatch";
-// biome-ignore lint/performance/noBarrelFile: preserve the existing public API
+// preserve the existing public API
 export {
   extractSha256,
   getPatchFromVersion,
@@ -87,7 +88,7 @@ function upgradeSourceKey(source: UpgradeSource): string {
 /** Return whether a normalized release list belongs to the selected source. */
 export function isNormalizedForSource(
   releases: GitHubRelease[],
-  source: UpgradeSource
+  source: UpgradeSource,
 ): boolean {
   return (
     (releases as Partial<NormalizedGitHubReleases>)[
@@ -99,7 +100,7 @@ export function isNormalizedForSource(
 /** Filter and normalize raw stable GitHub releases for one upgrade source. */
 export function normalizeStableReleases(
   releases: unknown[],
-  source: UpgradeSource
+  source: UpgradeSource,
 ): NormalizedGitHubReleases {
   const normalized = releases
     .filter(isGitHubRelease)
@@ -112,7 +113,7 @@ export function normalizeStableReleases(
     .filter(
       (release) =>
         semverValid(release.tag_name) !== null &&
-        semverPrerelease(release.tag_name) === null
+        semverPrerelease(release.tag_name) === null,
     ) as NormalizedGitHubReleases;
   Object.defineProperty(normalized, NORMALIZED_RELEASE_SOURCE, {
     value: upgradeSourceKey(source),
@@ -159,7 +160,7 @@ function instrumentCache(base: PatchCache): PatchCache {
         span.setAttribute("cache.key", [key]);
         span.setAttribute(
           "cache.item_size",
-          chain.patches.reduce((sum, patch) => sum + patch.size, 0)
+          chain.patches.reduce((sum, patch) => sum + patch.size, 0),
         );
         await base.save(chain, steps);
       });
@@ -177,7 +178,9 @@ function stableSource(source: UpgradeSource): SourceStrategy {
   const releasesUrl = getGitHubReleasesUrl(source);
   const sourceFetch: typeof customFetch = async (input, init) => {
     const response = await customFetch(input, init);
-    if (!(response.ok && String(input).startsWith(`${releasesUrl}?`))) {
+    if (
+      !(response.ok && extractInputUrl(input).startsWith(`${releasesUrl}?`))
+    ) {
       return response;
     }
     const data: unknown = await response.json();
@@ -236,7 +239,7 @@ export function canAttemptDelta(targetVersion: string): boolean {
 
 export async function fetchRecentReleases(
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource()
+  source: UpgradeSource = getPrimaryUpgradeSource(),
 ): Promise<NormalizedGitHubReleases> {
   try {
     const response = await customFetch(
@@ -247,7 +250,7 @@ export async function fetchRecentReleases(
           "User-Agent": `sentry-cli/${CLI_VERSION}`,
         },
         signal,
-      }
+      },
     );
     if (!response.ok) {
       return normalizeStableReleases([], source);
@@ -266,7 +269,7 @@ export async function fetchRecentReleases(
 
 export async function downloadStablePatch(
   url: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<Uint8Array | null> {
   try {
     const response = await customFetch(url, {
@@ -281,7 +284,7 @@ export async function downloadStablePatch(
 }
 
 export function extractStableChain(
-  opts: ExtractStableChainOpts
+  opts: ExtractStableChainOpts,
 ): StableChainInfo | null {
   const result = binpatchExtractStableChain(opts);
   return "failure" in result ? null : result;
@@ -290,13 +293,13 @@ export function extractStableChain(
 export function filterAndSortChainTags(
   allTags: string[],
   currentVersion: string,
-  targetVersion: string
+  targetVersion: string,
 ): string[] {
   return binpatchFilterAndSortChainTags(
     allTags,
     currentVersion,
     targetVersion,
-    compareVersions
+    compareVersions,
   );
 }
 
@@ -316,7 +319,7 @@ type ChainStepResult =
 
 export function validateChainStep(
   manifest: OciManifest,
-  opts: { expectedFrom: string; patchLayerName: string; sizeLimit: number }
+  opts: { expectedFrom: string; patchLayerName: string; sizeLimit: number },
 ): ChainStepResult {
   const fromVersion = getPatchFromVersion(manifest);
   if (fromVersion !== opts.expectedFrom) {
@@ -336,7 +339,7 @@ export function validateChainStep(
   const layer = manifest.layers.find(
     (item) =>
       item.annotations?.["org.opencontainers.image.title"] ===
-      opts.patchLayerName
+      opts.patchLayerName,
   );
   return layer
     ? {
@@ -357,12 +360,12 @@ export function resolveStableChain(
   currentVersion: string,
   targetVersion: string,
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource()
+  source: UpgradeSource = getPrimaryUpgradeSource(),
 ): Promise<PatchChain | null> {
   return stableSource(source).resolveChain(
     currentVersion,
     targetVersion,
-    signal
+    signal,
   );
 }
 
@@ -388,17 +391,19 @@ export async function resolveNightlyChain(opts: {
   const chainTags = filterAndSortChainTags(
     tags,
     opts.currentVersion,
-    opts.targetVersion
+    opts.targetVersion,
   );
   if (chainTags.length === 0 || chainTags.length > MAX_NIGHTLY_CHAIN_DEPTH) {
     return null;
   }
 
   let manifests: OciManifest[];
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     manifests = await Promise.all(
-      chainTags.map((tag) => client.fetchManifest(opts.token, tag, opts.signal))
+      chainTags.map((tag) =>
+        client.fetchManifest(opts.token, tag, opts.signal),
+      ),
     );
   } catch {
     return null;
@@ -428,7 +433,7 @@ export async function resolveNightlyChain(opts: {
     if (!result.ok) {
       Sentry.getActiveSpan()?.setAttribute(
         "telemetry_reason",
-        result.failure.reason
+        result.failure.reason,
       );
       return null;
     }
@@ -444,7 +449,7 @@ export async function resolveNightlyChain(opts: {
   if (previousVersion !== opts.targetVersion || !expectedSha256) {
     Sentry.getActiveSpan()?.setAttribute(
       "telemetry_reason",
-      "version-mismatch"
+      "version-mismatch",
     );
     return null;
   }
@@ -452,10 +457,10 @@ export async function resolveNightlyChain(opts: {
   const patches = await Promise.all(
     digests.map(async (digest) => {
       const data = new Uint8Array(
-        await client.downloadBlobBuffer(opts.token, digest, opts.signal)
+        await client.downloadBlobBuffer(opts.token, digest, opts.signal),
       );
       return { data, size: data.byteLength };
-    })
+    }),
   );
   return {
     patches,
@@ -469,7 +474,7 @@ export function applyPatchChain(
   chain: PatchChain,
   oldBinaryPath: string,
   destPath: string,
-  onBytes?: (bytes: number) => void
+  onBytes?: (bytes: number) => void,
 ): Promise<string> {
   return withTracingSpan(
     "apply-patches",
@@ -481,15 +486,15 @@ export function applyPatchChain(
         oldBinaryPath,
         chain.patches.map((patch) => patch.data),
         destPath,
-        onBytes
+        onBytes,
       );
       if (sha256 !== chain.expectedSha256) {
         throw new Error(
-          `SHA-256 mismatch after patching: got ${sha256}, expected ${chain.expectedSha256}`
+          `SHA-256 mismatch after patching: got ${sha256}, expected ${chain.expectedSha256}`,
         );
       }
       return sha256;
-    }
+    },
   );
 }
 
@@ -515,7 +520,7 @@ function makeProgressHandler(setMessage?: SetMessage): ProgressHandler {
         `${isApply ? "Applying" : "Processing"} patch(es)`,
         event.total,
         setMessage,
-        { format: isApply ? "pct" : "bytes" }
+        { format: isApply ? "pct" : "bytes" },
       );
     }
     if (event.type === "bytes" && progress) {
@@ -540,7 +545,7 @@ function telemetry(): DeltaTelemetry & { _source: { current?: string } } {
       const span = Sentry.getActiveSpan();
       span?.setAttribute("delta.source", source);
       log.debug(
-        `Resolved patch chain from ${source}: ${chain.patches.length} patch(es), ${formatBytes(chain.totalSize)} total`
+        `Resolved patch chain from ${source}: ${chain.patches.length} patch(es), ${formatBytes(chain.totalSize)} total`,
       );
     },
     onOfflineMiss: () => {
@@ -553,14 +558,14 @@ function telemetry(): DeltaTelemetry & { _source: { current?: string } } {
   };
 }
 
-// biome-ignore lint/nursery/useMaxParams: internal adapter mirrors the preserved public call shape
+// oxlint-disable-next-line max-params -- internal adapter mirrors the preserved public call shape
 function resolveDelta(
   source: SourceStrategy,
   targetVersion: string,
   oldBinaryPath: string,
   destPath: string,
   offline?: boolean,
-  setMessage?: SetMessage
+  setMessage?: SetMessage,
 ): Promise<{ result: DeltaResult | null; source: string | undefined }> {
   const tel = telemetry();
   return resolveAndApply({
@@ -576,14 +581,14 @@ function resolveDelta(
   }).then((result) => ({ result, source: tel._source.current }));
 }
 
-// biome-ignore lint/nursery/useMaxParams: preserve the existing public API
+// oxlint-disable-next-line max-params -- preserve the existing public API
 export function resolveStableDelta(
   targetVersion: string,
   oldBinaryPath: string,
   destPath: string,
   offline?: boolean,
   setMessage?: SetMessage,
-  source: UpgradeSource = getPrimaryUpgradeSource()
+  source: UpgradeSource = getPrimaryUpgradeSource(),
 ): Promise<DeltaResult | null> {
   return resolveDelta(
     stableSource(source),
@@ -591,18 +596,18 @@ export function resolveStableDelta(
     oldBinaryPath,
     destPath,
     offline,
-    setMessage
+    setMessage,
   ).then(({ result }) => result);
 }
 
-// biome-ignore lint/nursery/useMaxParams: preserve the existing public API
+// oxlint-disable-next-line max-params -- preserve the existing public API
 export function resolveNightlyDelta(
   targetVersion: string,
   oldBinaryPath: string,
   destPath: string,
   offline?: boolean,
   setMessage?: SetMessage,
-  source: UpgradeSource = getPrimaryUpgradeSource()
+  source: UpgradeSource = getPrimaryUpgradeSource(),
 ): Promise<DeltaResult | null> {
   return resolveDelta(
     nightlySource(source),
@@ -610,18 +615,18 @@ export function resolveNightlyDelta(
     oldBinaryPath,
     destPath,
     offline,
-    setMessage
+    setMessage,
   ).then(({ result }) => result);
 }
 
-// biome-ignore lint/nursery/useMaxParams: preserve the existing public API
+// oxlint-disable-next-line max-params -- preserve the existing public API
 export function attemptDeltaUpgrade(
   targetVersion: string,
   oldBinaryPath: string,
   destPath: string,
   offline?: boolean,
   setMessage?: SetMessage,
-  source: UpgradeSource = getPrimaryUpgradeSource()
+  source: UpgradeSource = getPrimaryUpgradeSource(),
 ): Promise<DeltaResult | null> {
   if (!canAttemptDelta(targetVersion)) {
     return Promise.resolve(null);
@@ -641,7 +646,7 @@ export function attemptDeltaUpgrade(
           oldBinaryPath,
           destPath,
           offline,
-          setMessage
+          setMessage,
         );
         chainSource = resolved.source;
         const result = resolved.result;
@@ -651,12 +656,12 @@ export function attemptDeltaUpgrade(
           Sentry.metrics.distribution(
             "upgrade.delta.patch_bytes",
             result.patchBytes,
-            { attributes: { channel } }
+            { attributes: { channel } },
           );
           Sentry.metrics.distribution(
             "upgrade.delta.chain_length",
             result.chainLength,
-            { attributes: { channel } }
+            { attributes: { channel } },
           );
         } else {
           span.setAttribute("delta.result", "unavailable");
@@ -681,7 +686,7 @@ export function attemptDeltaUpgrade(
         }
         const message = error instanceof Error ? error.message : String(error);
         log.warn(
-          `Delta upgrade failed (${message}), falling back to full download`
+          `Delta upgrade failed (${message}), falling back to full download`,
         );
         span.setStatus({ code: 2 });
         span.setAttribute("delta.result", "error");
@@ -689,14 +694,14 @@ export function attemptDeltaUpgrade(
         return null;
       }
     },
-    { "delta.channel": channel }
+    { "delta.channel": channel },
   );
 }
 
 async function prefetch(
   source: SourceStrategy,
   targetVersion: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!canAttemptDelta(targetVersion) || signal?.aborted) {
     return;
@@ -711,7 +716,7 @@ async function prefetch(
 export function prefetchNightlyPatches(
   targetVersion: string,
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource()
+  source: UpgradeSource = getPrimaryUpgradeSource(),
 ): Promise<void> {
   return prefetch(nightlySource(source), targetVersion, signal);
 }
@@ -719,7 +724,7 @@ export function prefetchNightlyPatches(
 export function prefetchStablePatches(
   targetVersion: string,
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource()
+  source: UpgradeSource = getPrimaryUpgradeSource(),
 ): Promise<void> {
   return prefetch(stableSource(source), targetVersion, signal);
 }

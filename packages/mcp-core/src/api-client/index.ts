@@ -1,4 +1,4 @@
 export * from "./client";
 export * from "./schema";
 export * from "./types";
-export * from "./errors";
+export * from "@sentry/toolkit-core/api-client/errors";

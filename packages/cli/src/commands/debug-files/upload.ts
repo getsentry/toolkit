@@ -36,7 +36,7 @@ import {
   type DebugFileUploadResult,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   createIl2cppLineMapping,
   createSourceBundle,
@@ -47,7 +47,13 @@ import {
   type PreparedDif,
   prepareDifs,
   scanPaths,
+  VALID_DIF_TYPES,
 } from "../../lib/dif/scan.js";
+import {
+  choiceParser,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -89,7 +95,7 @@ function collectScanPaths(paths: string[], derivedData: boolean): string[] {
   const derivedDataPath = join(homedir(), DERIVED_DATA_SUBPATH);
   if (!existsSync(derivedDataPath)) {
     log.warn(
-      `Xcode DerivedData folder not found at ${derivedDataPath}; ignoring --derived-data.`
+      `Xcode DerivedData folder not found at ${derivedDataPath}; ignoring --derived-data.`,
     );
     return paths;
   }
@@ -204,7 +210,7 @@ function appendIl2cppMapping(difs: DebugFileUpload[], file: PreparedDif): void {
     result = createIl2cppLineMapping(
       new Uint8Array(file.content),
       readSourceFile,
-      file.debugId
+      file.debugId,
     );
   } catch (err) {
     log.debug(`Could not compute IL2CPP line mapping for ${file.path}`, err);
@@ -239,7 +245,7 @@ function appendIl2cppMapping(difs: DebugFileUpload[], file: PreparedDif): void {
  */
 function buildDifList(
   prepared: PreparedDif[],
-  options: { includeSources: boolean; il2cppMapping: boolean }
+  options: { includeSources: boolean; il2cppMapping: boolean },
 ): DebugFileUpload[] {
   const { includeSources, il2cppMapping } = options;
   const difs: DebugFileUpload[] = [];
@@ -264,7 +270,7 @@ function buildDifList(
         new Uint8Array(file.content),
         basename(file.path),
         readSourceFile,
-        { collectIl2cppSources: il2cppMapping }
+        { collectIl2cppSources: il2cppMapping },
       );
     } catch (err) {
       log.debug(`Could not build source bundle for ${file.path}`, err);
@@ -307,14 +313,14 @@ function dedupeDifs(difs: DebugFileUpload[]): DebugFileUpload[] {
  */
 function missingRequestedIds(
   requestedIds: string[] | undefined,
-  prepared: PreparedDif[]
+  prepared: PreparedDif[],
 ): string[] {
   if (!requestedIds || requestedIds.length === 0) {
     return [];
   }
   const foundIds = prepared.flatMap((p) => p.objects.map((o) => o.debugId));
   return requestedIds.filter(
-    (requested) => !foundIds.some((found) => debugIdMatches(requested, found))
+    (requested) => !foundIds.some((found) => debugIdMatches(requested, found)),
   );
 }
 
@@ -331,14 +337,14 @@ function resolveWaitMode(flags: UploadFlags): {
   if (flags.wait && waitFor !== undefined) {
     throw new ValidationError(
       "--wait and --wait-for cannot be combined",
-      "wait"
+      "wait",
     );
   }
   if (waitFor !== undefined) {
     if (!Number.isFinite(waitFor) || waitFor <= 0) {
       throw new ValidationError(
         "--wait-for must be a positive number of seconds",
-        "wait-for"
+        "wait-for",
       );
     }
     return { wait: true, maxWaitMs: Math.round(waitFor * 1000) };
@@ -359,7 +365,7 @@ function* doDryRun(
     missingIds: string[];
     requireAll: boolean;
     oversizedCount: number;
-  }
+  },
 ) {
   const { difs, missingIds, requireAll, oversizedCount } = params;
   yield new CommandOutput<DebugFilesUploadResult>({
@@ -399,7 +405,7 @@ function* doNothingToUpload(
     requireAll: boolean;
     oversizedCount: number;
     maxFileSize: number;
-  }
+  },
 ) {
   const { missingIds, requireAll, oversizedCount, maxFileSize } = params;
   yield new CommandOutput<DebugFilesUploadResult>({
@@ -448,14 +454,14 @@ async function* doUpload(
     oversizedCount: number;
     maxFileSize: number;
     serverOptions?: ChunkServerOptions;
-  }
+  },
 ) {
   const results = await uploadDebugFiles(params);
 
   // Files the server (or the local size gate) rejected come back as
   // error/not_found results; they must not be counted as uploaded.
   const failures = results.filter(
-    (r) => r.state === "error" || r.state === "not_found"
+    (r) => r.state === "error" || r.state === "not_found",
   );
 
   yield new CommandOutput<DebugFilesUploadResult>({
@@ -491,7 +497,7 @@ async function* doUpload(
     const details = failures
       .map(
         (r) =>
-          `${r.debugId ?? r.name}: ${r.state}${r.detail ? ` (${r.detail})` : ""}`
+          `${r.debugId ?? r.name}: ${r.state}${r.detail ? ` (${r.detail})` : ""}`,
       )
       .join("; ");
     return {
@@ -547,17 +553,55 @@ export const uploadCommand = buildCommand({
       "from each file's referenced generated C++ sources and uploaded as " +
       "separate il2cpp debug files; combine with --include-sources to also " +
       "bundle the referenced C# source files.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files upload ./build\n" +
-      "  sentry debug-files upload ./symbols.zip\n" +
-      "  sentry debug-files upload ./libexample.so --include-sources\n" +
-      "  sentry debug-files upload ./dsyms --type dsym --wait\n" +
-      "  sentry debug-files upload ./build --il2cpp-mapping --include-sources\n" +
-      "  sentry debug-files upload --derived-data --no-upload\n" +
-      "  sentry debug-files upload ./build --no-zips --no-upload\n\n" +
       "BCSymbolMap resolution (legacy --symbol-maps) is not supported: it " +
       "only applies to Apple Bitcode, which Apple has deprecated. Use the " +
       "legacy Rust sentry-cli if you still need it.",
+    examples: [
+      {
+        description:
+          "Upload debug information files (scans directories recursively)",
+        command: "sentry debug-files upload ./build",
+      },
+      {
+        description: "Attach a source bundle to each file",
+        command: "sentry debug-files upload ./libexample.so --include-sources",
+      },
+      {
+        description: "Scan a .zip archive in place",
+        command: "sentry debug-files upload ./symbols.zip",
+      },
+      {
+        description: "Skip .zip archives",
+        command: "sentry debug-files upload ./build --no-zips",
+      },
+      {
+        description: "Upload only dSYMs and wait for server-side processing",
+        command: "sentry debug-files upload ./dsyms --type dsym --wait",
+      },
+      {
+        description: "Fail unless the requested debug ID is found",
+        command:
+          "sentry debug-files upload ./build --id <debug-id> --require-all",
+      },
+      {
+        description: "Unity: upload IL2CPP line mappings",
+        command: "sentry debug-files upload ./build --il2cpp-mapping",
+      },
+      {
+        description:
+          "Unity: upload IL2CPP line mappings with referenced C# sources",
+        command:
+          "sentry debug-files upload ./build --il2cpp-mapping --include-sources",
+      },
+      {
+        description: "Preview what would be uploaded (no credentials needed)",
+        command: "sentry debug-files upload ./build --no-upload",
+      },
+      {
+        description: "Scan Xcode's DerivedData without uploading",
+        command: "sentry debug-files upload --derived-data --no-upload",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -567,14 +611,14 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Files or directories to scan for debug information files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VALID_DIF_TYPES),
         brief:
           "Only upload files of this type (repeatable): dsym, elf, pe, pdb, " +
           "portablepdb, wasm, breakpad, sourcebundle, jvm",
@@ -583,7 +627,7 @@ export const uploadCommand = buildCommand({
       },
       id: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Only upload the object with this debug id (repeatable)",
         optional: true,
         variadic: true,
@@ -651,7 +695,7 @@ export const uploadCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait up to this many seconds for server-side processing",
         optional: true,
       },
@@ -709,7 +753,7 @@ export const uploadCommand = buildCommand({
       buildDifList(prepared, {
         includeSources: Boolean(flags["include-sources"]),
         il2cppMapping: Boolean(flags["il2cpp-mapping"]),
-      })
+      }),
     );
     const missingIds = missingRequestedIds(flags.id, prepared);
 

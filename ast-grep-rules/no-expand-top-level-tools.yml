@@ -1,0 +1,39 @@
+id: no-expand-top-level-tools
+language: TypeScript
+severity: error
+message: Do not change the default top-level MCP tool list.
+note: |
+  Every tool in TOP_LEVEL_TOOL_NAMES ships in the default tools/list payload.
+  Many harnesses still load every listed tool definition into the context
+  window up front, so each addition is noise for every session. Keep new tools
+  deferred: they stay reachable through search_sentry_tools and
+  execute_sentry_tool. Restricted until tool search is standard in every
+  mainstream harness, which likely happens by 2027. If the list truly must
+  change, update the allowed list in this rule in the same PR so the change is
+  reviewed explicitly.
+rule:
+  kind: lexical_declaration
+  has:
+    kind: variable_declarator
+    has:
+      field: name
+      regex: ^TOP_LEVEL_TOOL_NAMES$
+  not:
+    pattern: |
+      const TOP_LEVEL_TOOL_NAMES = [
+        "find_organizations",
+        "find_projects",
+        "update_issue",
+        "search_errors",
+        "search_logs",
+        "search_traces",
+        "search_metrics",
+        "search_profiles",
+        "search_replays",
+        "analyze_issue_with_seer",
+        "search_issues",
+        "get_sentry_resource",
+        ...CATALOG_INFRASTRUCTURE_TOOL_NAMES
+      ] as const
+files:
+  - packages/mcp-core/src/tools/surfaces.ts

@@ -73,13 +73,13 @@ describe("validateTraceId", () => {
 
   test("throws ValidationError for non-hex chars", () => {
     expect(() => validateTraceId("zzzz1111bbbb2222cccc3333dddd4444")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("throws ValidationError for 33-char hex", () => {
     expect(() => validateTraceId(`${VALID_TRACE_ID}a`)).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -100,7 +100,7 @@ describe("validateTraceId", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ValidationError);
       expect((error as ValidationError).message).toContain(
-        "32-character hexadecimal"
+        "32-character hexadecimal",
       );
     }
   });
@@ -120,13 +120,13 @@ describe("validateTraceId", () => {
 
   test("strips dashes from UUID-format trace ID (real user input from CLI-7Z)", () => {
     expect(validateTraceId("ed29abc8-71c4-475b-9675-4655ef1a02d0")).toBe(
-      "ed29abc871c4475b96754655ef1a02d0"
+      "ed29abc871c4475b96754655ef1a02d0",
     );
   });
 
   test("strips dashes from uppercase UUID trace ID", () => {
     expect(validateTraceId("AAAA1111-BBBB-2222-CCCC-3333DDDD4444")).toBe(
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
   });
 });
@@ -182,7 +182,7 @@ describe("property: isTraceId ↔ validateTraceId consistency", () => {
         }
         expect(isValid).toBe(validates);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -204,7 +204,7 @@ describe("property: validateTraceId", () => {
       property(validTraceIdArb, (id) => {
         expect(validateTraceId(id)).toBe(id.toLowerCase());
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -215,7 +215,7 @@ describe("property: validateTraceId", () => {
         const second = validateTraceId(first);
         expect(second).toBe(first);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -232,7 +232,7 @@ describe("property: validateTraceId", () => {
       property(wrongLengthHexArb, (id) => {
         expect(() => validateTraceId(id)).toThrow(ValidationError);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -240,7 +240,7 @@ describe("property: validateTraceId", () => {
   const nonHexChars = "ghijklmnopqrstuvwxyz!@#$%^&*()-_ ";
   const mixedCharsArb = array(
     constantFrom(..."0123456789abcdef".split(""), ...nonHexChars.split("")),
-    { minLength: 32, maxLength: 32 }
+    { minLength: 32, maxLength: 32 },
   )
     .filter((chars) => chars.some((c) => nonHexChars.includes(c)))
     .map((chars) => chars.join(""));
@@ -250,7 +250,7 @@ describe("property: validateTraceId", () => {
       property(mixedCharsArb, (id) => {
         expect(() => validateTraceId(id)).toThrow(ValidationError);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -268,7 +268,7 @@ describe("property: validateTraceId", () => {
         const result = validateTraceId(uuid);
         expect(result).toBe(id.toLowerCase());
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });

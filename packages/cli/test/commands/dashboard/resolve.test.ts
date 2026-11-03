@@ -1,8 +1,9 @@
 /**
  * Dashboard Resolution Utility Tests
  *
- * Tests for positional argument parsing, dashboard ID resolution,
- * and org resolution in src/commands/dashboard/resolve.ts.
+ * Tests for dashboard ID resolution and org resolution in
+ * src/commands/dashboard/resolve.ts. Argument parsing is tested in
+ * test/lib/dashboard-arguments.test.ts.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -12,12 +13,11 @@ import {
   DEFAULT_GROUP_BY_LIMIT,
   enrichDashboardError,
   normalizeDataset,
-  parseDashboardListArgs,
-  parseDashboardPositionalArgs,
   resolveDashboardId,
   resolveOrgFromTarget,
   resolveWidgetIndex,
   validateWidgetEnums,
+  withDashboardErrors,
 } from "../../../src/commands/dashboard/resolve.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -27,11 +27,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { parseOrgProjectArg } from "../../../src/lib/arg-parsing.js";
 import {
@@ -48,11 +48,11 @@ vi.mock("../../../src/lib/region.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as region from "../../../src/lib/region.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -62,234 +62,12 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-
-// ---------------------------------------------------------------------------
-// parseDashboardPositionalArgs
-// ---------------------------------------------------------------------------
-
-describe("parseDashboardPositionalArgs", () => {
-  test("throws ValidationError for empty args", () => {
-    expect(() => parseDashboardPositionalArgs([])).toThrow(ValidationError);
-  });
-
-  test("error message contains 'Dashboard ID or title'", () => {
-    try {
-      parseDashboardPositionalArgs([]);
-      expect.unreachable("Should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-      expect((error as ValidationError).message).toContain(
-        "Dashboard ID or title"
-      );
-    }
-  });
-
-  test("single arg returns dashboardRef only", () => {
-    const result = parseDashboardPositionalArgs(["123"]);
-    expect(result.dashboardRef).toBe("123");
-    expect(result.targetArg).toBeUndefined();
-  });
-
-  test("two args returns target + dashboardRef", () => {
-    const result = parseDashboardPositionalArgs(["my-org/", "My Dashboard"]);
-    expect(result.dashboardRef).toBe("My Dashboard");
-    expect(result.targetArg).toBe("my-org/");
-  });
-
-  test("two args with bare org slug auto-appends /", () => {
-    const result = parseDashboardPositionalArgs(["my-org", "12345"]);
-    expect(result.dashboardRef).toBe("12345");
-    expect(result.targetArg).toBe("my-org/");
-  });
-
-  test("two args with org/project is unchanged", () => {
-    const result = parseDashboardPositionalArgs(["my-org/my-project", "12345"]);
-    expect(result.dashboardRef).toBe("12345");
-    expect(result.targetArg).toBe("my-org/my-project");
-  });
-
-  // -- URL auto-recovery --
-
-  test("extracts dashboard ID and org from SaaS subdomain URL", () => {
-    const result = parseDashboardPositionalArgs([
-      "https://sentry-sdks.sentry.io/dashboard/4326879/",
-    ]);
-    expect(result.dashboardRef).toBe("4326879");
-    expect(result.targetArg).toBe("sentry-sdks/");
-  });
-
-  test("extracts dashboard ID and org from organizations-path URL", () => {
-    const result = parseDashboardPositionalArgs([
-      "https://sentry.io/organizations/my-org/dashboard/12345/",
-    ]);
-    expect(result.dashboardRef).toBe("12345");
-    expect(result.targetArg).toBe("my-org/");
-  });
-
-  test("URL with org but no dashboard ID + second arg uses second arg as ref", () => {
-    const result = parseDashboardPositionalArgs([
-      "https://my-org.sentry.io/",
-      "My Dashboard",
-    ]);
-    expect(result.dashboardRef).toBe("My Dashboard");
-    expect(result.targetArg).toBe("my-org/");
-  });
-
-  test("URL with org but no dashboard ID and no second arg throws", () => {
-    expect(() =>
-      parseDashboardPositionalArgs(["https://my-org.sentry.io/"])
-    ).toThrow(ValidationError);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parseDashboardListArgs
-// ---------------------------------------------------------------------------
-
-describe("parseDashboardListArgs", () => {
-  test("empty args returns undefined for both", () => {
-    const result = parseDashboardListArgs([]);
-    expect(result.targetArg).toBeUndefined();
-    expect(result.titleFilter).toBeUndefined();
-  });
-
-  test("single arg with trailing slash is target", () => {
-    const result = parseDashboardListArgs(["my-org/"]);
-    expect(result.targetArg).toBe("my-org/");
-    expect(result.titleFilter).toBeUndefined();
-  });
-
-  test("single arg with glob * is title filter", () => {
-    const result = parseDashboardListArgs(["Error*"]);
-    expect(result.targetArg).toBeUndefined();
-    expect(result.titleFilter).toBe("Error*");
-  });
-
-  test("single arg with space is title filter", () => {
-    const result = parseDashboardListArgs(["My Dashboard"]);
-    expect(result.targetArg).toBeUndefined();
-    expect(result.titleFilter).toBe("My Dashboard");
-  });
-
-  test("single arg with glob ? is title filter", () => {
-    const result = parseDashboardListArgs(["?something"]);
-    expect(result.targetArg).toBeUndefined();
-    expect(result.titleFilter).toBe("?something");
-  });
-
-  test("single arg with glob [ is title filter", () => {
-    const result = parseDashboardListArgs(["[abc]"]);
-    expect(result.targetArg).toBeUndefined();
-    expect(result.titleFilter).toBe("[abc]");
-  });
-
-  test("single bare word is title filter (dashboards are org-scoped)", () => {
-    const result = parseDashboardListArgs(["performance"]);
-    expect(result.targetArg).toBeUndefined();
-    expect(result.titleFilter).toBe("performance");
-  });
-
-  test("two args with trailing slash target and glob filter", () => {
-    const result = parseDashboardListArgs(["my-org/", "Error*"]);
-    expect(result.targetArg).toBe("my-org/");
-    expect(result.titleFilter).toBe("Error*");
-  });
-
-  test("two args with bare org slug auto-appends /", () => {
-    const result = parseDashboardListArgs(["my-org", "Error*"]);
-    expect(result.targetArg).toBe("my-org/");
-    expect(result.titleFilter).toBe("Error*");
-  });
-
-  test("two args with org/project and glob filter", () => {
-    const result = parseDashboardListArgs(["my-org/my-project", "*API*"]);
-    expect(result.targetArg).toBe("my-org/my-project");
-    expect(result.titleFilter).toBe("*API*");
-  });
-
-  test("multi-word unquoted filter: remaining args joined with spaces", () => {
-    const result = parseDashboardListArgs(["sentry/cli", "CLI", "Health"]);
-    expect(result.targetArg).toBe("sentry/cli");
-    expect(result.titleFilter).toBe("CLI Health");
-  });
-
-  test("multi-word unquoted filter with bare org", () => {
-    const result = parseDashboardListArgs(["my-org", "Error", "Overview"]);
-    expect(result.targetArg).toBe("my-org/");
-    expect(result.titleFilter).toBe("Error Overview");
-  });
-
-  test("single arg org/project/name splits into target + filter", () => {
-    const result = parseDashboardListArgs(["sentry/cli/CLI"]);
-    expect(result.targetArg).toBe("sentry/cli");
-    expect(result.titleFilter).toBe("CLI");
-  });
-
-  test("single arg org/project/name with spaces in name", () => {
-    const result = parseDashboardListArgs(["sentry/cli/My Dashboard"]);
-    expect(result.targetArg).toBe("sentry/cli");
-    expect(result.titleFilter).toBe("My Dashboard");
-  });
-
-  test("single arg org/ is target only (one slash, trailing)", () => {
-    const result = parseDashboardListArgs(["my-org/"]);
-    expect(result.targetArg).toBe("my-org/");
-    expect(result.titleFilter).toBeUndefined();
-  });
-
-  test("single arg org/project is target only (one slash)", () => {
-    const result = parseDashboardListArgs(["my-org/my-project"]);
-    expect(result.targetArg).toBe("my-org/my-project");
-    expect(result.titleFilter).toBeUndefined();
-  });
-
-  test("single arg org/project/ is target only (trailing slash after project)", () => {
-    const result = parseDashboardListArgs(["my-org/my-project/"]);
-    expect(result.targetArg).toBe("my-org/my-project/");
-    expect(result.titleFilter).toBeUndefined();
-  });
-
-  // -- URL handling --
-
-  test("dashboard URL throws ValidationError suggesting view command", () => {
-    expect(() =>
-      parseDashboardListArgs([
-        "https://sentry-sdks.sentry.io/dashboard/4326879/",
-      ])
-    ).toThrow(ValidationError);
-    try {
-      parseDashboardListArgs([
-        "https://sentry-sdks.sentry.io/dashboard/4326879/",
-      ]);
-    } catch (error) {
-      const msg = (error as ValidationError).message;
-      expect(msg).toContain("sentry dashboard view");
-      expect(msg).toContain("4326879");
-      expect(msg).toContain("sentry-sdks");
-    }
-  });
-
-  test("org-only URL extracts org as target", () => {
-    const result = parseDashboardListArgs(["https://my-org.sentry.io/"]);
-    expect(result.targetArg).toBe("my-org/");
-    expect(result.titleFilter).toBeUndefined();
-  });
-
-  test("org-only URL with second arg uses it as title filter", () => {
-    const result = parseDashboardListArgs([
-      "https://my-org.sentry.io/",
-      "Error*",
-    ]);
-    expect(result.targetArg).toBe("my-org/");
-    expect(result.titleFilter).toBe("Error*");
-  });
-});
 
 // ---------------------------------------------------------------------------
 // resolveDashboardId
@@ -494,7 +272,7 @@ describe("resolveOrgFromTarget", () => {
     const org = await resolveOrgFromTarget(
       parsed,
       "/tmp",
-      "sentry dashboard view"
+      "sentry dashboard view",
     );
     expect(org).toBe("my-org");
     expect(resolveEffectiveOrgSpy).toHaveBeenCalledWith("my-org");
@@ -506,7 +284,7 @@ describe("resolveOrgFromTarget", () => {
     const org = await resolveOrgFromTarget(
       parsed,
       "/tmp",
-      "sentry dashboard list"
+      "sentry dashboard list",
     );
     expect(org).toBe("my-org");
     expect(resolveEffectiveOrgSpy).toHaveBeenCalledWith("o1169445");
@@ -514,12 +292,12 @@ describe("resolveOrgFromTarget", () => {
 
   test("auto-detect propagates missing-organization ContextError", async () => {
     resolveOrgOnlyTargetSpy.mockRejectedValue(
-      new ContextError("Organization", "sentry dashboard view")
+      new ContextError("Organization", "sentry dashboard view"),
     );
     const parsed = parseOrgProjectArg(undefined);
 
     await expect(
-      resolveOrgFromTarget(parsed, "/tmp", "sentry dashboard view")
+      resolveOrgFromTarget(parsed, "/tmp", "sentry dashboard view"),
     ).rejects.toThrow(ContextError);
   });
 
@@ -529,7 +307,7 @@ describe("resolveOrgFromTarget", () => {
     const org = await resolveOrgFromTarget(
       parsed,
       "/tmp",
-      "sentry dashboard list"
+      "sentry dashboard list",
     );
     expect(org).toBe("detected-org");
     expect(resolveOrgOnlyTargetSpy).toHaveBeenCalled();
@@ -544,14 +322,14 @@ describe("enrichDashboardError", () => {
   test("re-throws non-ApiError unchanged", async () => {
     const original = new Error("network failure");
     await expect(
-      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" })
+      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(original);
   });
 
   test("re-throws ApiError with unhandled status unchanged", async () => {
     const original = new ApiError("rate limited", 429, "Too many requests");
     await expect(
-      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" })
+      enrichDashboardError(original, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(ApiError);
     try {
       await enrichDashboardError(original, {
@@ -747,7 +525,7 @@ describe("enrichDashboardError", () => {
     const apiErr = new ApiError(
       "Bad Request",
       400,
-      "You may not exceed 10 dashboards on your current plan."
+      "You may not exceed 10 dashboards on your current plan.",
     );
     try {
       await enrichDashboardError(apiErr, {
@@ -761,7 +539,7 @@ describe("enrichDashboardError", () => {
       expect(msg).toContain("Dashboard create failed");
       expect(msg).toContain("'my-org'");
       expect((error as ApiError).detail).toContain(
-        "You may not exceed 10 dashboards"
+        "You may not exceed 10 dashboards",
       );
     }
   });
@@ -769,8 +547,26 @@ describe("enrichDashboardError", () => {
   test("400 on non-create/update operation re-throws unchanged", async () => {
     const apiErr = new ApiError("Bad Request", 400, "some detail");
     await expect(
-      enrichDashboardError(apiErr, { orgSlug: "my-org", operation: "list" })
+      enrichDashboardError(apiErr, { orgSlug: "my-org", operation: "list" }),
     ).rejects.toThrow(apiErr);
+  });
+});
+
+describe("withDashboardErrors", () => {
+  test("returns the operation's result", async () => {
+    await expect(
+      withDashboardErrors({ orgSlug: "my-org", operation: "list" }, () =>
+        Promise.resolve("ok"),
+      ),
+    ).resolves.toBe("ok");
+  });
+
+  test("enriches operation failures", async () => {
+    await expect(
+      withDashboardErrors({ orgSlug: "my-org", operation: "list" }, () =>
+        Promise.reject(new ApiError("Not Found", 404)),
+      ),
+    ).rejects.toThrow(ResolutionError);
   });
 });
 
@@ -823,7 +619,7 @@ describe("validateWidgetEnums (with normalizeDataset)", () => {
     // Pipeline: caller runs normalizeDataset first, then passes the canonical
     // value to validateWidgetEnums. This simulates the wiring in add/edit.
     expect(() =>
-      validateWidgetEnums("bar", normalizeDataset("errors"))
+      validateWidgetEnums("bar", normalizeDataset("errors")),
     ).not.toThrow();
   });
 
@@ -835,13 +631,13 @@ describe("validateWidgetEnums (with normalizeDataset)", () => {
 
   test("rejects unknown datasets (no such alias)", () => {
     expect(() => validateWidgetEnums(undefined, "bogus-dataset")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
   test("rejects unknown display types", () => {
     expect(() => validateWidgetEnums("pie-chart", undefined)).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -857,10 +653,10 @@ describe("autoDefaultGroupLimit", () => {
 
   test("returns DEFAULT_GROUP_BY_LIMIT for grouped widgets with no limit", () => {
     expect(autoDefaultGroupLimit(["browser.name"], undefined)).toBe(
-      DEFAULT_GROUP_BY_LIMIT
+      DEFAULT_GROUP_BY_LIMIT,
     );
     expect(autoDefaultGroupLimit(["browser.name"], null)).toBe(
-      DEFAULT_GROUP_BY_LIMIT
+      DEFAULT_GROUP_BY_LIMIT,
     );
   });
 
@@ -879,19 +675,19 @@ describe("applyGroupLimitAutoDefault", () => {
     // Auto-defaulted columns (e.g., ["issue"] for issue/table) should NOT
     // trigger the auto-default limit — caller signals intent via userGroupBy.
     expect(
-      applyGroupLimitAutoDefault(undefined, ["issue"], undefined)
+      applyGroupLimitAutoDefault(undefined, ["issue"], undefined),
     ).toBeUndefined();
   });
 
   test("applies default when --group-by passed without limit", () => {
     expect(
-      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], undefined)
+      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], undefined),
     ).toBe(DEFAULT_GROUP_BY_LIMIT);
   });
 
   test("preserves explicit limit", () => {
     expect(
-      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], 25)
+      applyGroupLimitAutoDefault(["browser.name"], ["browser.name"], 25),
     ).toBe(25);
   });
 

@@ -76,7 +76,7 @@ describe("property: isValidDirNameForInference", () => {
       property(singleCharArb, (char) => {
         expect(isValidDirNameForInference(char)).toBe(false);
       }),
-      { numRuns: 50 }
+      { numRuns: 50 },
     );
   });
 
@@ -87,7 +87,7 @@ describe("property: isValidDirNameForInference", () => {
         const name = `.${suffix}`;
         expect(isValidDirNameForInference(name)).toBe(false);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
@@ -97,7 +97,7 @@ describe("property: isValidDirNameForInference", () => {
         // Valid names with 2+ chars that don't start with dot should be accepted
         expect(isValidDirNameForInference(name)).toBe(true);
       }),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });
@@ -210,7 +210,7 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
     originalFetch = globalThis.fetch;
     globalThis.fetch = mockFetch(
       async () =>
-        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 })
+        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
     );
     delete process.env.SENTRY_ORG;
     delete process.env.SENTRY_PROJECT;
@@ -377,7 +377,7 @@ describe("fetchProjectId", () => {
   });
 
   test("returns numeric project ID on success", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input, init);
@@ -392,22 +392,22 @@ describe("fetchProjectId", () => {
   });
 
   test("throws ResolutionError on 404", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(
       async () =>
         new Response(JSON.stringify({ detail: "Not found" }), {
           status: 404,
-        })
+        }),
     );
 
     await expect(fetchProjectId("test-org", "test-project")).rejects.toThrow(
-      ResolutionError
+      ResolutionError,
     );
   });
 
   test("includes similar project suggestions on 404 when projects exist", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     // Mock: getProject returns 404, but listProjects returns available projects.
@@ -448,13 +448,13 @@ describe("fetchProjectId", () => {
   });
 
   test("includes numeric project ID hint on 404 for all-digit slug", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(
       async () =>
         new Response(JSON.stringify({ detail: "Not found" }), {
           status: 404,
-        })
+        }),
     );
 
     try {
@@ -470,7 +470,7 @@ describe("fetchProjectId", () => {
   });
 
   test("includes project list suggestion even when listProjects fails", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     // Mock: all requests return 404 (both getProject and listProjects fail)
@@ -478,7 +478,7 @@ describe("fetchProjectId", () => {
       async () =>
         new Response(JSON.stringify({ detail: "Not found" }), {
           status: 404,
-        })
+        }),
     );
 
     try {
@@ -502,7 +502,7 @@ describe("fetchProjectId", () => {
 
     try {
       await expect(fetchProjectId("test-org", "test-project")).rejects.toThrow(
-        AuthError
+        AuthError,
       );
     } finally {
       if (saved !== undefined) {
@@ -512,13 +512,13 @@ describe("fetchProjectId", () => {
   });
 
   test("returns undefined on transient server error", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(
       async () =>
         new Response(JSON.stringify({ detail: "Internal error" }), {
           status: 500,
-        })
+        }),
     );
 
     const result = await fetchProjectId("test-org", "test-project");
@@ -526,7 +526,7 @@ describe("fetchProjectId", () => {
   });
 
   test("returns cached project ID without hitting the API", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     // Seed the cache via cacheProjectsForOrg (the `list:` key path) as
@@ -547,7 +547,7 @@ describe("fetchProjectId", () => {
   });
 
   test("writes the response to the project cache on a cache miss", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -578,7 +578,7 @@ describe("fetchProjectId", () => {
   });
 
   test("falls through to API when the cache has no projectId (legacy rows)", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     // Seed a cache entry WITHOUT a projectId (mirrors pre-schema-v7 rows).
@@ -670,19 +670,19 @@ describe("resolveTargetSlugs", () => {
   test("keeps the same canonical target before and after the cache warms", async () => {
     for (const org of ["1", "1", "test-org"]) {
       expect(await resolveTargetSlugs(makeTarget(org, "42"))).toMatchObject(
-        canonical
+        canonical,
       );
     }
     expect(requests).toEqual(["/api/0/projects/1/42/"]);
     expect(getCachedProjectBySlug("test-org", "frontend")?.projectId).toBe(
-      "42"
+      "42",
     );
   });
 
   test("reuses the metadata lookup performed by explicit target resolution", async () => {
     const projectId = await fetchProjectId("test-org", "42");
     expect(
-      await resolveTargetSlugs({ ...makeTarget("test-org", "42"), projectId })
+      await resolveTargetSlugs({ ...makeTarget("test-org", "42"), projectId }),
     ).toEqual({ ...canonical, projectId: 42 });
     expect(requests).toEqual(["/api/0/projects/test-org/42/"]);
   });
@@ -696,7 +696,7 @@ describe("resolveTargetSlugs", () => {
       END;
     `);
     expect(await resolveTargetSlugs(makeTarget("1", "42"))).toMatchObject(
-      canonical
+      canonical,
     );
   });
 
@@ -705,26 +705,26 @@ describe("resolveTargetSlugs", () => {
       { slug: "test-org", orgId: "1", regionUrl: DEFAULT_SENTRY_URL },
     ]);
     expect(await resolveTargetSlugs(makeTarget("1", "frontend"))).toEqual(
-      makeTarget("test-org", "frontend")
+      makeTarget("test-org", "frontend"),
     );
     expect(requests).toEqual([]);
   });
 
   test("propagates lookup errors instead of returning unresolved IDs", async () => {
     globalThis.fetch = mockFetch(async () =>
-      Response.json({ detail: "Permission denied" }, { status: 403 })
+      Response.json({ detail: "Permission denied" }, { status: 403 }),
     );
     await expect(
-      resolveTargetSlugs(makeTarget("test-org", "42"))
+      resolveTargetSlugs(makeTarget("test-org", "42")),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
   test("does not return a numeric organization when metadata cannot resolve it", async () => {
     globalThis.fetch = mockFetch(async () =>
-      Response.json({ ...projectData, organization: undefined })
+      Response.json({ ...projectData, organization: undefined }),
     );
     await expect(
-      resolveTargetSlugs(makeTarget("1", "42"))
+      resolveTargetSlugs(makeTarget("1", "42")),
     ).rejects.toBeInstanceOf(ResolutionError);
   });
 });
@@ -748,7 +748,7 @@ describe("resolveLogProjectId", () => {
   });
 
   test("returns an all-digit slug as a numeric ID without hitting the API", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     let apiCalled = false;
     globalThis.fetch = mockFetch(async () => {
@@ -762,7 +762,7 @@ describe("resolveLogProjectId", () => {
   });
 
   test("resolves a slug to its numeric project ID", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -778,14 +778,14 @@ describe("resolveLogProjectId", () => {
   });
 
   test("returns undefined on a transient server error (falls back to slug scoping)", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(
       async () =>
         new Response(JSON.stringify({ detail: "Internal error" }), {
           status: 500,
-        })
+        }),
     );
 
     const result = await resolveLogProjectId("test-org", "my-project");
@@ -799,7 +799,7 @@ describe("resolveLogProjectId", () => {
 
     try {
       await expect(
-        resolveLogProjectId("test-org", "my-project")
+        resolveLogProjectId("test-org", "my-project"),
       ).rejects.toThrow(AuthError);
     } finally {
       if (saved !== undefined) {
@@ -809,16 +809,16 @@ describe("resolveLogProjectId", () => {
   });
 
   test("re-throws ResolutionError on a genuine 404", async () => {
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     clearProjectCache();
     globalThis.fetch = mockFetch(
       async () =>
-        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 })
+        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
     );
 
     await expect(
-      resolveLogProjectId("test-org", "missing-project")
+      resolveLogProjectId("test-org", "missing-project"),
     ).rejects.toThrow(ResolutionError);
   });
 });
@@ -837,7 +837,7 @@ describe("tryFuzzyProjectRecovery", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
   });
 
   afterEach(() => {
@@ -850,7 +850,7 @@ describe("tryFuzzyProjectRecovery", () => {
    * @param projectsByOrg - Map of org slug → list of project slugs
    */
   function mockListProjects(
-    projectsByOrg: Record<string, string[]>
+    projectsByOrg: Record<string, string[]>,
   ): typeof fetch {
     return mockFetch(async (input, init) => {
       const req = new Request(input, init);
@@ -905,6 +905,30 @@ describe("tryFuzzyProjectRecovery", () => {
     }
   });
 
+  test("keeps short submitted project names ambiguous", async () => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    globalThis.fetch = mockListProjects({
+      "test-org": ["go-api", "db"],
+    });
+
+    const result = await tryFuzzyProjectRecovery("go", [{ slug: "test-org" }]);
+
+    expect(result.kind).toBe("suggestions");
+  });
+
+  test("does not recover a submitted project name from a typo in its prefix", async () => {
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    globalThis.fetch = mockListProjects({
+      "test-org": ["frontend-web"],
+    });
+
+    const result = await tryFuzzyProjectRecovery("frone", [
+      { slug: "test-org" },
+    ]);
+
+    expect(result.kind).toBe("none");
+  });
+
   test("returns 'none' when no similar projects exist", async () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockListProjects({
@@ -921,7 +945,7 @@ describe("tryFuzzyProjectRecovery", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     globalThis.fetch = mockFetch(
       async () =>
-        new Response(JSON.stringify({ detail: "Error" }), { status: 500 })
+        new Response(JSON.stringify({ detail: "Error" }), { status: 500 }),
     );
 
     const result = await tryFuzzyProjectRecovery("some-slug", [
@@ -1015,7 +1039,7 @@ describe("resolveOrgOptionalTarget", () => {
     // returns the original slug, so a 404 is sufficient.
     globalThis.fetch = mockFetch(
       async () =>
-        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 })
+        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
     );
     delete process.env.SENTRY_ORG;
     delete process.env.SENTRY_PROJECT;
@@ -1034,7 +1058,7 @@ describe("resolveOrgOptionalTarget", () => {
     const result = await resolveOrgOptionalTarget(
       parsed,
       getConfigDir(),
-      "explore"
+      "explore",
     );
     expect(result.org).toBe("myorg");
     expect(result.project).toBeUndefined();
@@ -1047,7 +1071,7 @@ describe("resolveOrgOptionalTarget", () => {
     const result = await resolveOrgOptionalTarget(
       parsed,
       getConfigDir(),
-      "explore"
+      "explore",
     );
     expect(result.org).toBe("myorg");
     expect(result.project).toBe("myproject");
@@ -1061,7 +1085,7 @@ describe("resolveOrgOptionalTarget", () => {
     const result = await resolveOrgOptionalTarget(
       parsed,
       getConfigDir(),
-      "explore"
+      "explore",
     );
     expect(result.org).toBe("env-org");
     expect(result.project).toBeUndefined();
@@ -1072,7 +1096,7 @@ describe("resolveOrgOptionalTarget", () => {
     const parsed = parseOrgProjectArg(undefined);
 
     await expect(
-      resolveOrgOptionalTarget(parsed, getConfigDir(), "explore")
+      resolveOrgOptionalTarget(parsed, getConfigDir(), "explore"),
     ).rejects.toThrow(ContextError);
   });
 

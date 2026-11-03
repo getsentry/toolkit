@@ -7,10 +7,17 @@
  */
 
 import {
+  isEquation,
+  isTracemetricsAggregate,
+  parseFunction,
+} from "@sentry/toolkit-core/events-fields";
+import {
   array,
   boolean,
+  description,
   getDotPath,
   type InferOutput,
+  literal,
   looseObject,
   nullable,
   nullish,
@@ -18,16 +25,19 @@ import {
   object,
   optional,
   picklist,
+  pipe,
   record,
   safeParse,
   string,
   tuple,
   union,
   unknown,
+  variant,
 } from "valibot";
 
 import { ValidationError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
+import { DryRunOutputField } from "./output.js";
 
 // ---------------------------------------------------------------------------
 // Widget type and display type enums
@@ -132,7 +142,7 @@ export const DashboardListItemSchema = looseObject({
     object({
       name: optional(string()),
       email: optional(string()),
-    })
+    }),
   ),
   widgetDisplay: optional(array(string())),
 });
@@ -147,7 +157,7 @@ export const DashboardDetailSchema = looseObject({
     object({
       name: optional(string()),
       email: optional(string()),
-    })
+    }),
   ),
   projects: optional(array(number())),
   environment: optional(array(string())),
@@ -215,7 +225,7 @@ export function parseWidgetInput(raw: unknown): DashboardWidget {
   });
   throw new ValidationError(
     `Invalid widget definition:\n${issues.join("\n")}`,
-    "widget-json"
+    "widget-json",
   );
 }
 
@@ -288,6 +298,20 @@ export const ERROR_AGGREGATE_FUNCTIONS = [
 ] as const;
 
 export type ErrorAggregateFunction = (typeof ERROR_AGGREGATE_FUNCTIONS)[number];
+
+/**
+ * The aggregate functions {@link validateAggregateNames} accepts on a widget
+ * dataset: none on `tracemetrics`, whose aggregates name a metric instead
+ * (`aggregation(value,metric_name,metric_type,unit)`).
+ */
+export function aggregateFunctionsOf(dataset?: string): readonly string[] {
+  if (dataset === "tracemetrics") {
+    return [];
+  }
+  return dataset === "error-events"
+    ? ERROR_AGGREGATE_FUNCTIONS
+    : SPAN_AGGREGATE_FUNCTIONS;
+}
 
 /** Valibot schema for validating a span aggregate function name */
 export const SpanAggregateFunctionSchema = picklist(SPAN_AGGREGATE_FUNCTIONS);
@@ -375,8 +399,7 @@ export function parseAggregate(input: string): string {
  *   "p95(span.duration)"   → "p95"
  */
 function extractFunctionName(aggregate: string): string {
-  const parenIdx = aggregate.indexOf("(");
-  return parenIdx > 0 ? aggregate.slice(0, parenIdx) : aggregate;
+  return parseFunction(aggregate)?.name ?? aggregate;
 }
 
 /**
@@ -384,17 +407,9 @@ function extractFunctionName(aggregate: string): string {
  * Format: `aggregation(value,metric_name,metric_type,unit)`
  * Example: `p50(value,completion.duration_ms,distribution,none)`
  */
-function isTracemetricsAggregate(aggregate: string): boolean {
+function isTracemetricsWidgetAggregate(aggregate: string): boolean {
   // equation| prefix denotes a formula combining multiple tracemetrics aggregates
-  if (aggregate.startsWith("equation|")) {
-    return true;
-  }
-  const parenIdx = aggregate.indexOf("(");
-  if (parenIdx < 0) {
-    return false;
-  }
-  const inner = aggregate.slice(parenIdx + 1, -1);
-  return inner.startsWith("value,") && inner.split(",").length === 4;
+  return isEquation(aggregate) || isTracemetricsAggregate(aggregate);
 }
 
 /**
@@ -411,12 +426,12 @@ function isTracemetricsAggregate(aggregate: string): boolean {
  */
 export function validateAggregateNames(
   aggregates: string[],
-  dataset?: string
+  dataset?: string,
 ): void {
   // tracemetrics uses a different aggregate format — validate structure, not function names
   if (dataset === "tracemetrics") {
     for (const agg of aggregates) {
-      if (!isTracemetricsAggregate(agg)) {
+      if (!isTracemetricsWidgetAggregate(agg)) {
         throw new ValidationError(
           `Invalid tracemetrics aggregate "${agg}".\n\n` +
             "tracemetrics queries must use the format: aggregation(value,metric_name,metric_type,unit)\n" +
@@ -427,17 +442,14 @@ export function validateAggregateNames(
             "  - metric_name: the name passed to Sentry.metrics.distribution/gauge/count\n" +
             "  - metric_type: distribution, gauge, counter, set\n" +
             "  - unit: none, byte, second, millisecond, etc. (must match SDK emission)",
-          "query"
+          "query",
         );
       }
     }
     return;
   }
 
-  const validFunctions: readonly string[] =
-    dataset === "error-events"
-      ? ERROR_AGGREGATE_FUNCTIONS
-      : SPAN_AGGREGATE_FUNCTIONS;
+  const validFunctions = aggregateFunctionsOf(dataset);
 
   for (const agg of aggregates) {
     const fn = extractFunctionName(agg);
@@ -449,7 +461,7 @@ export function validateAggregateNames(
         `Unknown aggregate function "${fn}".\n\n` +
           `Valid functions: ${validFunctions.join(", ")}\n` +
           `Aliases (auto-resolved): ${aliasList}`,
-        "query"
+        "query",
       );
     }
   }
@@ -486,7 +498,7 @@ const MAX_LIMITS: Partial<Record<string, number>> = {
  * Clamps per-display-type limits to their maximums with a warning.
  */
 export function prepareWidgetQueries(
-  inputWidget: DashboardWidget
+  inputWidget: DashboardWidget,
 ): DashboardWidget {
   let widget = inputWidget;
   // Clamp to per-display-type limit maximums
@@ -498,7 +510,7 @@ export function prepareWidgetQueries(
     widget.limit > maxLimit
   ) {
     logger.warn(
-      `${widget.displayType} widgets support a maximum of ${maxLimit} rows. Clamping --limit from ${widget.limit} to ${maxLimit}.`
+      `${widget.displayType} widgets support a maximum of ${maxLimit} rows. Clamping --limit from ${widget.limit} to ${maxLimit}.`,
     );
     widget = { ...widget, limit: maxLimit };
   }
@@ -525,6 +537,17 @@ export function prepareWidgetQueries(
 /** Sentry dashboard grid column count */
 export const GRID_COLUMNS = 6;
 
+/** The values `--col` accepts: each 0-based grid column. */
+export const GRID_COLUMN_POSITIONS = Array.from(
+  { length: GRID_COLUMNS },
+  (_, column) => String(column),
+);
+
+/** The values `--width` accepts: 1 to {@link GRID_COLUMNS} columns. */
+export const GRID_WIDTHS = Array.from({ length: GRID_COLUMNS }, (_, column) =>
+  String(column + 1),
+);
+
 /**
  * Controls how the auto-placer positions new widgets in the grid.
  *
@@ -533,7 +556,10 @@ export const GRID_COLUMNS = 6;
  * - `dense` — First-fit packing: scan top-to-bottom, left-to-right
  *   and place in the first available gap. Produces compact layouts.
  */
-export type WidgetLayoutMode = "sequential" | "dense";
+export type WidgetLayoutMode = (typeof WIDGET_LAYOUT_MODES)[number];
+
+/** The {@link WidgetLayoutMode} values, which `--layout` accepts. */
+export const WIDGET_LAYOUT_MODES = ["sequential", "dense"] as const;
 
 /** Default widget dimensions by displayType */
 const DEFAULT_WIDGET_SIZE: Partial<
@@ -585,7 +611,7 @@ function buildOccupiedGrid(widgets: DashboardWidget[]): {
 /** Check whether a rectangle fits at a position without overlapping occupied cells. */
 function regionFits(
   occupied: Set<string>,
-  rect: { px: number; py: number; w: number; h: number }
+  rect: { px: number; py: number; w: number; h: number },
 ): boolean {
   for (let dy = 0; dy < rect.h; dy++) {
     for (let dx = 0; dx < rect.w; dx++) {
@@ -610,7 +636,7 @@ type WidgetSize = { w: number; h: number; minH: number };
 function assignLayoutDense(
   widget: DashboardWidget,
   size: WidgetSize,
-  grid: OccupiedGrid
+  grid: OccupiedGrid,
 ): DashboardWidget {
   const { w, h, minH } = size;
   for (let y = 0; y <= grid.maxY; y++) {
@@ -628,7 +654,7 @@ function assignLayoutDense(
  * Reverse-scans because the API preserves insertion order.
  */
 function findLastLayout(
-  widgets: DashboardWidget[]
+  widgets: DashboardWidget[],
 ): DashboardWidgetLayout | undefined {
   for (let i = widgets.length - 1; i >= 0; i--) {
     const layout = widgets[i]?.layout;
@@ -648,7 +674,7 @@ function assignLayoutSequential(
   widget: DashboardWidget,
   existingWidgets: DashboardWidget[],
   size: WidgetSize,
-  grid: OccupiedGrid
+  grid: OccupiedGrid,
 ): DashboardWidget {
   const { w, h, minH } = size;
   const lastLayout = findLastLayout(existingWidgets);
@@ -688,7 +714,7 @@ function assignLayoutSequential(
 export function assignDefaultLayout(
   widget: DashboardWidget,
   existingWidgets: DashboardWidget[],
-  mode: WidgetLayoutMode = "sequential"
+  mode: WidgetLayoutMode = "sequential",
 ): DashboardWidget {
   if (widget.layout) {
     return widget;
@@ -722,18 +748,18 @@ function assertLayoutInt(
   value: number,
   flag: string,
   min: number,
-  max?: number
+  max?: number,
 ): void {
   if (!Number.isInteger(value) || value < min) {
     throw new ValidationError(
       `--${flag} must be ${min === 0 ? "a non-negative" : "a positive"} integer (got ${value}).`,
-      flag
+      flag,
     );
   }
   if (max !== undefined && value > max) {
     throw new ValidationError(
       `--${flag} must be ${min}–${max} (dashboard grid is ${GRID_COLUMNS} columns wide).`,
-      flag
+      flag,
     );
   }
 }
@@ -750,7 +776,7 @@ function assertLayoutInt(
  */
 export function validateWidgetLayout(
   flags: WidgetLayoutFlags,
-  existing?: DashboardWidgetLayout
+  existing?: DashboardWidgetLayout,
 ): void {
   if (flags.col !== undefined) {
     assertLayoutInt(flags.col, "col", 0, GRID_COLUMNS - 1);
@@ -775,7 +801,7 @@ export function validateWidgetLayout(
   ) {
     throw new ValidationError(
       `Widget overflows the grid: col(${effectiveX}) + width(${effectiveW}) = ${effectiveX + effectiveW}, but the grid is ${GRID_COLUMNS} columns wide.`,
-      "col"
+      "col",
     );
   }
 }
@@ -813,7 +839,7 @@ function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
  * @returns Widget safe for PUT (only API-accepted fields)
  */
 export function stripWidgetServerFields(
-  widget: DashboardWidget
+  widget: DashboardWidget,
 ): DashboardWidget {
   const cleaned: DashboardWidget = {
     title: widget.title,
@@ -897,7 +923,7 @@ export const EventsStatsSeriesSchema = looseObject({
     looseObject({
       fields: optional(record(string(), string())),
       units: optional(record(string(), nullable(string()))),
-    })
+    }),
   ),
 });
 
@@ -914,7 +940,7 @@ export const EventsTableResponseSchema = object({
     object({
       fields: optional(record(string(), string())),
       units: optional(record(string(), nullable(string()))),
-    })
+    }),
   ),
 });
 
@@ -924,48 +950,71 @@ export type EventsTableResponse = InferOutput<typeof EventsTableResponseSchema>;
 // Widget data result types — discriminated union for all widget outputs
 // ---------------------------------------------------------------------------
 
+/** The `type` of a widget data result, with its description. */
+function resultKind<const T extends string>(kind: T) {
+  return pipe(literal(kind), description(`Result kind: ${kind}`));
+}
+
+const resultUnit = optional(pipe(nullable(string()), description("Unit")));
+
 /** Time-series data for chart widgets (line, area, bar) */
-export type TimeseriesResult = {
-  type: "timeseries";
-  series: {
-    label: string;
-    values: { timestamp: number; value: number }[];
-    unit?: string | null;
-  }[];
-};
+export const TimeseriesResultSchema = object({
+  type: resultKind("timeseries"),
+  series: pipe(
+    array(
+      object({
+        label: pipe(string(), description("Series label")),
+        values: array(object({ timestamp: number(), value: number() })),
+        unit: resultUnit,
+      }),
+    ),
+    description("Series, one per aggregate or group"),
+  ),
+});
 
 /** Tabular data for table and top_n widgets */
-export type TableResult = {
-  type: "table";
-  columns: { name: string; type?: string; unit?: string | null }[];
-  rows: Record<string, unknown>[];
-};
+export const TableResultSchema = object({
+  type: resultKind("table"),
+  columns: pipe(
+    array(
+      object({
+        name: string(),
+        type: optional(string()),
+        unit: resultUnit,
+      }),
+    ),
+    description("Table columns"),
+  ),
+  rows: pipe(array(record(string(), unknown())), description("Table rows")),
+});
 
 /** Single scalar value for big_number widgets */
-export type ScalarResult = {
-  type: "scalar";
-  value: number;
-  previousValue?: number;
-  unit?: string | null;
-};
+export const ScalarResultSchema = object({
+  type: resultKind("scalar"),
+  value: pipe(number(), description("Current value")),
+  previousValue: optional(
+    pipe(number(), description("Value of the previous period")),
+  ),
+  unit: resultUnit,
+});
 
 /** Markdown text content for text widgets (no API query — content from widget.description) */
-export type TextResult = {
-  type: "text";
-  content: string;
-};
+export const TextResultSchema = object({
+  type: resultKind("text"),
+  content: pipe(string(), description("Markdown content")),
+});
 
 /** Widget type not supported for data fetching */
-export type UnsupportedResult = {
-  type: "unsupported";
-  reason: string;
-};
+export const UnsupportedResultSchema = object({
+  type: resultKind("unsupported"),
+  reason: pipe(string(), description("Why the widget has no data")),
+});
 
 /** Widget query failed */
-export type ErrorResult = {
-  type: "error";
-  message: string;
-};
+export const ErrorResultSchema = object({
+  type: resultKind("error"),
+  message: pipe(string(), description("Query error")),
+});
 
 /**
  * Result of querying a widget's data.
@@ -978,13 +1027,63 @@ export type ErrorResult = {
  * - `unsupported` → placeholder message
  * - `error` → error message
  */
-export type WidgetDataResult =
-  | TimeseriesResult
-  | TableResult
-  | ScalarResult
-  | TextResult
-  | UnsupportedResult
-  | ErrorResult;
+export const WidgetDataResultSchema = pipe(
+  variant("type", [
+    TimeseriesResultSchema,
+    TableResultSchema,
+    ScalarResultSchema,
+    TextResultSchema,
+    UnsupportedResultSchema,
+    ErrorResultSchema,
+  ]),
+  description("Widget query result"),
+);
+
+export type TimeseriesResult = InferOutput<typeof TimeseriesResultSchema>;
+export type TableResult = InferOutput<typeof TableResultSchema>;
+export type ScalarResult = InferOutput<typeof ScalarResultSchema>;
+export type TextResult = InferOutput<typeof TextResultSchema>;
+export type UnsupportedResult = InferOutput<typeof UnsupportedResultSchema>;
+export type ErrorResult = InferOutput<typeof ErrorResultSchema>;
+export type WidgetDataResult = InferOutput<typeof WidgetDataResultSchema>;
+
+/**
+ * JSON output of `dashboard view`: the dashboard with each widget's query
+ * result. The type the command yields is derived from it
+ * (`DashboardViewData` in `lib/formatters/dashboard.ts`).
+ */
+export const DashboardViewOutputSchema = object({
+  id: pipe(string(), description("Dashboard ID")),
+  title: pipe(string(), description("Dashboard title")),
+  period: pipe(string(), description("Time range of the widget data")),
+  fetchedAt: pipe(
+    string(),
+    description("When the data was fetched (ISO 8601)"),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+  dateCreated: optional(
+    pipe(string(), description("Creation date (ISO 8601)")),
+  ),
+  environment: optional(
+    pipe(array(string()), description("Environment filter")),
+  ),
+  widgets: pipe(
+    array(
+      object({
+        title: pipe(string(), description("Widget title")),
+        displayType: pipe(string(), description("Display type")),
+        widgetType: optional(pipe(string(), description("Dataset"))),
+        description: optional(
+          pipe(string(), description("Markdown content of a text widget")),
+        ),
+        layout: optional(DashboardWidgetLayoutSchema),
+        queries: optional(array(DashboardWidgetQuerySchema)),
+        data: WidgetDataResultSchema,
+      }),
+    ),
+    description("Widgets with their query results"),
+  ),
+});
 
 // ---------------------------------------------------------------------------
 // Dataset mapping
@@ -1010,7 +1109,7 @@ const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
  * @returns The API dataset string, or null if the type isn't queryable
  */
 export function mapWidgetTypeToDataset(
-  widgetType: string | undefined
+  widgetType: string | undefined,
 ): string | null {
   if (!widgetType) {
     return null;
@@ -1054,3 +1153,45 @@ export const DashboardRevisionSchema = looseObject({
 });
 
 export type DashboardRevision = InferOutput<typeof DashboardRevisionSchema>;
+
+/**
+ * JSON output of `dashboard widget add` and `dashboard widget edit`, for
+ * `--fields`: the saved dashboard, the added or edited widget, and its URL.
+ */
+export const DashboardWidgetChangeOutputSchema = object({
+  dashboard: pipe(DashboardDetailSchema, description("The saved dashboard")),
+  widget: pipe(
+    DashboardWidgetSchema,
+    description("The added or edited widget"),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+});
+
+/** JSON output of `dashboard widget add` and `dashboard widget edit`. */
+export type DashboardWidgetChangeOutput = InferOutput<
+  typeof DashboardWidgetChangeOutputSchema
+>;
+
+/**
+ * JSON output of `dashboard widget delete`: the deleted (or, with
+ * `--dry-run`, matched) widget and the dashboard's widget count.
+ */
+export const DashboardWidgetDeleteOutputSchema = object({
+  dryRun: DryRunOutputField,
+  deleted: optional(
+    pipe(boolean(), description("True when the widget was deleted")),
+  ),
+  widgetTitle: pipe(string(), description("Title of the deleted widget")),
+  widgetCount: pipe(
+    number(),
+    description(
+      "Dashboard widget count after the delete (before it, with --dry-run)",
+    ),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+});
+
+/** JSON output of `dashboard widget delete`. */
+export type DashboardWidgetDeleteOutput = InferOutput<
+  typeof DashboardWidgetDeleteOutputSchema
+>;

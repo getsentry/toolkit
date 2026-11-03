@@ -13,11 +13,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
@@ -27,11 +27,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { LIST_PERIOD_FLAG } from "../../../src/lib/list-command.js";
 
@@ -42,11 +42,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import {
@@ -99,6 +99,7 @@ describe("listCommand.func", () => {
         stdout: { write: stdoutWrite },
         stderr: { write: vi.fn(() => true) },
         cwd: "/tmp",
+        commandPrefix: ["sentry", "replay", "list"],
       },
       stdoutWrite,
     };
@@ -106,7 +107,7 @@ describe("listCommand.func", () => {
 
   beforeEach(() => {
     listReplaysSpy = vi.spyOn(apiClient, "listReplays");
-    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
     resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
       cursor: undefined,
       direction: "next" as const,
@@ -139,7 +140,7 @@ describe("listCommand.func", () => {
     await func.call(
       context,
       { limit: 25, json: true, period: parsePeriod("7d"), sort: "-started_at" },
-      "test-org/cli"
+      "test-org/cli",
     );
 
     expect(listReplaysSpy).toHaveBeenCalledWith("test-org", {
@@ -166,7 +167,7 @@ describe("listCommand.func", () => {
     // --query is a user mistake, not a reported CLI bug.
     resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "cli" });
     listReplaysSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad field")
+      new ApiError("bad", 400, "Error parsing search query: bad field"),
     );
 
     const { context } = createMockContext();
@@ -181,15 +182,15 @@ describe("listCommand.func", () => {
           sort: "-started_at",
           query: "bad:::query",
         },
-        "test-org/cli"
-      )
+        "test-org/cli",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   test("keeps a search-query parse 400 as a reported ApiError when no --query is set", async () => {
     resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "cli" });
     listReplaysSpy.mockRejectedValue(
-      new ApiError("bad", 400, "Error parsing search query: bad field")
+      new ApiError("bad", 400, "Error parsing search query: bad field"),
     );
 
     const { context } = createMockContext();
@@ -203,8 +204,8 @@ describe("listCommand.func", () => {
           period: parsePeriod("7d"),
           sort: "-started_at",
         },
-        "test-org/cli"
-      )
+        "test-org/cli",
+      ),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -226,7 +227,7 @@ describe("listCommand.func", () => {
         period: parsePeriod("7d"),
         sort: "-started_at",
       },
-      "test-org/cli"
+      "test-org/cli",
     );
 
     expect(listReplaysSpy).toHaveBeenCalledWith("test-org", {
@@ -255,12 +256,13 @@ describe("listCommand.func", () => {
         period: parsePeriod("7d"),
         sort: "-started_at",
       },
-      "test-org/cli"
+      "test-org/cli",
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     expect(output).toContain("Recent replays in test-org/cli:");
     expect(output).toContain("Test User");
+    expect(output).toContain("346789a703f6454384f1de473b8b9fcc");
     expect(output).toContain("Showing 1 replay.");
     expect(output).toContain("sentry replay view test-org/");
   });
@@ -282,7 +284,7 @@ describe("listCommand.func", () => {
         period: parsePeriod(LIST_PERIOD_FLAG.default),
         sort: "-started_at",
       },
-      "test-org/cli"
+      "test-org/cli",
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");

@@ -45,6 +45,7 @@ export default new Hono()
 ```
 
 **Features:**
+
 - OAuth 2.0 flow with Sentry
 - Token storage in Cloudflare KV
 - Automatic token refresh
@@ -59,12 +60,13 @@ React-based chat UI with real-time streaming:
 export function Chat() {
   const { messages, handleSubmit } = useChat({
     api: "/api/chat",
-    headers: { Authorization: `Bearer ${authToken}` }
+    headers: { Authorization: `Bearer ${authToken}` },
   });
 }
 ```
 
 **Features:**
+
 - Message streaming with Vercel AI SDK
 - Tool call visualization
 - Slash commands (/help, /prompts, /clear)
@@ -82,12 +84,13 @@ const mcpClient = await experimental_createMCPClient({
   transport: {
     type: "sse",
     url: sseUrl,
-    headers: { Authorization: `Bearer ${accessToken}` }
-  }
+    headers: { Authorization: `Bearer ${accessToken}` },
+  },
 });
 ```
 
 **Features:**
+
 - Server-sent events (SSE) for MCP communication
 - Automatic tool discovery
 - Prompt metadata endpoint
@@ -102,11 +105,12 @@ const result = streamText({
   model: openai("gpt-4o"),
   messages: processedMessages,
   tools: mcpTools,
-  system: "You are an AI assistant for testing Sentry MCP..."
+  system: "You are an AI assistant for testing Sentry MCP...",
 });
 ```
 
 **Features:**
+
 - Streaming responses
 - Tool execution
 - Prompt template processing
@@ -115,11 +119,13 @@ const result = streamText({
 ## Data Flow
 
 1. **User Authentication**:
+
    ```
    User → OAuth Login → Sentry → OAuth Callback → KV Storage
    ```
 
 2. **Chat Message Flow**:
+
    ```
    User Input → Chat API → Process Prompts → AI Model → Stream Response
                          ↓
@@ -165,8 +171,9 @@ SENTRY_CLIENT_SECRET = "..." # OAuth app secret
 1. **Authentication**: OAuth tokens stored encrypted in KV
 2. **Authorization**: Per-organization access control
 3. **Rate Limiting**: Cloudflare rate limiter integration
-4. **CORS**: Restricted to same-origin requests
-5. **CSP**: Content Security Policy headers
+4. **Request Limits**: `/mcp` POST bodies are capped at 1 MiB (`MAX_MCP_REQUEST_BODY_BYTES`), and tool-call arguments at 10,000 array elements plus object keys (`MAX_TOOL_INPUT_ELEMENTS`). Both limits live in `@sentry/toolkit-core/mcp-limits`, shared with Docs MCP
+5. **CORS**: Restricted to same-origin requests
+6. **CSP**: Content Security Policy headers
 
 ## Performance Optimizations
 

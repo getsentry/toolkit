@@ -20,11 +20,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -34,11 +34,11 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
 
 vi.mock("../../../src/lib/db/defaults.js", async (importOriginal) => {
@@ -48,11 +48,11 @@ vi.mock("../../../src/lib/db/defaults.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbDefaults from "../../../src/lib/db/defaults.js";
 
 vi.mock("../../../src/lib/db/index.js", async (importOriginal) => {
@@ -62,11 +62,11 @@ vi.mock("../../../src/lib/db/index.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbIndex from "../../../src/lib/db/index.js";
 
 vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
@@ -76,11 +76,11 @@ vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbUser from "../../../src/lib/db/user.js";
 import { AuthError } from "../../../src/lib/errors.js";
 
@@ -281,6 +281,43 @@ describe("statusCommand.func", () => {
       // Plain mode strips markdown escapes: SENTRY_AUTH_TOKEN (not SENTRY\_AUTH\_TOKEN)
       expect(getOutput()).toContain("SENTRY_AUTH_TOKEN");
       expect(getOutput()).toContain("environment variable");
+    });
+
+    test("shows the server and user of an env token next to stored OAuth", async () => {
+      getAuthConfigSpy.mockReturnValue({
+        token: "oauth-token",
+        source: "oauth",
+      });
+      isAuthenticatedSpy.mockReturnValue(true);
+      const rawEnvSpy = vi
+        .spyOn(dbAuth, "getRawEnvToken")
+        .mockReturnValue("env-pat");
+      const envAccountSpy = vi.spyOn(dbAuth, "getEnvAccount").mockReturnValue({
+        envVar: "SENTRY_AUTH_TOKEN",
+        host: "https://sentry.io",
+        identity: "env-identity",
+      });
+      const userSpy = vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
+        id: "7",
+        name: "CI Bot",
+        email: "ci@example.com",
+      } as Awaited<ReturnType<typeof apiClient.getCurrentUser>>);
+
+      try {
+        const { context, getOutput } = createContext();
+        await func.call(context, jsonFlags);
+
+        expect(JSON.parse(getOutput()).envToken).toEqual({
+          envVar: "SENTRY_AUTH_TOKEN",
+          active: false,
+          host: "https://sentry.io",
+          user: { name: "CI Bot", email: "ci@example.com" },
+        });
+      } finally {
+        rawEnvSpy.mockRestore();
+        envAccountSpy.mockRestore();
+        userSpy.mockRestore();
+      }
     });
 
     test("does not show expiration or auto-refresh for env tokens", async () => {

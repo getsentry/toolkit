@@ -15,11 +15,11 @@ vi.mock("../../../src/commands/feedback/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as feedbackUtils from "../../../src/commands/feedback/utils.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -29,11 +29,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -43,11 +43,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([key, value]) => [
       key,
       typeof value === "function" ? vi.fn(value) : value,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
@@ -152,13 +152,13 @@ describe("feedback view", () => {
         web: false,
         fresh: false,
       },
-      "TEST-PROJECT-2SDJ"
+      "TEST-PROJECT-2SDJ",
     );
 
     expect(listAttachmentsSpy).toHaveBeenCalledWith(
       "test-org",
       "test-project",
-      "abc123def456abc123def456abc12345"
+      "abc123def456abc123def456abc12345",
     );
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     expect(JSON.parse(output)).toMatchObject({
@@ -180,7 +180,7 @@ describe("feedback view", () => {
         web: false,
         fresh: false,
       },
-      "TEST-PROJECT-2SDJ"
+      "TEST-PROJECT-2SDJ",
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -205,7 +205,7 @@ describe("feedback view", () => {
         web: false,
         fresh: false,
       },
-      "5146636313"
+      "5146636313",
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -230,7 +230,7 @@ describe("feedback view", () => {
         web: false,
         fresh: false,
       },
-      "TEST-PROJECT-2SDJ"
+      "TEST-PROJECT-2SDJ",
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -251,12 +251,12 @@ describe("feedback view", () => {
         web: true,
         fresh: false,
       },
-      "TEST-PROJECT-2SDJ"
+      "TEST-PROJECT-2SDJ",
     );
 
     expect(openInBrowserSpy).toHaveBeenCalledWith(
       feedback().permalink,
-      "feedback"
+      "feedback",
     );
     expect(getLatestEventSpy).not.toHaveBeenCalled();
     expect(listReplayIdsSpy).not.toHaveBeenCalled();

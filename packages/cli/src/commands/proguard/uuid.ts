@@ -9,6 +9,7 @@
 import { readFile } from "node:fs/promises";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { computeProguardUuid } from "../../lib/proguard.js";
@@ -27,10 +28,18 @@ export const uuidCommand = buildCommand({
     fullDescription:
       "Compute and print the UUID of a ProGuard/R8 mapping file. The UUID is " +
       "deterministically derived from the file contents and matches the " +
-      "value assigned by `sentry proguard upload`.\n\n" +
-      "Usage:\n" +
-      "  sentry proguard uuid ./app/build/outputs/mapping/release/mapping.txt\n" +
-      "  sentry proguard uuid mapping.txt --json",
+      "value assigned by `sentry proguard upload`.",
+    examples: [
+      {
+        description: "Compute the UUID for a ProGuard/R8 mapping file",
+        command:
+          "sentry proguard uuid ./app/build/outputs/mapping/release/mapping.txt",
+      },
+      {
+        description: "Output as JSON (includes the file path)",
+        command: "sentry proguard uuid mapping.txt --json",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,
@@ -46,7 +55,7 @@ export const uuidCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the ProGuard mapping file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -56,13 +65,13 @@ export const uuidCommand = buildCommand({
   async *func(
     this: SentryContext,
     _flags: Record<string, never>,
-    path: string
+    path: string,
   ) {
     if (!path?.trim()) {
       throw new ContextError(
         "Mapping file path",
         "sentry proguard uuid <path>",
-        []
+        [],
       );
     }
 
@@ -74,19 +83,19 @@ export const uuidCommand = buildCommand({
       if (code === "ENOENT") {
         throw new ValidationError(
           `ProGuard mapping file '${path}' does not exist.`,
-          "path"
+          "path",
         );
       }
       if (code === "EISDIR") {
         throw new ValidationError(
           `Path '${path}' is a directory, not a ProGuard mapping file.`,
-          "path"
+          "path",
         );
       }
       const msg = err instanceof Error ? err.message : String(err);
       throw new ValidationError(
         `Cannot read ProGuard mapping file '${path}': ${msg}`,
-        "path"
+        "path",
       );
     }
 

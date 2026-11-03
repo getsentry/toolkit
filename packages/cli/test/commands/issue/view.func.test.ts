@@ -13,11 +13,11 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 import {
   fetchMultipleIssueViews,
@@ -32,11 +32,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -46,13 +46,17 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { ContextError } from "../../../src/lib/errors.js";
+import {
+  type IssueArgument,
+  parseIssueArgument,
+} from "../../../src/lib/issue-arguments.js";
 import type { SentryEvent, SentryIssue } from "../../../src/types/index.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
@@ -150,7 +154,7 @@ describe("issue view replay integration", () => {
     await func.call(
       context,
       { json: false, web: false, force: false, spans: 0, fresh: false },
-      "CLI-123"
+      "CLI-123",
     );
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -188,14 +192,14 @@ describe("issue view multiple IDs", () => {
 
   test("returns a JSON array for space-separated issue IDs", async () => {
     resolveIssueSpy.mockImplementation(
-      async (options: { issueArg: string }) => ({
+      async (options: { issueArg: IssueArgument }) => ({
         org: "test-org",
         issue: sampleIssue({
-          id: options.issueArg,
-          shortId: options.issueArg,
-          title: options.issueArg,
+          id: options.issueArg.text,
+          shortId: options.issueArg.text,
+          title: options.issueArg.text,
         }),
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -204,7 +208,7 @@ describe("issue view multiple IDs", () => {
 
     expect(resolveIssueSpy).toHaveBeenCalledTimes(2);
     const parsed = JSON.parse(
-      stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed).toHaveLength(2);
@@ -214,13 +218,13 @@ describe("issue view multiple IDs", () => {
 
   test("expands newline-separated IDs from a single argument", async () => {
     resolveIssueSpy.mockImplementation(
-      async (options: { issueArg: string }) => ({
+      async (options: { issueArg: IssueArgument }) => ({
         org: "test-org",
         issue: sampleIssue({
-          id: options.issueArg,
-          shortId: options.issueArg,
+          id: options.issueArg.text,
+          shortId: options.issueArg.text,
         }),
-      })
+      }),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -229,7 +233,7 @@ describe("issue view multiple IDs", () => {
 
     expect(resolveIssueSpy).toHaveBeenCalledTimes(3);
     const parsed = JSON.parse(
-      stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(parsed.map((row: { shortId: string }) => row.shortId)).toEqual([
       "IOS-1",
@@ -250,21 +254,23 @@ describe("issue view multiple IDs", () => {
 
     expect(resolveIssueSpy).toHaveBeenCalledTimes(1);
     expect(resolveIssueSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ issueArg: "IOS-1,IOS-2" })
+      expect.objectContaining({
+        issueArg: expect.objectContaining({ text: "IOS-1,IOS-2" }),
+      }),
     );
   });
 
   test("keeps JSON as an array when some IDs fail", async () => {
     resolveIssueSpy.mockImplementation(
-      async (options: { issueArg: string }) => {
-        if (options.issueArg === "MISSING") {
+      async (options: { issueArg: IssueArgument }) => {
+        if (options.issueArg.text === "MISSING") {
           throw new Error("not found");
         }
         return {
           org: "test-org",
-          issue: sampleIssue({ shortId: options.issueArg }),
+          issue: sampleIssue({ shortId: options.issueArg.text }),
         };
-      }
+      },
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -272,7 +278,7 @@ describe("issue view multiple IDs", () => {
     await func.call(context, VIEW_FLAGS, "IOS-1", "MISSING");
 
     const parsed = JSON.parse(
-      stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed).toHaveLength(1);
@@ -286,25 +292,28 @@ describe("issue view multiple IDs", () => {
     const { context } = createMockContext();
     const func = await viewCommand.loader();
     await expect(func.call(context, VIEW_FLAGS, "IOS-1", "IOS-2")).rejects.toBe(
-      error
+      error,
     );
   });
 
-  test("throws ContextError when no issue ID is provided", async () => {
+  test("fails to parse when no issue ID is provided", async () => {
     const { context } = createMockContext();
     const func = await viewCommand.loader();
-    await expect(func.call(context, VIEW_FLAGS)).rejects.toThrow(ContextError);
+    await expect(func.call(context, VIEW_FLAGS)).rejects.toMatchObject({
+      exception: expect.any(ContextError),
+    });
+    expect(resolveIssueSpy).not.toHaveBeenCalled();
   });
 
   test("--web opens every issue within the safety limit", async () => {
     resolveIssueSpy.mockImplementation(
-      async (options: { issueArg: string }) => ({
+      async (options: { issueArg: IssueArgument }) => ({
         org: "test-org",
         issue: sampleIssue({
-          shortId: options.issueArg,
-          permalink: `https://sentry.io/issues/${options.issueArg}/`,
+          shortId: options.issueArg.text,
+          permalink: `https://sentry.io/issues/${options.issueArg.text}/`,
         }),
-      })
+      }),
     );
 
     const { context } = createMockContext();
@@ -313,39 +322,39 @@ describe("issue view multiple IDs", () => {
       context,
       { json: false, web: true, force: false, spans: 0, fresh: false },
       "IOS-1",
-      "IOS-2"
+      "IOS-2",
     );
 
     expect(resolveIssueSpy).toHaveBeenCalledTimes(2);
     expect(openInBrowserSpy).toHaveBeenNthCalledWith(
       1,
       "https://sentry.io/issues/IOS-1/",
-      "issue"
+      "issue",
     );
     expect(openInBrowserSpy).toHaveBeenNthCalledWith(
       2,
       "https://sentry.io/issues/IOS-2/",
-      "issue"
+      "issue",
     );
   });
 
   test("--web caps opened issues unless --force is passed", async () => {
     resolveIssueSpy.mockImplementation(
-      async (options: { issueArg: string }) => ({
+      async (options: { issueArg: IssueArgument }) => ({
         org: "test-org",
-        issue: sampleIssue({ shortId: options.issueArg }),
-      })
+        issue: sampleIssue({ shortId: options.issueArg.text }),
+      }),
     );
     const issueArgs = Array.from(
       { length: MAX_WEB_ISSUES + 2 },
-      (_, index) => `IOS-${index + 1}`
+      (_, index) => `IOS-${index + 1}`,
     );
 
     const func = await viewCommand.loader();
     await func.call(
       createMockContext().context,
       { json: false, web: true, force: false, spans: 0, fresh: false },
-      ...issueArgs
+      ...issueArgs,
     );
     expect(openInBrowserSpy).toHaveBeenCalledTimes(MAX_WEB_ISSUES);
 
@@ -354,7 +363,7 @@ describe("issue view multiple IDs", () => {
     await func.call(
       createMockContext().context,
       { json: false, web: true, force: true, spans: 0, fresh: false },
-      ...issueArgs
+      ...issueArgs,
     );
     expect(openInBrowserSpy).toHaveBeenCalledTimes(issueArgs.length);
   });
@@ -375,14 +384,14 @@ describe("fetchMultipleIssueViews", () => {
 
   test("fetches multiple issues in parallel", async () => {
     resolveIssueSpy.mockImplementation(
-      async (options: { issueArg: string }) => ({
+      async (options: { issueArg: IssueArgument }) => ({
         org: "test-org",
-        issue: sampleIssue({ shortId: options.issueArg }),
-      })
+        issue: sampleIssue({ shortId: options.issueArg.text }),
+      }),
     );
 
     const result = await fetchMultipleIssueViews({
-      issueArgs: ["IOS-1", "IOS-2"],
+      issueArgs: ["IOS-1", "IOS-2"].map(parseIssueArgument),
       cwd: "/tmp",
       spans: 0,
     });
@@ -393,19 +402,19 @@ describe("fetchMultipleIssueViews", () => {
 
   test("warns on individual failures and continues", async () => {
     resolveIssueSpy.mockImplementation(
-      async (options: { issueArg: string }) => {
-        if (options.issueArg === "IOS-2") {
+      async (options: { issueArg: IssueArgument }) => {
+        if (options.issueArg.text === "IOS-2") {
           throw new Error("not found");
         }
         return {
           org: "test-org",
-          issue: sampleIssue({ shortId: options.issueArg }),
+          issue: sampleIssue({ shortId: options.issueArg.text }),
         };
-      }
+      },
     );
 
     const result = await fetchMultipleIssueViews({
-      issueArgs: ["IOS-1", "IOS-2"],
+      issueArgs: ["IOS-1", "IOS-2"].map(parseIssueArgument),
       cwd: "/tmp",
       spans: 0,
     });
@@ -419,10 +428,10 @@ describe("fetchMultipleIssueViews", () => {
 
     await expect(
       fetchMultipleIssueViews({
-        issueArgs: ["IOS-1", "IOS-2"],
+        issueArgs: ["IOS-1", "IOS-2"].map(parseIssueArgument),
         cwd: "/tmp",
         spans: 0,
-      })
+      }),
     ).rejects.toBe(error);
   });
 });

@@ -35,15 +35,15 @@ export function createLocalAgentServer() {
         const id = c.req.param("id");
         logger.info("Fixture user loaded", { attributes: { id } });
         return c.json({ id, name: "Ada Lovelace", source: "fixture-db" });
-      }
-    )
+      },
+    ),
   );
 
   app.post("/api/agent/run", async (c) => {
     const { prompt } = (await c.req.json()) as { prompt?: unknown };
     const safePrompt = typeof prompt === "string" ? prompt : "";
 
-    return startSpan(
+    return await startSpan(
       {
         name: "agent.run",
         op: "gen_ai.invoke_agent",
@@ -68,14 +68,14 @@ export function createLocalAgentServer() {
               "gen_ai.tool.name": "search_files",
             },
           },
-          async () => "search_files"
+          async () => "search_files",
         );
 
         return c.json({
           answer: "The rate limit is configured in src/lib/rate-limit.ts.",
           tool,
         });
-      }
+      },
     );
   });
 
@@ -94,9 +94,9 @@ export function createLocalAgentServer() {
           message:
             "The fixture intentionally failed. Check sentry local for details.",
         },
-        500
+        500,
       );
-    })
+    }),
   );
 
   return app;
@@ -105,7 +105,6 @@ export function createLocalAgentServer() {
 function startServer(): void {
   init({
     dsn: process.env.SENTRY_DSN,
-    enableLogs: true,
     tracesSampleRate: 1,
   });
 
@@ -116,7 +115,7 @@ function startServer(): void {
 
   serve({ fetch: createLocalAgentServer().fetch, port, hostname: "127.0.0.1" });
   process.stderr.write(
-    `Local agent fixture listening at http://127.0.0.1:${port}\n`
+    `Local agent fixture listening at http://127.0.0.1:${port}\n`,
   );
 }
 

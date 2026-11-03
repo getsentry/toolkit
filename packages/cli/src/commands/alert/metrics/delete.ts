@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteMetricAlertRule } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
 import {
@@ -15,8 +14,13 @@ import {
   isConfirmationBypassed,
   requireExplicitTarget,
 } from "../../../lib/mutate-command.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
-import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
+import {
+  type MetricAlertDeleteOutput,
+  MetricAlertDeleteOutputSchema,
+} from "../output-schemas.js";
 
 const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
 
@@ -28,18 +32,11 @@ type DeleteFlags = {
   readonly fields?: string[];
 };
 
-type DeleteResult = {
-  org: string;
-  ruleId: string;
-  name: string;
-  dryRun?: boolean;
-};
-
-function formatDeleted(r: DeleteResult): string {
+function formatDeleted(r: MetricAlertDeleteOutput): string {
   if (r.dryRun) {
-    return `Would delete metric alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}.`;
+    return `Would delete metric alert rule '${r.name}' (id ${r.id}) in ${r.org}.`;
   }
-  return `Deleted metric alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}.`;
+  return `Deleted metric alert rule '${r.name}' (id ${r.id}) in ${r.org}.`;
 }
 
 export const deleteCommand = buildDeleteCommand({
@@ -47,65 +44,61 @@ export const deleteCommand = buildDeleteCommand({
     brief: "Delete a metric alert rule",
     fullDescription:
       "Permanently remove a metric alert rule from an organization. " +
-      "Type org/rule-id to confirm, or use --yes / --force, or --dry-run.\n\n" +
-      "Examples:\n" +
-      "  sentry alert metrics delete my-org/12345\n" +
-      "  sentry alert metrics delete my-org/'P95 alert' --yes",
+      "Type org/rule-id to confirm, or use --yes / --force, or --dry-run.",
+    examples: [
+      {
+        description: "Delete a metric alert rule (prompts for confirmation)",
+        command: "sentry alert metrics delete my-org/12345",
+      },
+      {
+        description: "Delete a rule selected by name without prompting",
+        command: "sentry alert metrics delete my-org/'P95 alert' --yes",
+      },
+    ],
   },
   output: {
     human: formatDeleted,
-    jsonTransform: (r: DeleteResult) =>
-      r.dryRun
-        ? { dryRun: true, org: r.org, id: r.ruleId, name: r.name }
-        : { deleted: true, org: r.org, id: r.ruleId, name: r.name },
+    schema: MetricAlertDeleteOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        metricRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    requireExplicitTarget(
-      parseOrgProjectArg(targetArg),
-      "Metric alert target",
-      USAGE_HINT
-    );
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics delete"
-    );
+    const { ref, target } = await ruleArg.resolved;
+    requireExplicitTarget(target, "Metric alert target", USAGE_HINT);
+    const org = await resolveOrgOnlyTarget(target, cwd, "alert metrics delete");
     const orgSlugs = [org];
 
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,
       ref,
-      USAGE_HINT
+      USAGE_HINT,
     );
     const key = `${orgSlug}/${rule.id}`;
     const name = rule.name;
     if (flags["dry-run"]) {
       yield new CommandOutput({
-        org: orgSlug,
-        ruleId: rule.id,
-        name,
         dryRun: true,
-      } satisfies DeleteResult);
+        org: orgSlug,
+        id: rule.id,
+        name,
+      } satisfies MetricAlertDeleteOutput);
       return;
     }
     if (!isConfirmationBypassed(flags)) {
       const ok = await confirmByTyping(
         key,
-        `Type '${key}' to permanently delete this metric alert rule:`
+        `Type '${key}' to permanently delete this metric alert rule:`,
       );
       if (!ok) {
         logger.info("Delete cancelled.");
@@ -114,6 +107,11 @@ export const deleteCommand = buildDeleteCommand({
     }
 
     await deleteMetricAlertRule(orgSlug, rule.id);
-    yield new CommandOutput({ org: orgSlug, ruleId: rule.id, name });
+    yield new CommandOutput({
+      deleted: true,
+      org: orgSlug,
+      id: rule.id,
+      name,
+    } satisfies MetricAlertDeleteOutput);
   },
 });

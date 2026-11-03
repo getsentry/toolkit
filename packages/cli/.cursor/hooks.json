@@ -3,7 +3,7 @@
   "hooks": {
     "afterFileEdit": [
       {
-        "command": "npx ultracite fix"
+        "command": "pnpm --filter sentry run lint:fix"
       }
     ]
   }

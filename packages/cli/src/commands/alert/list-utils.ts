@@ -29,14 +29,14 @@ export function assertAlertListLimit(limit: number): void {
     throw new ValidationError(
       `--limit cannot exceed ${LIST_MAX_LIMIT}. ` +
         "Use --cursor to paginate through larger result sets.",
-      "limit"
+      "limit",
     );
   }
 }
 
 export function throwAlertListFetchFailure(
   prefix: string,
-  error: Error
+  error: Error,
 ): never {
   if (!(error instanceof ApiError)) {
     throw new Error(`${prefix}: ${error.message}`);
@@ -46,7 +46,7 @@ export function throwAlertListFetchFailure(
     error.status,
     error.detail,
     error.endpoint,
-    error.enriched403
+    error.enriched403,
   );
 }
 
@@ -54,7 +54,7 @@ export function buildAlertListFailureErrors<TKey extends string, TFailure>(
   failures: TFailure[],
   labelKey: TKey,
   getLabel: (failure: TFailure) => string,
-  getError: (failure: TFailure) => Error
+  getError: (failure: TFailure) => Error,
 ): (Record<TKey, string> & { status?: number; message: string })[] | undefined {
   if (failures.length === 0) {
     return;
@@ -76,7 +76,7 @@ export function fetchAlertRulesWithBudget<
   TPage extends AlertRuleFetchPage<TRule>,
 >(
   groups: TGroup[],
-  options: BudgetOptions<TGroup, TRule, TPage>
+  options: BudgetOptions<TGroup, TRule, TPage>,
 ): Promise<{ results: FetchResult<TPage>[]; hasMore: boolean }> {
   return fetchGroupsWithBudget<TGroup, TRule, TPage>(groups, {
     ...options,

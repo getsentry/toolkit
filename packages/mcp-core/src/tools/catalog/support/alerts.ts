@@ -65,7 +65,7 @@ export async function resolveIssueAlertRule(
   });
 
   if (matches.length === 1) {
-    return apiService.getIssueAlertRule({
+    return await apiService.getIssueAlertRule({
       organizationSlug: params.organizationSlug,
       projectSlug: params.projectSlug,
       ruleId: matches[0].id,
@@ -73,11 +73,11 @@ export async function resolveIssueAlertRule(
   }
   if (matches.length > 1) {
     throw new UserInputError(
-      `Multiple issue alert rules named "${params.ruleIdOrName}" were found. Retry with the numeric rule ID.`,
+      `Multiple issue alert rules named "${params.ruleIdOrName}" were found. Retry with the numeric rule ID, or use find_alert_rules to list them.`,
     );
   }
   throw new UserInputError(
-    `Issue alert rule "${params.ruleIdOrName}" was not found${params.projectSlug ? ` in project ${params.projectSlug}` : ""}.`,
+    `Issue alert rule "${params.ruleIdOrName}" was not found${params.projectSlug ? ` in project ${params.projectSlug}` : ""}. Use find_alert_rules to list alert rules.`,
   );
 }
 
@@ -126,7 +126,7 @@ export async function resolveMetricAlertRule(
     }
     monitorId = matches[0].id;
   }
-  return getMetricMonitor(apiService, {
+  return await getMetricMonitor(apiService, {
     organizationSlug,
     projectSlug,
     monitorId,

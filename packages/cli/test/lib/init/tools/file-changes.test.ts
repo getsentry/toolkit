@@ -50,7 +50,7 @@ describe("apply file changes", () => {
           path: "missing.txt",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result).toMatchObject({
@@ -71,7 +71,7 @@ describe("apply file changes", () => {
       request(directory, [
         { action: "create", patch: "replacement\n", path: "existing.txt" },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result).toMatchObject({
@@ -86,7 +86,7 @@ describe("apply file changes", () => {
       request(directory, [
         { action: "create", patch: "preview\n", path: "preview.txt" },
       ]),
-      { authToken: undefined, dryRun: true }
+      { authToken: undefined, dryRun: true },
     );
     const invalid = await applyPatchset(
       request(directory, [
@@ -96,7 +96,7 @@ describe("apply file changes", () => {
           path: "missing.txt",
         },
       ]),
-      { authToken: undefined, dryRun: true }
+      { authToken: undefined, dryRun: true },
     );
 
     expect(valid).toMatchObject({ data: { dryRun: true }, ok: true });
@@ -135,7 +135,7 @@ describe("apply file changes", () => {
           path: "setup.ts",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result).toMatchObject({
@@ -157,12 +157,12 @@ describe("apply file changes", () => {
           path: "config.ts",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result.ok).toBe(true);
     expect(readFileSync(target, "utf-8")).toBe(
-      "\uFEFFfirst\r\nchanged\r\nthird\r\n"
+      "\uFEFFfirst\r\nchanged\r\nthird\r\n",
     );
   });
 
@@ -248,7 +248,7 @@ describe("apply file changes", () => {
       ok: false,
     });
     expect(readFileSync(path.join(directory, "first.txt"), "utf-8")).toBe(
-      "first\n"
+      "first\n",
     );
   });
 
@@ -273,7 +273,7 @@ describe("apply file changes", () => {
 
       const result = await applyPreparedFileChanges(
         prepared.changes,
-        false
+        false,
       ).finally(() => chmodSync(blockedDirectory, 0o700));
 
       expect(result).toMatchObject({
@@ -284,7 +284,7 @@ describe("apply file changes", () => {
         ok: false,
       });
       expect(existsSync(path.join(blockedDirectory, "second.txt"))).toBe(false);
-    }
+    },
   );
 
   test("injects auth locally without returning it in tool data", async () => {
@@ -296,27 +296,27 @@ describe("apply file changes", () => {
           path: ".env.sentry-build-plugin",
         },
       ]),
-      { authToken: AUTH_TOKEN, dryRun: false }
+      { authToken: AUTH_TOKEN, dryRun: false },
     );
 
     expect(result.ok).toBe(true);
     expect(JSON.stringify(result)).not.toContain(AUTH_TOKEN);
     expect(
-      readFileSync(path.join(directory, ".env.sentry-build-plugin"), "utf-8")
+      readFileSync(path.join(directory, ".env.sentry-build-plugin"), "utf-8"),
     ).toContain(AUTH_TOKEN);
   });
 
   test("rejects malformed and duplicate file-change requests", async () => {
     const malformed = await applyPatchset(
       request(directory, [{ action: "modify", edits: [], path: "config.ts" }]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
     const duplicate = await applyPatchset(
       request(directory, [
         { action: "create", patch: "first", path: "same.txt" },
         { action: "create", patch: "second", path: "same.txt" },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(malformed).toMatchObject({ ok: false });
@@ -340,7 +340,7 @@ describe("apply file changes", () => {
           path: "script.sh",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result.ok).toBe(true);
@@ -362,7 +362,7 @@ describe("apply file changes", () => {
 
     expect(result.ok).toBe(true);
     expect(readFileSync(path.join(directory, "nested/file.txt"), "utf-8")).toBe(
-      "content\n"
+      "content\n",
     );
   });
 
@@ -383,7 +383,7 @@ describe("apply file changes", () => {
       ok: false,
     });
     expect(readFileSync(path.join(directory, "missing.txt"), "utf-8")).toBe(
-      "appeared\n"
+      "appeared\n",
     );
   });
 
@@ -399,7 +399,7 @@ describe("apply file changes", () => {
           path: "duplicate.txt",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result).toMatchObject({
@@ -420,7 +420,7 @@ describe("apply file changes", () => {
           path: "overlap.txt",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
     const absentNoOp = await applyPatchset(
       request(directory, [
@@ -430,7 +430,7 @@ describe("apply file changes", () => {
           path: "overlap.txt",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(overlapping).toMatchObject({
@@ -442,7 +442,7 @@ describe("apply file changes", () => {
       ok: false,
     });
     expect(readFileSync(path.join(directory, "overlap.txt"), "utf-8")).toBe(
-      "aaa"
+      "aaa",
     );
   });
 
@@ -452,7 +452,7 @@ describe("apply file changes", () => {
         { action: "create", patch: "file", path: "nested" },
         { action: "create", patch: "child", path: "nested/child.txt" },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result).toMatchObject({
@@ -483,7 +483,7 @@ describe("apply file changes", () => {
           path: "config.ts",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result.ok).toBe(true);
@@ -547,7 +547,7 @@ describe("apply file changes", () => {
         { action: "create", patch: "first\n", path: "real/file.txt" },
         { action: "create", patch: "second\n", path: "alias/file.txt" },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result).toMatchObject({
@@ -578,7 +578,7 @@ describe("apply file changes", () => {
             path: "second.txt",
           },
         ]),
-        { authToken: undefined, dryRun: false }
+        { authToken: undefined, dryRun: false },
       );
 
       expect(result).toMatchObject({
@@ -587,7 +587,7 @@ describe("apply file changes", () => {
       });
       expect(readFileSync(first, "utf-8")).toBe("old\n");
       expect(readFileSync(second, "utf-8")).toBe("old\n");
-    }
+    },
   );
 
   test("uses exclusive create at apply time", async () => {
@@ -624,15 +624,15 @@ describe("apply file changes", () => {
         },
         { action: "delete", path: "delete.txt" },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result.ok).toBe(true);
     expect(readFileSync(path.join(directory, "create.txt"), "utf-8")).toBe(
-      "created\n"
+      "created\n",
     );
     expect(readFileSync(path.join(directory, "modify.txt"), "utf-8")).toBe(
-      "new\n"
+      "new\n",
     );
     expect(existsSync(path.join(directory, "delete.txt"))).toBe(false);
   });
@@ -670,7 +670,7 @@ describe("apply file changes", () => {
           path: "config.ts",
         },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result.ok).toBe(false);
@@ -682,7 +682,7 @@ describe("apply file changes", () => {
       request(directory, [
         { action: "create", patch: "outside", path: "../outside.txt" },
       ]),
-      { authToken: undefined, dryRun: false }
+      { authToken: undefined, dryRun: false },
     );
 
     expect(result).toMatchObject({

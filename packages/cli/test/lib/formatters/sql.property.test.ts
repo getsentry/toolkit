@@ -72,7 +72,7 @@ const sqlKeywordArb = constantFrom(
   "NULL",
   "AS",
   "ON",
-  "RETURNING"
+  "RETURNING",
 );
 
 /** Table/column identifiers */
@@ -85,7 +85,7 @@ const parameterArb = constantFrom("%s", "$1", "$2", "$3", "?", "%d");
 const sqlTokenArb = oneof(sqlKeywordArb, identifierArb, parameterArb);
 
 const sqlStringArb = array(sqlTokenArb, { minLength: 1, maxLength: 12 }).map(
-  (tokens) => tokens.join(" ")
+  (tokens) => tokens.join(" "),
 );
 
 /** Span op values */
@@ -95,14 +95,14 @@ const dbOpArb = constantFrom(
   "db.sql.query",
   "db.sql.execute",
   "db.redis",
-  "db.mongodb"
+  "db.mongodb",
 );
 const nonDbOpArb = constantFrom(
   "http.client",
   "http.server",
   "cache.get",
   "browser",
-  "queue.process"
+  "queue.process",
 );
 
 describe("property: isDbSpanOp", () => {
@@ -111,7 +111,7 @@ describe("property: isDbSpanOp", () => {
       property(dbOpArb, (op) => {
         expect(isDbSpanOp(op)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -120,7 +120,7 @@ describe("property: isDbSpanOp", () => {
       property(nonDbOpArb, (op) => {
         expect(isDbSpanOp(op)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -135,7 +135,7 @@ describe("property: colorizeSql", () => {
         // Case-insensitive: @sentry/sqlish uppercases SQL keywords (e.g. "by" → "BY")
         expect(stripped.toLowerCase()).toBe(sql.toLowerCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -145,7 +145,7 @@ describe("property: colorizeSql", () => {
       property(sqlStringArb, (sql) => {
         expect(colorizeSql(sql)).toBe(sql);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -155,7 +155,7 @@ describe("property: colorizeSql", () => {
       property(sqlStringArb, (sql) => {
         expect(colorizeSql(sql)).toBe(colorizeSql(sql));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -167,7 +167,7 @@ describe("property: colorizeSql", () => {
         const twice = stripAnsi(colorizeSql(stripAnsi(colorizeSql(sql))));
         expect(once).toBe(twice);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -179,7 +179,7 @@ describe("property: colorizeSql", () => {
           expect(colorizeSql(sql).length).toBeGreaterThan(0);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

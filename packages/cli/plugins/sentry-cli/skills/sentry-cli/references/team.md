@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-team
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Work with Sentry teams
 requires:
   bins: ["sentry"]
@@ -11,9 +11,15 @@ requires:
 
 Work with Sentry teams
 
-### `sentry team list <org/project>`
+### `sentry team list [<org/project>]`
 
 List teams
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of teams to list - (default: "25")`
@@ -31,15 +37,25 @@ List teams
 | `isMember` | boolean | Whether you are a member |
 | `teamRole` | string \| null | Your role in the team |
 | `memberCount` | number | Number of members |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
 ```bash
-# List teams
+# List teams (organization auto-detected)
+sentry team list
+
+# List teams in an organization
 sentry team list my-org/
 
-# Paginate through teams
+# Fetch the next page
 sentry team list my-org/ -c next
+
+# Only teams whose slug or name matches a glob
+sentry team list 'my-org/back*'
+
+# Teams named like 'backend' when no such project exists (fuzzy)
+sentry team list my-org/backnd
 
 # Output as JSON
 sentry team list --json

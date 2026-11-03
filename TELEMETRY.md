@@ -12,16 +12,16 @@ the pivots and recipes below.
 
 ## Where To Query
 
-| Starting Point | Query Surface | Pivot | Answers | Next Step |
-| -------------- | ------------- | ----- | ------- | --------- |
-| `trace_id` from an issue, span, or log | Sentry Traces and Logs | `span_id` | full request/tool timeline and failing span | inspect child spans and logs |
-| Sentry `event_id` | Sentry Issue/Event | `trace_id`, `http.route`, `gen_ai.tool.name` | exception context and owning request/tool | query trace logs |
-| HTTP route or status symptom | Sentry Metrics and Logs | `http.route`, `http.response.status_code` | route volume, status mix, local rate limits | inspect matching traces |
-| OAuth sign-out or refresh symptom | Sentry Metrics and Logs | `app.client.family`, `app.access.*`, `app.oauth.*` metrics | refresh outcome, revoked grants, client family | inspect user trace or request logs |
-| MCP tool name | Sentry Spans and Issues | `gen_ai.tool.name` | failing or slow tool calls | inspect tool span and Sentry API spans |
-| Sentry resource URL/type | Sentry Spans | `app.resource.type` | `get_sentry_resource` dispatch behavior | inspect resolved type and downstream tool |
-| Agent/model/token symptom | Sentry Spans | `gen_ai.*` | provider, model, token, and agent behavior | inspect agent and tool spans |
-| Client or transport symptom | Sentry Logs, Spans, Metrics | `app.transport`, `app.client.family`, `user_agent.original` | stdio vs HTTP, client bucket, and request family | compare route or OAuth metrics |
+| Starting Point                         | Query Surface               | Pivot                                                       | Answers                                          | Next Step                                 |
+| -------------------------------------- | --------------------------- | ----------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------- |
+| `trace_id` from an issue, span, or log | Sentry Traces and Logs      | `span_id`                                                   | full request/tool timeline and failing span      | inspect child spans and logs              |
+| Sentry `event_id`                      | Sentry Issue/Event          | `trace_id`, `http.route`, `gen_ai.tool.name`                | exception context and owning request/tool        | query trace logs                          |
+| HTTP route or status symptom           | Sentry Metrics and Logs     | `http.route`, `http.response.status_code`                   | route volume, status mix, local rate limits      | inspect matching traces                   |
+| OAuth sign-out or refresh symptom      | Sentry Metrics and Logs     | `app.client.family`, `app.access.*`, `app.oauth.*` metrics  | refresh outcome, revoked grants, client family   | inspect user trace or request logs        |
+| MCP tool name                          | Sentry Spans and Issues     | `gen_ai.tool.name`                                          | failing or slow tool calls                       | inspect tool span and Sentry API spans    |
+| Sentry resource URL/type               | Sentry Spans                | `app.resource.type`                                         | `get_sentry_resource` dispatch behavior          | inspect resolved type and downstream tool |
+| Agent/model/token symptom              | Sentry Spans                | `gen_ai.*`                                                  | provider, model, token, and agent behavior       | inspect agent and tool spans              |
+| Client or transport symptom            | Sentry Logs, Spans, Metrics | `app.transport`, `app.client.family`, `user_agent.original` | stdio vs HTTP, client bucket, and request family | compare route or OAuth metrics            |
 
 ## Event Validation Diagnostics
 
@@ -32,44 +32,44 @@ Read it alongside `validationIssues`; another field may have failed.
 
 ## Investigation Pivots
 
-| Pivot | Meaning | Found In | First Query |
-| ----- | ------- | -------- | ----------- |
-| `trace_id` | one request, tool call, or agent run trace | issues, logs, spans | open trace |
-| `span_id` | one request, tool, model, or API span | logs, spans | inspect span |
-| `event_id` | captured Sentry error | Sentry issue/event | open event |
-| `user.id` | authenticated Sentry user ID | events, logs, metrics | user request or OAuth history |
-| `http.route` | normalized Cloudflare route template | metrics, logs, spans | route health |
-| `http.response.status_code` | final HTTP response code | metrics, logs, spans | response distribution |
-| `app.response.reason` | application local response reason | metrics | local rate-limit diagnosis |
-| `app.rate_limit.scope` | local rate-limit scope | metrics | IP vs user rate limits |
-| `app.route.group` | coarse route family | metrics | `mcp`, `oauth`, `chat`, `search` |
-| `app.transport` | MCP transport | tags, spans | `http`, `sse`, or `stdio` |
-| `app.server.mode.experimental` | experimental-mode flag | metrics, spans, tags | `?experimental=1` or stdio `--experimental` adoption |
-| `mcp.session.id` | MCP session identity | spans | session timeline |
-| `gen_ai.tool.name` | MCP tool being called | spans, issues | tool timeline |
-| `mcp.tool.name` | canonical MCP tool name on the span | spans | tool timeline for renamed tools |
-| `gen_ai.tool.call.result` | JSON tool result payload | spans | returned tool output |
-| `gen_ai.tool.call.result.count` | number of results returned by a tool | spans | zero-result tool calls |
-| `app.resource.type` | resolved Sentry resource type | spans | resource dispatch |
-| `app.constraint.organization_slug` | active organization constraint | spans | constrained session behavior |
-| `app.constraint.project_slug` | active project constraint | spans | constrained session behavior |
-| `gen_ai.tool.call.arguments.<key>` | effective tool arguments | spans | called tool input |
-| `app.client.family` | bucketed MCP client family | metrics, spans | client-specific OAuth behavior |
-| `app.access.method` | upstream access method | spans | `mcp_grant` or `sentry_access` |
-| `app.client.registration.method` | CIMD vs DCR client registration method | metrics, auth spans | `cimd`, `dcr`, or `unknown` on auth paths only |
-| `app.access.refresh.outcome` | OAuth refresh outcome | metrics | token refresh diagnosis |
-| `app.access.grant.revoked_reason` | wrapper grant revoke reason | metrics | sign-out diagnosis |
-| `app.consent.skill` | skill granted during approval | metrics | per-skill adoption |
-| `app.consent.skill.<skill>.granted` | skill granted on an MCP request | spans | tool behavior by enabled skills |
-| `app.access.probe.status_code` | upstream probe HTTP status | metrics | Sentry token validity probe result |
-| `app.access.probe.reason` | indeterminate probe bucket | metrics | upstream instability |
-| `app.upstream.host` | configured Sentry host | tags, spans | host-specific behavior |
-| `app.server.version` | MCP server package version | tags, spans | release/version behavior |
-| `app.utm_source` | sanitized `X-Sentry-Utm-Source` header or `utm_source` query param | spans | in-product / plugin attribution |
-| `app.referrer.family` | low-cardinality bucket of the `Referer` host | spans | external traffic attribution |
-| `gen_ai.provider.name` | GenAI provider | spans, tags | provider-specific model behavior |
-| `gen_ai.request.model` | requested GenAI model | spans | model-specific behavior |
-| `user_agent.original` | original HTTP user agent | request data, spans | client identification |
+| Pivot                               | Meaning                                                            | Found In              | First Query                                          |
+| ----------------------------------- | ------------------------------------------------------------------ | --------------------- | ---------------------------------------------------- |
+| `trace_id`                          | one request, tool call, or agent run trace                         | issues, logs, spans   | open trace                                           |
+| `span_id`                           | one request, tool, model, or API span                              | logs, spans           | inspect span                                         |
+| `event_id`                          | captured Sentry error                                              | Sentry issue/event    | open event                                           |
+| `user.id`                           | authenticated Sentry user ID                                       | events, logs, metrics | user request or OAuth history                        |
+| `http.route`                        | normalized Cloudflare route template                               | metrics, logs, spans  | route health                                         |
+| `http.response.status_code`         | final HTTP response code                                           | metrics, logs, spans  | response distribution                                |
+| `app.response.reason`               | application local response reason                                  | metrics               | local rate-limit diagnosis                           |
+| `app.rate_limit.scope`              | local rate-limit scope                                             | metrics               | IP vs user rate limits                               |
+| `app.route.group`                   | coarse route family                                                | metrics               | `mcp`, `oauth`, `chat`, `search`                     |
+| `app.transport`                     | MCP transport                                                      | tags, spans           | `http`, `sse`, or `stdio`                            |
+| `app.server.mode.experimental`      | experimental-mode flag                                             | metrics, spans, tags  | `?experimental=1` or stdio `--experimental` adoption |
+| `mcp.session.id`                    | MCP session identity                                               | spans                 | session timeline                                     |
+| `gen_ai.tool.name`                  | MCP tool being called                                              | spans, issues         | tool timeline                                        |
+| `mcp.tool.name`                     | canonical MCP tool name on the span                                | spans                 | tool timeline for renamed tools                      |
+| `gen_ai.tool.call.result`           | JSON tool result payload                                           | spans                 | returned tool output                                 |
+| `gen_ai.tool.call.result.count`     | number of results returned by a tool                               | spans                 | zero-result tool calls                               |
+| `app.resource.type`                 | resolved Sentry resource type                                      | spans                 | resource dispatch                                    |
+| `app.constraint.organization_slug`  | active organization constraint                                     | spans                 | constrained session behavior                         |
+| `app.constraint.project_slug`       | active project constraint                                          | spans                 | constrained session behavior                         |
+| `gen_ai.tool.call.arguments.<key>`  | effective tool arguments                                           | spans                 | called tool input                                    |
+| `app.client.family`                 | bucketed MCP client family                                         | metrics, spans        | client-specific OAuth behavior                       |
+| `app.access.method`                 | upstream access method                                             | spans                 | `mcp_grant` or `sentry_access`                       |
+| `app.client.registration.method`    | CIMD vs DCR client registration method                             | metrics, auth spans   | `cimd`, `dcr`, or `unknown` on auth paths only       |
+| `app.access.refresh.outcome`        | OAuth refresh outcome                                              | metrics               | token refresh diagnosis                              |
+| `app.access.grant.revoked_reason`   | wrapper grant revoke reason                                        | metrics               | sign-out diagnosis                                   |
+| `app.consent.skill`                 | skill granted during approval                                      | metrics               | per-skill adoption                                   |
+| `app.consent.skill.<skill>.granted` | skill granted on an MCP request                                    | spans                 | tool behavior by enabled skills                      |
+| `app.access.probe.status_code`      | upstream probe HTTP status                                         | metrics               | Sentry token validity probe result                   |
+| `app.access.probe.reason`           | indeterminate probe bucket                                         | metrics               | upstream instability                                 |
+| `app.upstream.host`                 | configured Sentry host                                             | tags, spans           | host-specific behavior                               |
+| `app.server.version`                | MCP server package version                                         | tags, spans           | release/version behavior                             |
+| `app.utm_source`                    | sanitized `X-Sentry-Utm-Source` header or `utm_source` query param | spans                 | in-product / plugin attribution                      |
+| `app.referrer.family`               | low-cardinality bucket of the `Referer` host                       | spans                 | external traffic attribution                         |
+| `gen_ai.provider.name`              | GenAI provider                                                     | spans, tags           | provider-specific model behavior                     |
+| `gen_ai.request.model`              | requested GenAI model                                              | spans                 | model-specific behavior                              |
+| `user_agent.original`               | original HTTP user agent                                           | request data, spans   | client identification                                |
 
 ## Query Recipes
 
@@ -236,7 +236,7 @@ attached to ordinary `/mcp` request spans. HTTPS URL `client_id` values map to
 Named under `app.client.*` (not `app.oauth.*`) so default Sentry data scrubbing
 does not redact values via the `auth` substring in `oauth`.
 
-Diagnostic OAuth *attributes* use the readable `app.access.*` namespace for
+Diagnostic OAuth _attributes_ use the readable `app.access.*` namespace for
 the OAuth access lifecycle. This avoids scrubbed substrings (`auth`/`oauth`,
 `token`, `bearer`, `credentials`); error/reason/method buckets avoid them too.
 Metric names remain under `app.oauth.*`.
@@ -284,14 +284,14 @@ Attributes: `gen_ai.provider.name`, `gen_ai.request.model`,
 
 ## Configuration
 
-| Setting | Controls | Default |
-| ------- | -------- | ------- |
-| `VITE_SENTRY_DSN` | Cloudflare Sentry telemetry | disabled when unset |
-| `VITE_SENTRY_ENVIRONMENT` | Cloudflare Sentry environment | development |
-| `SENTRY_DSN` | stdio and Node telemetry | disabled when unset |
-| `SENTRY_RELEASE` | stdio release tag | unset |
-| `SENTRY_HOST` | upstream Sentry host and `app.upstream.host` | `sentry.io` |
-| `NODE_ENV` | stdio environment | production fallback in packaged runtime |
+| Setting                   | Controls                                     | Default                                 |
+| ------------------------- | -------------------------------------------- | --------------------------------------- |
+| `VITE_SENTRY_DSN`         | Cloudflare Sentry telemetry                  | disabled when unset                     |
+| `VITE_SENTRY_ENVIRONMENT` | Cloudflare Sentry environment                | development                             |
+| `SENTRY_DSN`              | stdio and Node telemetry                     | disabled when unset                     |
+| `SENTRY_RELEASE`          | stdio release tag                            | unset                                   |
+| `SENTRY_HOST`             | upstream Sentry host and `app.upstream.host` | `sentry.io`                             |
+| `NODE_ENV`                | stdio environment                            | production fallback in packaged runtime |
 
 ## Attribute Notes
 

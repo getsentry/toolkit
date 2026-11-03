@@ -32,7 +32,7 @@ export function createEvalSuite(platformId: string) {
         result = await runWizard(env.projectDir, p, wizardFeatures);
         expect(result.exitCode).toBe(0);
       },
-      p.timeout
+      p.timeout,
     );
 
     test("hard assertions pass", async () => {

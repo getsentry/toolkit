@@ -19,13 +19,14 @@
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { normalizeUrl } from "./constants.js";
+import { hasStoredAccountForHost } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
 import { getEnv } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { parseIni } from "./ini.js";
 import { logger } from "./logger.js";
-import { isSaaSTrustOrigin } from "./sentry-urls.js";
 import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
 import { walkUpFrom } from "./walk-up.js";
 
@@ -85,7 +86,7 @@ const FIELD_MAP: ReadonlyArray<{
 function applyConfig(
   result: SentryCliRcConfig,
   iniData: ReturnType<typeof parseIni>,
-  filePath: string
+  filePath: string,
 ): void {
   for (const { section, key, field } of FIELD_MAP) {
     if (result[field] !== undefined) {
@@ -148,7 +149,7 @@ function isNarrowAbsenceError(error: unknown): boolean {
  * for this committed config load.
  */
 export async function tryReadSentryCliRc(
-  filePath: string
+  filePath: string,
 ): Promise<string | null> {
   let statResult: Awaited<ReturnType<typeof stat>>;
   try {
@@ -181,12 +182,12 @@ export async function tryReadSentryCliRc(
 async function tryApplyFile(
   result: SentryCliRcConfig,
   filePath: string,
-  isGlobal: boolean
+  isGlobal: boolean,
 ): Promise<void> {
   const content = await tryReadSentryCliRc(filePath);
   if (content !== null) {
     log.debug(
-      `Found ${isGlobal ? "global" : "local"} ${CONFIG_FILENAME} at ${filePath}`
+      `Found ${isGlobal ? "global" : "local"} ${CONFIG_FILENAME} at ${filePath}`,
     );
     applyConfig(result, parseIni(content), filePath);
   }
@@ -219,7 +220,7 @@ export function getGlobalPaths(): Set<string> {
  * so that global values are included in the cached config.
  */
 export async function applyGlobalFallbacks(
-  result: SentryCliRcConfig
+  result: SentryCliRcConfig,
 ): Promise<void> {
   for (const globalPath of getGlobalPaths()) {
     if (isComplete(result)) {
@@ -240,7 +241,7 @@ export async function applyGlobalFallbacks(
  */
 export async function applySentryCliRcDir(
   result: SentryCliRcConfig,
-  dir: string
+  dir: string,
 ): Promise<boolean> {
   if (isComplete(result)) {
     return true;
@@ -262,7 +263,7 @@ export async function applySentryCliRcDir(
  */
 export function setSentryCliRcCache(
   cwd: string,
-  config: SentryCliRcConfig
+  config: SentryCliRcConfig,
 ): void {
   cache.set(cwd, Promise.resolve(config));
 }
@@ -365,7 +366,7 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
     !env.SENTRY_TOKEN?.trim()
   ) {
     log.debug(
-      `Setting SENTRY_AUTH_TOKEN from ${CONFIG_FILENAME} (${config.sources.token})`
+      `Setting SENTRY_AUTH_TOKEN from ${CONFIG_FILENAME} (${config.sources.token})`,
     );
     env.SENTRY_AUTH_TOKEN = config.token;
     rcInjectedTokenSource = config.sources.token;
@@ -374,7 +375,7 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
   const normalizedRcUrl = config.url ? normalizeUrl(config.url) : undefined;
   if (normalizedRcUrl && !env.SENTRY_HOST?.trim() && !env.SENTRY_URL?.trim()) {
     log.debug(
-      `Setting SENTRY_URL from ${CONFIG_FILENAME} (${config.sources.url})`
+      `Setting SENTRY_URL from ${CONFIG_FILENAME} (${config.sources.url})`,
     );
     env.SENTRY_URL = normalizedRcUrl;
   }
@@ -386,8 +387,8 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
  * command — commands that establish or tear down trust (`auth login`,
  * `auth logout`) opt out via `skipRcUrlCheck: true`.
  *
- * No-op when: no rc URL was loaded, the rc URL is SaaS, or the rc URL
- * matches the active token's host.
+ * No-op when: no rc URL was loaded, the rc URL is SaaS, the rc URL
+ * matches the active token's host, or a usable stored account is on it.
  *
  * @throws {HostScopeError} On non-SaaS URL that doesn't match the token
  */
@@ -398,10 +399,16 @@ export async function assertRcUrlTrusted(cwd: string): Promise<void> {
   if (!normalizedRcUrl || isSaaSTrustOrigin(normalizedRcUrl)) {
     return;
   }
-  // Non-SaaS rc URL: must match active token's host. No token at all is
-  // also a refusal — the rc URL by itself isn't a trust source.
+  // Non-SaaS rc URL: must match active token's host, or a usable stored
+  // account must be on it (logging in with `--url` established that trust;
+  // account selection then uses that account for the server, like a pasted
+  // URL). No token at all is also a refusal — the rc URL by itself isn't a
+  // trust source.
   const tokenHost = getActiveTokenHost();
-  if (tokenHost && isHostTrusted(normalizedRcUrl, tokenHost)) {
+  if (
+    (tokenHost && isHostTrusted(normalizedRcUrl, tokenHost)) ||
+    hasStoredAccountForHost(normalizedRcUrl)
+  ) {
     return;
   }
   const source = config.sources.url

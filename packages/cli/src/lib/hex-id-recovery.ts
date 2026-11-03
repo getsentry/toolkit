@@ -24,7 +24,7 @@
  * module only owns the recovery-specific control flow.
  */
 
-import { addBreadcrumb } from "@sentry/node-core/light";
+import { addBreadcrumb } from "@sentry/node";
 
 import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";
@@ -32,7 +32,12 @@ import {
   type ParsedOrgProject,
   ProjectSpecificationType,
 } from "./arg-parsing.js";
-import { AuthError, ResolutionError, ValidationError } from "./errors.js";
+import {
+  AuthError,
+  ResolutionError,
+  stringifyUnknown,
+  ValidationError,
+} from "./errors.js";
 import type { HexEntityType } from "./hex-id.js";
 import {
   ALPHA_SEGMENT_RE,
@@ -192,6 +197,27 @@ const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
 // ---------------------------------------------------------------------------
 
 /**
+ * Strip URL fragment prefixes (`span-`, `trace-`, ...) from a lowercased
+ * input. Repeatedly, so it is idempotent: a pathological double-prefixed
+ * input like `span-span-abc` would otherwise keep its inner prefix.
+ */
+function stripUrlFragmentPrefixes(lowered: string): string {
+  let cleaned = lowered;
+  let stripped = true;
+  while (stripped) {
+    stripped = false;
+    for (const prefix of URL_FRAGMENT_PREFIXES) {
+      if (cleaned.startsWith(prefix)) {
+        cleaned = cleaned.slice(prefix.length);
+        stripped = true;
+        break;
+      }
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Pre-normalize a raw input before further analysis. Pipeline:
  *
  * 1. Trim whitespace and lowercase.
@@ -211,24 +237,7 @@ export function preNormalize(input: string): {
   cleaned: string;
   sentinel?: string;
 } {
-  const lowered = input.trim().toLowerCase();
-
-  // Strip URL fragment prefixes repeatedly so the function is idempotent.
-  // A pathological double-prefixed input like `span-span-abc` would otherwise
-  // strip only the outer `span-` and leave the inner prefix in place, which
-  // breaks `preNormalize(preNormalize(x)) === preNormalize(x)`.
-  let cleaned = lowered;
-  let stripped = true;
-  while (stripped) {
-    stripped = false;
-    for (const prefix of URL_FRAGMENT_PREFIXES) {
-      if (cleaned.startsWith(prefix)) {
-        cleaned = cleaned.slice(prefix.length);
-        stripped = true;
-        break;
-      }
-    }
-  }
+  let cleaned = stripUrlFragmentPrefixes(input.trim().toLowerCase());
 
   // Sentinel check runs AFTER URL-prefix stripping so inputs like
   // `span-null` (shell variable leak through a URL-builder) surface as
@@ -272,7 +281,7 @@ export function preNormalize(input: string): {
  */
 export function stripTrailingNonHex(
   input: string,
-  expectedLen: 32 | 16
+  expectedLen: 32 | 16,
 ): { hex: string; stripped: string } | null {
   if (input.length <= expectedLen) {
     return null;
@@ -338,6 +347,43 @@ export function looksLikeSlug(input: string): boolean {
   return !(PURE_HEX_RE.test(dashless) && dashless.length >= MIN_FUZZY_PREFIX);
 }
 
+/**
+ * {@link looksLikeSlug} after URL fragment prefixes are stripped: a prefix
+ * (`trace-<id>`) has a dash and letters, but does not make the input a slug.
+ */
+function looksLikeUnprefixedSlug(input: string): boolean {
+  return looksLikeSlug(stripUrlFragmentPrefixes(input.trim().toLowerCase()));
+}
+
+/**
+ * Whether `input`, not a valid ID, still has enough of one for
+ * {@link recoverHexId} to look it up: a hex prefix or ellipsized ID of at
+ * least {@link MIN_FUZZY_PREFIX} chars that is not a slug. The ID argument
+ * grammar uses it to read `<org>/<input>` as an ID to recover, not as a
+ * project.
+ */
+export function looksLikeHexIdFragment(input: string): boolean {
+  if (looksLikeUnprefixedSlug(input)) {
+    return false;
+  }
+  const { cleaned, sentinel } = preNormalize(input);
+  if (sentinel) {
+    return false;
+  }
+  return isLongEnough(extractHexCandidate(cleaned));
+}
+
+/** Whether `candidate` has enough hex chars for a fuzzy lookup */
+function isLongEnough(
+  candidate: HexCandidate | null,
+): candidate is HexCandidate {
+  return (
+    candidate !== null &&
+    (candidate.prefix.length >= MIN_FUZZY_PREFIX ||
+      (candidate.suffix?.length ?? 0) >= MIN_FUZZY_PREFIX)
+  );
+}
+
 /** Returns true for paths with 4+ slash-separated non-empty segments. */
 export function isOverNestedPath(input: string): boolean {
   return input.split("/").filter(Boolean).length >= OVER_NESTED_MIN_SEGMENTS;
@@ -362,7 +408,7 @@ export function isOverNestedPath(input: string): boolean {
  * AuthError is re-thrown so the auto-login flow still triggers.
  */
 export async function resolveRecoveryOrg(
-  parsed: ParsedOrgProject
+  parsed: ParsedOrgProject,
 ): Promise<{ org: string; project?: string } | null> {
   try {
     switch (parsed.type) {
@@ -402,7 +448,7 @@ export async function resolveRecoveryOrg(
  */
 function checkRetentionExpiry(
   input: string,
-  entityType: HexEntityType
+  entityType: HexEntityType,
 ): RecoveryResult | null {
   const retentionDays = RETENTION_DAYS[entityType];
   if (retentionDays === null) {
@@ -440,11 +486,11 @@ export type FuzzyLookupAdapter = (ctx: LookupContext) => Promise<string[]>;
 
 /** Deduplicate while preserving order, then filter by prefix + suffix. */
 function filterByCandidate(ids: string[], candidate: HexCandidate): string[] {
-  const unique = Array.from(new Set(ids));
+  const unique = [...new Set(ids)];
   return unique.filter(
     (id) =>
       id.startsWith(candidate.prefix) &&
-      (!candidate.suffix || id.endsWith(candidate.suffix))
+      (!candidate.suffix || id.endsWith(candidate.suffix)),
   );
 }
 
@@ -460,7 +506,7 @@ const eventAdapter: FuzzyLookupAdapter = async (ctx) => {
     sort: "-timestamp",
     statsPeriod: ctx.period ?? SCAN_PERIODS.event,
   });
-  return data.data.map((row) => String(row.id ?? "")).filter(Boolean);
+  return data.data.map((row) => stringifyUnknown(row.id ?? "")).filter(Boolean);
 };
 
 const traceAdapter: FuzzyLookupAdapter = async (ctx) => {
@@ -514,7 +560,7 @@ export const ADAPTERS: Record<HexEntityType, FuzzyLookupAdapter> = {
  */
 async function findTraceBySpanId(
   spanId: string,
-  ctx: LookupContext
+  ctx: LookupContext,
 ): Promise<string | null> {
   if (!(ctx.org && ctx.project)) {
     return null;
@@ -538,7 +584,7 @@ async function findTraceBySpanId(
 function buildSlugHint(
   input: string,
   entityType: HexEntityType,
-  org: string
+  org: string,
 ): string {
   const orgPart = org ? `${org}/` : "<org>/";
   const cmd = SLUG_REDIRECT_COMMAND[entityType];
@@ -564,7 +610,7 @@ function buildSlugHint(
  */
 function buildNoMatchHint(
   entityType: HexEntityType,
-  period: string | undefined
+  period: string | undefined,
 ): string {
   const window = period ?? SCAN_PERIODS[entityType];
   const retention = RETENTION_DAYS[entityType];
@@ -608,7 +654,7 @@ function buildNoMatchHint(
 function buildRecoveryError(
   result: Extract<RecoveryResult, { kind: "failed" }>,
   fallbackError: Error,
-  options: HandleRecoveryOptions
+  options: HandleRecoveryOptions,
 ): Error {
   const entityCap =
     options.entityType.charAt(0).toUpperCase() + options.entityType.slice(1);
@@ -620,7 +666,7 @@ function buildRecoveryError(
         `${entityCap} prefix '${result.original}'`,
         `matches ${candidates.length} ${options.entityType}s`,
         `Re-run with more characters or the full ID: ${options.canonicalCommand}`,
-        candidates.map((c) => options.canonicalCommand.replace("<id>", c))
+        candidates.map((c) => options.canonicalCommand.replace("<id>", c)),
       );
     }
     case "no-matches":
@@ -630,7 +676,7 @@ function buildRecoveryError(
         `${entityCap} '${result.original}'`,
         failedReasonHeadline(result.reason),
         options.canonicalCommand,
-        result.hint ? [result.hint] : []
+        result.hint ? [result.hint] : [],
       );
     case "api-error":
       return fallbackError;
@@ -650,7 +696,7 @@ function buildRecoveryError(
 
 /** Short headline describing why resolution failed, for ResolutionError. */
 function failedReasonHeadline(
-  reason: "no-matches" | "past-retention" | "looks-like-slug"
+  reason: "no-matches" | "past-retention" | "looks-like-slug",
 ): string {
   switch (reason) {
     case "no-matches":
@@ -675,7 +721,7 @@ function failedReasonHeadline(
 export async function recoverHexId(
   input: string,
   entityType: HexEntityType,
-  ctx: LookupContext
+  ctx: LookupContext,
 ): Promise<RecoveryResult> {
   const result = await recoverHexIdInternal(input, entityType, ctx);
   recordRecoveryOutcome(entityType, input, result);
@@ -690,9 +736,9 @@ export async function recoverHexId(
 function recordRecoveryOutcome(
   entityType: HexEntityType,
   input: string,
-  result: RecoveryResult
+  result: RecoveryResult,
 ): void {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     addBreadcrumb({
       category: "hex_id_recovery",
@@ -724,7 +770,7 @@ function recordRecoveryOutcome(
 async function recoverHexIdInternal(
   input: string,
   entityType: HexEntityType,
-  ctx: LookupContext
+  ctx: LookupContext,
 ): Promise<RecoveryResult> {
   const expectedLen: 32 | 16 = entityType === "span" ? 16 : 32;
   const { cleaned, sentinel } = preNormalize(input);
@@ -776,11 +822,12 @@ async function recoverHexIdInternal(
     return redirect;
   }
 
-  // Slug-shape check on the RAW input before fuzzy lookup. Slug-like
-  // inputs where the dashless form happens to start with enough hex
-  // chars (e.g. `cafe-babe-app` → `cafebabeapp`) would otherwise reach
+  // Slug-shape check on the input (without URL fragment prefixes, but
+  // before partial-UUID dashes are stripped) before fuzzy lookup.
+  // Slug-like inputs where the dashless form happens to start with enough
+  // hex chars (e.g. `cafe-babe-app` → `cafebabeapp`) would otherwise reach
   // runFuzzyLookup and waste an API call on a clearly-mistaken input.
-  if (looksLikeSlug(input)) {
+  if (looksLikeUnprefixedSlug(input)) {
     return {
       kind: "failed",
       original: input,
@@ -790,11 +837,7 @@ async function recoverHexIdInternal(
   }
 
   const candidate = extractHexCandidate(cleaned);
-  const longEnough =
-    candidate !== null &&
-    (candidate.prefix.length >= MIN_FUZZY_PREFIX ||
-      (candidate.suffix?.length ?? 0) >= MIN_FUZZY_PREFIX);
-  if (!(longEnough && candidate)) {
+  if (!isLongEnough(candidate)) {
     // Raw-input slug check already ran above; here it's either a short
     // pure-hex prefix or a short non-hex blob — neither is a slug.
     return {
@@ -805,7 +848,7 @@ async function recoverHexIdInternal(
     };
   }
 
-  return runFuzzyLookup(input, entityType, candidate, ctx);
+  return await runFuzzyLookup(input, entityType, candidate, ctx);
 }
 
 /**
@@ -824,7 +867,7 @@ async function recoverHexIdInternal(
 function tryPreNormalizedValidId(
   input: string,
   cleaned: string,
-  entityType: HexEntityType
+  entityType: HexEntityType,
 ): RecoveryResult | null {
   const expectedRe = entityType === "span" ? SPAN_ID_RE : HEX_ID_RE;
   const lowered = input.trim().toLowerCase();
@@ -890,7 +933,7 @@ function describeStrippedParts(raw: string, cleaned: string): string {
 async function tryCrossEntityRedirect(
   cleaned: string,
   entityType: HexEntityType,
-  ctx: LookupContext
+  ctx: LookupContext,
 ): Promise<RecoveryResult | null> {
   // `SPAN_ID_RE` matches exactly 16 hex chars, so the earlier guard
   // already rules out 32-char trace IDs — no separate `HEX_ID_RE` check
@@ -914,7 +957,7 @@ async function tryCrossEntityRedirect(
       throw err;
     }
     log.debug(
-      `Cross-entity lookup failed: ${err instanceof Error ? err.message : String(err)}`
+      `Cross-entity lookup failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   return null;
@@ -925,7 +968,7 @@ async function runFuzzyLookup(
   input: string,
   entityType: HexEntityType,
   candidate: HexCandidate,
-  ctx: LookupContext
+  ctx: LookupContext,
 ): Promise<RecoveryResult> {
   let raw: string[];
   try {
@@ -935,7 +978,7 @@ async function runFuzzyLookup(
       throw err;
     }
     log.debug(
-      `Fuzzy ${entityType} lookup failed: ${err instanceof Error ? err.message : String(err)}`
+      `Fuzzy ${entityType} lookup failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return { kind: "failed", original: input, reason: "api-error" };
   }
@@ -959,7 +1002,7 @@ async function runFuzzyLookup(
   }
   // `filtered.length === 1` by elimination; the non-null assertion here
   // is safe and keeps TypeScript's `noUncheckedIndexedAccess` happy.
-  // biome-ignore lint/style/noNonNullAssertion: exactly one element after the checks above
+  // oxlint-disable-next-line typescript/no-non-null-assertion -- exactly one element after the checks above
   const id = filtered[0]!;
   return {
     kind: "fuzzy",
@@ -987,13 +1030,13 @@ async function runFuzzyLookup(
 export function handleRecoveryResult(
   result: RecoveryResult,
   fallbackError: Error,
-  options: HandleRecoveryOptions
+  options: HandleRecoveryOptions,
 ): string {
   const scoped = logger.withTag(options.logTag);
   switch (result.kind) {
     case "stripped":
       scoped.warn(
-        `Stripped trailing '${result.stripped}' from ${options.entityType} ID. Using ${result.id}.`
+        `Stripped trailing '${result.stripped}' from ${options.entityType} ID. Using ${result.id}.`,
       );
       return result.id;
     case "fuzzy": {
@@ -1001,13 +1044,13 @@ export function handleRecoveryResult(
         ? `prefix ${result.prefix}…${result.suffix}`
         : `prefix ${result.prefix}`;
       scoped.warn(
-        `Interpreting '${result.original}' as ${options.entityType} ${result.id} (matched ${via}).`
+        `Interpreting '${result.original}' as ${options.entityType} ${result.id} (matched ${via}).`,
       );
       return result.id;
     }
     case "redirect":
       scoped.warn(
-        `'${result.original}' is a ${result.fromEntity} ID, not a ${result.toEntity} ID. Using the associated ${result.toEntity} ${result.id}.`
+        `'${result.original}' is a ${result.fromEntity} ID, not a ${result.toEntity} ID. Using the associated ${result.toEntity} ${result.id}.`,
       );
       return result.id;
     case "failed":

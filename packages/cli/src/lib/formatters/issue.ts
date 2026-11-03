@@ -2,24 +2,22 @@
  * Issue view output types and formatters.
  */
 
-import type { SentryEvent, SentryIssue } from "../../types/index.js";
+import type { InferOutput } from "valibot";
+import type { IssueViewOutputFields, SentryIssue } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails, formatIssueDetails } from "./human.js";
 import { filterFields } from "./json.js";
 import { renderMarkdown } from "./markdown.js";
 
-/** Data rendered for one issue. */
-export type SingleIssueViewData = {
-  /** Resolved organization slug, or null when resolution was unscoped. */
-  org: string | null;
+/**
+ * Data rendered for one issue: the issue, and the fields JSON output adds to
+ * it ({@link IssueViewOutputFields}: the resolved org, or null when
+ * resolution was unscoped; the latest event, or null when it could not be
+ * loaded; related replays; the trace, or null when unavailable).
+ */
+export type SingleIssueViewData = InferOutput<typeof IssueViewOutputFields> & {
   /** Full issue details. */
   issue: SentryIssue;
-  /** Latest event, or null when it could not be loaded. */
-  event: SentryEvent | null;
-  /** Related Session Replay identifiers. */
-  replayIds: string[];
-  /** Trace context from the latest event, or null when unavailable. */
-  trace: { traceId: string; spans: unknown[] } | null;
   /** Pre-formatted span tree lines for human output only. */
   spanTreeLines?: string[];
 };
@@ -45,7 +43,7 @@ function formatReplaySection(org: string | null, replayIds: string[]): string {
   for (const replayId of visibleReplayIds) {
     if (org) {
       lines.push(
-        `- \`${replayId}\` (view: \`sentry replay view ${org}/${replayId}\`)`
+        `- \`${replayId}\` (view: \`sentry replay view ${org}/${replayId}\`)`,
       );
     } else {
       lines.push(`- \`${replayId}\``);
@@ -55,7 +53,7 @@ function formatReplaySection(org: string | null, replayIds: string[]): string {
   const remainingCount = replayIds.length - visibleReplayIds.length;
   if (remainingCount > 0) {
     lines.push(
-      `- ${remainingCount} more related replay${remainingCount === 1 ? "" : "s"}`
+      `- ${remainingCount} more related replay${remainingCount === 1 ? "" : "s"}`,
     );
   }
 
@@ -70,7 +68,7 @@ function formatSingleIssueView(data: SingleIssueViewData): string {
 
   if (data.event) {
     parts.push(
-      formatEventDetails(data.event, "Latest Event", data.issue.permalink)
+      formatEventDetails(data.event, "Latest Event", data.issue.permalink),
     );
   }
 
@@ -101,7 +99,7 @@ export function formatIssueView(data: IssueViewData): string {
 
 function flattenIssueView(
   entry: SingleIssueViewData,
-  fields?: string[]
+  fields?: string[],
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {
     ...entry.issue,
@@ -128,7 +126,7 @@ function flattenIssueView(
  */
 export function jsonTransformIssueView(
   data: IssueViewData,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   if (data.requestedCount <= 1) {
     const [first] = data.issues;

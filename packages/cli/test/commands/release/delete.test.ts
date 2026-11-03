@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ApiError, ContextError } from "../../../src/lib/errors.js";
 
@@ -31,11 +31,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 /** Minimal release shape returned by getRelease */
@@ -113,7 +113,7 @@ describe("release delete", () => {
     const func = await deleteCommand.loader();
 
     await expect(func.call(context, defaultFlags, "")).rejects.toThrow(
-      ContextError
+      ContextError,
     );
     expect(deleteReleaseSpy).not.toHaveBeenCalled();
   });
@@ -124,7 +124,7 @@ describe("release delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
-      "my-org/1.0.0"
+      "my-org/1.0.0",
     );
 
     expect(getReleaseSpy).toHaveBeenCalledWith("my-org", "1.0.0");
@@ -137,14 +137,14 @@ describe("release delete", () => {
 
   test("propagates 404 from getRelease", async () => {
     getReleaseSpy.mockRejectedValue(
-      new ApiError("Not found", 404, "Release not found")
+      new ApiError("Not found", 404, "Release not found"),
     );
 
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
 
     await expect(
-      func.call(context, defaultFlags, "my-org/1.0.0")
+      func.call(context, defaultFlags, "my-org/1.0.0"),
     ).rejects.toThrow(ApiError);
 
     expect(deleteReleaseSpy).not.toHaveBeenCalled();
@@ -157,8 +157,8 @@ describe("release delete", () => {
         "Failed to delete release '1.0.0': 400 Bad Request",
         400,
         "This release has health data and cannot be removed.",
-        endpoint
-      )
+        endpoint,
+      ),
     );
 
     const { context } = createMockContext();
@@ -184,7 +184,7 @@ describe("release delete", () => {
     const originalError = new ApiError(
       "Failed to delete release '1.0.0': 400 Bad Request",
       400,
-      "Some other validation error"
+      "Some other validation error",
     );
     deleteReleaseSpy.mockRejectedValue(originalError);
 

@@ -3,15 +3,19 @@ title: Agentic Usage
 description: Enable AI coding agents to use the Sentry CLI
 ---
 
-AI coding agents can use the Sentry CLI through the skill system. The CLI detects and supports Claude Code (including Cowork), Cursor, Windsurf, GitHub Copilot, Gemini CLI, OpenAI Codex, Goose, Amp, Augment, OpenCode, Cline, Grok, Kimi, Junie, OpenClaw, and any agent that reads skills from `~/.agents`. This allows agents to interact with Sentry directly from your development environment.
+AI coding agents can use the Sentry CLI through the skill system, which lets them interact with Sentry directly from your development environment. Any agent that reads skills from `~/.agents` can use the skill.
+
+<!-- GENERATED:START detected-agents -->
+The CLI detects Claude Code, Claude Cowork, Cursor, Windsurf, GitHub Copilot, Gemini CLI, OpenAI Codex, Antigravity, Goose, Amp, Augment, OpenCode, Cline, Grok, Kimi, Junie, and OpenClaw.
+<!-- GENERATED:END detected-agents -->
 
 ## Automatic Installation
 
-The curl installer and Homebrew run `sentry cli setup`, which installs agent skills into detected agent root directories (`~/.claude`, `~/.agents`). After a package-manager install, run `sentry cli setup` yourself. `sentry cli upgrade` also refreshes skills. No network fetch is needed — skill files are embedded in the binary.
+The curl installer runs `sentry cli setup`, which installs agent skills into detected agent root directories (`~/.claude`, `~/.agents`). After a Homebrew or package-manager install, run `sentry cli setup` yourself. `sentry cli upgrade` also refreshes skills. No network fetch is needed — skill files are embedded in the binary.
 
 This uses the same `~/.agents` convention as [dotagents](https://github.com/getsentry/dotagents), Sentry's first-party tool for installing agent skills. See [Manual Installation](#manual-installation) to add the skill with dotagents yourself.
 
-To skip automatic skill installation, pass `--no-agent-skills` to `sentry cli setup`.
+To skip automatic skill installation, pass `--no-agent-skills` to `sentry cli setup` (or to the install script or `sentry cli upgrade`). The CLI remembers this choice, so later upgrades also skip skills. Run `sentry cli defaults agent-skills on` to turn installation back on.
 
 ## Manual Installation
 
@@ -66,7 +70,7 @@ When you ask your agent about Sentry errors or want to investigate an issue, the
 
 - "Show me the latest issues in my project" → `sentry issue list`
 - "What's the stack trace for ISSUE-123?" → `sentry issue view ISSUE-123`
-- "List all projects in my organization" → `sentry project list my-org`
+- "List all projects in my organization" → `sentry project list my-org/`
 - "What API endpoints exist for releases?" → `sentry schema releases`
 - "How do I set up source maps for Next.js?" → `sentry docs "source maps Next.js"`
 - "What is Sentry's status right now?" → `sentry status`
@@ -79,4 +83,4 @@ The skill uses your existing CLI authentication, so you'll need to run `sentry a
 ## Requirements
 
 - An authenticated Sentry CLI installation (`sentry auth login`)
-- An AI coding agent that supports the skills system (e.g., Claude Code, Cursor, Windsurf, GitHub Copilot, Gemini CLI, Codex, Goose, Amp, Augment, OpenCode, Cline, Grok, Kimi, Junie, OpenClaw, or any agent that reads from `~/.agents`)
+- An AI coding agent that supports the skills system, such as one of the agents listed at the top of this page or any agent that reads from `~/.agents`

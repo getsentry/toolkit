@@ -26,28 +26,12 @@
  * const issues = IssueListSchema.parse(await response.json());
  * // TypeScript now knows the exact shape of issues
  * ```
- *
- * @example Error Handling
- * ```typescript
- * const { data, success, error } = ApiErrorSchema.safeParse(response);
- * if (success) {
- *   throw new ApiError(data.detail, statusCode);
- * }
- * ```
  */
+import type {
+  SentryIssueIdentity,
+  SentryNamedResource,
+} from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
-
-/**
- * Schema for Sentry API error responses.
- *
- * Uses .passthrough() to allow additional fields that may be present
- * in different error scenarios.
- */
-export const ApiErrorSchema = z
-  .object({
-    detail: z.string(),
-  })
-  .passthrough();
 
 export const UserSchema = z
   .object({
@@ -88,7 +72,7 @@ export const OrganizationSchema = z
     features: z.array(z.string()).optional(),
     hideAiFeatures: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const OrganizationListSchema = z.array(OrganizationSchema);
 
@@ -98,7 +82,7 @@ export const TeamSchema = z
     slug: z.string(),
     name: z.string(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const TeamListSchema = z.array(TeamSchema);
 
@@ -113,7 +97,7 @@ export const ProjectSchema = z
     hasLogs: z.boolean().optional(),
     firstTransactionEvent: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough() satisfies z.ZodType<SentryNamedResource>;
 
 export const ProjectListSchema = z.array(ProjectSchema);
 
@@ -128,8 +112,8 @@ export const RepositorySchema = z
       })
       .passthrough(),
     status: z.string(),
-    externalSlug: z.string().optional(),
-    externalId: z.string().optional(),
+    externalSlug: z.string().nullish(),
+    externalId: z.string().nullish(),
     integrationId: z.union([z.string(), z.number()]).nullable().optional(),
   })
   .passthrough();
@@ -473,47 +457,13 @@ export const ReplayDetailsSchema = z
   })
   .passthrough();
 
-const ReplayRecordingPayloadSchema = z
-  .object({
-    op: z.string().optional().catch(undefined),
-    description: z.string().optional().catch(undefined),
-    message: z.string().optional().catch(undefined),
-    category: z.string().optional().catch(undefined),
-    type: z.string().optional().catch(undefined),
-    data: z
-      .object({
-        duration: z.number().optional().catch(undefined),
-      })
-      .passthrough()
-      .optional()
-      .catch(undefined),
-  })
-  .passthrough();
-
-export const ReplayRecordingEventSchema = z
-  .object({
-    timestamp: z.number().optional().catch(undefined),
-    type: z.number().optional().catch(undefined),
-    data: z
-      .object({
-        tag: z.string().optional().catch(undefined),
-        href: z.string().optional().catch(undefined),
-        payload: ReplayRecordingPayloadSchema.optional().catch(undefined),
-      })
-      .passthrough()
-      .optional()
-      .catch(undefined),
-  })
-  .passthrough();
-
-export const ReplayRecordingSegmentsSchema = z.array(
-  z.array(z.unknown()).transform((events) =>
-    events.flatMap((event) => {
-      const result = ReplayRecordingEventSchema.safeParse(event);
-      return result.success ? [result.data] : [];
-    }),
-  ),
-);
+/**
+ * One page from the recording-segments endpoint: a list of segments, each a
+ * list of rrweb and Sentry replay events. Events stay unknown because their
+ * shape varies by SDK and version; the replay timeline parser reads them
+ * defensively.
+ */
+export const ReplayRecordingSegmentPageSchema = z.array(z.array(z.unknown()));
 
 export const ReplayListResponseSchema = z.object({
   data: z.array(ReplayDetailsSchema),
@@ -826,6 +776,8 @@ export const CommittersResponseSchema = z.object({
 export const IssueActivitySchema = z
   .object({
     id: ApiResourceIdSchema,
+    commentId: ApiResourceIdSchema.nullable().optional(),
+    source: z.string().nullable().optional(),
     type: z.string().nullable().optional(),
     dateCreated: z.string().datetime().nullable().optional(),
     user: ApiActorSchema.nullable().optional(),
@@ -930,7 +882,7 @@ export const IssueSchema = z
   .passthrough()
   .transform((issue) =>
     Object.assign(issue, { shortId: issue.shortId ?? String(issue.id) }),
-  );
+  ) satisfies z.ZodType<SentryIssueIdentity>;
 
 export const IssueListSchema = z.array(IssueSchema);
 
@@ -1178,8 +1130,6 @@ const BaseEventSchema = z.object({
   _meta: z.unknown().optional(),
   // dateReceived is when the server received the event (may not be present in all contexts)
   dateReceived: z.string().datetime().nullish(),
-  // shared-formatter output, present when the event endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 export const ErrorEventSchema = BaseEventSchema.omit({
@@ -1414,8 +1364,6 @@ export const AutofixRunStateSchema = z.object({
     })
     .passthrough()
     .nullable(),
-  // shared-formatter output, present when the autofix endpoint is called with ?llmFormat
-  formatted: z.object({ format: z.string(), content: z.string() }).optional(),
 });
 
 /**
@@ -1724,43 +1672,43 @@ export const TraceMetaSchema = z
  * Represents the hierarchical structure of spans with timing information,
  * operation details, and nested children spans.
  */
-export const TraceSpanSchema: z.ZodType<any> = z.lazy(() =>
-  z.object({
-    children: z.array(TraceSpanSchema),
-    errors: z.array(z.any()),
-    occurrences: z.array(z.any()),
-    event_id: z.string(),
-    span_id: z.string().optional(),
-    transaction_id: z.string(),
-    project_id: z.union([z.string(), z.number()]),
-    project_slug: z.string(),
-    profile_id: z.string().nullable().optional(),
-    profiler_id: z.string().nullable().optional(),
-    parent_span_id: z.string().nullable(),
-    start_timestamp: z.number(),
-    end_timestamp: z.number(),
-    measurements: z.record(z.string(), z.number()).optional(),
-    duration: z.number(),
-    trace: z.string().optional(),
-    transaction: z.string().nullable().optional(),
-    is_transaction: z.boolean().optional(),
-    description: z.string().nullable().optional(),
-    sdk_name: z.string().nullable().optional(),
-    op: z.string().nullable().optional(),
-    name: z.string().nullable().optional(),
-    event_type: z.string().nullable().optional(),
-    additional_attributes: z.record(z.string(), z.unknown()).optional(),
-    hash: z.string().nullable().optional(),
-    exclusive_time: z.number().optional(),
-    status: z.string().nullable().optional(),
-    is_segment: z.boolean().optional(),
-    same_process_as_parent: z.boolean().optional(),
-    organization: z.unknown().nullable().optional(),
-    tags: z.record(z.string(), z.unknown()).optional(),
-    timestamp: z.union([z.string(), z.number()]).optional(),
-    data: z.record(z.string(), z.unknown()).optional(),
-  }),
-);
+export const TraceSpanSchema = z.object({
+  get children() {
+    return z.array(TraceSpanSchema);
+  },
+  errors: z.array(z.any()),
+  occurrences: z.array(z.any()),
+  event_id: z.string(),
+  span_id: z.string().optional(),
+  transaction_id: z.string(),
+  project_id: z.union([z.string(), z.number()]),
+  project_slug: z.string(),
+  profile_id: z.string().nullable().optional(),
+  profiler_id: z.string().nullable().optional(),
+  parent_span_id: z.string().nullable(),
+  start_timestamp: z.number(),
+  end_timestamp: z.number(),
+  measurements: z.record(z.string(), z.number()).optional(),
+  duration: z.number(),
+  trace: z.string().optional(),
+  transaction: z.string().nullable().optional(),
+  is_transaction: z.boolean().optional(),
+  description: z.string().nullable().optional(),
+  sdk_name: z.string().nullable().optional(),
+  op: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  event_type: z.string().nullable().optional(),
+  additional_attributes: z.record(z.string(), z.unknown()).optional(),
+  hash: z.string().nullable().optional(),
+  exclusive_time: z.number().optional(),
+  status: z.string().nullable().optional(),
+  is_segment: z.boolean().optional(),
+  same_process_as_parent: z.boolean().optional(),
+  organization: z.unknown().nullable().optional(),
+  tags: z.record(z.string(), z.unknown()).optional(),
+  timestamp: z.union([z.string(), z.number()]).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
 
 /**
  * Schema for issue objects that can appear in trace responses.
@@ -2438,19 +2386,96 @@ export const AgenticOnboardingRunSchema = z.object({
 });
 
 /**
- * Response from the events-stats (timeseries) endpoint for a single yAxis:
- * a series of `[unixTimestampSeconds, [{ count }]]` buckets. `count` holds the
- * yAxis value for that bucket regardless of the aggregate function.
+ * Measured ingestion delay for the queried dataset. Only present for EAP
+ * datasets (spans, logs, trace metrics) on orgs with the feature enabled.
+ * `completeThrough` is the time (ms) up to which data is considered complete.
  */
-export const EventsStatsResponseSchema = z
+export const IngestionMetaSchema = z
   .object({
-    data: z.array(
-      z.tuple([
-        z.number(),
-        z.array(z.object({ count: z.number().nullish() }).passthrough()),
-      ]),
+    status: z.enum(["healthy", "stalled", "idle", "unknown"]),
+    delaySeconds: z.number().optional(),
+    completeThrough: z.number().optional(),
+  })
+  .passthrough();
+
+export type IngestionMeta = z.infer<typeof IngestionMetaSchema>;
+
+/**
+ * One bucket of an events-timeseries series. `timestamp` is in milliseconds.
+ * `incomplete` marks buckets that may still receive data (the current bucket,
+ * or anything after `meta.ingestion.completeThrough`).
+ * `value` is passed through from the query unchanged, so date-typed
+ * aggregates such as `max(timestamp)` return ISO datetime strings.
+ */
+export const EventsTimeSeriesValueSchema = z
+  .object({
+    timestamp: z.number(),
+    value: z.union([z.number(), z.string()]).nullish(),
+    incomplete: z.boolean(),
+    incompleteReason: z.string().optional(),
+  })
+  .passthrough();
+
+/**
+ * Response from the events-timeseries endpoint. The MCP always requests a
+ * single yAxis without topEvents, so `timeSeries` holds exactly one series.
+ */
+export const EventsTimeSeriesResponseSchema = z
+  .object({
+    timeSeries: z.array(
+      z
+        .object({
+          yAxis: z.string(),
+          values: z.array(EventsTimeSeriesValueSchema),
+          meta: z
+            .object({
+              // Bucket width in milliseconds
+              interval: z.number(),
+              valueType: z.string().optional(),
+              valueUnit: z.string().nullish(),
+            })
+            .passthrough(),
+        })
+        .passthrough(),
     ),
-    start: z.number().optional(),
-    end: z.number().optional(),
+    meta: z
+      .object({
+        start: z.number().optional(),
+        end: z.number().optional(),
+        ingestion: IngestionMetaSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export type EventsTimeSeriesResponse = z.infer<
+  typeof EventsTimeSeriesResponseSchema
+>;
+
+export const DroppedEventsBucketSchema = z
+  .object({
+    type: z.string(),
+    category: z.string(),
+    outcome: z.string(),
+    reason: z.string(),
+    start: z.number(),
+    end: z.number(),
+    count: z.number(),
+  })
+  .passthrough();
+
+export const DroppedEventsResponseSchema = z
+  .object({
+    meta: z
+      .object({
+        dataset: z.string(),
+        start: z.number(),
+        end: z.number(),
+        interval: z.number(),
+      })
+      .passthrough(),
+    droppedEvents: z.array(DroppedEventsBucketSchema),
+    acceptedEvents: z.array(DroppedEventsBucketSchema),
   })
   .passthrough();

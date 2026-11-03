@@ -4,6 +4,7 @@
  * Associate commits with a release using auto-discovery or local git history.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   NO_REPO_INTEGRATIONS_MESSAGE,
@@ -12,6 +13,11 @@ import {
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseGitRef,
+  parseRepoCommitList,
+} from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -19,12 +25,7 @@ import {
   ValidationError,
   validationError,
 } from "../../lib/errors.js";
-import {
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   getCommitLog,
@@ -32,8 +33,8 @@ import {
   isShallowRepository,
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
-import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const log = logger.withTag("release.set-commits");
 
@@ -58,14 +59,14 @@ function setCommitsFromLocal(
   org: string,
   version: string,
   cwd: string,
-  options: { depth?: number; paths?: string[]; from?: string }
+  options: { depth?: number; paths?: string[]; from?: string },
 ): Promise<SentryRelease> {
   const { depth, paths, from } = options;
   const shallow = isShallowRepository(cwd);
   if (shallow) {
     log.warn(
       "Repository is a shallow clone. Commit history may be incomplete. " +
-        "Consider running `git fetch --unshallow` or increasing --initial-depth."
+        "Consider running `git fetch --unshallow` or increasing --initial-depth.",
     );
   }
 
@@ -108,7 +109,7 @@ const REPO_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** Check if we've cached that this org has no repo integration */
 function hasNoRepoIntegration(orgSlug: string): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const db = getDatabase();
     const key = `repos_configured.${orgSlug}`;
@@ -128,7 +129,7 @@ function hasNoRepoIntegration(orgSlug: string): boolean {
 
 /** Cache that this org has no repo integration */
 function cacheNoRepoIntegration(orgSlug: string): void {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const db = getDatabase();
     const key = `repos_configured.${orgSlug}`;
@@ -143,7 +144,7 @@ function cacheNoRepoIntegration(orgSlug: string): void {
 
 /** Clear the negative cache (e.g., when auto succeeds) */
 function clearRepoIntegrationCache(orgSlug: string): void {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const db = getDatabase();
     const key = `repos_configured.${orgSlug}`;
@@ -163,11 +164,11 @@ async function setCommitsDefault(
   org: string,
   version: string,
   cwd: string,
-  depth: number
+  depth: number,
 ): Promise<SentryRelease> {
   // Fast path: cached "no repos" — skip the API call entirely
   if (hasNoRepoIntegration(org)) {
-    return setCommitsFromLocal(org, version, cwd, { depth });
+    return await setCommitsFromLocal(org, version, cwd, { depth });
   }
 
   try {
@@ -177,28 +178,28 @@ async function setCommitsDefault(
   } catch (error) {
     // Only fall back to local git when the org genuinely has no repository
     // integration. setCommitsAuto internally calls setCommitsWithRefs, which can
-    // return a server 400 for unrelated reasons (invalid refs, bad release
-    // state) — those must propagate, not be masked as "no integration" (which
+    // return a server 400 or 404 for unrelated reasons (invalid refs, missing
+    // release) — those must propagate, not be masked as "no integration" (which
     // would also poison the cache). Match on the exact client-side message since
     // the API exposes no stable error code for this case.
     if (
       error instanceof ApiError &&
-      error.status === 400 &&
+      error.status === 404 &&
       error.message === NO_REPO_INTEGRATIONS_MESSAGE
     ) {
       cacheNoRepoIntegration(org);
       log.warn(
         "Could not auto-discover commits (no repository integration). " +
-          "Falling back to local git history."
+          "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     if (error instanceof ValidationError && error.field === "repository") {
       log.warn(
         `Auto-discovery failed: ${error.message}. ` +
-          "Falling back to local git history."
+          "Falling back to local git history.",
       );
-      return setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     throw error;
   }
@@ -213,7 +214,7 @@ async function setCommitsDefault(
  * @throws {ValidationError} When an entry is missing the `@` separator.
  */
 function parseCommitRefs(
-  commitFlag: string
+  commitFlag: string,
 ): Array<{ repository: string; commit: string; previousCommit?: string }> {
   return commitFlag.split(",").map((pair) => {
     const trimmed = pair.trim();
@@ -225,7 +226,7 @@ function parseCommitRefs(
           "sentry release set-commits 1.0.0 --commit owner/repo@abc123",
           "sentry release set-commits 1.0.0 --commit owner/repo@prev..abc123",
         ],
-        "commit"
+        "commit",
       );
     }
     const repository = trimmed.slice(0, atIdx);
@@ -274,7 +275,7 @@ function parseLocalScope(flags: {
     throw validationError(
       "--path requires at least one non-empty path.",
       ["sentry release set-commits 1.0.0 --path apps/mobile,packages/shared"],
-      "path"
+      "path",
     );
   }
   if (paths.length > 0 && serverExpanded) {
@@ -289,7 +290,7 @@ function parseLocalScope(flags: {
             "sentry release set-commits 1.0.0 --local --path apps/mobile",
             "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
           ],
-      "path"
+      "path",
     );
   }
 
@@ -299,7 +300,7 @@ function parseLocalScope(flags: {
       "--from requires a non-empty git ref (tag, branch, or commit).",
       ["sentry release set-commits 1.0.0 --from v0.9.0"],
       "from",
-      FROM_RANGE_NOTE
+      FROM_RANGE_NOTE,
     );
   }
   // Reject option-like refs. Otherwise `--from=--format=x` would become the
@@ -313,7 +314,7 @@ function parseLocalScope(flags: {
         "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
       ],
       "from",
-      FROM_DASHED_REF_NOTE
+      FROM_DASHED_REF_NOTE,
     );
   }
   if (from && serverExpanded) {
@@ -324,7 +325,7 @@ function parseLocalScope(flags: {
         "sentry release set-commits 1.0.0 --local --initial-depth 50",
       ],
       "from",
-      FROM_RANGE_NOTE
+      FROM_RANGE_NOTE,
     );
   }
 
@@ -333,10 +334,10 @@ function parseLocalScope(flags: {
 
 function formatCommitsSet(release: SentryRelease): string {
   const lines: string[] = [];
-  lines.push(`## Commits Set: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Commits Set: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Commits", String(release.commitCount ?? 0)]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));
@@ -359,29 +360,49 @@ export const setCommitsCommand = buildCommand({
       "whole range (--initial-depth does not apply), and combines with --path to\n" +
       "scope a monorepo release to the files that changed since the last release.\n" +
       "Like --path, it cannot be combined with --auto or --commit. Requires a\n" +
-      "full (non-shallow) checkout spanning the range.\n\n" +
-      "Examples:\n" +
-      "  sentry release set-commits 1.0.0 --auto\n" +
-      "  sentry release set-commits my-org/1.0.0 --local\n" +
-      "  sentry release set-commits 1.0.0 --local --initial-depth 50\n" +
-      "  sentry release set-commits 1.0.0 --path apps/mobile,packages/shared-ui\n" +
-      "  sentry release set-commits 1.0.0 --from v0.9.0\n" +
-      "  sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile,apps/shared\n" +
-      "  sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456\n" +
-      "  sentry release set-commits 1.0.0 --clear",
+      "full (non-shallow) checkout spanning the range.",
+    examples: [
+      {
+        description: "Associate commits using the repository integration",
+        command: "sentry release set-commits 1.0.0 --auto",
+      },
+      {
+        description: "Set commits from local git history",
+        command: "sentry release set-commits my-org/1.0.0 --local",
+      },
+      {
+        description: "Read up to 50 local commits",
+        command: "sentry release set-commits 1.0.0 --local --initial-depth 50",
+      },
+      {
+        description: "Only include commits that touch specific paths",
+        command:
+          "sentry release set-commits 1.0.0 --path apps/mobile,packages/shared-ui",
+      },
+      {
+        description: "Read local commits since a previous release tag",
+        command: "sentry release set-commits 1.0.0 --from v0.9.0",
+      },
+      {
+        description: "Set an explicit commit range",
+        command:
+          "sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456",
+      },
+      {
+        description: "Clear the release's commits",
+        command: "sentry release set-commits 1.0.0 --clear",
+      },
+    ],
   },
   output: {
     human: formatCommitsSet,
+    schema: SentryReleaseSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: String,
-        },
+        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
       ],
     },
     flags: {
@@ -403,21 +424,21 @@ export const setCommitsCommand = buildCommand({
       },
       commit: {
         kind: "parsed",
-        parse: String,
+        parse: parseRepoCommitList,
         brief:
           "Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)",
         optional: true,
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Filter commits to these paths (comma-separated). Implies --local.",
         optional: true,
       },
       from: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRef,
         brief:
           "Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.",
         optional: true,
@@ -443,15 +464,11 @@ export const setCommitsCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string
+    target: ReleaseTarget,
   ) {
     const { cwd } = this;
 
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd
-    );
+    const { version, org } = await target.resolved;
 
     // Clear mode: remove all commits regardless of other flags.
     // The server only clears commits when it receives an explicitly-empty
@@ -474,7 +491,7 @@ export const setCommitsCommand = buildCommand({
           "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
           "sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456",
         ],
-        "commit"
+        "commit",
       );
     }
 
@@ -510,7 +527,7 @@ export const setCommitsCommand = buildCommand({
         org,
         version,
         cwd,
-        flags["initial-depth"]
+        flags["initial-depth"],
       );
     }
 

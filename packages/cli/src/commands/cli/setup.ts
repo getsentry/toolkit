@@ -10,7 +10,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
-import { captureException } from "@sentry/node-core/light";
+import { captureException } from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
@@ -28,11 +28,16 @@ import {
   type CompletionLocation,
   installCompletions,
 } from "../../lib/completions.js";
+import {
+  SETUP_REFRESH_AFTER_MS,
+  warmAttributeCompletions,
+  warmCachesAfterLogin,
+} from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
 import { getAuthConfig } from "../../lib/db/auth.js";
 import {
-  getAgentSkillsPreference,
-  setAgentSkillsPreference,
+  getOnOffPreference,
+  setOnOffPreference,
 } from "../../lib/db/defaults.js";
 import { closeDatabase, resolveXdgConfigDir } from "../../lib/db/index.js";
 import { setInstallInfo } from "../../lib/db/install-info.js";
@@ -61,6 +66,7 @@ import {
   isInPath,
   type ShellInfo,
 } from "../../lib/shell.js";
+import { addToWindowsUserPath } from "../../lib/windows-path.js";
 
 type SetupFlags = {
   readonly install: boolean;
@@ -106,7 +112,7 @@ function formatSetupResult(result: SetupResult): string {
 async function migrateLegacyConfig(
   homeDir: string,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ): Promise<void> {
   const legacyDir = join(homeDir, ".sentry");
   // Target the XDG location directly — resolveConfigDir keeps returning the
@@ -118,7 +124,7 @@ async function migrateLegacyConfig(
 
   const configFiles = ["cli.db", "cli.db-wal", "cli.db-shm", "config.json"];
   const hasLegacyConfig = configFiles.some((name) =>
-    existsSync(join(legacyDir, name))
+    existsSync(join(legacyDir, name)),
   );
   if (!hasLegacyConfig || existsSync(join(targetConfigDir, "cli.db"))) {
     return;
@@ -145,7 +151,7 @@ async function migrateLegacyConfig(
 function findMigratableBinary(
   homeDir: string,
   targetDir: string,
-  filename: string
+  filename: string,
 ): string | undefined {
   for (const dir of getLegacyInstallDirs(homeDir)) {
     if (samePath(dir, targetDir)) {
@@ -168,7 +174,7 @@ function findMigratableBinary(
 async function migrateLegacyBinary(
   homeDir: string,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ): Promise<string | undefined> {
   const filename = getBinaryFilename();
   const targetDir = determineInstallDir(homeDir, env);
@@ -218,7 +224,7 @@ async function handleInstall(
   execPath: string,
   homeDir: string,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ): Promise<{ binaryPath: string; binaryDir: string; created: boolean }> {
   const installDir = determineInstallDir(homeDir, env);
   const targetPath = join(installDir, getBinaryFilename());
@@ -231,7 +237,7 @@ async function handleInstall(
 
   // Clean up temp binary (Posix only — the inode stays alive for the running process)
   if (process.platform !== "win32") {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       unlinkSync(execPath);
     } catch {
@@ -243,14 +249,40 @@ async function handleInstall(
 }
 
 /**
+ * Persist the binary directory on the Windows user PATH (registry), which every
+ * new terminal inherits regardless of shell.
+ */
+async function handleWindowsPath(binaryDir: string, emit: Logger) {
+  const result = await addToWindowsUserPath(binaryDir);
+  emit(`PATH: ${result.message}`);
+  if (result.modified) {
+    emit("      Open a new terminal to use it");
+  } else if (result.manualCommand) {
+    emit(`      ${result.manualCommand}`);
+  }
+}
+
+/**
  * Handle PATH modification for a directory.
+ *
+ * On Windows this edits the user PATH in the registry; elsewhere it appends to
+ * the detected shell's config file.
  */
 async function handlePathModification(
   binaryDir: string,
   shell: ShellInfo,
   env: NodeJS.ProcessEnv,
-  emit: Logger
+  emit: Logger,
 ) {
+  // On Windows the session PATH can come from a profile or a one-off change
+  // that new terminals never see, so always check the persisted user PATH
+  // (the registry update skips entries that are already there).
+  if (process.platform === "win32") {
+    await handleWindowsPath(binaryDir, emit);
+    await handleGitHubPath(binaryDir, env, emit);
+    return;
+  }
+
   const alreadyInPath = isInPath(binaryDir, env.PATH);
 
   if (alreadyInPath) {
@@ -276,7 +308,15 @@ async function handlePathModification(
     emit(`      Add manually to your shell config: ${cmd}`);
   }
 
-  // Handle GitHub Actions
+  await handleGitHubPath(binaryDir, env, emit);
+}
+
+/** Add the binary directory to `$GITHUB_PATH` when running in GitHub Actions. */
+async function handleGitHubPath(
+  binaryDir: string,
+  env: NodeJS.ProcessEnv,
+  emit: Logger,
+) {
   const addedToGitHub = await addToGitHubPath(binaryDir, env);
   if (addedToGitHub) {
     emit("PATH: Added to $GITHUB_PATH");
@@ -295,7 +335,7 @@ async function handlePathModification(
 async function tryBashCompletionFallback(
   homeDir: string,
   xdgDataHome: string | undefined,
-  pathEnv: string | undefined
+  pathEnv: string | undefined,
 ): Promise<CompletionLocation | null> {
   if (!isBashAvailable(pathEnv)) {
     return null;
@@ -316,7 +356,7 @@ async function tryBashCompletionFallback(
 async function handleZshFpath(
   shell: ShellInfo,
   completionDir: string,
-  isNewInstall: boolean
+  isNewInstall: boolean,
 ): Promise<string[]> {
   const lines: string[] = [];
 
@@ -328,7 +368,7 @@ async function handleZshFpath(
     } else if (result.manualCommand) {
       lines.push(`Completions: ${result.message}`);
       lines.push(
-        `      Add manually to ${shell.configFile}: ${result.manualCommand}`
+        `      Add manually to ${shell.configFile}: ${result.manualCommand}`,
       );
     }
   } else if (isNewInstall) {
@@ -353,7 +393,7 @@ async function handleCompletions(
   shell: ShellInfo,
   homeDir: string,
   xdgDataHome: string | undefined,
-  pathEnv: string | undefined
+  pathEnv: string | undefined,
 ): Promise<string[]> {
   const location = await installCompletions(shell.type, homeDir, xdgDataHome);
 
@@ -363,7 +403,7 @@ async function handleCompletions(
     if (shell.type === "zsh") {
       const completionDir = dirname(location.path);
       lines.push(
-        ...(await handleZshFpath(shell, completionDir, location.created))
+        ...(await handleZshFpath(shell, completionDir, location.created)),
       );
     }
 
@@ -392,7 +432,7 @@ async function handleCompletions(
   const fallback = await tryBashCompletionFallback(
     homeDir,
     xdgDataHome,
-    pathEnv
+    pathEnv,
   );
 
   if (fallback) {
@@ -435,7 +475,7 @@ async function handleAgentSkills(homeDir: string, emit: Logger) {
 function printWelcomeMessage(
   emit: Logger,
   version: string,
-  binaryPath: string
+  binaryPath: string,
 ): void {
   emit("");
   emit(`Installed sentry v${version} to ${binaryPath}`);
@@ -461,7 +501,7 @@ type WarnLogger = (step: string, error: unknown) => void;
 async function bestEffort(
   stepName: string,
   fn: () => void | Promise<void>,
-  warn: WarnLogger
+  warn: WarnLogger,
 ) {
   try {
     await fn();
@@ -510,7 +550,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
           emit(`Recorded installation method: ${method}`);
         }
       },
-      warn
+      warn,
     );
   }
 
@@ -525,7 +565,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
           emit(`Recorded release channel: ${channel}`);
         }
       },
-      warn
+      warn,
     );
   }
 
@@ -534,7 +574,7 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
     await bestEffort(
       "PATH modification",
       () => handlePathModification(binaryDir, shell, env, emit),
-      warn
+      warn,
     );
   }
 
@@ -547,13 +587,13 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
           shell,
           homeDir,
           env.XDG_DATA_HOME,
-          env.PATH
+          env.PATH,
         );
         for (const line of completionLines) {
           emit(line);
         }
       },
-      warn
+      warn,
     );
   }
 
@@ -564,17 +604,17 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
   if (flags["no-agent-skills"]) {
     await bestEffort(
       "Recording agent skills preference",
-      () => setAgentSkillsPreference(false),
-      warn
+      () => setOnOffPreference("agent-skills", false),
+      warn,
     );
   }
   const skipAgentSkills =
-    flags["no-agent-skills"] || getAgentSkillsPreference() === false;
+    flags["no-agent-skills"] || getOnOffPreference("agent-skills") === false;
   if (!skipAgentSkills) {
     await bestEffort(
       "Agent skills",
       () => handleAgentSkills(homeDir, emit),
-      warn
+      warn,
     );
   }
 }
@@ -585,21 +625,42 @@ export const setupCommand = buildCommand({
     brief: "Configure shell integration",
     fullDescription:
       "Sets up shell integration for the Sentry CLI:\n\n" +
-      "- Adds binary directory to PATH (if not already in PATH)\n" +
-      "- Installs shell completions (bash, zsh, fish)\n" +
+      "- Adds binary directory to PATH (if not already in PATH): the shell\n" +
+      "  config file, or the user PATH on Windows\n" +
+      "- Installs shell completions (bash, zsh, fish) and, when logged in,\n" +
+      "  fetches the attribute keys that field completion offers\n" +
       "- Installs agent skills for detected AI coding assistants\n" +
       "- Records installation metadata for upgrades\n\n" +
       "With --install, also handles binary placement from a temporary\n" +
       "download location (used by the install script and upgrade command).\n\n" +
       "This command is called automatically by the install script,\n" +
-      "but can also be run manually after downloading the binary.\n\n" +
-      "Examples:\n" +
-      "  sentry cli setup                    # Auto-detect and configure\n" +
-      "  sentry cli setup --method curl      # Record install method\n" +
-      "  sentry cli setup --install          # Place binary and configure\n" +
-      "  sentry cli setup --no-modify-path   # Skip PATH modification\n" +
-      "  sentry cli setup --no-completions   # Skip shell completions\n" +
-      "  sentry cli setup --no-agent-skills  # Skip agent skill installation",
+      "but can also be run manually after downloading the binary.",
+    examples: [
+      {
+        description: "Run full setup (PATH, completions, agent skills)",
+        command: "sentry cli setup",
+      },
+      {
+        description: "Record the install method",
+        command: "sentry cli setup --method curl",
+      },
+      {
+        description: "Place the binary and configure the shell",
+        command: "sentry cli setup --install",
+      },
+      {
+        description: "Skip PATH modification",
+        command: "sentry cli setup --no-modify-path",
+      },
+      {
+        description: "Skip shell completions",
+        command: "sentry cli setup --no-completions",
+      },
+      {
+        description: "Skip agent skill installation",
+        command: "sentry cli setup --no-agent-skills",
+      },
+    ],
   },
   parameters: {
     flags: {
@@ -611,7 +672,7 @@ export const setupCommand = buildCommand({
       method: {
         kind: "parsed",
         parse: parseInstallationMethod,
-        brief: "Installation method (curl, npm, pnpm, bun, yarn)",
+        brief: "Installation method (curl, brew, npm, pnpm, bun, yarn)",
         placeholder: "method",
         optional: true,
       },
@@ -684,7 +745,7 @@ export const setupCommand = buildCommand({
     await bestEffort(
       "Legacy config migration",
       () => migrateLegacyConfig(homeDir, process.env, emit),
-      warn
+      warn,
     );
     await bestEffort(
       "Legacy binary migration",
@@ -692,7 +753,7 @@ export const setupCommand = buildCommand({
         const migratedBinary = await migrateLegacyBinary(
           homeDir,
           process.env,
-          emit
+          emit,
         );
         // Adopt the new location so PATH setup and recorded install info point
         // at the migrated binary rather than the deleted legacy path.
@@ -701,7 +762,7 @@ export const setupCommand = buildCommand({
           binaryDir = dirname(migratedBinary);
         }
       },
-      warn
+      warn,
     );
 
     // 1. Install binary from temp location (when --install is set)
@@ -710,7 +771,7 @@ export const setupCommand = buildCommand({
         process.execPath,
         homeDir,
         process.env,
-        emit
+        emit,
       );
       binaryPath = result.binaryPath;
       binaryDir = result.binaryDir;
@@ -732,12 +793,11 @@ export const setupCommand = buildCommand({
       await bestEffort(
         "Authorization",
         async () => {
-          const { ensureCurrentOAuthScopes } = await import(
-            "../../lib/scope-recovery.js"
-          );
+          const { ensureCurrentOAuthScopes } =
+            await import("../../lib/scope-recovery.js");
           await ensureCurrentOAuthScopes(runInteractiveLogin);
         },
-        warn
+        warn,
       );
     }
 
@@ -754,6 +814,15 @@ export const setupCommand = buildCommand({
       binaryPath,
       version: CLI_VERSION,
     });
+
+    // 6. Fetch attribute keys for field completion, the only reader of that
+    // cache, unless they were fetched recently. Best-effort, silent, and
+    // capped at about a second; skipped without a stored login.
+    if (!flags["no-completions"]) {
+      await warmAttributeCompletions({
+        refreshAfterMs: SETUP_REFRESH_AFTER_MS,
+      });
+    }
 
     if (
       !freshInstall ||
@@ -780,11 +849,15 @@ export const setupCommand = buildCommand({
         const result = await runInteractiveLogin();
         if (result) {
           log.success("Authenticated with Sentry.");
+          // The warm-up above ran before this login stored a token.
+          if (!flags["no-completions"]) {
+            await warmCachesAfterLogin();
+          }
         } else {
           log.info("Run 'sentry auth login' to authenticate later.");
         }
       },
-      warn
+      warn,
     );
   },
 });

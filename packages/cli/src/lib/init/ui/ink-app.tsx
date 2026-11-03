@@ -63,6 +63,11 @@ import {
   useInkShortcuts,
 } from "./ink-shortcuts.js";
 import { BLOCK_LINE_COUNT, LEARN_SEQUENCE } from "./learn-content.js";
+import {
+  filterSelectOptions,
+  removeLastFilterCharacter,
+  sanitizeSelectFilterInput,
+} from "./select-filter.js";
 import { SENTRY_TIPS, type SentryTip } from "./sentry-tips.js";
 import type {
   CompletionActions,
@@ -152,7 +157,7 @@ function formatBannerBrand(cliVersion: string | null): string {
 /** @internal Exported for testing. */
 export function formatFeedbackBanner(
   width: number,
-  cliVersion: string | null
+  cliVersion: string | null,
 ): string {
   const brand = formatBannerBrand(cliVersion);
   const left = ` ${brand}`;
@@ -169,7 +174,7 @@ export function formatFeedbackBanner(
 
   const spacerWidth = Math.max(
     1,
-    width - left.length - clippedRight.length - rightPadding
+    width - left.length - clippedRight.length - rightPadding,
   );
   return `${left}${" ".repeat(spacerWidth)}${clippedRight}${" ".repeat(rightPadding)}`;
 }
@@ -192,7 +197,7 @@ function AppBody({ store }: AppProps): React.ReactNode {
   const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
-    store.getSnapshot
+    store.getSnapshot,
   );
   const { columns, rows } = useInkFrameSize();
   const [activeTab, setActiveTab] = useState(0);
@@ -206,7 +211,7 @@ function AppBody({ store }: AppProps): React.ReactNode {
       { id: "status", label: "Status" },
       { id: "files", label: "Files" },
     ],
-    []
+    [],
   );
 
   const appShortcuts = useMemo<ShortcutBinding[]>(() => {
@@ -404,7 +409,7 @@ function ActivityPane({
   terminalRows: number;
 }): React.ReactNode {
   const promptLogs = logs.filter(
-    (log) => log.severity === "warn" || log.severity === "error"
+    (log) => log.severity === "warn" || log.severity === "error",
   );
   // The shortest supported frame can keep one actionable log above a prompt;
   // roomier terminals retain the complete warning/error history.
@@ -566,7 +571,7 @@ function useChoiceNavigation<T extends string>({
         run: onCancel,
       },
     ],
-    [choices, highlighted, onCancel, onChoose, totalCount]
+    [choices, highlighted, onCancel, onChoose, totalCount],
   );
   useInkShortcuts(scope, shortcuts);
 
@@ -664,7 +669,7 @@ function buildCompletionMenu({
             value: "issues",
             label: "Open my Issues feed",
             hint: "see your first error",
-          }
+          },
     );
   }
   if (agentCommand) {
@@ -726,7 +731,7 @@ function CompletionScreen({
         completion,
         primaryUrl,
       }),
-    [agentCommand, agentQueued, completion, primaryUrl]
+    [agentCommand, agentQueued, completion, primaryUrl],
   );
 
   const onMenuChoose = useCallback(
@@ -759,7 +764,7 @@ function CompletionScreen({
           break;
       }
     },
-    [actions, agentCommand, agentQueued, onDismiss, primaryUrl, store]
+    [actions, agentCommand, agentQueued, onDismiss, primaryUrl, store],
   );
 
   // `o` opens the first-error link directly (the hint next to it), separate
@@ -782,7 +787,7 @@ function CompletionScreen({
             },
           ]
         : [],
-    [actions, primaryUrl]
+    [actions, primaryUrl],
   );
   useInkShortcuts("completion-open", openShortcuts);
 
@@ -883,7 +888,7 @@ function CompletionHeader({
 
 /** "4 files changed" — the quiet footnote under the feature list. */
 function completionSummaryText(
-  completion: WizardCompletion | null
+  completion: WizardCompletion | null,
 ): string | null {
   const n = completion?.changedFileCount ?? 0;
   if (n <= 0) {
@@ -942,7 +947,7 @@ function CompletionWhatWeSetUp({
 /** Copy for the first-error section, by state. */
 function firstErrorInstruction(
   verified: boolean,
-  startCommand: string | undefined
+  startCommand: string | undefined,
 ): string {
   if (verified) {
     return "Your app is already sending events — here's the one you just sent:";
@@ -1083,7 +1088,7 @@ function IntroScreen({
         width={bannerWidth}
       >
         {banner.map((row, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: positional banner rows
+          // positional banner rows
           <Text color={row.color} key={i}>
             {row.content}
           </Text>
@@ -1121,7 +1126,7 @@ function WelcomeActions({
       { value: "continue", label: "Continue" },
       { value: "cancel", label: "Cancel" },
     ],
-    []
+    [],
   );
   const onChoose = useCallback(
     (value: "continue" | "cancel") => {
@@ -1131,7 +1136,7 @@ function WelcomeActions({
       }
       prompt.resolve("continue");
     },
-    [prompt]
+    [prompt],
   );
   const highlighted = useChoiceNavigation({
     choices,
@@ -1282,11 +1287,11 @@ function LearnPanel({
       </Box>
       <Box height={1} />
       {lines.map((line, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: positional content lines
+        // positional content lines
         <Text key={i}>{line || " "}</Text>
       ))}
       {Array.from({ length: padding }, (_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: positional filler
+        // positional filler
         <Text key={`p${i}`}> </Text>
       ))}
     </Box>
@@ -1297,7 +1302,7 @@ function LearnPanel({
 
 function ProgressPanel({ steps }: { steps: StepEntry[] }): React.ReactNode {
   const completedCount = steps.filter(
-    (entry) => entry.status === "completed"
+    (entry) => entry.status === "completed",
   ).length;
   const totalCount = steps.length;
 
@@ -1529,7 +1534,7 @@ function FilesPanel({
   }
 
   const analyzedCount = filesRead.filter(
-    (entry) => entry.status === "analyzed"
+    (entry) => entry.status === "analyzed",
   ).length;
   const padding = Math.max(0, viewport - visible.length);
 
@@ -1548,11 +1553,11 @@ function FilesPanel({
       <Box flexDirection="row">
         <Box flexDirection="column" flexGrow={1}>
           {visible.map((row, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: positional read-tree rows
+            // positional read-tree rows
             <ReadTreeLine key={`r${i}`} row={row} />
           ))}
           {Array.from({ length: padding }, (_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: positional filler
+            // positional filler
             <Text key={`p${i}`}> </Text>
           ))}
         </Box>
@@ -1588,7 +1593,7 @@ function Scrollbar({
   return (
     <Box flexDirection="column" flexShrink={0} marginLeft={1}>
       {cells.map((cell, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: positional scrollbar
+        // positional scrollbar
         <Text color={MUTED_DIM} key={i}>
           {cell}
         </Text>
@@ -1700,7 +1705,7 @@ function ChangedFilesTree({
         Changed files
       </Text>
       {treeRows.map((row, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: positional tree rows
+        // positional tree rows
         <FileTreeLine key={i} row={row} />
       ))}
     </Box>
@@ -1753,15 +1758,15 @@ type CenteredSelectLayout = {
 };
 
 function getCenteredSelectLayout(
-  options: SelectPromptOptionData[]
+  options: SelectPromptOptionData[],
 ): CenteredSelectLayout {
   const labelWidth = Math.max(
     0,
-    ...options.map((option) => stringWidth(option.label))
+    ...options.map((option) => stringWidth(option.label)),
   );
   const hintWidth = Math.max(
     0,
-    ...options.map((option) => stringWidth(option.hint ?? ""))
+    ...options.map((option) => stringWidth(option.hint ?? "")),
   );
   return {
     labelWidth,
@@ -1787,7 +1792,7 @@ const WORKFLOW_ACTIVITY_RESERVED_ROWS = 7;
 export function getOptionWindow(
   totalCount: number,
   highlighted: number,
-  maxVisible: number
+  maxVisible: number,
 ): readonly [number, number] {
   const normalizedTotal = Math.max(0, Math.floor(totalCount));
   if (normalizedTotal === 0) {
@@ -1796,16 +1801,16 @@ export function getOptionWindow(
 
   const viewportSize = Math.min(
     normalizedTotal,
-    Math.max(1, Math.floor(maxVisible))
+    Math.max(1, Math.floor(maxVisible)),
   );
   const normalizedHighlight = Math.min(
     normalizedTotal - 1,
-    Math.max(0, Math.floor(highlighted))
+    Math.max(0, Math.floor(highlighted)),
   );
   const centeredStart = normalizedHighlight - Math.floor(viewportSize / 2);
   const start = Math.min(
     normalizedTotal - viewportSize,
-    Math.max(0, centeredStart)
+    Math.max(0, centeredStart),
   );
   return [start, start + viewportSize];
 }
@@ -1838,7 +1843,7 @@ function getPromptOptionCapacity({
 }
 
 function getPromptOptionLimit(
-  args: Parameters<typeof getPromptOptionCapacity>[0]
+  args: Parameters<typeof getPromptOptionCapacity>[0],
 ): number {
   return Math.max(1, getPromptOptionCapacity(args));
 }
@@ -1861,7 +1866,7 @@ function getMultiSelectLayout({
   const descriptionWidth = Math.max(
     1,
     getPromptContentWidth(terminalColumns, alignment) -
-      (alignment === "center" ? 4 : 5)
+      (alignment === "center" ? 4 : 5),
   );
   const optionRows = options.map((option) => {
     if (!option.description) {
@@ -1876,10 +1881,10 @@ function getMultiSelectLayout({
   });
   const lockedRows = optionRows.reduce(
     (total, rows, index) => (options[index]?.locked ? total + rows : total),
-    0
+    0,
   );
   const selectableRows = optionRows.filter(
-    (_rows, index) => !options[index]?.locked
+    (_rows, index) => !options[index]?.locked,
   );
   const tallestSelectable = Math.max(1, ...selectableRows);
   if (lockedRows + tallestSelectable > availableRows) {
@@ -1892,7 +1897,7 @@ function getMultiSelectLayout({
   return {
     maxVisibleOptions: Math.max(
       1,
-      Math.floor(Math.max(0, availableRows - lockedRows) / tallestSelectable)
+      Math.floor(Math.max(0, availableRows - lockedRows) / tallestSelectable),
     ),
     showDescriptions: true,
   };
@@ -1900,7 +1905,7 @@ function getMultiSelectLayout({
 
 function getPromptContentWidth(
   terminalColumns: number,
-  alignment: PromptAlignment
+  alignment: PromptAlignment,
 ): number {
   const frameWidth = getInkFrameWidth(terminalColumns);
   if (alignment === "center") {
@@ -1919,22 +1924,22 @@ function getPromptTextRows(text: string, availableWidth: number): number {
 
 function getPromptDetailWidth(
   terminalColumns: number,
-  alignment: PromptAlignment
+  alignment: PromptAlignment,
 ): number {
   const leadingWidth = alignment === "start" ? 3 : 0;
   return Math.max(
     1,
-    getPromptContentWidth(terminalColumns, alignment) - leadingWidth
+    getPromptContentWidth(terminalColumns, alignment) - leadingWidth,
   );
 }
 
 function getPromptDetailsRows(
   details: readonly PromptDetail[],
-  availableWidth: number
+  availableWidth: number,
 ): number {
   return details.reduce(
     (rows, detail) => rows + getPromptTextRows(detail.text, availableWidth),
-    0
+    0,
   );
 }
 
@@ -1971,7 +1976,7 @@ function getStructuredSelectLayout({
     details.length > 0 && optionCount <= 2 ? optionRows : 1;
   const availableRows = Math.max(
     1,
-    terminalRows - WORKFLOW_ACTIVITY_RESERVED_ROWS - occupiedRows
+    terminalRows - WORKFLOW_ACTIVITY_RESERVED_ROWS - occupiedRows,
   );
   const naturalSpacingRows = 2 + (footer ? 1 : 0);
   const naturalRows =
@@ -1991,7 +1996,7 @@ function getStructuredSelectLayout({
     detailWidth,
     maxVisibleDetailRows: Math.max(
       0,
-      availableRows - titleRows - minimumOptionRows
+      availableRows - titleRows - minimumOptionRows,
     ),
     maxVisibleOptions: minimumOptionRows,
   };
@@ -2015,7 +2020,7 @@ function getPromptMessageRows({
 
   if (kind === "select") {
     const positionWidth = stringWidth(
-      `(${"9".repeat(countDigits)}/${"9".repeat(countDigits)})`
+      `(${"9".repeat(countDigits)}/${"9".repeat(countDigits)})`,
     );
     availableWidth -= positionWidth + (alignment === "center" ? 1 : 3);
   } else if (alignment === "start") {
@@ -2059,7 +2064,7 @@ function normalizeDetailWindowStart(start: number, itemCount: number): number {
 function getDetailWindowEnd(
   start: number,
   itemRows: readonly number[],
-  rowBudget: number
+  rowBudget: number,
 ): number {
   let usedRows = 0;
   let end = normalizeDetailWindowStart(start, itemRows.length);
@@ -2077,7 +2082,7 @@ function getDetailWindowEnd(
 function getPreviousDetailWindowStart(
   start: number,
   itemRows: readonly number[],
-  rowBudget: number
+  rowBudget: number,
 ): number {
   let previousStart = normalizeDetailWindowStart(start, itemRows.length);
   let usedRows = 0;
@@ -2095,7 +2100,7 @@ function getPreviousDetailWindowStart(
 function getNextDetailWindowStart(
   start: number,
   itemRows: readonly number[],
-  rowBudget: number
+  rowBudget: number,
 ): number {
   const currentStart = normalizeDetailWindowStart(start, itemRows.length);
   const windowEnd = getDetailWindowEnd(currentStart, itemRows, rowBudget);
@@ -2111,7 +2116,7 @@ function usePromptDetailWindow(
   promptDetails: PromptDetail[],
   maxVisibleRows: number,
   detailWidth: number,
-  footer?: PromptDetail
+  footer?: PromptDetail,
 ): {
   detailShortcut: ShortcutBinding | null;
   isWindowed: boolean;
@@ -2124,7 +2129,7 @@ function usePromptDetailWindow(
       header,
       headerRows: header ? getPromptTextRows(header.text, detailWidth) : 0,
       itemRows: items.map((detail) =>
-        getPromptTextRows(detail.text, detailWidth)
+        getPromptTextRows(detail.text, detailWidth),
       ),
       items,
     };
@@ -2139,22 +2144,22 @@ function usePromptDetailWindow(
   const indicatorRows = isWindowed
     ? getPromptTextRows(
         `${detailLayout.items.length}-${detailLayout.items.length}/${detailLayout.items.length} · pgup/pgdn`,
-        detailWidth
+        detailWidth,
       )
     : 0;
   const itemRowBudget = Math.max(
     0,
-    maxVisibleRows - detailLayout.headerRows - footerRows - indicatorRows
+    maxVisibleRows - detailLayout.headerRows - footerRows - indicatorRows,
   );
   const [windowStart, setWindowStart] = useState(0);
   const normalizedStart = normalizeDetailWindowStart(
     windowStart,
-    detailLayout.items.length
+    detailLayout.items.length,
   );
   const windowEnd = getDetailWindowEnd(
     normalizedStart,
     detailLayout.itemRows,
-    itemRowBudget
+    itemRowBudget,
   );
   const visibleDetails = isWindowed
     ? [
@@ -2180,7 +2185,7 @@ function usePromptDetailWindow(
           ? getPreviousDetailWindowStart
           : getNextDetailWindowStart;
         setWindowStart((start) =>
-          moveWindow(start, detailLayout.itemRows, itemRowBudget)
+          moveWindow(start, detailLayout.itemRows, itemRowBudget),
         );
       },
     };
@@ -2215,6 +2220,7 @@ function SelectPromptHeader({
   footer,
   isOptionWindowed,
   highlighted,
+  minTitleRows,
   promptTitle,
   totalCount,
   visiblePromptDetails,
@@ -2225,6 +2231,7 @@ function SelectPromptHeader({
   footer?: PromptDetail;
   isOptionWindowed: boolean;
   highlighted: number;
+  minTitleRows?: number;
   promptTitle: string;
   totalCount: number;
   visiblePromptDetails: PromptDetail[];
@@ -2248,7 +2255,12 @@ function SelectPromptHeader({
   if (alignment === "center") {
     return (
       <Box flexDirection="column" marginBottom={compact ? 0 : 1} width="100%">
-        <Box gap={1} justifyContent="center" width="100%">
+        <Box
+          gap={1}
+          justifyContent="center"
+          minHeight={minTitleRows}
+          width="100%"
+        >
           <Text bold>{promptTitle}</Text>
           {position}
         </Box>
@@ -2259,7 +2271,7 @@ function SelectPromptHeader({
 
   return (
     <Box flexDirection="column" marginBottom={compact ? 0 : 1}>
-      <Box>
+      <Box minHeight={minTitleRows}>
         <Box flexShrink={0} width={3}>
           <Text bold color={ACCENT}>
             {ICONS.diamondOpen}
@@ -2283,6 +2295,7 @@ function SelectPromptArea({
   prompt: Extract<ActivePrompt, { kind: "select" }>;
 }): React.ReactNode {
   const { columns, rows } = useInkFrameSize();
+  const reservedRows = occupiedRows + (prompt.filterable ? 1 : 0);
   const hasStructuredCopy =
     (prompt.details?.length ?? 0) > 0 || prompt.footer !== undefined;
   if (alignment === "start" && hasStructuredCopy) {
@@ -2290,7 +2303,7 @@ function SelectPromptArea({
       alignment,
       details: prompt.details ?? [],
       footer: prompt.footer,
-      occupiedRows,
+      occupiedRows: reservedRows,
       optionCount: prompt.options.length,
       promptTitle: prompt.message,
       terminalColumns: columns,
@@ -2324,7 +2337,7 @@ function SelectPromptArea({
     terminalRows: rows,
     alignment,
     kind: prompt.kind,
-    occupiedRows,
+    occupiedRows: reservedRows,
     messageRows,
   });
   const optionLimit = Math.max(1, optionCapacity);
@@ -2334,7 +2347,7 @@ function SelectPromptArea({
       : 1;
   const maxVisibleDetailRows = Math.max(
     0,
-    messageRows - 1 - Math.max(0, minimumVisibleOptions - optionCapacity)
+    messageRows - 1 - Math.max(0, minimumVisibleOptions - optionCapacity),
   );
   return (
     <SelectPrompt
@@ -2453,7 +2466,7 @@ function SelectPrompt({
     promptDetails,
     maxVisibleDetailRows,
     detailWidth,
-    prompt.footer
+    prompt.footer,
   );
   const { columns } = useInkFrameSize();
   const centeredLayout = isCentered
@@ -2462,17 +2475,52 @@ function SelectPrompt({
   const centeredOptionsWidth = centeredLayout
     ? Math.min(centeredLayout.width, getPromptContentWidth(columns, alignment))
     : undefined;
-  const totalCount = prompt.options.length;
-  const [highlighted, setHighlighted] = useState<number>(() =>
-    Math.min(Math.max(prompt.initialIndex, 0), Math.max(0, totalCount - 1))
+  const initialHighlighted = Math.min(
+    Math.max(prompt.initialIndex, 0),
+    Math.max(0, prompt.options.length - 1),
   );
+  const [selection, setSelection] = useState({
+    prompt,
+    query: "",
+    highlighted: initialHighlighted,
+  });
+  const selectionRef = useRef(selection);
+  // Ink can deliver paste and Enter before React commits the next render.
+  const updateSelection = useCallback(
+    (update: (state: typeof selection) => typeof selection) => {
+      const next = update(selectionRef.current);
+      selectionRef.current = next;
+      setSelection(next);
+    },
+    [],
+  );
+  // Successive wizard prompts can replace each other without unmounting.
+  if (selection.prompt !== prompt) {
+    const next = { prompt, query: "", highlighted: initialHighlighted };
+    selectionRef.current = next;
+    setSelection(next);
+  }
+  const { query, highlighted } = selection;
+  const filteredOptions = filterSelectOptions(prompt.options, query);
+  const totalCount = filteredOptions.length;
   const [windowStart, windowEnd] = getOptionWindow(
     totalCount,
     highlighted,
-    maxVisibleOptions
+    maxVisibleOptions,
   );
-  const visibleOptions = prompt.options.slice(windowStart, windowEnd);
+  const visibleOptions = filteredOptions.slice(windowStart, windowEnd);
   const isWindowed = visibleOptions.length < totalCount;
+  // Keep the title's height when filtering removes its window position counter.
+  const minTitleRows =
+    prompt.filterable && prompt.options.length > maxVisibleOptions
+      ? getPromptMessageRows({
+          message: promptTitle,
+          terminalColumns: columns,
+          alignment,
+          kind: "select",
+          totalCount: prompt.options.length,
+        })
+      : undefined;
 
   const shortcuts = useMemo<ShortcutBinding[]>(
     () => [
@@ -2482,11 +2530,20 @@ function SelectPrompt({
         priority: 40,
         match: (_input, key) => key.upArrow || key.downArrow,
         run: (_input, key) => {
-          if (key.upArrow) {
-            setHighlighted((idx) => (idx === 0 ? totalCount - 1 : idx - 1));
-            return;
-          }
-          setHighlighted((idx) => (idx + 1) % totalCount);
+          updateSelection((state) => {
+            const count = filterSelectOptions(
+              prompt.options,
+              state.query,
+            ).length;
+            if (count === 0) {
+              return state;
+            }
+            return {
+              ...state,
+              highlighted:
+                (state.highlighted + (key.upArrow ? count - 1 : 1)) % count,
+            };
+          });
         },
       },
       ...(detailShortcut ? [detailShortcut] : []),
@@ -2496,7 +2553,10 @@ function SelectPrompt({
         priority: 42,
         match: (_input, key) => key.return,
         run: () => {
-          const current = prompt.options[highlighted];
+          const state = selectionRef.current;
+          const current = filterSelectOptions(prompt.options, state.query)[
+            state.highlighted
+          ];
           if (current) {
             prompt.resolve(current.value);
           }
@@ -2504,13 +2564,63 @@ function SelectPrompt({
       },
       {
         key: "esc",
-        action: "cancel",
+        action: query ? "clear filter" : "cancel",
         priority: 43,
         match: (input, key) => key.escape || (key.ctrl && input === "c"),
-        run: () => prompt.resolve(null),
+        run: (input, key) => {
+          if (key.ctrl && input === "c") {
+            prompt.resolve(null);
+          } else if (selectionRef.current.query) {
+            updateSelection((state) => ({
+              ...state,
+              query: "",
+              highlighted: 0,
+            }));
+          } else {
+            prompt.resolve(null);
+          }
+        },
       },
+      ...(prompt.filterable
+        ? ([
+            {
+              key: "backspace",
+              action: "delete",
+              showInFooter: false,
+              match: (_input, key) => key.backspace || key.delete,
+              run: () => {
+                updateSelection((state) => {
+                  if (!state.query) {
+                    return state;
+                  }
+                  return {
+                    ...state,
+                    query: removeLastFilterCharacter(state.query),
+                    highlighted: 0,
+                  };
+                });
+              },
+            },
+            {
+              key: "type",
+              action: "filter",
+              showInFooter: false,
+              match: (input, key) =>
+                !(key.ctrl || key.meta || key.tab) &&
+                sanitizeSelectFilterInput(input).length > 0,
+              run: (input) => {
+                const text = sanitizeSelectFilterInput(input);
+                updateSelection((state) => ({
+                  ...state,
+                  query: state.query + text,
+                  highlighted: 0,
+                }));
+              },
+            },
+          ] satisfies ShortcutBinding[])
+        : []),
     ],
-    [detailShortcut, highlighted, prompt, totalCount]
+    [detailShortcut, prompt, query, updateSelection],
   );
   useInkShortcuts("select-prompt", shortcuts);
 
@@ -2528,31 +2638,103 @@ function SelectPrompt({
         footer={prompt.footer}
         highlighted={highlighted}
         isOptionWindowed={isWindowed}
+        minTitleRows={minTitleRows}
         promptTitle={promptTitle}
         totalCount={totalCount}
         visiblePromptDetails={visiblePromptDetails}
       />
       <Box
         justifyContent={isCentered ? "center" : "flex-start"}
+        minHeight={Math.min(prompt.options.length, maxVisibleOptions)}
         width={promptWidth}
       >
-        <Box flexDirection="column" width={centeredOptionsWidth}>
-          {visibleOptions.map((option, visibleIndex) => {
-            const idx = windowStart + visibleIndex;
-            const isCursor = idx === highlighted;
-            return (
-              <SelectPromptOptionRow
-                centered={isCentered}
-                centeredLabelWidth={centeredLayout?.labelWidth}
-                isCursor={isCursor}
-                key={option.value}
-                option={option}
-              />
-            );
-          })}
-        </Box>
+        {totalCount === 0 ? (
+          <Text color={MUTED} wrap="truncate">
+            No matches
+          </Text>
+        ) : (
+          <Box flexDirection="column" width={centeredOptionsWidth}>
+            {visibleOptions.map((option, visibleIndex) => {
+              const idx = windowStart + visibleIndex;
+              const isCursor = idx === highlighted;
+              return (
+                <SelectPromptOptionRow
+                  centered={isCentered}
+                  centeredLabelWidth={centeredLayout?.labelWidth}
+                  isCursor={isCursor}
+                  key={option.value}
+                  option={option}
+                  query={query}
+                />
+              );
+            })}
+          </Box>
+        )}
       </Box>
+      {prompt.filterable ? (
+        <SelectFilterStatus
+          centered={isCentered}
+          matches={totalCount}
+          query={query}
+          total={prompt.options.length}
+        />
+      ) : null}
     </Box>
+  );
+}
+
+function SelectFilterStatus({
+  centered,
+  matches,
+  query,
+  total,
+}: {
+  centered: boolean;
+  matches: number;
+  query: string;
+  total: number;
+}): React.ReactNode {
+  const color = query ? ACCENT : MUTED;
+  return (
+    <Box
+      gap={1}
+      height={1}
+      justifyContent={centered ? "center" : "flex-start"}
+      overflow="hidden"
+      paddingLeft={centered ? 0 : 3}
+      width="100%"
+    >
+      <Box flexShrink={1}>
+        <Text color={color} wrap="truncate">
+          {query ? `/${query}` : "type to filter"}
+        </Text>
+      </Box>
+      {query ? (
+        <Box flexShrink={0}>
+          <Text color={MUTED}>{`${matches} of ${total}`}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+function SelectOptionText({
+  text,
+  query,
+}: {
+  text: string;
+  query: string;
+}): React.ReactNode {
+  const start = query ? text.toLowerCase().indexOf(query.toLowerCase()) : -1;
+  if (start === -1) {
+    return text;
+  }
+  return (
+    <>
+      {text.slice(0, start)}
+      <Text color={ACCENT}>{text.slice(start, start + query.length)}</Text>
+      {text.slice(start + query.length)}
+    </>
   );
 }
 
@@ -2561,11 +2743,13 @@ function SelectPromptOptionRow({
   centeredLabelWidth,
   isCursor,
   option,
+  query,
 }: {
   centered: boolean;
   centeredLabelWidth?: number;
   isCursor: boolean;
   option: SelectPromptOptionData;
+  query: string;
 }): React.ReactNode {
   if (centered) {
     return (
@@ -2574,10 +2758,15 @@ function SelectPromptOptionRow({
           <Text color={ACCENT}>{isCursor ? ICONS.triangleRight : " "}</Text>
         </Box>
         <Box flexShrink={0} width={centeredLabelWidth}>
-          <Text bold={isCursor}>{option.label}</Text>
+          <Text bold={isCursor}>
+            <SelectOptionText query={query} text={option.label} />
+          </Text>
         </Box>
         {option.hint !== undefined && option.hint !== "" ? (
-          <Text color={MUTED}> {option.hint}</Text>
+          <Text color={MUTED}>
+            {" "}
+            <SelectOptionText query={query} text={option.hint} />
+          </Text>
         ) : null}
       </Box>
     );
@@ -2587,9 +2776,14 @@ function SelectPromptOptionRow({
       <Box flexShrink={0} width={3}>
         <Text color={ACCENT}>{isCursor ? ICONS.triangleRight : " "}</Text>
       </Box>
-      <Text bold={isCursor}>{option.label}</Text>
+      <Text bold={isCursor}>
+        <SelectOptionText query={query} text={option.label} />
+      </Text>
       {option.hint !== undefined && option.hint !== "" ? (
-        <Text color={MUTED}> {option.hint}</Text>
+        <Text color={MUTED}>
+          {" "}
+          <SelectOptionText query={query} text={option.hint} />
+        </Text>
       ) : null}
     </Box>
   );
@@ -2631,7 +2825,7 @@ function ConfirmPrompt({
         run: () => prompt.resolve(null),
       },
     ],
-    [prompt]
+    [prompt],
   );
   useInkShortcuts("confirm-prompt", shortcuts);
 
@@ -2686,11 +2880,11 @@ function MultiSelectPrompt({
   const promptDetails = prompt.details ?? [];
   const lockedOptions = useMemo(
     () => prompt.options.filter((option) => option.locked),
-    [prompt.options]
+    [prompt.options],
   );
   const selectableOptions = useMemo(
     () => prompt.options.filter((option) => !option.locked),
-    [prompt.options]
+    [prompt.options],
   );
   const [selected, setSelected] = useState<Set<string>>(
     () =>
@@ -2699,11 +2893,11 @@ function MultiSelectPrompt({
         ...prompt.options
           .filter((option) => option.locked)
           .map((option) => option.value),
-      ])
+      ]),
   );
   const [highlighted, setHighlighted] = useState<number>(() => {
     const firstUnselected = selectableOptions.findIndex(
-      (option) => !prompt.initialSelected.includes(option.value)
+      (option) => !prompt.initialSelected.includes(option.value),
     );
     return Math.max(0, firstUnselected);
   });
@@ -2712,7 +2906,7 @@ function MultiSelectPrompt({
   const [windowStart, windowEnd] = getOptionWindow(
     selectableCount,
     highlighted,
-    maxVisibleOptions
+    maxVisibleOptions,
   );
   const visibleOptions = selectableOptions.slice(windowStart, windowEnd);
   const isWindowed = visibleOptions.length < selectableCount;
@@ -2733,7 +2927,7 @@ function MultiSelectPrompt({
         return next;
       });
     },
-    [selectableOptions]
+    [selectableOptions],
   );
 
   const commit = useCallback(() => {
@@ -2759,7 +2953,7 @@ function MultiSelectPrompt({
           }
           if (key.upArrow) {
             setHighlighted((idx) =>
-              idx === 0 ? selectableCount - 1 : idx - 1
+              idx === 0 ? selectableCount - 1 : idx - 1,
             );
             return;
           }
@@ -2782,7 +2976,7 @@ function MultiSelectPrompt({
           setSelected((prev) => {
             const lockedValues = lockedOptions.map((option) => option.value);
             const allSelectableSelected = selectableOptions.every((option) =>
-              prev.has(option.value)
+              prev.has(option.value),
             );
             if (allSelectableSelected) {
               return new Set(lockedValues);
@@ -2814,7 +3008,7 @@ function MultiSelectPrompt({
       selectableCount,
       selectableOptions,
       toggleAt,
-    ]
+    ],
   );
   useInkShortcuts("multiselect-prompt", shortcuts);
   const shortcutText = `↑↓ move ${ICONS.bullet} space toggle ${ICONS.bullet} a all ${ICONS.bullet} enter continue`;
@@ -2904,7 +3098,7 @@ function MultiSelectPrompt({
 
 function getLockedOptionHint(
   option: MultiSelectPromptOptionData,
-  availableWidth: number
+  availableWidth: number,
 ): string {
   if (!option.locked) {
     return "";
@@ -3010,6 +3204,30 @@ function MultiSelectPromptOptionRow({
   );
 }
 
+/** Compact entity picker for commands outside the full-screen init wizard. */
+export function SelectPicker({
+  prompt,
+}: {
+  prompt: Extract<ActivePrompt, { kind: "select" }>;
+}): React.ReactNode {
+  return (
+    <ShortcutHintProvider>
+      <Box flexDirection="column">
+        <SelectPromptArea alignment="start" occupiedRows={0} prompt={prompt} />
+        <ShortcutFooter color={MUTED_DIM} />
+      </Box>
+    </ShortcutHintProvider>
+  );
+}
+
+/** Mount the compact picker with the sidecar's own Ink and React instances. */
+export function mountSelectPrompt(
+  prompt: Extract<ActivePrompt, { kind: "select" }>,
+  options: Parameters<typeof mountApp>[1],
+): ReturnType<typeof mountApp> {
+  return inkRender(createElement(SelectPicker, { prompt }), options);
+}
+
 /**
  * Mount the wizard App component via Ink and return the Ink instance.
  *
@@ -3026,7 +3244,7 @@ export function mountApp(
     exitOnCtrlC: boolean;
     patchConsole: boolean;
     stdin?: import("node:tty").ReadStream;
-  }
+  },
 ): {
   unmount: () => void;
   waitUntilExit: () => Promise<unknown>;

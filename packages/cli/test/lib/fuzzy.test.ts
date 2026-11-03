@@ -8,7 +8,11 @@
 
 import { array, assert as fcAssert, property, string } from "fast-check";
 import { describe, expect, test } from "vitest";
-import { fuzzyMatch, levenshtein } from "../../src/lib/fuzzy.js";
+import {
+  fuzzyMatch,
+  fuzzyMatchSegments,
+  levenshtein,
+} from "../../src/lib/fuzzy.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 // Short strings to keep Levenshtein computation fast in property tests
@@ -20,7 +24,7 @@ describe("property: levenshtein", () => {
       property(shortStringArb, (s) => {
         expect(levenshtein(s, s)).toBe(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -29,7 +33,7 @@ describe("property: levenshtein", () => {
       property(shortStringArb, shortStringArb, (a, b) => {
         expect(levenshtein(a, b)).toBe(levenshtein(b, a));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -39,7 +43,7 @@ describe("property: levenshtein", () => {
         const dist = levenshtein(a, b);
         expect(dist).toBeLessThanOrEqual(Math.max(a.length, b.length));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -48,7 +52,7 @@ describe("property: levenshtein", () => {
       property(shortStringArb, shortStringArb, (a, b) => {
         expect(levenshtein(a, b)).toBeGreaterThanOrEqual(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -58,7 +62,7 @@ describe("property: levenshtein", () => {
         expect(levenshtein(s, "")).toBe(s.length);
         expect(levenshtein("", s)).toBe(s.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -70,7 +74,7 @@ describe("property: levenshtein", () => {
         const dbc = levenshtein(b, c);
         expect(dac).toBeLessThanOrEqual(dab + dbc);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -147,8 +151,96 @@ describe("fuzzyMatch: unit tests", () => {
     const items = ["prefix-match", "contains-prefix", "no-match"];
     const result = fuzzyMatch("prefix", items);
     expect(result.indexOf("prefix-match")).toBeLessThan(
-      result.indexOf("contains-prefix")
+      result.indexOf("contains-prefix"),
     );
+  });
+});
+
+describe("fuzzyMatch: search mode", () => {
+  test.each(["frone", "froont", "frnt"])(
+    "matches an unfinished prefix with an edit: %s",
+    (query) => {
+      expect(fuzzyMatch(query, ["frontend-web"], { mode: "search" })).toEqual([
+        "frontend-web",
+      ]);
+    },
+  );
+
+  test("preserves full-name typos while allowing incomplete typo prefixes", () => {
+    expect(fuzzyMatch("isseu", ["issue"], { mode: "search" })).toEqual([
+      "issue",
+    ]);
+    expect(fuzzyMatch("frone", ["frontend-web"])).toEqual([]);
+    expect(fuzzyMatch("frone", ["frontend-web"], { mode: "search" })).toEqual([
+      "frontend-web",
+    ]);
+  });
+
+  test("ranks literal matches before typo prefixes and respects the result limit", () => {
+    const candidates = ["frnntend-web", "team-frontend", "frontend", "front"];
+    const expected = ["front", "frontend", "team-frontend", "frnntend-web"];
+    expect(fuzzyMatch("FRONT", candidates, { mode: "search" })).toEqual(
+      expected,
+    );
+    expect(
+      fuzzyMatch("FRONT", candidates, { mode: "search", maxResults: 2 }),
+    ).toEqual(expected.slice(0, 2));
+  });
+
+  test("keeps typo prefixes anchored to the beginning of a candidate", () => {
+    expect(
+      fuzzyMatch("frone", ["team-frontend-web"], { mode: "search" }),
+    ).toEqual([]);
+  });
+});
+
+describe("fuzzyMatchSegments", () => {
+  const fields = [
+    "span.op",
+    "span.duration",
+    "span.description",
+    "http.method",
+    "span",
+  ];
+
+  test("matches the typed segment within the candidate's, never past it", () => {
+    expect(fuzzyMatchSegments("span.d", fields)).toEqual([
+      "span.description",
+      "span.duration",
+    ]);
+    expect(fuzzyMatchSegments("span.d", ["span.op"])).toEqual([]);
+  });
+
+  test("tolerates a typo within a segment", () => {
+    expect(fuzzyMatchSegments("span.duraton", fields)).toEqual([
+      "span.duration",
+    ]);
+    expect(fuzzyMatchSegments("spn.duration", fields)).toEqual([
+      "span.duration",
+    ]);
+  });
+
+  test("a segment typed in full matches the candidates under it", () => {
+    expect(fuzzyMatchSegments("span", fields)).toEqual([
+      "span",
+      "span.description",
+      "span.duration",
+      "span.op",
+    ]);
+    expect(fuzzyMatchSegments("span.", fields)).toEqual([
+      "span.description",
+      "span.duration",
+      "span.op",
+    ]);
+  });
+
+  test("needs a candidate segment for each typed one", () => {
+    expect(fuzzyMatchSegments("span.op.x", fields)).toEqual([]);
+    expect(fuzzyMatchSegments("duration", fields)).toEqual([]);
+  });
+
+  test("returns every candidate, sorted, for an empty partial", () => {
+    expect(fuzzyMatchSegments("", ["b.a", "a.b"])).toEqual(["a.b", "b.a"]);
   });
 });
 
@@ -165,7 +257,7 @@ describe("property: fuzzyMatch", () => {
         const result = fuzzyMatch(partial, candidates);
         expect(result).toContain(partial);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -179,7 +271,7 @@ describe("property: fuzzyMatch", () => {
         const result = fuzzyMatch("", candidates);
         expect(result.length).toBe(candidates.length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -195,7 +287,7 @@ describe("property: fuzzyMatch", () => {
           expect(candidates).toContain(r);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

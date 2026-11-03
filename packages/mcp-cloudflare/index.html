@@ -1,120 +1,141 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sentry MCP</title>
+    <link href="./src/client/index.css" rel="stylesheet" />
+    <link rel="icon" href="/favicon.ico" />
+    <!-- Hide the static homepage fallback before paint when JS is available. -->
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
+    <style>
+      html.js #static-home {
+        display: none !important;
+      }
+      /* Match fallback shell when the SPA never boots. */
+      html:not(.js),
+      html:not(.js) body {
+        margin: 0;
+        min-height: 100%;
+        background: #0b0d12;
+      }
+      #static-home {
+        box-sizing: border-box;
+        max-width: 48rem;
+        min-height: 100vh;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 3rem;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        font-size: 1rem;
+        line-height: 1.6;
+        color: #e5e7eb;
+        background: #0b0d12;
+      }
+      #static-home h1,
+      #static-home h2,
+      #static-home h3 {
+        margin: 1.5rem 0 0.5rem;
+        line-height: 1.25;
+        font-weight: 650;
+        color: #f9fafb;
+      }
+      #static-home h1 {
+        margin-top: 0;
+        font-size: 1.875rem;
+      }
+      #static-home h2 {
+        font-size: 1.375rem;
+      }
+      #static-home h3 {
+        font-size: 1.125rem;
+      }
+      #static-home p,
+      #static-home ul {
+        margin: 0 0 0.85rem;
+      }
+      #static-home ul {
+        padding-left: 1.25rem;
+      }
+      #static-home li {
+        margin: 0.25rem 0;
+      }
+      #static-home code,
+      #static-home pre {
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.9em;
+      }
+      #static-home code {
+        word-break: break-all;
+      }
+      #static-home pre {
+        overflow-x: auto;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        background: #111827;
+      }
+      #static-home pre code {
+        word-break: normal;
+        white-space: pre;
+      }
+      #static-home a {
+        color: #a78bfa;
+      }
+    </style>
+    <script
+      defer
+      data-domain="mcp.sentry.dev"
+      src="https://plausible.io/js/script.js"
+    ></script>
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="Sentry MCP" />
+    <meta
+      name="description"
+      content="A Model Context Protocol implementation for interacting with Sentry."
+    />
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sentry MCP</title>
-  <link href="./src/client/index.css" rel="stylesheet" />
-  <link rel="icon" href="/favicon.ico" />
-  <!-- Hide the static homepage fallback before paint when JS is available. -->
-  <script>document.documentElement.classList.add("js");</script>
-  <style>
-    html.js #static-home {
-      display: none !important;
-    }
-    /* Match fallback shell when the SPA never boots. */
-    html:not(.js),
-    html:not(.js) body {
-      margin: 0;
-      min-height: 100%;
-      background: #0b0d12;
-    }
-    #static-home {
-      box-sizing: border-box;
-      max-width: 48rem;
-      min-height: 100vh;
-      margin: 0 auto;
-      padding: 2rem 1.25rem 3rem;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      font-size: 1rem;
-      line-height: 1.6;
-      color: #e5e7eb;
-      background: #0b0d12;
-    }
-    #static-home h1,
-    #static-home h2,
-    #static-home h3 {
-      margin: 1.5rem 0 0.5rem;
-      line-height: 1.25;
-      font-weight: 650;
-      color: #f9fafb;
-    }
-    #static-home h1 {
-      margin-top: 0;
-      font-size: 1.875rem;
-    }
-    #static-home h2 {
-      font-size: 1.375rem;
-    }
-    #static-home h3 {
-      font-size: 1.125rem;
-    }
-    #static-home p,
-    #static-home ul {
-      margin: 0 0 0.85rem;
-    }
-    #static-home ul {
-      padding-left: 1.25rem;
-    }
-    #static-home li {
-      margin: 0.25rem 0;
-    }
-    #static-home code,
-    #static-home pre {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 0.9em;
-    }
-    #static-home code {
-      word-break: break-all;
-    }
-    #static-home pre {
-      overflow-x: auto;
-      padding: 0.75rem 1rem;
-      border-radius: 0.5rem;
-      background: #111827;
-    }
-    #static-home pre code {
-      word-break: normal;
-      white-space: pre;
-    }
-    #static-home a {
-      color: #a78bfa;
-    }
-  </style>
-  <script defer data-domain="mcp.sentry.dev" src="https://plausible.io/js/script.js"></script>
-  <!-- Primary Meta Tags -->
-  <meta name="title" content="Sentry MCP" />
-  <meta name="description" content="A Model Context Protocol implementation for interacting with Sentry." />
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mcp.sentry.dev/" />
+    <meta
+      property="og:title"
+      content="A model context protocol implementation for interacting with Sentry."
+    />
+    <meta
+      property="og:description"
+      content="Simply put, its a way to plug Sentry's API into an LLM, letting you ask questions about your data in context of the LLM itself. This lets you take an agent that you already use, like Cursor, and pull in additional information from Sentry to help with tasks like debugging, code generation, and more."
+    />
+    <meta property="og:image" content="https://mcp.sentry.dev/flow.jpg" />
 
-  <!-- Open Graph / Facebook -->
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://mcp.sentry.dev/" />
-  <meta property="og:title" content="A model context protocol implementation for interacting with Sentry." />
-  <meta property="og:description"
-    content="Simply put, its a way to plug Sentry's API into an LLM, letting you ask questions about your data in context of the LLM itself. This lets you take an agent that you already use, like Cursor, and pull in additional information from Sentry to help with tasks like debugging, code generation, and more." />
-  <meta property="og:image" content="https://mcp.sentry.dev/flow.jpg" />
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://mcp.sentry.dev/" />
+    <meta
+      property="twitter:title"
+      content="A model context protocol implementation for interacting with Sentry."
+    />
+    <meta
+      property="twitter:description"
+      content="Simply put, its a way to plug Sentry's API into an LLM, letting you ask questions about your data in context of the LLM itself. This lets you take an agent that you already use, like Cursor, and pull in additional information from Sentry to help with tasks like debugging, code generation, and more."
+    />
+    <meta property="twitter:image" content="https://mcp.sentry.dev/flow.jpg" />
+  </head>
 
-  <!-- Twitter -->
-  <meta property="twitter:card" content="summary_large_image" />
-  <meta property="twitter:url" content="https://mcp.sentry.dev/" />
-  <meta property="twitter:title" content="A model context protocol implementation for interacting with Sentry." />
-  <meta property="twitter:description"
-    content="Simply put, its a way to plug Sentry's API into an LLM, letting you ask questions about your data in context of the LLM itself. This lets you take an agent that you already use, like Cursor, and pull in additional information from Sentry to help with tasks like debugging, code generation, and more." />
-  <meta property="twitter:image" content="https://mcp.sentry.dev/flow.jpg" />
-</head>
-
-<body>
-  <!--
+  <body>
+    <!--
     Content-only homepage for no-JS browsers and HTML scrapers.
     Injected at build/dev time from src/homepage-content.ts (same body as /llms.txt).
     React replaces #root on mount.
   -->
-  <div id="root">
-    <!--app-static-home-start-->
-    <!--app-static-home-end-->
-  </div>
-  <script type="module" src="./src/client/main.tsx"></script>
-</body>
-
+    <div id="root">
+      <!--app-static-home-start-->
+      <!--app-static-home-end-->
+    </div>
+    <script type="module" src="./src/client/main.tsx"></script>
+  </body>
 </html>

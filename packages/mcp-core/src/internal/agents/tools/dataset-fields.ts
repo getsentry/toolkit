@@ -169,9 +169,14 @@ export function createDatasetFieldsTool(options: {
     description: `Discover available fields for ${dataset} searches in Sentry (includes example values)`,
     parameters: z.object({}),
     execute: async () => {
-      return discoverDatasetFields(apiService, organizationSlug, dataset, {
-        projectId,
-      });
+      return await discoverDatasetFields(
+        apiService,
+        organizationSlug,
+        dataset,
+        {
+          projectId,
+        },
+      );
     },
     getResultCount: (result) => result.fields.length,
   });

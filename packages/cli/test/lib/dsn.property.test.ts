@@ -45,7 +45,9 @@ const regionArb = constantFrom("us", "de", "eu", "");
 
 /** Generate valid SaaS ingest hosts with org ID */
 const saasHostArb = tuple(orgIdArb, regionArb).map(([orgId, region]) =>
-  region ? `o${orgId}.ingest.${region}.sentry.io` : `o${orgId}.ingest.sentry.io`
+  region
+    ? `o${orgId}.ingest.${region}.sentry.io`
+    : `o${orgId}.ingest.sentry.io`,
 );
 
 /** Generate self-hosted hosts (no org ID pattern) */
@@ -53,19 +55,19 @@ const selfHostedHostArb = constantFrom(
   "sentry.mycompany.com",
   "errors.internal.corp",
   "sentry.localhost",
-  "my-sentry.example.org"
+  "my-sentry.example.org",
 );
 
 /** Generate complete valid DSN strings */
 const validDsnArb = tuple(publicKeyArb, saasHostArb, projectIdArb).map(
-  ([key, host, projectId]) => `https://${key}@${host}/${projectId}`
+  ([key, host, projectId]) => `https://${key}@${host}/${projectId}`,
 );
 
 /** Generate valid self-hosted DSN strings */
 const selfHostedDsnArb = tuple(
   publicKeyArb,
   selfHostedHostArb,
-  projectIdArb
+  projectIdArb,
 ).map(([key, host, projectId]) => `https://${key}@${host}/${projectId}`);
 
 /** Generate invalid DSN-like strings */
@@ -76,7 +78,7 @@ const invalidDsnArb = constantFrom(
   "https://@sentry.io/123", // empty key
   "ftp://key@sentry.io/123", // still valid URL, but will parse
   "https://key@/123", // no host
-  "://key@sentry.io/123" // invalid protocol
+  "://key@sentry.io/123", // invalid protocol
 );
 
 /** Generate monorepo-style paths */
@@ -86,7 +88,7 @@ const monorepoPathArb = tuple(
     minLength: 1,
     maxLength: 15,
   }),
-  constantFrom("src/index.ts", ".env", "config.js", "main.py")
+  constantFrom("src/index.ts", ".env", "config.js", "main.py"),
 ).map(([root, pkgChars, file]) => `${root}/${pkgChars.join("")}/${file}`);
 
 /** Generate non-monorepo paths */
@@ -96,7 +98,7 @@ const rootPathArb = constantFrom(
   "config.js",
   "main.py",
   "index.js",
-  "app/main.ts"
+  "app/main.ts",
 );
 
 // Properties for parseDsn
@@ -112,7 +114,7 @@ describe("property: parseDsn", () => {
         expect(result?.host).toBeDefined();
         expect(result?.projectId).toBeDefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -123,7 +125,7 @@ describe("property: parseDsn", () => {
         // SaaS DSNs should have orgId extracted
         expect(result?.orgId).toBeDefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -134,7 +136,7 @@ describe("property: parseDsn", () => {
         expect(result).not.toBeNull();
         expect(result?.orgId).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -148,7 +150,7 @@ describe("property: parseDsn", () => {
           expect(result).toBeNull();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -161,7 +163,7 @@ describe("property: parseDsn", () => {
           expect(reconstructed).toBe(dsn);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -179,7 +181,7 @@ describe("property: extractOrgIdFromHost", () => {
         const result = extractOrgIdFromHost(host);
         expect(result).toBe(String(orgId));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -189,7 +191,7 @@ describe("property: extractOrgIdFromHost", () => {
         const result = extractOrgIdFromHost(host);
         expect(result).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -199,7 +201,7 @@ describe("property: extractOrgIdFromHost", () => {
       "ingest.sentry.io",
       "o.ingest.sentry.io", // no number
       "oabc.ingest.sentry.io", // letters instead of number
-      "o123.sentry.io" // missing "ingest"
+      "o123.sentry.io", // missing "ingest"
     );
 
     fcAssert(
@@ -207,7 +209,7 @@ describe("property: extractOrgIdFromHost", () => {
         const result = extractOrgIdFromHost(host);
         expect(result).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -220,7 +222,7 @@ describe("property: isValidDsn", () => {
       property(validDsnArb, (dsn) => {
         expect(isValidDsn(dsn)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -229,7 +231,7 @@ describe("property: isValidDsn", () => {
       property(selfHostedDsnArb, (dsn) => {
         expect(isValidDsn(dsn)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -240,7 +242,7 @@ describe("property: isValidDsn", () => {
         const parsed = parseDsn(input);
         expect(isValid).toBe(parsed !== null);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -257,7 +259,7 @@ describe("property: createDetectedDsn", () => {
           expect(result).toBeNull();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -267,7 +269,7 @@ describe("property: createDetectedDsn", () => {
         const result = createDetectedDsn(dsn, "code", "src/index.ts");
         expect(result?.raw).toBe(dsn);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -280,16 +282,16 @@ describe("property: createDetectedDsn", () => {
             "env" as const,
             "env_file" as const,
             "code" as const,
-            "config" as const
-          )
+            "config" as const,
+          ),
         ),
         ([dsn, source]) => {
           const result = createDetectedDsn(dsn, source, "test/path.ts");
           expect(result?.source).toBe(source);
           expect(result?.sourcePath).toBe("test/path.ts");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -308,7 +310,7 @@ describe("property: createDsnFingerprint", () => {
         const fp2 = createDsnFingerprint(detected);
         expect(fp1).toBe(fp2);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -325,7 +327,7 @@ describe("property: createDsnFingerprint", () => {
         const fp2 = createDsnFingerprint([...detected].reverse());
         expect(fp1).toBe(fp2);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -341,7 +343,7 @@ describe("property: createDsnFingerprint", () => {
           expect(fpSingle).toBe(fpDuplicate);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -367,7 +369,7 @@ describe("property: createDsnFingerprint", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -394,7 +396,7 @@ describe("property: createDsnFingerprint", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -412,7 +414,7 @@ describe("property: inferPackagePath", () => {
         const parts = result!.split("/");
         expect(parts.length).toBe(2);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -422,7 +424,7 @@ describe("property: inferPackagePath", () => {
         const result = inferPackagePath(path);
         expect(result).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -438,7 +440,7 @@ describe("property: inferPackagePath", () => {
           expect(result.length).toBeGreaterThan(0);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

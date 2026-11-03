@@ -10,10 +10,12 @@ import {
   listMetricAlertsPaginated,
   type MetricAlertRule,
 } from "../../../lib/api-client.js";
+import { ORG_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
-import { isAllDigits } from "../../../lib/utils.js";
+import { countChar, isAllDigits } from "../../../lib/utils.js";
+import { alertRuleParameter } from "../arguments.js";
 
 const log = logger.withTag("alert.metrics");
 
@@ -28,7 +30,7 @@ export type MetricRuleResolution = {
  */
 export function parseMetricRuleArg(
   arg: string,
-  usageHint: string
+  usageHint: string,
 ): {
   ref: string;
   targetArg: string | undefined;
@@ -37,7 +39,7 @@ export function parseMetricRuleArg(
   if (!trimmed) {
     throw new ValidationError(
       `Rule id or name is required.\nUse: ${usageHint}`,
-      "rule"
+      "rule",
     );
   }
 
@@ -45,11 +47,11 @@ export function parseMetricRuleArg(
     return { ref: trimmed, targetArg: undefined };
   }
 
-  const slashCount = [...trimmed].filter((c) => c === "/").length;
+  const slashCount = countChar(trimmed, "/");
   if (slashCount > 1) {
     throw new ValidationError(
       `Metric alerts are org-scoped — use '<org>/<rule-id-or-name>', not '<org>/<project>/<rule>'.\nUse: ${usageHint}`,
-      "rule"
+      "rule",
     );
   }
 
@@ -59,14 +61,28 @@ export function parseMetricRuleArg(
   if (!ref) {
     throw new ValidationError(
       `Invalid rule reference '${arg}' (missing id or name after org).\nUse: ${usageHint}`,
-      "rule"
+      "rule",
     );
   }
   return { ref, targetArg: targetPart ? `${targetPart}/` : undefined };
 }
 
+/**
+ * The `<org>/<rule-id-or-name>` parameter of a metric alert command,
+ * parsed with {@link parseMetricRuleArg} before the command runs.
+ */
+export function metricRuleParameter(usageHint: string, brief: string) {
+  return alertRuleParameter({
+    placeholder: "org/rule-id-or-name",
+    brief,
+    kind: ORG_TARGET,
+    split: parseMetricRuleArg,
+    usageHint,
+  });
+}
+
 export async function listAllMetricRulesForOrg(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<MetricAlertRule[]> {
   const all: MetricAlertRule[] = [];
   let cursor: string | undefined;
@@ -82,16 +98,16 @@ export async function listAllMetricRulesForOrg(
     cursor = nextCursor;
   }
   log.warn(
-    `Pagination limit reached for metric alert rules in ${orgSlug}. Results may be incomplete.`
+    `Pagination limit reached for metric alert rules in ${orgSlug}. Results may be incomplete.`,
   );
   return all;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: per-org list + name resolution
+// per-org list + name resolution
 export async function resolveMetricAlertRule(
   orgSlugs: string[],
   ref: string,
-  usageHint: string
+  usageHint: string,
 ): Promise<MetricRuleResolution> {
   if (isAllDigits(ref)) {
     const hits: MetricRuleResolution[] = [];
@@ -113,13 +129,13 @@ export async function resolveMetricAlertRule(
     if (hits.length > 1) {
       throw new ValidationError(
         `Alert rule ID '${ref}' matched multiple organizations.\n` +
-          "Use an explicit target: sentry alert metrics <command> <org>/<rule-id>"
+          "Use an explicit target: sentry alert metrics <command> <org>/<rule-id>",
       );
     }
     throw new ResolutionError(
       `Metric alert rule '${ref}'`,
       "not found",
-      usageHint
+      usageHint,
     );
   }
 
@@ -134,7 +150,7 @@ export async function resolveMetricAlertRule(
       }
     }
     const exact = rules.find(
-      (rule) => rule.name && rule.name.toLowerCase() === ref.toLowerCase()
+      (rule) => rule.name && rule.name.toLowerCase() === ref.toLowerCase(),
     );
     if (exact) {
       hits.push({ orgSlug, rule: exact });
@@ -147,7 +163,7 @@ export async function resolveMetricAlertRule(
   if (hits.length > 1) {
     throw new ValidationError(
       `Alert rule name '${ref}' matched multiple organizations.\n` +
-        "Use an explicit target: sentry alert metrics <command> <org>/<rule-id-or-name>"
+        "Use an explicit target: sentry alert metrics <command> <org>/<rule-id-or-name>",
     );
   }
 
@@ -158,13 +174,13 @@ export async function resolveMetricAlertRule(
     throw new ValidationError(
       `No metric alert rule named '${ref}' in the selected organization(s).\n\n` +
         `Did you mean:\n${lines}`,
-      "rule"
+      "rule",
     );
   }
 
   throw new ResolutionError(
     `Metric alert rule '${ref}'`,
     "not found",
-    usageHint
+    usageHint,
   );
 }

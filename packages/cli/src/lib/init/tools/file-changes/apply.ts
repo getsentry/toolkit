@@ -35,7 +35,7 @@ async function assertApplyPath(change: PreparedFileChange): Promise<void> {
   try {
     const currentRoot = await resolveCanonicalRoot(change.root);
     const currentDestination = await resolveCanonicalDestination(
-      change.absolutePath
+      change.absolutePath,
     );
     const currentIdentity = await resolvePathIdentity(change.absolutePath);
     if (
@@ -49,13 +49,13 @@ async function assertApplyPath(change: PreparedFileChange): Promise<void> {
   } catch {
     throw new FileChangeApplyError(
       "stale_content",
-      `Cannot ${change.action} "${change.path}": path changed after validation`
+      `Cannot ${change.action} "${change.path}": path changed after validation`,
     );
   }
 }
 
 async function applyPreparedFileChange(
-  change: PreparedFileChange
+  change: PreparedFileChange,
 ): Promise<void> {
   await assertApplyPath(change);
   if (change.action === "create") {
@@ -70,7 +70,7 @@ async function applyPreparedFileChange(
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
         throw new FileChangeApplyError(
           "stale_content",
-          `Cannot create "${change.path}": target appeared after validation`
+          `Cannot create "${change.path}": target appeared after validation`,
         );
       }
       throw error;
@@ -81,18 +81,18 @@ async function applyPreparedFileChange(
   if (change.action === "modify") {
     const current = await safeReadFile(
       change.absolutePath,
-      "apply-file-changes.apply"
+      "apply-file-changes.apply",
     );
     if (current === null) {
       throw new FileChangeApplyError(
         "stale_content",
-        `Cannot modify "${change.path}": target changed after validation`
+        `Cannot modify "${change.path}": target changed after validation`,
       );
     }
     if (current !== change.expectedContent) {
       throw new FileChangeApplyError(
         "stale_content",
-        `Cannot modify "${change.path}": file changed after validation`
+        `Cannot modify "${change.path}": file changed after validation`,
       );
     }
     await assertApplyPath(change);
@@ -103,7 +103,7 @@ async function applyPreparedFileChange(
   if (!(await deleteSnapshotMatches(change.absolutePath, change.expected))) {
     throw new FileChangeApplyError(
       "stale_content",
-      `Cannot delete "${change.path}": target changed after validation`
+      `Cannot delete "${change.path}": target changed after validation`,
     );
   }
   await assertApplyPath(change);
@@ -114,7 +114,7 @@ async function applyPreparedFileChange(
 
 function failureFromError(
   change: PreparedFileChange,
-  error: unknown
+  error: unknown,
 ): FileChangeFailure {
   return {
     action: change.action,
@@ -129,7 +129,7 @@ function failureFromError(
 
 function failedResult(
   failure: FileChangeFailure,
-  applied: AppliedFileChange[]
+  applied: AppliedFileChange[],
 ): ToolResult {
   return {
     data: { applied, failed: failure },
@@ -144,7 +144,7 @@ function failedResult(
  */
 export async function applyPreparedFileChanges(
   changes: PreparedFileChange[],
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<ToolResult> {
   const applied = changes.map(({ action, path: filePath }) => ({
     action,

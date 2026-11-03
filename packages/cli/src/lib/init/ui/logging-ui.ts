@@ -46,11 +46,11 @@ import type {
 export class LoggingUIPromptError extends Error {
   constructor(
     promptKind: "select" | "multiselect" | "confirm",
-    message: string
+    message: string,
   ) {
     super(
       `Cannot show ${promptKind} prompt in non-interactive mode: ${message}. ` +
-        "Pass --yes or provide the value via CLI flags / environment variables."
+        "Pass --yes or provide the value via CLI flags / environment variables.",
     );
     this.name = "LoggingUIPromptError";
   }
@@ -107,7 +107,7 @@ export class LoggingUI implements WizardUI {
     // the user's terminal even without a tabulated renderer.
     const labelWidth = Math.max(
       ...summary.fields.map((field) => field.label.length),
-      0
+      0,
     );
     this.writeLine(this.stdout, "");
     for (const field of summary.fields) {
@@ -206,7 +206,7 @@ export class LoggingUI implements WizardUI {
 
   multiselect<T extends string>(opts: MultiSelectOptions<T>): Promise<T[]> {
     return Promise.reject(
-      new LoggingUIPromptError("multiselect", opts.message)
+      new LoggingUIPromptError("multiselect", opts.message),
     );
   }
 

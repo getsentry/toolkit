@@ -20,6 +20,7 @@ import {
   test,
   vi,
 } from "vitest";
+import { ArgumentParseError } from "@stricli/core";
 import { logsCommand } from "../../../src/commands/trace/logs.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -29,13 +30,27 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
-import { ContextError } from "../../../src/lib/errors.js";
+
+vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../src/lib/browser.js")>();
+  return Object.fromEntries(
+    Object.entries(actual).map(([k, v]) => [
+      k,
+      typeof v === "function" ? vi.fn(v) : v,
+    ]),
+  );
+});
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as browser from "../../../src/lib/browser.js";
+import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
   const actual =
@@ -44,11 +59,11 @@ vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -58,16 +73,16 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TraceLog } from "../../../src/types/sentry.js";
 
-// Note: parseTraceTarget parsing tests are in test/lib/trace-target.test.ts
+// Note: trace-target parsing tests are in test/lib/trace-target.test.ts
 
 const TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 const ORG = "test-org";
@@ -120,7 +135,7 @@ function createMockContext() {
  * Collect all output written to a mock write function.
  */
 function collectMockOutput(
-  writeMock: ReturnType<typeof mock<() => boolean>>
+  writeMock: ReturnType<typeof mock<() => boolean>>,
 ): string {
   return writeMock.mock.calls
     .map((c) => {
@@ -141,9 +156,13 @@ describe("logsCommand.func", () => {
   let resolveOrgSpy: ReturnType<typeof spyOn>;
   let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
   let withProgressSpy: ReturnType<typeof spyOn>;
+  let openInBrowserSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     listTraceLogsSpy = vi.spyOn(apiClient, "listTraceLogs");
+    openInBrowserSpy = vi
+      .spyOn(browser, "openInBrowser")
+      .mockResolvedValue(undefined);
     resolveOrgSpy = vi.spyOn(resolveTarget, "resolveOrg");
     resolveOrgOnlyTargetSpy = vi
       .spyOn(resolveTarget, "resolveOrgOnlyTarget")
@@ -154,7 +173,7 @@ describe("logsCommand.func", () => {
       .mockImplementation((_opts, fn) =>
         fn(() => {
           /* no-op setMessage */
-        })
+        }),
       );
   });
 
@@ -163,6 +182,7 @@ describe("logsCommand.func", () => {
     resolveOrgSpy.mockRestore();
     resolveOrgOnlyTargetSpy.mockRestore();
     withProgressSpy.mockRestore();
+    openInBrowserSpy.mockRestore();
   });
 
   describe("JSON output mode", () => {
@@ -181,7 +201,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -210,7 +230,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -235,7 +255,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -258,7 +278,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -280,7 +300,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -304,7 +324,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -327,7 +347,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -351,7 +371,7 @@ describe("logsCommand.func", () => {
           limit: 3,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -373,7 +393,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       const output = collectMockOutput(stdoutWrite);
@@ -398,7 +418,7 @@ describe("logsCommand.func", () => {
           sort: "newest",
         },
         ORG,
-        TRACE_ID
+        TRACE_ID,
       );
 
       expect(resolveOrgOnlyTargetSpy).toHaveBeenCalled();
@@ -419,7 +439,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       expect(resolveOrgSpy).toHaveBeenCalledWith({
@@ -444,9 +464,35 @@ describe("logsCommand.func", () => {
             limit: 100,
             sort: "newest",
           },
-          TRACE_ID
-        )
+          TRACE_ID,
+        ),
       ).rejects.toThrow(ContextError);
+    });
+
+    test.each([
+      ["a missing trace ID", "my-org/web", ContextError],
+      ["an invalid trace ID", "not-a-trace-id", ValidationError],
+    ])("%s fails to parse, before any lookup", async (_, arg, cause) => {
+      const { context } = createMockContext();
+      const func = await logsCommand.loader();
+
+      const error = await func
+        .call(
+          context,
+          {
+            json: false,
+            web: false,
+            period: parsePeriod("14d"),
+            limit: 100,
+            sort: "newest",
+          },
+          arg,
+        )
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(cause);
+      expect(resolveOrgSpy).not.toHaveBeenCalled();
+      expect(listTraceLogsSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -467,7 +513,7 @@ describe("logsCommand.func", () => {
           query: "severity:error",
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       expect(listTraceLogsSpy).toHaveBeenCalledWith(ORG, TRACE_ID, {
@@ -493,7 +539,7 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       expect(listTraceLogsSpy).toHaveBeenCalledWith(ORG, TRACE_ID, {
@@ -511,23 +557,22 @@ describe("logsCommand.func", () => {
 
       const { context } = createMockContext();
       const func = await logsCommand.loader();
-      // --web would call openInBrowser which needs a real browser; catch any error
-      try {
-        await func.call(
-          context,
-          {
-            json: false,
-            web: true,
-            period: parsePeriod("14d"),
-            limit: 100,
-            sort: "newest",
-          },
-          TRACE_ID
-        );
-      } catch {
-        // openInBrowser may throw in test environment — that's OK
-      }
+      await func.call(
+        context,
+        {
+          json: false,
+          web: true,
+          period: parsePeriod("14d"),
+          limit: 100,
+          sort: "newest",
+        },
+        TRACE_ID,
+      );
 
+      expect(openInBrowserSpy).toHaveBeenCalledWith(
+        expect.stringContaining(TRACE_ID),
+        "trace",
+      );
       expect(listTraceLogsSpy).not.toHaveBeenCalled();
     });
   });
@@ -548,13 +593,13 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "newest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       expect(listTraceLogsSpy).toHaveBeenCalledWith(
         ORG,
         TRACE_ID,
-        expect.objectContaining({ sort: "newest" })
+        expect.objectContaining({ sort: "newest" }),
       );
     });
 
@@ -573,13 +618,13 @@ describe("logsCommand.func", () => {
           limit: 100,
           sort: "oldest",
         },
-        TRACE_ID
+        TRACE_ID,
       );
 
       expect(listTraceLogsSpy).toHaveBeenCalledWith(
         ORG,
         TRACE_ID,
-        expect.objectContaining({ sort: "oldest" })
+        expect.objectContaining({ sort: "oldest" }),
       );
     });
   });

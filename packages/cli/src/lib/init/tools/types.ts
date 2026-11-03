@@ -18,12 +18,12 @@ export type InitToolDefinition<TOperation extends ToolOperation> = {
   operation: TOperation;
   /** Build a short spinner message for the current payload. */
   describe: (
-    payload: Extract<ToolPayload, { operation: TOperation }>
+    payload: Extract<ToolPayload, { operation: TOperation }>,
   ) => string;
   /** Execute the tool and return a resumable payload result. */
   execute: (
     payload: Extract<ToolPayload, { operation: TOperation }>,
-    context: ToolContext
+    context: ToolContext,
   ) => Promise<ToolResult>;
 };
 

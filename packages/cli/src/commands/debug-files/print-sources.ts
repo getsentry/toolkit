@@ -11,6 +11,7 @@
  * the bundled `symbolic` WASM module (see `src/lib/dif/`).
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { existsSync } from "node:fs";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
@@ -19,12 +20,9 @@ import {
   listSources,
   selectBundledObject,
 } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
-import {
-  colorTag,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { colorTag, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { readDebugFile } from "./read-file.js";
@@ -81,7 +79,7 @@ function formatPrintSources(data: PrintSourcesResult): string {
   }
 
   const sections = data.objects.map((object) => {
-    const header = `${object.fileFormat} ${safeCodeSpan(object.debugId)}`;
+    const header = `${object.fileFormat} ${inlineCode(object.debugId)}`;
     if (object.enumerationError !== null) {
       return `${header} — ${colorTag("muted", `could not read sources: ${object.enumerationError}`)}`;
     }
@@ -89,7 +87,7 @@ function formatPrintSources(data: PrintSourcesResult): string {
       return `${header} — ${colorTag("muted", "no referenced sources")}`;
     }
     const lines = object.files.map(
-      (file) => `- ${safeCodeSpan(file.path)} — ${describeSource(file)}`
+      (file) => `- ${inlineCode(file.path)} — ${describeSource(file)}`,
     );
     const count = object.files.length;
     return `${header} — ${count} source file${count === 1 ? "" : "s"}:\n\n${lines.join("\n")}`;
@@ -110,10 +108,18 @@ export const printSourcesCommand = buildCommand({
       "checking what `bundle-sources` would include. Supports Mach-O/dSYM, " +
       "ELF, PE/PDB, Portable PDB, and Breakpad.\n\n" +
       "The format is auto-detected. This command is local-only and makes no " +
-      "network requests.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files print-sources ./libexample.so\n" +
-      "  sentry debug-files print-sources ./app.pdb --json",
+      "network requests.",
+    examples: [
+      {
+        description:
+          "List the source files a debug file references (and whether they're available)",
+        command: "sentry debug-files print-sources ./libexample.so",
+      },
+      {
+        description: "Output the list as JSON",
+        command: "sentry debug-files print-sources ./app.pdb --json",
+      },
+    ],
   },
   output: {
     human: formatPrintSources,
@@ -124,7 +130,7 @@ export const printSourcesCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -134,7 +140,7 @@ export const printSourcesCommand = buildCommand({
   async *func(
     this: SentryContext,
     _flags: Record<string, never>,
-    path: string
+    path: string,
   ) {
     const content = await readDebugFile(path);
 
@@ -145,7 +151,7 @@ export const printSourcesCommand = buildCommand({
       const msg = err instanceof Error ? err.message : String(err);
       throw new ValidationError(
         `'${path}' is not a recognized debug information file: ${msg}`,
-        "path"
+        "path",
       );
     }
 
@@ -167,7 +173,7 @@ export const printSourcesCommand = buildCommand({
     const failed = objects.filter((object) => object.enumerationError !== null);
     for (const object of failed) {
       log.warn(
-        `Could not enumerate sources for ${object.debugId} in '${path}': ${object.enumerationError}`
+        `Could not enumerate sources for ${object.debugId} in '${path}': ${object.enumerationError}`,
       );
     }
 
@@ -179,7 +185,7 @@ export const printSourcesCommand = buildCommand({
       log.warn(
         `'${path}' contains ${info.objects.length} objects; ` +
           `\`bundle-sources\` would bundle sources for ${bundled.debugId} only. ` +
-          "Other slices are not included."
+          "Other slices are not included.",
       );
     }
 

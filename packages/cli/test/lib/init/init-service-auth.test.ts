@@ -8,7 +8,7 @@ const ENDPOINT = "/api/workflows/sentry-wizard/resume-async";
 function authFailure(
   code: string,
   safeToRetry = true,
-  status = 503
+  status = 503,
 ): MastraClientError {
   return new MastraClientError(status, "Service Unavailable", "auth failed", {
     code,
@@ -17,28 +17,28 @@ function authFailure(
 }
 
 describe("withInitServiceAuthClassification", () => {
-  test.each([
-    "AUTH_UPSTREAM_TIMEOUT",
-    "AUTH_UPSTREAM_UNAVAILABLE",
-  ])("retries %s once", async (code) => {
-    const failure = authFailure(code);
-    const operation = vi
-      .fn<() => Promise<string>>()
-      .mockRejectedValueOnce(failure)
-      .mockResolvedValueOnce("ok");
+  test.each(["AUTH_UPSTREAM_TIMEOUT", "AUTH_UPSTREAM_UNAVAILABLE"])(
+    "retries %s once",
+    async (code) => {
+      const failure = authFailure(code);
+      const operation = vi
+        .fn<() => Promise<string>>()
+        .mockRejectedValueOnce(failure)
+        .mockResolvedValueOnce("ok");
 
-    await expect(
-      withInitServiceAuthClassification(operation, ENDPOINT)
-    ).resolves.toBe("ok");
-    expect(operation).toHaveBeenCalledTimes(2);
-  });
+      await expect(
+        withInitServiceAuthClassification(operation, ENDPOINT),
+      ).resolves.toBe("ok");
+      expect(operation).toHaveBeenCalledTimes(2);
+    },
+  );
 
   test("stops after one retry when the auth service remains unavailable", async () => {
     const failure = authFailure("AUTH_UPSTREAM_TIMEOUT");
     const operation = vi.fn<() => Promise<never>>().mockRejectedValue(failure);
 
     await expect(
-      withInitServiceAuthClassification(operation, ENDPOINT)
+      withInitServiceAuthClassification(operation, ENDPOINT),
     ).rejects.toBe(failure);
     expect(operation).toHaveBeenCalledTimes(2);
   });
@@ -49,13 +49,13 @@ describe("withInitServiceAuthClassification", () => {
       .mockRejectedValueOnce(authFailure("AUTH_UPSTREAM_TIMEOUT"))
       .mockRejectedValueOnce(
         new Error(
-          'HTTP error! status: 401 - {"error":"Unauthorized: invalid token"}'
-        )
+          'HTTP error! status: 401 - {"error":"Unauthorized: invalid token"}',
+        ),
       );
 
     const error = await withInitServiceAuthClassification(
       operation,
-      ENDPOINT
+      ENDPOINT,
     ).catch((caught) => caught);
 
     expect(error).toBeInstanceOf(ApiError);
@@ -76,7 +76,7 @@ describe("withInitServiceAuthClassification", () => {
     const operation = vi.fn<() => Promise<never>>().mockRejectedValue(failure);
 
     await expect(
-      withInitServiceAuthClassification(operation, ENDPOINT)
+      withInitServiceAuthClassification(operation, ENDPOINT),
     ).rejects.toBe(failure);
     expect(operation).toHaveBeenCalledTimes(1);
   });

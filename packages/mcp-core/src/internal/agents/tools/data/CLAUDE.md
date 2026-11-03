@@ -81,7 +81,7 @@ The `otel-semantics-lookup.ts` tool reads these JSON files to provide semantic g
 data/
 ├── CLAUDE.md              # This documentation
 ├── gen_ai.json            # Generative AI attributes
-├── db.json                # Database attributes  
+├── db.json                # Database attributes
 ├── http.json              # HTTP attributes
 ├── rpc.json               # RPC attributes
 ├── messaging.json         # Messaging attributes
@@ -95,4 +95,4 @@ data/
 - **Custom files**: Update manually as needed for non-OpenTelemetry attributes
 - **Validation**: Ensure all files follow the expected JSON schema format
 
-The embedded AI agent uses these definitions to provide accurate semantic guidance when users query for things like "agent calls" or "tool calls" (maps to gen_ai.*) vs MCP protocol fields (maps to mcp.*).
+The embedded AI agent uses these definitions to provide accurate semantic guidance when users query for things like "agent calls" or "tool calls" (maps to gen_ai._) vs MCP protocol fields (maps to mcp._).

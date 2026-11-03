@@ -15,7 +15,7 @@ import {
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 describe("property: buildIssueListCollapse", () => {
-  test("always collapses filtered and unhandled regardless of optional flags", () => {
+  test("collapses filtered and unhandled by default regardless of other flags", () => {
     fcAssert(
       property(
         tuple(boolean(), boolean()),
@@ -26,9 +26,9 @@ describe("property: buildIssueListCollapse", () => {
           });
           expect(result).toContain("filtered");
           expect(result).toContain("unhandled");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -42,9 +42,9 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(result.includes("stats")).toBe(collapseStats);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -58,9 +58,27 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(result.includes("lifetime")).toBe(collapseLifetime);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("filtered presence is exactly controlled by shouldCollapseFiltered", () => {
+    fcAssert(
+      property(
+        tuple(boolean(), boolean(), boolean()),
+        ([collapseStats, collapseLifetime, collapseFiltered]) => {
+          const result = buildIssueListCollapse({
+            shouldCollapseStats: collapseStats,
+            shouldCollapseLifetime: collapseLifetime,
+            shouldCollapseFiltered: collapseFiltered,
+          });
+          expect(result.includes("filtered")).toBe(collapseFiltered);
+          expect(result).toContain("unhandled");
+        },
+      ),
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -72,7 +90,7 @@ describe("property: buildIssueListCollapse", () => {
         });
         expect(result).not.toContain("lifetime");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -86,9 +104,9 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(result).not.toContain("base");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -102,9 +120,9 @@ describe("property: buildIssueListCollapse", () => {
             shouldCollapseLifetime: collapseLifetime,
           });
           expect(new Set(result).size).toBe(result.length);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -120,9 +138,9 @@ describe("property: buildIssueListCollapse", () => {
           const expected =
             2 + (collapseStats ? 1 : 0) + (collapseLifetime ? 1 : 0);
           expect(result.length).toBe(expected);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -12,9 +12,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { xcodeCommand } from "../../../src/commands/react-native/xcode.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -90,7 +90,7 @@ describe("react-native xcode", () => {
       (
         _cmd: string,
         _args: readonly string[] | undefined,
-        spawnOpts?: { env?: NodeJS.ProcessEnv }
+        spawnOpts?: { env?: NodeJS.ProcessEnv },
       ) => {
         const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
         if (reportPath) {
@@ -99,7 +99,7 @@ describe("react-native xcode", () => {
             JSON.stringify({
               packager_bundle_path: bundle,
               packager_sourcemap_path: map,
-            })
+            }),
           );
         }
         return {
@@ -110,7 +110,7 @@ describe("react-native xcode", () => {
           output: [],
           signal: null,
         };
-      }
+      },
     );
 
     // The sourcemap already carries a debug id (from the Metro plugin).
@@ -163,46 +163,49 @@ describe("react-native xcode", () => {
     ["missing", 7],
     ["malformed", 0],
     ["malformed", 7],
-  ] as const)("skips upload for a %s report and preserves build status %i", async (reportState, status) => {
-    spawnMock.mockImplementation(
-      (
-        _cmd: string,
-        _args: readonly string[] | undefined,
-        spawnOpts?: { env?: NodeJS.ProcessEnv }
-      ) => {
-        const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
-        if (reportPath) {
-          if (reportState === "missing") {
-            rmSync(reportPath);
-          } else {
-            writeFileSync(reportPath, '{"packager_bundle_path":');
+  ] as const)(
+    "skips upload for a %s report and preserves build status %i",
+    async (reportState, status) => {
+      spawnMock.mockImplementation(
+        (
+          _cmd: string,
+          _args: readonly string[] | undefined,
+          spawnOpts?: { env?: NodeJS.ProcessEnv },
+        ) => {
+          const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
+          if (reportPath) {
+            if (reportState === "missing") {
+              rmSync(reportPath);
+            } else {
+              writeFileSync(reportPath, '{"packager_bundle_path":');
+            }
           }
-        }
-        return {
-          status,
-          stdout: "",
-          stderr: "",
-          pid: 1,
-          output: [],
-          signal: null,
-        };
-      }
-    );
+          return {
+            status,
+            stdout: "",
+            stderr: "",
+            pid: 1,
+            output: [],
+            signal: null,
+          };
+        },
+      );
 
-    const ctx = createContext({ CONFIGURATION: "Release" });
-    const func = await xcodeCommand.loader();
-    await func.call(ctx, { "build-script": script });
+      const ctx = createContext({ CONFIGURATION: "Release" });
+      const func = await xcodeCommand.loader();
+      await func.call(ctx, { "build-script": script });
 
-    expect(ctx.process.exitCode).toBe(status === 0 ? undefined : status);
-    expect(sourcemaps.uploadSourcemaps).not.toHaveBeenCalled();
-  });
+      expect(ctx.process.exitCode).toBe(status === 0 ? undefined : status);
+      expect(sourcemaps.uploadSourcemaps).not.toHaveBeenCalled();
+    },
+  );
 
   test("warns and skips upload when the build produced no sourcemaps", async () => {
     spawnMock.mockImplementation(
       (
         _cmd: string,
         _args: readonly string[] | undefined,
-        spawnOpts?: { env?: NodeJS.ProcessEnv }
+        spawnOpts?: { env?: NodeJS.ProcessEnv },
       ) => {
         const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
         if (reportPath) {
@@ -216,7 +219,7 @@ describe("react-native xcode", () => {
           output: [],
           signal: null,
         };
-      }
+      },
     );
     await runXcode({ CONFIGURATION: "Release" });
     expect(sourcemaps.uploadSourcemaps).not.toHaveBeenCalled();

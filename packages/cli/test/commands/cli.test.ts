@@ -3,7 +3,7 @@
  *
  * Tests for the sentry cli command group.
  *
- * Progress messages go through consola (→ process.stderr). Final results are
+ * Progress messages go through the logger (→ process.stderr). Final results are
  * returned as structured data and rendered to stdout by the output system.
  * Tests capture both stderr (progress) and stdout (results) to verify behavior.
  */
@@ -12,10 +12,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { feedbackCommand } from "../../src/commands/cli/feedback.js";
 import type { UpgradeResult } from "../../src/commands/cli/upgrade.js";
 import { upgradeCommand } from "../../src/commands/cli/upgrade.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 
 /**
  * Create a mock context with a process.stderr.write spy for capturing
- * consola output, plus stdout capture for structured output.
+ * logger output, plus stdout capture for structured output.
  */
 function createMockContext(overrides: Partial<{ execPath: string }> = {}): {
   context: Record<string, unknown>;
@@ -28,7 +29,7 @@ function createMockContext(overrides: Partial<{ execPath: string }> = {}): {
   const stdoutChunks: string[] = [];
   const errors: string[] = [];
 
-  // Capture consola output (routed to process.stderr)
+  // Capture logger output (routed to process.stderr)
   const origWrite = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((chunk: string | Uint8Array) => {
     stderrChunks.push(String(chunk));
@@ -72,7 +73,7 @@ describe("feedbackCommand.func", () => {
     };
 
     await expect(func.call(mockContext, {}, "")).rejects.toThrow(
-      "Please provide a feedback message."
+      "Please provide a feedback message.",
     );
   });
 
@@ -84,7 +85,7 @@ describe("feedbackCommand.func", () => {
     };
 
     await expect(func.call(mockContext, {}, "   ")).rejects.toThrow(
-      "Please provide a feedback message."
+      "Please provide a feedback message.",
     );
   });
 
@@ -97,7 +98,7 @@ describe("feedbackCommand.func", () => {
 
     // Sentry is disabled in test environment (no DSN)
     await expect(
-      func.call(mockContext, {}, "test", "feedback")
+      func.call(mockContext, {}, "test", "feedback"),
     ).rejects.toThrow("Feedback not sent: telemetry is disabled.");
   });
 });
@@ -165,7 +166,9 @@ describe("upgradeCommand.func", () => {
 
   test("check mode with version shows versioned command", async () => {
     globalThis.fetch = (async (url) => {
-      const response = String(url).includes("/releases/tags/cli%402.0.0")
+      const response = extractInputUrl(url).includes(
+        "/releases/tags/cli%402.0.0",
+      )
         ? { tag_name: "cli@2.0.0" }
         : [{ tag_name: "cli@99.0.0" }];
       return new Response(JSON.stringify(response), {
@@ -181,13 +184,13 @@ describe("upgradeCommand.func", () => {
     await func.call(
       context,
       { check: true, method: "curl", json: true },
-      "2.0.0"
+      "2.0.0",
     );
 
     const data = JSON.parse(getStdout()) as UpgradeResult;
     expect(data.action).toBe("checked");
     expect(data.warnings).toContain(
-      "Run 'sentry cli upgrade 2.0.0' to update."
+      "Run 'sentry cli upgrade 2.0.0' to update.",
     );
   });
 
@@ -223,7 +226,7 @@ describe("upgradeCommand.func", () => {
 
     // Specify a version that doesn't exist
     await expect(
-      func.call(context, { check: false, method: "curl" }, "999.0.0")
+      func.call(context, { check: false, method: "curl" }, "999.0.0"),
     ).rejects.toThrow("Version 999.0.0 not found");
     expect(callCount).toBe(2);
   });

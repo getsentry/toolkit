@@ -77,7 +77,7 @@ export function isPlaceholderNumericId(id: string): boolean {
 export function isPlaceholderPublicKey(publicKey: string): boolean {
   // URL parsers may percent-encode angle-bracket templates such as `%3Ckey%3E`.
   let decoded = publicKey;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     decoded = decodeURIComponent(publicKey);
   } catch {
@@ -103,7 +103,7 @@ export function isPlaceholderPublicKey(publicKey: string): boolean {
  * // }
  */
 export function parseDsn(dsn: string): ParsedDsn | null {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const url = new URL(dsn);
 
@@ -174,7 +174,7 @@ export function createDetectedDsn(
   raw: string,
   source: DsnSource,
   sourcePath?: string,
-  packagePath?: string
+  packagePath?: string,
 ): DetectedDsn | null {
   const parsed = parseDsn(raw);
   if (!parsed) {

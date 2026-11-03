@@ -5,8 +5,6 @@
  * with named methods for every CLI command, plus a `run()` escape hatch for
  * arbitrary command strings.
  *
- * CLI runner is re-exported as `_cli` for the npm bin wrapper (`dist/bin.cjs`).
- *
  * @example
  * ```typescript
  * import createSentrySDK from "sentry";
@@ -50,11 +48,11 @@ export type { SentrySDK } from "./sdk.generated.js";
  *
  * // Escape hatch for any CLI command
  * const version = await sdk.run("--version");
- * const text = await sdk.run("issue", "list", "-l", "5");
+ * const text = await sdk.run("issue", "list", "-n", "5");
  * ```
  */
 export function createSentrySDK(
-  options?: import("./lib/sdk-types.js").SentryOptions
+  options?: import("./lib/sdk-types.js").SentryOptions,
 ) {
   const methods = createSDKMethods(buildInvoker(options));
   const run = buildRunner(options);
@@ -62,6 +60,3 @@ export function createSentrySDK(
 }
 
 export default createSentrySDK;
-
-// CLI runner — internal, used by dist/bin.cjs wrapper
-export { startCli as _cli } from "./cli.js";

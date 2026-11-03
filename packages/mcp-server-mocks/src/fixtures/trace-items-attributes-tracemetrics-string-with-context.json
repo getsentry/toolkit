@@ -1,0 +1,94 @@
+[
+  {
+    "key": "metric.name",
+    "name": "metric.name",
+    "context": {
+      "isConvention": false,
+      "brief": "The name of the metric.",
+      "isDeprecated": false,
+      "examples": ["http.request.duration"]
+    }
+  },
+  {
+    "key": "metric.type",
+    "name": "metric.type",
+    "context": {
+      "isConvention": false,
+      "brief": "The type of the metric (counter, gauge, distribution).",
+      "isDeprecated": false,
+      "examples": ["distribution"]
+    }
+  },
+  {
+    "key": "metric.unit",
+    "name": "metric.unit",
+    "context": {
+      "isConvention": false,
+      "brief": "The unit of the metric value.",
+      "isDeprecated": false,
+      "examples": ["millisecond"]
+    }
+  },
+  {
+    "key": "transaction",
+    "name": "transaction",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry transaction (segment name).",
+      "isDeprecated": true,
+      "examples": ["GET /"],
+      "replacementAttribute": "sentry.segment.name"
+    }
+  },
+  {
+    "key": "project",
+    "name": "project",
+    "context": {
+      "isConvention": false,
+      "brief": "The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "environment",
+    "name": "environment",
+    "context": {
+      "isConvention": true,
+      "brief": "The sentry environment.",
+      "isDeprecated": true,
+      "examples": ["production"],
+      "replacementAttribute": "sentry.environment"
+    }
+  },
+  {
+    "key": "http.method",
+    "name": "http.method",
+    "context": {
+      "isConvention": true,
+      "brief": "The HTTP method used.",
+      "isDeprecated": true,
+      "examples": ["GET"],
+      "replacementAttribute": "http.request.method"
+    }
+  },
+  {
+    "key": "fleet.region",
+    "name": "fleet.region",
+    "context": {
+      "isConvention": true,
+      "brief": "The region the server is currently running in.",
+      "isDeprecated": false,
+      "examples": ["us-east-1"]
+    }
+  },
+  {
+    "key": "fleet.deployment_region",
+    "name": "fleet.deployment_region",
+    "context": {
+      "isConvention": true,
+      "brief": "The region the server is scheduled to move to in the next fleet deployment. It is not where the server runs now.",
+      "isDeprecated": false,
+      "examples": ["eu-west-1"]
+    }
+  }
+]

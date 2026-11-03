@@ -44,7 +44,7 @@ describe("prepareDifs size gate", () => {
     const { prepared, oversizedCount } = await prepareDifs(
       files,
       buildDifFilters({}),
-      { maxFileSize: 10 * 1024 }
+      { maxFileSize: 10 * 1024 },
     );
     expect(prepared).toHaveLength(1);
     expect(oversizedCount).toBe(0);
@@ -58,7 +58,7 @@ describe("prepareDifs size gate", () => {
     const { prepared, oversizedCount } = await prepareDifs(
       files,
       buildDifFilters({}),
-      { maxFileSize: 1 }
+      { maxFileSize: 1 },
     );
     expect(prepared).toHaveLength(0);
     expect(oversizedCount).toBe(1);
@@ -70,7 +70,7 @@ describe("prepareDifs size gate", () => {
     const files = await scanPaths([path]);
     const { prepared, oversizedCount } = await prepareDifs(
       files,
-      buildDifFilters({})
+      buildDifFilters({}),
     );
     expect(prepared).toHaveLength(1);
     expect(oversizedCount).toBe(0);
@@ -86,7 +86,7 @@ describe("prepareDifs size gate", () => {
     const { prepared, oversizedCount } = await prepareDifs(
       files,
       buildDifFilters({ types: ["elf"] }),
-      { maxFileSize: 1 }
+      { maxFileSize: 1 },
     );
     expect(prepared).toHaveLength(0);
     expect(oversizedCount).toBe(0);
@@ -99,7 +99,7 @@ describe("prepareDifs size gate", () => {
     const { prepared, oversizedCount } = await prepareDifs(
       files,
       buildDifFilters({ types: ["breakpad"] }),
-      { maxFileSize: 1 }
+      { maxFileSize: 1 },
     );
     expect(prepared).toHaveLength(0);
     expect(oversizedCount).toBe(1);
@@ -169,7 +169,7 @@ describe("scanPaths traversal", () => {
 
   test("throws ValidationError for a non-existent path", async () => {
     await expect(scanPaths([join(tempDir, "does-not-exist")])).rejects.toThrow(
-      /does not exist/
+      /does not exist/,
     );
   });
 });

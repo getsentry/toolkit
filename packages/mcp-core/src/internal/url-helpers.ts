@@ -2,7 +2,7 @@
  * Unified URL parsing utilities for Sentry resources.
  *
  * Parses Sentry URLs to identify resource types and extract relevant identifiers.
- * Supports issue, trace, profile, event, replay, and monitor URLs across different
+ * Supports issue, trace, profile, event, replay, monitor, and dashboard URLs across different
  * Sentry URL formats (subdomain, path-based organization, self-hosted).
  */
 
@@ -21,6 +21,7 @@ export type SentryResourceType =
   | "monitor"
   | "release"
   | "snapshot"
+  | "dashboard"
   | "unknown";
 
 /**
@@ -64,6 +65,8 @@ export interface ParsedSentryUrl {
   snapshotId?: string;
   /** Selected snapshot image name (from ?selectedSnapshot= query param) */
   selectedSnapshot?: string;
+  /** Dashboard numeric ID (for dashboard URLs) */
+  dashboardId?: string;
 }
 
 /**
@@ -71,7 +74,7 @@ export interface ParsedSentryUrl {
  *
  * Supported URL patterns:
  * - Issue: `/issues/{issueId}` or `/organizations/{org}/issues/{issueId}`
- * - Event: `/issues/{issueId}/events/{eventId}`
+ * - Event: `/issues/{issueId}/events/{eventId}` or `/projects/{project}/events/{eventId}`
  * - Trace: `/explore/traces/trace/{traceId}` or `/performance/trace/{traceId}`
  * - Profile: `/explore/profiling/profile/{project}/{profileId}/flamegraph/`
  * - Continuous profile: `/explore/profiling/profile/{project}/flamegraph/` with query params
@@ -79,6 +82,7 @@ export interface ParsedSentryUrl {
  * - Replay: `/explore/replays/{replayId}/` or `/replays/{replayId}/`
  * - Monitor: `/crons/{monitorSlug}/` or `/monitors/{monitorSlug}/`
  * - Release: `/releases/{version}/`
+ * - Dashboard: `/dashboard/{dashboardId}/`
  *
  * Organization slug is extracted from:
  * 1. Subdomain (e.g., `my-org.sentry.io`)
@@ -164,6 +168,7 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
     "monitors",
     "alerts",
     "feedback",
+    "dashboard",
     "dashboards",
     "discover",
     "insights",
@@ -394,6 +399,38 @@ function identifyResource(
         type: "issue",
         organizationSlug,
         issueId,
+      };
+    }
+  }
+
+  // Project event URL: /projects/{project}/events/{eventId}/ (redirects to the
+  // event's issue in the Sentry UI). API URLs share this shape but not the org.
+  const projectsIndex = pathParts.indexOf("projects");
+  if (
+    projectsIndex !== -1 &&
+    pathParts[0] !== "api" &&
+    pathParts[projectsIndex + 2] === "events"
+  ) {
+    const eventId = pathParts[projectsIndex + 3];
+    if (eventId) {
+      return {
+        type: "event",
+        organizationSlug,
+        eventId,
+      };
+    }
+  }
+
+  // Dashboard URL: /dashboard/{dashboardId}/
+  // Dashboard IDs are always numeric integers.
+  const dashboardIndex = pathParts.indexOf("dashboard");
+  if (dashboardIndex !== -1) {
+    const dashboardId = pathParts[dashboardIndex + 1];
+    if (dashboardId && /^\d+$/.test(dashboardId)) {
+      return {
+        type: "dashboard",
+        organizationSlug,
+        dashboardId,
       };
     }
   }

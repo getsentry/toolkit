@@ -39,7 +39,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
 
   test("numeric project: plus OR warns once with the final in-list", () => {
     expect(sanitizeQuery("project:123 OR project:456")).toBe(
-      "project_id:[123,456]"
+      "project_id:[123,456]",
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);
@@ -52,7 +52,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
 
   test("numeric project: plus AND warns once with the stripped query", () => {
     expect(sanitizeQuery("project:123 AND is:unresolved")).toBe(
-      "project_id:123 is:unresolved"
+      "project_id:123 is:unresolved",
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);
@@ -64,7 +64,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
 
   test("OR-only still warns once with the in-list", () => {
     expect(sanitizeQuery("level:error OR level:warning")).toBe(
-      "level:[error,warning]"
+      "level:[error,warning]",
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);
@@ -89,7 +89,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
     // happened, and the API 400 will quote project_id, so the user must
     // be told.
     expect(sanitizeQuery("project:123 ((( broken")).toBe(
-      "project_id:123 ((( broken"
+      "project_id:123 ((( broken",
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);

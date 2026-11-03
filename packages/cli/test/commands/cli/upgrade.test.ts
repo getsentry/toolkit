@@ -5,23 +5,35 @@
  * Covers resolveTargetVersion branches (check mode, already up-to-date,
  * version validation) and error paths.
  *
- * Status messages go through consola (→ process.stderr). Tests capture stderr
+ * Status messages go through the logger (→ process.stderr). Tests capture stderr
  * via a spy on process.stderr.write and assert on the collected output.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as child_process from "node:child_process";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { run } from "@stricli/core";
+import { coerce as semverCoerce, inc as semverInc } from "semver";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // Make child_process namespace mutable so vi.spyOn works on ESM exports
 vi.mock("node:child_process", async (importOriginal) => {
   const orig = await importOriginal<typeof import("node:child_process")>();
+  return { ...orig };
+});
+vi.mock("../../../src/lib/binary.js", async (importOriginal) => {
+  const orig =
+    await importOriginal<typeof import("../../../src/lib/binary.js")>();
   return { ...orig };
 });
 
@@ -31,7 +43,15 @@ import {
   resolveUpgradeInstallDir,
 } from "../../../src/commands/cli/upgrade.js";
 import type { SentryContext } from "../../../src/context.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as binary from "../../../src/lib/binary.js";
 import { CLI_VERSION } from "../../../src/lib/constants.js";
+import {
+  backupDatabase,
+  getBackupDir,
+  getUndoBackup,
+} from "../../../src/lib/db/backup.js";
+import { getDbPath, getRawDatabase } from "../../../src/lib/db/index.js";
 import {
   clearInstallInfo,
   setInstallInfo,
@@ -40,15 +60,26 @@ import {
   getReleaseChannel,
   setReleaseChannel,
 } from "../../../src/lib/db/release-channel.js";
+import { CURRENT_SCHEMA_VERSION } from "../../../src/lib/db/schema.js";
+import { Database } from "../../../src/lib/db/sqlite.js";
+import { getMetadata, setMetadata } from "../../../src/lib/db/utils.js";
 import { setVersionCheckInfo } from "../../../src/lib/db/version-check.js";
+import { extractInputUrl } from "../../../src/lib/fetch-input.js";
 import { TEST_TMP_DIR, useTestConfigDir } from "../../helpers.js";
+
+function readSchemaVersion(): number {
+  const row = getRawDatabase()
+    .query("SELECT version FROM schema_version")
+    .get() as { version: number };
+  return row.version;
+}
 
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
 
 /** Helper to mock fetch */
 function mockFetch(
-  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = fn as typeof globalThis.fetch;
 }
@@ -56,7 +87,7 @@ function mockFetch(
 /**
  * Create a mock Stricli context with stderr and stdout capture.
  *
- * `getOutput()` returns **both** consola output (stderr) and structured
+ * `getOutput()` returns **both** logger output (stderr) and structured
  * output (stdout) combined, so assertions work regardless of whether
  * a message is a progress log or a rendered result.
  * `errors` captures Stricli error output written to context.stderr.
@@ -67,7 +98,7 @@ function createMockContext(
     env: Record<string, string | undefined>;
     execPath: string;
     argv: string[];
-  }> = {}
+  }> = {},
 ): {
   context: SentryContext;
   getOutput: () => string;
@@ -90,7 +121,7 @@ function createMockContext(
   const origPlain = process.env.SENTRY_PLAIN_OUTPUT;
   process.env.SENTRY_PLAIN_OUTPUT = "0";
 
-  // Capture consola output (routed to process.stderr)
+  // Capture logger output (routed to process.stderr)
   const origStderrWrite = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((chunk: string | Uint8Array) => {
     stderrChunks.push(String(chunk));
@@ -171,7 +202,7 @@ function createMockContext(
  */
 function mockGhcrNightlyVersion(version: string): void {
   mockFetch(async (url) => {
-    const urlStr = String(url);
+    const urlStr = extractInputUrl(url);
 
     if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
       return new Response(null, { status: 200 });
@@ -198,7 +229,7 @@ function mockGhcrNightlyVersion(version: string): void {
           headers: {
             "content-type": "application/vnd.oci.image.manifest.v1+json",
           },
-        }
+        },
       );
     }
 
@@ -212,7 +243,7 @@ function mockGhcrNightlyVersion(version: string): void {
  */
 function mockGitHubVersion(version: string): void {
   mockFetch(async (url) => {
-    const urlStr = String(url);
+    const urlStr = extractInputUrl(url);
 
     if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
       return new Response(JSON.stringify([{ tag_name: `cli@${version}` }]), {
@@ -253,7 +284,7 @@ function mockGitHubVersion(version: string): void {
  */
 function mockNightlyVersion(version: string): void {
   mockFetch(async (url) => {
-    const urlStr = String(url);
+    const urlStr = extractInputUrl(url);
     if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
       return new Response(null, { status: 200 });
     }
@@ -275,7 +306,7 @@ function mockNightlyVersion(version: string): void {
           headers: {
             "content-type": "application/vnd.oci.image.manifest.v1+json",
           },
-        }
+        },
       );
     }
     return new Response("Not Found", { status: 404 });
@@ -289,7 +320,7 @@ describe("sentry cli upgrade", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `upgrade-cmd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `upgrade-cmd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
     originalFetch = globalThis.fetch;
@@ -314,7 +345,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -334,7 +365,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -353,20 +384,20 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "88.88.88"],
-        context
+        context,
       );
 
       const combined = getOutput();
       expect(combined).toContain("88.88.88");
       expect(combined).toContain(
-        "Run 'sentry cli upgrade 88.88.88' to update."
+        "Run 'sentry cli upgrade 88.88.88' to update.",
       );
     });
 
     test("resolves a pinned check target from its exact source", async () => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        const request = String(url);
+        const request = extractInputUrl(url);
         requests.push(request);
         if (
           request.includes("getsentry/toolkit/releases/tags/cli%4088.88.88")
@@ -390,23 +421,23 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "88.88.88"],
-        context
+        context,
       );
 
       expect(requests).toContain(
-        "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%4088.88.88"
+        "https://api.github.com/repos/getsentry/toolkit/releases/tags/cli%4088.88.88",
       );
       expect(requests).toContain(
-        "https://api.github.com/repos/getsentry/cli/releases/tags/88.88.88"
+        "https://api.github.com/repos/getsentry/cli/releases/tags/88.88.88",
       );
       expect(requests).toContain(
-        "https://api.github.com/repos/getsentry/cli/releases?per_page=30"
+        "https://api.github.com/repos/getsentry/cli/releases?per_page=30",
       );
       expect(requests).not.toContain(
-        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30"
+        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30",
       );
       expect(
-        requests.every((request) => !request.includes("per_page=100"))
+        requests.every((request) => !request.includes("per_page=100")),
       ).toBe(true);
     });
 
@@ -423,7 +454,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Using cached target: 88.88.88");
@@ -446,7 +477,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl"],
-        context
+        context,
       );
 
       expect(getOutput()).toContain("Using cached target: 88.88.88");
@@ -462,8 +493,8 @@ describe("sentry cli upgrade", () => {
       const requests: string[] = [];
       setVersionCheckInfo("88.88.88");
       mockFetch(async (url) => {
-        requests.push(String(url));
-        return response();
+        requests.push(extractInputUrl(url));
+        return await response();
       });
       const { context, errors, getOutput, restore } = createMockContext({
         homeDir: testDir,
@@ -473,7 +504,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl"],
-        context
+        context,
       );
 
       expect(getOutput()).not.toContain("Using cached target");
@@ -495,7 +526,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -516,7 +547,7 @@ describe("sentry cli upgrade", () => {
 
       const allOutput = getOutput() + errors.join("");
       expect(allOutput).toContain(
-        "Homebrew does not support installing a specific version"
+        "Homebrew does not support installing a specific version",
       );
     });
 
@@ -531,7 +562,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "brew"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -543,7 +574,7 @@ describe("sentry cli upgrade", () => {
     test("uses the selected legacy source for the check-mode changelog", async () => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        const request = String(url);
+        const request = extractInputUrl(url);
         requests.push(request);
         if (request.includes("getsentry/toolkit/releases?per_page=100")) {
           return new Response("Not Found", { status: 404 });
@@ -565,14 +596,14 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "brew"],
-        context
+        context,
       );
 
       expect(requests).toContain(
-        "https://api.github.com/repos/getsentry/cli/releases?per_page=30"
+        "https://api.github.com/repos/getsentry/cli/releases?per_page=30",
       );
       expect(requests).not.toContain(
-        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30"
+        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30",
       );
     });
   });
@@ -581,7 +612,7 @@ describe("sentry cli upgrade", () => {
     test("reports error for non-existent version", async () => {
       // Mock: latest is 99.99.99, but 0.0.1 doesn't exist
       mockFetch(async (url) => {
-        const urlStr = String(url);
+        const urlStr = extractInputUrl(url);
         if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
           return new Response(JSON.stringify([{ tag_name: "cli@99.99.99" }]), {
             status: 200,
@@ -616,7 +647,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "v1.0.0"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -639,7 +670,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "nightly"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -660,7 +691,7 @@ describe("sentry cli upgrade", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "nightly"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -679,7 +710,7 @@ describe("sentry cli upgrade — nightly channel", () => {
   beforeEach(() => {
     testDir = join(
       "/tmp",
-      `upgrade-nightly-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `upgrade-nightly-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
     originalFetch = globalThis.fetch;
@@ -704,7 +735,7 @@ describe("sentry cli upgrade — nightly channel", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "nightly"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -723,7 +754,7 @@ describe("sentry cli upgrade — nightly channel", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "stable"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -742,7 +773,7 @@ describe("sentry cli upgrade — nightly channel", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -762,7 +793,7 @@ describe("sentry cli upgrade — nightly channel", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "nightly"],
-        context
+        context,
       );
 
       expect(getReleaseChannel()).toBe("nightly");
@@ -778,7 +809,7 @@ describe("sentry cli upgrade — nightly channel", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "stable"],
-        context
+        context,
       );
 
       expect(getReleaseChannel()).toBe("stable");
@@ -797,7 +828,7 @@ describe("sentry cli upgrade — nightly channel", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "nightly"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -817,7 +848,7 @@ describe("sentry cli upgrade — nightly channel", () => {
       await run(
         app,
         ["cli", "upgrade", "--check", "--method", "curl", "nightly"],
-        context
+        context,
       );
 
       const combined = getOutput();
@@ -851,6 +882,22 @@ function fakeChildProcess(exitCode: number): child_process.ChildProcess {
   return emitter as unknown as child_process.ChildProcess;
 }
 
+/**
+ * The release `steps` minor versions after this build, so tests that move
+ * between versions follow CLI_VERSION instead of hard-coding releases.
+ * CLI_VERSION is `0.0.0-dev` in tests, so there is no release before it.
+ */
+function releaseAfter(steps: number): string {
+  let version = semverCoerce(CLI_VERSION)?.version ?? "0.0.0";
+  for (let i = 0; i < steps; i++) {
+    version = semverInc(version, "minor") ?? version;
+  }
+  return version;
+}
+
+const NEXT_RELEASE = releaseAfter(1);
+const LATER_RELEASE = releaseAfter(2);
+
 describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy)", () => {
   useTestConfigDir("test-upgrade-spawn-");
 
@@ -867,7 +914,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
   beforeEach(() => {
     testDir = join(
       TEST_TMP_DIR,
-      `upgrade-spawn-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `upgrade-spawn-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
     mkdirSync(spawnBinDir, { recursive: true });
@@ -917,7 +964,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     const fakeContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]); // ELF magic
     const gzipped = gzipSync(fakeContent);
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
         return new Response(JSON.stringify([{ tag_name: `cli@${version}` }]), {
           status: 200,
@@ -925,6 +972,20 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
         });
       }
       // Binary download (.gz or raw)
+      return new Response(gzipped, { status: 200 });
+    });
+  }
+
+  /** Mock fetch to serve a pinned release's tag and its binary. */
+  function mockTaggedBinaryDownload(version: string): void {
+    const gzipped = gzipSync(new Uint8Array([0x7f, 0x45, 0x4c, 0x46]));
+    mockFetch(async (url) => {
+      if (extractInputUrl(url).includes(`releases/tags/cli%40${version}`)) {
+        return new Response(JSON.stringify({ tag_name: `cli@${version}` }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
       return new Response(gzipped, { status: 200 });
     });
   }
@@ -957,6 +1018,369 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(setupCall?.args).toContain("curl");
     expect(setupCall?.args).toContain("--install");
     expect(setupCall?.args).toContain("--ensure-auth-scopes");
+  });
+
+  test("hands the database to an older CLI before it runs setup", async () => {
+    mockBinaryDownloadWithVersion("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    let versionAtSetup: number | undefined;
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      versionAtSetup = readSchemaVersion();
+      return fakeChildProcess(0);
+    });
+
+    const { context, getOutput, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(getOutput()).toContain("Downgraded to");
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    expect(versionAtSetup).toBe(16);
+    expect(readSchemaVersion()).toBe(16);
+  });
+
+  test("keeps the database when downloading the older CLI fails", async () => {
+    mockFetch(async (url) => {
+      const urlStr = extractInputUrl(url);
+      if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
+        return new Response(JSON.stringify([{ tag_name: "cli@0.47.0" }]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("Server Error", { status: 500 });
+    });
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(spawnedArgs).toEqual([]);
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  test("redoes the hand-off after setup fails without a backup", async () => {
+    // A file where the backup directory goes makes the backup fail.
+    writeFileSync(getBackupDir(), "");
+    mockBinaryDownloadWithVersion("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      // Another invocation of this CLI re-migrates the database meanwhile.
+      getRawDatabase()
+        .query("UPDATE schema_version SET version = ?")
+        .run(CURRENT_SCHEMA_VERSION);
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+      rmSync(getBackupDir(), { force: true });
+    }
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    expect(readSchemaVersion()).toBe(16);
+  });
+
+  test("puts this version's database back after a hand-off setup fails", async () => {
+    getRawDatabase()
+      .query(
+        "INSERT INTO accounts (account_id, host, user_id, token, is_active) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("a", "https://sentry.io", "user-a", "token", 1);
+    mockBinaryDownloadWithVersion("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    let versionAtSetup: number | undefined;
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      versionAtSetup = readSchemaVersion();
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(versionAtSetup).toBe(16);
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+    expect(
+      getRawDatabase().query("SELECT account_id FROM accounts").all(),
+    ).toEqual([{ account_id: "a" }]);
+    expect(readdirSync(getBackupDir())).toEqual([]);
+  });
+
+  test("a failed undo to a CLI that needs the hand-off keeps this version's database", async () => {
+    const marker = "test.marker";
+    getRawDatabase()
+      .query(
+        "INSERT INTO accounts (account_id, host, user_id, token, is_active) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("a", "https://sentry.io", "user-a", "token", 1);
+    setMetadata(getRawDatabase(), { [marker]: "saved by 0.47.0" });
+    await backupDatabase(getRawDatabase(), "0.47.0", CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "current" });
+    mockTaggedBinaryDownload("0.47.0");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    // Reinstated and not handed off: the logins and schema are intact.
+    const db = getRawDatabase();
+    expect(getMetadata(db, [marker]).get(marker)).toBe("current");
+    expect(db.query("SELECT account_id FROM accounts").all()).toEqual([
+      { account_id: "a" },
+    ]);
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe("0.47.0");
+  });
+
+  test("leaves the database alone for an older CLI that adapts it", async () => {
+    mockBinaryDownloadWithVersion("99.99.99");
+    const downgradeSpy = vi.spyOn(binary, "isDowngrade").mockReturnValue(true);
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "--method", "curl"], context);
+    } finally {
+      downgradeSpy.mockRestore();
+    }
+
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  test("backs up the database before the new version runs setup", async () => {
+    mockBinaryDownloadWithVersion(NEXT_RELEASE);
+    let backupsAtSetup: string[] = [];
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      backupsAtSetup = readdirSync(getBackupDir());
+      return fakeChildProcess(0);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "--method", "curl"], context);
+
+    expect(backupsAtSetup).toEqual([
+      `cli-${CLI_VERSION}_to_${NEXT_RELEASE}.db`,
+    ]);
+    expect((await getUndoBackup(NEXT_RELEASE)).version).toBe(CLI_VERSION);
+  });
+
+  test("undo reinstalls the previous version with its own database", async () => {
+    const marker = "test.marker";
+    setMetadata(getRawDatabase(), { [marker]: `saved by ${NEXT_RELEASE}` });
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "changed since" });
+
+    mockTaggedBinaryDownload(NEXT_RELEASE);
+    let markerAtSetup: string | undefined;
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      const db = new Database(getDbPath());
+      try {
+        markerAtSetup = getMetadata(db, [marker]).get(marker);
+      } finally {
+        db.close();
+      }
+      return fakeChildProcess(0);
+    });
+
+    const { context, getOutput, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(getOutput()).toContain(`Restored the database ${NEXT_RELEASE}`);
+    const setupCall = spawnedArgs.find((entry) => entry.args.includes("setup"));
+    // The restored database keeps the channel that version followed.
+    expect(setupCall?.args).not.toContain("--channel");
+    expect(markerAtSetup).toBe(`saved by ${NEXT_RELEASE}`);
+    // This version's database is kept, so the undo can be undone in turn.
+    expect((await getUndoBackup(NEXT_RELEASE)).version).toBe(CLI_VERSION);
+  });
+
+  test("a failed undo keeps this version's database and its undo", async () => {
+    const marker = "test.marker";
+    setMetadata(getRawDatabase(), { [marker]: `saved by ${NEXT_RELEASE}` });
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "current" });
+    mockTaggedBinaryDownload(NEXT_RELEASE);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    // This process uses `cli.db` again, and it is this version's.
+    expect(getMetadata(getRawDatabase(), [marker]).get(marker)).toBe("current");
+    expect(readdirSync(getBackupDir())).toEqual([
+      `cli-${NEXT_RELEASE}_to_${CLI_VERSION}.db`,
+    ]);
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe(NEXT_RELEASE);
+  });
+
+  test("undo stops before installing when this version's database can't be backed up", async () => {
+    const marker = "test.marker";
+    setMetadata(getRawDatabase(), { [marker]: `saved by ${NEXT_RELEASE}` });
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+    setMetadata(getRawDatabase(), { [marker]: "current" });
+    // A directory where this version's backup goes makes the backup fail.
+    const blocker = join(
+      getBackupDir(),
+      `cli-${CLI_VERSION}_to_${NEXT_RELEASE}.db`,
+    );
+    mkdirSync(blocker);
+    writeFileSync(join(blocker, "file"), "");
+    mockTaggedBinaryDownload(NEXT_RELEASE);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    try {
+      await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+    } finally {
+      rmSync(blocker, { recursive: true, force: true });
+    }
+
+    expect(getOutput() + errors.join("")).toContain("Undo stopped");
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      false,
+    );
+    expect(getMetadata(getRawDatabase(), [marker]).get(marker)).toBe("current");
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe(NEXT_RELEASE);
+  });
+
+  test("a failed upgrade keeps the undo of the one before", async () => {
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+    mockBinaryDownloadWithVersion(LATER_RELEASE);
+    spawnSpy.mockImplementation((cmd: string, args?: readonly string[]) => {
+      spawnedArgs.push({ cmd, args: [...(args ?? [])] });
+      return fakeChildProcess(1);
+    });
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "--method", "curl"], context);
+
+    expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
+      true,
+    );
+    expect((await getUndoBackup(CLI_VERSION)).version).toBe(NEXT_RELEASE);
+  });
+
+  test("undo explains that Homebrew can't install the earlier version", async () => {
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, CLI_VERSION);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "brew"], context);
+
+    const output = getOutput() + errors.join("");
+    expect(output).toContain("Homebrew can't install an earlier version");
+    expect(output).toContain("sentry cli upgrade undo --method curl");
+    expect(spawnedArgs).toEqual([]);
+  });
+
+  test("undo refuses when the last upgrade went to another version", async () => {
+    await backupDatabase(getRawDatabase(), NEXT_RELEASE, LATER_RELEASE);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(getOutput() + errors.join("")).toContain(
+      `went from ${NEXT_RELEASE} to ${LATER_RELEASE}`,
+    );
+    expect(spawnedArgs).toEqual([]);
+  });
+
+  test("undo explains when there is nothing to undo", async () => {
+    mockBinaryDownloadWithVersion(NEXT_RELEASE);
+
+    const { context, getOutput, errors, restore } = createMockContext({
+      homeDir: testDir,
+    });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "undo", "--method", "curl"], context);
+
+    expect(getOutput() + errors.join("")).toContain("Nothing to undo");
+    expect(spawnedArgs).toEqual([]);
+  });
+
+  test("leaves the database alone when upgrading", async () => {
+    mockBinaryDownloadWithVersion("99.99.99");
+
+    const { context, restore } = createMockContext({ homeDir: testDir });
+    restoreStderr = restore;
+
+    await run(app, ["cli", "upgrade", "--method", "curl"], context);
+
+    expect(readSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
   });
 
   test("does not launch interactive auth from JSON upgrades", async () => {
@@ -994,7 +1418,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     await run(
       app,
       ["cli", "upgrade", "--method", "curl", "--no-agent-skills"],
-      context
+      context,
     );
 
     const setupCall = spawnedArgs.find((entry) => entry.args.includes("setup"));
@@ -1019,81 +1443,79 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     expect(setupCall?.args).toContain("--ensure-auth-scopes");
   });
 
-  test.each([
-    "npm",
-    "pnpm",
-    "bun",
-    "yarn",
-  ] as const)("classifies a missing pinned %s version without running the package manager", async (method) => {
-    const requests: string[] = [];
-    mockFetch(async (url) => {
-      requests.push(String(url));
-      return new Response(null, { status: 404 });
-    });
-    const { context, errors, restore } = createMockContext({
-      homeDir: testDir,
-    });
-    restoreStderr = restore;
-
-    await run(app, ["cli", "upgrade", "--method", method, "1.2.3"], context);
-
-    expect(errors.join("\n")).toContain("Version 1.2.3 not found");
-    expect(requests).toEqual(["https://registry.npmjs.org/sentry/1.2.3"]);
-    expect(spawnedArgs).toEqual([]);
-  });
-
-  test.each([
-    "npm",
-    "pnpm",
-    "bun",
-    "yarn",
-  ] as const)("preserves non-404 HTTP failures for a pinned %s version", async (method) => {
-    for (const status of [401, 403, 429, 500]) {
+  test.each(["npm", "pnpm", "bun", "yarn"] as const)(
+    "classifies a missing pinned %s version without running the package manager",
+    async (method) => {
       const requests: string[] = [];
       mockFetch(async (url) => {
-        requests.push(String(url));
-        return new Response(null, { status });
+        requests.push(extractInputUrl(url));
+        return new Response(null, { status: 404 });
       });
       const { context, errors, restore } = createMockContext({
         homeDir: testDir,
       });
+      restoreStderr = restore;
 
       await run(app, ["cli", "upgrade", "--method", method, "1.2.3"], context);
 
-      restore();
-      expect(errors.join("\n")).toContain(
-        `Failed to fetch from npm: ${status}`
-      );
-      expect(errors.join("\n")).not.toContain("Version 1.2.3 not found");
+      expect(errors.join("\n")).toContain("Version 1.2.3 not found");
       expect(requests).toEqual(["https://registry.npmjs.org/sentry/1.2.3"]);
       expect(spawnedArgs).toEqual([]);
-    }
-  });
+    },
+  );
 
-  test.each([
-    "npm",
-    "pnpm",
-    "bun",
-    "yarn",
-  ] as const)("rejects malformed latest metadata for %s without running the package manager", async (method) => {
-    const requests: string[] = [];
-    mockFetch(async (url) => {
-      requests.push(String(url));
-      return Response.json(null);
-    });
-    const { context, errors, restore } = createMockContext({
-      homeDir: testDir,
-    });
-    restoreStderr = restore;
+  test.each(["npm", "pnpm", "bun", "yarn"] as const)(
+    "preserves non-404 HTTP failures for a pinned %s version",
+    async (method) => {
+      for (const status of [401, 403, 429, 500]) {
+        const requests: string[] = [];
+        mockFetch(async (url) => {
+          requests.push(extractInputUrl(url));
+          return new Response(null, { status });
+        });
+        const { context, errors, restore } = createMockContext({
+          homeDir: testDir,
+        });
 
-    await run(app, ["cli", "upgrade", "--method", method], context);
+        await run(
+          app,
+          ["cli", "upgrade", "--method", method, "1.2.3"],
+          context,
+        );
 
-    expect(errors.join("\n")).toContain(
-      "npm registry returned invalid metadata"
-    );
-    expect(requests).toEqual(["https://registry.npmjs.org/sentry/latest"]);
-    expect(spawnedArgs).toEqual([]);
-  });
+        restore();
+        expect(errors.join("\n")).toContain(
+          `Failed to fetch from npm: ${status}`,
+        );
+        expect(errors.join("\n")).not.toContain("Version 1.2.3 not found");
+        expect(requests).toEqual(["https://registry.npmjs.org/sentry/1.2.3"]);
+        expect(spawnedArgs).toEqual([]);
+      }
+    },
+  );
+
+  test.each(["npm", "pnpm", "bun", "yarn"] as const)(
+    "rejects malformed latest metadata for %s without running the package manager",
+    async (method) => {
+      const requests: string[] = [];
+      mockFetch(async (url) => {
+        requests.push(extractInputUrl(url));
+        return Response.json(null);
+      });
+      const { context, errors, restore } = createMockContext({
+        homeDir: testDir,
+      });
+      restoreStderr = restore;
+
+      await run(app, ["cli", "upgrade", "--method", method], context);
+
+      expect(errors.join("\n")).toContain(
+        "npm registry returned invalid metadata",
+      );
+      expect(requests).toEqual(["https://registry.npmjs.org/sentry/latest"]);
+      expect(spawnedArgs).toEqual([]);
+    },
+  );
 
   test("runs the new Homebrew binary and keeps JSON upgrades non-interactive", async () => {
     mockGitHubVersion("99.99.99");
@@ -1119,7 +1541,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     const fakeContent = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
     const gzipped = gzipSync(fakeContent);
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("getsentry/toolkit/releases?per_page=100")) {
         return new Response(JSON.stringify([{ tag_name: "cli@99.99.99" }]), {
           status: 200,
@@ -1150,7 +1572,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
 
     // GHCR flow: token exchange → manifest → blob redirect → blob download
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       capturedUrls.push(urlStr);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
@@ -1188,7 +1610,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
             headers: {
               "content-type": "application/vnd.oci.image.manifest.v1+json",
             },
-          }
+          },
         );
       }
       if (urlStr.includes(`/v2/getsentry/toolkit/blobs/${digest}`)) {
@@ -1212,18 +1634,18 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
     // Should have fetched from GHCR (token + manifest + blob)
     expect(capturedUrls.some((u) => u.includes("ghcr.io/token"))).toBe(true);
     expect(capturedUrls.some((u) => u.includes("/manifests/nightly"))).toBe(
-      true
+      true,
     );
     expect(
       capturedUrls.some((url) =>
-        url.includes(`/v2/getsentry/toolkit/blobs/${digest}`)
-      )
+        url.includes(`/v2/getsentry/toolkit/blobs/${digest}`),
+      ),
     ).toBe(true);
     expect(capturedUrls.some((url) => url.includes("/v2/getsentry/cli/"))).toBe(
-      false
+      false,
     );
     expect(spawnedArgs.some((entry) => entry.args.includes("setup"))).toBe(
-      true
+      true,
     );
     expect(getOutput()).toContain("Upgraded to");
     expect(getOutput()).toContain("0.99.0-dev.1234567890");
@@ -1264,7 +1686,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
   beforeEach(() => {
     testDir = join(
       TEST_TMP_DIR,
-      `upgrade-migrate-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `upgrade-migrate-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
     mkdirSync(migrateBinDir, { recursive: true });
@@ -1306,7 +1728,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
 
     // Nightly is now distributed via GHCR (token → manifest → blob)
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -1343,7 +1765,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
             headers: {
               "content-type": "application/vnd.oci.image.manifest.v1+json",
             },
-          }
+          },
         );
       }
       if (urlStr.includes(`/blobs/sha256:${"a".repeat(64)}`)) {
@@ -1363,30 +1785,30 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
     await run(
       app,
       ["cli", "upgrade", "--method", "npm", "0.99.0-dev.1234567890"],
-      context
+      context,
     );
 
     const combined = getOutput();
     expect(combined).toContain(
-      "Nightly builds are only available as standalone binaries."
+      "Nightly builds are only available as standalone binaries.",
     );
     expect(combined).toContain("Migrating to standalone installation...");
     expect(combined).toContain("Upgraded to");
     // Warns about old npm install (rendered via formatUpgradeResult warnings)
     expect(combined).toContain(
-      "npm-installed sentry may still appear earlier in PATH"
+      "npm-installed sentry may still appear earlier in PATH",
     );
     expect(combined).toContain("npm uninstall -g sentry");
     expect(getReleaseChannel()).toBe("stable");
     expect(migrateSpawnSpy).toHaveBeenCalledTimes(1);
     expect(migrateSpawnSpy.mock.calls[0]?.[1]).toEqual(
-      expect.arrayContaining(["--channel", "stable"])
+      expect.arrayContaining(["--channel", "stable"]),
     );
   });
 
   test("allows a pinned nightly for a Homebrew installation", async () => {
     mockFetch(async (url) => {
-      const request = String(url);
+      const request = extractInputUrl(url);
       if (request === "https://api.github.com/repos/getsentry/toolkit") {
         return new Response(null, { status: 200 });
       }
@@ -1402,7 +1824,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
             layers: [],
             annotations: { version: "0.99.0-dev.1234567890" },
           }),
-          { status: 200 }
+          { status: 200 },
         );
       }
       return new Response("Unexpected", { status: 500 });
@@ -1423,7 +1845,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
         "brew",
         "0.99.0-dev.1234567890",
       ],
-      context
+      context,
     );
 
     expect(getOutput()).toContain("0.99.0-dev.1234567890");
@@ -1433,7 +1855,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
   test("rejects a pinned stable for Homebrew before network access", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      requests.push(String(url));
+      requests.push(extractInputUrl(url));
       return new Response("Unexpected", { status: 500 });
     });
     setReleaseChannel("nightly");
@@ -1446,7 +1868,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
     await run(app, ["cli", "upgrade", "--method", "brew", "1.2.3"], context);
 
     expect(errors.join("\n")).toContain(
-      "Homebrew does not support installing a specific version"
+      "Homebrew does not support installing a specific version",
     );
     expect(requests).toEqual([]);
     expect(migrateSpawnSpy).not.toHaveBeenCalled();
@@ -1455,7 +1877,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
   test("validates an npm stable pin through npm while tracking nightly", async () => {
     const requests: string[] = [];
     mockFetch(async (url) => {
-      const requestUrl = new URL(String(url));
+      const requestUrl = new URL(extractInputUrl(url));
       requests.push(requestUrl.href);
       return requestUrl.origin === "https://api.github.com"
         ? new Response(JSON.stringify([]), { status: 200 })
@@ -1469,18 +1891,18 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
     await run(
       app,
       ["cli", "upgrade", "--check", "--method", "npm", "1.2.3"],
-      context
+      context,
     );
 
     expect(requests).toContain("https://registry.npmjs.org/sentry/1.2.3");
     expect(requests).toContain(
-      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30"
+      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=30",
     );
     expect(requests.some((request) => request.includes("/commits?"))).toBe(
-      false
+      false,
     );
     expect(
-      requests.some((request) => request.includes("/releases/tags/"))
+      requests.some((request) => request.includes("/releases/tags/")),
     ).toBe(false);
   });
 });
@@ -1546,7 +1968,7 @@ describe("resolveUpgradeInstallDir", () => {
   test("keeps a non-legacy install dir unchanged", () => {
     const current = join(home, "bin");
     expect(
-      resolveUpgradeInstallDir(current, `${current}${delimiter}/usr/bin`)
+      resolveUpgradeInstallDir(current, `${current}${delimiter}/usr/bin`),
     ).toBe(current);
   });
 
@@ -1557,13 +1979,13 @@ describe("resolveUpgradeInstallDir", () => {
 
   test("keeps the legacy dir when the XDG dir is not on PATH", () => {
     expect(resolveUpgradeInstallDir(legacyBinDir, "/usr/bin:/bin")).toBe(
-      legacyBinDir
+      legacyBinDir,
     );
   });
 
   test("keeps the legacy dir when PATH is undefined", () => {
     expect(resolveUpgradeInstallDir(legacyBinDir, undefined)).toBe(
-      legacyBinDir
+      legacyBinDir,
     );
   });
 

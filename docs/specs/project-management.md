@@ -11,6 +11,7 @@ catalog-only: discover them with `search_sentry_tools` and execute them with
 `execute_sentry_tool`.
 
 Implementation references:
+
 - Tool catalog: `packages/mcp-core/src/tools/catalog/`
 - Availability rules: `packages/mcp-core/src/tools/catalog-runtime/availability.ts`
 - API client: `packages/mcp-core/src/api-client/client.ts`
@@ -27,35 +28,36 @@ create_project({
   organizationSlug: "my-org",
   teamSlug: "my-team",
   name: "My Project",
-  slug: "my-project",      // optional
-  platform: "javascript",  // optional
-  repository: "acme/app",  // optional, must already be connected
-})
+  slug: "my-project", // optional
+  platform: "javascript", // optional
+  repository: "acme/app", // optional, must already be connected
+});
 
 update_project({
   organizationSlug: "my-org",
   projectSlug: "my-project",
-  name: "New Name",        // at least one metadata field is required
+  name: "New Name", // at least one metadata field is required
   slug: "new-slug",
   platform: "python",
-})
+});
 
 add_team_to_project({
   organizationSlug: "my-org",
   projectSlug: "my-project",
   teamSlug: "backend",
-})
+});
 
 remove_team_from_project({
   organizationSlug: "my-org",
   projectSlug: "my-project",
   teamSlug: "backend",
-})
+});
 ```
 
 ## Creation Contract
 
 `create_project` accepts core setup fields:
+
 - `organizationSlug`
 - `teamSlug`
 - `name`
@@ -67,6 +69,7 @@ It does not expose ownership rules, alert rule setup, `defaultRules`, or broader
 project settings.
 
 Successful responses must include:
+
 - Project ID
 - Project slug
 - Project name
@@ -87,6 +90,7 @@ slug and DSN and notes that the repository must be linked manually.
 ## Metadata Updates
 
 `update_project` is metadata-only. It updates only:
+
 - `name`
 - `slug`
 - `platform`
@@ -106,6 +110,7 @@ successful no-op response with the current team list.
 
 `remove_team_from_project` revokes team access and is marked destructive. It
 lists current project teams before deleting and rejects:
+
 - Teams that are not currently assigned to the project
 - Removing the last assigned team
 
@@ -116,6 +121,7 @@ accidentally leave a project without a team.
 
 Organization and project constraints are enforced by catalog availability and
 parameter injection:
+
 - Organization-scoped sessions filter `organizationSlug` from schemas and inject
   the constrained organization.
 - Project-scoped sessions filter `projectSlug` from update/team-access schemas
@@ -129,9 +135,11 @@ are filtered before handler execution.
 ## Migration
 
 Previous behavior mixed unrelated operations into project tools:
+
 - `update_project` could grant team access through `teamSlug`.
 
 Use these replacements:
+
 - Repository linking: use `create_project(..., repository: "owner/repo")` during
   creation.
 - Team grant: `add_team_to_project`
@@ -140,6 +148,7 @@ Use these replacements:
 ## Testing
 
 Required coverage lives with the tools and catalog runtime:
+
 - `packages/mcp-core/src/tools/catalog/create-project.test.ts`
 - `packages/mcp-core/src/tools/catalog/update-project.test.ts`
 - `packages/mcp-core/src/tools/catalog/add-team-to-project.test.ts`

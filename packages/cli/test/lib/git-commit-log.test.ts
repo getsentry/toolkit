@@ -78,13 +78,13 @@ describe("getCommitLog pathspec argv", () => {
   // (no reliance on --end-of-options, which requires git >= 2.24).
   test("throws on an option-like `from` ref", () => {
     expect(() => getCommitLog("/repo", { from: "--format=%H" })).toThrow(
-      "must be a git ref, not a CLI flag"
+      "must be a git ref, not a CLI flag",
     );
     expect(() => getCommitLog("/repo", { from: "--format=%H" })).toThrow(
-      "Git refs cannot start with '-'"
+      "Git refs cannot start with '-'",
     );
     expect(() => getCommitLog("/repo", { from: "--format=%H" })).not.toThrow(
-      "use the equals form"
+      "use the equals form",
     );
     expect(execFileSyncMock).not.toHaveBeenCalled();
   });
@@ -99,10 +99,10 @@ describe("getCommitLog pathspec argv", () => {
     });
 
     expect(() => getCommitLog("/repo", { from: "bogus-ref" })).toThrow(
-      "Unknown git ref 'bogus-ref': not found in this repository."
+      "Unknown git ref 'bogus-ref': not found in this repository.",
     );
     expect(() => getCommitLog("/repo", { from: "bogus-ref" })).toThrow(
-      "git rev-parse bogus-ref"
+      "git rev-parse bogus-ref",
     );
   });
 
@@ -117,7 +117,7 @@ describe("getCommitLog pathspec argv", () => {
 
   test("parses NUL-delimited git output into commits", () => {
     execFileSyncMock.mockReturnValue(
-      "abc\x00subject\x00Jane\x00jane@example.com\x002026-01-01T00:00:00Z"
+      "abc\x00subject\x00Jane\x00jane@example.com\x002026-01-01T00:00:00Z",
     );
 
     const commits = getCommitLog("/repo", { paths: ["src"] });

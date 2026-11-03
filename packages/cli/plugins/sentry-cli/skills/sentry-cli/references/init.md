@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-init
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Initialize Sentry in your project (experimental)
 requires:
   bins: ["sentry"]
@@ -11,9 +11,15 @@ requires:
 
 Initialize Sentry in your project (experimental)
 
-### `sentry init <target> <directory>`
+### `sentry init [<target>] [<directory>]`
 
 Initialize Sentry in your project (experimental)
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<target>] [<directory>]` | Optional target (&lt;org&gt;/&lt;project&gt;, &lt;org&gt;/, or &lt;project&gt;) and directory (default: current directory) |
 
 **Flags:**
 - `-y, --yes - Accept non-interactive defaults (requires --features outside a TTY)`
@@ -38,11 +44,17 @@ sentry init --dry-run
 # Target a subdirectory
 sentry init ./my-app
 
-# Use a specific org (auto-detect project)
+# Use a specific organization (auto-detect project)
 sentry init acme/
 
-# Use a specific org and project
+# Use a specific organization and project
 sentry init acme/my-app
+
+# Search for a project across organizations
+sentry init my-app
+
+# Use a specific project in a subdirectory
+sentry init acme/my-app ./my-project
 
 # Assign a team when creating a new project
 sentry init acme/ --team backend

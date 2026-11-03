@@ -14,6 +14,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { beforeAll, describe, expect, test } from "vitest";
 import { EXIT } from "../../src/lib/errors.js";
+import organizationsFixture from "../fixtures/organizations.json";
 import { useTestConfigDir } from "../helpers.js";
 import {
   BUNDLE_INDEX_PATH,
@@ -33,7 +34,7 @@ const ROOT_DIR = join(import.meta.dirname, "../..");
  */
 async function runNodeScript(
   script: string,
-  timeout = 15_000
+  timeout = 15_000,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -63,7 +64,7 @@ async function runNodeScript(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
   clearTimeout(timer);
 
@@ -76,12 +77,12 @@ async function runNodeScript(
  */
 async function runNodeScriptOk(
   script: string,
-  timeout?: number
+  timeout?: number,
 ): Promise<{ stdout: string; stderr: string }> {
   const result = await runNodeScript(script, timeout);
   if (result.exitCode !== 0) {
     throw new Error(
-      `Node exited ${result.exitCode}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+      `Node exited ${result.exitCode}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
     );
   }
   return result;
@@ -92,7 +93,7 @@ describe("library mode (bundled)", () => {
 
   beforeAll(async () => {
     await ensureBundleBuilt();
-  }, 60_000);
+  }, 120_000); // Cold CI builds include the MCP runtime dependencies
 
   // --- Bundle structure ---
 
@@ -205,11 +206,51 @@ describe("library mode (bundled)", () => {
 
   // --- Typed SDK ---
 
+  test("sdk.api accepts an opaque cursor and continues with shared navigation", async () => {
+    const { stdout } = await runNodeScriptOk(`
+      const { createSentrySDK } = require('./dist/index.cjs');
+      const requests = [];
+      globalThis.fetch = async (input, init) => {
+        requests.push(new Request(input, init).url);
+        return Response.json(${JSON.stringify([organizationsFixture[1]])}, {
+          headers: {
+            Link: '<http://localhost:9000/next>; rel="next"; results="true"; cursor="100:2:0"',
+          },
+        });
+      };
+      const sdk = createSentrySDK({
+        token: 'test-sdk-token',
+        url: 'http://localhost:9000',
+        cwd: ${JSON.stringify(getConfigDir())},
+      });
+      const endpoint = 'organizations/';
+      sdk.api({ endpoint, cursor: 'page-token+/=:1' }).then(async response => {
+        const next = await sdk.api({ endpoint, cursor: 'next' });
+        console.log(JSON.stringify({ requests, response, next }));
+      }).catch(error => {
+        console.error(error);
+        process.exitCode = 1;
+      });
+    `);
+
+    const result = JSON.parse(stdout.trim());
+    expect(
+      result.requests.map((url: string) =>
+        new URL(url).searchParams.get("cursor"),
+      ),
+    ).toEqual(["page-token+/=:1", "100:2:0"]);
+    expect(result.response).toMatchObject({
+      body: [organizationsFixture[1]],
+      pagination: { nextCursor: "100:2:0", hasPrev: false },
+    });
+    expect(result.next.pagination.hasPrev).toBe(true);
+  });
+
   test("sourcemap upload rejects a split token without leaking it or fetching", async () => {
     const directory = getConfigDir();
     await writeFile(
       join(directory, "app.js"),
-      "console.log('fixture');\n//# sourceMappingURL=app.js.map\n"
+      "console.log('fixture');\n//# sourceMappingURL=app.js.map\n",
     );
     await writeFile(
       join(directory, "app.js.map"),
@@ -219,10 +260,10 @@ describe("library mode (bundled)", () => {
         sourcesContent: ["console.log('fixture');"],
         names: [],
         mappings: "AAAA",
-      })
+      }),
     );
     const claim = Buffer.from(
-      JSON.stringify({ org: "test-org", url: "http://localhost:9000" })
+      JSON.stringify({ org: "test-org", url: "http://localhost:9000" }),
     ).toString("base64");
     const token = `sntrys_${claim}_ab\nSYNTHETIC-SECRET-TAIL`;
     const { stdout, stderr } = await runNodeScriptOk(`

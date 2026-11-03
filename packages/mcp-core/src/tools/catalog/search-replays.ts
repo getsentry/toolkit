@@ -27,7 +27,7 @@ export default defineTool({
   ].join("\n"),
   inputSchema: buildReplaySearchInputSchema(),
   async handler(params, context: ServerContext) {
-    return runSearchEvents({ ...params, dataset: "replays" }, context, {
+    return await runSearchEvents({ ...params, dataset: "replays" }, context, {
       lockDataset: true,
     });
   },

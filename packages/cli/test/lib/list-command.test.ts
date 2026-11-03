@@ -1,39 +1,75 @@
 /**
  * Tests for the shared list-command building blocks.
  *
- * Tests `parseCursorFlag` validation and `buildOrgListCommand` delegation
- * to `dispatchOrgScopedList`.
+ * Tests `buildOrgListCommand` delegation to `dispatchOrgScopedList`.
  */
 
+import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  advancePaginationState,
+  buildPaginationContextKey,
+  resolveCursor,
+} from "../../src/lib/db/pagination.js";
+import {
+  appendQueryHint,
   buildOrgListCommand,
   type OrgListCommandDocs,
-  parseCursorFlag,
 } from "../../src/lib/list-command.js";
 import type { OrgListConfig } from "../../src/lib/org-list.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as orgListModule from "../../src/lib/org-list.js";
+import { useTestConfigDir } from "../helpers.js";
 
-describe("parseCursorFlag", () => {
-  test("passes through 'last' keyword", () => {
-    expect(parseCursorFlag("last")).toBe("last");
+describe("query pagination hints", () => {
+  useTestConfigDir("query-pagination-hints-");
+
+  test
+    .runIf(process.platform !== "win32")
+    .each([
+      'transaction:"GET /checkout"',
+      'message:"can\'t open file"',
+      'message:"can’t open ‘quoted’ ‚file‛"',
+      'message:"$SENTRY_HINT_TEST $(printf expanded) `printf expanded` C:\\\\tmp"',
+    ])("preserves %s through the shell and cursor lookup", (query) => {
+    const key = buildPaginationContextKey("test-list", "test-org/", {
+      q: query,
+    });
+    advancePaginationState("test-list", key, "first", "page-2");
+
+    const parts: string[] = [];
+    appendQueryHint(parts, query);
+    const args = execFileSync(
+      "/bin/sh",
+      ["-c", `printf '%s\\0' ${parts.join(" ")}`],
+      {
+        encoding: "utf8",
+        env: { ...process.env, SENTRY_HINT_TEST: "expanded" },
+      },
+    )
+      .split("\0")
+      .slice(0, -1);
+    expect(args).toEqual([`--query=${query}`]);
+
+    const resumedKey = buildPaginationContextKey("test-list", "test-org/", {
+      q: args[0]?.slice("--query=".length),
+    });
+    expect(resolveCursor("next", "test-list", resumedKey)).toEqual({
+      cursor: "page-2",
+      direction: "next",
+    });
+    advancePaginationState("test-list", resumedKey, "next", undefined);
+    expect(resolveCursor("prev", "test-list", resumedKey)).toEqual({
+      cursor: undefined,
+      direction: "prev",
+    });
   });
 
-  test("passes through valid cursor strings", () => {
-    expect(parseCursorFlag("1735689600:0:0")).toBe("1735689600:0:0");
-    expect(parseCursorFlag("abc:def:0")).toBe("abc:def:0");
-  });
-
-  test("rejects bare integer strings", () => {
-    expect(() => parseCursorFlag("12345")).toThrow("not a valid cursor");
-    expect(() => parseCursorFlag("0")).toThrow("not a valid cursor");
-    expect(() => parseCursorFlag("999999999")).toThrow("not a valid cursor");
-  });
-
-  test("accepts strings with digits and other characters", () => {
-    expect(parseCursorFlag("123abc")).toBe("123abc");
-    expect(parseCursorFlag("abc123")).toBe("abc123");
+  test("omits an absent query", () => {
+    const parts: string[] = [];
+    appendQueryHint(parts, undefined);
+    appendQueryHint(parts, "");
+    expect(parts).toEqual([]);
   });
 });
 
@@ -45,7 +81,7 @@ type FakeEntity = { id: string; name: string };
 type FakeWithOrg = FakeEntity & { orgSlug: string };
 
 function makeFakeConfig(
-  overrides?: Partial<OrgListConfig<FakeEntity, FakeWithOrg>>
+  overrides?: Partial<OrgListConfig<FakeEntity, FakeWithOrg>>,
 ): OrgListConfig<FakeEntity, FakeWithOrg> {
   return {
     paginationKey: "fake-list",
@@ -53,7 +89,7 @@ function makeFakeConfig(
     commandPrefix: "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
     listPaginated: vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined })
+      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
     ),
     withOrg: (entity, orgSlug) => ({ ...entity, orgSlug }),
     displayTable: vi.fn(() => ""),
@@ -125,7 +161,7 @@ describe("buildOrgListCommand", () => {
     const cmd = buildOrgListCommand(
       config,
       { brief: "List widgets" },
-      "widget"
+      "widget",
     );
     const func = await cmd.loader();
     const { context } = createContext();
@@ -145,7 +181,7 @@ describe("buildOrgListCommand", () => {
     const cmd = buildOrgListCommand(
       config,
       { brief: "List widgets" },
-      "widget"
+      "widget",
     );
     const func = await cmd.loader();
     const { context } = createContext();

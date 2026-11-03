@@ -36,7 +36,7 @@ const validSuffixArb = stringMatching(/^[A-Z0-9]{1,10}$/);
 
 /** Valid API endpoint paths: segments of alphanum + hyphens separated by slashes */
 const validEndpointArb = stringMatching(
-  /^\/?(api\/0\/)?[a-z][a-z0-9-]{0,30}(\/[a-z][a-z0-9-]{0,30}){0,5}\/?$/
+  /^\/?(api\/0\/)?[a-z][a-z0-9-]{0,30}(\/[a-z][a-z0-9-]{0,30}){0,5}\/?$/,
 );
 
 /** Characters that should be rejected in resource IDs */
@@ -52,7 +52,7 @@ const preEncodedArb = constantFrom(
   "%00",
   "%0A",
   "%7E",
-  "%41"
+  "%41",
 );
 
 /** Control characters (ASCII 0x00-0x1F) as strings */
@@ -68,35 +68,35 @@ const controlCharArb = constantFrom(
   "\x0e",
   "\x0f",
   "\x1b",
-  "\x1f"
+  "\x1f",
 );
 
 describe("rejectControlChars properties", () => {
   test("valid slugs never contain control characters and always pass", async () => {
-    await fcAssert(
+    fcAssert(
       property(validSlugArb, (input) => {
         // Should not throw
         rejectControlChars(input, "test");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("any string with an embedded control character always throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(validSlugArb, controlCharArb, validSlugArb),
         ([prefix, ctrl, suffix]) => {
           const input = `${prefix}${ctrl}${suffix}`;
           expect(() => rejectControlChars(input, "test")).toThrow(/Invalid/);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("error message includes the label", async () => {
-    await fcAssert(
+    fcAssert(
       property(controlCharArb, (ctrl) => {
         try {
           rejectControlChars(`abc${ctrl}def`, "organization slug");
@@ -106,48 +106,48 @@ describe("rejectControlChars properties", () => {
           expect((e as Error).message).toContain("organization slug");
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("carriage return produces specific error description", () => {
     expect(() => rejectControlChars("abc\rdef", "test")).toThrow(
-      /carriage return/
+      /carriage return/,
     );
   });
 
   test("printable ASCII strings always pass", async () => {
     // Generate strings of printable ASCII (0x20-0x7E)
     const printableArb = stringMatching(/^[\x20-\x7e]{1,50}$/);
-    await fcAssert(
+    fcAssert(
       property(printableArb, (input) => {
         // Should not throw — all printable ASCII is valid
         rejectControlChars(input, "test");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 describe("rejectPreEncoded properties", () => {
   test("valid slugs without percent signs always pass", async () => {
-    await fcAssert(
+    fcAssert(
       property(validSlugArb, (input) => {
         rejectPreEncoded(input, "test");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("any string with %XX hex pattern always throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(validSlugArb, preEncodedArb), ([prefix, encoded]) => {
         const input = `${prefix}${encoded}`;
         expect(() => rejectPreEncoded(input, "test")).toThrow(
-          /URL-encoded sequence/
+          /URL-encoded sequence/,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -160,78 +160,78 @@ describe("rejectPreEncoded properties", () => {
 
 describe("validateResourceId properties", () => {
   test("valid slugs always pass", async () => {
-    await fcAssert(
+    fcAssert(
       property(validSlugArb, (input) => {
         validateResourceId(input, "test");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("valid issue suffixes always pass", async () => {
-    await fcAssert(
+    fcAssert(
       property(validSuffixArb, (input) => {
         validateResourceId(input, "test");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("slug with injection character always throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(validSlugArb, injectionCharArb), ([slug, injection]) => {
         const input = `${slug}${injection}`;
         expect(() => validateResourceId(input, "test")).toThrow(/Invalid/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("slug with control character always throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(validSlugArb, controlCharArb), ([slug, ctrl]) => {
         const input = `${slug}${ctrl}`;
         expect(() => validateResourceId(input, "test")).toThrow(/Invalid/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("specific hallucination patterns are caught", () => {
     // Query injection
     expect(() =>
-      validateResourceId("my-org?query=foo", "organization slug")
+      validateResourceId("my-org?query=foo", "organization slug"),
     ).toThrow(/\?/);
 
     // Fragment injection
     expect(() =>
-      validateResourceId("my-project#anchor", "project slug")
+      validateResourceId("my-project#anchor", "project slug"),
     ).toThrow(/#/);
 
     // Pre-encoded space
     expect(() =>
-      validateResourceId("CLI-G%20extra", "issue identifier")
+      validateResourceId("CLI-G%20extra", "issue identifier"),
     ).toThrow(/%/);
 
     // Tab injection
     expect(() =>
-      validateResourceId("my-org\tother", "organization slug")
+      validateResourceId("my-org\tother", "organization slug"),
     ).toThrow(/tab/);
 
     // Non-breaking space (U+00A0) — exotic whitespace matched by \s
     expect(() =>
-      validateResourceId("my-org\u00a0other", "organization slug")
+      validateResourceId("my-org\u00a0other", "organization slug"),
     ).toThrow(/whitespace/);
   });
 });
 
 describe("validateEndpoint properties", () => {
   test("valid endpoints always pass", async () => {
-    await fcAssert(
+    fcAssert(
       property(validEndpointArb, (input) => {
         validateEndpoint(input);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -241,24 +241,24 @@ describe("validateEndpoint properties", () => {
       validSlugArb.map((s) => `../${s}/`),
       validSlugArb.map((s) => `${s}/../admin/`),
       validSlugArb.map((s) => `${s}/../../admin/`),
-      constantFrom("..", "../admin", "../../admin/settings/")
+      constantFrom("..", "../admin", "../../admin/settings/"),
     );
 
-    await fcAssert(
+    fcAssert(
       property(traversalArb, (input) => {
         expect(() => validateEndpoint(input)).toThrow(/path traversal/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("endpoints with control characters always throw", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(validEndpointArb, controlCharArb), ([endpoint, ctrl]) => {
         const input = `${endpoint}${ctrl}`;
         expect(() => validateEndpoint(input)).toThrow(/Invalid/);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -276,14 +276,14 @@ describe("validateEndpoint properties", () => {
 
 describe("cross-validator consistency", () => {
   test("validateResourceId catches everything rejectControlChars catches", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(validSlugArb, controlCharArb), ([slug, ctrl]) => {
         const input = `${slug}${ctrl}`;
         // Both should throw
         expect(() => rejectControlChars(input, "test")).toThrow();
         expect(() => validateResourceId(input, "test")).toThrow();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

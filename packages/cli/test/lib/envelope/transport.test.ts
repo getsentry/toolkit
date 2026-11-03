@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as dsnIndex from "../../../src/lib/dsn/index.js";
 import {
   buildEnvelopeUrl,
@@ -138,13 +138,13 @@ describe("sendEnvelopeRequest", () => {
 
     await sendEnvelopeRequest(
       SAAS_DSN,
-      '{"event_id":"abc"}\n{"type":"event","length":2}\n{}'
+      '{"event_id":"abc"}\n{"type":"event","length":2}\n{}',
     );
 
     expect(capturedRequest).toBeDefined();
     expect(capturedRequest!.method).toBe("POST");
     expect(capturedRequest!.headers.get("Content-Type")).toBe(
-      "application/x-sentry-envelope"
+      "application/x-sentry-envelope",
     );
   });
 
@@ -165,7 +165,7 @@ describe("sendEnvelopeRequest", () => {
     globalThis.fetch = async () => new Response("{}", { status: 200 });
     // should not throw
     await expect(
-      sendEnvelopeRequest(SAAS_DSN, new TextEncoder().encode("bytes"))
+      sendEnvelopeRequest(SAAS_DSN, new TextEncoder().encode("bytes")),
     ).resolves.toBeUndefined();
   });
 
@@ -174,7 +174,7 @@ describe("sendEnvelopeRequest", () => {
       new Response(JSON.stringify({ detail: "invalid DSN" }), { status: 403 });
 
     await expect(sendEnvelopeRequest(SAAS_DSN, "body")).rejects.toBeInstanceOf(
-      ApiError
+      ApiError,
     );
   });
 

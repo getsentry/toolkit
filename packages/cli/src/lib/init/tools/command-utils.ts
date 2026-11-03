@@ -146,7 +146,7 @@ function findBlockedExecutable(tokens: string[]): string | undefined {
 function isRecursiveSentrySetupToken(
   token: string,
   tokens: string[],
-  index: number
+  index: number,
 ): boolean {
   const executable = normalizeExecutableName(token);
   if (
@@ -203,7 +203,7 @@ function pushCurrentToken(state: TokenizeState): void {
 function appendEscapedUnquotedChar(
   state: TokenizeState,
   command: string,
-  index: number
+  index: number,
 ): number | undefined {
   const next = command[index + 1];
   if (
@@ -221,7 +221,7 @@ function appendEscapedUnquotedChar(
 function handleUnquotedChar(
   state: TokenizeState,
   command: string,
-  index: number
+  index: number,
 ): number {
   const char = command[index];
   if (!char) {
@@ -263,7 +263,7 @@ function handleSingleQuotedChar(state: TokenizeState, char: string): void {
 function handleDoubleQuotedChar(
   state: TokenizeState,
   command: string,
-  index: number
+  index: number,
 ): number {
   const char = command[index];
   if (!char) {
@@ -318,7 +318,7 @@ export function tokenizeCommand(command: string): string[] {
 
   if (state.quote) {
     throw new Error(
-      `Invalid command: unterminated ${state.quote === '"' ? "double" : "single"} quote — "${command}"`
+      `Invalid command: unterminated ${state.quote === '"' ? "double" : "single"} quote — "${command}"`,
     );
   }
 
@@ -376,7 +376,7 @@ export function validateCommand(command: string): string | undefined {
 }
 
 async function readWebStream(
-  stream: ReadableStream<Uint8Array>
+  stream: ReadableStream<Uint8Array>,
 ): Promise<string> {
   const reader = stream.getReader();
   const chunks: Buffer[] = [];
@@ -430,7 +430,7 @@ async function readNodeStream(stream: NodeJS.ReadableStream): Promise<string> {
  * Drain a spawned stdout/stderr stream while enforcing output truncation.
  */
 export async function readSpawnOutput(
-  stream: SpawnOutputStream
+  stream: SpawnOutputStream,
 ): Promise<string> {
   if (!stream) {
     return "";

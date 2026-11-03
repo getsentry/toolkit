@@ -11,19 +11,19 @@
  */
 
 import { isatty } from "node:tty";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { textParser } from "../../lib/completion-target.js";
 import { getDefaultUrl } from "../../lib/db/defaults.js";
 import { HostScopeError, ValidationError } from "../../lib/errors.js";
 import { success, warning } from "../../lib/formatters/colors.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import { DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  isSaaSTrustOrigin,
-  normalizeUserInputToOrigin,
-} from "../../lib/sentry-urls.js";
+import { normalizeUserInputToOrigin } from "../../lib/sentry-urls.js";
 import type {
   DiscoveredRcFile,
   ImportPlan,
@@ -222,7 +222,7 @@ function enforceTrustGate(plan: ImportPlan): void {
   throw new HostScopeError(
     `Token (from ${tokenSource}) and URL (from ${urlSource}) come from different files.\n` +
       "To confirm you trust this URL, pass it explicitly:\n" +
-      `  sentry cli import --url ${plan.effective.url ?? "<url>"}`
+      `  sentry cli import --url ${plan.effective.url ?? "<url>"}`,
   );
 }
 
@@ -231,7 +231,7 @@ async function confirmImport(): Promise<boolean> {
   if (!isatty(0)) {
     return false;
   }
-  const confirmed = await log.prompt("Import these settings to the new CLI?", {
+  const confirmed = await prompt("Import these settings to the new CLI?", {
     type: "confirm",
     initial: true,
   });
@@ -273,12 +273,29 @@ export const importCommand = buildCommand({
       "  - Organization -> default organization\n" +
       "  - Project -> default project\n\n" +
       "Security: token and URL must come from the same file to be trusted.\n" +
-      "Cross-file URL requires explicit --url confirmation.\n\n" +
-      "Examples:\n" +
-      "  sentry cli import               # Scan and import interactively\n" +
-      "  sentry cli import --yes         # Auto-confirm (CI-safe)\n" +
-      "  sentry cli import --dry-run     # Preview without changes\n" +
-      "  sentry cli import --url <url>   # Trust a specific URL",
+      "Cross-file URL requires explicit --url confirmation.",
+    examples: [
+      {
+        description: "Scan for .sentryclirc files and import interactively",
+        command: "sentry cli import",
+      },
+      {
+        description: "Preview what would be imported",
+        command: "sentry cli import --dry-run",
+      },
+      {
+        description: "Skip the confirmation prompt (CI-safe)",
+        command: "sentry cli import --yes",
+      },
+      {
+        description: "Explicitly trust a self-hosted URL",
+        command: "sentry cli import --url https://sentry.example.com",
+      },
+      {
+        description: "Skip API validation of the imported token",
+        command: "sentry cli import --skip-validation",
+      },
+    ],
   },
   parameters: {
     flags: {
@@ -290,7 +307,7 @@ export const importCommand = buildCommand({
       "dry-run": DRY_RUN_FLAG,
       url: {
         kind: "parsed",
-        parse: parseImportUrl,
+        parse: textParser(parseImportUrl),
         brief: "Explicitly trust this URL (bypasses same-file trust check)",
         optional: true,
       },
@@ -321,7 +338,7 @@ export const importCommand = buildCommand({
     if (plan.newFields.length === 0) {
       markImportCompleted(plan);
       yield new CommandOutput(
-        emptyResult(["All settings from .sentryclirc are already configured."])
+        emptyResult(["All settings from .sentryclirc are already configured."]),
       );
       return;
     }
@@ -349,7 +366,7 @@ export const importCommand = buildCommand({
         yield new CommandOutput(
           emptyResult([
             "Import requires confirmation. Use --yes in non-interactive mode.",
-          ])
+          ]),
         );
         process.exitCode = 1;
         return;

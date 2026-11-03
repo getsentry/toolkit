@@ -30,7 +30,7 @@ export default defineTool({
   ].join("\n"),
   inputSchema: buildDatasetSearchInputSchema(),
   async handler(params, context: ServerContext) {
-    return runSearchEvents({ ...params, dataset: "metrics" }, context, {
+    return await runSearchEvents({ ...params, dataset: "metrics" }, context, {
       lockDataset: true,
     });
   },

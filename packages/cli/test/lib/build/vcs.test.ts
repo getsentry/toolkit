@@ -25,7 +25,6 @@ vi.mock("../../../src/lib/git.js", () => gitMock);
 import { ValidationError } from "../../../src/lib/errors.js";
 import {
   collectVcsMetadata,
-  isCi,
   vcsInfoToBody,
 } from "../../../src/lib/build/vcs.js";
 
@@ -46,20 +45,6 @@ afterEach(() => {
   }
 });
 
-describe("isCi", () => {
-  test("true when a CI variable is set", () => {
-    expect(isCi({ GITHUB_ACTIONS: "true" })).toBe(true);
-    expect(isCi({ CI: "1" })).toBe(true);
-  });
-
-  test("false with no CI variables (and ignores opt-out values)", () => {
-    expect(isCi({})).toBe(false);
-    expect(isCi({ CI: "" })).toBe(false);
-    expect(isCi({ CI: "false" })).toBe(false);
-    expect(isCi({ CI: "0" })).toBe(false);
-  });
-});
-
 describe("vcsInfoToBody", () => {
   test("flattens to snake_case and renames provider", () => {
     expect(
@@ -68,7 +53,7 @@ describe("vcsInfoToBody", () => {
         vcsProvider: "github",
         headRepoName: "o/r",
         prNumber: 5,
-      })
+      }),
     ).toEqual({
       head_sha: "h",
       provider: "github",
@@ -93,7 +78,7 @@ describe("collectVcsMetadata", () => {
       { "head-sha": sha.toUpperCase(), "head-ref": "main", "pr-number": 7 },
       "/repo",
       {},
-      false
+      false,
     );
 
     expect(vcs.headSha).toBe(sha); // normalized to lowercase
@@ -131,7 +116,7 @@ describe("collectVcsMetadata", () => {
       {},
       "/repo",
       { GITHUB_EVENT_NAME: "pull_request", GITHUB_BASE_REF: "main" },
-      true
+      true,
     );
 
     expect(vcs.headSha).toBe("c".repeat(40));
@@ -149,14 +134,14 @@ describe("collectVcsMetadata", () => {
       eventPath,
       JSON.stringify({
         pull_request: { head: { sha: headSha }, base: { sha: baseSha } },
-      })
+      }),
     );
 
     const vcs = collectVcsMetadata(
       {},
       "/repo",
       { GITHUB_EVENT_NAME: "pull_request", GITHUB_EVENT_PATH: eventPath },
-      true
+      true,
     );
 
     // Event payload wins over `git rev-parse HEAD` / merge-base.
@@ -174,7 +159,7 @@ describe("collectVcsMetadata", () => {
 
   test("rejects a malformed --head-sha", () => {
     expect(() =>
-      collectVcsMetadata({ "head-sha": "not-a-sha" }, "/repo", {}, false)
+      collectVcsMetadata({ "head-sha": "not-a-sha" }, "/repo", {}, false),
     ).toThrow(ValidationError);
   });
 
@@ -184,7 +169,7 @@ describe("collectVcsMetadata", () => {
       {},
       "/repo",
       { GITHUB_EVENT_NAME: "push" },
-      true
+      true,
     );
     expect(vcs.baseSha).toBe("d".repeat(40));
   });
@@ -195,23 +180,25 @@ describe("collectVcsMetadata", () => {
       { "base-ref": "release/2.0" },
       "/repo",
       {},
-      true
+      true,
     );
     expect(vcs.baseRef).toBe("release/2.0");
     expect(vcs.baseSha).toBe("e".repeat(40));
     expect(gitMock.getMergeBase).toHaveBeenCalledWith(
       "origin/release/2.0",
-      "/repo"
+      "/repo",
     );
   });
 
   test("derives provider from an SCP-style remote and GHE hosts", () => {
     gitMock.getRemoteUrl.mockReturnValueOnce("git@github.com:acme/app.git");
-    expect(collectVcsMetadata({}, "/repo", {}, true).vcsProvider).toBe("github");
+    expect(collectVcsMetadata({}, "/repo", {}, true).vcsProvider).toBe(
+      "github",
+    );
 
     gitMock.getRemoteUrl.mockReturnValueOnce("https://acme.ghe.com/o/r.git");
     expect(collectVcsMetadata({}, "/repo", {}, true).vcsProvider).toBe(
-      "github_enterprise"
+      "github_enterprise",
     );
   });
 });

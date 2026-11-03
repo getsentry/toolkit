@@ -10,8 +10,8 @@ import {
   listOrganizationTeams,
   listProjectTeams as sdkListProjectTeams,
 } from "@sentry/api";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
+import * as Sentry from "@sentry/node";
 
 import type { SentryTeam } from "../../types/index.js";
 
@@ -44,12 +44,13 @@ export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
  * Returns a single page of results with cursor metadata.
  *
  * @param orgSlug - Organization slug
- * @param options - Pagination options
+ * @param options - Pagination options; `query` keeps only teams whose slug
+ *   or name contains it (case-insensitive, matched by the server)
  * @returns Single page of teams with cursor metadata
  */
 export async function listTeamsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {}
+  options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryTeam[]>> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -59,7 +60,8 @@ export async function listTeamsPaginated(
     query: {
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
-    } as { cursor?: string; per_page?: number },
+      query: options.query,
+    } as { cursor?: string; per_page?: number; query?: string },
   });
 
   return unwrapPaginatedResult<SentryTeam[]>(result, "Failed to list teams");
@@ -77,7 +79,7 @@ export async function listTeamsPaginated(
  */
 export async function listProjectTeams(
   orgSlug: string,
-  projectSlug: string
+  projectSlug: string,
 ): Promise<SentryTeam[]> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await sdkListProjectTeams({
@@ -104,7 +106,7 @@ export async function listProjectTeams(
  */
 export async function createTeam(
   orgSlug: string,
-  slug: string
+  slug: string,
 ): Promise<SentryTeam> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await createOrganizationTeam({
@@ -122,7 +124,7 @@ export async function createTeam(
       extra: { orgSlug, teamSlug: team.slug, context: "auto-add member" },
     });
     logger.warn(
-      `Team '${team.slug}' was created but you could not be added as a member.`
+      `Team '${team.slug}' was created but you could not be added as a member.`,
     );
   }
 
@@ -139,7 +141,7 @@ export async function createTeam(
 export async function addMemberToTeam(
   orgSlug: string,
   teamSlug: string,
-  memberId: string
+  memberId: string,
 ): Promise<void> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await addOrganizationMemberTeam({

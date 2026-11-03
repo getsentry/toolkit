@@ -63,12 +63,10 @@ const flagsMapArb = array(tuple(nameArb, flagDefArb), {
 const commandArb = record({
   brief: string(),
   flags: flagsMapArb,
-}).map(
-  ({ brief, flags }): Command => ({
-    brief,
-    parameters: { flags, aliases: {} },
-  })
-);
+}).map(({ brief, flags }): Command => ({
+  brief,
+  parameters: { flags, aliases: {} },
+}));
 
 /** Generate a RouteMapEntry with a command */
 const commandEntryArb = tuple(nameArb, commandArb, boolean()).map(
@@ -76,19 +74,17 @@ const commandEntryArb = tuple(nameArb, commandArb, boolean()).map(
     name: { original: name },
     target: cmd,
     hidden,
-  })
+  }),
 );
 
 /** Generate a simple RouteMap (one level) */
 const routeMapArb = tuple(
   string(),
-  array(commandEntryArb, { minLength: 0, maxLength: 5 })
-).map(
-  ([brief, entries]): RouteMap => ({
-    brief,
-    getAllEntries: () => entries,
-  })
-);
+  array(commandEntryArb, { minLength: 0, maxLength: 5 }),
+).map(([brief, entries]): RouteMap => ({
+  brief,
+  getAllEntries: () => entries,
+}));
 
 // ---------------------------------------------------------------------------
 // Properties
@@ -101,7 +97,7 @@ describe("property: extractFlags", () => {
         const result = extractFlags(flags);
         expect(result).toHaveLength(Object.keys(flags).length);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -114,7 +110,7 @@ describe("property: extractFlags", () => {
           expect(resultNames.has(name)).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -131,7 +127,7 @@ describe("property: extractFlags", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -141,7 +137,7 @@ describe("property: getPositionalString", () => {
     fcAssert(
       property(
         array(
-          record({ placeholder: oneof(string(), constantFrom(undefined)) })
+          record({ placeholder: oneof(string(), constantFrom(undefined)) }),
         ),
         (params) => {
           const result = getPositionalString({
@@ -152,9 +148,9 @@ describe("property: getPositionalString", () => {
             expect(result).toContain("<");
             expect(result).toContain(">");
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -167,7 +163,7 @@ describe("property: getPositionalString", () => {
         });
         expect(result).toContain("...");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -181,7 +177,7 @@ describe("property: extractAllRoutes", () => {
 
         // Build a set of names that are ONLY hidden (no visible entry with same name)
         const visibleNames = new Set(
-          allEntries.filter((e) => !e.hidden).map((e) => e.name.original)
+          allEntries.filter((e) => !e.hidden).map((e) => e.name.original),
         );
         const onlyHiddenNames = allEntries
           .filter((e) => e.hidden && !visibleNames.has(e.name.original))
@@ -191,7 +187,7 @@ describe("property: extractAllRoutes", () => {
           expect(onlyHiddenNames).not.toContain(route.name);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -204,7 +200,7 @@ describe("property: extractAllRoutes", () => {
           .filter((e) => !e.hidden).length;
         expect(routes.length).toBeLessThanOrEqual(visibleCount);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -215,7 +211,7 @@ describe("property: resolveCommandPath", () => {
       property(routeMapArb, (routeMap) => {
         expect(resolveCommandPath(routeMap, [])).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -227,7 +223,7 @@ describe("property: resolveCommandPath", () => {
           expect(result.info.path.startsWith("sentry ")).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -2,9 +2,10 @@
  * Conversation View Command Tests
  *
  * Tests for the `sentry agent-conversation view` command func() body, covering:
- * - Resolving org + conversationId from a single `<org>/<conversation-id>` arg
+ * - Resolving org + conversationId from `<org>/<conversation-id>` or
+ *   `<org> <conversation-id>`
  * - Resolving org via resolveOrg when only the conversation-id is given
- * - Throwing error when no args provided
+ * - Failing to parse malformed or missing arguments
  * - Throwing ContextError when org cannot be resolved
  * - Yielding CommandOutput with transcript result
  * - Setting truncated flag from API response
@@ -12,6 +13,7 @@
  * Uses spyOn mocking to avoid real HTTP calls or database access.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { viewCommand } from "../../../src/commands/agent-conversation/view.js";
 
@@ -22,11 +24,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -36,11 +38,11 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
 
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
@@ -50,11 +52,11 @@ vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
@@ -64,12 +66,12 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-import { ContextError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+import { ContextError, ValidationError } from "../../../src/lib/errors.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { AgentConversationSpan } from "../../../src/types/conversation.js";
 
@@ -102,13 +104,13 @@ function noop() {
 /** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
 function mockWithProgress(
   _opts: unknown,
-  fn: (setMessage: () => void) => unknown
+  fn: (setMessage: () => void) => unknown,
 ) {
   return fn(noop);
 }
 
 function makeSpan(
-  overrides: Partial<AgentConversationSpan> = {}
+  overrides: Partial<AgentConversationSpan> = {},
 ): AgentConversationSpan {
   return {
     "gen_ai.conversation.id": CONVERSATION_ID,
@@ -204,7 +206,7 @@ describe("viewCommand.func", () => {
 
     // resolveOrg is called with the explicit org from the arg
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: ORG })
+      expect.objectContaining({ org: ORG }),
     );
     // Should call getConversationSpans with the resolved org and conversation ID
     expect(getConversationSpansSpy).toHaveBeenCalledWith(ORG, CONVERSATION_ID);
@@ -228,34 +230,86 @@ describe("viewCommand.func", () => {
     await func.call(context, JSON_FLAGS, CONVERSATION_ID);
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: undefined })
+      expect.objectContaining({ org: undefined }),
     );
     expect(getConversationSpansSpy).toHaveBeenCalledWith(
       "auto-org",
-      CONVERSATION_ID
+      CONVERSATION_ID,
     );
   });
 
-  test("throws error when no args provided", async () => {
+  test("reads <org> <conversation-id> like <org>/<conversation-id>", async () => {
+    getConversationSpansSpy.mockResolvedValue({
+      spans: sampleSpans,
+      truncated: false,
+      title: null,
+    });
+
     const { context } = createMockContext();
     const func = await viewCommand.loader();
+    await func.call(context, JSON_FLAGS, ORG, CONVERSATION_ID);
 
-    await expect(
-      func.call(context, HUMAN_FLAGS, undefined as unknown as string)
-    ).rejects.toThrow(ContextError);
+    expect(resolveOrgSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ org: ORG }),
+    );
+    expect(getConversationSpansSpy).toHaveBeenCalledWith(ORG, CONVERSATION_ID);
   });
 
-  test("no-args error mentions Conversation ID", async () => {
+  test("rejects more arguments than an org and a conversation ID", async () => {
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    const error = await func
+      .call(context, HUMAN_FLAGS, ORG, CONVERSATION_ID, "extra")
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ValidationError,
+    );
+    expect(resolveOrgSpy).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    `${ORG}/${CONVERSATION_ID}/extra`,
+    `${ORG}//${CONVERSATION_ID}`,
+    `acme?x=1/${CONVERSATION_ID}`,
+    `acme#fragment/${CONVERSATION_ID}`,
+    `acme%20bad/${CONVERSATION_ID}`,
+    `acme bad/${CONVERSATION_ID}`,
+    `${ORG}/conv?x=1`,
+    `${ORG}/conv#fragment`,
+    `${ORG}/conv%20bad`,
+    `${ORG}/conv\tbad`,
+    "conv?x=1",
+    "conv#fragment",
+    "conv%20bad",
+  ])(
+    "rejects malformed target %s before resolution or API access",
+    async (target) => {
+      const { context } = createMockContext();
+      const func = await viewCommand.loader();
+      const error = await func
+        .call(context, HUMAN_FLAGS, target)
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(
+        ValidationError,
+      );
+      expect(resolveOrgSpy).not.toHaveBeenCalled();
+      expect(getConversationSpansSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  test("no args fail to parse, mentioning the Conversation ID", async () => {
     const { context } = createMockContext();
     const func = await viewCommand.loader();
 
-    try {
-      await func.call(context, HUMAN_FLAGS, undefined as unknown as string);
-      expect.unreachable("Should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ContextError);
-      expect((error as ContextError).message).toContain("Conversation ID");
-    }
+    const error = await func
+      .call(context, HUMAN_FLAGS)
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    const cause = (error as ArgumentParseError).exception;
+    expect(cause).toBeInstanceOf(ContextError);
+    expect((cause as ContextError).message).toContain("Conversation ID");
   });
 
   test("throws ContextError when org cannot be resolved", async () => {
@@ -265,7 +319,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, HUMAN_FLAGS, CONVERSATION_ID)
+      func.call(context, HUMAN_FLAGS, CONVERSATION_ID),
     ).rejects.toThrow(ContextError);
   });
 
@@ -287,6 +341,14 @@ describe("viewCommand.func", () => {
   test("yields CommandOutput with transcript result (JSON)", async () => {
     getConversationSpansSpy.mockResolvedValue({
       spans: sampleSpans,
+      stats: {
+        errors: 1,
+        llmCalls: 2,
+        toolCalls: 3,
+        toolErrors: 1,
+        totalCost: 0.0042,
+        totalTokens: 150,
+      },
       truncated: false,
       title: null,
     });
@@ -299,7 +361,16 @@ describe("viewCommand.func", () => {
     const parsed = JSON.parse(output);
     expect(parsed.conversationId).toBe(CONVERSATION_ID);
     expect(parsed.org).toBe(ORG);
-    expect(parsed.spanCount).toBe(2);
+    expect(parsed).toMatchObject({
+      errors: 1,
+      llmCalls: 2,
+      toolCalls: 3,
+      toolErrors: 1,
+      totalCost: 0.0042,
+      totalTokens: 150,
+      traceIds: ["00112233445566778899aabbccddeeff"],
+      spanCount: 2,
+    });
     expect(parsed.turns).toBeDefined();
     expect(Array.isArray(parsed.turns)).toBe(true);
   });

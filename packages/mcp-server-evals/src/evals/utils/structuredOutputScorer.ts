@@ -108,7 +108,9 @@ export function StructuredOutputScorer(
     } catch (error) {
       return {
         score: 0,
-        metadata: { rationale: `Failed to parse output as JSON: ${error}` },
+        metadata: {
+          rationale: `Failed to parse output as JSON: ${String(error)}`,
+        },
       };
     }
 
@@ -236,7 +238,7 @@ function fuzzyMatch(expected: any, actual: any): boolean {
   }
 
   // Handle primitives - fuzzy match allows type coercion (e.g., "1" matches 1)
-  // biome-ignore lint/suspicious/noDoubleEquals: Intentional for fuzzy matching with type coercion
+  // Intentional for fuzzy matching with type coercion
   return expected == actual;
 }
 

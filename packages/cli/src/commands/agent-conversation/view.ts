@@ -7,111 +7,175 @@
 import type { SentryContext } from "../../context.js";
 import { getConversationSpans } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError } from "../../lib/errors.js";
+import { ORG_TARGET } from "../../lib/completion-target.js";
 import {
   buildTranscriptResult,
   formatTranscriptResult,
   type TranscriptResult,
 } from "../../lib/formatters/conversation.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { ValidationError } from "../../lib/errors.js";
+import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
+import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
+  type OrgInput,
+  parseOrgInput,
+  resolveOrgInput,
+} from "../../lib/target-positional.js";
 
 type ViewFlags = {
   readonly json: boolean;
   readonly fresh: boolean;
 };
 
-const USAGE_HINT = "sentry agent-conversation view [<org>/]<conversation-id>";
+const USAGE = "[<org>/]<conversation-id>";
+const USAGE_HINT = `sentry agent-conversation view ${USAGE}`;
+
+const log = logger.withTag("agent-conversation.view");
+
+/** Parsed `agent-conversation view` arguments. */
+export type ConversationInput = {
+  readonly conversationId: string;
+  /** The org to look the conversation up in */
+  readonly org: OrgInput;
+  /** Warnings to log, such as for reversed arguments */
+  readonly warnings: readonly string[];
+};
+
+/** A conversation ID and the org it is in. */
+export type ResolvedConversation = {
+  readonly org: string;
+  readonly conversationId: string;
+};
+
+/** The arguments of `agent-conversation view`. */
+export type ConversationArguments = BoundArguments<
+  ConversationInput,
+  ResolvedConversation
+>;
 
 /**
- * Split a `[<org>/]<conversation-id>` positional into its parts.
+ * Parse `[<org>/]<conversation-id>` in the forms every ID-taking command
+ * takes (see `id-arguments.ts`). Conversation IDs are org-scoped, so a
+ * project is rejected. Has no side effects.
  *
- * Conversation IDs are org-scoped (not org/project-scoped like trace/replay
- * IDs) and never contain `/`, so the arg has at most one slash: everything
- * before the first `/` is the org, the remainder is the conversation ID. With
- * no slash the whole value is the conversation ID and the org is auto-detected.
+ * A conversation ID is opaque, so any word may be one: of two words, the
+ * first is the org (`<org> <conversation-id>`), as no reversed order can be
+ * told apart.
  *
- * @throws {ContextError} When the conversation ID segment is empty.
+ * @throws {ContextError} When no conversation ID is given
+ * @throws {ValidationError} When the ID or org is malformed, a project is
+ *   given, or there are more arguments than an org and an ID
  */
-function parseConversationTarget(target: string): {
-  org?: string;
-  conversationId: string;
-} {
-  const trimmed = target.trim();
-  const slashIdx = trimmed.indexOf("/");
-  if (slashIdx === -1) {
-    return { conversationId: trimmed };
+export function parseConversationArguments(
+  args: readonly string[],
+): ConversationInput {
+  const parsed = parseIdArguments(args, ID_KINDS.conversation, {
+    usageHint: USAGE_HINT,
+    multiple: true,
+  });
+  let { target, ids } = parsed;
+  if (target === undefined && ids.length === 2) {
+    target = `${ids[0]}/`;
+    ids = ids.slice(1);
   }
-  const org = trimmed.slice(0, slashIdx);
-  const conversationId = trimmed.slice(slashIdx + 1);
-  if (!(org && conversationId)) {
-    throw new ContextError("Conversation ID", USAGE_HINT, []);
+  if (ids.length > 1) {
+    throw new ValidationError(
+      `View one conversation at a time: ${USAGE_HINT}`,
+      "conversation-id",
+    );
   }
-  return { org, conversationId };
+  const [conversationId = ""] = ids;
+  const org = parseOrgInput(target, USAGE_HINT);
+  return {
+    conversationId,
+    org: parsed.baseUrl ? { ...org, baseUrl: parsed.baseUrl } : org,
+    warnings: parsed.warnings,
+  };
 }
 
 export const viewCommand = buildCommand({
   docs: {
     brief: "View an agent conversation transcript",
+    customUsage: [USAGE],
     fullDescription:
       "View the full transcript of an agent conversation.\n\n" +
       "The org is optional and auto-detected from your project context when\n" +
-      "omitted. Prefix the ID with an org slug to target a specific org.\n\n" +
-      "Examples:\n" +
-      "  sentry agent-conversation view conv-123\n" +
-      "  sentry agent-conversation view my-org/conv-123\n" +
-      "  sentry agent-conversation view my-org/conv-123 --json\n",
+      "omitted. Prefix the ID with an org slug to target a specific org.",
+    examples: [
+      {
+        description: "View full transcript (organization auto-detected)",
+        command: "sentry agent-conversation view conv-123",
+      },
+      {
+        description: "Explicit organization",
+        command: "sentry agent-conversation view my-org/conv-123",
+      },
+      {
+        description: "JSON output",
+        command: "sentry agent-conversation view my-org/conv-123 --json",
+      },
+    ],
   },
   output: {
     human: formatTranscriptResult,
   },
   parameters: {
-    positional: {
-      kind: "tuple",
-      parameters: [
-        {
-          placeholder: "org/conversation-id",
-          brief:
-            "[<org>/]<conversation-id> - Org (optional) and conversation ID",
-          parse: String,
-        },
-      ],
-    },
+    positional: boundArguments({
+      placeholder: "org/conversation-id",
+      brief: "Organization slug (optional) and conversation ID",
+      kind: ORG_TARGET,
+      parse: parseConversationArguments,
+      resolve: async (
+        input,
+        context: SentryContext,
+      ): Promise<ResolvedConversation> => {
+        for (const warning of input.warnings) {
+          log.warn(warning);
+        }
+        const { org } = await resolveOrgInput(
+          input.org,
+          context.cwd,
+          USAGE_HINT,
+        );
+        return { org, conversationId: input.conversationId };
+      },
+    }),
     flags: {
       fresh: FRESH_FLAG,
     },
     aliases: FRESH_ALIASES,
   },
-  async *func(this: SentryContext, flags: ViewFlags, target: string) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: ConversationArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
+    const { org, conversationId } = await target.resolved;
 
-    if (!target?.trim()) {
-      throw new ContextError("Conversation ID", USAGE_HINT, []);
-    }
-    const { org: orgArg, conversationId } = parseConversationTarget(target);
-
-    const resolved = await resolveOrg({ org: orgArg, cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
-    }
-    const org = resolved.org;
-
-    const { spans, truncated, title } = await withProgress(
+    const { spans, stats, truncated, title } = await withProgress(
       {
         message: "Fetching conversation spans...",
         json: flags.json,
       },
-      () => getConversationSpans(org, conversationId)
+      () => getConversationSpans(org, conversationId),
     );
 
-    const result = buildTranscriptResult(conversationId, org, spans, title);
+    const result = buildTranscriptResult(conversationId, org, spans, {
+      stats,
+      title,
+    });
     result.truncated = truncated;
     yield new CommandOutput<TranscriptResult>(result);
   },

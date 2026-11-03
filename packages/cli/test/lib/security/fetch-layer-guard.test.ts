@@ -49,7 +49,7 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
     const headers = new Headers();
     applyCustomHeaders(
       headers,
-      "https://evil.com/api/0/shared/issues/deadbeef/"
+      "https://evil.com/api/0/shared/issues/deadbeef/",
     );
 
     expect(headers.get("X-IAP-Token")).toBeNull();
@@ -64,7 +64,7 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
     const headers = new Headers();
     applyCustomHeaders(
       headers,
-      "https://sentry.example.com/api/0/organizations/"
+      "https://sentry.example.com/api/0/organizations/",
     );
 
     expect(headers.get("X-IAP-Token")).toBe("sensitive-iap-value");

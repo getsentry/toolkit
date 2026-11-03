@@ -15,7 +15,7 @@ import {
 describe("SDK entry-point declarations", () => {
   const source = readFileSync(
     fileURLToPath(new URL(`../../${SDK_TYPES_PATH}`, import.meta.url)),
-    "utf-8"
+    "utf-8",
   );
 
   test("declares every option the source type declares", () => {
@@ -23,7 +23,7 @@ describe("SDK entry-point declarations", () => {
 
     const options = extractSentryOptions(source);
     const optionNames = [...options.matchAll(/^ {2}(\w+)\??:/gm)].map(
-      (match) => match[1]
+      (match) => match[1],
     );
 
     expect(optionNames).toContain("headers");
@@ -34,7 +34,7 @@ describe("SDK entry-point declarations", () => {
 
   test("throws when the source type can no longer be located", () => {
     expect(() => extractSentryOptions("export type Something = {};")).toThrow(
-      SDK_TYPES_PATH
+      SDK_TYPES_PATH,
     );
   });
 
@@ -46,5 +46,15 @@ describe("SDK entry-point declarations", () => {
   };
 };`;
     expect(extractSentryOptions(fixture)).toBe(fixture);
+  });
+
+  test("is not cut short by braces inside comments or string literal types", () => {
+    const declaration = `export type SentryOptions = {
+  /** Closing brace in prose: } */
+  mode?: "}" | "{";
+  token?: string;
+};`;
+    const fixture = `/** Options. */\n${declaration}\n\nexport type Other = {};`;
+    expect(extractSentryOptions(fixture)).toBe(declaration);
   });
 });

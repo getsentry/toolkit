@@ -25,7 +25,7 @@ describe("getSeaRawAsset", () => {
     });
 
     expect(() => getSeaRawAsset("dist-build/missing.bin")).toThrow(
-      "embedded asset is missing"
+      "embedded asset is missing",
     );
   });
 });

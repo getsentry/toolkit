@@ -14,6 +14,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parsePlatform } from "../../lib/completion-target.js";
 import { OutputError } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/colors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -38,11 +39,18 @@ export const listCommand = buildCommand({
     brief: "List all valid Sentry platform identifiers",
     fullDescription:
       "List every valid Sentry platform identifier — the full set behind " +
-      "`sentry project create <name>:<platform>`. Use --search to filter.\n\n" +
-      "Examples:\n" +
-      "  sentry platform list                 List all valid platforms\n" +
-      "  sentry platform list --search python  Filter by substring\n" +
-      "  sentry platform list --json           Machine-readable output",
+      "`sentry project create <name>:<platform>`. Use --search to filter.",
+    examples: [
+      {
+        description: "List all valid Sentry platform identifiers",
+        command: "sentry platform list",
+      },
+      {
+        description: "Filter by substring",
+        command: "sentry platform list --search python",
+      },
+      { description: "Output as JSON", command: "sentry platform list --json" },
+    ],
   },
   output: {
     human: formatPlatformsHuman,
@@ -51,14 +59,14 @@ export const listCommand = buildCommand({
     flags: {
       search: {
         kind: "parsed",
-        parse: String,
+        parse: parsePlatform,
         brief: "Filter platforms by substring",
         optional: true,
       },
     },
     aliases: { q: "search" },
   },
-  // biome-ignore lint/suspicious/useAwait: Stricli requires AsyncGenerator but this is synchronous (in-memory data)
+  // Stricli requires AsyncGenerator but this is synchronous (in-memory data)
   async *func(this: SentryContext, flags: PlatformsFlags) {
     if (!flags.search) {
       return yield new CommandOutput<readonly string[]>(VALID_PLATFORMS);
@@ -66,7 +74,7 @@ export const listCommand = buildCommand({
 
     const term = flags.search.toLowerCase();
     const matches = VALID_PLATFORMS.filter((p) =>
-      p.toLowerCase().includes(term)
+      p.toLowerCase().includes(term),
     );
     if (matches.length === 0) {
       // No matches genuinely means nothing found for this search — exit non-zero,

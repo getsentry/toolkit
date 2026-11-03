@@ -19,7 +19,7 @@ describe("property: offtin", () => {
         // |value| should be representable
         expect(Number.isFinite(value)).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -47,7 +47,7 @@ describe("property: offtin", () => {
         expect(positive).toBeGreaterThanOrEqual(0);
         expect(negative).toBeLessThanOrEqual(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -74,9 +74,9 @@ describe("property: offtin", () => {
           } else {
             expect(negResult).toBe(-magnitude);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -87,7 +87,7 @@ describe("property: parsePatchHeader", () => {
       property(uint8Array({ minLength: 0, maxLength: 31 }), (buf) => {
         expect(() => parsePatchHeader(buf)).toThrow("Patch too small");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -101,7 +101,7 @@ describe("property: parsePatchHeader", () => {
         }
         expect(() => parsePatchHeader(buf)).toThrow("Invalid patch format");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -125,7 +125,7 @@ describe("property: parsePatchHeader", () => {
           // May throw for other reasons (length overflow) — that's fine
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

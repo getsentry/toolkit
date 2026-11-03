@@ -16,12 +16,23 @@ import {
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
-  isCi,
+  VCS_PROVIDERS,
   type VcsFlags,
   type VcsInfo,
   vcsInfoToBody,
 } from "../../lib/build/vcs.js";
+import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseGitCommit,
+  parseGitRepo,
+  parseText,
+  parseVcsRef,
+  textParser,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -95,16 +106,16 @@ function parsePrNumber(value: string): number {
  * normalized list, or `undefined` when neither is set.
  */
 async function resolveAllImageNames(
-  flags: UploadFlags
+  flags: UploadFlags,
 ): Promise<string[] | undefined> {
   if (flags["all-image-file-names"] !== undefined) {
     const names = normalizeImageNames(
-      splitAndTrim(flags["all-image-file-names"], ",")
+      splitAndTrim(flags["all-image-file-names"], ","),
     );
     if (names.length === 0) {
       throw new ValidationError(
         "--all-image-file-names must not be empty",
-        "all-image-file-names"
+        "all-image-file-names",
       );
     }
     return names;
@@ -118,14 +129,14 @@ async function resolveAllImageNames(
       log.debug(`Failed to read --all-image-file-names-file ${path}`, err);
       throw new ValidationError(
         `Failed to read --all-image-file-names-file: ${path}`,
-        "all-image-file-names-file"
+        "all-image-file-names-file",
       );
     }
     const names = normalizeImageNames(splitAndTrim(content, "\n"));
     if (names.length === 0) {
       throw new ValidationError(
         `--all-image-file-names-file is empty or contains only blank lines: ${path}`,
-        "all-image-file-names-file"
+        "all-image-file-names-file",
       );
     }
     return names;
@@ -141,12 +152,12 @@ async function resolveAllImageNames(
 function collectVcs(
   flags: UploadFlags,
   cwd: string,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): VcsInfo {
   if (flags["force-git-metadata"] && flags["no-git-metadata"]) {
     throw new ValidationError(
       "--force-git-metadata and --no-git-metadata cannot be used together",
-      "force-git-metadata"
+      "force-git-metadata",
     );
   }
   const shouldCollect =
@@ -157,7 +168,7 @@ function collectVcs(
     throw new ValidationError(
       "A PR number was provided but no base SHA could be determined. " +
         "Pass --base-sha explicitly or ensure your CI exposes the merge base.",
-      "pr-number"
+      "pr-number",
     );
   }
   return vcs;
@@ -171,7 +182,7 @@ function collectVcs(
  */
 async function resolveSelective(
   flags: UploadFlags,
-  images: CollectedImage[]
+  images: CollectedImage[],
 ): Promise<{ selective: boolean; allImageNames?: string[] }> {
   const allImageNames = await resolveAllImageNames(flags);
   const selective = Boolean(flags.selective) || allImageNames !== undefined;
@@ -184,9 +195,9 @@ async function resolveSelective(
     if (unknown.length > 0) {
       throw new ValidationError(
         `The following uploaded images are not in --all-image-file-names: ${unknown.join(
-          ", "
+          ", ",
         )}`,
-        "all-image-file-names"
+        "all-image-file-names",
       );
     }
   }
@@ -197,7 +208,7 @@ async function resolveSelective(
 async function runPooled<T>(
   items: T[],
   limit: number,
-  fn: (item: T) => Promise<void>
+  fn: (item: T) => Promise<void>,
 ): Promise<void> {
   for (let i = 0; i < items.length; i += limit) {
     await Promise.all(items.slice(i, i + limit).map(fn));
@@ -231,7 +242,7 @@ type UploadImagesResult = {
 async function uploadImages(
   org: string,
   project: string,
-  images: CollectedImage[]
+  images: CollectedImage[],
 ): Promise<UploadImagesResult> {
   const { objectstore } = await fetchSnapshotsUploadOptions(org, project);
   const config: ObjectstoreConfig = objectstore;
@@ -243,7 +254,7 @@ async function uploadImages(
   if (!(orgId && projectId)) {
     throw new ValidationError(
       "Snapshot upload options are missing org/project scope",
-      "app-id"
+      "app-id",
     );
   }
 
@@ -328,7 +339,7 @@ function formatUploadResult(data: SnapshotUploadResult): string {
     rows.push(["URL", data.snapshot.snapshotUrl]);
   }
   return renderMarkdown(
-    `${colorTag("green", "Created snapshot")}\n\n${mdKvTable(rows)}`
+    `${colorTag("green", "Created snapshot")}\n\n${mdKvTable(rows)}`,
   );
 }
 
@@ -340,11 +351,25 @@ export const uploadCommand = buildCommand({
       "Each image (PNG/JPEG) is hashed and uploaded to Sentry's object store " +
       "(images already present are skipped), then a manifest is created. " +
       "Companion `<image>.json` sidecar files add per-image metadata. " +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry snapshots upload ./screenshots --app-id com.example.app\n" +
-      "  sentry snapshots upload ./shots --app-id my-app --diff-threshold 0.01\n" +
-      "  sentry snapshots upload ./shots --app-id my-app --selective",
+      "This feature only works with Sentry SaaS.",
+    examples: [
+      {
+        description: "Upload a folder of screenshots as a snapshot for an app",
+        command:
+          "sentry snapshots upload ./screenshots --app-id com.example.app",
+      },
+      {
+        description:
+          "Upload only a subset of images (removals/renames not inferred on PRs)",
+        command:
+          "sentry snapshots upload ./screenshots --app-id my-app --selective",
+      },
+      {
+        description: "Only flag images that differ by more than 1%",
+        command:
+          "sentry snapshots upload ./screenshots --app-id my-app --diff-threshold 0.01",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -355,7 +380,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the folder containing images to upload",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "path",
         },
       ],
@@ -363,12 +388,12 @@ export const uploadCommand = buildCommand({
     flags: {
       "app-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "The application identifier",
       },
       "diff-threshold": {
         kind: "parsed",
-        parse: parseDiffThreshold,
+        parse: textParser(parseDiffThreshold),
         brief:
           "Only report an image as changed when its difference exceeds this fraction (0.0–1.0, e.g. 0.01 = 1%)",
         optional: true,
@@ -381,66 +406,66 @@ export const uploadCommand = buildCommand({
       },
       "all-image-file-names": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Comma-separated list of all image names in the full suite (for selective uploads; implies --selective)",
         optional: true,
       },
       "all-image-file-names-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Path to a file listing all image names, one per line (for selective uploads; implies --selective)",
         optional: true,
       },
       "head-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief: "VCS commit SHA (defaults to the current commit)",
         optional: true,
       },
       "base-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief:
           "VCS base commit SHA (defaults to the merge-base with the base ref)",
         optional: true,
       },
       "vcs-provider": {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VCS_PROVIDERS),
         brief: "VCS provider (defaults to the current remote's provider)",
         optional: true,
       },
       "head-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief:
           "Head repository name, e.g. owner/repo (defaults to the current)",
         optional: true,
       },
       "base-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief: "Base repository name, e.g. owner/repo (for forks)",
         optional: true,
       },
       "head-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Head branch/reference (defaults to the current branch)",
         optional: true,
       },
       "base-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief:
           "Base branch/reference (defaults to the merge-base tracking ref)",
         optional: true,
       },
       "pr-number": {
         kind: "parsed",
-        parse: parsePrNumber,
+        parse: textParser(parsePrNumber),
         brief:
           "Pull request number (auto-detected in pull_request GitHub Actions runs)",
         optional: true,
@@ -481,7 +506,7 @@ export const uploadCommand = buildCommand({
     ) {
       throw new ValidationError(
         "--all-image-file-names and --all-image-file-names-file cannot be used together",
-        "all-image-file-names"
+        "all-image-file-names",
       );
     }
     const vcs = collectVcs(flags, this.cwd, this.env);

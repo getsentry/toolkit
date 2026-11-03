@@ -25,7 +25,7 @@ export type SemanticSpanDisplay = {
 /** A function that attempts to render semantic display for an item. */
 type SpanDisplayFormatter = (
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ) => SemanticSpanDisplay | null;
 
 const SPAN_LABEL_MAX_LENGTH = 120;
@@ -93,7 +93,7 @@ export function hasAiAttributes(attrs: AttributeSource): boolean {
 function getAttr(
   attrs: AttributeSource,
   keys: string[],
-  maxLength = SPAN_METADATA_MAX_LENGTH
+  maxLength = SPAN_METADATA_MAX_LENGTH,
 ): string | undefined {
   for (const key of keys) {
     if (Object.hasOwn(attrs, key)) {
@@ -115,7 +115,7 @@ function getAttr(
  */
 export function formatSemanticSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay {
   for (const formatter of SEMANTIC_SPAN_FORMATTERS) {
     const result = formatter(attrs, fallbackLabel);
@@ -190,7 +190,7 @@ export function inferSemanticOp(attrs: AttributeSource): string | undefined {
 
 function formatGenAiSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const operation = getAttr(attrs, ["gen_ai.operation.name"]);
   const toolName = getAttr(attrs, ["gen_ai.tool.name"]);
@@ -219,13 +219,13 @@ function formatGenAiSpanDisplay(
 
 function formatMcpSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const method = getAttr(attrs, ["mcp.method.name"]);
   const resourceUri = getAttr(
     attrs,
     ["mcp.resource.uri"],
-    SPAN_ATTRIBUTE_MAX_LENGTH
+    SPAN_ATTRIBUTE_MAX_LENGTH,
   );
   const target =
     getAttr(attrs, ["gen_ai.tool.name", "gen_ai.prompt.name"]) ??
@@ -245,7 +245,7 @@ function formatMcpSpanDisplay(
 
 function formatHttpSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const method = getAttr(attrs, ["http.request.method"])?.toUpperCase();
   const statusCode = getAttr(attrs, ["http.response.status_code"]);
@@ -268,7 +268,7 @@ function formatHttpSpanDisplay(
 
 function formatDatabaseSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const dbSystem = getAttr(attrs, ["db.system.name"]);
   const querySummary = getAttr(attrs, ["db.query.summary"]);
@@ -280,7 +280,7 @@ function formatDatabaseSpanDisplay(
   const queryText = getAttr(
     attrs,
     ["db.query.text"],
-    SPAN_ATTRIBUTE_MAX_LENGTH
+    SPAN_ATTRIBUTE_MAX_LENGTH,
   );
 
   if (
@@ -313,14 +313,14 @@ function formatDatabaseSpanDisplay(
 
 function formatGraphqlSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const operationType = getAttr(attrs, ["graphql.operation.type"]);
   const operationName = getAttr(attrs, ["graphql.operation.name"]);
   const document = getAttr(
     attrs,
     ["graphql.document"],
-    SPAN_ATTRIBUTE_MAX_LENGTH
+    SPAN_ATTRIBUTE_MAX_LENGTH,
   );
 
   if (!(operationType || operationName || document)) {
@@ -338,7 +338,7 @@ function formatGraphqlSpanDisplay(
 
 function formatRpcSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const rpcSystem = getAttr(attrs, ["rpc.system.name"]);
   const service = getAttr(attrs, ["rpc.service"]);
@@ -362,7 +362,7 @@ function formatRpcSpanDisplay(
 
 function formatMessagingSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const messagingSystem = getAttr(attrs, ["messaging.system"]);
   const operation = getAttr(attrs, [
@@ -395,7 +395,7 @@ function formatMessagingSpanDisplay(
 
 function formatFaasSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const trigger = getAttr(attrs, ["faas.trigger"]);
   const name = getAttr(attrs, ["faas.invoked_name", "faas.name"]);
@@ -444,7 +444,7 @@ function formatFaasSpanDisplay(
 
 function formatProcessSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const command = getAttr(attrs, [
     "process.executable.name",
@@ -468,14 +468,14 @@ function formatProcessSpanDisplay(
 
 function formatObjectStoreSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const bucket = getAttr(attrs, ["aws.s3.bucket"]);
   const key = getAttr(attrs, ["aws.s3.key"], SPAN_ATTRIBUTE_MAX_LENGTH);
   const copySource = getAttr(
     attrs,
     ["aws.s3.copy_source"],
-    SPAN_ATTRIBUTE_MAX_LENGTH
+    SPAN_ATTRIBUTE_MAX_LENGTH,
   );
   const operation = getAttr(attrs, ["rpc.method"]);
   const region = getAttr(attrs, ["cloud.region"]);
@@ -496,14 +496,14 @@ function formatObjectStoreSpanDisplay(
 
 function formatCloudEventsSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const eventType = getAttr(attrs, ["cloudevents.event_type"]);
   const eventSubject = getAttr(attrs, ["cloudevents.event_subject"]);
   const eventSource = getAttr(
     attrs,
     ["cloudevents.event_source"],
-    SPAN_ATTRIBUTE_MAX_LENGTH
+    SPAN_ATTRIBUTE_MAX_LENGTH,
   );
   const specVersion = getAttr(attrs, ["cloudevents.event_spec_version"]);
 
@@ -523,7 +523,7 @@ function formatCloudEventsSpanDisplay(
 
 function formatCicdSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const action = getAttr(attrs, ["cicd.pipeline.action.name"]);
   const pipeline = getAttr(attrs, ["cicd.pipeline.name"]);
@@ -544,7 +544,7 @@ function formatCicdSpanDisplay(
 
 function formatFeatureFlagSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const flagKey = getAttr(attrs, ["feature_flag.key"]);
   const variant = getAttr(attrs, ["feature_flag.result.variant"]);
@@ -565,13 +565,13 @@ function formatFeatureFlagSpanDisplay(
 
 function formatExceptionSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const exceptionType = getAttr(attrs, ["exception.type"]);
   const exceptionMessage = getAttr(
     attrs,
     ["exception.message"],
-    SPAN_ATTRIBUTE_MAX_LENGTH
+    SPAN_ATTRIBUTE_MAX_LENGTH,
   );
 
   if (!(exceptionType || exceptionMessage)) {
@@ -595,7 +595,7 @@ function formatExceptionSpanDisplay(
 
 function formatErrorSpanDisplay(
   attrs: AttributeSource,
-  fallbackLabel: string
+  fallbackLabel: string,
 ): SemanticSpanDisplay | null {
   const errorType = getErrorType(attrs);
   if (!errorType) {
@@ -626,12 +626,12 @@ function getGenAiModelIdentifier(attrs: AttributeSource): string | undefined {
 
 function getHttpTarget(
   attrs: AttributeSource,
-  { includeServerTarget = false }: { includeServerTarget?: boolean } = {}
+  { includeServerTarget = false }: { includeServerTarget?: boolean } = {},
 ): string | undefined {
   const route = getAttr(
     attrs,
     ["http.route", "url.template"],
-    SPAN_ATTRIBUTE_MAX_LENGTH
+    SPAN_ATTRIBUTE_MAX_LENGTH,
   );
   const fullUrl = getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH);
   const path = getAttr(attrs, ["url.path"], SPAN_ATTRIBUTE_MAX_LENGTH);
@@ -712,7 +712,7 @@ function formatOperationLabel(operation: string, subject?: string): string {
 
 function formatObjectStoreTarget(
   bucket?: string,
-  key?: string
+  key?: string,
 ): string | undefined {
   if (bucket && key) {
     return truncate(`${bucket}/${key}`, SPAN_LABEL_MAX_LENGTH);
@@ -733,7 +733,7 @@ function formatDbQueryText(value?: string): string | undefined {
   }
   return truncate(
     value.replace(/'([^']|'')*'/g, "?").replace(/\b\d+(\.\d+)?\b/g, "?"),
-    SPAN_LABEL_MAX_LENGTH
+    SPAN_LABEL_MAX_LENGTH,
   );
 }
 
@@ -777,7 +777,7 @@ function truncate(value: unknown, maxLength: number): string | undefined {
 /** Format a display part, same as truncate but exported for tests. */
 export function formatDisplayPart(
   value: unknown,
-  maxLength: number
+  maxLength: number,
 ): string | undefined {
   return truncate(value, maxLength);
 }
@@ -805,7 +805,7 @@ function dedupeMetadata(values: string[]): string[] {
  * Transaction-level attributes live in `contexts.trace.data`.
  */
 export function mergeTransactionAttributes(
-  event: Record<string, unknown>
+  event: Record<string, unknown>,
 ): AttributeSource {
   const contexts = event.contexts as Record<string, unknown> | undefined;
   const trace = contexts?.trace as Record<string, unknown> | undefined;
@@ -823,7 +823,7 @@ export function mergeTransactionAttributes(
  * returned by {@link mergeTransactionAttributes}.
  */
 export function collectSpanAttributes(
-  event: Record<string, unknown>
+  event: Record<string, unknown>,
 ): AttributeSource[] {
   const spans = event.spans;
   if (!Array.isArray(spans)) {

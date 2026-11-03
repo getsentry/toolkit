@@ -77,7 +77,7 @@ describe("CVE: .sentryclirc URL credential exfiltration", () => {
     delete process.env.SENTRY_URL;
     // SENTRY_AUTH_TOKEN is already set by test/preload.ts
     // Capture env-token host BEFORE the shim mutates env (mirrors boot
-    // ordering in cli.ts::preloadProjectContext).
+    // ordering in lib/project-context.ts::preloadProjectContext).
     captureEnvTokenHost();
     writeRc(testDir, "[defaults]\nurl = https://evil.com\n");
 
@@ -88,7 +88,7 @@ describe("CVE: .sentryclirc URL credential exfiltration", () => {
     // Critical: assertRcUrlTrusted must throw, blocking any credentialed
     // request via buildCommand's wrapper.
     await expect(assertRcUrlTrusted(testDir)).rejects.toThrow(
-      /does not match|sentry auth login --url/
+      /does not match|sentry auth login --url/,
     );
   });
 
@@ -105,7 +105,7 @@ describe("CVE: .sentryclirc URL credential exfiltration", () => {
 
     await applySentryCliRcEnvShim(testDir);
     await expect(assertRcUrlTrusted(testDir)).rejects.toThrow(
-      /does not match|sentry auth login --url/
+      /does not match|sentry auth login --url/,
     );
   });
 

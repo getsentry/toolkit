@@ -26,18 +26,16 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger module to intercept the .prompt() call made by the
-  // module-scoped `log = logger.withTag("log-view")` in view.ts.
+  // Stub the logger module-scoped as `log = logger.withTag("log-view")` in
+  // view.ts; the prompt module is mocked with `_mockPrompt` below.
   const _mockPrompt = vi.fn(() => Promise.resolve(true));
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     warn: ReturnType<typeof vi.fn>;
     info: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
     debug: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     warn: vi.fn(_noop),
     info: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -59,6 +57,8 @@ vi.mock("node:tty", () => ({
   default: ttyExports,
 }));
 
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
+
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,
   setLogLevel: vi.fn(noop),
@@ -75,9 +75,8 @@ vi.mock("../../../src/lib/logger.js", () => ({
 
 // Dynamic import: must load AFTER vi.mock() registrations above so the
 // `log = logger.withTag(...)` binding inside view.ts picks up fakeLog.
-const { parsePositionalArgs, viewCommand } = await import(
-  "../../../src/commands/log/view.js"
-);
+const { parsePositionalArgs, viewCommand } =
+  await import("../../../src/commands/log/view.js");
 
 import type { ProjectWithOrg } from "../../../src/lib/api-client.js";
 
@@ -88,11 +87,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
@@ -102,11 +101,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -115,7 +114,7 @@ import {
   ResolutionError,
   ValidationError,
 } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/index.js";
@@ -234,7 +233,7 @@ describe("parsePositionalArgs", () => {
 
     test("throws ContextError for empty log ID after target", () => {
       expect(() => parsePositionalArgs(["my-org/frontend", ""])).toThrow(
-        ContextError
+        ContextError,
       );
     });
   });
@@ -280,7 +279,7 @@ describe("parsePositionalArgs", () => {
       // Auto-swap: org/project becomes target, hex ID becomes the log ID
       expect(result.targetArg).toBe("my-org/my-project");
       expect(result.rawLogIds).toEqual(["968c763c740cfda8b6728f27fb9e9b01"]);
-      expect(result.suggestion).toContain("reversed");
+      expect(result.warnings).toEqual([expect.stringContaining("reversed")]);
     });
 
     test("returns suggestion when first arg looks like issue short ID", () => {
@@ -297,6 +296,42 @@ describe("parsePositionalArgs", () => {
         "968c763c740cfda8b6728f27fb9e9b01",
       ]);
       expect(result.suggestion).toBeUndefined();
+    });
+  });
+
+  describe("multiple fully-qualified org/project/logId args (CLI-1XC)", () => {
+    test("splits each full path into a shared target + log IDs", () => {
+      const result = parsePositionalArgs([
+        `my-org/frontend/${ID1}`,
+        `my-org/frontend/${ID2}`,
+      ]);
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.rawLogIds).toEqual([ID1, ID2]);
+    });
+
+    test("accepts a full path followed by bare log IDs", () => {
+      const result = parsePositionalArgs([`my-org/frontend/${ID1}`, ID2, ID3]);
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.rawLogIds).toEqual([ID1, ID2, ID3]);
+    });
+
+    test("throws ValidationError when full paths reference different projects", () => {
+      expect(() =>
+        parsePositionalArgs([
+          `my-org/frontend/${ID1}`,
+          `my-org/backend/${ID2}`,
+        ]),
+      ).toThrow(ValidationError);
+    });
+
+    test("strips a redundant target prefix from log ID args", () => {
+      const result = parsePositionalArgs([
+        "my-org/frontend",
+        `my-org/frontend/${ID1}`,
+        ID2,
+      ]);
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.rawLogIds).toEqual([ID1, ID2]);
     });
   });
 
@@ -332,7 +367,7 @@ describe("resolveProjectBoundSlug", () => {
       findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
 
       await expect(resolveProjectBoundSlug("my-project", HINT)).rejects.toThrow(
-        ResolutionError
+        ResolutionError,
       );
     });
 
@@ -345,10 +380,10 @@ describe("resolveProjectBoundSlug", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ResolutionError);
         expect((error as ResolutionError).message).toContain(
-          'Project "frontend"'
+          'Project "frontend"',
         );
         expect((error as ResolutionError).message).toContain(
-          "Check that you have access"
+          "Check that you have access",
         );
         // Message says "not found", not "is required"
         expect((error as ResolutionError).message).toContain("not found");
@@ -367,7 +402,7 @@ describe("resolveProjectBoundSlug", () => {
       });
 
       await expect(resolveProjectBoundSlug("frontend", HINT)).rejects.toThrow(
-        ValidationError
+        ValidationError,
       );
     });
 
@@ -384,7 +419,7 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "frontend",
           HINT,
-          "sentry log view <org>/frontend log-456"
+          "sentry log view <org>/frontend log-456",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
@@ -411,7 +446,7 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "api",
           HINT,
-          "sentry log view <org>/api abc123"
+          "sentry log view <org>/api abc123",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
@@ -537,7 +572,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false },
       "968c763c740cfda8b6728f27fb9e9b01",
-      "test-org/test-proj"
+      "test-org/test-proj",
     );
 
     // Should resolve correctly despite swapped args
@@ -561,7 +596,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false },
       "frontend",
-      "968c763c740cfda8b6728f27fb9e9b01"
+      "968c763c740cfda8b6728f27fb9e9b01",
     );
 
     expect(findProjectsBySlugSpy).toHaveBeenCalledWith("frontend");
@@ -584,7 +619,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false },
       "CAM-82X",
-      "968c763c740cfda8b6728f27fb9e9b01"
+      "968c763c740cfda8b6728f27fb9e9b01",
     );
 
     // The suggestion path fires (looksLikeIssueShortId("CAM-82X") → true)
@@ -608,7 +643,7 @@ describe("viewCommand.func", () => {
         context,
         { json: true, web: false },
         "test-org/test-project",
-        expiredLogId
+        expiredLogId,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {
@@ -667,7 +702,7 @@ describe("log view --web interactive prompt", () => {
       { json: false, web: true },
       "my-org/proj",
       PROMPT_ID1,
-      PROMPT_ID2
+      PROMPT_ID2,
     );
 
     expect(mockPrompt).toHaveBeenCalled();
@@ -689,7 +724,7 @@ describe("log view --web interactive prompt", () => {
       { json: false, web: true },
       "my-org/proj",
       PROMPT_ID1,
-      PROMPT_ID2
+      PROMPT_ID2,
     );
 
     expect(mockPrompt).toHaveBeenCalled();
@@ -697,8 +732,8 @@ describe("log view --web interactive prompt", () => {
   });
 
   test("aborts when user cancels prompt with Ctrl+C (truthy Symbol)", async () => {
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
-    // Cast needed because the mock is typed as boolean but consola actually
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
+    // Cast needed because the mock is typed as boolean but the prompt actually
     // returns a Symbol on cancel.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel") as unknown as boolean);
     openInBrowserSpy.mockResolvedValue(undefined);
@@ -710,7 +745,7 @@ describe("log view --web interactive prompt", () => {
       { json: false, web: true },
       "my-org/proj",
       PROMPT_ID1,
-      PROMPT_ID2
+      PROMPT_ID2,
     );
 
     expect(mockPrompt).toHaveBeenCalled();

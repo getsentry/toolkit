@@ -24,12 +24,11 @@ import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { type WalkEntry, walkFiles } from "../scan/index.js";
 import {
-  type DifArchiveInfo,
+  type DifObjectFile,
   type DifObjectInfo,
   extractEmbeddedPpdb,
-  parseDebugFile,
   peekFormat,
-  selectBundledObject,
+  splitDebugFile,
 } from "./index.js";
 import { DEFAULT_MAX_ZIP_TOTAL_SIZE, readZipDifEntries } from "./zip.js";
 
@@ -96,16 +95,18 @@ export type DifFilterOptions = {
 export type PreparedDif = {
   /** Filesystem path the file was read from. */
   path: string;
-  /** Raw file content. */
+  /**
+   * Bytes to upload: the raw file content, or one object's own bytes when the
+   * file holds more than one object, such as a slice of a fat Mach-O (each
+   * object becomes its own `PreparedDif`).
+   */
   content: Buffer;
   /**
-   * Advisory debug id of the primary (first debug-info) object among the
-   * filter-matched set. This is the same id used as the source bundle's
-   * debug id under `--include-sources`, so the bundle's slice matches the
-   * slice whose metadata the main DIF advertises.
+   * Debug id of the object in `content`. This is the same id used as the
+   * source bundle's debug id under `--include-sources`.
    */
   debugId?: string;
-  /** The objects within the file that passed the filters (for reporting). */
+  /** The object in `content` that passed the filters (for reporting). */
   objects: DifObjectInfo[];
 };
 
@@ -138,7 +139,7 @@ function hasValidDebugId(obj: DifObjectInfo): boolean {
 /** Whether the object's format is one of the requested types (or no filter). */
 function formatMatches(
   objFormat: string,
-  formats: Set<string> | undefined
+  formats: Set<string> | undefined,
 ): boolean {
   return !formats || formats.size === 0 || formats.has(objFormat);
 }
@@ -200,7 +201,7 @@ export function buildDifFilters(options: DifFilterOptions): DifFilters {
       if (!format) {
         throw new ValidationError(
           `Unknown debug file type '${raw}'. Valid types: ${VALID_DIF_TYPES.join(", ")}`,
-          "type"
+          "type",
         );
       }
       formats.add(format);
@@ -234,7 +235,7 @@ export function buildDifFilters(options: DifFilterOptions): DifFilters {
  */
 export function objectPassesFilters(
   obj: DifObjectInfo,
-  filters: DifFilters
+  filters: DifFilters,
 ): boolean {
   return (
     hasValidDebugId(obj) &&
@@ -313,7 +314,7 @@ export async function scanPaths(paths: string[]): Promise<string[]> {
  * @throws {ValidationError} If the path does not exist or cannot be accessed.
  */
 async function statExplicitPath(
-  path: string
+  path: string,
 ): Promise<Awaited<ReturnType<typeof stat>>> {
   try {
     return await stat(path);
@@ -325,12 +326,12 @@ async function statExplicitPath(
     if (code === "EACCES" || code === "EPERM") {
       throw new ValidationError(
         `Path '${path}' is not readable: ${code}.`,
-        "path"
+        "path",
       );
     }
     throw new ValidationError(
       `Cannot access path '${path}': ${code ?? "unknown error"}.`,
-      "path"
+      "path",
     );
   }
 }
@@ -468,7 +469,7 @@ export type PrepareDifsResult = {
 export async function prepareDifs(
   paths: string[],
   filters: DifFilters,
-  options: PrepareDifsOptions = {}
+  options: PrepareDifsOptions = {},
 ): Promise<PrepareDifsResult> {
   const prepared: PreparedDif[] = [];
   const maxFileSize = options.maxFileSize ?? 0;
@@ -486,7 +487,7 @@ export async function prepareDifs(
         path,
         filters,
         maxFileSize,
-        maxZipTotalSize
+        maxZipTotalSize,
       );
       // Oversized zip entries are advisory only — they warn per entry and
       // intentionally do NOT feed `oversizedCount`. That counter gates the
@@ -504,7 +505,7 @@ export async function prepareDifs(
     const { difs, oversized } = await prepareFileDif(
       path,
       filters,
-      maxFileSize
+      maxFileSize,
     );
     if (oversized) {
       oversizedCount += 1;
@@ -534,7 +535,7 @@ export async function prepareDifs(
 async function prepareFileDif(
   path: string,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   const peeked = await peekHeader(path);
   if (!peeked) {
@@ -557,12 +558,12 @@ async function prepareFileDif(
     // match, so it must not inflate the oversized count.
     if (formatOk) {
       log.warn(
-        `Skipping ${path}: size ${peeked.size} exceeds maximum file size ${maxFileSize}`
+        `Skipping ${path}: size ${peeked.size} exceeds maximum file size ${maxFileSize}`,
       );
       return { difs: [], oversized: true };
     }
     log.debug(
-      `Skipping ${path} for embedded PPDB extraction: size ${peeked.size} exceeds maximum file size ${maxFileSize}`
+      `Skipping ${path} for embedded PPDB extraction: size ${peeked.size} exceeds maximum file size ${maxFileSize}`,
     );
     return { difs: [], oversized: false };
   }
@@ -572,51 +573,59 @@ async function prepareFileDif(
 }
 
 /**
- * Parse an in-memory object buffer into a single {@link PreparedDif} when at
- * least one contained object passes the per-object filters, or `null` when the
+ * Parse an in-memory object buffer into one {@link PreparedDif} per contained
+ * object that passes the per-object filters. Returns an empty array when the
  * buffer is empty, unparseable, or has no matching object. Pure (no I/O); parse
  * failures are logged at debug level.
+ *
+ * Sentry's assemble step rejects a file that holds more than one object, so
+ * each object of a multi-object archive (e.g. each slice of a fat dSYM) is
+ * prepared as its own file under its own debug id, as the legacy `sentry-cli`
+ * does. A single-object file keeps its original bytes.
  *
  * @param displayPath - Path used for naming and logs (an on-disk path or a
  *   synthetic `"<zip>/<entry>"` path).
  * @param content - The object bytes.
  * @param filters - The resolved filter set.
  */
-function matchedDif(
+function matchedDifs(
   displayPath: string,
   content: Buffer,
-  filters: DifFilters
-): PreparedDif | null {
+  filters: DifFilters,
+): PreparedDif[] {
   if (content.length === 0) {
-    return null;
+    return [];
   }
 
-  let archive: DifArchiveInfo;
+  let files: DifObjectFile[];
   try {
-    archive = parseDebugFile(new Uint8Array(content));
+    files = splitDebugFile(new Uint8Array(content));
   } catch (err) {
     log.debug(`Skipping unparseable file: ${displayPath}`, err);
-    return null;
+    return [];
   }
 
-  const matched = archive.objects.filter((obj) =>
-    objectPassesFilters(obj, filters)
-  );
-  if (matched.length === 0) {
-    return null;
+  const difs: PreparedDif[] = [];
+  for (const { object, data } of files) {
+    if (!objectPassesFilters(object, filters)) {
+      continue;
+    }
+    difs.push({
+      path: displayPath,
+      content:
+        files.length === 1
+          ? content
+          : Buffer.from(data.buffer, data.byteOffset, data.byteLength),
+      debugId: object.debugId,
+      objects: [object],
+    });
   }
-
-  return {
-    path: displayPath,
-    content,
-    debugId: selectBundledObject(matched)?.debugId,
-    objects: matched,
-  };
+  return difs;
 }
 
 /**
  * Extract a Portable PDB embedded in a managed PE buffer and return it as a
- * synthetic {@link PreparedDif}, or `null` when there is none, it is filtered
+ * synthetic {@link PreparedDif}, or nothing when there is none, it is filtered
  * out, or it exceeds the size cap.
  *
  * A managed PE's debug info lives entirely in its embedded Portable PDB, so the
@@ -632,7 +641,7 @@ function matchedDif(
  * @param content - The PE object bytes.
  * @param filters - The resolved filter set (applied to the extracted PPDB).
  * @param maxFileSize - Size gate in bytes for the extracted PPDB (`0` disables).
- * @returns The extracted PPDB DIF (or `null`) and whether it was skipped for
+ * @returns The extracted PPDB DIF (if any) and whether it was skipped for
  *   exceeding the size cap while a Portable PDB was a requested type (so the
  *   caller can fold it into the exit-driving oversized count).
  */
@@ -640,17 +649,13 @@ function embeddedPpdbDif(
   displayPath: string,
   content: Buffer,
   filters: DifFilters,
-  maxFileSize: number
-): { dif: PreparedDif | null; oversized: boolean } {
+  maxFileSize: number,
+): { difs: PreparedDif[]; oversized: boolean } {
   // Only PE images can embed a Portable PDB. Cheap-gate on the header so the
   // vast majority of scanned files (ELF/Mach-O/Breakpad/...) skip the full
   // second parse that extraction would otherwise perform on every buffer.
-  const header =
-    content.length > PEEK_HEADER_BYTES
-      ? new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES))
-      : new Uint8Array(content);
-  if (peekFormat(header) !== "pe") {
-    return { dif: null, oversized: false };
+  if (peekBufferFormat(content) !== "pe") {
+    return { difs: [], oversized: false };
   }
   let extracted: ReturnType<typeof extractEmbeddedPpdb>;
   try {
@@ -658,38 +663,44 @@ function embeddedPpdbDif(
   } catch (err) {
     log.debug(
       `Could not extract embedded Portable PDB from ${displayPath}`,
-      err
+      err,
     );
-    return { dif: null, oversized: false };
+    return { difs: [], oversized: false };
   }
   if (!extracted) {
-    return { dif: null, oversized: false };
+    return { difs: [], oversized: false };
   }
   if (maxFileSize > 0 && extracted.ppdb.byteLength > maxFileSize) {
     log.warn(
-      `Skipping embedded Portable PDB from ${displayPath}: size ${extracted.ppdb.byteLength} exceeds maximum file size ${maxFileSize}`
+      `Skipping embedded Portable PDB from ${displayPath}: size ${extracted.ppdb.byteLength} exceeds maximum file size ${maxFileSize}`,
     );
     // Only count toward the oversized total when a Portable PDB is actually a
     // requested type; otherwise it would never have been uploaded anyway, so it
     // must not turn an empty queue into a spurious "files too large" failure.
     return {
-      dif: null,
+      difs: [],
       oversized: formatMatches("portablepdb", filters.formats),
     };
   }
   const ext = extname(displayPath);
   const ppdbPath = `${displayPath.slice(0, displayPath.length - ext.length)}.pdb`;
   return {
-    dif: matchedDif(ppdbPath, Buffer.from(extracted.ppdb), filters),
+    difs: matchedDifs(ppdbPath, Buffer.from(extracted.ppdb), filters),
     oversized: false,
   };
 }
 
+/** Detect the format of an in-memory buffer from its leading header bytes. */
+function peekBufferFormat(content: Buffer): string {
+  return peekFormat(new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES)));
+}
+
 /**
- * Parse an in-memory object buffer into uploadable debug files: the main DIF
- * (when it matches) plus, for managed PE assemblies, a separate Portable PDB
- * DIF extracted from the PE. Shared by the on-disk path ({@link readMatchedDif})
- * and in-memory ZIP entries ({@link difFromCandidateBuffer}).
+ * Parse an in-memory object buffer into uploadable debug files: one main DIF
+ * per matching object (see {@link matchedDifs}) plus, for managed PE
+ * assemblies, a separate Portable PDB DIF extracted from the PE. Shared by the
+ * on-disk path ({@link readMatchedDif}) and in-memory ZIP entries
+ * ({@link difFromCandidateBuffer}).
  *
  * @param displayPath - Path used for naming and logs (an on-disk path or a
  *   synthetic `"<zip>/<entry>"` path).
@@ -703,18 +714,13 @@ function difFromBuffer(
   displayPath: string,
   content: Buffer,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): { difs: PreparedDif[]; oversized: boolean } {
-  const difs: PreparedDif[] = [];
-  const main = matchedDif(displayPath, content, filters);
-  if (main) {
-    difs.push(main);
-  }
   const ppdb = embeddedPpdbDif(displayPath, content, filters, maxFileSize);
-  if (ppdb.dif) {
-    difs.push(ppdb.dif);
-  }
-  return { difs, oversized: ppdb.oversized };
+  return {
+    difs: [...matchedDifs(displayPath, content, filters), ...ppdb.difs],
+    oversized: ppdb.oversized,
+  };
 }
 
 /**
@@ -732,7 +738,7 @@ function difFromBuffer(
 async function readMatchedDif(
   path: string,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   let content: Buffer;
   try {
@@ -763,16 +769,12 @@ function difFromCandidateBuffer(
   displayPath: string,
   content: Buffer,
   filters: DifFilters,
-  maxFileSize: number
+  maxFileSize: number,
 ): PreparedDif[] {
   if (content.length === 0) {
     return [];
   }
-  const header =
-    content.length > PEEK_HEADER_BYTES
-      ? new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES))
-      : new Uint8Array(content);
-  const format = peekFormat(header);
+  const format = peekBufferFormat(content);
   if (format === "unknown") {
     return [];
   }
@@ -810,7 +812,7 @@ async function prepareZipDifs(
   path: string,
   filters: DifFilters,
   maxFileSize: number,
-  maxTotalSize: number
+  maxTotalSize: number,
 ): Promise<PreparedDif[] | null> {
   const zip = await readZipDifEntries(path, { maxFileSize, maxTotalSize });
   if (!zip) {
@@ -819,7 +821,12 @@ async function prepareZipDifs(
   const prepared: PreparedDif[] = [];
   for (const entry of zip.entries) {
     prepared.push(
-      ...difFromCandidateBuffer(entry.path, entry.content, filters, maxFileSize)
+      ...difFromCandidateBuffer(
+        entry.path,
+        entry.content,
+        filters,
+        maxFileSize,
+      ),
     );
   }
   return prepared;

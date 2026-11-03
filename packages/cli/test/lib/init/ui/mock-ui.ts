@@ -122,7 +122,7 @@ export function createMockUI(options: MockUIOptions = {}): {
   });
 
   function takeResponse<K extends MockResponse["kind"]>(
-    kind: K
+    kind: K,
   ): Extract<MockResponse, { kind: K }>["value"] | Cancelled {
     const next = responses.shift();
     if (!next) {
@@ -132,7 +132,7 @@ export function createMockUI(options: MockUIOptions = {}): {
     }
     if (next.kind !== kind) {
       throw new Error(
-        `MockUI: expected next response of kind "${kind}" but found "${next.kind}"`
+        `MockUI: expected next response of kind "${kind}" but found "${next.kind}"`,
       );
     }
     return next.value as Extract<MockResponse, { kind: K }>["value"];

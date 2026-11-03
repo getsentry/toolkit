@@ -25,6 +25,7 @@ import {
   MAX_PAGINATION_PAGES,
   ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
+  paginate,
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
@@ -39,7 +40,7 @@ import { listOrganizations } from "./organizations.js";
  */
 export async function getLatestEvent(
   orgSlug: string,
-  issueId: string
+  issueId: string,
 ): Promise<SentryEvent> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -62,7 +63,7 @@ export async function getLatestEvent(
 export async function getEvent(
   orgSlug: string,
   projectSlug: string,
-  eventId: string
+  eventId: string,
 ): Promise<SentryEvent> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -87,7 +88,7 @@ export async function getEvent(
 export async function listEventAttachments(
   orgSlug: string,
   projectSlug: string,
-  eventId: string
+  eventId: string,
 ): Promise<EventAttachmentDetailsResponse[]> {
   const config = await getOrgSdkConfig(orgSlug);
   const { data } = await autoPaginate(
@@ -110,10 +111,10 @@ export async function listEventAttachments(
       });
       return unwrapPaginatedResult<EventAttachmentDetailsResponse[]>(
         result,
-        "Failed to list event attachments"
+        "Failed to list event attachments",
       );
     },
-    API_MAX_PER_PAGE * MAX_PAGINATION_PAGES + 1
+    API_MAX_PER_PAGE * MAX_PAGINATION_PAGES + 1,
   );
   return data;
 }
@@ -137,7 +138,7 @@ export type ResolvedEvent = {
  */
 export async function resolveEventInOrg(
   orgSlug: string,
-  eventId: string
+  eventId: string,
 ): Promise<ResolvedEvent | null> {
   const config = await getOrgSdkConfig(orgSlug);
 
@@ -183,7 +184,7 @@ export type FindEventAcrossOrgsOptions = {
  */
 export async function findEventAcrossOrgs(
   eventId: string,
-  options?: FindEventAcrossOrgsOptions
+  options?: FindEventAcrossOrgsOptions,
 ): Promise<ResolvedEvent | null> {
   const excludeSet = options?.excludeOrgs
     ? new Set(options.excludeOrgs)
@@ -195,7 +196,7 @@ export async function findEventAcrossOrgs(
 
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
   const results = await Promise.allSettled(
-    orgs.map((org) => limit(() => resolveEventInOrg(org.slug, eventId)))
+    orgs.map((org) => limit(() => resolveEventInOrg(org.slug, eventId))),
   );
 
   // First pass: return the first successful match
@@ -242,21 +243,9 @@ export type ListIssueEventsOptions = {
 /**
  * List events for a specific issue.
  *
- * Uses the SDK's `listOrganizationIssueEvents` endpoint with region-aware routing.
- * When `limit` exceeds {@link API_MAX_PER_PAGE} (100), auto-paginates through
- * multiple API calls to fill the requested limit, bounded by
- * {@link MAX_PAGINATION_PAGES}.
- *
- * Page size is capped at `min(limit, API_MAX_PER_PAGE)` via `per_page`, which
- * Sentry accepts on this route at runtime even though it is absent from the
- * OpenAPI spec. Capping page size keeps the server-issued `nextCursor` aligned
- * to a page boundary, preventing the skip bug where trim + keep-cursor would
- * jump past items.
- *
- * When trimming to `limit`, `nextCursor` is PRESERVED: the events cursor is
- * offset-based, so resuming from it re-includes any trimmed tail rather than
- * skipping it. This prevents both the original skip bug and the stall
- * (drop-cursor) regression.
+ * Uses the SDK's `listOrganizationIssueEvents` endpoint with region-aware routing
+ * and {@link paginate} for limits above one page. `per_page` is accepted on
+ * this route at runtime even though it is absent from the OpenAPI spec.
  *
  * @param orgSlug - Organization slug for region routing
  * @param issueId - Numeric issue ID
@@ -266,18 +255,13 @@ export type ListIssueEventsOptions = {
 export async function listIssueEvents(
   orgSlug: string,
   issueId: string,
-  options: ListIssueEventsOptions = {}
+  options: ListIssueEventsOptions = {},
 ): Promise<PaginatedResponse<IssueEvent[]>> {
   const { limit = 25, query, full, cursor, statsPeriod, start, end } = options;
 
   const config = await getOrgSdkConfig(orgSlug);
-  const perPage = Math.min(limit, API_MAX_PER_PAGE);
 
-  const allEvents: IssueEvent[] = [];
-  let currentCursor = cursor;
-  let nextCursor: string | undefined;
-
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
+  return await paginate({ limit, cursor }, async (perPage, pageCursor) => {
     const result = await listOrganizationIssueEvents({
       ...config,
       path: {
@@ -287,7 +271,7 @@ export async function listIssueEvents(
       query: {
         query: query || undefined,
         full,
-        cursor: currentCursor,
+        cursor: pageCursor,
         statsPeriod,
         start,
         end,
@@ -296,25 +280,9 @@ export async function listIssueEvents(
         per_page: perPage,
       } as Parameters<typeof listOrganizationIssueEvents>[0]["query"],
     });
-
-    const paginated = unwrapPaginatedResult(
+    return unwrapPaginatedResult<IssueEvent[]>(
       result,
-      "Failed to list issue events"
+      "Failed to list issue events",
     );
-
-    allEvents.push(...(paginated.data as IssueEvent[]));
-    nextCursor = paginated.nextCursor;
-
-    if (allEvents.length >= limit || !nextCursor) {
-      break;
-    }
-    currentCursor = nextCursor;
-  }
-
-  // Trim to limit but PRESERVE nextCursor. The events cursor is offset-based,
-  // so resuming from it re-includes any trimmed tail rather than skipping it.
-  // Preserving the cursor lets `-c next` advance; dropping it would strand all
-  // events past the first page.
-  const data = allEvents.length > limit ? allEvents.slice(0, limit) : allEvents;
-  return { data, nextCursor };
+  });
 }

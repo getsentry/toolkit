@@ -22,7 +22,7 @@ const ERROR_SPLIT_RE = /:\s+/;
 export function formatFailureReport(
   message: string,
   logs: readonly { severity: string; text: string }[],
-  feedbackHint?: string
+  feedbackHint?: string,
 ): string {
   const icon = chalk.hex(REPORT_ERROR)("\u2716");
   const lines: string[] = [
@@ -32,7 +32,7 @@ export function formatFailureReport(
     (entry) =>
       entry.severity === "error" &&
       entry.text !== message &&
-      entry.text !== "Failed"
+      entry.text !== "Failed",
   );
   if (errorLogs.length > 0) {
     lines.push("");
@@ -47,14 +47,14 @@ export function formatFailureReport(
 export function formatSuccessReport(
   message: string,
   summary: WizardSummary | undefined,
-  feedbackHint?: string
+  feedbackHint?: string,
 ): string {
   const successIcon = chalk.hex(REPORT_SUCCESS)("✔");
   const lines: string[] = ["", `${successIcon}  ${chalk.bold(message)}`];
   if (summary && summary.fields.length > 0) {
     lines.push("");
     const labelWidth = Math.max(
-      ...summary.fields.map((field) => field.label.length)
+      ...summary.fields.map((field) => field.label.length),
     );
     for (const field of summary.fields) {
       const label = chalk.hex(REPORT_MUTED)(field.label.padEnd(labelWidth));
@@ -94,7 +94,7 @@ export function formatSuccessReport(
  * to your errors (no key hints, since there's nothing to press anymore).
  */
 export function formatSuccessExitLine(
-  summary: WizardSummary | undefined
+  summary: WizardSummary | undefined,
 ): string {
   const completion = summary?.completion;
   const project = completion?.projectName ?? "your project";

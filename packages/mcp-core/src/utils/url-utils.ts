@@ -1,3 +1,5 @@
+import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
+import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import type { SentryProtocol } from "../types";
 import {
   type EventsDataset,
@@ -5,17 +7,13 @@ import {
   isProfilesDataset,
 } from "./events-datasets";
 
-/**
- * Recognizes Sentry-owned hosts, including single-tenant deployments.
- */
-export function isSentryHost(host: string): boolean {
-  return host === "sentry.io" || host.endsWith(".sentry.io");
-}
-
 /** Hosts that use the public SaaS control host and organization web subdomains. */
 export function isPublicSentryHost(host: string): boolean {
   return isSentryHost(host) && !host.endsWith(".my.sentry.io");
 }
+
+// The Explore page's `mode` URL parameter.
+export type ExploreMode = "aggregate" | "samples";
 
 export interface TraceMetricIdentifier {
   name: string;
@@ -61,9 +59,9 @@ function deriveSelectedFields(
     return fields;
   }
 
-  return Array.from(
-    new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
-  );
+  return [
+    ...new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
+  ];
 }
 
 function getSentryWebBaseUrl(
@@ -158,7 +156,7 @@ function dedupeTraceMetrics(
 function buildMetricQueryState(params: {
   metric: TraceMetricIdentifier;
   query: string;
-  mode: "aggregate" | "samples";
+  mode: ExploreMode;
   yAxes: string[];
   groupByFields?: string[];
   aggregateSortBys?: Array<{ field: string; kind: "asc" | "desc" }>;
@@ -593,6 +591,21 @@ export function getTraceUrl(
   );
 }
 
+export function getLogUrl(
+  host: string,
+  organizationSlug: string,
+  logId: string,
+  protocol: SentryProtocol = "https",
+): string {
+  const urlParams = new URLSearchParams({ project: "-1", logsPinned: logId });
+  return getSentryWebBaseUrl(
+    host,
+    organizationSlug,
+    `/explore/logs/?${urlParams.toString()}`,
+    protocol,
+  );
+}
+
 /**
  * Generates a Sentry replay URL.
  * @param host The Sentry host (may include regional subdomain for API access)
@@ -778,12 +791,11 @@ export function getEventsExplorerUrl(
   protocol: SentryProtocol = "https",
 ): string {
   if (isMetricsDataset(dataset)) {
+    const derived = fields ? getColumnsAndAggregates(fields) : undefined;
     const derivedAggregateFunctions =
-      explorerOptions?.aggregateFunctions ??
-      fields?.filter((field) => field.includes("(") && field.includes(")"));
+      explorerOptions?.aggregateFunctions ?? derived?.aggregates;
     const derivedGroupByFields =
-      explorerOptions?.groupByFields ??
-      fields?.filter((field) => !field.includes("(") && !field.includes(")"));
+      explorerOptions?.groupByFields ?? derived?.columns;
 
     return getTraceMetricsExploreUrl(
       host,
@@ -800,12 +812,11 @@ export function getEventsExplorerUrl(
   }
 
   if (isProfilesDataset(dataset)) {
+    const derived = fields ? getColumnsAndAggregates(fields) : undefined;
     const derivedAggregateFunctions =
-      explorerOptions?.aggregateFunctions ??
-      fields?.filter((field) => field.includes("(") && field.includes(")"));
+      explorerOptions?.aggregateFunctions ?? derived?.aggregates;
     const derivedGroupByFields =
-      explorerOptions?.groupByFields ??
-      fields?.filter((field) => !field.includes("(") && !field.includes(")"));
+      explorerOptions?.groupByFields ?? derived?.columns;
 
     return getProfilingExplorerUrl(
       host,

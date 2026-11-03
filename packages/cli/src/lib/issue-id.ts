@@ -10,7 +10,7 @@
  * - GitHub-style format: "org/project#PROJECT-ABC", "project#ABC" (the "#"
  *   replaces the final slash; handled in arg-parsing.ts)
  *
- * Note: parseIssueArg is in arg-parsing.ts for shared logic with org/project parsing.
+ * Note: issue arguments are parsed in issue-arguments.ts.
  */
 
 /** Pattern to detect short IDs (contain letters, vs numeric IDs which are just digits) */
@@ -53,7 +53,7 @@ export function isShortSuffix(input: string): boolean {
  * @returns Parsed alias (lowercase) and suffix (uppercase), or null
  */
 export function parseAliasSuffix(
-  input: string
+  input: string,
 ): { alias: string; suffix: string } | null {
   const match = ALIAS_SUFFIX_PATTERN.exec(input);
   if (!(match?.[1] && match[2])) {
@@ -72,7 +72,7 @@ export function parseAliasSuffix(
  */
 export function expandToFullShortId(
   suffix: string,
-  projectSlug: string
+  projectSlug: string,
 ): string {
   return `${projectSlug.toUpperCase()}-${suffix.toUpperCase()}`;
 }

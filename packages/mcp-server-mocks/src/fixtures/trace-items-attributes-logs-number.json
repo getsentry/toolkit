@@ -18,5 +18,13 @@
   {
     "key": "custom.bytes",
     "name": "Custom Bytes"
+  },
+  {
+    "key": "worker.queue_wait",
+    "name": "worker.queue_wait"
+  },
+  {
+    "key": "worker.queue_wait_time",
+    "name": "worker.queue_wait_time"
   }
 ]

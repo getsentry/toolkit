@@ -48,7 +48,7 @@ describe("property: shouldAutoCompact", () => {
         setTermHeight(undefined);
         expect(shouldAutoCompact(rowCount)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -58,7 +58,7 @@ describe("property: shouldAutoCompact", () => {
         setTermHeight(0);
         expect(shouldAutoCompact(rowCount)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -69,7 +69,7 @@ describe("property: shouldAutoCompact", () => {
         // With 0 rows, estimated = OVERHEAD. Compact iff OVERHEAD > termHeight.
         expect(shouldAutoCompact(0)).toBe(OVERHEAD > termHeight);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -83,9 +83,9 @@ describe("property: shouldAutoCompact", () => {
             setTermHeight(termHeight);
             expect(shouldAutoCompact(rowCount)).toBe(true);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -99,9 +99,9 @@ describe("property: shouldAutoCompact", () => {
             setTermHeight(termHeight);
             expect(shouldAutoCompact(rowCount)).toBe(false);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -119,9 +119,9 @@ describe("property: shouldAutoCompact", () => {
           if (compactSmall) {
             expect(compactLarge).toBe(true);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -134,9 +134,9 @@ describe("property: shouldAutoCompact", () => {
           const result1 = shouldAutoCompact(rowCount);
           const result2 = shouldAutoCompact(rowCount);
           expect(result1).toBe(result2);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

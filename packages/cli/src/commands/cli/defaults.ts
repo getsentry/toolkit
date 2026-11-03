@@ -14,34 +14,34 @@
 import { resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
 import { readCaCertFile } from "../../lib/custom-ca.js";
 import { parseCustomHeaders } from "../../lib/custom-headers.js";
 import {
   clearAllDefaults,
+  getOnOffPreference,
+  ON_OFF_PREFERENCES,
+  type OnOffPreference,
+  setOnOffPreference,
   type DefaultsState,
-  getAgentSkillsPreference,
   getAllDefaults,
   getDefaultCaCert,
   getDefaultHeaders,
   getDefaultOrganization,
   getDefaultProject,
   getDefaultUrl,
-  getGraphicsPreference,
-  getTelemetryPreference,
-  setAgentSkillsPreference,
   setDefaultCaCert,
   setDefaultHeaders,
   setDefaultOrganization,
   setDefaultProject,
   setDefaultUrl,
-  setGraphicsPreference,
-  setTelemetryPreference,
 } from "../../lib/db/defaults.js";
 import { ValidationError } from "../../lib/errors.js";
 import { formatDefaultsResult } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   FORCE_FLAG,
   guardNonInteractive,
@@ -50,6 +50,7 @@ import {
 } from "../../lib/mutate-command.js";
 import { parseBoolValue } from "../../lib/parse-bool.js";
 import { computeTelemetryEffective } from "../../lib/telemetry.js";
+import { resetTipsCache } from "../../lib/tips.js";
 
 // ---------------------------------------------------------------------------
 // Defaults registry — maps canonical keys to get/set/clear handlers
@@ -59,9 +60,7 @@ import { computeTelemetryEffective } from "../../lib/telemetry.js";
 type DefaultKey =
   | "organization"
   | "project"
-  | "telemetry"
-  | "agent-skills"
-  | "graphics"
+  | OnOffPreference
   | "url"
   | "headers"
   | "ca-cert";
@@ -85,6 +84,42 @@ function validateSlug(value: string, label: string): string {
   return trimmed;
 }
 
+/** Side effects to run after an on/off preference changes. */
+const ON_OFF_CHANGE_HOOKS: Partial<Record<OnOffPreference, () => void>> = {
+  tips: resetTipsCache,
+};
+
+/**
+ * Build the handler for an on/off preference. Accepts on/off, yes/no,
+ * true/false, or 1/0 and reports the stored value as "on", "off", or null.
+ */
+function onOffHandler(name: OnOffPreference): DefaultHandler {
+  const store = (enabled: boolean | null) => {
+    setOnOffPreference(name, enabled);
+    ON_OFF_CHANGE_HOOKS[name]?.();
+  };
+  return {
+    get: () => {
+      const pref = getOnOffPreference(name);
+      if (pref === undefined) {
+        return null;
+      }
+      return pref ? "on" : "off";
+    },
+    set: (value) => {
+      const parsed = parseBoolValue(value);
+      if (parsed === null) {
+        throw new ValidationError(
+          `Invalid ${name} value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
+          name,
+        );
+      }
+      store(parsed);
+    },
+    clear: () => store(null),
+  };
+}
+
 /** Registry of all supported defaults with their handlers */
 const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
   organization: {
@@ -97,75 +132,9 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
     set: (value) => setDefaultProject(validateSlug(value, "Project")),
     clear: () => setDefaultProject(null),
   },
-  telemetry: {
-    get: () => {
-      const pref = getTelemetryPreference();
-      if (pref === true) {
-        return "on";
-      }
-      if (pref === false) {
-        return "off";
-      }
-      return null;
-    },
-    set: (value) => {
-      const parsed = parseBoolValue(value);
-      if (parsed === null) {
-        throw new ValidationError(
-          `Invalid telemetry value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "telemetry"
-        );
-      }
-      setTelemetryPreference(parsed);
-    },
-    clear: () => setTelemetryPreference(null),
-  },
-  "agent-skills": {
-    get: () => {
-      const pref = getAgentSkillsPreference();
-      if (pref === true) {
-        return "on";
-      }
-      if (pref === false) {
-        return "off";
-      }
-      return null;
-    },
-    set: (value) => {
-      const parsed = parseBoolValue(value);
-      if (parsed === null) {
-        throw new ValidationError(
-          `Invalid agent-skills value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "agent-skills"
-        );
-      }
-      setAgentSkillsPreference(parsed);
-    },
-    clear: () => setAgentSkillsPreference(null),
-  },
-  graphics: {
-    get: () => {
-      const pref = getGraphicsPreference();
-      if (pref === true) {
-        return "on";
-      }
-      if (pref === false) {
-        return "off";
-      }
-      return null;
-    },
-    set: (value) => {
-      const parsed = parseBoolValue(value);
-      if (parsed === null) {
-        throw new ValidationError(
-          `Invalid graphics value: '${value}'. Use on/off, yes/no, true/false, or 1/0.`,
-          "graphics"
-        );
-      }
-      setGraphicsPreference(parsed);
-    },
-    clear: () => setGraphicsPreference(null),
-  },
+  ...(Object.fromEntries(
+    ON_OFF_PREFERENCES.map((name) => [name, onOffHandler(name)]),
+  ) as Record<OnOffPreference, DefaultHandler>),
   url: {
     get: getDefaultUrl,
     set: (value) => {
@@ -178,7 +147,7 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       } catch {
         throw new ValidationError(
           `Invalid URL: '${value}'. Provide a valid URL (e.g., https://sentry.example.com).`,
-          "url"
+          "url",
         );
       }
       setDefaultUrl(normalized);
@@ -201,7 +170,7 @@ const DEFAULTS_REGISTRY: Record<DefaultKey, DefaultHandler> = {
       if (!trimmed) {
         throw new ValidationError(
           "CA certificate path cannot be empty.",
-          "ca-cert"
+          "ca-cert",
         );
       }
       const resolved = resolve(trimmed);
@@ -226,6 +195,14 @@ const KEY_ALIASES: Partial<Record<string, DefaultKey>> = {
   cert: "ca-cert",
   "ca-certs": "ca-cert",
 };
+
+/**
+ * Words that mean "show all defaults" when passed as the only positional.
+ *
+ * Other commands use `list` subcommands, so users and agents often try
+ * `sentry cli defaults list`. Treat these like running with no arguments.
+ */
+const SHOW_ALL_VERBS = new Set(["list", "ls", "show"]);
 
 /** Resolve a user-provided key string to a canonical key, or null if unknown */
 function normalizeKey(key: string): DefaultKey | null {
@@ -273,20 +250,6 @@ export const defaultsCommand = buildCommand({
       "View and manage persistent CLI default settings.\n\n" +
       "With no arguments, shows all current defaults. Pass a key and value\n" +
       "to set a default, or use `--clear` to remove defaults.\n\n" +
-      "## Examples\n\n" +
-      "```\n" +
-      "sentry cli defaults                    # Show all defaults\n" +
-      "sentry cli defaults org my-org         # Set default organization\n" +
-      "sentry cli defaults project my-proj    # Set default project\n" +
-      "sentry cli defaults telemetry off      # Disable telemetry\n" +
-      "sentry cli defaults agent-skills off   # Stop installing agent skills on upgrade\n" +
-      "sentry cli defaults graphics off       # Disable inline terminal images\n" +
-      "sentry cli defaults url https://...    # Set Sentry URL (self-hosted)\n" +
-      "sentry cli defaults headers 'X-IAP: t'  # Set custom headers (self-hosted)\n" +
-      "sentry cli defaults ca-cert /path/to/ca.pem  # Trust a custom CA certificate\n" +
-      "sentry cli defaults org --clear        # Clear a specific default\n" +
-      "sentry cli defaults --clear --yes      # Clear all defaults\n" +
-      "```\n\n" +
       "## Recognized keys\n\n" +
       "| Key | Description |\n" +
       "|-----|------------|\n" +
@@ -295,9 +258,66 @@ export const defaultsCommand = buildCommand({
       "| `telemetry` | Telemetry preference (on/off, yes/no, true/false, 1/0) |\n" +
       "| `agent-skills` | Install agent skills on setup/upgrade (on/off, yes/no, true/false, 1/0) |\n" +
       "| `graphics` | Render images inline on capable terminals (on/off, yes/no, true/false, 1/0) |\n" +
+      "| `tips` | Show `Tip:` hints in command output (on/off, yes/no, true/false, 1/0). `SENTRY_DISABLE_TIPS` overrides it at runtime |\n" +
       "| `url` | Sentry instance URL (for self-hosted installations) |\n" +
       "| `headers` | Custom HTTP headers for self-hosted proxies (semicolon-separated `Name: Value`) |\n" +
       "| `ca-cert` | Path to PEM file with custom CA certificates (for corporate proxies) |",
+    examples: [
+      {
+        description: "Show all current defaults",
+        command: "sentry cli defaults",
+      },
+      {
+        description: "Same as above (aliases: ls, show)",
+        command: "sentry cli defaults list",
+      },
+      {
+        description: "Set the default organization",
+        command: "sentry cli defaults org my-org",
+      },
+      {
+        description: "Set the default project",
+        command: "sentry cli defaults project my-project",
+      },
+      {
+        description: "Set the default Sentry URL (self-hosted)",
+        command: "sentry cli defaults url https://sentry.example.com",
+      },
+      {
+        description:
+          "Set custom HTTP headers (self-hosted, e.g. for IAP/proxies)",
+        command: 'sentry cli defaults headers "X-IAP: token"',
+      },
+      {
+        description:
+          "Set a custom CA certificate (self-hosted, behind a TLS proxy)",
+        command: "sentry cli defaults ca-cert /path/to/ca.pem",
+      },
+      {
+        description: "Disable telemetry",
+        command: "sentry cli defaults telemetry off",
+      },
+      {
+        description: "Stop installing agent skills on upgrade",
+        command: "sentry cli defaults agent-skills off",
+      },
+      {
+        description: "Disable inline terminal images",
+        command: "sentry cli defaults graphics off",
+      },
+      {
+        description: "Hide Tip: hints in command output",
+        command: "sentry cli defaults tips off",
+      },
+      {
+        description: "Clear a single default",
+        command: "sentry cli defaults org --clear",
+      },
+      {
+        description: "Clear all defaults without prompting",
+        command: "sentry cli defaults --clear --yes",
+      },
+    ],
   },
   output: {
     human: formatDefaultsResult,
@@ -308,7 +328,7 @@ export const defaultsCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Setting key and optional value",
-        parse: String,
+        parse: choiceParser(Object.keys(DEFAULTS_REGISTRY)),
         placeholder: "key value",
       },
     },
@@ -324,7 +344,7 @@ export const defaultsCommand = buildCommand({
     },
     aliases: { y: "yes", f: "force" },
   },
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequential command dispatch
+  // sequential command dispatch
   async *func(
     this: SentryContext,
     flags: {
@@ -334,15 +354,26 @@ export const defaultsCommand = buildCommand({
     },
     ...args: string[]
   ) {
-    const [keyArg, valueArg, ...rest] = args;
+    const [rawKeyArg, valueArg, ...rest] = args;
 
     // Too many arguments
     if (rest.length > 0) {
       throw new ValidationError(
         "Too many arguments. Usage: sentry cli defaults [<key> [<value>]]",
-        "args"
+        "args",
       );
     }
+
+    // `list` / `ls` / `show` are aliases for showing all defaults
+    const isShowVerb =
+      rawKeyArg !== undefined && SHOW_ALL_VERBS.has(rawKeyArg.toLowerCase());
+    if (isShowVerb && (valueArg !== undefined || flags.clear)) {
+      throw new ValidationError(
+        `'${rawKeyArg}' shows all defaults and takes no value or --clear. Use 'sentry cli defaults' to show all, or 'sentry cli defaults --clear' to clear all.`,
+        "args",
+      );
+    }
+    const keyArg = isShowVerb ? undefined : rawKeyArg;
 
     // No key specified — show all or clear all
     if (!keyArg) {
@@ -350,15 +381,16 @@ export const defaultsCommand = buildCommand({
         // Clear all defaults (with confirmation)
         guardNonInteractive(flags);
         if (!isConfirmationBypassed(flags)) {
-          const confirmed = await log.prompt(
-            "This will clear all defaults (organization, project, telemetry, URL, headers, ca-cert, agent-skills, graphics). Continue?",
-            { type: "confirm" }
+          const confirmed = await prompt(
+            `This will clear all defaults (${Object.keys(DEFAULTS_REGISTRY).join(", ")}). Continue?`,
+            { type: "confirm" },
           );
           if (confirmed !== true) {
             return { hint: "Cancelled." };
           }
         }
         clearAllDefaults();
+        resetTipsCache();
         yield new CommandOutput({
           action: "clear-all" as const,
           defaults: getAllDefaults(),
@@ -384,7 +416,7 @@ export const defaultsCommand = buildCommand({
       ];
       throw new ValidationError(
         `Unknown default '${keyArg}'. Valid keys: ${validKeys.join(", ")}`,
-        "key"
+        "key",
       );
     }
 
@@ -395,7 +427,7 @@ export const defaultsCommand = buildCommand({
       if (valueArg !== undefined) {
         throw new ValidationError(
           `Cannot use --clear with a value. Use either 'sentry cli defaults ${keyArg} --clear' or 'sentry cli defaults ${keyArg} <value>'.`,
-          "args"
+          "args",
         );
       }
       const previous = handler.get();
@@ -438,7 +470,7 @@ export const defaultsCommand = buildCommand({
         effective.enabled !== (newValue === "on")
       ) {
         log.warn(
-          `Note: ${effective.source.slice("env:".length)} environment variable overrides this preference.`
+          `Note: ${effective.source.slice("env:".length)} environment variable overrides this preference.`,
         );
       }
     }

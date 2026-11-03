@@ -39,7 +39,7 @@ const SHELL_FEATURES_RE = /^[A-Za-z_]\w*=\S|&&|\|\||[|><;$"'`]/;
  * @returns The detected command, or null if nothing was found
  */
 export async function detectDevCommand(
-  cwd: string
+  cwd: string,
 ): Promise<DetectedCommand | null> {
   const result =
     (await tryPackageJson(cwd)) ??
@@ -100,9 +100,9 @@ async function tryPackageJson(cwd: string): Promise<DetectedCommand | null> {
 async function tryPythonFile(
   cwd: string,
   filename: string,
-  args: string[]
+  args: string[],
 ): Promise<DetectedCommand | null> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await access(join(cwd, filename));
     return { args, source: filename };
@@ -113,7 +113,7 @@ async function tryPythonFile(
 
 /** Check for go.mod and return `go run .` */
 async function tryGoMod(cwd: string): Promise<DetectedCommand | null> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await access(join(cwd, "go.mod"));
     return { args: ["go", "run", "."], source: "go.mod" };
@@ -125,7 +125,7 @@ async function tryGoMod(cwd: string): Promise<DetectedCommand | null> {
 /** Check for docker-compose.yml or compose.yml. */
 async function tryDockerCompose(cwd: string): Promise<DetectedCommand | null> {
   for (const filename of ["docker-compose.yml", "compose.yml"]) {
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       await access(join(cwd, filename));
       return { args: ["docker", "compose", "up"], source: filename };

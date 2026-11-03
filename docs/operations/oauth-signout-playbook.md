@@ -26,19 +26,19 @@ MCP client ──(tool call)──> /mcp ──> mcp-handler ──> tool handle
 
 ## Failure modes
 
-| Mode | Trigger | Currently visible in telemetry | Detected by |
-|---|---|---|---|
-| **Natural 30d expiry** | Upstream `expires_at` passes | Yes | Probe path in `tokenExchangeCallback` → `upstream_rejected` |
-| **Premature Sentry-side invalidation (SSO / org / password / admin)** | Sentry revokes before `expires_at` | Yes | Tool call surfaces 401 → `app.access.grant.revoked_reason:upstream_rejected_in_use` + grant revoked via `onUpstreamUnauthorized` callback |
-| **Stale grants from before `refreshToken` was stored in props** | Old grants from pre-#537 deploys | Yes | `mcp-handler` → `app.access.grant.revoked_reason:stale_props_no_refresh` |
-| **Client-side state loss (DCR state reset, fresh install, reinstall)** | Client drops its stored `client_id`/`refresh_token` | Indirectly | High `/oauth/register` volume and `register:callback` ratio per `app.client.family` |
-| **Invalid redirect URI at authorize** | Client sends an `redirect_uri` that's not registered | Yes | Log `OAuth authorization failed: Invalid redirect URI` with `clientId`/`redirectUri`/`registeredUris`/`clientName` |
-| **Upstream probe transient (5xx / rate limit / network)** | Sentry side instability | Yes | `app.access.refresh.outcome:verification_indeterminate` with `app.access.probe.reason` (does not force sign-out) |
-| **Same-user concurrent session interference** | Another session of the same user re-authorizes | Resolved by passing `revokeExistingGrants: false` — see Gap #4 below | n/a after fix |
+| Mode                                                                   | Trigger                                              | Currently visible in telemetry                                       | Detected by                                                                                                                               |
+| ---------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Natural 30d expiry**                                                 | Upstream `expires_at` passes                         | Yes                                                                  | Probe path in `tokenExchangeCallback` → `upstream_rejected`                                                                               |
+| **Premature Sentry-side invalidation (SSO / org / password / admin)**  | Sentry revokes before `expires_at`                   | Yes                                                                  | Tool call surfaces 401 → `app.access.grant.revoked_reason:upstream_rejected_in_use` + grant revoked via `onUpstreamUnauthorized` callback |
+| **Stale grants from before `refreshToken` was stored in props**        | Old grants from pre-#537 deploys                     | Yes                                                                  | `mcp-handler` → `app.access.grant.revoked_reason:stale_props_no_refresh`                                                                  |
+| **Client-side state loss (DCR state reset, fresh install, reinstall)** | Client drops its stored `client_id`/`refresh_token`  | Indirectly                                                           | High `/oauth/register` volume and `register:callback` ratio per `app.client.family`                                                       |
+| **Invalid redirect URI at authorize**                                  | Client sends an `redirect_uri` that's not registered | Yes                                                                  | Log `OAuth authorization failed: Invalid redirect URI` with `clientId`/`redirectUri`/`registeredUris`/`clientName`                        |
+| **Upstream probe transient (5xx / rate limit / network)**              | Sentry side instability                              | Yes                                                                  | `app.access.refresh.outcome:verification_indeterminate` with `app.access.probe.reason` (does not force sign-out)                          |
+| **Same-user concurrent session interference**                          | Another session of the same user re-authorizes       | Resolved by passing `revokeExistingGrants: false` — see Gap #4 below | n/a after fix                                                                                                                             |
 
 ## Telemetry surface
 
-All metrics live in the `mcp-server` project on Sentry. Attribute *keys* avoid sensitive substrings (`auth`/`oauth`, `token`, `bearer`, `credentials`) via `app.access.*`, and values deliberately avoid those same substrings, because Sentry's default PII scrubber replaces matching keys/values with `[Filtered]` at ingest (see PR #916 and #1219).
+All metrics live in the `mcp-server` project on Sentry. Attribute _keys_ avoid sensitive substrings (`auth`/`oauth`, `token`, `bearer`, `credentials`) via `app.access.*`, and values deliberately avoid those same substrings, because Sentry's default PII scrubber replaces matching keys/values with `[Filtered]` at ingest (see PR #916 and #1219).
 
 ### `app.oauth.token_exchange` (counter)
 
@@ -52,7 +52,7 @@ Fired for every `grant_type=refresh_token` request. Splits by `app.access.refres
 Attributes:
 
 - `app.access.refresh.outcome` — see above
-- `app.client.family` — bucketed User-Agent (`claude-code`, `cursor`, `codex`, `copilot`, `claude-desktop`, `opencode`, `reactor-netty`, `java-http-client`, `go-http-client`, `python`, `bun`, `node`, `other`, `unknown`)
+- `app.client.family` — bucketed User-Agent (`claude-code`, `cursor`, `codex`, `copilot`, `claude`, `opencode`, `reactor-netty`, `java-http-client`, `go-http-client`, `python`, `bun`, `node`, `other`, `unknown`)
 - `app.access.grant.shape` — currently always `refreshable`
 - `app.access.grant.age_bucket` — elapsed time since the MCP grant was created (`lt_1h`, `1h_6h`, `6h_1d`, `1d_7d`, `7d_14d`, `14d_30d`, `gte_30d`, `future`, `unknown`)
 - `app.access.upstream.expires_in_bucket` — remaining time before the original upstream Sentry expiry (`expired`, `lt_1h`, `1h_1d`, `1d_7d`, `7d_14d`, `14d_30d`, `gte_30d`, `unknown`)
@@ -197,7 +197,7 @@ Fixed alongside Gap #1. `ApiAuthenticationError` now propagates unwrapped and tr
 
 ### Gap #4 — Same-user concurrent session interference — **closed**
 
-`workers-oauth-provider`'s `completeAuthorization` defaulted to revoking every existing grant for `(userId, clientId)` whenever a new authorization completed. Because Claude Code persists its DCR `client_id` across processes (e.g., across project folders, or after an update triggers re-auth in one session), one process re-authorizing would silently invalidate every other active session for the same user. The affected sessions saw 401s from the OAuth library on their next `/mcp` request — *before* reaching our handler — so no `grant_revoked` metric ever fired. See issue #924.
+`workers-oauth-provider`'s `completeAuthorization` defaulted to revoking every existing grant for `(userId, clientId)` whenever a new authorization completed. Because Claude Code persists its DCR `client_id` across processes (e.g., across project folders, or after an update triggers re-auth in one session), one process re-authorizing would silently invalidate every other active session for the same user. The affected sessions saw 401s from the OAuth library on their next `/mcp` request — _before_ reaching our handler — so no `grant_revoked` metric ever fired. See issue #924.
 
 We now pass `revokeExistingGrants: false` to `completeAuthorization`. Multiple grants for the same `(userId, clientId)` coexist; each lives until its own `refreshTokenTTL` (30d) or an explicit revoke. This matches how mainstream OAuth servers (Google, GitHub, Auth0, etc.) behave; the library's prior default was an unusual policy.
 

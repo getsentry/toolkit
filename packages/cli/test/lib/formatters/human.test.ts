@@ -22,22 +22,13 @@ import {
   substatusLabel,
   writeIssueTable,
 } from "../../../src/lib/formatters/human.js";
+import { stripColorTags } from "../../../src/lib/formatters/markdown.js";
+import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
 import type { SentryIssue } from "../../../src/types/index.js";
 
-// Helper to strip ANSI codes for content testing
-function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
-}
-
-/** Strip ANSI escape codes and color tags for content testing. */
+/** Normalize styling for text assertions; this is not HTML sanitization. */
 function stripFormatting(s: string): string {
-  return (
-    s
-      .replace(/<\/?[a-z]+>/g, "")
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI codes use control chars
-      .replace(/\x1b\[[0-9;]*m/g, "")
-  );
+  return stripAnsi(stripColorTags(s));
 }
 
 describe("formatShortId edge cases", () => {
@@ -47,7 +38,7 @@ describe("formatShortId edge cases", () => {
 
   test("handles undefined options", () => {
     expect(stripFormatting(formatShortId("CRAFT-G", undefined))).toBe(
-      "CRAFT-G"
+      "CRAFT-G",
     );
   });
 
@@ -457,7 +448,7 @@ describe("formatIssueSubtitle", () => {
 
   test("returns value when present", () => {
     expect(formatIssueSubtitle({ value: "Some error message" })).toBe(
-      "Some error message"
+      "Some error message",
     );
   });
 
@@ -475,7 +466,7 @@ describe("formatIssueSubtitle", () => {
 
   test("falls back to type + function", () => {
     expect(
-      formatIssueSubtitle({ type: "TypeError", function: "handleClick" })
+      formatIssueSubtitle({ type: "TypeError", function: "handleClick" }),
     ).toBe("TypeError in handleClick");
   });
 
@@ -489,7 +480,7 @@ describe("formatIssueSubtitle", () => {
         value: "Error msg",
         type: "TypeError",
         function: "fn",
-      })
+      }),
     ).toBe("Error msg");
   });
 });
@@ -646,7 +637,7 @@ describe("formatProjectCreated", () => {
 
   test("omits DSN row when null", () => {
     const result = stripAnsi(
-      formatProjectCreated({ ...baseResult, dsn: null })
+      formatProjectCreated({ ...baseResult, dsn: null }),
     );
     expect(result).not.toContain("DSN");
   });
@@ -661,7 +652,7 @@ describe("formatProjectCreated", () => {
           slug: "my-project-1",
         } as ProjectCreatedResult["project"],
         expectedSlug: "my-project",
-      })
+      }),
     );
     expect(result).toContain("my-project-1");
     expect(result).toContain("already taken");
@@ -669,7 +660,7 @@ describe("formatProjectCreated", () => {
 
   test("shows auto-created team note", () => {
     const result = stripAnsi(
-      formatProjectCreated({ ...baseResult, teamSource: "auto-created" })
+      formatProjectCreated({ ...baseResult, teamSource: "auto-created" }),
     );
     expect(result).toContain("Created team");
     expect(result).toContain("my-team");
@@ -677,7 +668,7 @@ describe("formatProjectCreated", () => {
 
   test("shows auto-selected team note", () => {
     const result = stripAnsi(
-      formatProjectCreated({ ...baseResult, teamSource: "auto-selected" })
+      formatProjectCreated({ ...baseResult, teamSource: "auto-selected" }),
     );
     expect(result).toContain("Using team");
     expect(result).toContain("sentry team list");
@@ -691,7 +682,7 @@ describe("formatProjectCreated", () => {
           ...baseResult.project,
           platform: "",
         } as ProjectCreatedResult["project"],
-      })
+      }),
     );
     expect(result).toContain("javascript");
   });
@@ -709,7 +700,7 @@ describe("formatDashboardCreated", () => {
         id: "42",
         title: "My Dashboard",
         url: "https://acme.sentry.io/dashboard/42/",
-      })
+      }),
     );
     expect(result).toContain("My Dashboard");
     expect(result).toContain("42");
@@ -722,7 +713,7 @@ describe("formatDashboardCreated", () => {
         id: "1",
         title: "Dash | with * special",
         url: "https://acme.sentry.io/dashboard/1/",
-      })
+      }),
     );
     expect(result).toContain("Dash");
     expect(result).toContain("special");
@@ -880,7 +871,7 @@ describe("formatStatusIcon", () => {
 
   test("resolvedInNextRelease shows green icon", () => {
     expect(
-      stripFormatting(formatStatusIcon("resolvedInNextRelease"))
+      stripFormatting(formatStatusIcon("resolvedInNextRelease")),
     ).toContain("✓");
   });
 
@@ -896,13 +887,13 @@ describe("formatStatusIcon", () => {
 describe("formatStatusLabel", () => {
   test("resolved → Resolved label", () => {
     expect(stripFormatting(formatStatusLabel("resolved"))).toContain(
-      "Resolved"
+      "Resolved",
     );
   });
 
   test("resolvedInNextRelease → Resolved in Next Release label", () => {
     expect(
-      stripFormatting(formatStatusLabel("resolvedInNextRelease"))
+      stripFormatting(formatStatusLabel("resolvedInNextRelease")),
     ).toContain("Resolved in Next Release");
   });
 

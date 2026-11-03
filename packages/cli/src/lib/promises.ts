@@ -30,7 +30,7 @@
  */
 export function anyTrue<T>(
   items: readonly T[],
-  predicate: (item: T) => Promise<boolean>
+  predicate: (item: T) => Promise<boolean>,
 ): Promise<boolean> {
   if (items.length === 0) {
     return Promise.resolve(false);

@@ -15,7 +15,8 @@ import { isatty } from "node:tty";
 import { getProductTrials, startProductTrial } from "./api-client.js";
 import { SeerError, type SeerErrorReason } from "./errors.js";
 import { logger } from "./logger.js";
-import { buildBillingUrl } from "./sentry-urls.js";
+import { prompt } from "./prompt.js";
+import { buildBillingUrl } from "./sentry-web-urls.js";
 import { findAvailableTrial } from "./trials.js";
 
 /** Seer error reasons eligible for trial prompt */
@@ -60,7 +61,7 @@ export function isTrialEligible(error: unknown): error is SeerError {
  * 2. Show context message + prompt user for confirmation
  * 3. Start the trial via API
  *
- * Uses consola logger for all output (not raw stderr writes).
+ * Uses the logger for all output (not raw stderr writes).
  *
  * @param orgSlug - Organization slug
  * @param reason - The SeerError reason (for context message)
@@ -68,7 +69,7 @@ export function isTrialEligible(error: unknown): error is SeerError {
  */
 export async function promptAndStartTrial(
   orgSlug: string,
-  reason: SeerErrorReason
+  reason: SeerErrorReason,
 ): Promise<boolean> {
   const log = logger.withTag("seer");
 
@@ -86,7 +87,7 @@ export async function promptAndStartTrial(
     // No trial available (expired or already used)
     log.info(
       "No Seer trial available. If you've already used your trial, " +
-        "consider upgrading your plan to continue using Seer."
+        "consider upgrading your plan to continue using Seer.",
     );
     log.info(`  ${buildBillingUrl(orgSlug, "seer")}`);
     return false;
@@ -99,9 +100,9 @@ export async function promptAndStartTrial(
   }
 
   const daysText = trial.lengthDays ? `${trial.lengthDays}-day ` : "";
-  const confirmed = await log.prompt(
+  const confirmed = await prompt(
     `A free ${daysText}Seer trial is available. Start trial?`,
-    { type: "confirm", initial: true }
+    { type: "confirm", initial: true },
   );
 
   // Symbol(clack:cancel) is truthy — strict equality check
@@ -118,7 +119,7 @@ export async function promptAndStartTrial(
   } catch (error) {
     log.debug("Trial start API call failed", error);
     log.warn(
-      "Failed to start trial. Please try again or visit your Sentry settings:"
+      "Failed to start trial. Please try again or visit your Sentry settings:",
     );
     log.warn(`  ${buildBillingUrl(orgSlug, "seer")}`);
     log.warn("If the problem persists, contact support@sentry.io for help.");

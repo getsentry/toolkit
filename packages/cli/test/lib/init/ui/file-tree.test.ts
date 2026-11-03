@@ -50,10 +50,10 @@ describe("buildReadTree", () => {
     ]);
     const fileRows = flattenTree(tree).filter((row) => row.kind === "file");
     expect(fileRows.find((row) => row.label === "a.ts")?.status).toBe(
-      "reading"
+      "reading",
     );
     expect(fileRows.find((row) => row.label === "b.ts")?.status).toBe(
-      "analyzed"
+      "analyzed",
     );
   });
 

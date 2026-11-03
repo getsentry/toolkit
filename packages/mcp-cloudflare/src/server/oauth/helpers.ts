@@ -588,6 +588,7 @@ export async function tokenExchangeCallback(
     clientId: rawProps.clientId as string,
     scope: rawProps.scope as string,
     grantedScopes: rawProps.grantedScopes,
+    upstreamScopes: rawProps.upstreamScopes,
     grantedSkills: rawProps.grantedSkills,
   } satisfies WorkerProps & Record<string, unknown>;
 

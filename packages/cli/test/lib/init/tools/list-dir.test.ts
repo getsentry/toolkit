@@ -16,7 +16,7 @@ import type {
 
 function makePayload(
   cwd: string,
-  params: ListDirPayload["params"]
+  params: ListDirPayload["params"],
 ): ListDirPayload {
   return {
     type: "tool",
@@ -49,7 +49,7 @@ describe("listDir", () => {
     mkdirSync(join(testDir, "src"));
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: "." }))
+      await listDir(makePayload(testDir, { path: "." })),
     );
     // Order depends on `readdir` behavior (FS-dependent — e.g., ext4
     // returns entries in insertion order while tmpfs and macOS APFS
@@ -69,7 +69,7 @@ describe("listDir", () => {
     writeFileSync(join(testDir, "src", "deep.ts"), "");
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: ".", recursive: false }))
+      await listDir(makePayload(testDir, { path: ".", recursive: false })),
     );
     const paths = entries.map((e) => e.path).sort();
     expect(paths).toEqual(["src", "top.ts"]);
@@ -84,8 +84,8 @@ describe("listDir", () => {
 
     const entries = entriesOf(
       await listDir(
-        makePayload(testDir, { path: ".", recursive: true, maxDepth: 2 })
-      )
+        makePayload(testDir, { path: ".", recursive: true, maxDepth: 2 }),
+      ),
     );
     const files = entries.filter((e) => e.type === "file").map((e) => e.path);
     // With maxDepth: 2, we enter `a/` (depth 1) and `a/b/` (depth 2), see
@@ -101,7 +101,7 @@ describe("listDir", () => {
     writeFileSync(join(testDir, "src", "nested", "deep.ts"), "");
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: ".", recursive: true }))
+      await listDir(makePayload(testDir, { path: ".", recursive: true })),
     );
     for (const entry of entries) {
       expect(entry.path).not.toContain("\\");
@@ -116,7 +116,7 @@ describe("listDir", () => {
     mkdirSync(join(testDir, "node_modules"));
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: ".", recursive: true }))
+      await listDir(makePayload(testDir, { path: ".", recursive: true })),
     );
     const names = entries.map((e) => e.name).sort();
     expect(names).toEqual([".cache", ".env", "node_modules"]);
@@ -129,7 +129,7 @@ describe("listDir", () => {
     writeFileSync(join(testDir, "node_modules", "pkg", "index.js"), "");
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: ".", recursive: true }))
+      await listDir(makePayload(testDir, { path: ".", recursive: true })),
     );
     const paths = entries.map((e) => e.path);
     expect(paths).toContain(".cache");
@@ -180,7 +180,7 @@ describe("listDir", () => {
     }
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: ".", recursive: true }))
+      await listDir(makePayload(testDir, { path: ".", recursive: true })),
     );
     const paths = entries.map((e) => e.path);
 
@@ -200,11 +200,11 @@ describe("listDir", () => {
     for (let i = 0; i < 300; i += 1) {
       writeFileSync(
         join(testDir, "build", "client", "assets", `chunk-${i}.js`),
-        ""
+        "",
       );
       writeFileSync(
         join(testDir, "dist", "client", "assets", `chunk-${i}.js`),
-        ""
+        "",
       );
     }
     writeFileSync(join(testDir, "package.json"), "{}");
@@ -219,8 +219,8 @@ describe("listDir", () => {
           path: ".",
           recursive: true,
           maxEntries: 50,
-        })
-      )
+        }),
+      ),
     );
     const paths = entries.map((e) => e.path);
 
@@ -242,14 +242,14 @@ describe("listDir", () => {
     }
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: ".", maxEntries: 5 }))
+      await listDir(makePayload(testDir, { path: ".", maxEntries: 5 })),
     );
     expect(entries).toHaveLength(5);
   });
 
   test("throws on sandbox escape via `..`", async () => {
     await expect(
-      listDir(makePayload(testDir, { path: "../../etc" }))
+      listDir(makePayload(testDir, { path: "../../etc" })),
     ).rejects.toThrow(/outside project directory/);
   });
 
@@ -265,7 +265,7 @@ describe("listDir", () => {
     }
 
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: "." }))
+      await listDir(makePayload(testDir, { path: "." })),
     );
     const names = entries.map((e) => e.name).sort();
     expect(names).toEqual(["link.ts", "real.ts"]);
@@ -284,7 +284,7 @@ describe("listDir", () => {
 
     try {
       const entries = entriesOf(
-        await listDir(makePayload(testDir, { path: "." }))
+        await listDir(makePayload(testDir, { path: "." })),
       );
       expect(entries.map((e) => e.name)).not.toContain("escape");
     } finally {
@@ -296,7 +296,7 @@ describe("listDir", () => {
     // `safePath` allows nonexistent paths under the sandbox; `readdir`
     // throws, which the walker swallows.
     const entries = entriesOf(
-      await listDir(makePayload(testDir, { path: "does-not-exist" }))
+      await listDir(makePayload(testDir, { path: "does-not-exist" })),
     );
     expect(entries).toEqual([]);
   });

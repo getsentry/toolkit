@@ -30,7 +30,7 @@ describe("detectDevCommand", () => {
   test("detects package.json scripts.dev", async () => {
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({ scripts: { dev: "next dev" } })
+      JSON.stringify({ scripts: { dev: "next dev" } }),
     );
     const result = await detectDevCommand(tmpDir);
     expect(result).not.toBeNull();
@@ -41,7 +41,7 @@ describe("detectDevCommand", () => {
   test("detects package.json scripts.start when dev is absent", async () => {
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({ scripts: { start: "node server.js" } })
+      JSON.stringify({ scripts: { start: "node server.js" } }),
     );
     const result = await detectDevCommand(tmpDir);
     expect(result).not.toBeNull();
@@ -52,7 +52,7 @@ describe("detectDevCommand", () => {
   test("falls through package.json with no scripts", async () => {
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({ name: "test", version: "1.0.0" })
+      JSON.stringify({ name: "test", version: "1.0.0" }),
     );
     const result = await detectDevCommand(tmpDir);
     expect(result).toBeNull();
@@ -114,7 +114,7 @@ describe("detectDevCommand", () => {
   test("package.json takes priority over manage.py", async () => {
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({ scripts: { dev: "vite" } })
+      JSON.stringify({ scripts: { dev: "vite" } }),
     );
     await writeFile(join(tmpDir, "manage.py"), "#!/usr/bin/env python");
     const result = await detectDevCommand(tmpDir);
@@ -125,7 +125,7 @@ describe("detectDevCommand", () => {
   test("prefers dev over start in package.json", async () => {
     await writeFile(
       join(tmpDir, "package.json"),
-      JSON.stringify({ scripts: { start: "node index.js", dev: "vite" } })
+      JSON.stringify({ scripts: { start: "node index.js", dev: "vite" } }),
     );
     const result = await detectDevCommand(tmpDir);
     expect(result).not.toBeNull();
@@ -138,7 +138,7 @@ describe("detectDevCommand", () => {
       join(tmpDir, "package.json"),
       JSON.stringify({
         scripts: { serve: "serve dist", develop: "gatsby develop" },
-      })
+      }),
     );
     const result = await detectDevCommand(tmpDir);
     expect(result).not.toBeNull();

@@ -10,11 +10,13 @@ import {
   isNotFoundApiError,
   listIssueAlertsPaginated,
 } from "../../../lib/api-client.js";
+import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
 import type { ResolvedTarget } from "../../../lib/resolve-target.js";
-import { isAllDigits } from "../../../lib/utils.js";
+import { countChar, isAllDigits } from "../../../lib/utils.js";
+import { alertRuleParameter } from "../arguments.js";
 
 const log = logger.withTag("alert.issues");
 
@@ -29,7 +31,7 @@ export type IssueRuleResolution = {
  */
 export function parseIssueRuleArg(
   arg: string,
-  usageHint: string
+  usageHint: string,
 ): {
   ref: string;
   targetArg: string | undefined;
@@ -38,11 +40,11 @@ export function parseIssueRuleArg(
   if (!trimmed) {
     throw new ValidationError(
       `Rule id or name is required.\nUse: ${usageHint}`,
-      "rule"
+      "rule",
     );
   }
 
-  const slashCount = [...trimmed].filter((c) => c === "/").length;
+  const slashCount = countChar(trimmed, "/");
   if (slashCount === 0) {
     return { ref: trimmed, targetArg: undefined };
   }
@@ -51,7 +53,7 @@ export function parseIssueRuleArg(
       `Missing rule id or name after the project (got '${trimmed}').\n` +
         `Use: ${usageHint}\n` +
         `Example: ${trimmed}/<rule-id-or-name>`,
-      "rule"
+      "rule",
     );
   }
 
@@ -61,15 +63,29 @@ export function parseIssueRuleArg(
   if (!ref) {
     throw new ValidationError(
       `Invalid rule reference '${arg}'.\nUse: ${usageHint}`,
-      "rule"
+      "rule",
     );
   }
   return { ref, targetArg: targetPart || undefined };
 }
 
+/**
+ * The `<org>/<project>/<rule-id-or-name>` parameter of an issue alert
+ * command, parsed with {@link parseIssueRuleArg} before the command runs.
+ */
+export function issueRuleParameter(usageHint: string, brief: string) {
+  return alertRuleParameter({
+    placeholder: "org/project/rule-id-or-name",
+    brief,
+    kind: ORG_PROJECT_TARGET,
+    split: parseIssueRuleArg,
+    usageHint,
+  });
+}
+
 /** List all issue alert rules for a project (paginated). */
 export async function listAllIssueRulesForTarget(
-  target: ResolvedTarget
+  target: ResolvedTarget,
 ): Promise<IssueAlertRule[]> {
   const all: IssueAlertRule[] = [];
   let cursor: string | undefined;
@@ -77,7 +93,7 @@ export async function listAllIssueRulesForTarget(
     const { data, nextCursor } = await listIssueAlertsPaginated(
       target.org,
       target.project,
-      { perPage: API_MAX_PER_PAGE, cursor }
+      { perPage: API_MAX_PER_PAGE, cursor },
     );
     all.push(...data);
     if (!nextCursor) {
@@ -86,16 +102,16 @@ export async function listAllIssueRulesForTarget(
     cursor = nextCursor;
   }
   log.warn(
-    `Pagination limit reached for issue alert rules in ${target.org}/${target.project}. Results may be incomplete.`
+    `Pagination limit reached for issue alert rules in ${target.org}/${target.project}. Results may be incomplete.`,
   );
   return all;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: per-target list + name resolution
+// per-target list + name resolution
 export async function resolveIssueAlertRule(
   targets: ResolvedTarget[],
   ref: string,
-  usageHint: string
+  usageHint: string,
 ): Promise<IssueRuleResolution> {
   if (isAllDigits(ref)) {
     const hits: IssueRuleResolution[] = [];
@@ -117,13 +133,13 @@ export async function resolveIssueAlertRule(
     if (hits.length > 1) {
       throw new ValidationError(
         `Alert rule ID '${ref}' matched multiple projects.\n` +
-          "Use an explicit target: sentry alert issues <command> <org>/<project>/<rule-id>"
+          "Use an explicit target: sentry alert issues <command> <org>/<project>/<rule-id>",
       );
     }
     throw new ResolutionError(
       `Issue alert rule '${ref}'`,
       "not found",
-      usageHint
+      usageHint,
     );
   }
 
@@ -138,7 +154,7 @@ export async function resolveIssueAlertRule(
       }
     }
     const exact = rules.find(
-      (rule) => rule.name && rule.name.toLowerCase() === ref.toLowerCase()
+      (rule) => rule.name && rule.name.toLowerCase() === ref.toLowerCase(),
     );
     if (exact) {
       hits.push({ target, rule: exact });
@@ -151,7 +167,7 @@ export async function resolveIssueAlertRule(
   if (hits.length > 1) {
     throw new ValidationError(
       `Alert rule name '${ref}' matched multiple projects.\n` +
-        "Use an explicit target: sentry alert issues <command> <org>/<project>/<rule-id-or-name>"
+        "Use an explicit target: sentry alert issues <command> <org>/<project>/<rule-id-or-name>",
     );
   }
 
@@ -162,13 +178,13 @@ export async function resolveIssueAlertRule(
     throw new ValidationError(
       `No issue alert rule named '${ref}' in the selected project(s).\n\n` +
         `Did you mean:\n${lines}`,
-      "rule"
+      "rule",
     );
   }
 
   throw new ResolutionError(
     `Issue alert rule '${ref}'`,
     "not found",
-    usageHint
+    usageHint,
   );
 }

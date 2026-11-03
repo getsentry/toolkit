@@ -30,7 +30,7 @@ export type SourceMapReport = {
 
 /** Whether this process is a Node Single Executable Application. */
 export function isSea(): boolean {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const req = createRequire(import.meta.url);
     const sea = req("node:sea") as { isSea?: () => boolean };
@@ -54,7 +54,7 @@ function loadReport(path: string): SourceMapReport {
   if (!existsSync(path)) {
     return {};
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(readFileSync(path, "utf-8")) as SourceMapReport;
   } catch {
@@ -162,7 +162,7 @@ function isComposeCommand(args: string[], env: NodeJS.ProcessEnv): boolean {
 function classifyInvocation(
   args: string[],
   env: NodeJS.ProcessEnv,
-  report: SourceMapReport
+  report: SourceMapReport,
 ): { executeHermes: boolean; shouldCopyDebugId: boolean } {
   if (isBundleCommand(args, env.SENTRY_RN_BUNDLE_COMMAND)) {
     handleBundle(args, report);
@@ -191,7 +191,7 @@ export function wrapCall(env: NodeJS.ProcessEnv = process.env): number {
   const { executeHermes, shouldCopyDebugId } = classifyInvocation(
     args,
     env,
-    report
+    report,
   );
 
   const executable = executeHermes
@@ -199,7 +199,7 @@ export function wrapCall(env: NodeJS.ProcessEnv = process.env): number {
     : env.SENTRY_RN_REAL_NODE_BINARY;
   if (!executable) {
     throw new Error(
-      "Missing SENTRY_RN_REAL_NODE_BINARY / SENTRY_RN_REAL_HERMES_CLI_PATH"
+      "Missing SENTRY_RN_REAL_NODE_BINARY / SENTRY_RN_REAL_HERMES_CLI_PATH",
     );
   }
 

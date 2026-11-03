@@ -24,13 +24,13 @@ import { apiRequestToRegion } from "./infrastructure.js";
  * @returns Customer trial info with product trials, plan trial status, and plan details
  */
 export async function getCustomerTrialInfo(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<CustomerTrialInfo> {
   // /customers/ is a control silo endpoint (billing), not region-scoped
   const { data } = await apiRequestToRegion<CustomerTrialInfo>(
     getControlSiloUrl(),
     `/customers/${orgSlug}/`,
-    { schema: CustomerTrialInfoSchema }
+    { schema: CustomerTrialInfoSchema },
   );
   return data;
 }
@@ -46,7 +46,7 @@ export async function getCustomerTrialInfo(
  * @returns Array of product trials (may be empty)
  */
 export async function getProductTrials(
-  orgSlug: string
+  orgSlug: string,
 ): Promise<ProductTrial[]> {
   const info = await getCustomerTrialInfo(orgSlug);
   return info.productTrials ?? [];
@@ -64,7 +64,7 @@ export async function getProductTrials(
  */
 export async function startProductTrial(
   orgSlug: string,
-  category: string
+  category: string,
 ): Promise<void> {
   // /customers/ is a control silo endpoint (billing), not region-scoped
   await apiRequestToRegion(
@@ -76,6 +76,6 @@ export async function startProductTrial(
         referrer: "sentry-cli",
         productTrial: { category, reasonCode: 0 },
       },
-    }
+    },
   );
 }

@@ -1,18 +1,5 @@
 
 
-## Examples
-
-```bash
-# Upload a dart symbol map with a debug ID
-sentry dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json
-
-# Validate without uploading
-sentry dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --no-upload
-
-# Output as JSON
-sentry dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --json
-```
-
 ## Important Notes
 
 - The `--debug-id` flag is **required** — it associates the map with a native

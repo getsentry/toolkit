@@ -2,7 +2,7 @@
  * Completion Latency E2E Tests
  *
  * Spawns the actual CLI binary with `__complete` args and measures
- * wall-clock latency. The completion fast-path skips @sentry/node-core,
+ * wall-clock latency. The completion fast-path skips @sentry/node,
  * Stricli, and middleware — these tests catch regressions that would
  * re-introduce heavy imports into the completion path.
  *
@@ -24,7 +24,7 @@ const cliDir = join(import.meta.dirname, "../..");
 /** Spawn a CLI process and measure wall-clock duration. */
 async function measureCommand(
   args: string[],
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
 ): Promise<{
   duration: number;
   exitCode: number;
@@ -50,7 +50,7 @@ async function measureCommand(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
 
   return {

@@ -26,7 +26,12 @@ import {
   resolveUploadWait,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseText,
+  parseUrl,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -108,7 +113,7 @@ function shouldWrap(flags: XcodeFlags, env: NodeJS.ProcessEnv): boolean {
   if (configuration === undefined) {
     throw new ValidationError(
       "Need to run this from Xcode (CONFIGURATION is not set).",
-      "CONFIGURATION"
+      "CONFIGURATION",
     );
   }
   return !configuration.includes("Debug");
@@ -120,7 +125,7 @@ function resolveScript(flags: XcodeFlags, cwd: string): string {
   if (!existsSync(script)) {
     throw new ValidationError(
       `React Native build script not found: ${script}`,
-      "build-script"
+      "build-script",
     );
   }
   return script;
@@ -130,7 +135,7 @@ function resolveScript(flags: XcodeFlags, cwd: string): string {
 function runScript(
   script: string,
   args: string[],
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): number {
   const rv = spawnSync(script, args, { stdio: "inherit", env });
   // A signal-killed child has `status === null`; treat that as a failure.
@@ -140,7 +145,7 @@ function runScript(
 /** Poll a URL until it responds or the timeout elapses. */
 async function waitUntilAvailable(
   url: string,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -160,24 +165,24 @@ async function waitUntilAvailable(
 /** Fetch the bundle + sourcemap from the running RN packager. */
 async function fetchFromPackager(
   fetchUrl: string,
-  tempDir: string
+  tempDir: string,
 ): Promise<BundlePair> {
   const url = fetchUrl.replace(TRAILING_SLASHES, "");
   if (!(await waitUntilAvailable(url, 10_000))) {
     throw new ValidationError(
       "React Native packager did not respond in time.",
-      "fetch-from"
+      "fetch-from",
     );
   }
   const bundle = join(tempDir, "index.ios.bundle");
   const sourcemap = join(tempDir, "index.ios.map");
   const bundleRes = await fetch(
-    `${url}/index.ios.bundle?platform=ios&dev=true`
+    `${url}/index.ios.bundle?platform=ios&dev=true`,
   );
   if (!bundleRes.ok) {
     throw new ValidationError(
       `Packager returned ${bundleRes.status} for the bundle.`,
-      "fetch-from"
+      "fetch-from",
     );
   }
   writeFileSync(bundle, Buffer.from(await bundleRes.arrayBuffer()));
@@ -185,7 +190,7 @@ async function fetchFromPackager(
   if (!mapRes.ok) {
     throw new ValidationError(
       `Packager returned ${mapRes.status} for the sourcemap.`,
-      "fetch-from"
+      "fetch-from",
     );
   }
   writeFileSync(sourcemap, Buffer.from(await mapRes.arrayBuffer()));
@@ -218,7 +223,7 @@ function runWrappedBuild(
   script: string,
   scriptArgs: string[],
   ctx: SentryContext,
-  tempDir: string
+  tempDir: string,
 ): { status: number; pair: BundlePair | null } {
   const reportPath = join(tempDir, "sourcemap-report.json");
   writeFileSync(reportPath, "{}");
@@ -273,7 +278,7 @@ function runWrappedBuild(
 
 /** Read the debug id already present in a sourcemap (from the Metro plugin). */
 async function readSourcemapDebugId(
-  mapPath: string
+  mapPath: string,
 ): Promise<string | undefined> {
   try {
     const map = JSON.parse(await readFile(mapPath, "utf-8")) as {
@@ -291,7 +296,7 @@ async function readSourcemapDebugId(
 async function uploadPair(
   pair: BundlePair,
   ctx: SentryContext,
-  flags: XcodeFlags
+  flags: XcodeFlags,
 ): Promise<{
   debugId?: string;
   release?: string;
@@ -315,7 +320,7 @@ async function uploadPair(
   if (!debugId) {
     log.warn(
       "No debug id found in the sourcemap; uploading without one. Ensure the " +
-        "Sentry React Native Metro plugin is configured."
+        "Sentry React Native Metro plugin is configured.",
     );
   }
   const debugIdField = debugId ? { debugId } : {};
@@ -339,7 +344,7 @@ async function uploadPair(
     ctx.env,
     ctx.cwd,
     flags["no-auto-release"] ?? false,
-    flags["allow-xcode-infoplist-preprocessing"] ?? false
+    flags["allow-xcode-infoplist-preprocessing"] ?? false,
   );
   // Explicit --dist overrides the environment/plist-derived distribution.
   let dists: string[] = [];
@@ -386,7 +391,7 @@ async function preparePair(
   ctx: SentryContext,
   script: string,
   scriptArgs: string[],
-  fetchUrl: string | undefined
+  fetchUrl: string | undefined,
 ): Promise<PrepareResult> {
   const tempDir = mkdtempSync(join(tmpdir(), "sentry-rn-xcode-"));
   if (fetchUrl) {
@@ -432,6 +437,13 @@ export const xcodeCommand = buildCommand({
       "app Info.plist (unless `--no-auto-release`); outside an Xcode build the " +
       "release is discovered via `xcodebuild`. Use `--wait`/`--wait-for` to " +
       "block until the server finishes processing the upload.",
+    examples: [
+      {
+        description:
+          "Run as the Xcode build phase (usually added automatically to your build script)",
+        command: "sentry react-native xcode",
+      },
+    ],
   },
   auth: false,
   output: {
@@ -451,19 +463,19 @@ export const xcodeCommand = buildCommand({
       },
       "fetch-from": {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: `Packager URL to fetch from (default: ${DEFAULT_PACKAGER_URL})`,
         optional: true,
       },
       "build-script": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the react-native-xcode.sh build script",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         brief: "Distribution(s) to publish (repeatable)",
         optional: true,
@@ -475,7 +487,7 @@ export const xcodeCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait for processing, but at most this many seconds",
         optional: true,
       },
@@ -496,7 +508,7 @@ export const xcodeCommand = buildCommand({
       parameter: {
         placeholder: "script-arg",
         brief: "Extra arguments passed to the build script",
-        parse: String,
+        parse: parseText,
       },
     },
   },
@@ -535,7 +547,7 @@ export const xcodeCommand = buildCommand({
     const { debugId, release, dist, uploads } = await uploadPair(
       pair,
       this,
-      flags
+      flags,
     );
 
     yield new CommandOutput<XcodeResult>({

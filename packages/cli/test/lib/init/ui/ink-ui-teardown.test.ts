@@ -22,9 +22,8 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 const { InkUI } = await import("../../../../src/lib/init/ui/ink-ui.js");
-const { WizardStore } = await import(
-  "../../../../src/lib/init/ui/wizard-store.js"
-);
+const { WizardStore } =
+  await import("../../../../src/lib/init/ui/wizard-store.js");
 
 function createUi(): {
   ui: InstanceType<typeof InkUI>;

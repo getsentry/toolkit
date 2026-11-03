@@ -74,7 +74,7 @@ export function isInlineSourcemapUrl(url: string): boolean {
  * @returns The decoded map plus re-encode metadata, or `undefined` on failure
  */
 export function tryDecodeInlineSourcemap(
-  url: string
+  url: string,
 ): DecodedInlineMap | undefined {
   const match = url.match(INLINE_SOURCEMAP_DATA_URL_RE);
   if (!match) {
@@ -105,7 +105,7 @@ export function tryDecodeInlineSourcemap(
  */
 export function encodeInlineSourcemap(
   map: unknown,
-  dataUrlPrefix: string
+  dataUrlPrefix: string,
 ): string {
   const base64 = Buffer.from(JSON.stringify(map)).toString("base64");
   return `${dataUrlPrefix}${base64}`;

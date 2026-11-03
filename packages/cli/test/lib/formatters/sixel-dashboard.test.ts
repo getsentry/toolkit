@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
+import { formatLegendLabel } from "../../../src/lib/formatters/chart-presentation.js";
 import {
-  formatLegendLabel,
   formatTimestamp,
   renderDashboardAsSixel,
 } from "../../../src/lib/formatters/sixel-dashboard.js";
@@ -12,23 +12,23 @@ describe("formatTimestamp", () => {
 
   test("uses clock time for periods shorter than two days", () => {
     expect(formatTimestamp(timestamp, 1)).toBe(
-      `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+      `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`,
     );
   });
 
   test("formats the Unix epoch instead of treating it as missing", () => {
     const epoch = new Date(0);
     expect(formatTimestamp(0, 1)).toBe(
-      `${String(epoch.getHours()).padStart(2, "0")}:${String(epoch.getMinutes()).padStart(2, "0")}`
+      `${String(epoch.getHours()).padStart(2, "0")}:${String(epoch.getMinutes()).padStart(2, "0")}`,
     );
     expect(formatTimestamp(0, 7)).toBe(
-      `${String(epoch.getMonth() + 1).padStart(2, "0")}/${String(epoch.getDate()).padStart(2, "0")}`
+      `${String(epoch.getMonth() + 1).padStart(2, "0")}/${String(epoch.getDate()).padStart(2, "0")}`,
     );
   });
 
   test("uses calendar dates for multi-day periods", () => {
     expect(formatTimestamp(timestamp, 7)).toBe(
-      `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`
+      `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`,
     );
     expect(formatTimestamp(timestamp, 31)).toBe(`Jan ${date.getDate()}`);
   });
@@ -70,7 +70,7 @@ function renderWidget(displayType: string): {
         captured = image;
         return "rendered";
       },
-    }
+    },
   );
 
   if (!captured) {
@@ -81,7 +81,7 @@ function renderWidget(displayType: string): {
 
 function countPixels(
   image: DecodedImage,
-  color: [number, number, number]
+  color: [number, number, number],
 ): number {
   let count = 0;
   for (let offset = 0; offset < image.data.length; offset += 4) {
@@ -109,14 +109,23 @@ describe("dashboard chart rendering", () => {
   });
 
   test("uses compact aggregate names in the graphics legend", () => {
-    expect(formatLegendLabel("p50(span.duration)")).toBe("p50 span.duration");
-    expect(formatLegendLabel("p95(value,web.vital,distribution,none)")).toBe(
-      "p95 web.vital"
+    expect(formatLegendLabel("p50(span.duration)")).toEqual({
+      text: "p50 span.duration",
+      abbreviated: false,
+    });
+    expect(formatLegendLabel("p95(value,web.vital,distribution,none)")).toEqual(
+      {
+        text: "p95 web.vital",
+        abbreviated: true,
+      },
     );
     expect(
-      formatLegendLabel("p95(value,backend.duration,distribution,none)")
-    ).toBe("p95 backend.duration");
-    expect(formatLegendLabel("GET /api/projects")).toBe("GET /api/projects");
+      formatLegendLabel("p95(value,backend.duration,distribution,none)"),
+    ).toEqual({ text: "p95 backend.dur...", abbreviated: true });
+    expect(formatLegendLabel("GET /api/projects")).toEqual({
+      text: "GET /api/projects",
+      abbreviated: false,
+    });
   });
 
   test("centers the no-data state inside a chart widget", () => {
@@ -141,7 +150,7 @@ describe("dashboard chart rendering", () => {
           captured = image;
           return "rendered";
         },
-      }
+      },
     );
 
     if (!captured) {
@@ -155,7 +164,7 @@ describe("dashboard chart rendering", () => {
         y: 20,
         width: 70,
         height: 20,
-      })
+      }),
     ).toBe(0);
     expect(
       countPixelsInRegion(captured, [128, 128, 128], {
@@ -163,7 +172,7 @@ describe("dashboard chart rendering", () => {
         y: 160,
         width: 80,
         height: 40,
-      })
+      }),
     ).toBeGreaterThan(0);
   });
 });
@@ -171,7 +180,7 @@ describe("dashboard chart rendering", () => {
 function countPixelsInRegion(
   image: DecodedImage,
   color: [number, number, number],
-  region: { x: number; y: number; width: number; height: number }
+  region: { x: number; y: number; width: number; height: number },
 ): number {
   let count = 0;
   const endX = region.x + region.width;

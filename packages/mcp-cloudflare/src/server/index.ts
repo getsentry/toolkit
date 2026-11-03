@@ -180,13 +180,13 @@ const wrappedOAuthProvider = {
     // with no CORS headers so the browser blocks the cross-origin request.
     if (request.method === "OPTIONS") {
       if (isPublicMetadataEndpoint(url.pathname)) {
-        return finalizeResponse(
+        return await finalizeResponse(
           request,
           url,
           new Response(null, { status: 204 }),
         );
       }
-      return finalizeResponse(
+      return await finalizeResponse(
         request,
         url,
         new Response(null, { status: 204 }),
@@ -203,7 +203,7 @@ const wrappedOAuthProvider = {
     // `/mcp...` metadata (including query) stays exact and the origin endpoint
     // remains 404.
     if (url.pathname === "/.well-known/oauth-protected-resource") {
-      return finalizeResponse(
+      return await finalizeResponse(
         request,
         url,
         new Response("Not Found", { status: 404 }),
@@ -214,7 +214,7 @@ const wrappedOAuthProvider = {
       url.pathname === "/.well-known/oauth-protected-resource/mcp" ||
       url.pathname.startsWith("/.well-known/oauth-protected-resource/mcp/")
     ) {
-      return finalizeResponse(
+      return await finalizeResponse(
         request,
         url,
         createProtectedResourceMetadataResponse(url),
@@ -236,7 +236,7 @@ const wrappedOAuthProvider = {
         );
 
         if (!rateLimitResult.allowed) {
-          return finalizeResponse(
+          return await finalizeResponse(
             request,
             url,
             new Response(rateLimitResult.errorMessage, { status: 429 }),
@@ -272,7 +272,7 @@ const wrappedOAuthProvider = {
         activeSpan?.setAttribute(ACCESS_METHOD_ATTRIBUTE, "sentry_access");
 
         if (!sentryBearerAuth.token) {
-          return finalizeResponse(
+          return await finalizeResponse(
             request,
             url,
             new Response("Missing or invalid Sentry-Bearer token", {
@@ -291,13 +291,14 @@ const wrappedOAuthProvider = {
           ctx,
           sentryBearerAuth.token,
         );
-        return finalizeResponse(request, url, response);
+        return await finalizeResponse(request, url, response);
       }
     }
 
     // Reject registrations with userinfo-spoofed redirect URIs before the
     // library stores the client (e.g. host@example.io).
     if (request.method === "POST" && url.pathname === "/oauth/register") {
+      let hasUserInfoRedirect = false;
       try {
         const body = (await request.clone().json()) as {
           redirect_uris?: unknown;
@@ -305,29 +306,28 @@ const wrappedOAuthProvider = {
         const redirectUris = Array.isArray(body.redirect_uris)
           ? body.redirect_uris
           : [];
-        if (
-          redirectUris.some(
-            (uri) => typeof uri === "string" && redirectUriHasUserInfo(uri),
-          )
-        ) {
-          return finalizeResponse(
-            request,
-            url,
-            new Response(
-              JSON.stringify({
-                error: "invalid_redirect_uri",
-                error_description:
-                  "redirect_uris must not contain a userinfo component",
-              }),
-              {
-                status: 400,
-                headers: { "Content-Type": "application/json" },
-              },
-            ),
-          );
-        }
+        hasUserInfoRedirect = redirectUris.some(
+          (uri) => typeof uri === "string" && redirectUriHasUserInfo(uri),
+        );
       } catch {
         // Malformed body — let the library produce its own error.
+      }
+      if (hasUserInfoRedirect) {
+        return await finalizeResponse(
+          request,
+          url,
+          new Response(
+            JSON.stringify({
+              error: "invalid_redirect_uri",
+              error_description:
+                "redirect_uris must not contain a userinfo component",
+            }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+        );
       }
     }
 
@@ -399,7 +399,7 @@ const wrappedOAuthProvider = {
       patchedAuth,
       url,
     );
-    return finalizeResponse(request, url, patched);
+    return await finalizeResponse(request, url, patched);
   },
 };
 

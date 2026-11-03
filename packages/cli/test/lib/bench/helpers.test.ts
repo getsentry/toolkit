@@ -70,7 +70,7 @@ describe("measure", () => {
       () => {
         calls += 1;
       },
-      { runs: 5, warmup: 2 }
+      { runs: 5, warmup: 2 },
     );
     // 2 warmup + 5 measured = 7 total calls; 5 reported samples.
     expect(calls).toBe(7);
@@ -92,7 +92,7 @@ describe("measure", () => {
         beforeEach: () => {
           calls.push("setup");
         },
-      }
+      },
     );
     // expected: setup, run, setup, run, setup, run, setup, run
     expect(calls).toEqual([
@@ -123,7 +123,7 @@ describe("measure", () => {
           await new Promise((r) => setTimeout(r, 1));
           order.push("setup-end");
         },
-      }
+      },
     );
     expect(order).toEqual(["setup-start", "setup-end", "run-start", "run-end"]);
   });

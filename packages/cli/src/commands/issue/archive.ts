@@ -11,6 +11,7 @@ import {
   updateIssueStatus,
 } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseArchiveUntil } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -18,7 +19,7 @@ import { logger } from "../../lib/logger.js";
 import { parseRelativeParts, UNIT_SECONDS } from "../../lib/time-range.js";
 import type { SentryIssue } from "../../types/index.js";
 import type { IssueSubstatus } from "../../types/sentry.js";
-import { issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
 
 const log = logger.withTag("issue.archive");
 
@@ -98,7 +99,7 @@ function tryAbsoluteDate(raw: string): number | undefined {
   const deltaMinutes = Math.ceil((ts - Date.now()) / 60_000);
   if (deltaMinutes < 1) {
     throw new ValidationError(
-      `--until date must be in the future, got '${raw}'`
+      `--until date must be in the future, got '${raw}'`,
     );
   }
   return deltaMinutes;
@@ -118,7 +119,7 @@ function parseDurationMinutes(raw: string): number | undefined {
 
 /** Try parsing a single-char count suffix: "10x", "10u". */
 function tryShortCount(
-  raw: string
+  raw: string,
 ): { type: "x" | "u"; value: number } | undefined {
   const lastChar = raw.at(-1)?.toLowerCase();
   if (lastChar !== "x" && lastChar !== "u") {
@@ -133,7 +134,7 @@ function tryShortCount(
 
 /** Try parsing a verbose count: "10events", "10users". */
 function tryVerboseCount(
-  raw: string
+  raw: string,
 ): { type: "x" | "u"; value: number } | undefined {
   const m = NUMERIC_WORD_RE.exec(raw);
   if (!m) {
@@ -152,7 +153,7 @@ function tryVerboseCount(
  * Parse a single atom: count (`10x`), user count (`10u`), or duration.
  */
 function parseAtom(
-  raw: string
+  raw: string,
 ):
   | { type: "x" | "u"; value: number }
   | { type: "duration"; minutes: number }
@@ -175,7 +176,7 @@ function parseSlashPair(raw: string, trimmed: string): UntilSpec {
   const right = trimmed.slice(slashIdx + 1).trim();
   if (!(left && right)) {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`
+      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`,
     );
   }
 
@@ -184,18 +185,18 @@ function parseSlashPair(raw: string, trimmed: string): UntilSpec {
 
   if (!(leftAtom && rightAtom)) {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`
+      `invalid --until format: '${raw}' (expected '<count>/<window>', e.g., '10x/5m')`,
     );
   }
 
   if (leftAtom.type === "duration") {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (left of '/' must be a count like '10x' or '10u', not a duration)`
+      `invalid --until format: '${raw}' (left of '/' must be a count like '10x' or '10u', not a duration)`,
     );
   }
   if (rightAtom.type !== "duration") {
     throw new ValidationError(
-      `invalid --until format: '${raw}' (right of '/' must be a duration like '5m' or '2h', not a count)`
+      `invalid --until format: '${raw}' (right of '/' must be a duration like '5m' or '2h', not a count)`,
     );
   }
 
@@ -225,7 +226,7 @@ function throwUnrecognizedUntil(raw: string): never {
       "  10x               Archive until 10 more events\n" +
       "  10u               Archive until 10 more users\n" +
       "  10x/5m            10 events within 5 minutes\n" +
-      "  10events/2hours   Same, verbose form"
+      "  10events/2hours   Same, verbose form",
   );
 }
 
@@ -342,27 +343,63 @@ export const archiveCommand = buildCommand({
       "Compound conditions — add a time window with /:\n" +
       "  --until 10x/5m   Unarchive when 10 events occur within 5 minutes\n" +
       "  --until 5u/1h    Unarchive when 5 users are affected within 1 hour\n\n" +
-      "Verbose forms are also accepted: 10events, 10users, 30minutes, 2hours, 7days\n\n" +
-      "Examples:\n" +
-      "  sentry issue archive CLI-12Z                  # Archive forever\n" +
-      "  sentry issue archive CLI-12Z --until auto     # Smart spike detection\n" +
-      "  sentry issue archive CLI-12Z -u auto          # Same (short alias)\n" +
-      "  sentry issue archive CLI-12Z --until 1h       # Archive for 1 hour\n" +
-      "  sentry issue archive CLI-12Z --until 7d       # Archive for 7 days\n" +
-      "  sentry issue archive CLI-12Z --until 100x     # Until 100 more events\n" +
-      "  sentry issue archive CLI-12Z --until 100x/1h  # 100 events within 1 hour\n" +
-      "  sentry issue archive CLI-12Z --until 10u/1d   # 10 users within 1 day\n" +
-      "  sentry issue ignore CLI-12Z --until auto      # 'ignore' alias works too",
+      "Verbose forms are also accepted: 10events, 10users, 30minutes, 2hours, 7days",
+    examples: [
+      {
+        description: "Archive forever (fully silenced)",
+        command: "sentry issue archive CLI-G5",
+      },
+      {
+        description: "Unarchive when Sentry detects a spike in event frequency",
+        command: "sentry issue archive CLI-G5 --until auto",
+      },
+      {
+        description: "Archive for 1 hour",
+        command: "sentry issue archive CLI-G5 --until 1h",
+      },
+      {
+        description: "Archive for 7 days",
+        command: "sentry issue archive CLI-G5 --until 7d",
+      },
+      {
+        description: "Archive until a specific date",
+        command: "sentry issue archive CLI-G5 --until 2026-12-31",
+      },
+      {
+        description: "Unarchive after 100 more events",
+        command: "sentry issue archive CLI-G5 --until 100x",
+      },
+      {
+        description: "Unarchive after 10 more users are affected",
+        command: "sentry issue archive CLI-G5 --until 10u",
+      },
+      {
+        description: "Unarchive after 100 events within 1 hour",
+        command: "sentry issue archive CLI-G5 --until 100x/1h",
+      },
+      {
+        description: "Unarchive after 10 users within 1 day",
+        command: "sentry issue archive CLI-G5 --until 10u/1d",
+      },
+      {
+        description: "Use the verbose condition form",
+        command: "sentry issue archive CLI-G5 --until 10events/2hours",
+      },
+      {
+        description: "`ignore` is an alias for `archive`",
+        command: "sentry issue ignore CLI-G5 --until auto",
+      },
+    ],
   },
   output: {
     human: formatArchived,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND }),
     flags: {
       until: {
         kind: "parsed",
-        parse: String,
+        parse: parseArchiveUntil,
         brief:
           "Condition for unarchival: forever, auto, 30m, 10x, 10u, 10x/5m, etc.",
         optional: true,
@@ -370,7 +407,7 @@ export const archiveCommand = buildCommand({
     },
     aliases: { u: "until" },
   },
-  async *func(this: SentryContext, flags: ArchiveFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: ArchiveFlags, target: IssueTarget) {
     let substatus: IssueSubstatus = "archived_forever";
     let statusDetails: IgnoreStatusDetails | undefined;
 
@@ -381,11 +418,7 @@ export const archiveCommand = buildCommand({
       statusDetails = opts.statusDetails;
     }
 
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd: this.cwd,
-      command: COMMAND,
-    });
+    const { org, issue } = await target.resolved;
 
     const updated = await updateIssueStatus(issue.id, "ignored", {
       statusDetails,

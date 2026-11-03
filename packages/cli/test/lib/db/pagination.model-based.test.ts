@@ -14,7 +14,7 @@
  * - Expired state is treated as absent
  */
 
-// biome-ignore-all lint/suspicious/noMisplacedAssertion: Model-based testing uses expect() inside command classes, not directly in test() functions. This is the standard fast-check pattern for stateful testing.
+// Model-based tests use expect() inside command classes, as required by fast-check.
 
 import {
   type AsyncCommand,
@@ -256,26 +256,26 @@ const cursorArb = constantFrom(
   "1735689600000:100:0",
   "1735689600000:200:0",
   "1735689600000:300:0",
-  "9999999999999:50:1"
+  "9999999999999:50:1",
 );
 
 const optionalCursorArb = constantFrom(
   "1735689600000:0:0",
   "1735689600000:100:0",
   "1735689600000:200:0",
-  undefined
+  undefined,
 );
 
 const advanceNextCmdArb = optionalCursorArb.map(
-  (cur) => new AdvanceNextCommand(cur)
+  (cur) => new AdvanceNextCommand(cur),
 );
 
 const advancePrevCmdArb = optionalCursorArb.map(
-  (cur) => new AdvancePrevCommand(cur)
+  (cur) => new AdvancePrevCommand(cur),
 );
 
 const advanceFirstCmdArb = optionalCursorArb.map(
-  (cur) => new AdvanceFirstCommand(cur)
+  (cur) => new AdvanceFirstCommand(cur),
 );
 
 const clearCmdArb = constantFrom(new ClearCommand());
@@ -310,7 +310,7 @@ describe("model-based: pagination cursor stack", () => {
           cleanup();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS, verbose: false }
+      { numRuns: DEFAULT_NUM_RUNS, verbose: false },
     );
   });
 
@@ -342,7 +342,7 @@ describe("model-based: pagination cursor stack", () => {
           cleanup();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -371,7 +371,7 @@ describe("model-based: pagination cursor stack", () => {
           cleanup();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -462,7 +462,7 @@ describe("model-based: pagination cursor stack", () => {
       advancePaginationState(CMD_KEY, CTX_KEY, "next", undefined);
 
       expect(() => resolveCursor("next", CMD_KEY, CTX_KEY)).toThrow(
-        /No next page/i
+        /No next page/i,
       );
     } finally {
       cleanup();
@@ -493,7 +493,7 @@ describe("model-based: pagination cursor stack", () => {
       // On page 0
 
       expect(() => resolveCursor("prev", CMD_KEY, CTX_KEY)).toThrow(
-        /first page/i
+        /first page/i,
       );
     } finally {
       cleanup();
@@ -551,7 +551,7 @@ describe("model-based: pagination cursor stack", () => {
           // Expire it by writing directly to DB with past timestamp
           const db = getDatabase();
           db.query(
-            "UPDATE pagination_cursors SET expires_at = ? WHERE command_key = ? AND context = ?"
+            "UPDATE pagination_cursors SET expires_at = ? WHERE command_key = ? AND context = ?",
           ).run(Date.now() - 1000, CMD_KEY, CTX_KEY);
 
           // Should return undefined
@@ -563,7 +563,7 @@ describe("model-based: pagination cursor stack", () => {
           cleanup();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

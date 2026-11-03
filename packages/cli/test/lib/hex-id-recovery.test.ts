@@ -254,7 +254,7 @@ describe("isOverNestedPath", () => {
 
   test("4 segments: over-nested", () => {
     expect(isOverNestedPath("gohighlevel/highlevel-flutter/27bc063/abc")).toBe(
-      true
+      true,
     );
   });
 
@@ -277,7 +277,7 @@ describe("recoverHexId decision tree", () => {
   afterEach(() => {
     // Restore original adapters
     for (const key of Object.keys(
-      originalAdapters
+      originalAdapters,
     ) as (keyof typeof ADAPTERS)[]) {
       ADAPTERS[key] = originalAdapters[key];
     }
@@ -303,7 +303,7 @@ describe("recoverHexId decision tree", () => {
     const r = await recoverHexId(
       "gohighlevel/highlevel-flutter/27bc063/abc",
       "event",
-      CLEAN_CTX
+      CLEAN_CTX,
     );
     expect(r.kind).toBe("failed");
     expect(r.kind === "failed" && r.reason).toBe("over-nested");
@@ -331,6 +331,31 @@ describe("recoverHexId decision tree", () => {
     expect(r.kind === "fuzzy" && r.prefix).toBe("05d6975ab9bb");
   });
 
+  test.each([
+    ["trace-05d6975ab9bb", "05d6975ab9bb", undefined],
+    ["span-05d6975a...00000000", "05d6975a", "00000000"],
+  ])(
+    "fuzzy-looks up a prefixed partial ID %j",
+    async (input, prefix, suffix) => {
+      const fullId = `05d6975ab9bb${"0".repeat(20)}`;
+      stubAdapter("event", async () => [fullId]);
+      const r = await recoverHexId(input, "event", CLEAN_CTX);
+      expect(r).toMatchObject({ kind: "fuzzy", id: fullId, prefix });
+      expect(r.kind === "fuzzy" && r.suffix).toBe(suffix);
+    },
+  );
+
+  test("a prefixed slug is still a slug", async () => {
+    let called = false;
+    stubAdapter("event", async () => {
+      called = true;
+      return [];
+    });
+    const r = await recoverHexId("span-my-app", "event", CLEAN_CTX);
+    expect(r).toMatchObject({ kind: "failed", reason: "looks-like-slug" });
+    expect(called).toBe(false);
+  });
+
   test("fuzzy with multiple matches returns multiple-matches", async () => {
     const id1 = `05d6975ab9bb${"0".repeat(20)}`;
     const id2 = `05d6975ab9bb${"1".repeat(20)}`;
@@ -356,7 +381,7 @@ describe("recoverHexId decision tree", () => {
     const r = await recoverHexId(
       "14d9a67fda344df0a138a88d62e41be",
       "event",
-      CLEAN_CTX
+      CLEAN_CTX,
     );
     expect(r.kind).toBe("fuzzy");
     expect(r.kind === "fuzzy" && r.id).toBe(full);
@@ -556,7 +581,7 @@ describe("handleRecoveryResult", () => {
         stripped: "ios",
       },
       fallback,
-      opts
+      opts,
     );
     expect(id).toBe(VALID_32);
   });
@@ -570,7 +595,7 @@ describe("handleRecoveryResult", () => {
         prefix: "05d6975ab9bb",
       },
       fallback,
-      opts
+      opts,
     );
     expect(id).toBe(VALID_32);
   });
@@ -585,7 +610,7 @@ describe("handleRecoveryResult", () => {
         toEntity: "trace",
       },
       fallback,
-      { ...opts, entityType: "trace" }
+      { ...opts, entityType: "trace" },
     );
     expect(id).toBe(VALID_32);
   });
@@ -602,7 +627,7 @@ describe("handleRecoveryResult", () => {
           candidates: [id1, id2],
         },
         fallback,
-        opts
+        opts,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {
@@ -622,7 +647,7 @@ describe("handleRecoveryResult", () => {
           hint: "shell variable leak",
         },
         fallback,
-        opts
+        opts,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {
@@ -636,7 +661,7 @@ describe("handleRecoveryResult", () => {
       handleRecoveryResult(
         { kind: "failed", original: "abc", reason: "api-error" },
         fallback,
-        opts
+        opts,
       );
       expect.unreachable("Should have thrown");
     } catch (err) {

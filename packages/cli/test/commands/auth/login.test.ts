@@ -7,8 +7,8 @@
  * calls or database access.
  *
  * The interactive TTY prompt tests use vi.mock() at the top of this file
- * to stub node:tty (so isatty(0) returns true) and the logger module (so
- * `.prompt()` is controllable).
+ * to stub node:tty (so isatty(0) returns true) and the prompt module (so
+ * `prompt()` is controllable).
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -31,13 +31,12 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger module to intercept the .prompt() call made by the
-  // module-scoped `log = logger.withTag("auth.login")` in login.ts.
-  const _mockPrompt = vi.fn(
-    (): Promise<boolean | symbol> => Promise.resolve(true)
+  // Stub the logger module-scoped as `log = logger.withTag("auth.login")` in
+  // login.ts; the prompt module is mocked with `_mockPrompt` below.
+  const _mockPrompt = vi.fn((): Promise<boolean | symbol> =>
+    Promise.resolve(true),
   );
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
@@ -45,7 +44,6 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     success: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     info: vi.fn(_noop),
     warn: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -68,6 +66,8 @@ vi.mock("node:tty", () => ({
   default: ttyExports,
 }));
 
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
+
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,
   setLogLevel: vi.fn(noop),
@@ -83,9 +83,26 @@ vi.mock("../../../src/lib/logger.js", () => ({
 }));
 
 // Dynamic import: must run AFTER vi.mock() so login.ts picks up fakeLog.
-const { loginCommand, rcTokenHint } = await import(
-  "../../../src/commands/auth/login.js"
-);
+const { loginCommand, rcTokenHint } =
+  await import("../../../src/commands/auth/login.js");
+const { parseLoginEmail, splitLoginTarget } =
+  await import("../../../src/lib/db/accounts.js");
+
+vi.mock("../../../src/lib/account-selection.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../src/lib/account-selection.js")
+    >();
+  return Object.fromEntries(
+    Object.entries(actual).map(([k, v]) => [
+      k,
+      typeof v === "function" ? vi.fn(v) : v,
+    ]),
+  );
+});
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as accountSelection from "../../../src/lib/account-selection.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -94,11 +111,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
@@ -108,11 +125,11 @@ vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
 
 vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
@@ -122,11 +139,11 @@ vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbUser from "../../../src/lib/db/user.js";
 import {
   ApiError,
@@ -134,6 +151,19 @@ import {
   MalformedAuthTokenError,
   ValidationError,
 } from "../../../src/lib/errors.js";
+
+// The post-login warm-up makes its own API requests; tests/lib cover it.
+vi.mock("../../../src/lib/completion-warmup.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/completion-warmup.js")
+  >()),
+  warmCachesAfterLogin: vi.fn(async () => {
+    // no-op
+  }),
+}));
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as completionWarmup from "../../../src/lib/completion-warmup.js";
 
 vi.mock("../../../src/lib/interactive-login.js", async (importOriginal) => {
   const actual =
@@ -144,11 +174,11 @@ vi.mock("../../../src/lib/interactive-login.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 import type { SentryCliRcConfig } from "../../../src/lib/sentryclirc.js";
 import { useEnvSandbox } from "../../helpers.js";
@@ -163,7 +193,11 @@ type LoginFlags = {
 };
 
 /** Command function type extracted from loader result */
-type LoginFunc = (this: unknown, flags: LoginFlags) => Promise<void>;
+type LoginFunc = (
+  this: unknown,
+  flags: LoginFlags,
+  email?: string,
+) => Promise<void>;
 
 const SAMPLE_USER = {
   id: "42",
@@ -203,15 +237,17 @@ function createContext() {
 /** Assert setAuthToken was called with the expected token and a host option. */
 function expectTokenStored(
   spy: ReturnType<typeof spyOn>,
-  expectedToken: string
+  expectedToken: string,
+  newAccount = true,
 ): void {
-  // biome-ignore lint/suspicious/noMisplacedAssertion: shared helper
+  // shared helper
   expect(spy).toHaveBeenCalled();
-  // biome-ignore lint/suspicious/noMisplacedAssertion: shared helper
+  // shared helper
   expect(spy.mock.calls[0]?.[0]).toBe(expectedToken);
-  // biome-ignore lint/suspicious/noMisplacedAssertion: shared helper
+  // shared helper
   expect(spy.mock.calls[0]?.[3]).toMatchObject({
     host: expect.any(String),
+    newAccount,
   });
 }
 
@@ -223,6 +259,7 @@ describe("loginCommand.func --token path", () => {
   let setAuthTokenSpy: ReturnType<typeof spyOn>;
   let getUserRegionsSpy: ReturnType<typeof spyOn>;
   let clearAuthSpy: ReturnType<typeof spyOn>;
+  let removeAccountSpy: ReturnType<typeof spyOn>;
   let getCurrentUserSpy: ReturnType<typeof spyOn>;
   let setUserInfoSpy: ReturnType<typeof spyOn>;
   let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
@@ -236,6 +273,8 @@ describe("loginCommand.func --token path", () => {
     setAuthTokenSpy = vi.spyOn(dbAuth, "setAuthToken");
     getUserRegionsSpy = vi.spyOn(apiClient, "getUserRegions");
     clearAuthSpy = vi.spyOn(dbAuth, "clearAuth");
+    removeAccountSpy = vi.spyOn(dbAuth, "removeAccount");
+    removeAccountSpy.mockResolvedValue(undefined);
     getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
     setUserInfoSpy = vi.spyOn(dbUser, "setUserInfo");
     runInteractiveLoginSpy = vi.spyOn(interactiveLogin, "runInteractiveLogin");
@@ -256,6 +295,7 @@ describe("loginCommand.func --token path", () => {
     setAuthTokenSpy.mockRestore();
     getUserRegionsSpy.mockRestore();
     clearAuthSpy.mockRestore();
+    removeAccountSpy.mockRestore();
     getCurrentUserSpy.mockRestore();
     setUserInfoSpy.mockRestore();
     runInteractiveLoginSpy.mockRestore();
@@ -271,6 +311,189 @@ describe("loginCommand.func --token path", () => {
 
     expect(setAuthTokenSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
+  });
+
+  test("already authenticated (non-TTY) with an email: adds that account without prompting", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
+
+    const { context } = createContext();
+    await func.call(
+      context,
+      { force: false, timeout: 900 },
+      "jane@example.com",
+    );
+
+    expect(runInteractiveLoginSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newAccount: true,
+        expectedEmail: "jane@example.com",
+      }),
+    );
+  });
+
+  test("--force: replaces the active account instead of adding one", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
+
+    const { context } = createContext();
+    await func.call(context, { force: true, timeout: 900 });
+
+    expect(runInteractiveLoginSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ newAccount: false }),
+    );
+  });
+
+  test("--token with an email for someone else: removes the stored token and fails", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue({
+      ...SAMPLE_USER,
+      email: "bob@example.com",
+    });
+
+    const { context } = createContext();
+    await expect(
+      func.call(
+        context,
+        { token: "new-token", force: false, timeout: 900 },
+        "jane@example.com",
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+    expect(setUserInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test("--token --url with an email for someone else: leaves the default URL alone", async () => {
+    isAuthenticatedSpy.mockReturnValue(true);
+    vi.spyOn(dbAuth, "getActiveAccountId").mockReturnValue("previous-account");
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue({
+      ...SAMPLE_USER,
+      email: "bob@example.com",
+    });
+    const setActiveAccountSpy = vi
+      .spyOn(dbAuth, "setActiveAccount")
+      .mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await expect(
+        func.call(
+          context,
+          {
+            token: "new-token",
+            force: false,
+            timeout: 900,
+            url: "https://other.example.com",
+          },
+          "jane@example.com",
+        ),
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+      expect(setActiveAccountSpy).toHaveBeenCalledWith("previous-account");
+      expect(pointDefaultUrlSpy).not.toHaveBeenCalled();
+    } finally {
+      setActiveAccountSpy.mockRestore();
+      pointDefaultUrlSpy.mockRestore();
+      vi.mocked(dbAuth.getActiveAccountId).mockRestore();
+    }
+  });
+
+  test("--token --url with a matching email: points the default URL at the new host", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await func.call(
+        context,
+        {
+          token: "new-token",
+          force: false,
+          timeout: 900,
+          url: "https://other.example.com",
+        },
+        SAMPLE_USER.email,
+      );
+
+      expect(pointDefaultUrlSpy).toHaveBeenCalledWith(
+        "https://other.example.com",
+      );
+    } finally {
+      pointDefaultUrlSpy.mockRestore();
+    }
+  });
+
+  test("<email>:<server> logs in to that server, like --url", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue("new-account");
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const pointDefaultUrlSpy = vi
+      .spyOn(accountSelection, "pointDefaultUrlAtAccount")
+      .mockReturnValue(undefined);
+
+    try {
+      const { context } = createContext();
+      await func.call(
+        context,
+        { token: "new-token", force: false, timeout: 900 },
+        `${SAMPLE_USER.email}:other.example.com`,
+      );
+
+      expect(setAuthTokenSpy).toHaveBeenCalledWith(
+        "new-token",
+        undefined,
+        undefined,
+        expect.objectContaining({ host: "https://other.example.com" }),
+      );
+      expect(pointDefaultUrlSpy).toHaveBeenCalledWith(
+        "https://other.example.com",
+      );
+    } finally {
+      pointDefaultUrlSpy.mockRestore();
+    }
+  });
+
+  test("<email>:<server> with a different --url is refused before anything is saved", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+
+    const { context } = createContext();
+    await expect(
+      func.call(
+        context,
+        {
+          token: "new-token",
+          force: false,
+          timeout: 900,
+          url: "https://sentry.io",
+        },
+        `${SAMPLE_USER.email}:other.example.com`,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(setAuthTokenSpy).not.toHaveBeenCalled();
   });
 
   test("already authenticated (env token SENTRY_AUTH_TOKEN): warns and proceeds to OAuth login", async () => {
@@ -344,53 +567,59 @@ describe("loginCommand.func --token path", () => {
     ["NUL", "synthetic-prefix\0synthetic-suffix"],
     ["empty value", ""],
     ["control-only value", "\x01\x7f"],
-  ])("--force --token rejects %s before changing the session or host", async (_, token) => {
-    isAuthenticatedSpy.mockReturnValue(true);
-    process.env.SENTRY_HOST = "https://previous.example.com";
-    process.env.SENTRY_URL = "https://previous.example.com";
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+  ])(
+    "--force --token rejects %s before changing the session or host",
+    async (_, token) => {
+      isAuthenticatedSpy.mockReturnValue(true);
+      process.env.SENTRY_HOST = "https://previous.example.com";
+      process.env.SENTRY_URL = "https://previous.example.com";
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    try {
-      const { context } = createContext();
-      await expect(
-        func.call(context, {
-          token,
-          force: true,
-          timeout: 900,
-          url: "https://replacement.example.com",
-        })
-      ).rejects.toBeInstanceOf(MalformedAuthTokenError);
+      try {
+        const { context } = createContext();
+        await expect(
+          func.call(context, {
+            token,
+            force: true,
+            timeout: 900,
+            url: "https://replacement.example.com",
+          }),
+        ).rejects.toBeInstanceOf(MalformedAuthTokenError);
 
-      expect(process.env.SENTRY_HOST).toBe("https://previous.example.com");
-      expect(process.env.SENTRY_URL).toBe("https://previous.example.com");
-      expect(clearAuthSpy).not.toHaveBeenCalled();
-      expect(setAuthTokenSpy).not.toHaveBeenCalled();
-      expect(setUserInfoSpy).not.toHaveBeenCalled();
-      expect(getUserRegionsSpy).not.toHaveBeenCalled();
-      expect(getCurrentUserSpy).not.toHaveBeenCalled();
-      expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally {
-      fetchSpy.mockRestore();
-    }
-  });
+        expect(process.env.SENTRY_HOST).toBe("https://previous.example.com");
+        expect(process.env.SENTRY_URL).toBe("https://previous.example.com");
+        expect(clearAuthSpy).not.toHaveBeenCalled();
+        expect(setAuthTokenSpy).not.toHaveBeenCalled();
+        expect(setUserInfoSpy).not.toHaveBeenCalled();
+        expect(getUserRegionsSpy).not.toHaveBeenCalled();
+        expect(getCurrentUserSpy).not.toHaveBeenCalled();
+        expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
 
   test.each([
     "\t\n\u00a0synthetic-token\r\n",
     "\0\u00a0\x01synthetic-token\x7f\ufeff\0",
-  ])("--token normalizes surrounding whitespace and controls before storage %#", async (token) => {
-    isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
-    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
-    setUserInfoSpy.mockReturnValue(undefined);
+  ])(
+    "--token normalizes surrounding whitespace and controls before storage %#",
+    async (token) => {
+      isAuthenticatedSpy.mockReturnValue(false);
+      setAuthTokenSpy.mockReturnValue(undefined);
+      getUserRegionsSpy.mockResolvedValue([]);
+      getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+      setUserInfoSpy.mockReturnValue(undefined);
 
-    const { context } = createContext();
-    await func.call(context, { token, force: false, timeout: 900 });
+      const { context } = createContext();
+      await func.call(context, { token, force: false, timeout: 900 });
 
-    expectTokenStored(setAuthTokenSpy, "synthetic-token");
-    expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
-  });
+      expectTokenStored(setAuthTokenSpy, "synthetic-token");
+      expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test("--token: null user.name is converted to undefined in setUserInfo", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
@@ -423,18 +652,19 @@ describe("loginCommand.func --token path", () => {
     expect(out).toContain("x@y.com");
   });
 
-  test("--token: 401 from validation clears auth and throws AuthError", async () => {
+  test("--token: 401 from validation removes only the new account and throws AuthError", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue("new-account");
     getUserRegionsSpy.mockRejectedValue(new ApiError("Unauthorized", 401));
     clearAuthSpy.mockResolvedValue(undefined);
 
     const { context } = createContext();
     await expect(
-      func.call(context, { token: "bad-token", force: false, timeout: 900 })
+      func.call(context, { token: "bad-token", force: false, timeout: 900 }),
     ).rejects.toBeInstanceOf(AuthError);
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(removeAccountSpy).toHaveBeenCalledWith("new-account");
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
   });
 
@@ -449,10 +679,11 @@ describe("loginCommand.func --token path", () => {
 
     const { context } = createContext();
     await expect(
-      func.call(context, { token: "maybe-good", force: false, timeout: 900 })
+      func.call(context, { token: "maybe-good", force: false, timeout: 900 }),
     ).rejects.toBe(cause);
 
     expect(clearAuthSpy).not.toHaveBeenCalled();
+    expect(removeAccountSpy).not.toHaveBeenCalled();
     expect(getCurrentUserSpy).not.toHaveBeenCalled();
   });
 
@@ -497,6 +728,45 @@ describe("loginCommand.func --token path", () => {
     expect(setUserInfoSpy).not.toHaveBeenCalled();
   });
 
+  test("--token: warms caches once the result is printed", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    setAuthTokenSpy.mockReturnValue(undefined);
+    getUserRegionsSpy.mockResolvedValue([]);
+    getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
+    setUserInfoSpy.mockReturnValue(undefined);
+    const { context, getStdout } = createContext();
+    let stdoutAtWarmup: string | undefined;
+    const warm = vi.mocked(completionWarmup.warmCachesAfterLogin);
+    warm.mockClear();
+    warm.mockImplementationOnce(async () => {
+      stdoutAtWarmup = getStdout();
+    });
+
+    await func.call(context, {
+      token: "my-token",
+      force: false,
+      timeout: 900,
+    });
+
+    expect(warm).toHaveBeenCalledTimes(1);
+    expect(stdoutAtWarmup).toContain("Authenticated");
+  });
+
+  test("OAuth: warms caches after a successful login", async () => {
+    isAuthenticatedSpy.mockReturnValue(false);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/tmp/db",
+    });
+    const warm = vi.mocked(completionWarmup.warmCachesAfterLogin);
+    warm.mockClear();
+
+    const { context } = createContext();
+    await func.call(context, { force: false, timeout: 900 });
+
+    expect(warm).toHaveBeenCalledTimes(1);
+  });
+
   test("no token: falls through to interactive login", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     runInteractiveLoginSpy.mockResolvedValue({
@@ -531,7 +801,7 @@ describe("loginCommand.func --token path", () => {
     expect(getStdout()).toContain("Access token expires in: 1 hour");
   });
 
-  test("--force when authenticated: clears auth and proceeds to interactive login", async () => {
+  test("--force when authenticated: keeps stored accounts and proceeds to interactive login", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     runInteractiveLoginSpy.mockResolvedValue({
@@ -542,11 +812,11 @@ describe("loginCommand.func --token path", () => {
     const { context } = createContext();
     await func.call(context, { force: true, timeout: 900 });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
-  test("--force --token when authenticated: clears auth and proceeds to token login", async () => {
+  test("--force --token when authenticated: replaces the active account's token", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     setAuthTokenSpy.mockReturnValue(undefined);
@@ -561,8 +831,9 @@ describe("loginCommand.func --token path", () => {
       timeout: 900,
     });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
-    expectTokenStored(setAuthTokenSpy, "new-token");
+    expect(clearAuthSpy).not.toHaveBeenCalled();
+    // Validated as its own account first; the previous one is dropped after.
+    expectTokenStored(setAuthTokenSpy, "new-token", true);
     expect(getStdout()).toContain("Authenticated");
   });
 
@@ -587,7 +858,7 @@ describe("loginCommand.func --token path", () => {
  * Tests for the interactive TTY re-authentication prompt.
  *
  * Uses the module-level `vi.mock()` on node:tty (so `isatty(0)` returns
- * true) and the logger (so `.prompt()` is controllable).
+ * true) and the prompt module (so `prompt()` is controllable).
  */
 describe("login re-authentication interactive prompt", () => {
   let isAuthenticatedSpy: ReturnType<typeof spyOn>;
@@ -652,7 +923,7 @@ describe("login re-authentication interactive prompt", () => {
     const promptMessage = (mockPrompt.mock.calls[0] as unknown as string[])[0];
     expect(promptMessage).toContain("Jane Doe");
     expect(promptMessage).toContain("jane@example.com");
-    expect(promptMessage).toContain("Re-authenticate?");
+    expect(promptMessage).toContain("Add another account?");
   });
 
   test("shows 'current user' fallback when no cached user info", async () => {
@@ -668,7 +939,7 @@ describe("login re-authentication interactive prompt", () => {
     expect(promptMessage).toContain("current user");
   });
 
-  test("confirm: clears auth and proceeds to login", async () => {
+  test("confirm: keeps stored accounts and proceeds to login", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
     mockPrompt.mockResolvedValue(true);
@@ -676,7 +947,7 @@ describe("login re-authentication interactive prompt", () => {
     const context = createPromptContext();
     await func.call(context, { force: false, timeout: 900 });
 
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
@@ -696,7 +967,7 @@ describe("login re-authentication interactive prompt", () => {
   test("cancel (Ctrl+C): returns without re-auth", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not `true`.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel"));
 
     const context = createPromptContext();
@@ -715,11 +986,11 @@ describe("login re-authentication interactive prompt", () => {
     await func.call(context, { force: true, timeout: 900 });
 
     expect(mockPrompt).not.toHaveBeenCalled();
-    expect(clearAuthSpy).toHaveBeenCalled();
+    expect(clearAuthSpy).not.toHaveBeenCalled();
     expect(runInteractiveLoginSpy).toHaveBeenCalled();
   });
 
-  test("confirm + --token: clears auth and re-authenticates with token", async () => {
+  test("confirm + --token: adds the token as an account", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     getUserInfoSpy.mockReturnValue(undefined);
     mockPrompt.mockResolvedValue(true);
@@ -746,8 +1017,8 @@ describe("login re-authentication interactive prompt", () => {
         timeout: 900,
       });
 
-      expect(clearAuthSpy).toHaveBeenCalled();
-      // Token stored with host scope (4th arg = { host: ... })
+      expect(clearAuthSpy).not.toHaveBeenCalled();
+      // Token stored as a new account with host scope (4th arg)
       expectTokenStored(setAuthTokenSpy, "new-token");
     } finally {
       setAuthTokenSpy.mockRestore();
@@ -755,6 +1026,41 @@ describe("login re-authentication interactive prompt", () => {
       getCurrentUserSpy.mockRestore();
       setUserInfoSpy.mockRestore();
     }
+  });
+});
+
+describe("login email argument", () => {
+  test("accepts an email", () => {
+    expect(parseLoginEmail(" jane@acme.com ")).toBe("jane@acme.com");
+    expect(splitLoginTarget("jane@acme.com")).toEqual({
+      email: "jane@acme.com",
+    });
+  });
+
+  test("<email>:<server> also names the server, with or without a scheme or port", () => {
+    expect(splitLoginTarget("jane@acme.com:sentry.acme.com")).toEqual({
+      email: "jane@acme.com",
+      url: "https://sentry.acme.com",
+    });
+    expect(splitLoginTarget("jane@acme.com:sentry.acme.com:9000")).toEqual({
+      email: "jane@acme.com",
+      url: "https://sentry.acme.com:9000",
+    });
+    expect(splitLoginTarget("jane@acme.com:http://localhost:8000")).toEqual({
+      email: "jane@acme.com",
+      url: "http://localhost:8000",
+    });
+  });
+
+  test.each([
+    "jane",
+    "@acme.com",
+    "jane@",
+    "jane@:sentry.io",
+    "jane@acme.com:",
+    "jane@acme.com@sentry.io",
+  ])("rejects %s", (raw) => {
+    expect(() => parseLoginEmail(raw)).toThrow(ValidationError);
   });
 });
 
@@ -783,9 +1089,8 @@ describe("applyLoginUrl (host resolution)", () => {
   });
 
   test("explicit --url takes precedence and writes env", async () => {
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
     const host = applyLoginUrl("https://sentry.example.com");
     expect(host).toBe("https://sentry.example.com");
     expect(process.env.SENTRY_HOST).toBe("https://sentry.example.com");
@@ -793,17 +1098,15 @@ describe("applyLoginUrl (host resolution)", () => {
   });
 
   test("no --url + no env falls back to SaaS default", async () => {
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.io");
   });
 
   test("no --url + SENTRY_HOST with scheme uses env host", async () => {
     process.env.SENTRY_HOST = "https://sentry.acme.com";
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
   });
 
@@ -812,26 +1115,23 @@ describe("applyLoginUrl (host resolution)", () => {
     // on bare hostnames. new URL("sentry.acme.com") throws → silent fallback
     // to SaaS default → token mis-scoped.
     process.env.SENTRY_HOST = "sentry.acme.com";
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
   });
 
   test("no --url + bare hostname SENTRY_URL prefixes https://", async () => {
     process.env.SENTRY_URL = "sentry.acme.com";
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
   });
 
   test("SENTRY_HOST takes precedence over SENTRY_URL", async () => {
     process.env.SENTRY_HOST = "https://host.example.com";
     process.env.SENTRY_URL = "https://url.example.com";
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://host.example.com");
   });
 });
@@ -845,12 +1145,10 @@ describe("applyLoginUrl (trust anchor registration)", () => {
     savedUrl = process.env.SENTRY_URL;
     delete process.env.SENTRY_HOST;
     delete process.env.SENTRY_URL;
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../../src/lib/env-token-host.js"
-    );
-    const { resetLoginTrustAnchorForTesting } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { resetEnvTokenHostForTesting } =
+      await import("../../../src/lib/env-token-host.js");
+    const { resetLoginTrustAnchorForTesting } =
+      await import("../../../src/lib/token-host.js");
     resetEnvTokenHostForTesting();
     resetLoginTrustAnchorForTesting();
   });
@@ -866,68 +1164,58 @@ describe("applyLoginUrl (trust anchor registration)", () => {
     } else {
       delete process.env.SENTRY_URL;
     }
-    const { resetEnvTokenHostForTesting } = await import(
-      "../../../src/lib/env-token-host.js"
-    );
-    const { resetLoginTrustAnchorForTesting } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { resetEnvTokenHostForTesting } =
+      await import("../../../src/lib/env-token-host.js");
+    const { resetLoginTrustAnchorForTesting } =
+      await import("../../../src/lib/token-host.js");
     resetEnvTokenHostForTesting();
     resetLoginTrustAnchorForTesting();
   });
 
   test("explicit --url registers trust anchor (user-supplied argv is trusted)", async () => {
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
-    const { isRequestOriginTrustedForCustomHeaders } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
+    const { isRequestOriginTrustedForCustomHeaders } =
+      await import("../../../src/lib/token-host.js");
     applyLoginUrl("https://sentry.acme.com");
     expect(
       isRequestOriginTrustedForCustomHeaders(
-        "https://sentry.acme.com/oauth/device/code/"
-      )
+        "https://sentry.acme.com/oauth/device/code/",
+      ),
     ).toBe(true);
   });
 
   test("SENTRY_HOST from boot env registers trust anchor (shell export is trusted)", async () => {
     process.env.SENTRY_HOST = "https://sentry.acme.com";
-    const { captureEnvTokenHost } = await import(
-      "../../../src/lib/env-token-host.js"
-    );
+    const { captureEnvTokenHost } =
+      await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
-    const { isRequestOriginTrustedForCustomHeaders } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
+    const { isRequestOriginTrustedForCustomHeaders } =
+      await import("../../../src/lib/token-host.js");
     applyLoginUrl(undefined);
     expect(
       isRequestOriginTrustedForCustomHeaders(
-        "https://sentry.acme.com/oauth/device/code/"
-      )
+        "https://sentry.acme.com/oauth/device/code/",
+      ),
     ).toBe(true);
   });
 
   test("rc-poisoned SENTRY_URL does NOT register trust anchor (attacker path)", async () => {
     // Boot: no env set → env-token-host captures SaaS default
-    const { captureEnvTokenHost } = await import(
-      "../../../src/lib/env-token-host.js"
-    );
+    const { captureEnvTokenHost } =
+      await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
 
     // Simulate .sentryclirc shim writing env.SENTRY_URL AFTER boot (the
     // auth login has skipRcUrlCheck: true). This is the attacker path.
     process.env.SENTRY_URL = "https://evil.com";
 
-    const { applyLoginUrl } = await import(
-      "../../../src/commands/auth/login.js"
-    );
-    const { isRequestOriginTrustedForCustomHeaders } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { applyLoginUrl } =
+      await import("../../../src/commands/auth/login.js");
+    const { isRequestOriginTrustedForCustomHeaders } =
+      await import("../../../src/lib/token-host.js");
     applyLoginUrl(undefined);
 
     // The rc-sourced host doesn't match boot env (which was empty →
@@ -935,15 +1223,15 @@ describe("applyLoginUrl (trust anchor registration)", () => {
     // applyCustomHeaders against evil.com must fail closed.
     expect(
       isRequestOriginTrustedForCustomHeaders(
-        "https://evil.com/oauth/device/code/"
-      )
+        "https://evil.com/oauth/device/code/",
+      ),
     ).toBe(false);
   });
 });
 
 function makeRcConfig(
   token: string | undefined,
-  url?: string
+  url?: string,
 ): SentryCliRcConfig {
   return {
     token,
@@ -955,7 +1243,7 @@ function makeRcConfig(
 describe("rcTokenHint", () => {
   test("no token → no hint", () => {
     expect(
-      rcTokenHint(makeRcConfig(undefined), "https://sentry.io")
+      rcTokenHint(makeRcConfig(undefined), "https://sentry.io"),
     ).toBeUndefined();
   });
 
@@ -968,7 +1256,7 @@ describe("rcTokenHint", () => {
   test("self-hosted, rc URL matches → hint includes --url", () => {
     const hint = rcTokenHint(
       makeRcConfig("sntrys_abc", "https://self.example.com"),
-      "https://self.example.com"
+      "https://self.example.com",
     );
     expect(hint).toContain("--url https://self.example.com");
   });
@@ -976,7 +1264,7 @@ describe("rcTokenHint", () => {
   test("self-hosted, rc URL mismatches → no hint (token is for a different instance)", () => {
     const hint = rcTokenHint(
       makeRcConfig("sntrys_abc", "https://other.example.com"),
-      "https://self.example.com"
+      "https://self.example.com",
     );
     expect(hint).toBeUndefined();
   });
@@ -984,7 +1272,7 @@ describe("rcTokenHint", () => {
   test("self-hosted, no rc URL → no hint (bare SaaS token shouldn't be suggested for self-hosted)", () => {
     const hint = rcTokenHint(
       makeRcConfig("sntrys_abc"),
-      "https://self.example.com"
+      "https://self.example.com",
     );
     expect(hint).toBeUndefined();
   });
@@ -1031,7 +1319,7 @@ describe("loginCommand.func scope selection (--read-only / --scope)", () => {
         force: false,
         timeout: 900,
         "read-only": true,
-      })
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
   });
@@ -1044,7 +1332,7 @@ describe("loginCommand.func scope selection (--read-only / --scope)", () => {
         force: false,
         timeout: 900,
         scope: ["project:read"],
-      })
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
   });
@@ -1057,7 +1345,7 @@ describe("loginCommand.func scope selection (--read-only / --scope)", () => {
         timeout: 900,
         "read-only": true,
         scope: ["project:read"],
-      })
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
   });
@@ -1069,7 +1357,7 @@ describe("loginCommand.func scope selection (--read-only / --scope)", () => {
         force: false,
         timeout: 900,
         scope: ["not:a:scope"],
-      })
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
   });

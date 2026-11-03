@@ -1,23 +1,6 @@
 
-## Examples
 
-```bash
-# List client keys for detected projects, including monorepos
-sentry dsn list
-
-# List enabled and disabled DSNs for one project
-sentry dsn list my-org/my-project
-
-# List DSNs across all accessible projects in an organization
-sentry dsn list my-org/
-
-# Navigate between pages
-sentry dsn list my-org/ --limit 10 -c next
-sentry dsn list my-org/ --limit 10 -c prev
-
-# Select public DSN fields as JSON
-sentry dsn list my-org/my-project --json --fields name,dsn,isActive
-```
+## Output and targets
 
 Each entry shows the project, name, enabled status, creation date, and public
 DSN available in Sentry's **Settings → Projects → Client Keys (DSN)**. A missing

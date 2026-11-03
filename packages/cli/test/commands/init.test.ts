@@ -9,20 +9,21 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { initCommand } from "../../src/commands/init.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as projectsApi from "../../src/lib/api/projects.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as authModule from "../../src/lib/db/auth.js";
 import {
   AuthError,
   ContextError,
   ValidationError,
 } from "../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as prefetchNs from "../../src/lib/init/org-prefetch.js";
 import { resetPrefetch } from "../../src/lib/init/org-prefetch.js";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as wizardRunner from "../../src/lib/init/wizard-runner.js";
+import { parseFailure } from "../helpers.js";
 
 /** Minimal org shape for mock returns */
 const MOCK_ORG = { id: "1", slug: "resolved-org", name: "Resolved Org" };
@@ -47,13 +48,12 @@ const func = (await initCommand.loader()) as unknown as (
     stdin: { isTTY?: boolean };
   },
   flags: Record<string, unknown>,
-  first?: string,
-  second?: string
+  ...args: string[]
 ) => Promise<void>;
 
 function makeContext(
   cwd = "/projects/app",
-  tty: { stdinTTY?: boolean; stdoutTTY?: boolean } = {}
+  tty: { stdinTTY?: boolean; stdoutTTY?: boolean } = {},
 ) {
   return {
     cwd,
@@ -85,8 +85,8 @@ beforeEach(() => {
   // Spy on warmOrgDetection to verify it's called/skipped appropriately.
   // The mock prevents real DSN scans and API calls from the background.
   warmSpy = vi.spyOn(prefetchNs, "warmOrgDetection").mockImplementation(
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional no-op mock
-    () => {}
+    // intentional no-op mock
+    () => {},
   );
   refreshTokenSpy = vi
     .spyOn(authModule, "refreshToken")
@@ -222,45 +222,44 @@ describe("init command func", () => {
       });
       await expect(promise).rejects.toThrow(ValidationError);
       await expect(promise).rejects.toThrow(
-        "Supported features: errors, tracing, logs, replay, profiling, crons, agent-tracing, mcp-observability"
+        "Supported features: errors, tracing, logs, replay, profiling, crons, agent-tracing, mcp-observability",
       );
       expect(runWizardSpy).not.toHaveBeenCalled();
       expect(findProjectsSpy).not.toHaveBeenCalled();
       expect(warmSpy).not.toHaveBeenCalled();
     });
 
-    test.each([
-      "user-feedback",
-      "userFeedback",
-    ])("rejects %s because init cannot configure User Feedback placement", async (feature) => {
-      const ctx = makeContext();
-      const promise = func.call(ctx, {
-        ...DEFAULT_FLAGS,
-        features: [feature],
-      });
-      await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
-        `Unknown init feature "${feature}"`
-      );
-      expect(runWizardSpy).not.toHaveBeenCalled();
-    });
+    test.each(["user-feedback", "userFeedback"])(
+      "rejects %s because init cannot configure User Feedback placement",
+      async (feature) => {
+        const ctx = makeContext();
+        const promise = func.call(ctx, {
+          ...DEFAULT_FLAGS,
+          features: [feature],
+        });
+        await expect(promise).rejects.toThrow(ValidationError);
+        await expect(promise).rejects.toThrow(
+          `Unknown init feature "${feature}"`,
+        );
+        expect(runWizardSpy).not.toHaveBeenCalled();
+      },
+    );
 
-    test.each([
-      "metrics",
-      "sourcemaps",
-      "attachments",
-    ])("rejects %s because init does not yet automate its setup", async (feature) => {
-      const ctx = makeContext();
-      const promise = func.call(ctx, {
-        ...DEFAULT_FLAGS,
-        features: [feature],
-      });
-      await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
-        `Unknown init feature "${feature}"`
-      );
-      expect(runWizardSpy).not.toHaveBeenCalled();
-    });
+    test.each(["metrics", "sourcemaps", "attachments"])(
+      "rejects %s because init does not yet automate its setup",
+      async (feature) => {
+        const ctx = makeContext();
+        const promise = func.call(ctx, {
+          ...DEFAULT_FLAGS,
+          features: [feature],
+        });
+        await expect(promise).rejects.toThrow(ValidationError);
+        await expect(promise).rejects.toThrow(
+          `Unknown init feature "${feature}"`,
+        );
+        expect(runWizardSpy).not.toHaveBeenCalled();
+      },
+    );
 
     test("passes undefined when features not provided", async () => {
       const ctx = makeContext();
@@ -275,7 +274,7 @@ describe("init command func", () => {
     test("requires --yes before project lookup or wizard startup", async () => {
       const ctx = makeContext("/projects/app", { stdinTTY: false });
       await expect(
-        func.call(ctx, { yes: false, "dry-run": false }, "my-app")
+        func.call(ctx, { yes: false, "dry-run": false }, "my-app"),
       ).rejects.toThrow(ContextError);
       expect(findProjectsSpy).not.toHaveBeenCalled();
       expect(warmSpy).not.toHaveBeenCalled();
@@ -287,7 +286,7 @@ describe("init command func", () => {
       const promise = func.call(ctx, DEFAULT_FLAGS);
       await expect(promise).rejects.toThrow(ContextError);
       await expect(promise).rejects.toThrow(
-        "sentry init --yes --features errors,tracing,replay [target] [directory]"
+        "sentry init --yes --features errors,tracing,replay [target] [directory]",
       );
       expect(warmSpy).not.toHaveBeenCalled();
       expect(runWizardSpy).not.toHaveBeenCalled();
@@ -369,7 +368,7 @@ describe("init command func", () => {
       const ctx = makeContext("/projects/app");
       await func.call(ctx, DEFAULT_FLAGS, "./subdir");
       expect(capturedArgs?.directory).toBe(
-        path.resolve("/projects/app", "./subdir")
+        path.resolve("/projects/app", "./subdir"),
       );
       expect(capturedArgs?.org).toBeUndefined();
     });
@@ -378,7 +377,7 @@ describe("init command func", () => {
       const ctx = makeContext("/projects/app");
       await func.call(ctx, DEFAULT_FLAGS, "../other");
       expect(capturedArgs?.directory).toBe(
-        path.resolve("/projects/app", "../other")
+        path.resolve("/projects/app", "../other"),
       );
       expect(capturedArgs?.org).toBeUndefined();
     });
@@ -394,7 +393,7 @@ describe("init command func", () => {
       const ctx = makeContext("/projects/app");
       await func.call(ctx, DEFAULT_FLAGS, "~/projects/other");
       expect(capturedArgs?.directory).toBe(
-        path.resolve("/projects/app", "~/projects/other")
+        path.resolve("/projects/app", "~/projects/other"),
       );
       expect(capturedArgs?.org).toBeUndefined();
     });
@@ -479,7 +478,7 @@ describe("init command func", () => {
       }));
       const ctx = makeContext();
       await expect(func.call(ctx, DEFAULT_FLAGS, "my-app")).rejects.toThrow(
-        ValidationError
+        ValidationError,
       );
     });
   });
@@ -493,7 +492,7 @@ describe("init command func", () => {
       expect(capturedArgs?.org).toBe("acme");
       expect(capturedArgs?.project).toBeUndefined();
       expect(capturedArgs?.directory).toBe(
-        path.resolve("/projects/app", "./subdir")
+        path.resolve("/projects/app", "./subdir"),
       );
     });
 
@@ -503,7 +502,7 @@ describe("init command func", () => {
       expect(capturedArgs?.org).toBe("acme");
       expect(capturedArgs?.project).toBe("my-app");
       expect(capturedArgs?.directory).toBe(
-        path.resolve("/projects/app", "./subdir")
+        path.resolve("/projects/app", "./subdir"),
       );
     });
 
@@ -514,7 +513,7 @@ describe("init command func", () => {
       expect(capturedArgs?.org).toBe("resolved-org");
       expect(capturedArgs?.project).toBe("my-app");
       expect(capturedArgs?.directory).toBe(
-        path.resolve("/projects/app", "./subdir")
+        path.resolve("/projects/app", "./subdir"),
       );
     });
   });
@@ -536,7 +535,7 @@ describe("init command func", () => {
       expect(capturedArgs?.org).toBe("acme");
       expect(capturedArgs?.project).toBe("my-app");
       expect(capturedArgs?.directory).toBe(
-        path.resolve("/projects/app", "./subdir")
+        path.resolve("/projects/app", "./subdir"),
       );
     });
   });
@@ -546,19 +545,24 @@ describe("init command func", () => {
   describe("error cases", () => {
     test("two paths throws ValidationError with specific message", async () => {
       const ctx = makeContext();
-      const promise = func.call(ctx, DEFAULT_FLAGS, "./dir1", "./dir2");
-      await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
-        '"./dir1" and "./dir2" are both directory paths'
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "./dir1", "./dir2")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain(
+        '"./dir1" and "./dir2" are both directory paths',
       );
+      expect(runWizardSpy).not.toHaveBeenCalled();
     });
 
     test("two targets throws ValidationError with specific message", async () => {
       const ctx = makeContext();
-      const promise = func.call(ctx, DEFAULT_FLAGS, "acme/", "other/");
-      await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
-        '"acme/" and "other/" are both treated as targets'
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "acme/", "other/")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain(
+        '"acme/" and "other/" are both treated as targets',
       );
     });
 
@@ -566,9 +570,22 @@ describe("init command func", () => {
       // Spaces in org slugs now hit validateResourceId and throw
       // ValidationError — normalizeSlug no longer converts them.
       const ctx = makeContext();
-      await expect(func.call(ctx, DEFAULT_FLAGS, "acme corp/")).rejects.toThrow(
-        ValidationError
-      );
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "acme corp/")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      // Rejected before any project lookup
+      expect(findProjectsSpy).not.toHaveBeenCalled();
+    });
+
+    test("more than two arguments fail to parse", async () => {
+      const ctx = makeContext();
+      const err = await func
+        .call(ctx, DEFAULT_FLAGS, "acme/", "./app", "extra")
+        .catch(parseFailure);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.message).toContain("Too many arguments");
+      expect(runWizardSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -587,7 +604,7 @@ describe("init command func", () => {
       await func.call(
         ctx,
         { ...DEFAULT_FLAGS, team: "backend" },
-        "acme/my-app"
+        "acme/my-app",
       );
       expect(capturedArgs?.org).toBe("acme");
       expect(capturedArgs?.project).toBe("my-app");
@@ -646,7 +663,7 @@ describe("init command func", () => {
       const ctx = makeContext("/projects/app");
       await func.call(ctx, DEFAULT_FLAGS, "./subdir");
       expect(warmSpy).toHaveBeenCalledWith(
-        path.resolve("/projects/app", "./subdir")
+        path.resolve("/projects/app", "./subdir"),
       );
     });
   });

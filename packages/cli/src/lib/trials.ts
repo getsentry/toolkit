@@ -78,7 +78,7 @@ for (const entry of Object.values(TRIAL_NAMES)) {
  */
 export function findAvailableTrial(
   trials: ProductTrial[],
-  name: string
+  name: string,
 ): ProductTrial | null {
   const entry = TRIAL_NAMES[name];
   if (!entry) {
@@ -112,7 +112,7 @@ export function humanizeCategory(category: string): string {
       // Preserve all-caps words like "UI", "API"; title-case the rest
       w === w.toUpperCase() && w.length > 1
         ? w
-        : w.charAt(0).toUpperCase() + w.slice(1)
+        : w.charAt(0).toUpperCase() + w.slice(1),
     )
     .join(" ");
 }

@@ -8,6 +8,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { downloadCommand } from "../../../src/commands/replay/download.js";
 
@@ -18,11 +19,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import {
   ApiError,
@@ -37,11 +38,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { ReplayDetails } from "../../../src/types/index.js";
 
@@ -112,7 +113,7 @@ describe("replay download", () => {
     vi.clearAllMocks();
     tmpDir = await mkdtemp(join(tmpdir(), "replay-dl-"));
     resolveTargetSpy = vi
-      .spyOn(resolveTarget, "resolveOrgOptionalFromArg")
+      .spyOn(resolveTarget, "resolveOrgOptionalTarget")
       .mockResolvedValue({ org: "test-org" });
     resolveReplaySpy = vi
       .spyOn(apiClient, "resolveReplay")
@@ -156,7 +157,7 @@ describe("replay download", () => {
     await func.call(
       createContext().context,
       { fresh: false, output: "nested/dir/replay.json" },
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     const events = await readEvents(join(tmpDir, "nested/dir/replay.json"));
@@ -185,13 +186,13 @@ describe("replay download", () => {
     await func.call(
       createContext().context,
       { fresh: false },
-      `https://sentry.io/organizations/url-org/explore/replays/${REPLAY_ID}/`
+      `https://sentry.io/organizations/url-org/explore/replays/${REPLAY_ID}/`,
     );
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      "url-org/",
+      { type: "org-all", org: "url-org" },
       tmpDir,
-      "replay download"
+      "replay download",
     );
   });
 
@@ -209,12 +210,12 @@ describe("replay download", () => {
 
   test("rejects an archived replay without fetching segments", async () => {
     resolveReplaySpy.mockResolvedValue(
-      sampleReplay({ is_archived: true, project_id: null })
+      sampleReplay({ is_archived: true, project_id: null }),
     );
     const func = await downloadCommand.loader();
 
     await expect(
-      func.call(createContext().context, { fresh: false }, REPLAY_ID)
+      func.call(createContext().context, { fresh: false }, REPLAY_ID),
     ).rejects.toThrow(ResolutionError);
     expect(segmentsSpy).not.toHaveBeenCalled();
   });
@@ -231,8 +232,8 @@ describe("replay download", () => {
       func.call(
         createContext().context,
         { fresh: false },
-        `test-org/other/${REPLAY_ID}`
-      )
+        `test-org/other/${REPLAY_ID}`,
+      ),
     ).rejects.toThrow(/is not in project 'other'/);
     expect(segmentsSpy).not.toHaveBeenCalled();
   });
@@ -242,10 +243,10 @@ describe("replay download", () => {
     const func = await downloadCommand.loader();
 
     await expect(
-      func.call(createContext().context, { fresh: false }, REPLAY_ID)
+      func.call(createContext().context, { fresh: false }, REPLAY_ID),
     ).rejects.toThrow(/has no recording to download/);
     await expect(
-      readFile(join(tmpDir, `${REPLAY_ID}.rrweb.json`))
+      readFile(join(tmpDir, `${REPLAY_ID}.rrweb.json`)),
     ).rejects.toThrow();
   });
 
@@ -254,7 +255,7 @@ describe("replay download", () => {
     const func = await downloadCommand.loader();
 
     await expect(
-      func.call(createContext().context, { fresh: false }, REPLAY_ID)
+      func.call(createContext().context, { fresh: false }, REPLAY_ID),
     ).rejects.toThrow(/not found/);
   });
 
@@ -265,7 +266,12 @@ describe("replay download", () => {
       .call(createContext().context, { fresh: false })
       .catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(ContextError);
-    expect((error as ContextError).message).toContain("sentry replay download");
+    // An argument error, as the CLI reports it, wrapping the parser's error
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    const { exception } = error as ArgumentParseError;
+    expect(exception).toBeInstanceOf(ContextError);
+    expect((exception as ContextError).message).toContain(
+      "sentry replay download",
+    );
   });
 });

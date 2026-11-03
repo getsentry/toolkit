@@ -1,7 +1,7 @@
 /**
  * Unit tests for the run-commands tool.
  *
- * Kept as a mocked sibling file because vi.mock() on @sentry/node-core/light
+ * Kept as a mocked sibling file because vi.mock() on @sentry/node
  * must precede all module imports to take effect.
  */
 
@@ -22,7 +22,7 @@ const { breadcrumbs } = vi.hoisted(() => ({
   breadcrumbs: [] as Breadcrumb[],
 }));
 
-vi.mock("@sentry/node-core/light", () => ({
+vi.mock("@sentry/node", () => ({
   addBreadcrumb: (crumb: Breadcrumb) => breadcrumbs.push(crumb),
 }));
 
@@ -50,7 +50,7 @@ describe("runCommands breadcrumb on failure", () => {
     // requiring shell built-ins.
     const result = await runCommands(
       makePayload(["ls /nonexistent-sentry-test-path-xyz"]),
-      { dryRun: false }
+      { dryRun: false },
     );
 
     expect(result.ok).toBe(false);
@@ -77,7 +77,7 @@ describe("runCommands breadcrumb on failure", () => {
   test("does not emit a breadcrumb in dry-run mode", async () => {
     const result = await runCommands(
       makePayload(["ls /nonexistent-sentry-test-path-xyz"]),
-      { dryRun: true }
+      { dryRun: true },
     );
 
     expect(result.ok).toBe(true);

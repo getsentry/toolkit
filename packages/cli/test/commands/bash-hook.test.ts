@@ -18,7 +18,7 @@ useTestConfigDir("bash-hook-");
  * Run bash-hook command and capture stdout.
  */
 async function runBashHook(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; exitCode: number }> {
   let output = "";
   const mockContext: SentryContext = {
@@ -55,7 +55,13 @@ describe("shellQuote", () => {
   });
 
   test("escapes embedded single quotes", () => {
-    expect(shellQuote("it's")).toBe("'it'\\''s'");
+    expect(shellQuote("it's")).toBe(`'it'"'"'s'`);
+  });
+
+  test("preserves typographic apostrophes in quoted segments", () => {
+    expect(shellQuote("can’t ‘quote’ ‚this‛")).toBe(
+      `'can'"’"'t '"‘"'quote'"’"' '"‚"'this'"‛"''`,
+    );
   });
 
   test("handles empty string", () => {
@@ -69,7 +75,7 @@ describe("shellQuote", () => {
   });
 
   test("handles multiple single quotes", () => {
-    expect(shellQuote("it's a 'test'")).toBe("'it'\\''s a '\\''test'\\'''");
+    expect(shellQuote("it's a 'test'")).toBe(`'it'"'"'s a '"'"'test'"'"''`);
   });
 });
 
@@ -139,7 +145,7 @@ describe("bashHookCommand (script output mode)", () => {
   test("handles dollar signs in tag values safely", async () => {
     const { output } = await runBashHook(["--tag", "key:val$'inject"]);
     // The value should be properly shell-quoted, not corrupted by JS $' pattern
-    expect(output).toContain("--tag 'key:val$'\\''inject'");
+    expect(output).toContain(`--tag 'key:val$'"'"'inject'`);
     expect(output).not.toContain("___SENTRY_");
   });
 
@@ -149,7 +155,7 @@ describe("bashHookCommand (script output mode)", () => {
       "https://key@o1.ingest.sentry.io/1",
     ]);
     expect(output).toContain(
-      "export SENTRY_DSN='https://key@o1.ingest.sentry.io/1'"
+      "export SENTRY_DSN='https://key@o1.ingest.sentry.io/1'",
     );
   });
 });

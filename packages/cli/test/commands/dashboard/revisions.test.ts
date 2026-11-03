@@ -6,14 +6,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolve from "../../../src/commands/dashboard/resolve.js";
 import { revisionsCommand } from "../../../src/commands/dashboard/revisions.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 import type { DashboardRevision } from "../../../src/types/dashboard.js";
 
@@ -106,7 +106,7 @@ describe("dashboard revisions command", () => {
   beforeEach(() => {
     listDashboardRevisionsPaginatedSpy = vi.spyOn(
       apiClient,
-      "listDashboardRevisionsPaginated"
+      "listDashboardRevisionsPaginated",
     );
     resolveOrgFromTargetSpy = vi.spyOn(resolve, "resolveOrgFromTarget");
     resolveDashboardIdSpy = vi.spyOn(resolve, "resolveDashboardId");
@@ -116,7 +116,7 @@ describe("dashboard revisions command", () => {
       .mockImplementation((_opts, fn) =>
         fn(() => {
           /* no-op setMessage */
-        })
+        }),
       );
     advancePaginationStateSpy = vi
       .spyOn(paginationDb, "advancePaginationState")
@@ -268,30 +268,28 @@ describe("dashboard revisions command", () => {
     expect(output).toContain("-c prev");
   });
 
-  test("auto-pagination: --limit larger than page size fetches multiple pages", async () => {
-    // First page returns 2 items + nextCursor, second page returns 1 item
+  test("auto-pagination: --limit above one page keeps one per_page", async () => {
+    const page = Array.from({ length: 100 }, () => REVISION_A);
     listDashboardRevisionsPaginatedSpy
-      .mockResolvedValueOnce({
-        data: [REVISION_A, REVISION_B],
-        nextCursor: "cursor-page-2",
-      })
-      .mockResolvedValueOnce({
-        data: [REVISION_C],
-        nextCursor: undefined,
-      });
+      .mockResolvedValueOnce({ data: page, nextCursor: "100:1:0" })
+      .mockResolvedValueOnce({ data: page, nextCursor: "100:2:0" });
 
     const { context, stdoutWrite } = createMockContext();
     const func = await revisionsCommand.loader();
-    // Request 3 items, which exceeds a single page of 2
-    await func.call(context, defaultFlags({ json: true, limit: 3 }), "123");
+    await func.call(context, defaultFlags({ json: true, limit: 200 }), "123");
 
-    // Should have called API twice
-    expect(listDashboardRevisionsPaginatedSpy).toHaveBeenCalledTimes(2);
-
-    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
-    const parsed = JSON.parse(output);
-    expect(parsed.data).toHaveLength(3);
-    expect(parsed.hasMore).toBe(false);
+    // The revisions endpoint uses OffsetPaginator, whose cursor encodes the
+    // page size, so every request must send the same per_page.
+    expect(
+      listDashboardRevisionsPaginatedSpy.mock.calls.map((call) => call[2]),
+    ).toEqual([
+      { perPage: 100, cursor: undefined },
+      { perPage: 100, cursor: "100:1:0" },
+    ]);
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    expect(parsed.data).toHaveLength(200);
+    expect(parsed.hasMore).toBe(true);
+    expect(parsed.nextCursor).toContain("100:2:0");
   });
 
   // -------------------------------------------------------------------------
@@ -312,7 +310,7 @@ describe("dashboard revisions command", () => {
     expect(listDashboardRevisionsPaginatedSpy).toHaveBeenCalledWith(
       "test-org",
       "123",
-      { perPage: 25, cursor: undefined }
+      { perPage: 25, cursor: undefined },
     );
   });
 
@@ -340,12 +338,12 @@ describe("dashboard revisions command", () => {
     await func.call(
       context,
       defaultFlags({ json: true }),
-      "My Dashboard Title"
+      "My Dashboard Title",
     );
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith(
       "test-org",
-      "My Dashboard Title"
+      "My Dashboard Title",
     );
   });
 });

@@ -23,9 +23,11 @@ function parseUrl(value: string): URL {
       !["https:", "http:"].includes(url.protocol) ||
       url.username ||
       url.password ||
-      [...value].some(
-        (character) => character.charCodeAt(0) <= 32 || character === "\\",
-      )
+      value
+        .split("")
+        .some(
+          (character) => character.charCodeAt(0) <= 32 || character === "\\",
+        )
     ) {
       throw new Error("Invalid URL");
     }
@@ -248,7 +250,7 @@ export async function linkExternalIssue(
   input: IssueLinkParams,
 ): Promise<IssueLinkResult> {
   const { params, url } = validatedParams(input);
-  if (params.appSlug) return linkAppIssue(apiService, params);
+  if (params.appSlug) return await linkAppIssue(apiService, params);
   const candidates = await nativeCandidates(apiService, params, url);
   if (!candidates.length) {
     throw new UserInputError(
@@ -279,7 +281,7 @@ export async function unlinkExternalIssue(
   input: IssueLinkParams,
 ): Promise<IssueLinkResult> {
   const { params, url } = validatedParams(input);
-  if (params.appSlug) return unlinkAppIssue(apiService, params);
+  if (params.appSlug) return await unlinkAppIssue(apiService, params);
   // Existing associations can outlive a disabled or reconfigured installation.
   // Match their stored URL, without applying link-time installation eligibility.
   const integrations = await apiService.listIssueIntegrations(params);
@@ -317,7 +319,7 @@ export async function unlinkExternalIssue(
   const match = matches[0];
   if (!match) {
     // Custom Apps can own any URL, including one with a native provider shape.
-    if (!params.integrationId) return unlinkAppIssue(apiService, params);
+    if (!params.integrationId) return await unlinkAppIssue(apiService, params);
     return { url: params.externalIssueUrl, status: "not_linked" };
   }
   await apiService.unlinkNativeExternalIssue({

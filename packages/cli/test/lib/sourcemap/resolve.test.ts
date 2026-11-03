@@ -51,7 +51,7 @@ describe("resolveDirectorySourcemaps", () => {
   test("classifies an inline data: sourceMappingURL", async () => {
     write(
       "inline.js",
-      "console.log(1)\n//# sourceMappingURL=data:application/json;base64,e30=\n"
+      "console.log(1)\n//# sourceMappingURL=data:application/json;base64,e30=\n",
     );
 
     const results = await resolveDirectorySourcemaps(dir);
@@ -63,7 +63,7 @@ describe("resolveDirectorySourcemaps", () => {
   test("classifies a remote sourceMappingURL", async () => {
     write(
       "remote.js",
-      "console.log(1)\n//# sourceMappingURL=https://cdn.example.com/remote.js.map\n"
+      "console.log(1)\n//# sourceMappingURL=https://cdn.example.com/remote.js.map\n",
     );
 
     const results = await resolveDirectorySourcemaps(dir);

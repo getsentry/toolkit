@@ -137,10 +137,10 @@ const ESCAPED_LITERAL_CHARS = new Set([
  * Honors the `i` flag by lower-casing the literal — the caller
  * should also lower-case the haystack before searching.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: single-pass parser over regex source; all branches are guarded cases
+// single-pass parser over regex source; all branches are guarded cases
 export function extractInnerLiteral(
   source: string,
-  flags: string
+  flags: string,
 ): string | null {
   // Quick-reject: top-level alternation. Walk once checking for `|`
   // outside brackets/parens (rough; better than parsing the whole

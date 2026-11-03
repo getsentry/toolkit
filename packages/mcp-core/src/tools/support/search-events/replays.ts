@@ -1,3 +1,4 @@
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { ReplayDetails, SentryApiService } from "../../../api-client";
 import { formatToolCallInstruction } from "../../../internal/tool-helpers/tool-call-formatting";
 import {
@@ -171,14 +172,18 @@ export function formatReplayResults(params: FormatReplayResultsParams): string {
   return output;
 }
 
-function formatReplayUser(replay: ReplayDetails): string {
-  return (
+export function formatReplayUser(replay: ReplayDetails): string {
+  const name =
     replay.user?.display_name ??
     replay.user?.email ??
     replay.user?.username ??
-    replay.user?.id ??
-    "Anonymous User"
-  );
+    null;
+  const id = replay.user?.id ?? null;
+  // Keep the ID visible so results can be matched to a `user.id` search.
+  if (name && id && name !== id) {
+    return `${name} (id ${inlineCode(id)})`;
+  }
+  return name ?? id ?? "Anonymous User";
 }
 
 function formatReplayUrls(urls: string[]): string {

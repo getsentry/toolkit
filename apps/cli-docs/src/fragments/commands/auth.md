@@ -1,12 +1,6 @@
 
 
-## Examples
-
-### OAuth login (recommended)
-
-```bash
-sentry auth
-```
+## OAuth login
 
 Bare `sentry auth` logs in when you're logged out and shows status when you're
 already authenticated. `sentry auth login` always starts the login flow.
@@ -18,91 +12,86 @@ already authenticated. `sentry auth login` always starts the login flow.
 5. The CLI stores the OAuth credentials and, when the server provides a refresh
    token, automatically refreshes the access token
 
-### Token login
+Use `--read-only` to request only read-only scopes — useful for tokens handed
+to AI agents or CI jobs that should not mutate Sentry state. Use `--scope` to
+request specific scopes (repeatable, comma-separated).
 
+## Self-hosted Sentry
+
+Pass `--url` to log in to a self-hosted instance. Setting `SENTRY_HOST` or
+`SENTRY_URL` alone is not enough: the CLI refuses to log in to a self-hosted
+host unless `--url` confirms it.
+
+See [Self-Hosted Sentry](../../self-hosted/) for details.
+
+## Multiple accounts
+
+The CLI can store several accounts at once — for example a work and a personal
+account, or a SaaS and a self-hosted login. When you're already logged in,
+`sentry auth login` asks whether to add another account and makes it active;
+logging in again as the same user on the same server replaces that account's
+credentials instead of adding a duplicate. `--force` skips the prompt and
+replaces the stored login for that server instead (or adds one when that
+server has none); accounts on other servers are never replaced.
+
+Use `sentry auth list` to show stored accounts and `sentry auth switch` to
+change the active one.
+
+Sentry approves a device-flow login as whoever is signed in to the browser, so
+`sentry auth login <email>` checks the approved account and refuses (saving
+nothing) if it belongs to someone else.
+
+Select an account by email, username, user ID, or account ID (from
+`sentry auth list --json`). `sentry auth switch` also accepts a close match —
+`sentry auth switch jane` picks `jane@example.com` with a warning when it's the
+only candidate. If the same email is stored on several servers, add the server
+after a colon, as `sentry org list` shows it
+(`sentry auth switch jane@example.com:sentry.example.com`), or pass `--url`:
+`sentry auth switch jane@example.com --url https://sentry.example.com`.
+
+Most of the time you don't need to switch: commands pick the stored account
+that fits what they target, without changing the active account:
+
+- **Organization** — when the target organization isn't in the active
+  account's organization list (cached at login and by `sentry org list`,
+  which lists every stored account's organizations) but another stored
+  account has used it, that account is used. This includes `oNNNN` IDs from
+  DSNs.
+- **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
+  URL for another account's server (for example a self-hosted issue link) uses
+  the account stored for that server.
+- **Environment token** — `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) acts as one
+  more account, never stored, when its server is known from a trusted source:
+  an organization auth token's own URL, else sentry.io (including a sentry.io
+  `SENTRY_HOST`/`SENTRY_URL`; never `.sentryclirc` or a pasted URL). A
+  self-hosted `SENTRY_HOST`/`SENTRY_URL` alone doesn't count, since CI steps
+  can set it without access to the token: use an organization auth token, or
+  `SENTRY_FORCE_ENV_TOKEN=1`. `sentry org list` lists its
+  organizations under `env:SENTRY_AUTH_TOKEN` and caches them; commands
+  targeting one of them then use the env token, even when a stored account
+  knows the organization too. It also serves its
+  server when no stored account is on it. `sentry auth list` and
+  `sentry auth status` show it with its user when the server reports one. It
+  can't be selected with `sentry auth switch`.
+
+<!-- allow-commands: shows account selection across commands, not auth usage -->
 ```bash
-sentry auth --token YOUR_SENTRY_API_TOKEN
+# Active account is personal; this uses the work account that knows acme-corp
+sentry issue list acme-corp/
+
+# Uses the self-hosted account without switching
+sentry issue view https://sentry.example.com/organizations/acme/issues/123/
 ```
 
-### Read-only OAuth login
+Otherwise the active account is used. One command never mixes accounts; when
+several other accounts know the organization, the most recently used wins.
+This works even when the active account is logged out: the target can still
+pick a stored account that can authenticate.
 
-Request only read-only scopes — useful for tokens handed to AI agents or
-CI jobs that should not mutate Sentry state:
-
-```bash
-sentry auth --read-only
-```
-
-### Custom OAuth scopes
-
-Request specific scopes (repeatable, comma-separated):
-
-```bash
-sentry auth --scope project:read --scope org:read
-sentry auth --scope project:read,event:read
-```
-
-### Self-hosted Sentry
-
-Use `--url` (recommended) or the `SENTRY_URL` environment variable:
-
-```bash
-sentry auth --url https://sentry.example.com
-SENTRY_URL=https://sentry.example.com sentry auth
-```
-
-For token-based auth with self-hosted:
-
-```bash
-sentry auth --token YOUR_TOKEN --url https://sentry.example.com
-```
-
-See [Self-Hosted Sentry](../self-hosted/) for details.
-
-### Logout
-
-```bash
-sentry auth logout
-```
-
-### Refresh the OAuth access token
-
-```bash
-sentry auth refresh
-
-# Refresh with read-only scopes
-sentry auth refresh --read-only
-
-# Refresh with specific scopes
-sentry auth refresh --scope project:read --scope org:read
-```
-
-### Print stored token
-
-```bash
-sentry auth token
-```
-
-### Check auth status
-
-```bash
-sentry auth status
-```
-
-```
-✓ Authenticated
-User: username
-Access token expires: in 4 weeks
-Automatic refresh: enabled
-```
-
-```bash
-# Show the raw token
-sentry auth status --show-token
-
-# View current user
-sentry auth whoami
-```
+Switching also points the default URL (`sentry cli defaults url`) at the
+account's server. `SENTRY_HOST`/`SENTRY_URL` and `SENTRY_AUTH_TOKEN` (with
+`SENTRY_FORCE_ENV_TOKEN=1`) still take precedence over the active account.
+Default organization and project settings are shared by all accounts.
 
 ## Credential Storage
 
@@ -126,8 +115,10 @@ By default, the CLI checks for auth tokens in the following order:
 3. `SENTRY_TOKEN` environment variable (legacy alias)
 
 The stored credential takes priority. Stored OAuth credentials support
-automatic refresh; manually provided API tokens do not use a refresh token. To
-override this precedence and force environment tokens to win, set
+automatic refresh; manually provided API tokens do not use a refresh token.
+An environment token with a known server is still used for the organizations it
+can access and for its own server (see account selection above). To override
+this precedence and use only the environment token, set
 `SENTRY_FORCE_ENV_TOKEN=1`.
 
 When a token comes from an environment variable, the CLI skips expiry checks and automatic refresh.

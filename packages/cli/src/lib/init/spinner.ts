@@ -29,7 +29,7 @@ type SpinnerOutput = NodeJS.WriteStream & {
  * file tree view needs to redraw an entire block in place as progress changes.
  */
 export function createWizardSpinner(
-  output: SpinnerOutput = process.stdout
+  output: SpinnerOutput = process.stdout,
 ): WizardSpinner {
   let running = false;
   let frameIndex = 0;
@@ -135,7 +135,7 @@ export function createWizardSpinner(
     clearRenderedBlock();
     if (message) {
       output.write(
-        `${renderInlineMarkdown(formatStoppedBlock(message, code))}\n`
+        `${renderInlineMarkdown(formatStoppedBlock(message, code))}\n`,
       );
     }
     if (output.isTTY) {

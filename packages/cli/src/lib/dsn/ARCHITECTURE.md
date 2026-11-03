@@ -53,19 +53,19 @@ DSNs are detected in this priority order (highest first):
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `index.ts` | Public API - re-exports for clean imports |
-| `types.ts` | All TypeScript types and Zod schemas |
+| File          | Purpose                                   |
+| ------------- | ----------------------------------------- |
+| `index.ts`    | Public API - re-exports for clean imports |
+| `types.ts`    | All TypeScript types and Zod schemas      |
 | `detector.ts` | Main detection orchestration with caching |
-| `scanner.ts` | Shared file scanning utilities |
-| `parser.ts` | DSN string parsing and validation |
-| `cache.ts` | Cache read/write to config file |
-| `resolver.ts` | DSN → org/project via Sentry API |
-| `errors.ts` | User-friendly error messages |
-| `env.ts` | `SENTRY_DSN` env var detection |
+| `scanner.ts`  | Shared file scanning utilities            |
+| `parser.ts`   | DSN string parsing and validation         |
+| `cache.ts`    | Cache read/write to config file           |
+| `resolver.ts` | DSN → org/project via Sentry API          |
+| `errors.ts`   | User-friendly error messages              |
+| `env.ts`      | `SENTRY_DSN` env var detection            |
 | `env-file.ts` | `.env` file detection + monorepo scanning |
-| `languages/` | Language-specific code detectors |
+| `languages/`  | Language-specific code detectors          |
 
 ## Adding a New Language Detector
 
@@ -118,6 +118,7 @@ The module uses a two-level caching strategy:
 2. **Project Cache** - Stores resolved org/project info per DSN
 
 Cache invalidation:
+
 - DSN cache is verified by re-reading the source file
 - If DSN changed, cache is updated
 - If file deleted, full scan is triggered

@@ -23,7 +23,7 @@ function insertPaginationRow(cursorStack: string): void {
   db.query(
     `INSERT OR REPLACE INTO pagination_cursors
        (command_key, context, cursor_stack, page_index, expires_at)
-     VALUES (?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?)`,
   ).run(CMD_KEY, CTX_KEY, cursorStack, 0, Date.now() + 60_000);
 }
 
@@ -31,7 +31,7 @@ function paginationRowCount(): number {
   const db = getDatabase();
   const row = db
     .query(
-      "SELECT COUNT(*) AS n FROM pagination_cursors WHERE command_key = ? AND context = ?"
+      "SELECT COUNT(*) AS n FROM pagination_cursors WHERE command_key = ? AND context = ?",
     )
     .get(CMD_KEY, CTX_KEY) as { n: number };
   return row.n;

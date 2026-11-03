@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as gitLib from "../../../src/lib/git.js";
 import {
   checkGitStatus,
@@ -95,7 +95,7 @@ describe("checkGitStatus", () => {
     expect(result).toBe(true);
     const confirmCall = calls.find((c) => c.kind === "confirm");
     expect(confirmCall?.kind === "confirm" && confirmCall.message).toContain(
-      "not inside a git repository"
+      "not inside a git repository",
     );
   });
 
@@ -142,7 +142,7 @@ describe("checkGitStatus", () => {
     expect(lastWarn(calls)).toContain("uncommitted");
     const confirmCall = calls.find((c) => c.kind === "confirm");
     expect(confirmCall?.kind === "confirm" && confirmCall.message).toContain(
-      "uncommitted changes"
+      "uncommitted changes",
     );
   });
 

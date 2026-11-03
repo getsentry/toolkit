@@ -1,0 +1,61 @@
+[
+  {
+    "key": "span.duration",
+    "name": "span.duration",
+    "context": {
+      "isConvention": false,
+      "brief": "The total time taken by the span.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "transaction.duration",
+    "name": "transaction.duration",
+    "context": {}
+  },
+  {
+    "key": "http.status_code",
+    "name": "HTTP Status Code",
+    "context": {
+      "isConvention": true,
+      "brief": "The status code of the HTTP response.",
+      "isDeprecated": true,
+      "examples": [404],
+      "replacementAttribute": "http.response.status_code"
+    }
+  },
+  {
+    "key": "custom.count",
+    "name": "custom.count",
+    "context": {}
+  },
+  {
+    "key": "custom.score",
+    "name": "custom.score",
+    "context": {}
+  },
+  {
+    "key": "custom.latency_ms",
+    "name": "custom.latency_ms",
+    "context": {}
+  },
+  {
+    "key": "custom.db.pool_size",
+    "name": "custom.db.pool_size",
+    "context": {}
+  },
+  {
+    "key": "deviceMemory",
+    "name": "deviceMemory",
+    "context": {}
+  },
+  {
+    "key": "device.memory",
+    "name": "device.memory",
+    "context": {
+      "isConvention": true,
+      "brief": "The estimated total memory capacity of the device.",
+      "isDeprecated": false
+    }
+  }
+]

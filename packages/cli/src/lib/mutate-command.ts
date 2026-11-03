@@ -19,10 +19,10 @@
 import { isatty } from "node:tty";
 import type { Command, CommandContext } from "@stricli/core";
 import type { ParsedOrgProject } from "./arg-parsing.js";
-import { buildCommand } from "./command.js";
+import { buildCommand, type CommandDocumentation } from "./command.js";
 import { CliError, ContextError } from "./errors.js";
 import type { CommandReturn } from "./formatters/output.js";
-import { logger } from "./logger.js";
+import { prompt } from "./prompt.js";
 
 // ---------------------------------------------------------------------------
 // Level A: shared flag / alias definitions
@@ -165,7 +165,7 @@ export function guardNonInteractive(flags: {
   if (!isatty(0)) {
     throw new CliError(
       "Destructive operation refused in non-interactive mode. " +
-        "Use --yes or --force to confirm."
+        "Use --yes or --force to confirm.",
     );
   }
 }
@@ -182,7 +182,6 @@ export function guardNonInteractive(flags: {
  *
  * @param expected - The string the user must type to confirm (e.g., "acme/my-app")
  * @param promptMessage - The message displayed to the user
- * @param opts - Optional logger override (defaults to the global logger)
  * @returns `true` if confirmed, `false` if cancelled or mismatched
  *
  * @example
@@ -199,16 +198,13 @@ export function guardNonInteractive(flags: {
 export async function confirmByTyping(
   expected: string,
   promptMessage: string,
-  opts?: { logger?: { prompt: typeof logger.prompt } }
 ): Promise<boolean> {
-  const log = opts?.logger ?? logger;
-
-  const response = await log.prompt(promptMessage, {
+  const response = await prompt(promptMessage, {
     type: "text",
     placeholder: expected,
   });
 
-  // consola prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
+  // The prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
   // Check type to avoid treating cancel as a valid response.
   if (typeof response !== "string") {
     return false;
@@ -231,7 +227,7 @@ export async function confirmByTyping(
 export function requireExplicitTarget(
   parsed: ParsedOrgProject,
   entityType: string,
-  usageHint: string
+  usageHint: string,
 ): void {
   if (parsed.type === "auto-detect") {
     throw new ContextError(entityType, usageHint, [
@@ -263,7 +259,7 @@ type DeleteCommandFunction<
   this: CONTEXT,
   flags: FLAGS,
   ...args: ARGS
-  // biome-ignore lint/suspicious/noConfusingVoidType: void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
+  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
 ) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
 
 /**
@@ -294,6 +290,8 @@ export type DeleteCommandOptions = {
  * 3. Runs a non-interactive guard before `func()` — refuses to proceed if
  *    stdin is not a TTY and neither `--yes`/`--force` was passed (dry-run
  *    bypasses the guard since it makes no changes)
+ * 4. Marks the command `destructive`, which lists it in the generated agent
+ *    Safety Rules and makes its lazy target positionals refuse auto-detect
  *
  * Commands still handle their own confirmation prompts using
  * {@link confirmByTyping} + {@link isConfirmationBypassed} inside `func()`,
@@ -332,16 +330,13 @@ export function buildDeleteCommand<
 >(
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
-    readonly docs: {
-      readonly brief: string;
-      readonly fullDescription?: string;
-    };
+    readonly docs: CommandDocumentation;
     readonly func: DeleteCommandFunction<FLAGS, ARGS, CONTEXT>;
-    // biome-ignore lint/suspicious/noExplicitAny: OutputConfig is generic but type is erased at the builder level
+    // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
     readonly output?: import("./formatters/output.js").OutputConfig<any>;
     readonly auth?: boolean;
   },
-  options?: DeleteCommandOptions
+  options?: DeleteCommandOptions,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
 
@@ -389,7 +384,7 @@ export function buildDeleteCommand<
     aliases: mergedAliases,
   };
 
-  // biome-ignore lint/suspicious/noExplicitAny: Stricli's CommandFunction type is complex
+  // oxlint-disable-next-line typescript/no-explicit-any -- Stricli's CommandFunction type is complex
   const wrappedFunc = function (this: CONTEXT, flags: FLAGS, ...args: any[]) {
     // Pre-hook: non-interactive safety guard
     if (!options?.noNonInteractiveGuard) {
@@ -398,7 +393,7 @@ export function buildDeleteCommand<
           yes?: boolean;
           force?: boolean;
           "dry-run"?: boolean;
-        }
+        },
       );
     }
 
@@ -410,5 +405,6 @@ export function buildDeleteCommand<
     parameters: mergedParams,
     func: wrappedFunc,
     output: builderArgs.output,
+    destructive: true,
   });
 }

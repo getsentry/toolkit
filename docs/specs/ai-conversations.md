@@ -441,7 +441,7 @@ search_agent_conversations({
   organizationSlug: "my-org",
   query: "recent conversations",
   period: "24h",
-})
+});
 ```
 
 Find failed conversations:
@@ -451,7 +451,7 @@ search_agent_conversations({
   organizationSlug: "my-org",
   query: "failed conversations",
   period: "7d",
-})
+});
 ```
 
 Fetch a transcript from a result:
@@ -460,7 +460,7 @@ Fetch a transcript from a result:
 get_agent_conversation_details({
   organizationSlug: "my-org",
   conversationId: "conversation-123",
-})
+});
 ```
 
 Fetch from a Sentry URL:
@@ -468,7 +468,7 @@ Fetch from a Sentry URL:
 ```typescript
 get_sentry_resource({
   url: "https://my-org.sentry.io/explore/conversations/conversation-123/",
-})
+});
 ```
 
 ## Testing

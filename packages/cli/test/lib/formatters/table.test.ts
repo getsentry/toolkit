@@ -5,8 +5,8 @@
  * tables. Tests verify content is present rather than exact text alignment.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { describe, expect, test, vi } from "vitest";
-import { escapeMarkdownCell } from "../../../src/lib/formatters/markdown.js";
 import { type Column, writeTable } from "../../../src/lib/formatters/table.js";
 
 type Row = { name: string; count: number; status: string };
@@ -19,7 +19,7 @@ const columns: Column<Row>[] = [
 
 /** Strip ANSI escape codes */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -134,7 +134,7 @@ describe("writeTable (TTY mode)", () => {
       writeTable(
         { write },
         [{ name: "alice", count: 42, status: "active" }],
-        columns
+        columns,
       );
       const output = stripAnsi(write.mock.calls.map((c) => c[0]).join(""));
       expect(output).toContain("NAME");
@@ -155,7 +155,7 @@ describe("writeTable (TTY mode)", () => {
           { name: "c", count: 3, status: "z" },
         ],
         columns,
-        { rowSeparator: true }
+        { rowSeparator: true },
       );
       const raw = write.mock.calls.map((c) => c[0]).join("");
       const output = stripAnsi(raw);
@@ -177,7 +177,7 @@ describe("writeTable (TTY mode)", () => {
           { name: "b", count: 2, status: "y" },
         ],
         columns,
-        { rowSeparator: color }
+        { rowSeparator: color },
       );
       const raw = write.mock.calls.map((c) => c[0]).join("");
       // The color escape should appear in the output
@@ -248,7 +248,7 @@ describe("writeTable (plain mode)", () => {
       writeTable(
         { write },
         [{ name: "alice", count: 1, status: "ok" }],
-        columns
+        columns,
       );
       const output = write.mock.calls.map((c) => c[0]).join("");
       // Box-drawing table format (not raw markdown pipes)
@@ -261,7 +261,7 @@ describe("writeTable (plain mode)", () => {
   test("pipe characters in values are preserved in box-drawing table", () => {
     withPlain(() => {
       const cols: Column<{ v: string }>[] = [
-        { header: "VAL", value: (r) => escapeMarkdownCell(r.v) },
+        { header: "VAL", value: (r) => tableCell(r.v) },
       ];
       const write = vi.fn(() => true);
       writeTable({ write }, [{ v: "a|b" }], cols);

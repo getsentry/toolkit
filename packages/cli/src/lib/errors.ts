@@ -23,12 +23,14 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   buildBillingUrl,
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
+import { getLoginCommand, getUrlLoginCommand } from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -71,6 +73,8 @@ export const EXIT = {
   API: 30,
   /** Operation timed out */
   TIMEOUT: 31,
+  /** Rate limited by the Sentry API — wait before retrying */
+  RATE_LIMITED: 32,
 
   // 40–49: Feature / billing (HTTP 402/451 family)
   /** Seer not enabled for the organization */
@@ -141,7 +145,7 @@ export class HostScopeError extends CliError {
   constructor(
     sourceOrMessage: string,
     destinationUrl?: string,
-    tokenHost?: string | undefined
+    tokenHost?: string,
   ) {
     if (destinationUrl === undefined) {
       super(sourceOrMessage, EXIT.AUTH_HOST_SCOPE);
@@ -149,16 +153,16 @@ export class HostScopeError extends CliError {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           "Refusing to route requests to this host because no Sentry credentials are configured for it.\n" +
-          `To use this host, run: sentry auth login --url ${destinationUrl}`,
-        EXIT.AUTH_HOST_SCOPE
+          `To use this host, run: ${getUrlLoginCommand()} ${destinationUrl}`,
+        EXIT.AUTH_HOST_SCOPE,
       );
     } else {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           `Refusing to route requests here because it doesn't match the host your Sentry credentials are for (${tokenHost}).\n` +
-          `To use this host, run: sentry auth login --url ${destinationUrl}\n` +
+          `To use this host, run: ${getUrlLoginCommand()} ${destinationUrl}\n` +
           "To keep using your current credentials, remove this URL override.",
-        EXIT.AUTH_HOST_SCOPE
+        EXIT.AUTH_HOST_SCOPE,
       );
     }
     this.name = "HostScopeError";
@@ -185,13 +189,12 @@ export class ApiError extends CliError {
    */
   readonly enriched403: boolean;
 
-  // biome-ignore lint/nursery/useMaxParams: established 4-param shape; enriched403 is a defaulted extension
   constructor(
     message: string,
     status: number,
     detail?: string,
     endpoint?: string,
-    enriched403 = false
+    enriched403 = false,
   ) {
     super(message, EXIT.API);
     this.name = "ApiError";
@@ -210,6 +213,37 @@ export class ApiError extends CliError {
       msg += `\n  ${this.detail}`;
     }
     return msg;
+  }
+}
+
+/**
+ * The Sentry API rejected a request with 429 and the CLI could not wait it
+ * out (the wait exceeds the cap, or retries ran out).
+ *
+ * @param endpoint - API path that was rate limited
+ * @param retryAfterMs - Server-requested wait, when known
+ * @param serverDetail - The API's `detail` message, when present
+ */
+export class RateLimitError extends ApiError {
+  /** Distinct exit code so scripts and agents can back off without parsing stderr. */
+  override readonly exitCode: number = EXIT.RATE_LIMITED;
+  readonly retryAfterMs?: number;
+
+  constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
+    const seconds = Math.max(1, Math.ceil((retryAfterMs ?? 0) / 1000));
+    const wait =
+      retryAfterMs === undefined
+        ? "a few seconds"
+        : `${seconds} second${seconds === 1 ? "" : "s"}`;
+    const advice = `Retry in ${wait}; do not repeat the request before then. Make fewer requests in parallel.`;
+    super(
+      "Rate limited by the Sentry API",
+      429,
+      serverDetail ? `${serverDetail}\n  ${advice}` : advice,
+      endpoint,
+    );
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -236,12 +270,11 @@ export class AuthError extends CliError {
   constructor(
     reason: AuthErrorReason,
     message?: string,
-    options?: AuthErrorOptions
+    options?: AuthErrorOptions,
   ) {
     const defaultMessages: Record<AuthErrorReason, string> = {
-      not_authenticated: "Not authenticated. Run 'sentry auth login' first.",
-      expired:
-        "Authentication expired. Run 'sentry auth login' to re-authenticate.",
+      not_authenticated: `Not authenticated. Run '${getLoginCommand()}' first.`,
+      expired: `Authentication expired. Run '${getLoginCommand()}' to re-authenticate.`,
       invalid: "Invalid authentication token.",
     };
     const exitCodes: Record<AuthErrorReason, number> = {
@@ -262,7 +295,7 @@ export class MalformedAuthTokenError extends AuthError {
     super(
       "invalid",
       "Invalid authentication token. Copy it again as a single line without spaces or control characters, " +
-        "or run 'sentry auth login' to replace stored credentials."
+        `or run '${getLoginCommand()}' to replace stored credentials.`,
     );
     this.name = "MalformedAuthTokenError";
   }
@@ -337,7 +370,7 @@ function buildContextMessage(
   resource: string,
   command: string,
   alternatives: string[],
-  options?: { note?: string; isAutoDetect?: boolean }
+  options?: { note?: string; isAutoDetect?: boolean },
 ): string {
   const { note, isAutoDetect } = options ?? {};
   // Compound resources ("X and Y") need plural grammar
@@ -383,7 +416,7 @@ function buildResolutionMessage(
   resource: string,
   headline: string,
   hint: string,
-  suggestions: string[]
+  suggestions: string[],
 ): string {
   const lines = [`${resource} ${headline}.`, "", "Try:", `  ${hint}`];
   if (suggestions.length > 0) {
@@ -427,7 +460,7 @@ export class ContextError extends CliError {
     resource: string,
     command: string,
     alternatives?: string[],
-    note?: string
+    note?: string,
   ) {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
@@ -441,7 +474,7 @@ export class ContextError extends CliError {
         note,
         isAutoDetect,
       }),
-      EXIT.CONTEXT_MISSING
+      EXIT.CONTEXT_MISSING,
     );
     this.name = "ContextError";
     this.resource = resource;
@@ -454,7 +487,7 @@ export class ContextError extends CliError {
     if (command.includes("\n")) {
       throw new Error(
         "ContextError command must be a single-line CLI usage hint. " +
-          `Use ResolutionError for resolution failures. Got: "${command.slice(0, 80)}..."`
+          `Use ResolutionError for resolution failures. Got: "${command.slice(0, 80)}..."`,
       );
     }
   }
@@ -498,11 +531,11 @@ export class ResolutionError extends CliError {
     resource: string,
     headline: string,
     hint: string,
-    suggestions: string[] = []
+    suggestions: string[] = [],
   ) {
     super(
       buildResolutionMessage(resource, headline, hint, suggestions),
-      EXIT.RESOLUTION
+      EXIT.RESOLUTION,
     );
     this.name = "ResolutionError";
     this.resource = resource;
@@ -531,7 +564,7 @@ export class ResolutionError extends CliError {
 export function buildValidationMessage(
   headline: string,
   examples: string[],
-  note?: string
+  note?: string,
 ): string {
   const lines = [headline];
   if (examples.length > 0) {
@@ -554,11 +587,11 @@ export function validationError(
   headline: string,
   examples: string[],
   field?: string,
-  note?: string
+  note?: string,
 ): ValidationError {
   return new ValidationError(
     buildValidationMessage(headline, examples, note),
-    field
+    field,
   );
 }
 
@@ -740,7 +773,7 @@ export class WizardError extends CliError {
 
   constructor(
     message: string,
-    options?: { rendered?: boolean; exitCode?: number }
+    options?: { rendered?: boolean; exitCode?: number },
   ) {
     super(message, options?.exitCode ?? EXIT.WIZARD);
     this.name = "WizardError";
@@ -785,10 +818,11 @@ export function stringifyUnknown(value: unknown): string {
   if (value && typeof value === "object") {
     // JSON.stringify can throw on circular references or BigInt values.
     // Fall back to String() which is always safe.
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       return JSON.stringify(value);
     } catch {
+      // oxlint-disable-next-line typescript/no-base-to-string -- keep custom toString() output when JSON fails
       return String(value);
     }
   }
@@ -804,7 +838,7 @@ export function stringifyUnknown(value: unknown): string {
  */
 export function formatError(error: unknown): string {
   return redactCredentialText(
-    error instanceof CliError ? error.format() : stringifyUnknown(error)
+    error instanceof CliError ? error.format() : stringifyUnknown(error),
   );
 }
 
@@ -812,11 +846,17 @@ export function formatError(error: unknown): string {
  * Get process exit code for an error.
  *
  * @param error - Any thrown value
- * @returns Exit code (from CliError.exitCode or 1 for other errors)
+ * @returns Exit code (from CliError.exitCode, Stricli's `InvalidArgument`
+ *   for an argument error the command wrapper threw, or 1 for other errors)
  */
 export function getExitCode(error: unknown): number {
   if (error instanceof CliError) {
     return error.exitCode;
+  }
+  // `boundArguments` positionals parse in the command wrapper, after
+  // Stricli's scanner; their errors exit like the scanner's
+  if (error instanceof ArgumentScannerError) {
+    return ExitCode.InvalidArgument;
   }
   return 1;
 }
@@ -884,7 +924,7 @@ export const SEARCH_QUERY_HELP =
 export function toSearchQueryError(
   error: unknown,
   userQuery: string | undefined,
-  extraSuggestions: readonly string[] = []
+  extraSuggestions: readonly string[] = [],
 ): unknown {
   if (
     userQuery &&
@@ -911,6 +951,12 @@ export function toSearchQueryError(
  * `TypeError: "fetch failed"` for every such failure (the real errno is in
  * `cause`).
  *
+ * When the connection drops *after* response headers arrive (e.g. `read
+ * ETIMEDOUT` while streaming the body), undici instead aborts the body stream
+ * with `TypeError: "terminated"` (CLI-2AD). `sentry-client.ts` already retries
+ * finite GET bodies, so one that still escapes is the same class of
+ * environmental failure and is matched too.
+ *
  * This reflects the user's environment, not a CLI bug, so it is treated as a
  * user error (no upgrade nudge) and is not reported to Sentry — the same
  * rationale as dropping EPIPE/EBADF OS noise in `beforeSend`.
@@ -922,7 +968,10 @@ export function toSearchQueryError(
  * CLI bug" treatment for `status === 0` check it explicitly.
  */
 export function isNetworkError(error: unknown): boolean {
-  return error instanceof TypeError && error.message === "fetch failed";
+  return (
+    error instanceof TypeError &&
+    (error.message === "fetch failed" || error.message === "terminated")
+  );
 }
 
 /**
@@ -1011,7 +1060,7 @@ export type AuthGuardResult<T> = AuthGuardSuccess<T> | AuthGuardFailure;
  * @throws {HostScopeError} Always re-thrown so host-scoping rejections surface to the user
  */
 export async function withAuthGuard<T>(
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<AuthGuardResult<T>> {
   try {
     return { ok: true, value: await fn() };

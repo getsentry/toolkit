@@ -157,7 +157,7 @@ describe("buildBashErrorEvent", () => {
     const tracebackPath = join(tempDir, "traceback");
     await writeFile(
       tracebackPath,
-      "main:/script.sh:10\n@command:curl\n@exit_code:1\n"
+      "main:/script.sh:10\n@command:curl\n@exit_code:1\n",
     );
 
     const event = await buildBashErrorEvent({ tracebackPath });
@@ -168,7 +168,7 @@ describe("buildBashErrorEvent", () => {
     expect(event.exception?.values).toHaveLength(1);
     expect(event.exception?.values?.[0]?.type).toBe("BashError");
     expect(event.exception?.values?.[0]?.value).toBe(
-      "command curl exited with status 1"
+      "command curl exited with status 1",
     );
     expect(event.exception?.values?.[0]?.stacktrace?.frames).toHaveLength(1);
   });
@@ -212,7 +212,7 @@ describe("buildBashErrorEvent", () => {
 
   test("throws ValidationError for missing traceback file", async () => {
     await expect(
-      buildBashErrorEvent({ tracebackPath: join(tempDir, "nonexistent") })
+      buildBashErrorEvent({ tracebackPath: join(tempDir, "nonexistent") }),
     ).rejects.toThrow("Traceback file not found");
   });
 
@@ -250,7 +250,7 @@ describe("buildBashErrorEvent", () => {
     const tracebackPath = join(tempDir, "traceback");
     await writeFile(
       tracebackPath,
-      "inner:/script.sh:10\nmiddle:/script.sh:5\nouter:/script.sh:1\n@command:test\n"
+      "inner:/script.sh:10\nmiddle:/script.sh:5\nouter:/script.sh:1\n@command:test\n",
     );
 
     const event = await buildBashErrorEvent({ tracebackPath });

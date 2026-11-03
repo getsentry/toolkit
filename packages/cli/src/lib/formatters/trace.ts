@@ -5,6 +5,7 @@
  * Includes flat span utilities for `span list` and `span view` commands.
  */
 
+import { tableCell, text } from "@sentry/toolkit-core/markdown";
 import type {
   SpanListItem,
   TraceSpan,
@@ -12,10 +13,10 @@ import type {
 } from "../../types/index.js";
 import type { TraceItemDetail } from "../api/traces.js";
 import { REDUNDANT_DETAIL_ATTRS } from "../api/traces.js";
+import { stringifyUnknown } from "../errors.js";
+import { filterFields } from "./json.js";
 import {
   colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
   mdKvTable,
   mdRow,
   mdTableHeader,
@@ -72,11 +73,11 @@ const TRACE_TABLE_COLS = ["Trace ID", "Transaction", "Duration:", "When"];
  * @returns `[traceId, transaction, duration, when]` markdown-safe strings
  */
 export function buildTraceRowCells(
-  item: TransactionListItem
+  item: TransactionListItem,
 ): [string, string, string, string] {
   return [
     `\`${item.trace}\``,
-    escapeMarkdownCell(item.transaction || "unknown"),
+    tableCell(item.transaction || "unknown"),
     formatTraceDuration(item["span.duration"]),
     formatRelativeTime(item.timestamp),
   ];
@@ -121,13 +122,13 @@ export function formatTracesHeader(): string {
  */
 export function formatTraceTable(items: TransactionListItem[]): string {
   const headers = TRACE_TABLE_COLS.map((c) =>
-    c.endsWith(":") ? c.slice(0, -1) : c
+    c.endsWith(":") ? c.slice(0, -1) : c,
   );
   const alignments = TRACE_TABLE_COLS.map((c) =>
-    c.endsWith(":") ? ("right" as const) : ("left" as const)
+    c.endsWith(":") ? ("right" as const) : ("left" as const),
   );
   const rows = items.map((item) =>
-    buildTraceRowCells(item).map((c) => renderInlineMarkdown(c))
+    buildTraceRowCells(item).map((c) => renderInlineMarkdown(c)),
   );
   return renderTextTable(headers, rows, { alignments });
 }
@@ -149,6 +150,105 @@ export type TraceSummary = {
   /** Trace start time as Unix timestamp (seconds) */
   startTimestamp: number;
 };
+
+/** JSON paths and trace-wide attributes selected by `trace view --fields`. */
+export type TraceFieldSelection = {
+  /** Structural paths projected from the trace JSON. */
+  paths: string[];
+  /** Bare attribute names selected across the entire span tree. */
+  attributes: string[];
+  /** Deduplicated attribute names requested from the trace API. */
+  additionalAttributes: string[];
+};
+
+const TRACE_FIELD_ROOTS = new Set([
+  "traceId",
+  "duration",
+  "spanCount",
+  "projects",
+  "rootTransaction",
+  "rootOp",
+  "startTimestamp",
+  "spans",
+  "spanTreeLines",
+]);
+
+// Only the attribute suffix belongs to the trace API. Children and indices
+// describe the output tree, while data.* is supplied by span detail requests.
+const TRACE_ATTRIBUTE_PATH =
+  /^spans\.(?:\d+\.)?(?:children\.(?:\d+\.)?)*additional_attributes\.(.+)$/;
+
+/** Interpret selectors once for both fetching attributes and projecting JSON. */
+export function parseTraceFields(
+  fields: string[] | undefined,
+): TraceFieldSelection | undefined {
+  if (!fields?.length) {
+    return;
+  }
+  const paths: string[] = [];
+  const attributes: string[] = [];
+  const additionalAttributes = new Set<string>();
+  for (const field of fields) {
+    const root = field.split(".", 1)[0] ?? field;
+    if (TRACE_FIELD_ROOTS.has(root)) {
+      paths.push(field);
+      const attribute = TRACE_ATTRIBUTE_PATH.exec(field)?.[1];
+      if (attribute) {
+        additionalAttributes.add(attribute);
+      }
+    } else {
+      attributes.push(field);
+      additionalAttributes.add(field);
+    }
+  }
+  return { paths, attributes, additionalAttributes: [...additionalAttributes] };
+}
+
+type ProjectedTraceSpan = Partial<Omit<TraceSpan, "children">> & {
+  children?: ProjectedTraceSpan[];
+};
+
+/** Add trace-wide attributes without losing explicit selections or tree shape. */
+function includeTraceAttributes(
+  span: TraceSpan,
+  selected: ProjectedTraceSpan | undefined,
+  attributes: string[],
+): ProjectedTraceSpan {
+  const result: ProjectedTraceSpan = { ...selected, span_id: span.span_id };
+  const sourceAttributes = span.additional_attributes ?? {};
+  const requested = Object.fromEntries(
+    attributes
+      .filter((attribute) => Object.hasOwn(sourceAttributes, attribute))
+      .map((attribute) => [attribute, sourceAttributes[attribute]]),
+  );
+  if (Object.keys(requested).length > 0) {
+    result.additional_attributes = {
+      ...selected?.additional_attributes,
+      ...requested,
+    };
+  }
+  if (span.children) {
+    result.children = span.children.map((child, index) =>
+      includeTraceAttributes(child, selected?.children?.[index], attributes),
+    );
+  }
+  return result;
+}
+
+/** Project trace JSON, retaining span IDs and topology for bare attributes. */
+export function projectTraceFields(
+  trace: TraceSummary & { spans: TraceSpan[] },
+  selection: TraceFieldSelection,
+): Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } {
+  const result: Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } =
+    filterFields(trace, selection.paths);
+  if (selection.attributes.length > 0 && !selection.paths.includes("spans")) {
+    result.spans = trace.spans.map((span, index) =>
+      includeTraceAttributes(span, result.spans?.[index], selection.attributes),
+    );
+  }
+  return result;
+}
 
 /**
  * Check whether a timestamp from a span is usable for duration calculations.
@@ -172,7 +272,7 @@ function walkSpanTree(
     projects: Set<string>;
     rootTransaction?: string;
     rootOp?: string;
-  }
+  },
 ): void {
   state.spanCount += 1;
 
@@ -216,7 +316,7 @@ function walkSpanTree(
  */
 export function computeTraceSummary(
   traceId: string,
-  spans: TraceSpan[]
+  spans: TraceSpan[],
 ): TraceSummary {
   const state = {
     spanCount: 0,
@@ -264,10 +364,7 @@ export function formatTraceSummary(summary: TraceSummary): string {
 
   if (summary.rootTransaction) {
     const opPrefix = summary.rootOp ? `[\`${summary.rootOp}\`] ` : "";
-    kvRows.push([
-      "Root",
-      `${opPrefix}${escapeMarkdownCell(summary.rootTransaction)}`,
-    ]);
+    kvRows.push(["Root", `${opPrefix}${tableCell(summary.rootTransaction)}`]);
   }
   kvRows.push(["Duration", formatTraceDuration(summary.duration)]);
   kvRows.push(["Spans", String(summary.spanCount)]);
@@ -290,6 +387,7 @@ export function formatTraceSummary(summary: TraceSummary): string {
 /** Flat span for list output — no nested children */
 export type FlatSpan = {
   span_id: string;
+  trace_id?: string;
   parent_span_id?: string | null;
   op?: string;
   description?: string | null;
@@ -317,12 +415,12 @@ export type FoundSpan = {
  */
 export function findSpanById(
   spans: TraceSpan[],
-  spanId: string
+  spanId: string,
 ): FoundSpan | null {
   function search(
     span: TraceSpan,
     depth: number,
-    ancestors: TraceSpan[]
+    ancestors: TraceSpan[],
   ): FoundSpan | null {
     if (span.span_id?.toLowerCase() === spanId) {
       return { span, depth, ancestors };
@@ -392,10 +490,11 @@ export function translateSpanQuery(query: string): string {
  */
 export function spanListItemToFlatSpan(
   item: SpanListItem,
-  extraFieldNames?: string[]
+  extraFieldNames?: string[],
 ): FlatSpan {
   const flat: FlatSpan = {
     span_id: item.id,
+    trace_id: item.trace,
     parent_span_id: item.parent_span ?? undefined,
     op: item["span.op"] ?? undefined,
     description: item.description ?? undefined,
@@ -421,28 +520,41 @@ export function spanListItemToFlatSpan(
  */
 const PROJECT_COLUMN: Column<FlatSpan> = {
   header: "Project",
-  value: (s) => escapeMarkdownCell(s.project_slug || "—"),
+  value: (s) => tableCell(s.project_slug || "—"),
   minWidth: 8,
 };
 
-/** Column definitions for the flat span table */
+/** Span ID column — always first among the standard span columns */
+const SPAN_ID_COLUMN: Column<FlatSpan> = {
+  header: "Span ID",
+  value: (s) => `\`${s.span_id}\``,
+  minWidth: 18,
+  shrinkable: false,
+};
+
+/**
+ * Trace ID column — shown after Span ID in project mode
+ * @see formatSpanTable
+ */
+const TRACE_ID_COLUMN: Column<FlatSpan> = {
+  header: "Trace ID",
+  value: (s) => (s.trace_id ? `\`${s.trace_id}\`` : "—"),
+  minWidth: 34,
+  shrinkable: false,
+};
+
+/** Column definitions for the flat span table, after the ID columns */
 const SPAN_TABLE_COLUMNS: Column<FlatSpan>[] = [
   {
-    header: "Span ID",
-    value: (s) => `\`${s.span_id}\``,
-    minWidth: 18,
-    shrinkable: false,
-  },
-  {
     header: "Op",
-    value: (s) => escapeMarkdownCell(s.op || "—"),
+    value: (s) => tableCell(s.op || "—"),
     minWidth: 6,
   },
   {
     header: "Description",
     value: (s) => {
       const desc = s.description || "(no description)";
-      return escapeMarkdownCell(isDbSpanOp(s.op) ? colorizeSql(desc) : desc);
+      return tableCell(isDbSpanOp(s.op) ? colorizeSql(desc) : desc);
     },
     truncate: true,
   },
@@ -470,7 +582,7 @@ function buildExtraColumns(extraColumns: string[]): Column<FlatSpan>[] {
       if (v === undefined || v === null) {
         return "—";
       }
-      return escapeMarkdownCell(String(v));
+      return tableCell(stringifyUnknown(v));
     },
   }));
 }
@@ -484,23 +596,30 @@ function buildExtraColumns(extraColumns: string[]): Column<FlatSpan>[] {
  * When `extraColumns` are provided, additional columns are appended after the
  * standard columns for custom attributes requested via `--fields`.
  *
+ * When `showTraceId` is set, adds a "Trace ID" column after "Span ID" so spans
+ * can be fed straight into `sentry span view <trace-id> <span-id>`.
+ *
  * Prefer this in return-based command output pipelines.
  * Uses {@link formatTable} (return-based) internally.
  *
  * @param spans - Flat span array to display
  * @param extraColumns - Additional column names from --fields API expansion
+ * @param options - Display options
  * @returns Rendered table string
  */
 export function formatSpanTable(
   spans: FlatSpan[],
-  extraColumns?: string[]
+  extraColumns?: string[],
+  options?: { showTraceId?: boolean },
 ): string {
   // Auto-add Project column when spans come from multiple projects
   const projects = new Set(spans.map((s) => s.project_slug).filter(Boolean));
-  const baseColumns =
-    projects.size > 1
-      ? [PROJECT_COLUMN, ...SPAN_TABLE_COLUMNS]
-      : SPAN_TABLE_COLUMNS;
+  const baseColumns = [
+    ...(projects.size > 1 ? [PROJECT_COLUMN] : []),
+    SPAN_ID_COLUMN,
+    ...(options?.showTraceId ? [TRACE_ID_COLUMN] : []),
+    ...SPAN_TABLE_COLUMNS,
+  ];
   const columns = extraColumns?.length
     ? [...baseColumns, ...buildExtraColumns(extraColumns)]
     : baseColumns;
@@ -527,7 +646,7 @@ function buildSpanKvRows(span: TraceSpan, traceId: string): [string, string][] {
 
   const desc = span.description || span.transaction;
   if (desc) {
-    kvRows.push(["Description", escapeMarkdownCell(desc)]);
+    kvRows.push(["Description", tableCell(desc)]);
   }
 
   const durationMs = computeSpanDurationMs(span);
@@ -567,7 +686,7 @@ function formatAncestorChain(ancestors: TraceSpan[]): string {
     const aDesc = a.description || a.transaction || "(no description)";
     const colorizedDesc = isDbSpanOp(aOp) ? colorizeSql(aDesc) : aDesc;
     lines.push(
-      `${indent}${colorTag("muted", aOp)} — ${escapeMarkdownInline(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`
+      `${indent}${colorTag("muted", aOp)} — ${text(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`,
     );
   }
   return `${renderMarkdown(lines.join("\n"))}\n`;
@@ -585,7 +704,7 @@ export function formatSpanDetails(
   span: TraceSpan,
   ancestors: TraceSpan[],
   traceId: string,
-  detail?: TraceItemDetail
+  detail?: TraceItemDetail,
 ): string {
   const kvRows = buildSpanKvRows(span, traceId);
 
@@ -619,10 +738,10 @@ const MAX_DISPLAY_ATTRS = 10;
  */
 function appendAttributeRows(
   kvRows: [string, string][],
-  detail: TraceItemDetail
+  detail: TraceItemDetail,
 ): void {
   const attrs = detail.attributes.filter(
-    (a) => !(REDUNDANT_DETAIL_ATTRS.has(a.name) || a.name.startsWith("tags["))
+    (a) => !(REDUNDANT_DETAIL_ATTRS.has(a.name) || a.name.startsWith("tags[")),
   );
   if (attrs.length === 0) {
     return;
@@ -631,7 +750,7 @@ function appendAttributeRows(
   const shown = attrs.slice(0, MAX_DISPLAY_ATTRS);
   for (const attr of shown) {
     if (attr.value !== undefined && attr.value !== null && attr.value !== "") {
-      kvRows.push([attr.name, escapeMarkdownCell(String(attr.value))]);
+      kvRows.push([attr.name, tableCell(String(attr.value))]);
     }
   }
   if (attrs.length > MAX_DISPLAY_ATTRS) {

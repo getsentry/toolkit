@@ -17,14 +17,14 @@ type ProjectAliasRow = {
 
 function touchAliasEntries(): void {
   const db = getDatabase();
-  // biome-ignore lint/plugin: global touch — updates ALL rows, not a single keyed entry
+  // oxlint-disable-next-line sentry-cli/no-inline-touch-cache -- global touch — updates ALL rows, not a single keyed entry
   db.query("UPDATE project_aliases SET last_accessed = ?").run(Date.now());
 }
 
 /** Set project aliases, replacing all existing ones. */
 export function setProjectAliases(
   aliases: Record<string, ProjectAliasEntry>,
-  dsnFingerprint?: string
+  dsnFingerprint?: string,
 ): void {
   const db = getDatabase();
   const now = Date.now();
@@ -45,7 +45,7 @@ export function setProjectAliases(
         entry.projectSlug,
         dsnFingerprint ?? null,
         now,
-        now
+        now,
       );
     }
   })();
@@ -82,7 +82,7 @@ export function getProjectAliases():
 /** Get project by alias. Validates DSN fingerprint if both current and cached are present. */
 export function getProjectByAlias(
   alias: string,
-  currentFingerprint?: string
+  currentFingerprint?: string,
 ): ProjectAliasEntry | undefined {
   const db = getDatabase();
 

@@ -43,14 +43,14 @@ const TEMPLATES_DIR = join(import.meta.dirname, "../templates");
 
 /** Load feature docs from the external JSON config. */
 const featureDocsRaw: Record<string, Record<string, string[]>> = JSON.parse(
-  readFileSync(join(import.meta.dirname, "../feature-docs.json"), "utf-8")
+  readFileSync(join(import.meta.dirname, "../feature-docs.json"), "utf-8"),
 );
 
 function getDocs(platformId: string): FeatureDoc[] {
   const entry = featureDocsRaw[platformId];
   if (!entry) {
     throw new Error(
-      `No feature docs found for platform "${platformId}" in feature-docs.json`
+      `No feature docs found for platform "${platformId}" in feature-docs.json`,
     );
   }
   return Object.entries(entry).map(([feature, urls]) => ({

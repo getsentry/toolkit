@@ -11,7 +11,7 @@ import { runInNewContext } from "node:vm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { injectCommand } from "../../../src/commands/sourcemap/inject.js";
 import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
@@ -73,7 +73,7 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
   test("empty directory with --allow-empty: succeeds silently", async () => {
     const ctx = makeContext();
     await expect(
-      func.call(ctx, { "allow-empty": true }, dir)
+      func.call(ctx, { "allow-empty": true }, dir),
     ).resolves.toBeUndefined();
   });
 
@@ -163,14 +163,14 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
   test("--dry-run + empty directory: still errors (dry-run is not an escape hatch)", async () => {
     const ctx = makeContext();
     await expect(
-      func.call(ctx, { "dry-run": true }, dir)
+      func.call(ctx, { "dry-run": true }, dir),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   test("--dry-run + --allow-empty: succeeds silently", async () => {
     const ctx = makeContext();
     await expect(
-      func.call(ctx, { "dry-run": true, "allow-empty": true }, dir)
+      func.call(ctx, { "dry-run": true, "allow-empty": true }, dir),
     ).resolves.toBeUndefined();
   });
 
@@ -178,12 +178,12 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
     // JS file with sourceMappingURL pointing to a differently-named map
     await writeFile(
       join(dir, "bundle.js"),
-      "console.log(1)\n//# sourceMappingURL=bundle.abc123.js.map\n"
+      "console.log(1)\n//# sourceMappingURL=bundle.abc123.js.map\n",
     );
     // Map file with non-convention name (no bundle.js.map exists)
     await writeFile(
       join(dir, "bundle.abc123.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     const ctx = makeContext();
     await expect(func.call(ctx, {}, dir)).resolves.toBeUndefined();
@@ -193,17 +193,17 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
     // JS file with sourceMappingURL pointing to a different file
     await writeFile(
       join(dir, "app.js"),
-      "console.log(1)\n//# sourceMappingURL=other.js.map\n"
+      "console.log(1)\n//# sourceMappingURL=other.js.map\n",
     );
     // Convention map exists — should be used
     await writeFile(
       join(dir, "app.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     // The directive target also exists
     await writeFile(
       join(dir, "other.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     const ctx = makeContext();
     // Should succeed (convention-based match found first)
@@ -214,7 +214,7 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
     // eyJ2ZXJzaW9uIjozfQ== === {"version":3}
     await writeFile(
       join(dir, "inline.js"),
-      "console.log(1)\n//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozfQ==\n"
+      "console.log(1)\n//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozfQ==\n",
     );
     // No convention map — the inline map is discovered as a pair and injected.
     const ctx = makeContext();
@@ -224,12 +224,12 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
   test("sourceMappingURL: invalid inline base64 is skipped (zero pairs)", async () => {
     await writeFile(
       join(dir, "bad-inline.js"),
-      "console.log(1)\n//# sourceMappingURL=data:application/json;base64,@@@not-base64@@@\n"
+      "console.log(1)\n//# sourceMappingURL=data:application/json;base64,@@@not-base64@@@\n",
     );
     // Non-fatal skip → no pairs → actionable ValidationError, not a crash.
     const ctx = makeContext();
     await expect(func.call(ctx, {}, dir)).rejects.toBeInstanceOf(
-      ValidationError
+      ValidationError,
     );
   });
 });
@@ -278,7 +278,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
   test("empty directory with --allow-empty: succeeds silently", async () => {
     const ctx = makeContext();
     await expect(
-      func.call(ctx, { "allow-empty": true }, dir)
+      func.call(ctx, { "allow-empty": true }, dir),
     ).resolves.toBeUndefined();
   });
 
@@ -290,7 +290,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     delete process.env.SENTRY_PROJECT;
     const ctx = makeContext();
     await expect(
-      func.call(ctx, { "allow-empty": true }, dir)
+      func.call(ctx, { "allow-empty": true }, dir),
     ).resolves.toBeUndefined();
   });
 
@@ -299,7 +299,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await writeFile(join(dir, "_astro", "app.js"), "console.log(1)\n");
     const ctx = makeContext();
     await expect(func.call(ctx, {}, dir)).rejects.toBeInstanceOf(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -328,7 +328,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await writeFile(jsPath, original);
     const ctx = makeContext();
     await expect(func.call(ctx, {}, dir)).rejects.toBeInstanceOf(
-      ValidationError
+      ValidationError,
     );
     const after = await readFile(jsPath, "utf-8");
     expect(after).toBe(original);
@@ -348,7 +348,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
         sources: ["app.ts"],
         names: [],
         mappings: "",
-      })
+      }),
     );
 
     const uploadSpy = vi
@@ -376,7 +376,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     const dataUrl = `data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString("base64")}`;
     await writeFile(
       jsPath,
-      `console.log(1)\n//# sourceMappingURL=${dataUrl}\n`
+      `console.log(1)\n//# sourceMappingURL=${dataUrl}\n`,
     );
 
     const uploadSpy = vi
@@ -396,7 +396,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       expect(mapFile?.debugId).toBe(js?.debugId);
       // The uploaded map carries the injected debug ID.
       const uploaded = JSON.parse(
-        (mapFile?.content as Buffer).toString("utf-8")
+        // oxlint-disable-next-line no-unsafe-optional-chaining -- Existing test assumes the optional fixture is present.
+        (mapFile?.content as Buffer).toString("utf-8"),
       );
       expect(uploaded.debug_id).toBe(js?.debugId);
     } finally {
@@ -410,7 +411,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     const dataUrl = `data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString("base64")}`;
     await writeFile(
       jsPath,
-      `console.log(1)\n//# sourceMappingURL=${dataUrl}\n`
+      `console.log(1)\n//# sourceMappingURL=${dataUrl}\n`,
     );
 
     const uploadSpy = vi
@@ -429,7 +430,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       // The source_map entry carries the original (un-injected) map content.
       expect(mapFile?.content).toBeInstanceOf(Buffer);
       const uploaded = JSON.parse(
-        (mapFile?.content as Buffer).toString("utf-8")
+        // oxlint-disable-next-line no-unsafe-optional-chaining -- Existing test assumes the optional fixture is present.
+        (mapFile?.content as Buffer).toString("utf-8"),
       );
       expect(uploaded.version).toBe(3);
       expect(uploaded.debug_id).toBeUndefined();
@@ -448,7 +450,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
         sources: ["app.ts"],
         names: [],
         mappings: "",
-      })
+      }),
     );
 
     const uploadSpy = vi
@@ -479,7 +481,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
         sources: ["app.ts"],
         names: [],
         mappings: "",
-      })
+      }),
     );
 
     const uploadSpy = vi
@@ -512,7 +514,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
         sources: ["app.ts"],
         names: [],
         mappings: "",
-      })
+      }),
     );
     // A .js file that should NOT be discovered when --ext is .ts
     await writeFile(join(dir, "other.js"), "console.log(2)\n");
@@ -540,13 +542,13 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await writeFile(join(dir, "vendor", "lib.js"), "console.log(1)\n");
     await writeFile(
       join(dir, "vendor", "lib.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     // File that should be included
     await writeFile(join(dir, "app.js"), "console.log(2)\n");
     await writeFile(
       join(dir, "app.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
 
     const uploadSpy = vi
@@ -572,12 +574,12 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await writeFile(join(dir, "vendor", "lib.js"), "console.log(1)\n");
     await writeFile(
       join(dir, "vendor", "lib.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     await writeFile(join(dir, "app.js"), "console.log(2)\n");
     await writeFile(
       join(dir, "app.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     // Write an ignore file
     const ignoreFilePath = join(dir, ".sourcemapignore");
@@ -604,7 +606,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await writeFile(join(dir, "app.js"), "console.log(1)\n");
     await writeFile(
       join(dir, "app.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     const ctx = makeContext();
     try {
@@ -621,7 +623,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await writeFile(join(dir, "static", "js", "app.js"), "console.log(1)\n");
     await writeFile(
       join(dir, "static", "js", "app.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
 
     const uploadSpy = vi
@@ -645,19 +647,19 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await mkdir(join(dir, "build", "output"), { recursive: true });
     await writeFile(
       join(dir, "build", "output", "main.js"),
-      "console.log(1)\n"
+      "console.log(1)\n",
     );
     await writeFile(
       join(dir, "build", "output", "main.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     await writeFile(
       join(dir, "build", "output", "vendor.js"),
-      "console.log(2)\n"
+      "console.log(2)\n",
     );
     await writeFile(
       join(dir, "build", "output", "vendor.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
 
     const uploadSpy = vi
@@ -682,15 +684,15 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     await writeFile(join(dir, "app.js"), "console.log(1)\n");
     await writeFile(
       join(dir, "app.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     const ctx = makeContext();
     await expect(
       func.call(
         ctx,
         { "strip-prefix": "foo/", "strip-common-prefix": true },
-        dir
-      )
+        dir,
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -703,16 +705,16 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       "console.log(1)\n" +
         "//# sourceMappingURL=wrong.js.map\n" +
         "console.log(2)\n" +
-        "//# sourceMappingURL=correct.js.map\n"
+        "//# sourceMappingURL=correct.js.map\n",
     );
     await writeFile(
       join(dir, "correct.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
     // wrong.js.map also exists — but the last directive should win
     await writeFile(
       join(dir, "wrong.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" })
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
     );
 
     const uploadSpy = vi
@@ -737,80 +739,80 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     { mapKind: "external", idSource: "map only" },
     { mapKind: "inline", idSource: "comment and map" },
     { mapKind: "inline", idSource: "map only" },
-  ])("$mapKind map with ID in $idSource: uploads runtime registration and shifted mappings once", async ({
-    mapKind,
-    idSource,
-  }) => {
-    const debugId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-    const jsPath = join(dir, "app.js");
-    const mapPath = join(dir, "app.js.map");
-    const map = JSON.stringify({
-      version: 3,
-      sources: ["app.ts"],
-      sourcesContent: ["globalThis.completed = true;"],
-      names: [],
-      mappings: "AAAA",
-      debug_id: debugId,
-    });
-    const mapUrl =
-      mapKind === "inline"
-        ? `data:application/json;base64,${Buffer.from(map).toString("base64")}`
-        : "app.js.map";
-    const comment =
-      idSource === "comment and map" ? `//# debugId=${debugId}\n` : "";
-    await writeFile(
-      jsPath,
-      `globalThis.completed = true;\n${comment}//# sourceMappingURL=${mapUrl}\n`
-    );
-    if (mapKind === "external") {
-      await writeFile(mapPath, map);
-    }
-
-    const uploadSpy = vi
-      .spyOn(sourcemapsApi, "uploadSourcemaps")
-      .mockResolvedValue(undefined);
-    try {
-      const ctx = makeContext();
-      await func.call(ctx, {}, dir);
-      const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
-      expect(files).toHaveLength(2);
-      const jsFile = files.find((file) => file.type === "minified_source");
-      const mapFile = files.find((file) => file.type === "source_map");
-      expect(jsFile?.path).toBe(jsPath);
-      expect(jsFile?.debugId).toBe(debugId);
-      expect(mapFile?.debugId).toBe(debugId);
-
-      const uploadedJs = await readFile(jsPath, "utf-8");
-      const runtime: {
-        _sentryDebugIds?: Record<string, string>;
-        completed?: boolean;
-      } = {};
-      runInNewContext(uploadedJs, runtime);
-      expect(runtime.completed).toBe(true);
-      expect(Object.values(runtime._sentryDebugIds ?? {})).toEqual([debugId]);
-      const uploadedMap =
-        mapFile?.content?.toString("utf-8") ??
-        (await readFile(mapPath, "utf-8"));
-      expect(JSON.parse(uploadedMap)).toMatchObject({
+  ])(
+    "$mapKind map with ID in $idSource: uploads runtime registration and shifted mappings once",
+    async ({ mapKind, idSource }) => {
+      const debugId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const jsPath = join(dir, "app.js");
+      const mapPath = join(dir, "app.js.map");
+      const map = JSON.stringify({
+        version: 3,
+        sources: ["app.ts"],
+        sourcesContent: ["globalThis.completed = true;"],
+        names: [],
+        mappings: "AAAA",
         debug_id: debugId,
-        debugId,
-        mappings: ";AAAA",
       });
-
-      await func.call(ctx, {}, dir);
-      expect(uploadSpy).toHaveBeenCalledTimes(2);
-      expect(await readFile(jsPath, "utf-8")).toBe(uploadedJs);
-      const secondMap = uploadSpy.mock.calls[1]?.[0]?.files.find(
-        (file) => file.type === "source_map"
+      const mapUrl =
+        mapKind === "inline"
+          ? `data:application/json;base64,${Buffer.from(map).toString("base64")}`
+          : "app.js.map";
+      const comment =
+        idSource === "comment and map" ? `//# debugId=${debugId}\n` : "";
+      await writeFile(
+        jsPath,
+        `globalThis.completed = true;\n${comment}//# sourceMappingURL=${mapUrl}\n`,
       );
-      expect(
-        secondMap?.content?.toString("utf-8") ??
-          (await readFile(mapPath, "utf-8"))
-      ).toBe(uploadedMap);
-    } finally {
-      uploadSpy.mockRestore();
-    }
-  });
+      if (mapKind === "external") {
+        await writeFile(mapPath, map);
+      }
+
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        const ctx = makeContext();
+        await func.call(ctx, {}, dir);
+        const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
+        expect(files).toHaveLength(2);
+        const jsFile = files.find((file) => file.type === "minified_source");
+        const mapFile = files.find((file) => file.type === "source_map");
+        expect(jsFile?.path).toBe(jsPath);
+        expect(jsFile?.debugId).toBe(debugId);
+        expect(mapFile?.debugId).toBe(debugId);
+
+        const uploadedJs = await readFile(jsPath, "utf-8");
+        const runtime: {
+          _sentryDebugIds?: Record<string, string>;
+          completed?: boolean;
+        } = {};
+        runInNewContext(uploadedJs, runtime);
+        expect(runtime.completed).toBe(true);
+        expect(Object.values(runtime._sentryDebugIds ?? {})).toEqual([debugId]);
+        const uploadedMap =
+          mapFile?.content?.toString("utf-8") ??
+          (await readFile(mapPath, "utf-8"));
+        expect(JSON.parse(uploadedMap)).toMatchObject({
+          debug_id: debugId,
+          debugId,
+          mappings: ";AAAA",
+        });
+
+        await func.call(ctx, {}, dir);
+        expect(uploadSpy).toHaveBeenCalledTimes(2);
+        expect(await readFile(jsPath, "utf-8")).toBe(uploadedJs);
+        const secondMap = uploadSpy.mock.calls[1]?.[0]?.files.find(
+          (file) => file.type === "source_map",
+        );
+        expect(
+          secondMap?.content?.toString("utf-8") ??
+            (await readFile(mapPath, "utf-8")),
+        ).toBe(uploadedMap);
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    },
+  );
 
   test("pre-existing map debug ID: uploaded on both entries, files untouched", async () => {
     // What a bundler plugin running with `sourcemaps.disable: 'disable-upload'`
@@ -839,10 +841,10 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
       expect(files).toHaveLength(2);
       expect(files.find((f) => f.type === "minified_source")?.debugId).toBe(
-        pluginId
+        pluginId,
       );
       expect(files.find((f) => f.type === "source_map")?.debugId).toBe(
-        pluginId
+        pluginId,
       );
       expect(await readFile(jsPath, "utf-8")).toBe(js);
       expect(await readFile(mapPath, "utf-8")).toBe(map);
@@ -875,11 +877,12 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       expect(files).toHaveLength(2);
       const mapFile = files.find((f) => f.type === "source_map");
       expect(files.find((f) => f.type === "minified_source")?.debugId).toBe(
-        pluginId
+        pluginId,
       );
       expect(mapFile?.debugId).toBe(pluginId);
       expect(
-        JSON.parse((mapFile?.content as Buffer).toString("utf-8")).debug_id
+        // oxlint-disable-next-line no-unsafe-optional-chaining -- Existing test assumes the optional fixture is present.
+        JSON.parse((mapFile?.content as Buffer).toString("utf-8")).debug_id,
       ).toBe(pluginId);
       expect(await readFile(jsPath, "utf-8")).toBe(js);
     } finally {

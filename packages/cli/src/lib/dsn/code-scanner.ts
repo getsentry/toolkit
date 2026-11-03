@@ -93,7 +93,7 @@ const HTTP_SCHEME_PROBE = /http/i;
  */
 export function extractDsnsFromContent(
   content: string,
-  limit?: number
+  limit?: number,
 ): string[] {
   if (!HTTP_SCHEME_PROBE.test(content)) {
     return [];
@@ -150,7 +150,7 @@ export function scanCodeForFirstDsn(cwd: string): Promise<DetectedDsn | null> {
   return withTracingSpan(
     "scanCodeForFirstDsn",
     "dsn.detect.code",
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: walker loop + read + extract + validate + span-status error branch is inherently branchy
+    // walker loop + read + extract + validate + span-status error branch is inherently branchy
     async (span) => {
       let filesScanned = 0;
       try {
@@ -179,7 +179,7 @@ export function scanCodeForFirstDsn(cwd: string): Promise<DetectedDsn | null> {
             raw,
             "code",
             entry.relativePath,
-            inferPackagePath(entry.relativePath)
+            inferPackagePath(entry.relativePath),
           );
           if (detected !== null) {
             span.setAttribute("dsn.files_scanned", filesScanned);
@@ -203,7 +203,7 @@ export function scanCodeForFirstDsn(cwd: string): Promise<DetectedDsn | null> {
       "dsn.scan_dir": cwd,
       "dsn.stop_on_first": true,
       "dsn.max_depth": DSN_MAX_DEPTH,
-    }
+    },
   );
 }
 
@@ -229,7 +229,7 @@ function getExpectedHost(): string {
     } catch {
       throw new ConfigError(
         `SENTRY_HOST/SENTRY_URL "${sentryUrl}" is not a valid URL`,
-        "Set SENTRY_HOST/SENTRY_URL to a valid URL (e.g., https://sentry.example.com) or unset it to use sentry.io"
+        "Set SENTRY_HOST/SENTRY_URL to a valid URL (e.g., https://sentry.example.com) or unset it to use sentry.io",
       );
     }
   }
@@ -316,7 +316,7 @@ function scanDirectory(cwd: string): Promise<CodeScanResult> {
       "dsn.scan_dir": cwd,
       "dsn.stop_on_first": false,
       "dsn.max_depth": DSN_MAX_DEPTH,
-    }
+    },
   );
 }
 
@@ -338,7 +338,7 @@ function processMatch(
     line: string;
     mtime?: number;
   },
-  ctx: MatchProcessingContext
+  ctx: MatchProcessingContext,
 ): void {
   if (isCommentedLine(match.line.trim())) {
     return;

@@ -8,6 +8,7 @@
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
 import { triggerSolutionPlanning } from "../../lib/api-client.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ApiError, CliError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -21,6 +22,7 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   type AutofixState,
   extractExaminedFiles,
@@ -31,8 +33,12 @@ import {
   type SolutionArtifact,
 } from "../../types/seer.js";
 import {
+  type IssueTarget,
+  issuePositional,
+  requireIssueArgument,
+} from "./positional.js";
+import {
   ensureRootCauseAnalysis,
-  issueIdPositional,
   pollAutofixState,
   resolveOrgAndIssueId,
 } from "./utils.js";
@@ -82,7 +88,7 @@ function formatPlanOutput(data: PlanData): string {
     lines.push(`No solution found: ${ctx.reason}`);
   } else {
     lines.push(
-      "No solution found. Seer completed analysis but could not identify a code fix."
+      "No solution found. Seer completed analysis but could not identify a code fix.",
     );
     if (ctx?.root_cause) {
       lines.push("");
@@ -107,7 +113,7 @@ function formatPlanOutput(data: PlanData): string {
  * Returns undefined when there's nothing useful to report.
  */
 function buildNoSolutionContext(
-  state: AutofixState
+  state: AutofixState,
 ): NoSolutionContext | undefined {
   const reason = extractNoSolutionReason(state);
   const cause = extractRootCauses(state)[0];
@@ -170,7 +176,7 @@ function buildPlanData(state: AutofixState): PlanData {
  */
 async function confirmRootCauseAndContinue(
   state: AutofixState,
-  json: boolean
+  json: boolean,
 ): Promise<void> {
   const causes = json ? [] : extractRootCauses(state);
   const primaryCause = causes[0];
@@ -180,12 +186,12 @@ async function confirmRootCauseAndContinue(
     log.info("Root cause identified:");
     log.info(`"${primaryCause.description}"`);
 
-    const proceed = await log.prompt("Generate a solution plan for it?", {
+    const proceed = await prompt("Generate a solution plan for it?", {
       type: "confirm",
       initial: true,
     });
 
-    // consola returns a non-boolean (Symbol(clack:cancel)) when cancelled.
+    // The prompt returns a non-boolean (clack's cancel symbol) when cancelled.
     if (proceed === true) {
       return;
     }
@@ -193,7 +199,7 @@ async function confirmRootCauseAndContinue(
 
   throw new CliError(
     "Root cause analysis requires your input before a plan can be generated.\n" +
-      "Open the issue in Sentry to select a root cause, then re-run this command."
+      "Open the issue in Sentry to select a root cause, then re-run this command.",
   );
 }
 
@@ -206,29 +212,42 @@ export const planCommand = buildCommand({
       "generates a solution plan with specific implementation steps to fix the issue.\n\n" +
       "Use --force to regenerate a plan even if one already exists.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector  - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +
-      "  ID               - Short ID: CLI-G (searches across orgs)\n" +
+      "  ID               - Short ID: CLI-G (uses configured org when set)\n" +
       "  suffix           - Suffix only: G (requires DSN context)\n" +
       "  numeric          - Numeric ID: 123456789\n\n" +
+      "Full short IDs use SENTRY_ORG, .sentryclirc, or 'sentry cli defaults' for the org.\n" +
+      "Without a configured org, the CLI uses a matching DSN or searches accessible orgs.\n\n" +
       "Prerequisites:\n" +
       "  - GitHub integration configured for your organization\n" +
-      "  - Code mappings set up for your project\n\n" +
-      "Examples:\n" +
-      "  sentry issue plan @latest\n" +
-      "  sentry issue plan 123456789\n" +
-      "  sentry issue plan sentry/EXTENSION-7\n" +
-      "  sentry issue plan cli-G\n" +
-      "  sentry issue plan 123456789 --force",
+      "  - Code mappings set up for your project",
+    examples: [
+      {
+        description: "Generate a fix plan (runs explain first if needed)",
+        command: "sentry issue plan 123456789",
+      },
+      {
+        description: "Generate a fix plan for the most recent issue",
+        command: "sentry issue plan @latest",
+      },
+      {
+        description: "Use a short ID with an organization prefix",
+        command: "sentry issue plan my-org/MYPROJECT-ABC",
+      },
+      {
+        description: "Force a fresh plan even if one already exists",
+        command: "sentry issue plan 123456789 --force",
+      },
+    ],
   },
   output: {
     human: formatPlanOutput,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: "plan" }),
     flags: {
       force: {
         kind: "boolean",
@@ -239,9 +258,10 @@ export const planCommand = buildCommand({
     },
     aliases: FRESH_ALIASES,
   },
-  async *func(this: SentryContext, flags: PlanFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: PlanFlags, target: IssueTarget) {
     applyFreshFlag(flags);
     const { cwd } = this;
+    const issueArg = requireIssueArgument(target.parsed, { command: "plan" });
 
     let resolvedOrg: string | undefined;
 
@@ -298,12 +318,12 @@ export const planCommand = buildCommand({
           "Plan creation timed out after 6 minutes. Try again or check the issue in Sentry web UI.",
         timeoutHint:
           "The plan may still be generated in the background.\n" +
-          `  Or retry: sentry issue plan ${issueArg}`,
+          `  Or retry: sentry issue plan ${issueArg.text}`,
       });
 
       if (finalState.status === "ERROR") {
         throw new Error(
-          "Plan creation failed. Check the Sentry web UI for details."
+          "Plan creation failed. Check the Sentry web UI for details.",
         );
       }
 
@@ -314,7 +334,7 @@ export const planCommand = buildCommand({
       if (finalState.status === "WAITING_FOR_USER_RESPONSE") {
         throw new CliError(
           "Plan creation requires your input in the Sentry UI.\n" +
-            "Open the issue in Sentry to provide the requested information, then re-run this command."
+            "Open the issue in Sentry to provide the requested information, then re-run this command.",
         );
       }
 

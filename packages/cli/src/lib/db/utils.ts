@@ -60,7 +60,7 @@ export function upsert<T extends Record<string, SqlValue>>(
   table: string,
   data: T,
   conflictColumns: (keyof T)[],
-  options: UpsertOptions<T> = {}
+  options: UpsertOptions<T> = {},
 ): SqlQuery {
   const columns = Object.keys(data);
   const values = Object.values(data) as SqlValue[];
@@ -79,7 +79,7 @@ export function upsert<T extends Record<string, SqlValue>>(
   const excludeSet = new Set((options.excludeFromUpdate ?? []) as string[]);
 
   const updateColumns = columns.filter(
-    (col) => !(conflictSet.has(col) || excludeSet.has(col))
+    (col) => !(conflictSet.has(col) || excludeSet.has(col)),
   );
 
   const updateClause =
@@ -119,7 +119,7 @@ export function runUpsert<T extends Record<string, SqlValue>>(
   db: QueryRunner,
   table: string,
   data: T,
-  conflictColumns: (keyof T)[]
+  conflictColumns: (keyof T)[],
 ): void {
   const { sql, values } = upsert(table, data, conflictColumns);
   db.query(sql).run(...values);
@@ -144,7 +144,7 @@ type MetadataRow = { key: string; value: string };
  */
 export function getMetadata(
   db: QueryRunner,
-  keys: string[]
+  keys: string[],
 ): Map<string, string> {
   if (keys.length === 0) {
     return new Map();
@@ -167,7 +167,7 @@ export function getMetadata(
  */
 export function setMetadata(
   db: QueryRunner,
-  entries: Record<string, string>
+  entries: Record<string, string>,
 ): void {
   const pairs = Object.entries(entries);
   if (pairs.length === 0) {
@@ -214,11 +214,11 @@ export function clearMetadata(db: QueryRunner, keys: string[]): void {
 export function touchCacheEntry(
   table: string,
   keyColumn: string,
-  keyValue: string
+  keyValue: string,
 ): void {
   const db = getDatabase();
   db.query(`UPDATE ${table} SET last_accessed = ? WHERE ${keyColumn} = ?`).run(
     Date.now(),
-    keyValue
+    keyValue,
   );
 }

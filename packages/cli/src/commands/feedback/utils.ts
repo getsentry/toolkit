@@ -3,31 +3,22 @@
  */
 
 import { listFeedback } from "../../lib/api-client.js";
-import { type IssueSelector, parseIssueArg } from "../../lib/arg-parsing.js";
+import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   ApiError,
   ContextError,
   ResolutionError,
   ValidationError,
 } from "../../lib/errors.js";
+import {
+  type IssueArgument,
+  parseIssueArgument,
+} from "../../lib/issue-arguments.js";
 import { resolveEffectiveOrg } from "../../lib/region.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { SentryFeedback } from "../../types/index.js";
 import { buildCommandHint, resolveIssue } from "../issue/utils.js";
-
-/** Positional parameter for a Feedback selector or issue-style identifier. */
-export const feedbackIdPositional = {
-  kind: "tuple",
-  parameters: [
-    {
-      placeholder: "feedback",
-      brief:
-        "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>",
-      parse: String,
-    },
-  ],
-} as const;
 
 /** Result of resolving and category-checking a modern Feedback issue. */
 export type ResolvedFeedback = {
@@ -42,12 +33,12 @@ async function resolveFeedbackSelector(
   selector: IssueSelector,
   explicitOrg: string | undefined,
   cwd: string,
-  command: string
+  command: string,
 ): Promise<ResolvedFeedback> {
   if (selector !== "@latest") {
     throw new ValidationError(
       "Feedback only supports @latest; @most_frequent is not meaningful for Feedback.",
-      "feedback selector"
+      "feedback selector",
     );
   }
 
@@ -57,7 +48,7 @@ async function resolveFeedbackSelector(
   if (!org) {
     throw new ContextError(
       "Organization",
-      `sentry feedback ${command} <org>/@latest`
+      `sentry feedback ${command} <org>/@latest`,
     );
   }
 
@@ -71,13 +62,13 @@ async function resolveFeedbackSelector(
       "Selector '@latest'",
       "found no unresolved User Feedback",
       `sentry feedback list ${org}/ --status all`,
-      ["The @latest selector only matches unresolved Feedback."]
+      ["The @latest selector only matches unresolved Feedback."],
     );
   }
 
   setOrgProjectContext(
     [org],
-    latest.project?.slug ? [latest.project.slug] : []
+    latest.project?.slug ? [latest.project.slug] : [],
   );
   return { org, feedback: latest };
 }
@@ -88,13 +79,21 @@ async function resolveFeedbackSelector(
  * The command name keeps recovery hints aligned with the caller's operation.
  */
 export async function resolveFeedback(
-  feedbackArg: string,
+  feedbackArg: string | IssueArgument,
   cwd: string,
-  command = "view"
+  command = "view",
 ): Promise<ResolvedFeedback> {
-  const parsed = parseIssueArg(feedbackArg);
+  const { text, parsed } =
+    typeof feedbackArg === "string"
+      ? parseIssueArgument(feedbackArg)
+      : feedbackArg;
   if (parsed.type === "selector") {
-    return resolveFeedbackSelector(parsed.selector, parsed.org, cwd, command);
+    return await resolveFeedbackSelector(
+      parsed.selector,
+      parsed.org,
+      cwd,
+      command,
+    );
   }
 
   let resolved: Awaited<ReturnType<typeof resolveIssue>>;
@@ -108,10 +107,10 @@ export async function resolveFeedback(
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       throw new ResolutionError(
-        `Feedback '${feedbackArg}'`,
+        `Feedback '${text}'`,
         "not found",
-        buildCommandHint(command, feedbackArg, "sentry feedback"),
-        ["List available Feedback: sentry feedback list"]
+        buildCommandHint(command, text, "sentry feedback"),
+        ["List available Feedback: sentry feedback list"],
       );
     }
     throw error;
@@ -123,7 +122,7 @@ export async function resolveFeedback(
       `Issue '${issue.shortId}'`,
       "is not User Feedback",
       `sentry issue view ${org ? `${org}/` : ""}${issue.shortId}`,
-      ["Use a Feedback ID from: sentry feedback list"]
+      ["Use a Feedback ID from: sentry feedback list"],
     );
   }
 

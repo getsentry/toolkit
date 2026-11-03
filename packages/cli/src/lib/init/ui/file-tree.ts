@@ -159,7 +159,7 @@ export function flattenTree(root: FileTreeNode): FileTreeRow[] {
 function walk(
   nodes: FileTreeNode[],
   prefix: string,
-  rows: FileTreeRow[]
+  rows: FileTreeRow[],
 ): void {
   for (const [index, node] of nodes.entries()) {
     const isLast = index === nodes.length - 1;
@@ -174,7 +174,7 @@ function walk(
 function rowFor(
   node: FileTreeNode,
   prefix: string,
-  isLast: boolean
+  isLast: boolean,
 ): FileTreeRow {
   // Files are leaves that carry either a change `action` (from
   // `buildFileTree`) or a read `status` (from `buildReadTree`). A

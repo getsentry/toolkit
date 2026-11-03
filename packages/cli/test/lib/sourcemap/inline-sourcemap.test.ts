@@ -26,17 +26,17 @@ function toDataUrl(value: unknown, charset?: string): string {
 describe("isInlineSourcemapUrl", () => {
   test("true for data:application/json URLs", () => {
     expect(isInlineSourcemapUrl("data:application/json;base64,e30=")).toBe(
-      true
+      true,
     );
     expect(
-      isInlineSourcemapUrl("data:application/json;charset=utf-8;base64,e30=")
+      isInlineSourcemapUrl("data:application/json;charset=utf-8;base64,e30="),
     ).toBe(true);
   });
 
   test("false for external/remote URLs", () => {
     expect(isInlineSourcemapUrl("app.js.map")).toBe(false);
     expect(isInlineSourcemapUrl("https://cdn.example.com/app.js.map")).toBe(
-      false
+      false,
     );
   });
 });
@@ -52,13 +52,13 @@ describe("tryDecodeInlineSourcemap", () => {
   test("preserves the charset prefix", () => {
     const decoded = tryDecodeInlineSourcemap(toDataUrl({}, "utf-8"));
     expect(decoded?.dataUrlPrefix).toBe(
-      "data:application/json;charset=utf-8;base64,"
+      "data:application/json;charset=utf-8;base64,",
     );
   });
 
   test("returns undefined for invalid base64 (non-fatal)", () => {
     expect(
-      tryDecodeInlineSourcemap("data:application/json;base64,@@@not-base64@@@")
+      tryDecodeInlineSourcemap("data:application/json;base64,@@@not-base64@@@"),
     ).toBeUndefined();
   });
 
@@ -66,7 +66,7 @@ describe("tryDecodeInlineSourcemap", () => {
     // "not json" base64-encoded — decodes cleanly but is not JSON.
     const blob = Buffer.from("not json").toString("base64");
     expect(
-      tryDecodeInlineSourcemap(`data:application/json;base64,${blob}`)
+      tryDecodeInlineSourcemap(`data:application/json;base64,${blob}`),
     ).toBeUndefined();
   });
 
@@ -81,12 +81,12 @@ describe("property: inline sourcemap round-trip", () => {
       property(dictionary(string(), string()), (obj) => {
         const dataUrl = encodeInlineSourcemap(
           obj,
-          "data:application/json;base64,"
+          "data:application/json;base64,",
         );
         const decoded = tryDecodeInlineSourcemap(dataUrl);
         expect(decoded?.map).toEqual(obj);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -95,11 +95,11 @@ describe("property: inline sourcemap round-trip", () => {
       property(dictionary(string(), string()), (obj) => {
         const prefix = "data:application/json;charset=utf-8;base64,";
         const decoded = tryDecodeInlineSourcemap(
-          encodeInlineSourcemap(obj, prefix)
+          encodeInlineSourcemap(obj, prefix),
         );
         expect(decoded?.dataUrlPrefix).toBe(prefix);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -5,7 +5,12 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import { sentryCloudflareVitePlugin } from "@sentry/cloudflare/vite";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { generateHomepageFallbackHtml } from "./src/homepage-content";
+
+const sentrySdkPackage = createRequire(import.meta.url).resolve(
+  "@sentry/cloudflare/package.json",
+);
 
 const STATIC_HOME_RE =
   /<!--app-static-home-start-->[\s\S]*?<!--app-static-home-end-->/;
@@ -45,9 +50,21 @@ export default defineConfig({
     }),
   ],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      {
+        // Instrumented dependencies must use this Worker's SDK, even when
+        // another workspace hoists a different Sentry major into node_modules.
+        find: /^@sentry\/(cloudflare|server-utils)(\/.*)?$/,
+        replacement: "$&",
+        customResolver(source, _importer, options) {
+          return this.resolve(source, sentrySdkPackage, {
+            ...options,
+            skipSelf: true,
+          });
+        },
+      },
+    ],
   },
   build: {
     sourcemap: true,

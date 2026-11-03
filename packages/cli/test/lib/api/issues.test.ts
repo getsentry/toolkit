@@ -50,7 +50,7 @@ describe("parseResolveSpec", () => {
 
   test("parses explicit @commit:<repo>@<sha> as commit/explicit", () => {
     expect(
-      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}getsentry/cli@abc123`)
+      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}getsentry/cli@abc123`),
     ).toEqual({
       kind: "commit",
       spec: { kind: "explicit", repository: "getsentry/cli", commit: "abc123" },
@@ -59,7 +59,7 @@ describe("parseResolveSpec", () => {
 
   test("explicit @commit splits on the LAST '@' (scoped repo names like @acme/web)", () => {
     expect(
-      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}@acme/web@abc123`)
+      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}@acme/web@abc123`),
     ).toEqual({
       kind: "commit",
       spec: { kind: "explicit", repository: "@acme/web", commit: "abc123" },
@@ -68,19 +68,19 @@ describe("parseResolveSpec", () => {
 
   test("@commit:<repo>@<sha> rejects missing SHA", () => {
     expect(() =>
-      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}getsentry/cli@`)
+      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}getsentry/cli@`),
     ).toThrow(ValidationError);
   });
 
   test("@commit:<repo>@<sha> rejects missing repo", () => {
     expect(() =>
-      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}@abc123`)
+      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}@abc123`),
     ).toThrow(ValidationError);
   });
 
   test("@commit:<repo>@<sha> rejects payload with no '@' separator", () => {
     expect(() =>
-      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}getsentry/cli`)
+      parseResolveSpec(`${RESOLVE_COMMIT_EXPLICIT_PREFIX}getsentry/cli`),
     ).toThrow(ValidationError);
   });
 
@@ -169,7 +169,7 @@ describe("mergeIssues", () => {
 
   test("rejects fewer than 2 group IDs", async () => {
     await expect(mergeIssues("test-org", ["1"])).rejects.toThrow(
-      ValidationError
+      ValidationError,
     );
     await expect(mergeIssues("test-org", [])).rejects.toThrow(ValidationError);
   });
@@ -191,7 +191,7 @@ describe("mergeIssues", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     });
 
@@ -213,11 +213,11 @@ describe("mergeIssues", () => {
         new Response(JSON.stringify(["Only error issues can be merged."]), {
           status: 400,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(
-      mergeIssues("test-org", ["100", "200"])
+      mergeIssues("test-org", ["100", "200"]),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -229,14 +229,14 @@ describe("mergeIssues", () => {
       async () =>
         new Response(null, {
           status: 204,
-        })
+        }),
     );
 
     await expect(
-      mergeIssues("test-org", ["100", "200"])
+      mergeIssues("test-org", ["100", "200"]),
     ).rejects.toBeInstanceOf(ApiError);
     await expect(mergeIssues("test-org", ["100", "200"])).rejects.toThrow(
-      /no matching issues|out of scope/i
+      /no matching issues|out of scope/i,
     );
   });
 });
@@ -272,7 +272,7 @@ describe("mergeIssues: cross-origin legacy cache", () => {
         new Response(JSON.stringify({ id }), {
           status: 200,
           headers: { "content-type": "application/json" },
-        })
+        }),
       );
       expect(await getCachedResponse("GET", legacyUrl(id), {})).toBeDefined();
     }
@@ -283,8 +283,8 @@ describe("mergeIssues: cross-origin legacy cache", () => {
           JSON.stringify({
             merge: { parent: "100", children: ["200", "300"] },
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
     );
 
     await mergeIssues("test-org", ["100", "200", "300"]);

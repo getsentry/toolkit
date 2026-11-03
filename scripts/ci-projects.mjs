@@ -70,7 +70,7 @@ function optionalScript(scripts, configured, candidates) {
 function safeRelativePath(value, field) {
   const hasUnsafeDelimiter =
     typeof value === "string" &&
-    [...value].some((character) => {
+    value.split("").some((character) => {
       const codeUnit = character.charCodeAt(0);
       return (
         codeUnit <= 0x1f ||
@@ -330,7 +330,7 @@ export function selectAffectedProjects(projects, changedFiles, eventName) {
     }
   }
 
-  // MCP repository docs are checked by the quality job, not deployed by a project.
+  // Shared Toolkit docs are checked by the quality job, not deployed by a project.
   if (
     changedProjects.some(
       (project, index) =>

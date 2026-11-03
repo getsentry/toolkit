@@ -9,14 +9,15 @@
  */
 
 import { isatty } from "node:tty";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
+import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { ConfigError, ValidationError } from "../../lib/errors.js";
 import { formatFeedbackResult } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 
 /** Structured result of the feedback submission */
 export type FeedbackResult = {
@@ -33,6 +34,16 @@ export const feedbackCommand = buildCommand({
     fullDescription:
       "Submit feedback about your experience with the Sentry CLI. " +
       "All text after 'feedback' is sent as your message.",
+    examples: [
+      {
+        description: "Send positive feedback",
+        command: "sentry cli feedback i love this tool",
+      },
+      {
+        description: "Report an issue",
+        command: "sentry cli feedback the issue view is confusing",
+      },
+    ],
   },
   output: { human: formatFeedbackResult },
   parameters: {
@@ -41,14 +52,14 @@ export const feedbackCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Your feedback message",
-        parse: String,
+        parse: parseText,
         placeholder: "message",
       },
     },
   },
   async *func(
     this: SentryContext,
-    // biome-ignore lint/complexity/noBannedTypes: Stricli requires empty object for commands with no flags
+    // Stricli requires empty object for commands with no flags
     _flags: {},
     ...messageParts: string[]
   ) {
@@ -58,7 +69,7 @@ export const feedbackCommand = buildCommand({
       if (!isatty(0)) {
         throw new ValidationError("Please provide a feedback message.");
       }
-      const response = await logger.prompt("Enter your feedback message:", {
+      const response = await prompt("Enter your feedback message:", {
         type: "text",
         placeholder: "e.g. I love this tool!",
       });
@@ -71,7 +82,7 @@ export const feedbackCommand = buildCommand({
     if (!Sentry.isEnabled()) {
       throw new ConfigError(
         "Feedback not sent: telemetry is disabled.",
-        "Unset SENTRY_CLI_NO_TELEMETRY to enable feedback."
+        "Unset SENTRY_CLI_NO_TELEMETRY to enable feedback.",
       );
     }
 

@@ -46,7 +46,7 @@ describe("validateHexId", () => {
   test("normalizes to lowercase", () => {
     const mixedCase = "AAAA1111bbbb2222CCCC3333dddd4444";
     expect(validateHexId(mixedCase, "test ID")).toBe(
-      "aaaa1111bbbb2222cccc3333dddd4444"
+      "aaaa1111bbbb2222cccc3333dddd4444",
     );
   });
 
@@ -60,13 +60,13 @@ describe("validateHexId", () => {
 
   test("throws ValidationError for non-hex chars", () => {
     expect(() =>
-      validateHexId("zzzz1111bbbb2222cccc3333dddd4444", "test ID")
+      validateHexId("zzzz1111bbbb2222cccc3333dddd4444", "test ID"),
     ).toThrow(ValidationError);
   });
 
   test("throws ValidationError for 33-char hex", () => {
     expect(() => validateHexId(`${VALID_ID}a`, "test ID")).toThrow(
-      ValidationError
+      ValidationError,
     );
   });
 
@@ -111,7 +111,7 @@ describe("validateHexId", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ValidationError);
       expect((error as ValidationError).message).toContain(
-        "32-character hexadecimal"
+        "32-character hexadecimal",
       );
     }
   });
@@ -208,32 +208,32 @@ describe("validateHexId", () => {
 
   test("strips dashes from UUID format and returns 32-char hex", () => {
     expect(
-      validateHexId("aaaa1111-bbbb-2222-cccc-3333dddd4444", "test ID")
+      validateHexId("aaaa1111-bbbb-2222-cccc-3333dddd4444", "test ID"),
     ).toBe(VALID_ID);
   });
 
   test("strips dashes from real user UUID (CLI-7Z)", () => {
     expect(
-      validateHexId("ed29abc8-71c4-475b-9675-4655ef1a02d0", "test ID")
+      validateHexId("ed29abc8-71c4-475b-9675-4655ef1a02d0", "test ID"),
     ).toBe("ed29abc871c4475b96754655ef1a02d0");
   });
 
   test("strips dashes from uppercase UUID and normalizes to lowercase", () => {
     expect(
-      validateHexId("AAAA1111-BBBB-2222-CCCC-3333DDDD4444", "test ID")
+      validateHexId("AAAA1111-BBBB-2222-CCCC-3333DDDD4444", "test ID"),
     ).toBe(VALID_ID);
   });
 
   test("strips dashes from UUID with whitespace padding", () => {
     expect(
-      validateHexId("  aaaa1111-bbbb-2222-cccc-3333dddd4444  ", "test ID")
+      validateHexId("  aaaa1111-bbbb-2222-cccc-3333dddd4444  ", "test ID"),
     ).toBe(VALID_ID);
   });
 
   test("UUID validation is idempotent — validated UUID validates again unchanged", () => {
     const first = validateHexId(
       "aaaa1111-bbbb-2222-cccc-3333dddd4444",
-      "test ID"
+      "test ID",
     );
     const second = validateHexId(first, "test ID");
     expect(second).toBe(first);
@@ -245,7 +245,7 @@ describe("validateHexId", () => {
 
   test("rejects dashes in wrong positions (not 8-4-4-4-12)", () => {
     expect(() =>
-      validateHexId("aaaa-1111bbbb-2222cccc-3333dddd-4444", "test ID")
+      validateHexId("aaaa-1111bbbb-2222cccc-3333dddd-4444", "test ID"),
     ).toThrow(ValidationError);
   });
 });
@@ -290,7 +290,7 @@ describe("property: validateHexId", () => {
       property(validIdArb, (id) => {
         expect(validateHexId(id, "test ID")).toBe(id.toLowerCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -301,7 +301,7 @@ describe("property: validateHexId", () => {
         const second = validateHexId(first, "test ID");
         expect(second).toBe(first);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -312,7 +312,7 @@ describe("property: validateHexId", () => {
         expect(validateHexId(`  ${id}  `, "test ID")).toBe(expected);
         expect(validateHexId(`\t${id}\n`, "test ID")).toBe(expected);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -329,7 +329,7 @@ describe("property: validateHexId", () => {
       property(wrongLengthHexArb, (id) => {
         expect(() => validateHexId(id, "test ID")).toThrow(ValidationError);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -347,7 +347,7 @@ describe("property: validateHexId", () => {
         const uuid = toUuidFormat(id);
         expect(validateHexId(uuid, "test ID")).toBe(expected);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -358,7 +358,7 @@ describe("property: validateHexId", () => {
         const fromUuid = validateHexId(toUuidFormat(id), "test ID");
         expect(fromUuid).toBe(fromPlain);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -400,7 +400,7 @@ describe("decodeUuidV7Timestamp", () => {
   test("returns null for 32-char hex with version char outside v7", () => {
     // Swap position 12 to "8" → not v7
     expect(
-      decodeUuidV7Timestamp("019da22381848d8a98508aaedbafdc11")
+      decodeUuidV7Timestamp("019da22381848d8a98508aaedbafdc11"),
     ).toBeNull();
   });
 });

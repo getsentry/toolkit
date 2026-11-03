@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createCommand } from "../../../../src/commands/alert/issues/create.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../../src/lib/api-client.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
 import type { ResolvedTarget } from "../../../../src/lib/resolve-target.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
 
@@ -38,6 +38,7 @@ function createContext() {
     stdout: { write: stdoutWrite },
     stderr: { write: vi.fn(() => true) },
     cwd: getConfigDir(),
+    commandPrefix: ["sentry", "alert", "issues", "create"],
     stdoutWrite,
   };
 }
@@ -65,7 +66,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -79,8 +80,8 @@ describe("alert issues create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -89,7 +90,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -103,8 +104,8 @@ describe("alert issues create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org/test-project"
-      )
+        "test-org/test-project",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -114,7 +115,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -127,7 +128,7 @@ describe("alert issues create", () => {
         "dry-run": true,
         json: true,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(createSpy).not.toHaveBeenCalled();
@@ -139,7 +140,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -155,11 +156,11 @@ describe("alert issues create", () => {
         "dry-run": true,
         json: true,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     const parsed = JSON.parse(
-      context.stdoutWrite.mock.calls.map((c) => c[0]).join("")
+      context.stdoutWrite.mock.calls.map((c) => c[0]).join(""),
     );
     expect(parsed).toEqual({
       org: "test-org",
@@ -188,6 +189,118 @@ describe("alert issues create", () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
+  // CLI-1ZD: agents pass filters (frequency, attribute) with no trigger.
+  test.each([[undefined], [["[]"]]])(
+    "creates a filter-only alert when --condition is %j",
+    async (condition) => {
+      const context = createContext();
+      resolveSpy.mockResolvedValue({ targets: [sampleTarget] });
+      createSpy.mockResolvedValue({ id: "99", name: "Busy", status: "active" });
+      const func = (await createCommand.loader()) as unknown as (
+        this: unknown,
+        flags: CreateFlags,
+        arg: string,
+      ) => Promise<void>;
+
+      await func.call(
+        context,
+        {
+          name: "Busy",
+          condition,
+          action: ['{"id":"action-a"}'],
+          filter: [
+            '{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}',
+          ],
+          frequency: 1440,
+          "dry-run": false,
+          json: true,
+        },
+        "test-org/test-project",
+      );
+
+      expect(createSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          triggers: { logicType: "any-short", conditions: [] },
+        }),
+      );
+    },
+  );
+
+  test("still rejects an alert with no trigger and no filter", async () => {
+    const context = createContext();
+    resolveSpy.mockResolvedValue({ targets: [sampleTarget] });
+    const func = (await createCommand.loader()) as unknown as (
+      this: unknown,
+      flags: CreateFlags,
+      arg: string,
+    ) => Promise<void>;
+
+    await expect(
+      func.call(
+        context,
+        {
+          name: "Rule A",
+          condition: ["[]"],
+          action: ['{"id":"action-a"}'],
+          frequency: 30,
+          "dry-run": true,
+          json: true,
+        },
+        "test-org/test-project",
+      ),
+    ).rejects.toMatchObject({ field: "condition" });
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  test("sends trigger names and quote-stripped trigger JSON as trigger objects", async () => {
+    const context = createContext();
+    resolveSpy.mockResolvedValue({ targets: [sampleTarget] });
+    createSpy.mockResolvedValue({ id: "99", name: "Rule A", status: "active" });
+    const func = (await createCommand.loader()) as unknown as (
+      this: unknown,
+      flags: CreateFlags,
+      arg: string,
+    ) => Promise<void>;
+
+    await func.call(
+      context,
+      {
+        name: "Rule A",
+        condition: [
+          "first-seen",
+          "{type:regression_event,comparison:true,conditionResult:true}",
+        ],
+        action: ['{"id":"action-a"}'],
+        frequency: 30,
+        "dry-run": false,
+        json: true,
+      },
+      "test-org/test-project",
+    );
+
+    expect(createSpy).toHaveBeenCalledWith(
+      "test-org",
+      expect.objectContaining({
+        triggers: {
+          logicType: "any-short",
+          conditions: [
+            {
+              type: "first_seen_event",
+              comparison: true,
+              conditionResult: true,
+            },
+            {
+              type: "regression_event",
+              comparison: true,
+              conditionResult: true,
+            },
+          ],
+        },
+      }),
+    );
+  });
+
   test("rejects targets that resolve to multiple projects", async () => {
     const context = createContext();
     resolveSpy.mockResolvedValue({
@@ -203,7 +316,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await expect(
@@ -217,8 +330,8 @@ describe("alert issues create", () => {
           "dry-run": true,
           json: true,
         },
-        "test-org/"
-      )
+        "test-org/",
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(createSpy).not.toHaveBeenCalled();
   });
@@ -234,7 +347,7 @@ describe("alert issues create", () => {
     const func = (await createCommand.loader()) as unknown as (
       this: unknown,
       flags: CreateFlags,
-      arg: string
+      arg: string,
     ) => Promise<void>;
 
     await func.call(
@@ -247,7 +360,7 @@ describe("alert issues create", () => {
         "dry-run": false,
         json: true,
       },
-      "test-org/test-project"
+      "test-org/test-project",
     );
 
     expect(createSpy).toHaveBeenCalledWith("test-org", {

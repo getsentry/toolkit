@@ -120,7 +120,7 @@ export async function poll<T>(options: PollOptions<T>): Promise<T> {
 /**
  * Start an animated spinner that writes progress to stdout.
  *
- * Uses stdout so the spinner doesn't collide with consola log messages
+ * Uses stdout so the spinner doesn't collide with logger messages
  * on stderr. The spinner is erased before command output is written,
  * and is suppressed entirely in JSON mode and when stdout is not a TTY.
  *
@@ -188,7 +188,7 @@ export type WithProgressOptions = {
  *
  * The spinner uses the same braille frames as the Seer polling spinner,
  * giving a consistent look across all CLI commands. Progress output goes
- * to stdout so it doesn't collide with consola log messages on stderr.
+ * to stdout so it doesn't collide with logger messages on stderr.
  *
  * The spinner is suppressed when:
  * - `options.json` is true (JSON mode — no ANSI noise for agents/CI)
@@ -219,15 +219,17 @@ export type WithProgressOptions = {
  */
 export async function withProgress<T>(
   options: WithProgressOptions,
-  fn: (setMessage: (msg: string) => void) => Promise<T>
+  fn: (setMessage: (msg: string) => void) => Promise<T>,
 ): Promise<T> {
   if (
     options.json ||
     isPlainOutput() ||
     (options.interactiveOnly && !process.stdout.isTTY)
   ) {
-    // JSON mode or non-TTY: skip the spinner entirely, pass a no-op setMessage
-    return fn(() => {
+    // JSON mode or non-TTY: skip the spinner entirely, pass a no-op setMessage.
+    // The `await` doesn't change the result; it keeps withProgress in async
+    // stack traces (typescript/return-await).
+    return await fn(() => {
       /* spinner suppressed */
     });
   }

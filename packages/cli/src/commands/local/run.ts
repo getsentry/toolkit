@@ -19,27 +19,41 @@ import {
   spawn,
 } from "node:child_process";
 import type { Server } from "node:http";
-import { resolve } from "node:path";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceParser,
+  parseBindHost,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
+  FILTER_VALUES,
   type FilterValue,
-  type FormatValue,
+  FORMAT_VALUES,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
+  type FormatValue,
+  printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
+import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
+import {
+  createLocalDaemonSession,
+  retainLocalDaemonSession,
+} from "./daemon.js";
 import {
   buildApp,
   consumeSSE,
   DEFAULT_PORT,
   isLoopbackHost,
   isServerRunning,
+  configureExistingRetention,
   parseFilter,
   parseFormat,
   parsePort,
@@ -51,6 +65,11 @@ import {
   validateOpenHost,
 } from "./ui.js";
 
+import {
+  createLocalRetentionBuffer,
+  OPTIONAL_MAX_ENVELOPES_FLAG,
+} from "./retention-buffer.js";
+
 type RunFlags = {
   readonly port: number;
   readonly host: string;
@@ -60,10 +79,12 @@ type RunFlags = {
   readonly format: FormatValue;
   readonly attributes: boolean;
   readonly open: boolean;
+  readonly session?: string;
+  readonly "max-envelopes"?: number;
 };
 
 /** Buffer size for the auto-started background server. */
-export const BUFFER_SIZE = 500;
+export const BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
 
 /**
  * Client-side env var prefixes that frameworks inline into browser bundles
@@ -105,7 +126,7 @@ function parseTimeout(value: string): number {
   if (!Number.isFinite(n) || n < 0) {
     throw new ValidationError(
       `Invalid timeout: ${value}. Must be a non-negative number.`,
-      "timeout"
+      "timeout",
     );
   }
   return n;
@@ -135,6 +156,7 @@ type EventTailOptions = {
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
   showAttributes: boolean;
+  maxEnvelopes?: number;
 };
 
 /** Keep stdout exclusively for NDJSON when an agent requests JSON output. */
@@ -160,15 +182,23 @@ function forwardChildOutput(child: ChildProcess, useJson: boolean): void {
  * reached the other server, but nothing was ever printed here. Attaching as
  * an SSE consumer is what `sentry local serve` does in the same situation.
  */
-function attachToExistingServer(
-  url: string,
-  activeFilters: ReadonlySet<FilterValue>,
-  useJson: boolean,
-  showAttributes: boolean
-): EventTail {
+function attachToExistingServer({
+  activeFilters,
+  showAttributes,
+  streamUrl,
+  url,
+  useJson,
+}: {
+  activeFilters: ReadonlySet<FilterValue>;
+  showAttributes: boolean;
+  streamUrl?: string;
+  url: string;
+  useJson: boolean;
+}): EventTail {
   const ac = new AbortController();
   const tail = consumeSSE({
     url,
+    streamUrl,
     activeFilters,
     signal: ac.signal,
     useJson,
@@ -176,7 +206,7 @@ function attachToExistingServer(
   }).catch((err: unknown) => {
     if (!ac.signal.aborted) {
       logger.debug(
-        `Event tail stopped: ${err instanceof Error ? err.message : String(err)}`
+        `Event tail stopped: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   });
@@ -200,9 +230,11 @@ async function startBackgroundServer({
   activeFilters,
   useJson,
   showAttributes,
+  maxEnvelopes,
 }: EventTailOptions): Promise<EventTail> {
-  const buffer = createSpotlightBuffer(BUFFER_SIZE);
-  const app = buildApp(buffer, { uiActions: isLoopbackHost(host) });
+  const retention = createLocalRetentionBuffer(maxEnvelopes);
+  const buffer = retention.buffer;
+  const app = buildApp(buffer, { uiActions: isLoopbackHost(host), retention });
   const { server, port: boundPort } = await tryListen(app, port, host);
   const url = formatLocalServerUrl(host, boundPort);
 
@@ -220,7 +252,7 @@ async function startBackgroundServer({
       }
     } catch (err) {
       logger.debug(
-        `Failed to format envelope: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to format envelope: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   });
@@ -248,17 +280,25 @@ async function openEventTail({
   activeFilters,
   useJson,
   showAttributes,
+  maxEnvelopes,
 }: EventTailOptions): Promise<EventTail> {
   const url = formatLocalServerUrl(host, port);
 
   if (await isServerRunning(url)) {
+    await configureExistingRetention(url, maxEnvelopes);
     logger.info(`Connected to existing server at ${bold(url)}`);
-    return attachToExistingServer(url, activeFilters, useJson, showAttributes);
+    return attachToExistingServer({
+      activeFilters,
+      showAttributes,
+      url,
+      useJson,
+    });
   }
 
   logger.info("No server detected, starting one in the background...");
   try {
     const bg = await startBackgroundServer({
+      maxEnvelopes,
       port,
       host,
       activeFilters,
@@ -271,16 +311,22 @@ async function openEventTail({
     if (!(err instanceof ValidationError && err.field === "port")) {
       throw err;
     }
+    await configureExistingRetention(url, maxEnvelopes);
     // Something grabbed the port between the probe and the bind.
     logger.warn(`${err.message}; attaching to it instead`);
-    return attachToExistingServer(url, activeFilters, useJson, showAttributes);
+    return attachToExistingServer({
+      activeFilters,
+      showAttributes,
+      url,
+      useJson,
+    });
   }
 }
 
 /** Augment PATH with `./node_modules/.bin` for Node project scripts. */
 function augmentPathForNode(
   env: Record<string, string | undefined>,
-  cwd: string
+  cwd: string,
 ): Record<string, string | undefined> {
   const binDir = resolve(cwd, "node_modules", ".bin");
   const sep = process.platform === "win32" ? ";" : ":";
@@ -306,13 +352,13 @@ const AUTO_DETECT_ERROR_MESSAGE = [
 function buildChildEnv(
   spotlightUrl: string,
   commandSource: string,
-  cwd: string
+  cwd: string,
 ): Record<string, string | undefined> {
   const clientSpotlightVars = Object.fromEntries(
     CLIENT_SPOTLIGHT_PREFIXES.map((prefix) => [
       `${prefix}SENTRY_SPOTLIGHT`,
       spotlightUrl,
-    ])
+    ]),
   );
   let env: Record<string, string | undefined> = {
     ...process.env,
@@ -330,7 +376,7 @@ function buildChildEnv(
 /** Resolve args and source — auto-detect from filesystem when no args provided. */
 async function resolveArgs(
   stripped: string[],
-  cwd: string
+  cwd: string,
 ): Promise<{ args: string[]; commandSource: string }> {
   if (stripped.length > 0) {
     return { args: stripped, commandSource: "" };
@@ -357,36 +403,71 @@ export const runCommand = buildCommand({
       "framework-prefixed client variants (NEXT_PUBLIC_, VITE_, etc.), and\n" +
       "SENTRY_TRACES_SAMPLE_RATE=1. Use --format json to stream versioned\n" +
       "NDJSON observations to stdout for agents. Use --open to launch the\n" +
-      "Sentry Local UI.\n\n" +
-      "Example:\n" +
-      "  sentry local run -- npm run dev\n" +
-      "  sentry local run -- python manage.py runserver",
+      "Sentry Local UI.",
+    examples: [
+      {
+        description: "Run a Node.js dev server with the local server enabled",
+        command: "sentry local run -- npm run dev",
+      },
+      {
+        description: "Run a Django dev server with the local server enabled",
+        command: "sentry local run -- python manage.py runserver",
+      },
+      {
+        description:
+          "Capture into a daemon session, inspect it after the app exits, then clean up",
+        command: [
+          "sentry local run --session web -- npm run dev",
+          "sentry local session list --json",
+          "sentry local session view web --json",
+          "sentry local session retention web --max-envelopes 2000",
+          "sentry local event list web --json",
+          "sentry local event view web <event-id> --json",
+          "sentry local envelope list web --json",
+          "sentry local envelope view web <envelope-id> --json",
+          "sentry local session reset web",
+          "sentry local session close web",
+          "sentry local daemon status",
+          "sentry local daemon stop",
+        ],
+      },
+      {
+        description: "Run your app and open the Sentry Local UI",
+        command: "sentry local run --open -- npm run dev",
+      },
+      {
+        description:
+          "Stream agent-relevant NDJSON without SDK housekeeping envelopes",
+        command:
+          "sentry local run --format json -f error -f transaction -f log -f ai -- npm run dev",
+      },
+    ],
   },
   parameters: {
     positional: {
       kind: "array",
       parameter: {
         brief: "Command to run",
-        parse: String,
+        parse: parseText,
         placeholder: "command",
       },
     },
     flags: {
       port: {
         kind: "parsed",
-        parse: parsePort,
-        brief: `Port for the local server (default ${DEFAULT_PORT})`,
+        parse: textParser(parsePort),
+        brief: "Port for the local server",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
-        parse: String,
-        brief: "Hostname for the local server (default localhost)",
+        parse: parseBindHost,
+        brief: "Hostname for the local server",
         default: "localhost",
       },
       filter: {
         kind: "parsed",
-        parse: parseFilter,
+        parse: choiceParser(FILTER_VALUES, parseFilter),
         brief:
           "Only show items of this type (repeatable: error, transaction, log, ai)",
         variadic: true,
@@ -399,14 +480,14 @@ export const runCommand = buildCommand({
       },
       timeout: {
         kind: "parsed",
-        parse: parseTimeout,
+        parse: textParser(parseTimeout),
         brief:
           "Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode)",
         default: "0",
       },
       format: {
         kind: "parsed",
-        parse: parseFormat,
+        parse: choiceParser(FORMAT_VALUES, parseFormat),
         brief: "Output format: human (default) or json (NDJSON on stdout)",
         default: "human",
       },
@@ -419,6 +500,13 @@ export const runCommand = buildCommand({
         kind: "boolean",
         brief: "Open Sentry Local UI in the browser",
         default: false,
+      },
+      "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
+      session: {
+        kind: "parsed",
+        parse: parseText,
+        brief: "Create a daemon-owned telemetry session with this label",
+        optional: true,
       },
     },
     aliases: {
@@ -435,6 +523,12 @@ export const runCommand = buildCommand({
     if (flags.open && flags.verify) {
       throw new ValidationError("--open cannot be used with --verify.", "open");
     }
+    if (flags.session !== undefined && flags.verify) {
+      throw new ValidationError(
+        "--session cannot be used with --verify.",
+        "session",
+      );
+    }
     validateOpenHost(flags.open, flags.host);
 
     const stripped = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
@@ -446,31 +540,66 @@ export const runCommand = buildCommand({
     }
 
     let url = formatLocalServerUrl(flags.host, flags.port);
+    let daemonSessionId: string | undefined;
+    let daemonIngestUrl: string | undefined;
+    let daemonStreamUrl: string | undefined;
+    let daemonDirectoryUrl: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
-    const tail = await openEventTail({
-      port: flags.port,
-      host: flags.host,
-      activeFilters,
-      useJson,
-      showAttributes: flags.attributes,
-    });
+    const tail = flags.session
+      ? await (async () => {
+          const session = await createLocalDaemonSession({
+            maxEnvelopes: flags["max-envelopes"],
+            cwd: this.cwd,
+            host: flags.host,
+            label: flags.session || basename(this.cwd),
+            port: flags.port,
+          });
+          daemonSessionId = session.id;
+          daemonIngestUrl = session.ingestUrl;
+          daemonStreamUrl = session.streamUrl;
+          daemonDirectoryUrl = session.directoryUrl;
+          return attachToExistingServer({
+            activeFilters,
+            showAttributes: flags.attributes,
+            streamUrl: session.streamUrl,
+            url: new URL(session.streamUrl).origin,
+            useJson,
+          });
+        })()
+      : await openEventTail({
+          maxEnvelopes: flags["max-envelopes"],
+          port: flags.port,
+          host: flags.host,
+          activeFilters,
+          useJson,
+          showAttributes: flags.attributes,
+        });
     url = tail.url;
+    printLocalViewerHint(url, useJson);
 
-    await openLocalUiIfRequested(flags.open, url);
+    await openLocalUiIfRequested(
+      flags.open,
+      daemonStreamUrl ?? url,
+      daemonDirectoryUrl,
+    );
 
-    const spotlightUrl = `${url}/stream`;
+    const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
     const wrangler = await injectWranglerSpotlightBinding(
       args,
       spotlightUrl,
-      this.cwd
+      this.cwd,
     );
     if (wrangler.injected) {
       logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
     }
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
-    logger.info(`SENTRY_SPOTLIGHT=${spotlightUrl}`);
+    logger.info(
+      daemonSessionId
+        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use sentry local session view ${daemonSessionId} --json for its ingest URL.`
+        : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
+    );
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
 
@@ -485,9 +614,12 @@ export const runCommand = buildCommand({
       forwardChildOutput(child, useJson);
     } catch (err) {
       await tail.cleanup();
+      if (daemonSessionId) {
+        await retainLocalDaemonSession(daemonSessionId);
+      }
       throw new CliError(
         `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-        EXIT.GENERAL
+        EXIT.GENERAL,
       );
     }
 
@@ -529,6 +661,9 @@ export const runCommand = buildCommand({
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
       await tail.cleanup();
+      if (daemonSessionId) {
+        await retainLocalDaemonSession(daemonSessionId);
+      }
     }
 
     if (exitCode !== 0) {
@@ -582,21 +717,27 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
  * for the first envelope, and race between envelope arrival, timeout,
  * and child exit.
  */
+// oxlint-disable-next-line require-yield -- The command contract requires an async generator even when it yields no output.
 async function* runWithVerify(
   args: string[],
   flags: RunFlags,
   cwd: string,
-  commandSource: string
+  commandSource: string,
 ): AsyncGenerator<never, void, unknown> {
-  const buffer = createSpotlightBuffer(BUFFER_SIZE);
-  const app = buildApp(buffer, { uiActions: isLoopbackHost(flags.host) });
+  const retention = createLocalRetentionBuffer(flags["max-envelopes"]);
+  const buffer = retention.buffer;
+  const app = buildApp(buffer, {
+    uiActions: isLoopbackHost(flags.host),
+    retention,
+  });
   const { server, port: boundPort } = await tryListen(
     app,
     flags.port,
-    flags.host
+    flags.host,
   );
   const url = formatLocalServerUrl(flags.host, boundPort);
   logger.info(`Verify server listening on ${bold(url)}`);
+  printLocalViewerHint(url, flags.format === "json");
 
   const spotlightUrl = `${url}/stream`;
 
@@ -611,7 +752,7 @@ async function* runWithVerify(
   const wrangler = await injectWranglerSpotlightBinding(
     args,
     spotlightUrl,
-    cwd
+    cwd,
   );
   if (wrangler.injected) {
     logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
@@ -631,7 +772,7 @@ async function* runWithVerify(
     await shutdownServer(server);
     throw new CliError(
       `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-      EXIT.GENERAL
+      EXIT.GENERAL,
     );
   }
 
@@ -649,7 +790,7 @@ async function* runWithVerify(
 
   const childExited = new Promise<{ kind: "exited"; code: number }>((r) => {
     child.on("close", (code) =>
-      r({ kind: "exited" as const, code: code ?? 1 })
+      r({ kind: "exited" as const, code: code ?? 1 }),
     );
   });
 
@@ -671,9 +812,9 @@ async function* runWithVerify(
       new Promise<{ kind: "timeout" }>((r) => {
         timeoutHandle = setTimeout(
           () => r({ kind: "timeout" as const }),
-          verifyTimeout * 1000
+          verifyTimeout * 1000,
         );
-      })
+      }),
     );
   }
 
@@ -715,11 +856,11 @@ async function* runWithVerify(
     }
     case "timeout": {
       logger.warn(
-        `Verification timed out after ${verifyTimeout}s — no events received from the SDK`
+        `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
       );
       throw new CliError(
         `Verification timed out after ${verifyTimeout}s`,
-        EXIT.WIZARD_VERIFY
+        EXIT.WIZARD_VERIFY,
       );
     }
     case "exited": {
@@ -727,13 +868,13 @@ async function* runWithVerify(
         logger.warn("Process exited before sending any events");
         throw new CliError(
           "Process exited before sending any events",
-          EXIT.WIZARD_VERIFY
+          EXIT.WIZARD_VERIFY,
         );
       }
       logger.warn(`Process crashed with code ${outcome.code}`);
       throw new CliError(
         `Process crashed with code ${outcome.code}`,
-        outcome.code
+        outcome.code,
       );
     }
     default: {

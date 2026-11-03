@@ -383,7 +383,7 @@ describe("forwardFreshTtyToStdin → closeFreshTtyForwarding round trip", () => 
 
     try {
       expect(
-        (process.stdin as { readableFlowing?: boolean | null }).readableFlowing
+        (process.stdin as { readableFlowing?: boolean | null }).readableFlowing,
       ).toBe(true);
 
       const handle = forwardFreshTtyToStdin({
@@ -398,7 +398,7 @@ describe("forwardFreshTtyToStdin → closeFreshTtyForwarding round trip", () => 
       // (paused). After teardown we must be NOT true — otherwise the
       // libuv event loop stays alive.
       expect(
-        (process.stdin as { readableFlowing?: boolean | null }).readableFlowing
+        (process.stdin as { readableFlowing?: boolean | null }).readableFlowing,
       ).not.toBe(true);
     } finally {
       // Defensive: ensure we don't leak a flowing-mode stdin into the

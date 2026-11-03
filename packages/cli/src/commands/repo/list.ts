@@ -10,17 +10,17 @@
  * - Bare org slug (e.g., sentry) - lists repos for that org
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import {
   listRepositories,
   listRepositoriesPaginated,
 } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import {
   type SentryRepository,
   SentryRepositorySchema,
@@ -30,15 +30,15 @@ import {
 export const PAGINATION_KEY = "repo-list";
 
 /** Repository with its organization context for display */
-type RepositoryWithOrg = SentryRepository & { orgSlug?: string };
+type RepositoryWithOrg = WithOrg<SentryRepository>;
 
 /** Column definitions for the repository table. */
 const REPO_COLUMNS: Column<RepositoryWithOrg>[] = [
   { header: "ORG", value: (r) => r.orgSlug || "" },
-  { header: "NAME", value: (r) => escapeMarkdownCell(r.name) },
+  { header: "NAME", value: (r) => tableCell(r.name) },
   { header: "PROVIDER", value: (r) => r.provider.name },
   { header: "STATUS", value: (r) => r.status },
-  { header: "URL", value: (r) => escapeMarkdownCell(r.url || "") },
+  { header: "URL", value: (r) => tableCell(r.url || "") },
 ];
 
 /** Shared config that plugs into the org-list framework. */
@@ -49,6 +49,13 @@ const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
   listForOrg: (org) => listRepositories(org),
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),
+  // `getsentry/sentry-python` also matches as `sentry-python`, so a typo
+  // in the short name is still close enough to match fuzzily.
+  namesOf: (repo) => {
+    const short = repo.name.slice(repo.name.lastIndexOf("/") + 1);
+    return short && short !== repo.name ? [repo.name, short] : [repo.name];
+  },
+  searchesNames: true,
   displayTable: (repos: RepositoryWithOrg[]) =>
     formatTable(repos, REPO_COLUMNS),
   schema: SentryRepositorySchema,
@@ -58,20 +65,32 @@ const docs: OrgListCommandDocs = {
   brief: "List repositories",
   fullDescription:
     "List repositories connected to an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry repo list               # auto-detect from DSN or config\n" +
-    "  sentry repo list <org>/        # list all repos in org (paginated)\n" +
-    "  sentry repo list <org>/<proj>  # list repos in org (project context)\n" +
-    "  sentry repo list <org>         # list repos in org\n\n" +
-    "Pagination:\n" +
-    "  sentry repo list <org>/ -c next  # fetch next page\n" +
-    "  sentry repo list <org>/ -c prev  # fetch previous page\n\n" +
-    "Examples:\n" +
-    "  sentry repo list              # auto-detect or list all\n" +
-    "  sentry repo list my-org/      # list repositories in my-org (paginated)\n" +
-    "  sentry repo list --limit 10\n" +
-    "  sentry repo list --json\n\n" +
+    "`<org>/<name>` lists repositories whose name (with or without its owner) matches `<name>`, a glob (`<org>/getsentry/*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry repos` → `sentry repo list`",
+  examples: [
+    {
+      description: "List repositories (organization auto-detected)",
+      command: "sentry repo list",
+    },
+    {
+      description: "List repositories in an organization",
+      command: "sentry repo list my-org/",
+    },
+    {
+      description: "Fetch the next page",
+      command: "sentry repo list my-org/ -c next",
+    },
+    {
+      description: "Only repositories whose name matches a glob",
+      command: "sentry repo list 'my-org/getsentry/*'",
+    },
+    {
+      description:
+        "Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)",
+      command: "sentry repo list my-org/sentry-pyhton",
+    },
+    { description: "Output as JSON", command: "sentry repo list --json" },
+  ],
 };
 
 export const listCommand = buildOrgListCommand(repoListConfig, docs, "repo");

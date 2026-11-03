@@ -88,7 +88,7 @@ export function colorizeSql(sql: string): string {
     return sql;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const tokens = parser.parse(sql);
     return tokens.map(colorizeToken).join("");
@@ -125,7 +125,7 @@ export function formatSqlBlock(sql: string): string {
     return `\n─── Query ───\n\n${sql}\n`;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const tokens = parser.parse(sql);
     // Use sqlish's string formatter for structural formatting (newlines at keywords)

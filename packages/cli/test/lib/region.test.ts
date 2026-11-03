@@ -22,7 +22,7 @@ beforeEach(async () => {
   delete process.env.SENTRY_HOST;
   delete process.env.SENTRY_URL;
   // Set up auth token for API tests
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
 });
 
 afterEach(() => {
@@ -147,7 +147,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -185,7 +185,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -222,7 +222,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -258,7 +258,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
@@ -296,7 +296,7 @@ describe("resolveOrgRegion", () => {
     // SENTRY_URL was unset at store time). Re-scope the stored token to
     // the self-hosted host so the fetch-layer guard admits the request.
     process.env.SENTRY_URL = "https://sentry.mycompany.com";
-    await setAuthToken("test-token", undefined, undefined, {
+    setAuthToken("test-token", undefined, undefined, {
       host: "https://sentry.mycompany.com",
     });
 
@@ -362,7 +362,7 @@ describe("resolveOrgRegion", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {

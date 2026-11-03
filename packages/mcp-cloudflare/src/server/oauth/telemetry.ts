@@ -39,14 +39,14 @@ export type OAuthErrorTelemetry = {
  */
 export const ACCESS_METHOD_ATTRIBUTE = "app.access.method" as const;
 export const OAUTH_ERROR_ATTRIBUTE = "app.access.error.code" as const;
-export const OAUTH_ERROR_REASON_ATTRIBUTE =
-  "app.access.error.reason" as const;
+export const OAUTH_ERROR_REASON_ATTRIBUTE = "app.access.error.reason" as const;
 export const OAUTH_REQUEST_HEADER_SHAPE_ATTRIBUTE =
   "app.access.request.header_shape" as const;
 export const OAUTH_REFRESH_OUTCOME_ATTRIBUTE =
   "app.access.refresh.outcome" as const;
 export const OAUTH_GRANT_SHAPE_ATTRIBUTE = "app.access.grant.shape" as const;
-export const OAUTH_GRANT_ID_HASH_ATTRIBUTE = "app.access.grant.id_hash" as const;
+export const OAUTH_GRANT_ID_HASH_ATTRIBUTE =
+  "app.access.grant.id_hash" as const;
 export const OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE =
   "app.access.grant.age_bucket" as const;
 export const OAUTH_GRANT_REVOKED_REASON_ATTRIBUTE =

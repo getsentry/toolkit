@@ -40,7 +40,7 @@ export type QRCodeOptions = InferOutput<typeof QRCodeOptionsSchema>;
  */
 export function generateQRCode(
   data: string,
-  options?: Partial<QRCodeOptions>
+  options?: Partial<QRCodeOptions>,
 ): Promise<string> {
   const opts = parse(QRCodeOptionsSchema, options ?? {});
 

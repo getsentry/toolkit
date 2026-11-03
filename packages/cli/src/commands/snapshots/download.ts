@@ -18,6 +18,11 @@ import {
   waitForSnapshotArchive,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  parseDirectoryPath,
+  parseText,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import { getDefaultProject } from "../../lib/db/defaults.js";
 import {
   ApiError,
@@ -64,7 +69,7 @@ function formatDownloadResult(data: SnapshotDownloadResult): string {
       ["Snapshot ID", data.snapshotId],
       ["Images", String(data.imageCount)],
       ["Saved to", data.output],
-    ])
+    ]),
   );
 }
 
@@ -82,13 +87,13 @@ function validateSnapshotFlags(flags: DownloadFlags): void {
   if (appId && snapshotId) {
     throw new ValidationError(
       "Provide only one of --app-id or --snapshot-id",
-      "app-id"
+      "app-id",
     );
   }
   if (flags.branch && !appId) {
     throw new ValidationError(
       "--branch can only be used with --app-id",
-      "branch"
+      "branch",
     );
   }
   if (!(appId || snapshotId)) {
@@ -117,7 +122,7 @@ function resolveOptionalProject(env: NodeJS.ProcessEnv): string | undefined {
 async function resolveSnapshotId(
   org: string,
   flags: DownloadFlags,
-  project: string | undefined
+  project: string | undefined,
 ): Promise<string> {
   const snapshotId = flags["snapshot-id"];
   if (snapshotId) {
@@ -136,11 +141,11 @@ async function resolveSnapshotId(
       `Baseline snapshot for app '${appId}'${branchMsg}`,
       "not found",
       USAGE_HINT,
-      ["No baseline snapshot exists for this app yet."]
+      ["No baseline snapshot exists for this app yet."],
     );
   }
   log.info(
-    `Found snapshot ${latest.headArtifactId} (${latest.imageCount} images)`
+    `Found snapshot ${latest.headArtifactId} (${latest.imageCount} images)`,
   );
   return latest.headArtifactId;
 }
@@ -154,11 +159,23 @@ export const downloadCommand = buildCommand({
       "Use --snapshot-id to download a specific snapshot, or --app-id to " +
       "resolve the latest baseline (org auth tokens require --project with a " +
       "project ID or slug for --app-id).\n\n" +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry snapshots download --snapshot-id 1234567890\n" +
-      "  sentry snapshots download --app-id my-app --branch main\n" +
-      "  sentry snapshots download --app-id my-app --output ./baseline/",
+      "This feature only works with Sentry SaaS.",
+    examples: [
+      {
+        description: "Download a specific baseline snapshot by ID",
+        command: "sentry snapshots download --snapshot-id 1234567890",
+      },
+      {
+        description:
+          "Download the latest baseline for an app, filtered by branch",
+        command: "sentry snapshots download --app-id my-app --branch main",
+      },
+      {
+        description: "Extract images to a specific directory",
+        command:
+          "sentry snapshots download --app-id my-app --output ./baseline/",
+      },
+    ],
   },
   output: {
     human: formatDownloadResult,
@@ -167,26 +184,26 @@ export const downloadCommand = buildCommand({
     flags: {
       "app-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "App identifier (e.g. my-app) to resolve the latest baseline; mutually exclusive with --snapshot-id",
         optional: true,
       },
       "snapshot-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Direct snapshot artifact ID; mutually exclusive with --app-id",
         optional: true,
       },
       branch: {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Git branch filter (only with --app-id)",
         optional: true,
       },
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: `Directory for extracted images (default: ${DEFAULT_OUTPUT})`,
         optional: true,
       },
@@ -209,7 +226,7 @@ export const downloadCommand = buildCommand({
     const snapshotId = await resolveSnapshotId(org, flags, project);
 
     await waitForSnapshotArchive(org, snapshotId, () =>
-      log.info("Building snapshot archive...")
+      log.info("Building snapshot archive..."),
     );
 
     log.info(`Downloading snapshot ${snapshotId}...`);
@@ -219,18 +236,18 @@ export const downloadCommand = buildCommand({
         "Snapshot archive response had no body",
         response.status,
         "Empty response body",
-        `snapshots/${snapshotId}/archive/`
+        `snapshots/${snapshotId}/archive/`,
       );
     }
 
     const output = resolve(this.cwd, flags.output ?? DEFAULT_OUTPUT);
     const imageCount = await extractZipStream(
       response.body as unknown as AsyncIterable<Uint8Array>,
-      output
+      output,
     );
     if (imageCount === 0) {
       log.warn(
-        `No images were extracted from snapshot ${snapshotId} — the archive may be empty or corrupt.`
+        `No images were extracted from snapshot ${snapshotId} — the archive may be empty or corrupt.`,
       );
     }
 

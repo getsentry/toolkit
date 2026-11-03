@@ -10,9 +10,11 @@ import { safeParse } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   ChunkServerOptionsSchema,
+  getChunkUploadOptions,
   pollAssembly,
 } from "../../../src/lib/api/chunk-upload.js";
 import { apiRequestToRegion } from "../../../src/lib/api/infrastructure.js";
+import { resolveOrgRegion } from "../../../src/lib/region.js";
 
 vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
   const actual =
@@ -21,7 +23,11 @@ vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
     >();
   return { ...actual, apiRequestToRegion: vi.fn() };
 });
+vi.mock("../../../src/lib/region.js", () => ({
+  resolveOrgRegion: vi.fn().mockResolvedValue("https://sentry.example.com"),
+}));
 const apiMock = vi.mocked(apiRequestToRegion);
+const regionMock = vi.mocked(resolveOrgRegion);
 
 const BASE = {
   url: "https://us.sentry.io/api/0/chunk-upload/",
@@ -32,6 +38,38 @@ const BASE = {
   concurrency: 8,
   compression: ["gzip"],
 };
+
+describe("getChunkUploadOptions: credential stripping", () => {
+  beforeEach(() => {
+    apiMock.mockReset();
+    regionMock.mockResolvedValue("https://sentry.example.com");
+  });
+
+  test("strips embedded credentials from the server-returned chunk-upload URL", async () => {
+    apiMock.mockResolvedValue({
+      data: {
+        ...BASE,
+        url: "https://08d1f409cc5d402783b7ce48189675e8@bugsink.example.com/8/api/0/organizations/my-org/chunk-upload/",
+      },
+    } as unknown as Awaited<ReturnType<typeof apiRequestToRegion>>);
+
+    const result = await getChunkUploadOptions("my-org");
+
+    expect(result.url).toBe(
+      "https://bugsink.example.com/8/api/0/organizations/my-org/chunk-upload/",
+    );
+  });
+
+  test("leaves a credential-free URL unchanged", async () => {
+    apiMock.mockResolvedValue({
+      data: { ...BASE },
+    } as unknown as Awaited<ReturnType<typeof apiRequestToRegion>>);
+
+    const result = await getChunkUploadOptions("my-org");
+
+    expect(result.url).toBe(BASE.url);
+  });
+});
 
 describe("ChunkServerOptionsSchema", () => {
   test("parses a response that omits maxFileSize and maxWait", () => {

@@ -71,7 +71,7 @@ export function useMcpMetadata(enabled = true): UseMcpMetadataResult {
 
   // Fetch metadata when auth token changes or component mounts
   useEffect(() => {
-    fetchMetadata();
+    void fetchMetadata();
   }, [fetchMetadata]);
 
   return {

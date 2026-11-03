@@ -126,7 +126,7 @@ describe("uploadProguardMappings", () => {
           response[checksum] = { state: "ok" };
         }
         return { data: response } as never;
-      }
+      },
     );
 
     await uploadProguardMappings({
@@ -144,7 +144,7 @@ describe("uploadProguardMappings", () => {
     const [entry] = Object.values(assembleBody);
     // Leading slash required for the server to recognize the DIF as proguard.
     expect(entry?.name).toBe(
-      "/proguard/5db7294d-87fc-5726-a5c0-4a90679657a5.txt"
+      "/proguard/5db7294d-87fc-5726-a5c0-4a90679657a5.txt",
     );
   });
 });

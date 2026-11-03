@@ -97,7 +97,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    return fetchSnapshotSummary(
+    return await fetchSnapshotSummary(
       apiService,
       params.organizationSlug,
       params.snapshotId,

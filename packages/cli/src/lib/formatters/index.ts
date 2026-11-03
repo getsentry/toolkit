@@ -1,4 +1,4 @@
-// biome-ignore-all lint/performance/noBarrelFile: intentional public API
+// Intentional public API barrel.
 /**
  * Formatters
  *

@@ -49,7 +49,7 @@ function shortcutSignature(hints: readonly ShortcutHint[]): string {
 }
 
 export function arrangeShortcutHints(
-  hints: readonly ShortcutHint[]
+  hints: readonly ShortcutHint[],
 ): ShortcutHint[] {
   const seen = new Set<string>();
   const unique: Array<{ hint: ShortcutHint; index: number }> = [];
@@ -107,7 +107,7 @@ export function ShortcutHintProvider({
       }
       refresh();
     },
-    [refresh]
+    [refresh],
   );
 
   const clearScope = useCallback(
@@ -115,12 +115,12 @@ export function ShortcutHintProvider({
       scopes.current.delete(scope);
       refresh();
     },
-    [refresh]
+    [refresh],
   );
 
   const registry = useMemo(
     () => ({ setScope, clearScope }),
-    [setScope, clearScope]
+    [setScope, clearScope],
   );
 
   return (
@@ -139,7 +139,7 @@ export function useShortcutHints(): ShortcutHint[] {
 export function useInkShortcuts(
   scope: string,
   bindings: readonly ShortcutBinding[],
-  options: { isActive?: boolean } = {}
+  options: { isActive?: boolean } = {},
 ): void {
   const registry = useContext(ShortcutRegistryContext);
   const isActive = options.isActive ?? true;
@@ -172,6 +172,6 @@ export function useInkShortcuts(
         }
       }
     },
-    { isActive }
+    { isActive },
   );
 }

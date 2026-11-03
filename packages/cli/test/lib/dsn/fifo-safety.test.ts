@@ -37,7 +37,7 @@ describe("isRegularFile", () => {
   beforeEach(() => {
     testDir = join(
       tmpdir(),
-      `sentry-fifo-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `sentry-fifo-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
   });
@@ -98,7 +98,7 @@ describe("FIFO: env file detection", () => {
   beforeEach(() => {
     testDir = join(
       tmpdir(),
-      `sentry-fifo-env-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `sentry-fifo-env-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(testDir, { recursive: true });
     // Create .git so this is treated as project root (stops walk-up)
@@ -121,16 +121,15 @@ describe("FIFO: env file detection", () => {
     const fifoPath = join(testDir, ".env");
     createFifo(fifoPath);
 
-    const { detectFromEnvFiles } = await import(
-      "../../../src/lib/dsn/env-file.js"
-    );
+    const { detectFromEnvFiles } =
+      await import("../../../src/lib/dsn/env-file.js");
 
     // This would hang indefinitely before the fix.
     // 2-second timeout ensures the test fails fast if the guard is broken.
     const result = await Promise.race([
       detectFromEnvFiles(testDir),
       new Promise<"timeout">((resolve) =>
-        setTimeout(() => resolve("timeout"), 2000)
+        setTimeout(() => resolve("timeout"), 2000),
       ),
     ]);
 
@@ -143,12 +142,11 @@ describe("FIFO: env file detection", () => {
 
     writeFileSync(
       join(testDir, ".env"),
-      "SENTRY_DSN=https://abc123@o456.ingest.sentry.io/789\n"
+      "SENTRY_DSN=https://abc123@o456.ingest.sentry.io/789\n",
     );
 
-    const { detectFromEnvFiles } = await import(
-      "../../../src/lib/dsn/env-file.js"
-    );
+    const { detectFromEnvFiles } =
+      await import("../../../src/lib/dsn/env-file.js");
     const result = await detectFromEnvFiles(testDir);
 
     expect(result).not.toBeNull();
@@ -163,16 +161,15 @@ describe("FIFO: env file detection", () => {
     // .env.local is a regular file with a DSN
     writeFileSync(
       join(testDir, ".env.local"),
-      "SENTRY_DSN=https://key@o1.ingest.sentry.io/111\n"
+      "SENTRY_DSN=https://key@o1.ingest.sentry.io/111\n",
     );
 
-    const { detectFromEnvFiles } = await import(
-      "../../../src/lib/dsn/env-file.js"
-    );
+    const { detectFromEnvFiles } =
+      await import("../../../src/lib/dsn/env-file.js");
     const result = await Promise.race([
       detectFromEnvFiles(testDir),
       new Promise<"timeout">((resolve) =>
-        setTimeout(() => resolve("timeout"), 2000)
+        setTimeout(() => resolve("timeout"), 2000),
       ),
     ]);
 
@@ -189,14 +186,13 @@ describe("FIFO: env file detection", () => {
     mkdirSync(subDir);
     createFifo(join(subDir, ".env"));
 
-    const { findProjectRoot } = await import(
-      "../../../src/lib/dsn/project-root.js"
-    );
+    const { findProjectRoot } =
+      await import("../../../src/lib/dsn/project-root.js");
 
     const result = await Promise.race([
       findProjectRoot(subDir),
       new Promise<"timeout">((resolve) =>
-        setTimeout(() => resolve("timeout"), 2000)
+        setTimeout(() => resolve("timeout"), 2000),
       ),
     ]);
 
@@ -213,7 +209,7 @@ describe("FIFO: env file detection", () => {
     symlinkSync(fifoPath, join(testDir, ".env.local"));
     writeFileSync(
       join(testDir, ".env"),
-      "SENTRY_DSN=https://fallback@o1.ingest.sentry.io/222\n"
+      "SENTRY_DSN=https://fallback@o1.ingest.sentry.io/222\n",
     );
 
     const { detectDsn } = await import("../../../src/lib/dsn/detector.js");
@@ -221,7 +217,7 @@ describe("FIFO: env file detection", () => {
     const result = await Promise.race([
       detectDsn(testDir),
       new Promise<"timeout">((resolve) =>
-        setTimeout(() => resolve("timeout"), 2000)
+        setTimeout(() => resolve("timeout"), 2000),
       ),
     ]);
 
@@ -254,7 +250,7 @@ describe("FIFO: env file detection", () => {
     const result = await Promise.race([
       detectDsn(testDir),
       new Promise<"timeout">((resolve) =>
-        setTimeout(() => resolve("timeout"), 2000)
+        setTimeout(() => resolve("timeout"), 2000),
       ),
     ]);
 

@@ -72,7 +72,7 @@ function parsePatchedDependencies(source: string): Record<string, string> {
     const entry = line.match(PATCHED_DEPENDENCY_ENTRY);
     if (!entry) {
       throw new Error(
-        `Unsupported patchedDependencies entry in ${WORKSPACE_PATH}: ${line}`
+        `Unsupported patchedDependencies entry in ${WORKSPACE_PATH}: ${line}`,
       );
     }
     const [, key, patchPath] = entry;
@@ -111,7 +111,7 @@ const uiUtilsRequire = createRequire(mastraRequire.resolve("@ai-sdk/ui-utils"));
 
 function resolvePackageFile(
   subpath: string,
-  resolver: NodeJS.Require = require_
+  resolver: NodeJS.Require = require_,
 ): string | null {
   const parts = subpath.split("/");
   const pkgName = subpath.startsWith("@")
@@ -140,7 +140,7 @@ function resolvePackageFile(
 }
 
 const patches = parsePatchedDependencies(
-  await readFile(WORKSPACE_PATH, "utf-8")
+  await readFile(WORKSPACE_PATH, "utf-8"),
 );
 const warnings: string[] = [];
 const errors: string[] = [];
@@ -173,7 +173,7 @@ for (const [key, patchPath] of Object.entries(patches)) {
   const versionMatch = patchPath.match(/@(\d+\.\d+\.\d+[^@]*)\.patch$/);
   if (!versionMatch) {
     warnings.push(
-      `  ? ${name}: could not extract version from patch path "${patchPath}"`
+      `  ? ${name}: could not extract version from patch path "${patchPath}"`,
     );
     continue;
   }
@@ -188,11 +188,11 @@ for (const [key, patchPath] of Object.entries(patches)) {
       throw new Error("unresolved");
     }
     const installed: { version: string } = JSON.parse(
-      await readFile(pkgJsonPath, "utf-8")
+      await readFile(pkgJsonPath, "utf-8"),
     );
     if (installed.version !== patchVersion) {
       warnings.push(
-        `  ${name}: patch targets ${patchVersion}, installed ${installed.version} — regenerate with: pnpm patch ${name}`
+        `  ${name}: patch targets ${patchVersion}, installed ${installed.version} — regenerate with: pnpm patch ${name}`,
       );
     }
   } catch {
@@ -225,15 +225,6 @@ for (const [key, patchPath] of Object.entries(patches)) {
  * `-v`=version alias in `runApplication` so `-v` stays the Sentry CLI's
  * `--verbose` alias at every position; `--version` remains the version flag.
  * The stale marker is the original `inputs[0] === "-v"` version check.
- *
- * @sentry/core and @sentry/node-core: these are tree-shaking patches that strip
- * unused re-exports (AI/integration modules) from the build barrels so esbuild
- * excludes them from the bundle. They edit bundler-generated barrels and are
- * therefore especially prone to silent context drift on a version bump. Each
- * marker is a re-export the patch removes (present in the pristine package,
- * absent once patched); its presence means the strip did NOT apply and the
- * bundle will re-bloat with the AI integrations — re-introducing the dangling
- * re-export class the patch guards against.
  */
 const CONTENT_ASSERTIONS: ReadonlyArray<{
   /** Installed file to inspect, relative to the resolved node_modules dir. */
@@ -308,30 +299,6 @@ const CONTENT_ASSERTIONS: ReadonlyArray<{
     description:
       "@stricli/core CJS: pluggable `renderHelp` hook missing (`sentry --help --json` will fall back to text help instead of structured JSON)",
   },
-  {
-    file: "@sentry/core/build/cjs/index.js",
-    staleMarker: "exports.instrumentOpenAiClient",
-    description:
-      "@sentry/core CJS: tree-shaking strip not applied (AI integrations re-bundled)",
-  },
-  {
-    file: "@sentry/core/build/esm/index.js",
-    staleMarker: "from './tracing/openai/index.js'",
-    description:
-      "@sentry/core ESM: tree-shaking strip not applied (AI integrations re-bundled)",
-  },
-  {
-    file: "@sentry/node-core/build/cjs/light/index.js",
-    staleMarker: "exports.dedupeIntegration",
-    description:
-      "@sentry/node-core CJS light: integration re-export strip not applied",
-  },
-  {
-    file: "@sentry/node-core/build/esm/light/index.js",
-    staleMarker: "dedupeIntegration",
-    description:
-      "@sentry/node-core ESM light: integration re-export strip not applied",
-  },
 ];
 
 for (const assertion of CONTENT_ASSERTIONS) {
@@ -343,7 +310,7 @@ for (const assertion of CONTENT_ASSERTIONS) {
     const contents = await readFile(assertionPath, "utf-8");
     if (assertion.staleMarker && contents.includes(assertion.staleMarker)) {
       errors.push(
-        `  ${assertion.description} — patch not applied to ${assertion.file} (regenerate the patch for the current dependency version)`
+        `  ${assertion.description} — patch not applied to ${assertion.file} (regenerate the patch for the current dependency version)`,
       );
     }
     if (
@@ -351,19 +318,19 @@ for (const assertion of CONTENT_ASSERTIONS) {
       !contents.includes(assertion.requiredMarker)
     ) {
       errors.push(
-        `  ${assertion.description} — patch not applied to ${assertion.file} (regenerate the patch for the current dependency version)`
+        `  ${assertion.description} — patch not applied to ${assertion.file} (regenerate the patch for the current dependency version)`,
       );
     }
   } catch {
     errors.push(
-      `  ${assertion.description} — could not read ${assertion.file} (run pnpm install)`
+      `  ${assertion.description} — could not read ${assertion.file} (run pnpm install)`,
     );
   }
 }
 
 try {
   const { createStatusCodeErrorResponseHandler } = uiUtilsRequire(
-    "@ai-sdk/provider-utils"
+    "@ai-sdk/provider-utils",
   ) as {
     createStatusCodeErrorResponseHandler: () => (options: {
       response: Response;
@@ -381,7 +348,7 @@ try {
     {
       status: 500,
       headers: { "content-length": String(2 * 1024 * 1024 * 1024 + 1) },
-    }
+    },
   );
 
   await createStatusCodeErrorResponseHandler()({
@@ -391,20 +358,20 @@ try {
   }).then(
     () => {
       errors.push(
-        "  @ai-sdk/provider-utils: oversized response was accepted (resource-limit patch not applied)"
+        "  @ai-sdk/provider-utils: oversized response was accepted (resource-limit patch not applied)",
       );
     },
     () => {
       if (!cancelled) {
         errors.push(
-          "  @ai-sdk/provider-utils: oversized response body was not cancelled"
+          "  @ai-sdk/provider-utils: oversized response body was not cancelled",
         );
       }
-    }
+    },
   );
 } catch (error) {
   errors.push(
-    `  @ai-sdk/provider-utils: could not verify response-size limit (${String(error)})`
+    `  @ai-sdk/provider-utils: could not verify response-size limit (${String(error)})`,
   );
 }
 
@@ -426,10 +393,10 @@ if (errors.length > 0) {
   }
   console.error("");
   console.error(
-    "A missing package is fixed by `pnpm install`. A content-assertion failure"
+    "A missing package is fixed by `pnpm install`. A content-assertion failure",
   );
   console.error(
-    "means the patch no longer applies (likely a dependency bump) — regenerate"
+    "means the patch no longer applies (likely a dependency bump) — regenerate",
   );
   console.error("it with `pnpm patch <name>` and re-commit.");
   process.exit(1);
@@ -439,6 +406,6 @@ if (warnings.length === 0) {
   console.log("✓ All patched dependency versions match installed versions");
 } else {
   console.log(
-    `✓ Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`
+    `✓ Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`,
   );
 }

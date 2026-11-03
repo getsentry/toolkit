@@ -23,7 +23,7 @@ export async function readDebugFile(path: string): Promise<Buffer> {
     if (code === "EISDIR") {
       throw new ValidationError(
         `Path '${path}' is a directory, not a debug information file.`,
-        "path"
+        "path",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);

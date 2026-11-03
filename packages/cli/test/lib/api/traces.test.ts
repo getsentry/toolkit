@@ -53,7 +53,7 @@ describe("listTransactions", () => {
    * Each call to fetch returns the next response in the queue.
    */
   function mockSequential(
-    responses: Array<{ body: unknown; headers?: Record<string, string> }>
+    responses: Array<{ body: unknown; headers?: Record<string, string> }>,
   ): { getCapturedUrls: () => string[] } {
     const capturedUrls: string[] = [];
     let callIndex = 0;
@@ -115,28 +115,6 @@ describe("listTransactions", () => {
     expect(decodeURIComponent(capturedUrl)).toContain("is_transaction:true");
   });
 
-  test("uses the remaining item budget for the final page", async () => {
-    const { getCapturedUrls } = mockSequential([
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeTxnRows(50), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-        },
-      },
-    ]);
-
-    await listTransactions("my-org", "my-project", { limit: 150 });
-
-    expect(getCapturedUrls()[0]).toContain("per_page=100");
-    expect(getCapturedUrls()[1]).toContain("per_page=50");
-  });
-
   test("sends sort=-timestamp by default", async () => {
     mockOk({ data: [], meta: TX_META });
 
@@ -189,10 +167,10 @@ describe("listTransactions", () => {
     });
 
     expect(capturedUrl).toContain(
-      `start=${encodeURIComponent("2024-01-15T00:00:00Z")}`
+      `start=${encodeURIComponent("2024-01-15T00:00:00Z")}`,
     );
     expect(capturedUrl).toContain(
-      `end=${encodeURIComponent("2024-01-16T00:00:00Z")}`
+      `end=${encodeURIComponent("2024-01-16T00:00:00Z")}`,
     );
     expect(capturedUrl).not.toContain("statsPeriod=");
   });
@@ -206,7 +184,7 @@ describe("listTransactions", () => {
         },
       },
       {
-        body: { data: makeTxnRows(50), meta: TX_META },
+        body: { data: makeTxnRows(100), meta: TX_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
@@ -214,36 +192,12 @@ describe("listTransactions", () => {
     ]);
 
     const result = await listTransactions("my-org", "my-project", {
-      limit: 150,
+      limit: 200,
     });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results and drops nextCursor when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await listTransactions("my-org", "my-project", {
-      limit: 120,
-    });
-
-    expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -271,7 +225,7 @@ describe("listTransactions", () => {
     await listTransactions("my-org", "my-project");
 
     expect(decodeURIComponent(capturedUrl).replaceAll("+", " ")).toContain(
-      "query=is_transaction:true project:my-project"
+      "query=is_transaction:true project:my-project",
     );
     // Should NOT appear as a separate project= param
     expect(capturedUrl).not.toMatch(/[?&]project=my-project/);
@@ -302,14 +256,14 @@ describe("listTransactions", () => {
       { data: makeTxnRows(10), meta: TX_META },
       {
         Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="${cursor}"`,
-      }
+      },
     );
 
     const result = await listTransactions("my-org", "my-project", {
       limit: 10,
     });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {
@@ -317,7 +271,7 @@ describe("listTransactions", () => {
       { data: [], meta: TX_META },
       {
         Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-      }
+      },
     );
 
     const result = await listTransactions("my-org", "my-project");
@@ -360,7 +314,7 @@ describe("listSpans", () => {
   }
 
   function mockSequential(
-    responses: Array<{ body: unknown; headers?: Record<string, string> }>
+    responses: Array<{ body: unknown; headers?: Record<string, string> }>,
   ): { getCapturedUrls: () => string[] } {
     const capturedUrls: string[] = [];
     let callIndex = 0;
@@ -427,28 +381,6 @@ describe("listSpans", () => {
     expect(capturedUrl).toContain("dataset=spans");
   });
 
-  test("uses the remaining item budget for the final page", async () => {
-    const { getCapturedUrls } = mockSequential([
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeSpanRows(50), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-        },
-      },
-    ]);
-
-    await listSpans("my-org", "my-project", { limit: 150 });
-
-    expect(getCapturedUrls()[0]).toContain("per_page=100");
-    expect(getCapturedUrls()[1]).toContain("per_page=50");
-  });
-
   test("sends sort=-timestamp by default", async () => {
     mockOk({ data: [], meta: SPAN_META });
 
@@ -473,7 +405,7 @@ describe("listSpans", () => {
     expect(capturedUrl).toContain("project=-1");
     // Should NOT have project:my-project in query
     expect(decodeURIComponent(capturedUrl)).not.toContain(
-      "project%3Amy-project"
+      "project%3Amy-project",
     );
   });
 
@@ -495,40 +427,18 @@ describe("listSpans", () => {
         },
       },
       {
-        body: { data: makeSpanRows(50), meta: SPAN_META },
+        body: { data: makeSpanRows(100), meta: SPAN_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
       },
     ]);
 
-    const result = await listSpans("my-org", "my-project", { limit: 150 });
+    const result = await listSpans("my-org", "my-project", { limit: 200 });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await listSpans("my-org", "my-project", { limit: 120 });
-
-    expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -569,7 +479,7 @@ describe("listSpans", () => {
     await listSpans("my-org", "my-project");
 
     expect(capturedUrl).toContain(
-      `query=${encodeURIComponent("project:my-project")}`
+      `query=${encodeURIComponent("project:my-project")}`,
     );
     // Should NOT appear as a separate project= param with the slug value
     expect(capturedUrl).not.toMatch(/[?&]project=my-project/);
@@ -612,10 +522,10 @@ describe("listSpans", () => {
     });
 
     expect(capturedUrl).toContain(
-      `start=${encodeURIComponent("2024-01-15T00:00:00Z")}`
+      `start=${encodeURIComponent("2024-01-15T00:00:00Z")}`,
     );
     expect(capturedUrl).toContain(
-      `end=${encodeURIComponent("2024-01-16T00:00:00Z")}`
+      `end=${encodeURIComponent("2024-01-16T00:00:00Z")}`,
     );
     expect(capturedUrl).not.toContain("statsPeriod=");
   });
@@ -634,12 +544,12 @@ describe("listSpans", () => {
       { data: makeSpanRows(10), meta: SPAN_META },
       {
         Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="${cursor}"`,
-      }
+      },
     );
 
     const result = await listSpans("my-org", "my-project", { limit: 10 });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {
@@ -647,7 +557,7 @@ describe("listSpans", () => {
       { data: [], meta: SPAN_META },
       {
         Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-      }
+      },
     );
 
     const result = await listSpans("my-org", "my-project");
@@ -707,7 +617,7 @@ describe("getSpanDetails", () => {
     await getSpanDetails("my-org", "my-project", "span-id-abc", "trace-id-xyz");
 
     expect(capturedUrl).toContain(
-      "/projects/my-org/my-project/trace-items/span-id-abc/"
+      "/projects/my-org/my-project/trace-items/span-id-abc/",
     );
     expect(capturedParams.item_type).toBe("spans");
     expect(capturedParams.trace_id).toBe("trace-id-xyz");
@@ -720,7 +630,7 @@ describe("getSpanDetails", () => {
       "my-org",
       "my-project",
       "span-id-abc",
-      "trace-id-xyz"
+      "trace-id-xyz",
     );
 
     expect(result.itemId).toBe("abc123");
@@ -730,6 +640,29 @@ describe("getSpanDetails", () => {
       type: "str",
       value: "db.query",
     });
+  });
+
+  test("accepts int attributes serialized as strings", async () => {
+    mockOk({
+      ...DETAIL_RESPONSE,
+      attributes: [
+        { name: "project_id", type: "int", value: "4508608809533441" },
+        { name: "retry.count", type: "int", value: 3 },
+      ],
+    });
+
+    const result = await getSpanDetails(
+      "my-org",
+      "my-project",
+      "span-id-abc",
+      "trace-id-xyz",
+    );
+
+    // Strings are kept as-is so int64 IDs don't lose precision
+    expect(result.attributes).toEqual([
+      { name: "project_id", type: "int", value: "4508608809533441" },
+      { name: "retry.count", type: "int", value: 3 },
+    ]);
   });
 });
 
@@ -762,7 +695,7 @@ describe("fetchMultiSpanDetails", () => {
           timestamp: "2026-01-01T00:00:00Z",
           attributes: [],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     });
   }
@@ -774,7 +707,7 @@ describe("fetchMultiSpanDetails", () => {
     // project_slug — a request here would produce /projects/my-org//trace-items/…
     const details = await fetchMultiSpanDetails(
       [{ span_id: "span-no-project" }],
-      { org: "my-org", fallbackProject: "", traceId: "trace-xyz" }
+      { org: "my-org", fallbackProject: "", traceId: "trace-xyz" },
     );
 
     expect(details.size).toBe(0);
@@ -792,7 +725,7 @@ describe("fetchMultiSpanDetails", () => {
 
     expect(requestedUrls).toHaveLength(1);
     expect(requestedUrls[0]).toContain(
-      "/projects/my-org/fallback-proj/trace-items/span-a/"
+      "/projects/my-org/fallback-proj/trace-items/span-a/",
     );
   });
 
@@ -804,12 +737,12 @@ describe("fetchMultiSpanDetails", () => {
         { span_id: "span-no-project" },
         { span_id: "span-b", project_slug: "proj-b" },
       ],
-      { org: "my-org", fallbackProject: "", traceId: "trace-xyz" }
+      { org: "my-org", fallbackProject: "", traceId: "trace-xyz" },
     );
 
     expect(requestedUrls).toHaveLength(1);
     expect(requestedUrls[0]).toContain(
-      "/projects/my-org/proj-b/trace-items/span-b/"
+      "/projects/my-org/proj-b/trace-items/span-b/",
     );
     expect(details.has("span-b")).toBe(true);
   });
@@ -896,16 +829,16 @@ describe("getDetailedTrace", () => {
     expect(result[0]!.span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(2);
     expect(new URL(getCapturedUrls()[0]!).searchParams.get("statsPeriod")).toBe(
-      "14d"
+      "14d",
     );
     expect(new URL(getCapturedUrls()[1]!).searchParams.get("statsPeriod")).toBe(
-      "90d"
+      "90d",
     );
     expect(
-      new URL(getCapturedUrls()[0]!).searchParams.get("timestamp")
+      new URL(getCapturedUrls()[0]!).searchParams.get("timestamp"),
     ).toBeNull();
     expect(
-      new URL(getCapturedUrls()[1]!).searchParams.get("timestamp")
+      new URL(getCapturedUrls()[1]!).searchParams.get("timestamp"),
     ).toBeNull();
   });
 
@@ -919,10 +852,10 @@ describe("getDetailedTrace", () => {
     expect(result).toHaveLength(0);
     expect(getCapturedUrls()).toHaveLength(1);
     expect(new URL(getCapturedUrls()[0]!).searchParams.get("timestamp")).toBe(
-      "1700000000"
+      "1700000000",
     );
     expect(
-      new URL(getCapturedUrls()[0]!).searchParams.get("statsPeriod")
+      new URL(getCapturedUrls()[0]!).searchParams.get("statsPeriod"),
     ).toBeNull();
   });
 

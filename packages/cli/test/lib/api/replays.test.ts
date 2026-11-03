@@ -34,7 +34,7 @@ function replayRow(id = REPLAY_ID) {
 
 function recordingSegmentsResponse(
   body: unknown,
-  nextCursor?: string
+  nextCursor?: string,
 ): Response {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -55,7 +55,7 @@ describe("listReplays", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -69,7 +69,8 @@ describe("listReplays", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input!, init);
       capturedUrl = req.url;
-      return new Response(JSON.stringify({ data: [replayRow()] }), {
+      const data = Array.from({ length: 25 }, () => replayRow());
+      return new Response(JSON.stringify({ data }), {
         status: 200,
         headers: {
           "Content-Type": "application/json",
@@ -95,8 +96,8 @@ describe("listReplays", () => {
     expect(url.searchParams.get("per_page")).toBe("25");
     expect(url.searchParams.getAll("field")).toContain("id");
     expect(url.searchParams.getAll("field")).toContain("user");
-    expect(result.data).toHaveLength(1);
-    expect(result.nextCursor).toBe("0:25:0");
+    expect(result.data).toHaveLength(25);
+    expect(result.nextCursor).toContain("0:25:0");
   });
 
   test("passes replay environment filters and custom field selection", async () => {
@@ -139,12 +140,12 @@ describe("listReplays", () => {
         callIndex === 0
           ? {
               data: Array.from({ length: 100 }, (_, index) =>
-                replayRow(index.toString(16).padStart(32, "a").slice(-32))
+                replayRow(index.toString(16).padStart(32, "a").slice(-32)),
               ),
             }
           : {
-              data: Array.from({ length: 50 }, (_, index) =>
-                replayRow(index.toString(16).padStart(32, "b").slice(-32))
+              data: Array.from({ length: 100 }, (_, index) =>
+                replayRow(index.toString(16).padStart(32, "b").slice(-32)),
               ),
             };
       const headers =
@@ -163,13 +164,13 @@ describe("listReplays", () => {
       });
     });
 
-    const result = await listReplays("test-org", { limit: 150 });
+    const result = await listReplays("test-org", { limit: 200 });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(capturedUrls).toHaveLength(2);
     expect(capturedUrls[0]).toContain("per_page=100");
-    expect(capturedUrls[1]).toContain("per_page=50");
+    expect(capturedUrls[1]).toContain("per_page=100");
   });
 });
 
@@ -178,7 +179,7 @@ describe("getReplay", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -201,7 +202,7 @@ describe("getReplay", () => {
     const replay = await getReplay("test-org", REPLAY_ID);
 
     expect(capturedUrl).toContain(
-      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`
+      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`,
     );
     expect(replay.id).toBe(REPLAY_ID);
     expect(replay.count_errors).toBe(2);
@@ -227,8 +228,8 @@ describe("getReplay", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
-        )
+          },
+        ),
     );
 
     const replay = await getReplay("test-org", REPLAY_ID);
@@ -250,7 +251,7 @@ describe("resolveReplay", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -279,7 +280,7 @@ describe("resolveReplay", () => {
     expect(replay.id).toBe(REPLAY_ID);
     expect(capturedUrls).toHaveLength(1);
     expect(capturedUrls[0]).toContain(
-      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`
+      `/api/0/organizations/test-org/replays/${REPLAY_ID}/`,
     );
   });
 
@@ -312,7 +313,7 @@ describe("resolveReplay", () => {
 
     const listUrl = new URL(capturedUrls[1]!);
     expect(listUrl.pathname).toContain(
-      "/api/0/organizations/test-org/replays/"
+      "/api/0/organizations/test-org/replays/",
     );
     expect(listUrl.searchParams.get("query")).toBe(`trace:${TRACE_ID}`);
     expect(listUrl.searchParams.get("statsPeriod")).toBe("90d");
@@ -374,7 +375,7 @@ describe("getReplayRecordingSegments", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -394,12 +395,12 @@ describe("getReplayRecordingSegments", () => {
     const segments = await getReplayRecordingSegments(
       "test-org",
       "42",
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     const url = new URL(capturedUrl);
     expect(url.pathname).toContain(
-      `/api/0/projects/test-org/42/replays/${REPLAY_ID}/recording-segments/`
+      `/api/0/projects/test-org/42/replays/${REPLAY_ID}/recording-segments/`,
     );
     expect(url.searchParams.get("download")).toBeNull();
     expect(url.searchParams.get("per_page")).toBe("100");
@@ -408,11 +409,11 @@ describe("getReplayRecordingSegments", () => {
 
   test("rejects non-object recording events at the API boundary", async () => {
     globalThis.fetch = mockFetch(async () =>
-      recordingSegmentsResponse([[null]])
+      recordingSegmentsResponse([[null]]),
     );
 
     await expect(
-      getReplayRecordingSegments("test-org", "42", REPLAY_ID)
+      getReplayRecordingSegments("test-org", "42", REPLAY_ID),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -438,7 +439,7 @@ describe("getReplayRecordingSegments", () => {
       "test-org",
       "42",
       REPLAY_ID,
-      { expectedSegments: 101 }
+      { expectedSegments: 101 },
     );
 
     expect(segments).toHaveLength(101);
@@ -472,7 +473,7 @@ describe("getReplayRecordingSegments", () => {
     const segments = await getReplayRecordingSegments(
       "test-org",
       "42",
-      REPLAY_ID
+      REPLAY_ID,
     );
 
     expect(segments).toHaveLength(MAX_PAGINATION_PAGES);
@@ -480,7 +481,7 @@ describe("getReplayRecordingSegments", () => {
 
     const finalUrl = new URL(capturedUrls.at(-1)!);
     expect(finalUrl.searchParams.get("cursor")).toBe(
-      `0:${(MAX_PAGINATION_PAGES - 1) * 100}:0`
+      `0:${(MAX_PAGINATION_PAGES - 1) * 100}:0`,
     );
 
     const stderr = stderrSpy.mock.calls.map((call) => String(call[0])).join("");
@@ -494,7 +495,7 @@ describe("listReplayIdsForIssue", () => {
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    await setAuthToken("test-token");
+    setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
 
@@ -518,7 +519,7 @@ describe("listReplayIdsForIssue", () => {
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     });
 
@@ -526,7 +527,7 @@ describe("listReplayIdsForIssue", () => {
     const url = new URL(capturedUrl);
 
     expect(url.pathname).toContain(
-      "/api/0/organizations/test-org/replay-count/"
+      "/api/0/organizations/test-org/replay-count/",
     );
     expect(url.searchParams.get("returnIds")).toBe("true");
     expect(url.searchParams.get("query")).toBe("issue.id:[12345]");

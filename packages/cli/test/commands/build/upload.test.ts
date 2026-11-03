@@ -7,19 +7,20 @@
  * resolution are spied so no network is touched.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "@stricli/core";
-import { strToU8, zipSync } from "fflate";
+import { strToU8, unzipSync, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { app } from "../../../src/app.js";
 import { uploadCommand } from "../../../src/commands/build/upload.js";
 import type { SentryContext } from "../../../src/context.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -34,7 +35,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -64,7 +65,7 @@ async function writeApk(name = "app-release.apk"): Promise<string> {
  * exit code.
  */
 async function runViaApp(
-  args: string[]
+  args: string[],
 ): Promise<{ stderr: string; exitCode: number | undefined }> {
   let stderr = "";
   const context: SentryContext = {
@@ -76,7 +77,8 @@ async function runViaApp(
     stdout: { write: () => true },
     stderr: {
       write: (data: string | Uint8Array) => {
-        stderr += typeof data === "string" ? data : new TextDecoder().decode(data);
+        stderr +=
+          typeof data === "string" ? data : new TextDecoder().decode(data);
         return true;
       },
     },
@@ -114,7 +116,10 @@ describe("build upload", () => {
     await func.call(harness.context, {}, apk);
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
-    const opts = uploadSpy.mock.calls[0]?.[0] as { org: string; project: string };
+    const opts = uploadSpy.mock.calls[0]?.[0] as {
+      org: string;
+      project: string;
+    };
     expect(opts.org).toBe("test-org");
     expect(opts.project).toBe("test-project");
     expect(harness.output()).toContain("https://sentry.io/artifact/1");
@@ -132,7 +137,7 @@ describe("build upload", () => {
         "build-configuration": "Release",
         "install-group": ["qa", "beta"],
       },
-      apk
+      apk,
     );
 
     const meta = uploadSpy.mock.calls[0]?.[0] as {
@@ -151,7 +156,7 @@ describe("build upload", () => {
     await func.call(
       harness.context,
       { "head-sha": sha, "head-ref": "main", "pr-number": 9 },
-      apk
+      apk,
     );
 
     const meta = uploadSpy.mock.calls[0]?.[0] as {
@@ -222,7 +227,7 @@ describe("build upload", () => {
       zipSync({
         "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
         "Payload/MyApp.app/MyApp": strToU8("binary"),
-      })
+      }),
     );
     const harness = createContext();
     const func = await uploadCommand.loader();
@@ -244,6 +249,116 @@ describe("build upload", () => {
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
     expect(harness.exitCode).toBe(1);
+  });
+
+  test("parses repeatable --dsym flags and uploads their files inside the XCArchive", async () => {
+    const ipa = join(tmpDir, "MyApp.ipa");
+    await writeFile(
+      ipa,
+      zipSync({ "Payload/MyApp.app/Info.plist": strToU8("plist") }),
+    );
+    const dsym = join(tmpDir, "MyApp.app.dSYM");
+    await mkdir(join(dsym, "Contents"), { recursive: true });
+    await writeFile(join(dsym, "Contents", "symbols"), "app symbols");
+    const zipPath = join(tmpDir, "framework.zip");
+    await writeFile(
+      zipPath,
+      zipSync({
+        "Framework.dSYM/Contents/symbols": strToU8("framework symbols"),
+      }),
+    );
+    const uploads: { path: string; entries: Record<string, Uint8Array> }[] = [];
+    uploadSpy.mockImplementation(
+      async ({ contentPath }: { contentPath: string }) => {
+        uploads.push({
+          path: contentPath,
+          entries: unzipSync(await readFile(contentPath)),
+        });
+        return "https://sentry.io/artifact/1";
+      },
+    );
+
+    const { exitCode, stderr } = await runViaApp([
+      ipa,
+      "--dsym",
+      `${dsym}/`,
+      "--dsym",
+      zipPath,
+    ]);
+
+    expect(exitCode ?? 0).toBe(0);
+    expect(stderr).toBe("");
+    expect(uploads).toHaveLength(1);
+    expect(
+      uploads[0]?.entries[
+        "archive.xcarchive/dSYMs/MyApp.app.dSYM/Contents/symbols"
+      ],
+    ).toEqual(strToU8("app symbols"));
+    expect(
+      uploads[0]?.entries[
+        "archive.xcarchive/dSYMs/Framework.dSYM/Contents/symbols"
+      ],
+    ).toEqual(strToU8("framework symbols"));
+    expect(existsSync(uploads[0]!.path)).toBe(false);
+  });
+
+  test.each(["apk", "aab", "xcarchive"])(
+    "rejects --dsym with a %s build before upload",
+    async (format) => {
+      const path =
+        format === "xcarchive" ? await writeXcarchive() : await writeApk();
+      if (format === "aab") {
+        await writeFile(
+          path,
+          zipSync({
+            "BundleConfig.pb": strToU8("cfg"),
+            "base/manifest/AndroidManifest.xml": strToU8("xml"),
+          }),
+        );
+      }
+      const harness = createContext();
+      const func = await uploadCommand.loader();
+      await func.call(harness.context, { dsym: ["unused.dSYM"] }, path);
+      expect(uploadSpy).not.toHaveBeenCalled();
+      expect(harness.exitCode).toBe(1);
+      expect(harness.output()).toContain("--dsym can only be used with an IPA");
+    },
+  );
+
+  test("rejects --dsym with multiple builds before resolving or uploading", async () => {
+    const func = await uploadCommand.loader();
+    await expect(
+      func.call(
+        createContext().context,
+        { dsym: ["unused.dSYM"] },
+        "one.ipa",
+        "two.ipa",
+      ),
+    ).rejects.toThrow(/single IPA/);
+    expect(resolveTarget.resolveOrgAndProject).not.toHaveBeenCalled();
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
+  test("does not upload an IPA when a dSYM ZIP contains traversal", async () => {
+    const ipa = join(tmpDir, "MyApp.ipa");
+    await writeFile(
+      ipa,
+      zipSync({ "Payload/MyApp.app/Info.plist": strToU8("plist") }),
+    );
+    const zipPath = join(tmpDir, "unsafe.zip");
+    await writeFile(
+      zipPath,
+      zipSync({
+        "MyApp.dSYM/symbols": strToU8("symbols"),
+        "../escape": strToU8("unsafe"),
+      }),
+    );
+    const harness = createContext();
+    const func = await uploadCommand.loader();
+    await func.call(harness.context, { dsym: [zipPath] }, ipa);
+    expect(uploadSpy).not.toHaveBeenCalled();
+    expect(harness.exitCode).toBe(1);
+    expect(harness.output()).toContain("Invalid or unsafe dSYM ZIP");
   });
 
   // Regression guard: --install-group must be OPTIONAL. Declared variadic

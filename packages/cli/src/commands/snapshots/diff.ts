@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath, textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -96,7 +97,7 @@ function errorMessage(err: unknown): string {
 
 /** Assert a path is an existing directory. */
 function assertDirectory(path: string, label: string): void {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     if (statSync(path).isDirectory()) {
       return;
@@ -106,7 +107,7 @@ function assertDirectory(path: string, label: string): void {
   }
   throw new ValidationError(
     `${label} directory does not exist: ${path}`,
-    "dir"
+    "dir",
   );
 }
 
@@ -126,7 +127,7 @@ type DiffDirs = { baseDir: string; headDir: string; outputDir: string };
 function compareMatched(
   dirs: DiffDirs,
   rel: string,
-  opts: DiffOptions
+  opts: DiffOptions,
 ): ImageResult {
   let baseBuf: Buffer;
   let headBuf: Buffer;
@@ -232,11 +233,23 @@ export const diffCommand = buildCommand({
       "both directories are diffed perceptually; a PNG diff mask is written " +
       "for each changed image, and a JSON report is printed.\n\n" +
       "Comparison is anti-aliasing aware (disable with --no-antialiasing) and " +
-      "makes no network requests.\n\n" +
-      "Usage:\n" +
-      "  sentry snapshots diff ./baseline ./head\n" +
-      "  sentry snapshots diff ./baseline ./head --threshold 0.02 --output ./diffs/\n" +
-      "  sentry snapshots diff ./baseline ./head --fail-on-diff",
+      "makes no network requests.",
+    examples: [
+      {
+        description: "Compare two directories of snapshot images locally",
+        command: "sentry snapshots diff ./baseline ./head",
+      },
+      {
+        description:
+          "Exit non-zero if any images changed, with a custom threshold",
+        command:
+          "sentry snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02",
+      },
+      {
+        description: "Write diff masks to a directory",
+        command: "sentry snapshots diff ./baseline ./head --output ./diffs/",
+      },
+    ],
   },
   output: {
     human: formatDiffReport,
@@ -247,12 +260,12 @@ export const diffCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the baseline image directory",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "base-dir",
         },
         {
           brief: "Path to the head image directory",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "head-dir",
         },
       ],
@@ -260,13 +273,13 @@ export const diffCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: `Directory for diff mask images (default: ${DEFAULT_OUTPUT})`,
         optional: true,
       },
       threshold: {
         kind: "parsed",
-        parse: parseThreshold,
+        parse: textParser(parseThreshold),
         brief: "Pixel color difference threshold (0.0-1.0)",
         default: "0.01",
       },
@@ -295,7 +308,7 @@ export const diffCommand = buildCommand({
     this: SentryContext,
     flags: DiffFlags,
     baseDirArg: string,
-    headDirArg: string
+    headDirArg: string,
   ) {
     const baseDir = resolve(this.cwd, baseDirArg);
     const headDir = resolve(this.cwd, headDirArg);
@@ -315,7 +328,7 @@ export const diffCommand = buildCommand({
     const categorized = categorizeImages(
       baseFiles,
       headFiles,
-      Boolean(flags.selective)
+      Boolean(flags.selective),
     );
 
     const dirs: DiffDirs = { baseDir, headDir, outputDir };

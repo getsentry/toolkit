@@ -31,7 +31,7 @@ describe("property: contentToDebugId", () => {
         const uuid = contentToDebugId(input);
         expect(uuid).toMatch(UUID_V4_RE);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -41,7 +41,7 @@ describe("property: contentToDebugId", () => {
         const uuid = contentToDebugId(Buffer.from(input));
         expect(uuid).toMatch(UUID_V4_RE);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -52,7 +52,7 @@ describe("property: contentToDebugId", () => {
         const b = contentToDebugId(input);
         expect(a).toBe(b);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -65,7 +65,7 @@ describe("property: contentToDebugId", () => {
         const uuidB = contentToDebugId(b);
         expect(uuidA).not.toBe(uuidB);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -75,7 +75,7 @@ describe("property: contentToDebugId", () => {
         const uuid = contentToDebugId(input);
         expect(uuid).toBe(uuid.toLowerCase());
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -124,7 +124,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["input.ts"],
         mappings: "AAAA",
-      })
+      }),
     );
 
     const { debugId } = await injectDebugId(jsPath, mapPath);
@@ -145,6 +145,20 @@ describe("injectDebugId", () => {
     expect(mapResult.debug_id).toBe(debugId);
   });
 
+  test("rejects a malformed sourcemap with a ValidationError", async () => {
+    const jsPath = join(tmpDir, "bundle.js");
+    const mapPath = join(tmpDir, "bundle.js.map");
+
+    await writeFile(jsPath, 'console.log("hello");\n');
+    await writeFile(mapPath, "{ not json");
+
+    await expect(injectDebugId(jsPath, mapPath)).rejects.toThrow(
+      `Sourcemap '${mapPath}' is not valid JSON.`,
+    );
+    // The JS file must not be touched when the map cannot be parsed.
+    expect(await readFile(jsPath, "utf-8")).toBe('console.log("hello");\n');
+  });
+
   test("prepends one ; to sourcemap mappings", async () => {
     const jsPath = join(tmpDir, "bundle.js");
     const mapPath = join(tmpDir, "bundle.js.map");
@@ -157,7 +171,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["input.ts"],
         mappings: originalMappings,
-      })
+      }),
     );
 
     await injectDebugId(jsPath, mapPath);
@@ -177,7 +191,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["input.ts"],
         mappings: "AAAA",
-      })
+      }),
     );
 
     // First injection
@@ -206,7 +220,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["input.ts"],
         mappings: "AAAA",
-      })
+      }),
     );
 
     const { debugId } = await injectDebugId(jsPath, mapPath);
@@ -234,7 +248,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["input.ts"],
         mappings: originalMappings,
-      })
+      }),
     );
 
     const { debugId } = await injectDebugId(jsPath, mapPath, {
@@ -272,7 +286,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["input.ts"],
         mappings: "AAAA",
-      })
+      }),
     );
 
     const first = await injectDebugId(jsPath, mapPath, { skipSnippet: true });
@@ -298,7 +312,7 @@ describe("injectDebugId", () => {
       {
         debugId,
         wasInjected: false,
-      }
+      },
     );
     expect(await readFile(jsPath, "utf-8")).toBe(js);
     expect(await readFile(mapPath, "utf-8")).toBe(map);
@@ -315,7 +329,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["src\\lib\\utils.ts", "src\\bin.ts"],
         mappings: "AAAA",
-      })
+      }),
     );
 
     await injectDebugId(jsPath, mapPath);
@@ -335,7 +349,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: [null, "src\\bin.ts", null],
         mappings: "AAAA",
-      })
+      }),
     );
 
     await injectDebugId(jsPath, mapPath);
@@ -355,7 +369,7 @@ describe("injectDebugId", () => {
         version: 3,
         sources: ["src/lib/utils.ts", "src/bin.ts"],
         mappings: "AAAA",
-      })
+      }),
     );
 
     await injectDebugId(jsPath, mapPath);

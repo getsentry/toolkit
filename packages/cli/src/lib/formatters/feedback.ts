@@ -5,6 +5,7 @@
  * passing them to Markdown, table, or shared event renderers.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { EventAttachmentDetailsResponse } from "@sentry/api";
 import wrapAnsi from "wrap-ansi";
 import type {
@@ -16,14 +17,7 @@ import type {
 } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails } from "./human.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "./markdown.js";
+import { colorTag, mdKvTable, renderMarkdown } from "./markdown.js";
 import { formatBytes } from "./numbers.js";
 import { stripAnsi } from "./plain-detect.js";
 import { type Column, formatTable } from "./table.js";
@@ -35,27 +29,27 @@ const COMPACT_LIST_BREAKPOINT = 100;
 const LINE_BREAK_RE = /\n/g;
 const C1_CSI_RE = /\u009b[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g;
 const FEEDBACK_UNSAFE_TERMINAL_RE =
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal sanitization requires matching control characters
+  // oxlint-disable-next-line no-control-regex -- terminal sanitization requires matching control characters
   /[\x00-\x09\x0b\x0c\x0e-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 /** Confirm resolution using the updated Feedback's terminal-safe identifier. */
 export function formatResolvedFeedback(feedback: SentryIssue): string {
   return renderMarkdown(
-    `Resolved feedback ${feedbackCodeSpan(feedback.shortId)}.`
+    `Resolved feedback ${feedbackCodeSpan(feedback.shortId)}.`,
   );
 }
 
 /** Confirm reopening using the updated Feedback's terminal-safe identifier. */
 export function formatReopenedFeedback(feedback: SentryIssue): string {
   return renderMarkdown(
-    `Reopened feedback ${feedbackCodeSpan(feedback.shortId)}.`
+    `Reopened feedback ${feedbackCodeSpan(feedback.shortId)}.`,
   );
 }
 
 /** Confirm spam using the updated Feedback's terminal-safe identifier. */
 export function formatSpamFeedback(feedback: SentryIssue): string {
   return renderMarkdown(
-    `Marked feedback ${feedbackCodeSpan(feedback.shortId)} as spam.`
+    `Marked feedback ${feedbackCodeSpan(feedback.shortId)} as spam.`,
   );
 }
 
@@ -72,15 +66,15 @@ function sanitizeFeedbackInline(value: string): string {
 }
 
 function escapeFeedbackInline(value: string): string {
-  return escapeMarkdownInline(sanitizeFeedbackInline(value));
+  return text(sanitizeFeedbackInline(value));
 }
 
 function escapeFeedbackCell(value: string): string {
-  return escapeMarkdownCell(sanitizeFeedbackInline(value));
+  return tableCell(sanitizeFeedbackInline(value));
 }
 
 function feedbackCodeSpan(value: string): string {
-  return safeCodeSpan(sanitizeFeedbackInline(value));
+  return inlineCode(sanitizeFeedbackInline(value));
 }
 
 /** Recursively sanitize event strings and keys before human rendering. */
@@ -96,7 +90,7 @@ function sanitizeFeedbackEventValue(value: unknown): unknown {
       Object.entries(value).map(([key, nestedValue]) => [
         sanitizeFeedbackInline(key),
         sanitizeFeedbackEventValue(nestedValue),
-      ])
+      ]),
     );
   }
   return value;
@@ -125,7 +119,7 @@ function feedbackMessage(feedback: SentryFeedback): string {
     feedback.metadata.message ||
       feedback.metadata.value ||
       feedback.metadata.title ||
-      feedback.title
+      feedback.title,
   );
 }
 
@@ -208,7 +202,7 @@ const FEEDBACK_COLUMNS: Column<SentryFeedback>[] = [
 function formatCompactFeedbackList(
   result: FeedbackListResult,
   scope: string,
-  width: number
+  width: number,
 ): string {
   const sections = result.feedback.map((feedback) => {
     const id = feedback.permalink
@@ -260,7 +254,7 @@ function isFeedbackContext(value: unknown): value is Record<string, unknown> {
 }
 
 function feedbackContext(
-  event: SentryEvent | null
+  event: SentryEvent | null,
 ): Record<string, unknown> | undefined {
   const context = event?.contexts?.feedback;
   return isFeedbackContext(context) ? context : undefined;
@@ -308,7 +302,7 @@ function formatFeedbackOverview(data: FeedbackViewResult): string {
     rows.push([
       "SDK",
       feedbackCodeSpan(
-        feedback.metadata.sdk.name_normalized ?? feedback.metadata.sdk.name
+        feedback.metadata.sdk.name_normalized ?? feedback.metadata.sdk.name,
       ),
     ]);
   }
@@ -349,7 +343,7 @@ function formatFeedbackOverview(data: FeedbackViewResult): string {
       "",
       "### Summary",
       "",
-      escapeFeedbackInline(feedback.metadata.summary)
+      escapeFeedbackInline(feedback.metadata.summary),
     );
   }
 
@@ -373,7 +367,7 @@ function formatRelatedReplays(data: FeedbackViewResult): string {
       ? `sentry replay view ${data.org}/${replayId}`
       : `sentry replay view ${replayId}`;
     lines.push(
-      `- ${feedbackCodeSpan(replayId)} (${feedbackCodeSpan(command)})`
+      `- ${feedbackCodeSpan(replayId)} (${feedbackCodeSpan(command)})`,
     );
   }
   const remaining = additionalIds.length - MAX_REPLAY_IDS_SHOWN;
@@ -391,13 +385,13 @@ function formatAttachment(attachment: EventAttachmentDetailsResponse): string {
 }
 
 function formatAttachments(
-  attachments: EventAttachmentDetailsResponse[]
+  attachments: EventAttachmentDetailsResponse[],
 ): string {
   if (attachments.length === 0) {
     return "";
   }
   return renderMarkdown(
-    ["### Attachments", "", ...attachments.map(formatAttachment)].join("\n")
+    ["### Attachments", "", ...attachments.map(formatAttachment)].join("\n"),
   );
 }
 
@@ -409,8 +403,8 @@ export function formatFeedbackView(data: FeedbackViewResult): string {
       formatEventDetails(
         sanitizeFeedbackEvent(data.event),
         "Latest Feedback Event",
-        data.feedback.permalink
-      )
+        data.feedback.permalink,
+      ),
     );
   }
   const replays = formatRelatedReplays(data);

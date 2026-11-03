@@ -31,14 +31,24 @@
  */
 
 import {
+  ArgumentScannerError,
   type Command,
   type CommandContext,
   buildCommand as stricliCommand,
   numberParser as stricliNumberParser,
 } from "@stricli/core";
 import type { Writer } from "../types/index.js";
+import { asRunningAppCommand } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
-import { getAuthConfig } from "./db/auth.js";
+import { type CommandExample, exampleSteps } from "./command-example.js";
+import {
+  choiceListParser,
+  ORG_TARGET,
+  parseProjectSlug,
+  parseText,
+  withCompletionTarget,
+} from "./completion-target.js";
+import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { AuthError, CliError, OutputError } from "./errors.js";
 import { warning } from "./formatters/colors.js";
@@ -47,6 +57,7 @@ import {
   ClearScreen,
   CommandOutput,
   type CommandReturn,
+  extractSchemaFieldPaths,
   extractSchemaFields,
   formatSchemaForHelp,
   type HumanRenderer,
@@ -65,7 +76,14 @@ import {
   parseLogLevel,
   setLogLevel,
 } from "./logger.js";
+import {
+  applyBoundPositionals,
+  checkDestructive,
+  isHelpArgument,
+  rawPositional,
+} from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
+import { applyTipsPreference } from "./tips.js";
 
 /**
  * Parse a string input as a number.
@@ -95,11 +113,12 @@ type StricliBuilderArgs<CONTEXT extends CommandContext> =
   import("@stricli/core").CommandBuilderArguments<BaseFlags, BaseArgs, CONTEXT>;
 
 /**
- * Native Stricli documentation. When `customUsage` is present, its first line
- * must be the canonical signature suffix used by introspection and generated
- * docs; later lines may document equivalent forms.
+ * Native Stricli documentation plus canonical examples for generated docs.
  */
-type CommandDocumentation = StricliBuilderArgs<CommandContext>["docs"];
+export type CommandDocumentation =
+  StricliBuilderArgs<CommandContext>["docs"] & {
+    readonly examples?: readonly CommandExample[];
+  };
 
 /**
  * Command function type for Sentry CLI commands.
@@ -126,7 +145,7 @@ type SentryCommandFunction<
   this: CONTEXT,
   flags: FLAGS,
   ...args: ARGS
-  // biome-ignore lint/suspicious/noConfusingVoidType: void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
+  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
 ) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
 
 /**
@@ -156,7 +175,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  // biome-ignore lint/suspicious/noExplicitAny: Variance erasure — OutputConfig<T>.human is contravariant in T, but the builder erases T because it doesn't know the output type. Using `any` allows commands to declare OutputConfig<SpecificType> while the wrapper handles it generically.
+  // oxlint-disable-next-line typescript/no-explicit-any -- Variance erasure — OutputConfig<T>.human is contravariant in T, but the builder erases T because it doesn't know the output type. Using `any` allows commands to declare OutputConfig<SpecificType> while the wrapper handles it generically.
   readonly output?: OutputConfig<any>;
   /**
    * Whether the command requires authentication. Defaults to `true`.
@@ -184,6 +203,18 @@ type LocalCommandBuilderArguments<
    * repo-local `.sentryclirc` URL mismatches the current token.
    */
   readonly skipRcUrlCheck?: boolean;
+  /**
+   * Mark the command as destructive or irreversible. Defaults to `false`.
+   *
+   * Destructive commands are listed in the agent Safety Rules (generated from
+   * this flag), so agents ask the user before running them, and their bound
+   * target positionals refuse an auto-detected target.
+   * `buildDeleteCommand` sets this automatically, and `check:destructive`
+   * fails CI when a command that sends an HTTP DELETE lacks it. Set it
+   * explicitly for irreversible operations that use other verbs (e.g.
+   * `issue merge`, `trial start`).
+   */
+  readonly destructive?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -243,7 +274,7 @@ export const JSON_FLAG = {
  */
 export const FIELDS_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseText,
   brief:
     "Comma-separated fields to include in JSON output (dot.notation supported)",
   optional: true as const,
@@ -263,7 +294,7 @@ export const FIELDS_FLAG = {
  */
 const ORG_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: withCompletionTarget(ORG_TARGET, (input: string) => input),
   brief: "Organization slug",
   optional: true as const,
   hidden: true as const,
@@ -277,7 +308,7 @@ const ORG_FLAG = {
  */
 const PROJECT_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseProjectSlug,
   brief: "Project slug",
   optional: true as const,
   hidden: true as const,
@@ -297,7 +328,7 @@ const LOG_LEVEL_KEY = "log-level";
  */
 export function applyLoggingFlags(
   logLevel: LogLevelName | undefined,
-  verbose: boolean
+  verbose: boolean,
 ): void {
   if (logLevel) {
     setLogLevel(parseLogLevel(logLevel));
@@ -329,7 +360,7 @@ export function applyOrgProjectFlags(
   org: string | undefined,
   project: string | undefined,
   commandOwnsOrg: boolean,
-  commandOwnsProject: boolean
+  commandOwnsProject: boolean,
 ): void {
   const env = getEnv();
   const orgTrimmed = commandOwnsOrg ? undefined : org?.trim();
@@ -382,9 +413,10 @@ export function applyOrgProjectFlags(
 
 /**
  * Build the `--fields` flag definition, enriched with available field names
- * when a schema is registered on the output config.
+ * when a schema is registered on the output config. Its values complete
+ * every field path of the schema, one list item at a time.
  */
-// biome-ignore lint/suspicious/noExplicitAny: OutputConfig type is erased at the builder level
+// oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
 function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
   if (!outputConfig?.schema) {
     return FIELDS_FLAG;
@@ -396,6 +428,7 @@ function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
   const fieldNames = schemaFields.map((f) => f.name).join(", ");
   return {
     ...FIELDS_FLAG,
+    parse: choiceListParser(extractSchemaFieldPaths(outputConfig.schema)),
     brief: `${FIELDS_FLAG.brief}. Available: ${fieldNames}`,
   };
 }
@@ -407,8 +440,8 @@ function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
  */
 function enrichDocsWithSchema(
   docs: CommandDocumentation,
-  // biome-ignore lint/suspicious/noExplicitAny: OutputConfig type is erased at the builder level
-  outputConfig?: OutputConfig<any>
+  // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
+  outputConfig?: OutputConfig<any>,
 ): CommandDocumentation {
   if (!outputConfig?.schema) {
     return docs;
@@ -422,6 +455,30 @@ function enrichDocsWithSchema(
   return {
     ...docs,
     fullDescription: `${baseFull}\n\n${jsonFieldsDoc}`,
+  };
+}
+
+/** Render command-owned examples in native help without exposing custom fields to Stricli. */
+function prepareNativeDocs(
+  docs: CommandDocumentation,
+): StricliBuilderArgs<CommandContext>["docs"] {
+  const { examples, ...nativeDocs } = docs;
+  if (!examples?.length) {
+    return nativeDocs;
+  }
+  const rendered = examples
+    .map((example) => {
+      const steps = exampleSteps(example).map(asRunningAppCommand);
+      return steps.length === 1
+        ? `  ${steps[0]} # ${example.description}`
+        : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(
+            "\n",
+          );
+    })
+    .join("\n");
+  return {
+    ...nativeDocs,
+    fullDescription: `${nativeDocs.fullDescription ?? nativeDocs.brief}\n\nExamples:\n${rendered}`,
   };
 }
 
@@ -451,8 +508,8 @@ const ALWAYS_STRIP = new Set([LOG_LEVEL_KEY]);
  */
 function mergeGlobalFlags(
   existingFlags: Record<string, unknown>,
-  // biome-ignore lint/suspicious/noExplicitAny: OutputConfig type is erased at the builder level
-  outputConfig?: OutputConfig<any>
+  // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
+  outputConfig?: OutputConfig<any>,
 ): {
   mergedFlags: Record<string, unknown>;
   commandOwnsOrg: boolean;
@@ -494,7 +551,7 @@ export function buildCommand<
   const ARGS extends BaseArgs = [],
   const CONTEXT extends CommandContext = CommandContext,
 >(
-  builderArgs: LocalCommandBuilderArguments<FLAGS, ARGS, CONTEXT>
+  builderArgs: LocalCommandBuilderArguments<FLAGS, ARGS, CONTEXT>,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
   const outputConfig = builderArgs.output;
@@ -512,9 +569,10 @@ export function buildCommand<
   const { mergedFlags, commandOwnsOrg, commandOwnsProject, stripKeys } =
     mergeGlobalFlags(existingFlags, outputConfig);
 
-  // Enrich fullDescription with JSON fields when schema is registered.
-  // This makes field info visible in Stricli's --help output.
-  const enrichedDocs = enrichDocsWithSchema(builderArgs.docs, outputConfig);
+  const enrichedDocs = enrichDocsWithSchema(
+    prepareNativeDocs(builderArgs.docs),
+    outputConfig,
+  );
 
   // Inject short aliases for global flags (e.g., -v → --verbose).
   // Derived from the shared GLOBAL_FLAGS definition so adding a new
@@ -547,8 +605,8 @@ export function buildCommand<
     stdout: Writer,
     value: unknown,
     flags: Record<string, unknown>,
-    // biome-ignore lint/suspicious/noExplicitAny: Renderer type mirrors erased OutputConfig<T>
-    renderer?: HumanRenderer<any>
+    // oxlint-disable-next-line typescript/no-explicit-any -- Renderer type mirrors erased OutputConfig<T>
+    renderer?: HumanRenderer<any>,
   ): void {
     // ClearScreen token: defer until next render to avoid flash
     if (value instanceof ClearScreen) {
@@ -577,7 +635,7 @@ export function buildCommand<
    * comma-string to string[] when output: { human: ... }.
    */
   function cleanRawFlags(
-    raw: Record<string, unknown>
+    raw: Record<string, unknown>,
   ): Record<string, unknown> {
     const clean: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(raw)) {
@@ -600,8 +658,8 @@ export function buildCommand<
     stdout: Writer,
     hint: string | undefined,
     json: unknown,
-    // biome-ignore lint/suspicious/noExplicitAny: Renderer type mirrors erased OutputConfig<T>
-    renderer?: HumanRenderer<any>
+    // oxlint-disable-next-line typescript/no-explicit-any -- Renderer type mirrors erased OutputConfig<T>
+    renderer?: HumanRenderer<any>,
   ): void {
     if (json) {
       return;
@@ -640,19 +698,23 @@ export function buildCommand<
   async function maybeRecoverWithHelp(
     err: unknown,
     stdout: Writer,
-    ctx: { commandPrefix?: readonly string[]; stderr: Writer },
-    args: unknown[]
+    ctx: {
+      commandPrefix?: readonly string[];
+      directInvoke?: boolean;
+      stderr: Writer;
+    },
+    args: unknown[],
   ): Promise<boolean> {
-    if (!(err instanceof CliError) || err instanceof OutputError) {
+    const recoverable =
+      (err instanceof CliError && !(err instanceof OutputError)) ||
+      err instanceof ArgumentScannerError;
+    if (!recoverable) {
       return false;
     }
-    if (
-      args.length === 0 ||
-      !args.some((a) => a === "help" || a === "--h" || a === "-help")
-    ) {
+    if (!args.flatMap(rawPositional).some(isHelpArgument)) {
       return false;
     }
-    if (!ctx.commandPrefix) {
+    if (!ctx.commandPrefix || ctx.directInvoke) {
       return false;
     }
     const pathSegments = ctx.commandPrefix.slice(1); // strip "sentry" prefix
@@ -664,8 +726,8 @@ export function buildCommand<
     }
     ctx.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${pathSegments.join(" ")} --help)\n\n`
-      )
+        `Tip: use --help for help (e.g., sentry ${pathSegments.join(" ")} --help)\n\n`,
+      ),
     );
     stdout.write(`${formatHelpHuman(result)}\n`);
     return true;
@@ -673,15 +735,41 @@ export function buildCommand<
 
   // Wrap func to intercept logging flags, capture telemetry, then call original.
   // The wrapper is an async function that iterates the generator returned by func.
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Central framework wrapper — flag cleanup, env-based JSON, output rendering, and error handling are all tightly coupled.
+  // Central framework wrapper — flag cleanup, env-based JSON, output rendering, and error handling are all tightly coupled.
   const wrappedFunc = async function (
     this: CONTEXT,
     flags: Record<string, unknown>,
-    ...args: unknown[]
+    ...positionalArgs: unknown[]
   ) {
+    // Callers that skip Stricli's scanner (SDK invoke, tests) pass raw
+    // strings, and omitted optional positionals are undefined; give bound
+    // positionals the value Stricli would. `boundArguments` positionals are
+    // parsed here for every caller.
+    let args: unknown[];
+    let argumentError: ArgumentScannerError | undefined;
+    try {
+      args = applyBoundPositionals(
+        positionalArgs,
+        existingParams.positional,
+        this,
+      );
+    } catch (error) {
+      // Next to a `help` argument, fail where it can turn into the help
+      if (
+        !(
+          error instanceof ArgumentScannerError &&
+          positionalArgs.some(isHelpArgument)
+        )
+      ) {
+        throw error;
+      }
+      argumentError = error;
+      args = positionalArgs;
+    }
+
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
-      flags.verbose as boolean
+      flags.verbose as boolean,
     );
 
     // Map --org / --project compat flags to env vars before anything
@@ -690,13 +778,13 @@ export function buildCommand<
       flags.org as string | undefined,
       flags.project as string | undefined,
       commandOwnsOrg,
-      commandOwnsProject
+      commandOwnsProject,
     );
 
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
-      setArgsContext(args);
+      setArgsContext(args.flatMap(rawPositional));
     }
 
     // Environment-based JSON mode (used by library entry point)
@@ -715,7 +803,7 @@ export function buildCommand<
         cleanFlags.json === true ||
         cleanFlags.yes === true ||
         cleanFlags["dry-run"] === true
-      )
+      ),
     );
 
     const stdout = (this as unknown as { stdout: Writer }).stdout;
@@ -742,7 +830,7 @@ export function buildCommand<
             stdout,
             new CommandOutput(err.data),
             cleanFlags,
-            renderer
+            renderer,
           );
         }
         throw err;
@@ -759,7 +847,13 @@ export function buildCommand<
     // `sentry issue list help`). Without this, the auth prompt would fire
     // before the help-recovery path could show the command's help text.
     try {
-      if (requiresAuth && !getAuthConfig()) {
+      if (argumentError) {
+        throw argumentError;
+      }
+
+      // A usable stored account defers the check: the command's target may
+      // select it even when the account in effect is logged out.
+      if (requiresAuth && !getAuthConfig() && !hasUsableStoredAccount()) {
         throw new AuthError("not_authenticated");
       }
 
@@ -770,6 +864,12 @@ export function buildCommand<
         await assertRcUrlTrusted(this.cwd as string);
       }
 
+      // Bound target positionals of destructive commands refuse to
+      // auto-detect, whether `func` reads `parsed` or `resolved`
+      if (builderArgs.destructive) {
+        checkDestructive(args);
+      }
+
       // Execution phase: core command logic, API calls, org/project resolution
       const returned = await withTracing(
         "exec",
@@ -778,7 +878,7 @@ export function buildCommand<
           const generator = originalFunc.call(
             this,
             cleanFlags as FLAGS,
-            ...(args as unknown as ARGS)
+            ...(args as unknown as ARGS),
           );
           let result = await generator.next();
           while (!result.done) {
@@ -786,7 +886,7 @@ export function buildCommand<
             result = await generator.next();
           }
           return result.value as CommandReturn | undefined;
-        }
+        },
       );
 
       // Render phase: output finalization.
@@ -794,7 +894,12 @@ export function buildCommand<
       // "cached · 3m ago · use -f to refresh" when data was cached.
       // Skip bare `return;` paths (e.g. `--web` which opens a browser
       // without yielding) — no rendered output should mean no footer.
-      const finalHint = returned ? appendCacheHint(returned.hint) : undefined;
+      // `Tip:` text is stripped first when tips are disabled
+      // (`sentry cli defaults tips off` / SENTRY_DISABLE_TIPS); other
+      // notices and the cache-age staleness indicator are kept.
+      const finalHint = returned
+        ? appendCacheHint(applyTipsPreference(returned.hint))
+        : undefined;
       await withTracing("render", "cli.command.render", () => {
         writeFinalization(stdout, finalHint, cleanFlags.json, renderer);
       });
@@ -816,7 +921,7 @@ export function buildCommand<
           commandPrefix?: readonly string[];
           stderr: Writer;
         },
-        args
+        args,
       );
       if (recovered) {
         return;
@@ -844,6 +949,13 @@ export function buildCommand<
   if (primaryUsage) {
     (cmd as unknown as Record<string, unknown>).__primaryUsage =
       typeof primaryUsage === "string" ? primaryUsage : primaryUsage.input;
+  }
+  if (builderArgs.docs.examples?.length) {
+    (cmd as unknown as Record<string, unknown>).__examples =
+      builderArgs.docs.examples;
+  }
+  if (builderArgs.destructive) {
+    (cmd as unknown as Record<string, unknown>).__destructive = true;
   }
 
   // Attach the JSON schema to the built command as a non-standard property.

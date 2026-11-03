@@ -62,7 +62,7 @@ const app = new Hono<{
   .get("/", async (c, next) => {
     const accept = c.req.header("Accept") ?? "";
     if (!accept.includes("text/markdown")) {
-      return next();
+      return await next();
     }
     return c.text(generateHomepageMarkdown(getBaseUrl(c)), 200, {
       "Content-Type": "text/markdown; charset=utf-8",

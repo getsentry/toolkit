@@ -9,9 +9,9 @@
  * treats them as zero-width for column sizing.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { Writer } from "../../types/index.js";
 import {
-  escapeMarkdownCell,
   isPlainOutput,
   renderInlineMarkdown,
   stripColorTags,
@@ -41,21 +41,21 @@ export type Column<T> = {
 /**
  * Build a raw CommonMark table string from items and column definitions.
  *
- * Column value functions should call {@link escapeMarkdownCell} on user data so pipe and
+ * Column value functions should call {@link tableCell} on user data so pipe and
  * backslash characters in API-supplied strings don't break the table.
  *
  * Used for plain/non-TTY output mode.
  */
 export function buildMarkdownTable<T>(
   items: T[],
-  columns: Column<T>[]
+  columns: Column<T>[],
 ): string {
   const header = `| ${columns.map((c) => c.header).join(" | ")} |`;
   const separator = `| ${columns.map((c) => (c.align === "right" ? "---:" : "---")).join(" | ")} |`;
   const rows = items
     .map(
       (item) =>
-        `| ${columns.map((c) => stripColorTags(c.value(item))).join(" | ")} |`
+        `| ${columns.map((c) => stripColorTags(c.value(item))).join(" | ")} |`,
     )
     .join("\n");
   return `${header}\n${separator}\n${rows}`;
@@ -106,7 +106,7 @@ export type WriteTableOptions = {
 export function formatTable<T>(
   items: T[],
   columns: Column<T>[],
-  options?: WriteTableOptions
+  options?: WriteTableOptions,
 ): string {
   const headers = columns.map((c) => c.header);
   const alignments: Alignment[] = columns.map((c) => c.align ?? "left");
@@ -114,7 +114,7 @@ export function formatTable<T>(
   const shrinkable = columns.map((c) => c.shrinkable ?? true);
 
   const rows = items.map((item) =>
-    columns.map((c) => renderInlineMarkdown(c.value(item)))
+    columns.map((c) => renderInlineMarkdown(c.value(item))),
   );
 
   return renderTextTable(headers, rows, {
@@ -140,7 +140,7 @@ export function writeTable<T>(
   stdout: Writer,
   items: T[],
   columns: Column<T>[],
-  options?: WriteTableOptions
+  options?: WriteTableOptions,
 ): void {
   stdout.write(formatTable(items, columns, options));
 }

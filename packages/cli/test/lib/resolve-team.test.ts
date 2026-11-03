@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 vi.mock("../../src/lib/api/teams.js");
 vi.mock("../../src/lib/api/organizations.js");
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.spyOn mocking
 import * as teamsApi from "../../src/lib/api/teams.js";
 import { ApiError, ResolutionError } from "../../src/lib/errors.js";
 import { resolveOrCreateTeam } from "../../src/lib/resolve-team.js";
@@ -26,7 +26,7 @@ describe("resolveOrCreateTeam", () => {
     const apiError = new ApiError(
       "Failed to list teams",
       401,
-      "Your account is disabled in this organization because it is over its member limit."
+      "Your account is disabled in this organization because it is over its member limit.",
     );
     listTeamsSpy.mockRejectedValueOnce(apiError);
 

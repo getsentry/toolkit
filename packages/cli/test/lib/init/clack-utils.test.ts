@@ -66,43 +66,43 @@ describe("featureLabel", () => {
 describe("featureDescription", () => {
   test("returns description for known feature", () => {
     expect(featureDescription("errorMonitoring")).toBe(
-      "Automatically capture exceptions and stack traces"
+      "Automatically capture exceptions and stack traces",
     );
     expect(featureDescription("performanceMonitoring")).toBe(
-      "Find bottlenecks, broken requests, and understand application flow end-to-end"
+      "Find bottlenecks, broken requests, and understand application flow end-to-end",
     );
     expect(featureDescription("sessionReplay")).toBe(
-      "Watch real user sessions to see what went wrong"
+      "Watch real user sessions to see what went wrong",
     );
     expect(featureDescription("profiling")).toBe(
-      "Pinpoint the functions and lines of code responsible for performance issues"
+      "Pinpoint the functions and lines of code responsible for performance issues",
     );
     expect(featureDescription("logs")).toBe(
-      "See logs in context with errors and performance issues"
+      "See logs in context with errors and performance issues",
     );
     expect(featureDescription("metrics")).toBe(
-      "Track application performance and usage over time with custom metrics"
+      "Track application performance and usage over time with custom metrics",
     );
     expect(featureDescription("sourceMaps")).toBe(
-      "Turn minified production stack traces back into your original source code"
+      "Turn minified production stack traces back into your original source code",
     );
     expect(featureDescription("crons")).toBe(
-      "Detect failed, missed, or delayed scheduled jobs"
+      "Detect failed, missed, or delayed scheduled jobs",
     );
     expect(featureDescription("attachments")).toBe(
-      "Link user-supplied data to captured events"
+      "Link user-supplied data to captured events",
     );
     expect(featureDescription("aiMonitoring")).toBe(
-      "Understand AI calls, latency, token usage, cost, and failures"
+      "Understand AI calls, latency, token usage, cost, and failures",
     );
     expect(featureDescription("mcpObservability")).toBe(
-      "Trace MCP tool calls and understand failures across agent workflows"
+      "Trace MCP tool calls and understand failures across agent workflows",
     );
     expect(featureDescription("userFeedback")).toBe(
-      "Collect user reports with the error and session context needed to investigate"
+      "Collect user reports with the error and session context needed to investigate",
     );
     expect(featureDescription("reactFeatures")).toBe(
-      "Capture React-specific errors with component and rendering context"
+      "Capture React-specific errors with component and rendering context",
     );
   });
 
@@ -123,7 +123,7 @@ describe("sortFeatures", () => {
         "attachments",
         "aiMonitoring",
         "mcpObservability",
-      ])
+      ]),
     ).toEqual([
       "errorMonitoring",
       "logs",

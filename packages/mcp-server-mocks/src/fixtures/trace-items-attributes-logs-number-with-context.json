@@ -1,0 +1,60 @@
+[
+  {
+    "key": "severity_number",
+    "name": "severity_number",
+    "context": {
+      "isConvention": false,
+      "brief": "The numeric severity level of the log.",
+      "isDeprecated": false,
+      "examples": [17]
+    }
+  },
+  {
+    "key": "sentry.observed_timestamp_nanos",
+    "name": "sentry.observed_timestamp_nanos",
+    "context": {
+      "isConvention": false,
+      "brief": "When Sentry received the log, in nanoseconds since the Unix epoch.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "timestamp",
+    "name": "timestamp",
+    "context": {
+      "isConvention": false,
+      "brief": "When the log was emitted.",
+      "isDeprecated": false
+    }
+  },
+  {
+    "key": "custom.duration",
+    "name": "custom.duration",
+    "context": {}
+  },
+  {
+    "key": "custom.bytes",
+    "name": "custom.bytes",
+    "context": {}
+  },
+  {
+    "key": "worker.queue_wait",
+    "name": "worker.queue_wait",
+    "context": {
+      "isConvention": true,
+      "brief": "How long the job waited in the worker queue before a worker picked it up, in milliseconds.",
+      "isDeprecated": false,
+      "examples": [412]
+    }
+  },
+  {
+    "key": "worker.queue_wait_time",
+    "name": "worker.queue_wait_time",
+    "context": {
+      "isConvention": true,
+      "brief": "The maximum time a job may wait in the worker queue before it is dropped, as configured on the worker. It is a limit, not a measured wait.",
+      "isDeprecated": false,
+      "examples": [30000]
+    }
+  }
+]

@@ -31,7 +31,7 @@ import { handleFileError, isRegularFile } from "./dsn/fs-utils.js";
  */
 export async function safeReadFile(
   filePath: string,
-  operation: string
+  operation: string,
 ): Promise<string | null> {
   if (!(await isRegularFile(filePath, `${operation}.stat`))) {
     return null;

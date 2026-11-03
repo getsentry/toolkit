@@ -27,7 +27,7 @@ const ESC = "\x1b";
 function solidImage(
   width: number,
   height: number,
-  rgba: [number, number, number, number]
+  rgba: [number, number, number, number],
 ): DecodedImage {
   const data = new Uint8Array(width * height * 4);
   for (let i = 0; i < width * height; i++) {
@@ -50,7 +50,7 @@ function toPngBytes(img: DecodedImage): Uint8Array {
 function toJpegBytes(img: DecodedImage): Uint8Array {
   const { data } = encodeJpeg(
     { data: Buffer.from(img.data), width: img.width, height: img.height },
-    90
+    90,
   );
   return new Uint8Array(data);
 }
@@ -169,7 +169,7 @@ describe("readImageDimensions", () => {
 
   test("returns undefined for a truncated header", () => {
     expect(
-      readImageDimensions(new Uint8Array([0x89, 0x50]), "png")
+      readImageDimensions(new Uint8Array([0x89, 0x50]), "png"),
     ).toBeUndefined();
   });
 });
@@ -207,6 +207,21 @@ describe("buildPalette", () => {
     const palette = buildPalette(img, 16);
     expect(palette.length).toBe(1);
     expect(palette[0]).toEqual([128, 64, 32]);
+  });
+
+  test("keeps exact colors when they fit the requested size", () => {
+    const colors: [number, number, number][] = [
+      [10, 20, 30],
+      [200, 100, 50],
+      [0, 255, 0],
+    ];
+    const width = 30;
+    const data = new Uint8Array(width * 4);
+    for (let x = 0; x < width; x++) {
+      const [r, g, b] = colors[x % colors.length] as [number, number, number];
+      data.set([r, g, b, 255], x * 4);
+    }
+    expect(buildPalette({ width, height: 1, data }, 16)).toEqual(colors);
   });
 
   test("never exceeds the requested size", () => {

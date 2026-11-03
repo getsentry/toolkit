@@ -43,7 +43,7 @@ export function compileMatcher(pattern: string): CompiledMatcher {
  * can short-circuit on `.length === 0` without null-checks.
  */
 export function compileMatchers(
-  patterns: string | readonly string[] | undefined
+  patterns: string | readonly string[] | undefined,
 ): CompiledMatcher[] {
   if (patterns === undefined) {
     return [];
@@ -63,7 +63,7 @@ export function compileMatchers(
 export function matchesAny(
   matchers: readonly CompiledMatcher[],
   relPath: string,
-  basename: string
+  basename: string,
 ): boolean {
   for (const m of matchers) {
     if (m.test(m.pathMode ? relPath : basename)) {

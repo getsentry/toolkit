@@ -122,7 +122,7 @@ export function parseTracebackContent(content: string): TracebackData {
  * the error line. File contents are cached to avoid redundant reads.
  */
 async function enrichFramesWithSourceContext(
-  frames: StackFrame[]
+  frames: StackFrame[],
 ): Promise<void> {
   const sourceCache = new Map<string, string[] | null>();
 
@@ -205,12 +205,12 @@ export async function buildBashErrorEvent(opts: {
     if (code === "ENOENT") {
       throw new ValidationError(
         `Traceback file not found: ${opts.tracebackPath}`,
-        "traceback"
+        "traceback",
       );
     }
     throw new ValidationError(
       `Cannot read traceback file ${opts.tracebackPath}: ${(err as Error).message}`,
-      "traceback"
+      "traceback",
     );
   }
 

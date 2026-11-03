@@ -109,7 +109,7 @@ export default function InstallTabs({
     const from = c.offsetHeight;
     const to = next.offsetHeight;
     c.style.height = `${from}px`;
-    c.offsetHeight;
+    void c.offsetHeight;
     c.style.transition = "height 300ms cubic-bezier(0.2, 0.8, 0.2, 1)";
     c.style.height = `${to}px`;
     const done = () => {

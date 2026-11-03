@@ -72,6 +72,9 @@ function formatIssue(issue: SchemaIssue): string {
   if (issue.type === "missing_column") {
     return `Missing column: ${issue.table}.${issue.column}`;
   }
+  if (issue.type === "newer_schema") {
+    return `Written by a newer CLI: schema ${issue.version}, this CLI uses ${CURRENT_SCHEMA_VERSION}`;
+  }
   return `Wrong primary key: ${issue.table}`;
 }
 
@@ -114,11 +117,11 @@ type OwnershipIssue = {
  */
 async function checkMode(
   path: string,
-  expectedMode: number
+  expectedMode: number,
 ): Promise<{ actualMode: number } | null> {
   try {
     const st = await stat(path);
-    // biome-ignore lint/suspicious/noBitwiseOperators: extracting permission bits with bitmask
+    // oxlint-disable-next-line no-bitwise -- extracting permission bits with bitmask
     const mode = st.mode & 0o777;
     if (mode !== expectedMode) {
       return { actualMode: mode };
@@ -182,7 +185,7 @@ async function checkPermissions(dbPath: string): Promise<PermissionIssue[]> {
         } satisfies PermissionIssue;
       }
       return null;
-    })
+    }),
   );
 
   return results.filter((r): r is PermissionIssue => r !== null);
@@ -202,7 +205,7 @@ async function checkPermissions(dbPath: string): Promise<PermissionIssue[]> {
  */
 async function checkOwnership(
   dbPath: string,
-  comparisonUid: number
+  comparisonUid: number,
 ): Promise<OwnershipIssue[]> {
   const configDir = getConfigDir();
 
@@ -285,10 +288,10 @@ type RepairOutcome = {
 async function repairOwnership(
   issues: OwnershipIssue[],
   username: string,
-  targetUid: number
+  targetUid: number,
 ): Promise<RepairOutcome[]> {
   const results = await Promise.allSettled(
-    issues.map((issue) => chown(issue.path, targetUid, -1))
+    issues.map((issue) => chown(issue.path, targetUid, -1)),
   );
 
   return results.map((result, i) => {
@@ -327,7 +330,7 @@ function ownershipInstructions(
   currentUid: number,
   username: string,
   configDir: string,
-  dryRun: boolean
+  dryRun: boolean,
 ): string {
   if (dryRun && currentUid === 0) {
     return `Would transfer ownership of "${configDir}" to ${username}.`;
@@ -357,7 +360,7 @@ function ownershipInstructions(
 async function handleOwnershipIssues(
   dbPath: string,
   currentUid: number,
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<HandlerResult> {
   const configDir = getConfigDir();
   const username = getRealUsername();
@@ -400,7 +403,7 @@ async function handleOwnershipIssues(
         currentUid,
         username,
         configDir,
-        true
+        true,
       ),
       repairFailed: false,
     };
@@ -414,7 +417,7 @@ async function handleOwnershipIssues(
         currentUid,
         username,
         configDir,
-        false
+        false,
       ),
       repairFailed: true,
     };
@@ -467,8 +470,9 @@ function formatMode(mode: number): string {
  * Repairs directories before files to avoid EACCES on child chmod calls.
  */
 async function repairPermissions(
-  issues: PermissionIssue[]
+  issues: PermissionIssue[],
 ): Promise<RepairOutcome[]> {
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
   const outcomes = new Array<RepairOutcome>(issues.length);
 
   // Build index maps for dirs and files
@@ -495,13 +499,13 @@ async function repairPermissions(
  */
 async function collectPermResults(
   entries: Array<{ idx: number; issue: PermissionIssue }>,
-  outcomes: RepairOutcome[]
+  outcomes: RepairOutcome[],
 ): Promise<void> {
   const results = await Promise.allSettled(
     entries.map(async ({ issue }) => {
       await chmod(issue.path, issue.expectedMode);
       return `${issue.kind} ${issue.path}: ${formatMode(issue.currentMode)} -> ${formatMode(issue.expectedMode)}`;
-    })
+    }),
   );
 
   for (let i = 0; i < results.length; i++) {
@@ -531,7 +535,7 @@ async function collectPermResults(
  */
 async function handlePermissionIssues(
   dbPath: string,
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<HandlerResult> {
   const permIssues = await checkPermissions(dbPath);
   if (permIssues.length === 0) {
@@ -630,7 +634,7 @@ function handleSchemaIssues(dbPath: string, dryRun: boolean): HandlerResult {
 function safeHandleSchemaIssues(
   dbPath: string,
   dryRun: boolean,
-  priorIssuesFound: number
+  priorIssuesFound: number,
 ): HandlerResult {
   try {
     return handleSchemaIssues(dbPath, dryRun);
@@ -668,11 +672,15 @@ export const fixCommand = buildCommand({
       "deletes data.\n\n" +
       "If files are owned by root (e.g. after `sudo brew install`), run with sudo\n" +
       "to transfer ownership back to the current user:\n\n" +
-      "  sudo sentry cli fix\n\n" +
-      "Examples:\n" +
-      "  sentry cli fix              # Fix database issues\n" +
-      "  sudo sentry cli fix         # Fix root-owned files\n" +
-      "  sentry cli fix --dry-run    # Show what would be fixed without making changes",
+      "  sudo sentry cli fix",
+    examples: [
+      { description: "Fix database issues", command: "sentry cli fix" },
+      { description: "Fix root-owned files", command: "sudo sentry cli fix" },
+      {
+        description: "Show what would be fixed without making changes",
+        command: "sentry cli fix --dry-run",
+      },
+    ],
   },
   output: { human: formatFixResult },
   parameters: {
@@ -710,7 +718,7 @@ export const fixCommand = buildCommand({
     const schema = safeHandleSchemaIssues(
       dbPath,
       dryRun,
-      ownership.issues.length + perm.issues.length
+      ownership.issues.length + perm.issues.length,
     );
 
     const allIssues = [...ownership.issues, ...perm.issues, ...schema.issues];

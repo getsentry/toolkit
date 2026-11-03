@@ -22,6 +22,7 @@ import {
 import {
   App,
   formatFeedbackBanner,
+  SelectPicker,
 } from "../../../../src/lib/init/ui/ink-app.js";
 import { WizardStore } from "../../../../src/lib/init/ui/wizard-store.js";
 
@@ -39,9 +40,9 @@ const ESC_CANCEL_HINT_RE = /esc\s+cancel/;
 const COMPLETED_SELECTING_FEATURES_RE = /✔\s+Selecting features/;
 const ANSI_ESCAPE_PREFIX = "\u001B[";
 const CURSOR_TO_LINE_START = "\u001B[G";
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escape sequences in captured Ink output
+// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in captured Ink output
 const ANSI_CSI_RE = /\u001B\[[0-9;?]*[ -/]*[@-~]/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escape sequences in captured Ink output
+// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in captured Ink output
 const ANSI_OSC_RE = /\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g;
 const LINE_SPLIT_RE = /\r?\n/;
 const DOWN_ARROW = "\u001B[B";
@@ -110,11 +111,16 @@ function makeStdin(): Readable {
 async function renderApp(
   store: WizardStore,
   columns: number,
-  options: { rows?: number; input?: string[] } = {}
+  options: { rows?: number; input?: string[]; standalone?: boolean } = {},
 ): Promise<CaptureStream> {
   const out = new CaptureStream(columns, options.rows ?? 40);
   const stdin = makeStdin();
-  const instance = render(createElement(App, { store }), {
+  const prompt = store.getSnapshot().prompt;
+  const component =
+    options.standalone && prompt?.kind === "select"
+      ? createElement(SelectPicker, { prompt })
+      : createElement(App, { store });
+  const instance = render(component, {
     stdout: out as unknown as NodeJS.WriteStream,
     stderr: out as unknown as NodeJS.WriteStream,
     stdin: stdin as unknown as NodeJS.ReadStream,
@@ -123,7 +129,8 @@ async function renderApp(
   });
   for (const input of options.input ?? []) {
     stdin.push(input);
-    await sleep(20);
+    // Ink buffers bare Esc for 20ms to distinguish it from escape sequences.
+    await sleep(input === "\u001b" ? FRAME_SETTLE_MS : 20);
   }
   await sleep(FRAME_SETTLE_MS);
   out.settledOutput = out.allOutput();
@@ -215,7 +222,7 @@ function setWelcomePrompt(store: WizardStore): void {
 function makeReadFiles(count: number): string[] {
   return Array.from(
     { length: count },
-    (_value, index) => `src/file-${String(index + 1).padStart(2, "0")}.ts`
+    (_value, index) => `src/file-${String(index + 1).padStart(2, "0")}.ts`,
   );
 }
 
@@ -394,7 +401,7 @@ describe("Ink App snapshot", () => {
       .find((line) => line.includes("Sentry v") && line.includes("feedback"));
     expect(bannerLine).toBeDefined();
     expect(bannerLine?.indexOf("Sentry v0.32.0-test.0")).toBeLessThan(
-      bannerLine?.indexOf("$ sentry cli feedback") ?? 0
+      bannerLine?.indexOf("$ sentry cli feedback") ?? 0,
     );
   });
 
@@ -423,11 +430,11 @@ describe("Ink App snapshot", () => {
 
     const terminalColumns = 120;
     const frame = stripAnsi(
-      (await renderApp(store, terminalColumns)).allOutput()
+      (await renderApp(store, terminalColumns)).allOutput(),
     );
     const lines = frame.split(LINE_SPLIT_RE);
     const bannerOrigin = Math.floor(
-      (terminalColumns - bannerLinesWidth(FULL_BANNER_LINES)) / 2
+      (terminalColumns - bannerLinesWidth(FULL_BANNER_LINES)) / 2,
     );
 
     for (const { content } of FULL_BANNER_LINES) {
@@ -437,7 +444,7 @@ describe("Ink App snapshot", () => {
 
       expect(renderedRow).toBeDefined();
       expect(renderedRow?.indexOf(visibleContent)).toBe(
-        bannerOrigin + leadingSpaces
+        bannerOrigin + leadingSpaces,
       );
     }
   });
@@ -603,7 +610,7 @@ describe("Ink App snapshot", () => {
     expect(frame).toContain("available to set up.");
     expect(frame).toContain("Error Monitoring");
     expect(frame).toContain(
-      "Automatically capture exceptions and stack traces"
+      "Automatically capture exceptions and stack traces",
     );
     expect(frame).toContain("Session Replay");
     expect(frame).toContain("Watch real user sessions to see what went wrong");
@@ -612,7 +619,7 @@ describe("Ink App snapshot", () => {
     expect(frame).toContain("Source Maps");
     expect(plainFrame).toContain("4/5");
     expect(plainFrame).toContain(
-      "↑↓ move • space toggle • a all • enter continue"
+      "↑↓ move • space toggle • a all • enter continue",
     );
     expect(plainFrame).toMatch(SPACE_TOGGLE_HINT_RE);
     expect(plainFrame).toMatch(A_ALL_HINT_RE);
@@ -624,34 +631,34 @@ describe("Ink App snapshot", () => {
       .split(LINE_SPLIT_RE)
       .find((line) => line.includes("Error Monitoring"));
     expect(errorMonitoringRow).toContain(
-      `${ANSI_ESCAPE_PREFIX}38;2;131;218;144m◼ `
+      `${ANSI_ESCAPE_PREFIX}38;2;131;218;144m◼ `,
     );
     expect(frame).not.toContain("Recommended setup");
     expect(frame).not.toContain("Apply recommended setup");
     expect(plainFrame.indexOf("Error Monitoring")).toBeLessThan(
-      plainFrame.indexOf("Logging")
+      plainFrame.indexOf("Logging"),
     );
     expect(plainFrame.indexOf("Logging")).toBeLessThan(
-      plainFrame.indexOf("Session Replay")
+      plainFrame.indexOf("Session Replay"),
     );
     expect(plainFrame.indexOf("Session Replay")).toBeLessThan(
-      plainFrame.indexOf("Tracing")
+      plainFrame.indexOf("Tracing"),
     );
     expect(plainFrame.indexOf("Tracing")).toBeLessThan(
-      plainFrame.indexOf("Source Maps")
+      plainFrame.indexOf("Source Maps"),
     );
     const lines = plainFrame.split(LINE_SPLIT_RE);
     const shortcutLine = lines.findIndex((line) =>
-      line.includes("↑↓ move • space toggle • a all • enter continue")
+      line.includes("↑↓ move • space toggle • a all • enter continue"),
     );
     const contextLastLine = lines.findIndex((line) =>
-      line.includes("available to set up.")
+      line.includes("available to set up."),
     );
     const firstFeatureLine = lines.findIndex((line) =>
-      line.includes("Error Monitoring")
+      line.includes("Error Monitoring"),
     );
     const lastFeatureLine = lines.findIndex((line) =>
-      line.includes("Source Maps")
+      line.includes("Source Maps"),
     );
     expect(contextLastLine).toBeGreaterThan(0);
     expect(firstFeatureLine - contextLastLine).toBeGreaterThan(1);
@@ -659,7 +666,7 @@ describe("Ink App snapshot", () => {
     expect(lastFeatureLine).toBeGreaterThan(0);
     expect(shortcutLine - lastFeatureLine).toBeGreaterThan(2);
     expect(plainFrame.indexOf("Tracing")).toBeLessThan(
-      plainFrame.indexOf("↑↓ move • space toggle • a all • enter continue")
+      plainFrame.indexOf("↑↓ move • space toggle • a all • enter continue"),
     );
   });
 
@@ -845,20 +852,20 @@ describe("Ink App snapshot", () => {
     expect(frame).toContain("Back");
     expect(frame).not.toContain("Change features");
     expect(frame).toContain(
-      "We'll modify project files for this Sentry setup."
+      "We'll modify project files for this Sentry setup.",
     );
     expect(frame.indexOf("✓ Tracing")).toBeLessThan(
-      frame.indexOf("We'll modify project files for this Sentry setup.")
+      frame.indexOf("We'll modify project files for this Sentry setup."),
     );
     expect(
-      frame.indexOf("We'll modify project files for this Sentry setup.")
+      frame.indexOf("We'll modify project files for this Sentry setup."),
     ).toBeLessThan(frame.indexOf("Continue"));
     const reviewLines = frame
       .split(LINE_SPLIT_RE)
       .filter((line) => line.includes("✓ "));
     expect(reviewLines).toHaveLength(3);
     expect(
-      reviewLines.every((line) => (line.match(/✓/g) ?? []).length === 1)
+      reviewLines.every((line) => (line.match(/✓/g) ?? []).length === 1),
     ).toBe(true);
 
     await renderApp(store, 120, { input: [DOWN_ARROW, "\r"] });
@@ -890,10 +897,10 @@ describe("Ink App snapshot", () => {
     planStore.startSpinner("Planning Sentry changes");
 
     const reviewFrame = stripAnsi(
-      (await renderApp(reviewStore, 120)).latestFrame()
+      (await renderApp(reviewStore, 120)).latestFrame(),
     );
     const planFrame = stripAnsi(
-      (await renderApp(planStore, 120)).latestFrame()
+      (await renderApp(planStore, 120)).latestFrame(),
     );
     const reviewLine = reviewFrame
       .split(LINE_SPLIT_RE)
@@ -905,70 +912,71 @@ describe("Ink App snapshot", () => {
     expect(reviewLine).toBeDefined();
     expect(planLine).toBeDefined();
     expect(reviewLine?.indexOf("Review your Sentry setup")).toBe(
-      planLine?.indexOf("Planning Sentry changes")
+      planLine?.indexOf("Planning Sentry changes"),
     );
   });
 
-  test.each([
-    120, 60, 30,
-  ])("review prompts keep their warning and actions visible at %i columns", async (columns) => {
-    const store = new WizardStore({ bannerRows: [] });
-    store.appendLog("warn", "Review warning remains visible");
-    store.setPrompt({
-      kind: "select",
-      message: "Review your Sentry setup",
-      details: [
-        { text: "We'll add these features:" },
-        ...[
-          "Agent Tracing",
-          "Application Metrics",
-          "Crons",
-          "Error Monitoring",
-          "Logging",
-          "MCP Observability",
-          "Profiling",
-          "Session Replay",
-          "Source Maps",
-          "Tracing",
-        ].map((feature) => ({
-          text: `✓ ${feature}`,
-          tone: "success" as const,
-        })),
-      ],
-      footer: {
-        text: "We'll modify project files for this Sentry setup.",
-      },
-      options: [
-        { value: "continue", label: "Continue" },
-        { value: "back", label: "Back" },
-      ],
-      initialIndex: 0,
-      resolve: ignorePromptResolution,
-    });
+  test.each([120, 60, 30])(
+    "review prompts keep their warning and actions visible at %i columns",
+    async (columns) => {
+      const store = new WizardStore({ bannerRows: [] });
+      store.appendLog("warn", "Review warning remains visible");
+      store.setPrompt({
+        kind: "select",
+        message: "Review your Sentry setup",
+        details: [
+          { text: "We'll add these features:" },
+          ...[
+            "Agent Tracing",
+            "Application Metrics",
+            "Crons",
+            "Error Monitoring",
+            "Logging",
+            "MCP Observability",
+            "Profiling",
+            "Session Replay",
+            "Source Maps",
+            "Tracing",
+          ].map((feature) => ({
+            text: `✓ ${feature}`,
+            tone: "success" as const,
+          })),
+        ],
+        footer: {
+          text: "We'll modify project files for this Sentry setup.",
+        },
+        options: [
+          { value: "continue", label: "Continue" },
+          { value: "back", label: "Back" },
+        ],
+        initialIndex: 0,
+        resolve: ignorePromptResolution,
+      });
 
-    const rendered = await renderApp(store, columns, {
-      input: Array.from({ length: 12 }, () => PAGE_DOWN),
-      rows: 16,
-    });
-    const frame = stripFinalLineBreak(stripAnsi(rendered.latestFrame()));
-    const normalizedFrame = frame.replace(/\s+/g, " ");
-    expect(frame).toContain("Review your Sentry setup");
-    expect(frame).toContain("Review warning remains");
-    expect(frame).toContain("10-10/10 · pgup/pgdn");
-    expect(frame).toContain("Tracing");
-    expect(normalizedFrame).toContain(
-      "We'll modify project files for this Sentry setup."
-    );
-    expect(frame).toContain("Continue");
-    expect(frame).toContain("Back");
-    expect(frame).not.toContain("Change features");
-    expect(frame).toContain("Status");
-    expect(frame).toContain("Files");
-    expect(frame).toContain("↑↓ navigate");
-    expect(frame).toContain("enter confirm");
-    expect(frame).toContain("Sentry");
-    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(16);
-  });
+      const rendered = await renderApp(store, columns, {
+        input: Array.from({ length: 12 }, () => PAGE_DOWN),
+        rows: 16,
+      });
+      const frame = stripFinalLineBreak(stripAnsi(rendered.latestFrame()));
+      const normalizedFrame = frame.replace(/\s+/g, " ");
+      expect(frame).toContain("Review your Sentry setup");
+      expect(frame).toContain("Review warning remains");
+      expect(frame).toContain("10-10/10 · pgup/pgdn");
+      expect(frame).toContain("Tracing");
+      expect(normalizedFrame).toContain(
+        "We'll modify project files for this Sentry setup.",
+      );
+      expect(frame).toContain("Continue");
+      expect(frame).toContain("Back");
+      expect(frame).not.toContain("Change features");
+      expect(frame).toContain("Status");
+      expect(frame).toContain("Files");
+      expect(frame).toContain("↑↓ navigate");
+      expect(frame).toContain("enter confirm");
+      expect(frame).toContain("Sentry");
+      expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(16);
+    },
+  );
 
   test("narrow review paging remains reversible when warnings accumulate", async () => {
     const store = new WizardStore({ bannerRows: [] });
@@ -996,7 +1004,7 @@ describe("Ink App snapshot", () => {
     });
 
     const firstFrame = stripAnsi(
-      (await renderApp(store, 30, { rows: 16 })).latestFrame()
+      (await renderApp(store, 30, { rows: 16 })).latestFrame(),
     );
     expect(firstFrame).not.toContain("An older review warning");
     expect(firstFrame).toContain("latest review warning");
@@ -1006,7 +1014,7 @@ describe("Ink App snapshot", () => {
     const nextFrame = stripAnsi(
       (
         await renderApp(store, 30, { input: [PAGE_DOWN], rows: 16 })
-      ).latestFrame()
+      ).latestFrame(),
     );
     expect(nextFrame).toContain("✓ Feature 2");
     expect(nextFrame).toContain("2-2/10 · pgup/pgdn");
@@ -1017,7 +1025,7 @@ describe("Ink App snapshot", () => {
           input: [PAGE_DOWN, PAGE_UP],
           rows: 16,
         })
-      ).latestFrame()
+      ).latestFrame(),
     );
     expect(previousFrame).toContain("✓ Feature 1");
     expect(previousFrame).toContain("1-1/10 · pgup/pgdn");
@@ -1031,7 +1039,7 @@ describe("Ink App snapshot", () => {
     const store = new WizardStore({ bannerRows: [] });
     store.appendLog(
       "success",
-      'Using existing project "nextjs-sentry-test" in bete-dev'
+      'Using existing project "nextjs-sentry-test" in bete-dev',
     );
     store.appendLog("success", "Selecting features");
     store.appendLog("info", "Routine context loaded");
@@ -1082,6 +1090,398 @@ describe("Ink App snapshot", () => {
     expect(frame).not.toContain("switch tab");
   });
 
+  test("typing filters entity names and slugs and confirms the visible choice", async () => {
+    const store = new WizardStore({ bannerRows: [], layout: "intro" });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an organization",
+      filterable: true,
+      options: [
+        { value: "backend", label: "Backend" },
+        { value: "front-admin", label: "Administration", hint: "front-admin" },
+        { value: "web", label: "Frontend" },
+      ],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = await renderApp(store, 120, {
+      input: ["FRONT", DOWN_ARROW, "\r"],
+    });
+    const frame = stripAnsi(output.latestFrame());
+    expect(frame).toContain("/FRONT");
+    expect(frame).toContain("2 of 3");
+    expect(frame).toContain("Administration");
+    expect(frame).not.toContain("Backend");
+    expect(resolve).toHaveBeenCalledWith("web");
+  });
+
+  test.each([false, true])(
+    "typing a typo filters and confirms the matching entity (standalone=%s)",
+    async (standalone) => {
+      const store = new WizardStore({ bannerRows: [] });
+      const resolve = vi.fn();
+      store.setPrompt({
+        kind: "select",
+        message: "Choose a project",
+        filterable: true,
+        options: [
+          { value: "backend", label: "Backend" },
+          { value: "frontend", label: "Frontend" },
+        ],
+        initialIndex: 0,
+        resolve,
+      });
+
+      const output = await renderApp(store, 80, {
+        standalone,
+        input: ["\u001b[200~fronend\u001b[201~\r"],
+      });
+      const frame = stripAnsi(output.latestFrame());
+      expect(frame).toContain("/fronend 1 of 2");
+      expect(frame).toContain("Frontend");
+      expect(frame).not.toContain("Backend");
+      expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
+    },
+  );
+
+  test("zero matches cannot be confirmed and Backspace restores matches", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: [{ value: "frontend", label: "Web team", hint: "Frontend" }],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = new CaptureStream(120);
+    const stdin = makeStdin();
+    const instance = render(createElement(App, { store }), {
+      // CI defaults to non-interactive output, which skips intermediate frames.
+      interactive: true,
+      stdout: output as unknown as NodeJS.WriteStream,
+      stderr: output as unknown as NodeJS.WriteStream,
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+    try {
+      stdin.push("frozz");
+      // Observe the empty state before later input can coalesce its render.
+      await vi.waitFor(() => {
+        expect(stripAnsi(output.latestFrame())).toContain("No matches");
+      });
+
+      stdin.push(`${DOWN_ARROW}\r`);
+      await instance.waitUntilRenderFlush();
+      expect(resolve).not.toHaveBeenCalled();
+
+      stdin.push("\u007f\r");
+      await vi.waitFor(() => {
+        expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
+        expect(stripAnsi(output.latestFrame())).toContain("/froz 1 of 1");
+      });
+    } finally {
+      instance.unmount();
+      await instance.waitUntilExit();
+    }
+  });
+
+  test.each([
+    {
+      action: "confirms the first filtered option",
+      navigation: "",
+      standalone: false,
+      expected: "frontend-a",
+    },
+    {
+      action: "wraps up to the last filtered option",
+      navigation: "\u001b[A",
+      standalone: true,
+      expected: "frontend-b",
+    },
+    {
+      action: "wraps down within the filtered options",
+      navigation: DOWN_ARROW.repeat(2),
+      standalone: true,
+      expected: "frontend-a",
+    },
+  ])(
+    "same-chunk paste and Enter $action",
+    async ({ navigation, standalone, expected }) => {
+      const store = new WizardStore({ bannerRows: [] });
+      const resolve = vi.fn();
+      store.setPrompt({
+        kind: "select",
+        message: "Choose a project",
+        filterable: true,
+        options: [
+          { value: "backend", label: "Backend" },
+          { value: "frontend-a", label: "Frontend A" },
+          { value: "frontend-b", label: "Frontend B" },
+        ],
+        initialIndex: 0,
+        resolve,
+      });
+
+      const output = await renderApp(store, 80, {
+        standalone,
+        input: [`\u001b[200~front\u001b[201~${navigation}\r`],
+      });
+      expect(stripAnsi(output.latestFrame())).toContain("/front 2 of 3");
+      expect(resolve).toHaveBeenCalledExactlyOnceWith(expected);
+    },
+  );
+
+  test("same-chunk paste and Enter cannot confirm a filter with no matches", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an organization",
+      filterable: true,
+      options: [{ value: "backend", label: "Backend" }],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = await renderApp(store, 80, {
+      input: ["\u001b[200~missing\u001b[201~\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("No matches");
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  test("same-chunk Backspace and Enter confirm a restored filter match", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: [
+        { value: "backend", label: "Backend" },
+        { value: "frontend", label: "Frontend" },
+      ],
+      initialIndex: 0,
+      resolve,
+    });
+
+    const output = await renderApp(store, 80, {
+      input: ["\u001b[200~frozz\u001b[201~\u007f\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("/froz 1 of 2");
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
+  });
+
+  test.each([
+    { key: "Backspace", input: "\u007f", standalone: false },
+    { key: "Delete", input: "\u001b[3~", standalone: true },
+  ])(
+    "$key preserves the selection when the filter is empty",
+    async ({ input, standalone }) => {
+      const store = new WizardStore({ bannerRows: [] });
+      const resolve = vi.fn();
+      store.setPrompt({
+        kind: "select",
+        message: "Choose a project",
+        filterable: true,
+        options: [
+          { value: "backend", label: "Backend" },
+          { value: "frontend", label: "Frontend" },
+          { value: "worker", label: "Worker" },
+        ],
+        initialIndex: 1,
+        resolve,
+      });
+
+      const output = await renderApp(store, 80, {
+        standalone,
+        input: [`${DOWN_ARROW}${input}\r`],
+      });
+      expect(stripAnsi(output.latestFrame())).toContain("type to filter");
+      expect(resolve).toHaveBeenCalledExactlyOnceWith("worker");
+    },
+  );
+
+  test("Esc clears the filter before cancelling, while Ctrl+C cancels directly", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: [{ value: "frontend", label: "Frontend" }],
+      initialIndex: 0,
+      resolve,
+    });
+    const cleared = await renderApp(store, 120, { input: ["front", "\u001b"] });
+    expect(stripAnsi(cleared.latestFrame())).toContain("type to filter");
+    expect(resolve).not.toHaveBeenCalled();
+
+    await renderApp(store, 120, { input: ["front", "\u001b", "\u001b"] });
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(null);
+    resolve.mockClear();
+    await renderApp(store, 120, { input: ["front", "\u0003"] });
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  test("successive entity prompts reset their filter and initial selection", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolveTeam = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an organization",
+      filterable: true,
+      options: [{ value: "frontend", label: "Frontend" }],
+      initialIndex: 0,
+      resolve: () =>
+        store.setPrompt({
+          kind: "select",
+          message: "Choose a team",
+          filterable: true,
+          options: [
+            { value: "backend", label: "Backend" },
+            { value: "mobile", label: "Mobile" },
+          ],
+          initialIndex: 1,
+          resolve: resolveTeam,
+        }),
+    });
+    const output = await renderApp(store, 120, {
+      input: ["front", "\r", "\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("type to filter");
+    expect(stripAnsi(output.latestFrame())).not.toContain("/front");
+    expect(resolveTeam).toHaveBeenCalledExactlyOnceWith("mobile");
+  });
+
+  test("action menus ignore typed text", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Choose an action",
+      options: [{ value: "continue", label: "Continue" }],
+      initialIndex: 0,
+      resolve,
+    });
+    const output = await renderApp(store, 120, { input: ["xyz", "\r"] });
+    expect(stripAnsi(output.latestFrame())).not.toContain("type to filter");
+    expect(stripAnsi(output.latestFrame())).not.toContain("/xyz");
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("continue");
+  });
+
+  test("the compact project picker filters with the same keyboard controls", async () => {
+    const store = new WizardStore({ bannerRows: [] });
+    const resolve = vi.fn();
+    store.setPrompt({
+      kind: "select",
+      message: "Select a project:",
+      filterable: true,
+      options: [
+        { value: "backend", label: "Backend" },
+        { value: "frontend-web", label: "Web", hint: "frontend-web" },
+      ],
+      initialIndex: 0,
+      resolve,
+    });
+    const output = await renderApp(store, 80, {
+      standalone: true,
+      input: ["front", "\r"],
+    });
+    expect(stripAnsi(output.latestFrame())).toContain("/front");
+    expect(stripAnsi(output.latestFrame())).toContain("1 of 2");
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend-web");
+  });
+
+  test("filterable lists keep the query inside a narrow terminal", async () => {
+    const store = new WizardStore({
+      bannerRows: FULL_BANNER_LINES,
+      layout: "intro",
+    });
+    store.setPrompt({
+      kind: "select",
+      message: "Choose a team",
+      filterable: true,
+      options: Array.from({ length: 20 }, (_, index) => ({
+        value: `team-${index}`,
+        label: `${index < 11 ? "Frontend" : "Backend"} ${index}`,
+      })),
+      initialIndex: 0,
+      resolve: ignorePromptResolution,
+    });
+    const output = await renderApp(store, 40, {
+      rows: 24,
+      input: ["frontend", DOWN_ARROW],
+    });
+    const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
+    expect(frame).toContain("/frontend");
+    expect(frame).toContain("11 of 20");
+    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(24);
+    expect(frame.split(LINE_SPLIT_RE).every((line) => line.length <= 40)).toBe(
+      true,
+    );
+  });
+
+  test.each([
+    { layout: "intro" as const, standalone: false, optionCount: 1 },
+    { layout: "intro" as const, standalone: false, optionCount: 3 },
+    { layout: "intro" as const, standalone: false, optionCount: 20 },
+    { layout: "standard" as const, standalone: false, optionCount: 1 },
+    { layout: "standard" as const, standalone: false, optionCount: 3 },
+    { layout: "standard" as const, standalone: false, optionCount: 20 },
+    { layout: "standard" as const, standalone: true, optionCount: 1 },
+    { layout: "standard" as const, standalone: true, optionCount: 3 },
+    { layout: "standard" as const, standalone: true, optionCount: 20 },
+  ])(
+    "keeps the filter row fixed with $optionCount options (layout=$layout, standalone=$standalone)",
+    async ({ layout, standalone, optionCount }) => {
+      const store = new WizardStore({
+        bannerRows: FULL_BANNER_LINES,
+        ...(layout === "intro" ? { layout } : {}),
+      });
+      store.setPrompt({
+        kind: "select",
+        message: "Which team should own this project?",
+        filterable: true,
+        options: Array.from({ length: optionCount }, (_, index) => ({
+          value: index === 0 ? "frontend" : `team-${index}`,
+          label: index === 0 ? "Frontend" : `Team ${index}`,
+        })),
+        initialIndex: 0,
+        resolve: ignorePromptResolution,
+      });
+
+      let initialFilterRow = -1;
+      for (const { input, status } of [
+        { input: [], status: "type to filter" },
+        { input: ["fronend"], status: `/fronend 1 of ${optionCount}` },
+        { input: ["missing"], status: `/missing 0 of ${optionCount}` },
+        { input: ["missing", "\u001b"], status: "type to filter" },
+      ]) {
+        const output = await renderApp(store, 40, {
+          rows: 24,
+          standalone,
+          input,
+        });
+        const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
+        const lines = frame.split(LINE_SPLIT_RE);
+        const filterRow = lines.findIndex((line) => line.includes(status));
+        expect(filterRow).toBeGreaterThanOrEqual(0);
+        if (initialFilterRow === -1) {
+          initialFilterRow = filterRow;
+        }
+        expect(filterRow).toBe(initialFilterRow);
+        expect(lines.length).toBeLessThanOrEqual(24);
+      }
+    },
+  );
+
   test("long select prompts only render options that fit the terminal", async () => {
     const store = new WizardStore({
       bannerRows: FULL_BANNER_LINES,
@@ -1113,7 +1513,7 @@ describe("Ink App snapshot", () => {
           input: Array.from({ length: 7 }, () => DOWN_ARROW),
           rows: 24,
         })
-      ).allOutput()
+      ).allOutput(),
     );
     expect(scrolledFrame).toContain("(8/20)");
     expect(scrolledFrame).toContain("Team 8");
@@ -1123,11 +1523,11 @@ describe("Ink App snapshot", () => {
     const store = new WizardStore({ bannerRows: [] });
     store.appendLog(
       "warn",
-      "A warning remains visible while choosing features"
+      "A warning remains visible while choosing features",
     );
     store.appendLog(
       "error",
-      "An error remains visible while choosing features"
+      "An error remains visible while choosing features",
     );
     store.appendLog("warn", "A second warning also remains visible");
     store.setPrompt({
@@ -1160,8 +1560,8 @@ describe("Ink App snapshot", () => {
             input: Array.from({ length: 19 }, () => DOWN_ARROW),
             rows: 16,
           })
-        ).latestFrame()
-      )
+        ).latestFrame(),
+      ),
     );
     expect(scrolledFrame).toContain("0/20 selected • 20/20");
     expect(scrolledFrame).toContain("Feature 20");
@@ -1214,7 +1614,7 @@ describe("Ink App snapshot", () => {
     });
 
     const frame = stripAnsi(
-      (await renderApp(store, 40, { rows: 24 })).allOutput()
+      (await renderApp(store, 40, { rows: 24 })).allOutput(),
     );
     expect(frame).toContain("A");
     expect(frame).not.toContain("UNIQUE_TAIL");
@@ -1339,7 +1739,7 @@ describe("completion screen", () => {
 
   test("guides the user to their first error when unverified", async () => {
     const text = stripAnsi(
-      (await renderApp(completionStore(false), 100)).allOutput()
+      (await renderApp(completionStore(false), 100)).allOutput(),
     );
     // Header flows into the per-feature project info via ", with:".
     expect(text).toContain("Sentry is set up in my-app");
@@ -1364,7 +1764,7 @@ describe("completion screen", () => {
 
   test("celebrates and deep-links the first event when verified", async () => {
     const text = stripAnsi(
-      (await renderApp(completionStore(true), 100)).allOutput()
+      (await renderApp(completionStore(true), 100)).allOutput(),
     );
     expect(text).toContain("Sentry is set up in my-app");
     expect(text).toContain("First event received");
@@ -1376,7 +1776,7 @@ describe("completion screen", () => {
     const text = stripAnsi(
       (
         await renderApp(completionStore(false), 100, { input: ["o"] })
-      ).allOutput()
+      ).allOutput(),
     );
     // The `o` handler fires and confirms via a note.
     expect(text).toContain("Opened Sentry in your browser.");

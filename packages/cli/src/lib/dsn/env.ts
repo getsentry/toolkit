@@ -30,7 +30,7 @@ export const FRAMEWORK_ENV_PREFIXES = [
  * Checked in order after `SENTRY_DSN` (canonical name has priority).
  */
 const FRAMEWORK_DSN_VARS = FRAMEWORK_ENV_PREFIXES.map(
-  (prefix) => `${prefix}SENTRY_DSN`
+  (prefix) => `${prefix}SENTRY_DSN`,
 );
 
 /**

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-dsn
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: Find Sentry DSNs
 requires:
   bins: ["sentry"]
@@ -11,9 +11,15 @@ requires:
 
 Find Sentry DSNs
 
-### `sentry dsn list <org/project>`
+### `sentry dsn list [<org/project>]`
 
 List DSNs
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of DSNs to list - (default: "25")`
@@ -32,8 +38,10 @@ sentry dsn list my-org/my-project
 # List DSNs across all accessible projects in an organization
 sentry dsn list my-org/
 
-# Navigate between pages
+# Fetch the next page
 sentry dsn list my-org/ --limit 10 -c next
+
+# Fetch the previous page
 sentry dsn list my-org/ --limit 10 -c prev
 
 # Select public DSN fields as JSON

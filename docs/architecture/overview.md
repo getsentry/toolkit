@@ -12,8 +12,10 @@ The project is a pnpm monorepo with clear separation of concerns:
 
 ```
 packages/
+├── cli/                 # Sentry CLI, including the `sentry mcp` stdio server
+├── toolkit-core/        # Shared CLI/MCP primitives
 ├── mcp-core/            # Core MCP implementation (private package)
-├── mcp-server/           # stdio transport (published as @sentry/mcp-server)
+├── mcp-server/          # stdio transport (@sentry/mcp-server on npm)
 ├── mcp-cloudflare/      # Cloudflare Workers deployment
 ├── mcp-server-evals/    # Evaluation test suite
 ├── mcp-server-mocks/    # Shared mock data
@@ -31,6 +33,7 @@ src/
 ├── api-client/         # Sentry API client
 ├── internal/           # Utilities (not exposed)
 ├── tools/              # Tool implementations
+├── transports/         # stdio transport
 ├── toolDefinitions.ts  # Tool schemas and metadata
 ├── server.ts           # buildServer() function
 ├── errors.ts           # Custom error types
@@ -44,29 +47,32 @@ src/
 - Handles authentication and API communication
 - Formats responses for LLM consumption
 
-**Note:** This package is **not published to npm**. It's a workspace-only package.
+`buildServer()` fixes the tool catalog for each server instance. Both SDK versions
+advertise `tools.listChanged: false`: stdio does not mutate its registered catalog,
+and hosted requests build independent servers without a notification channel for
+catalog changes. Modern `subscriptions/listen` acknowledgments therefore omit
+`toolsListChanged`, following the [MCP subscription contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions).
+
+**Note:** mcp-core is private and never published on its own. The CLI
+bundles it, and so do `@sentry/mcp-server` (through the CLI's `sentry mcp`
+server) and the Cloudflare worker.
+
+### packages/cli (`sentry mcp`)
+
+The local stdio MCP server is the `sentry mcp` command in the Sentry CLI.
+
+- `src/lib/mcp.ts` resolves credentials from the CLI session or env token
+  (an env token wins over a stored login; the deprecated `--access-token` /
+  `SENTRY_ACCESS_TOKEN` map onto `SENTRY_AUTH_TOKEN`) and lazily loads the
+  host, so normal CLI startup never loads mcp-core or Zod.
+- `src/lib/mcp/` parses server flags and environment variables, configures the
+  embedded agent provider and telemetry, and starts mcp-core's stdio transport.
 
 ### packages/mcp-server
 
-Published stdio transport package (as `@sentry/mcp-server`).
-
-**Structure:**
-
-```
-src/
-├── cli/                # CLI argument parsing
-├── transports/         # stdio transport
-└── index.ts            # Main entry point
-```
-
-**Key responsibilities:**
-
-- CLI entry point for the MCP server
-- stdio transport implementation
-- Bundles all mcp-core code at build time
-- Published to npm for end users
-
-**Build:** Uses tsdown to bundle mcp-core code, resulting in a self-contained package.
+Publishes the stdio server as `@sentry/mcp-server`, the recommended local
+install: a single bundled file with no runtime dependencies, built from the
+CLI's `src/mcp-server.ts` without the rest of the CLI. See [stdio release](../releases/stdio.md).
 
 ### packages/mcp-cloudflare
 
@@ -108,6 +114,32 @@ Interactive CLI for testing the MCP server with an AI agent.
 - Stdio transport for local testing
 - Clean terminal output with tool call visualization
 
+## Package Dependency Direction
+
+Workspace dependencies point one way:
+
+```
+sentry (packages/cli) ──> @sentry/mcp-core ──> @sentry/toolkit-core
+@sentry/mcp-cloudflare ──> @sentry/mcp-core
+```
+
+mcp-core and toolkit-core never import the CLI, and toolkit-core never imports
+mcp-core. When an MCP tool needs a capability only the CLI host has, such as
+the SQLite cache, DSN detection from local files, or file uploads, define an
+interface in mcp-core or toolkit-core and let the CLI inject an implementation
+(the way `sentry mcp` passes the access token and the refresh callback through
+`ServerContext`). The hosted server can then supply its own implementation or
+leave the capability out.
+
+Two checks enforce this in `pnpm run lint`:
+
+- oxlint `no-restricted-imports` (`.oxlintrc.json`) rejects `sentry`,
+  `sentry/*`, and relative CLI paths inside `packages/mcp-core` and
+  `packages/toolkit-core`.
+- `scripts/check-workspace-deps.mjs` (`pnpm run lint:deps`) reads every
+  workspace `package.json` and fails on a dependency cycle or a forbidden edge,
+  such as mcp-core reaching `sentry` or toolkit-core reaching mcp-core.
+
 ## Key Architectural Decisions
 
 ### 1. Protocol Implementation
@@ -117,11 +149,11 @@ Uses the official MCP SDK (`@modelcontextprotocol/sdk`) to ensure compatibility:
 ```typescript
 const server = new Server({
   name: "sentry-mcp",
-  version: "1.0.0"
+  version: "1.0.0",
 });
 
 server.setRequestHandler(ListToolsRequestSchema, () => ({
-  tools: TOOL_DEFINITIONS
+  tools: TOOL_DEFINITIONS,
 }));
 ```
 
@@ -152,14 +184,15 @@ The MCP server supports multiple transport mechanisms:
 
 ### 3. Authentication Strategy
 
-The MCP server uses Sentry access tokens for authentication:
+The stdio server uses the Sentry CLI's credentials: the stored login from
+`auth login`, or `SENTRY_AUTH_TOKEN` (see `docs/operations/stdio-auth.md`):
 
 ```bash
-# Via command line
-pnpm start:stdio --access-token=<token> --host=<host>
+# With the stored login
+pnpm start:stdio
 
-# Via environment variable
-SENTRY_ACCESS_TOKEN=<token> pnpm start:stdio
+# With a token, over any stored login, on a self-hosted server
+SENTRY_AUTH_TOKEN=<token> SENTRY_HOST=<host> pnpm start:stdio
 ```
 
 For web applications using MCP (like the Cloudflare example), they handle their own authentication and pass tokens to the MCP server.
@@ -170,13 +203,13 @@ Centralized client with method-specific implementations:
 
 ```typescript
 class SentryApiService {
-  constructor(private config: { host: string; accessToken: string })
-  
+  constructor(private config: { host: string; accessToken: string });
+
   // Resource-specific methods
   issues = {
     list: (params) => this.fetch("/issues/", params),
-    get: (params) => this.fetch(`/issues/${id}/`)
-  }
+    get: (params) => this.fetch(`/issues/${id}/`),
+  };
 }
 ```
 
@@ -288,12 +321,14 @@ Execute actions and retrieve data:
 Some tools (the dataset search tools like `search_errors`/`search_traces`, and `search_issues`) implement a two-tier agent pattern:
 
 ### Tier 1: Calling Agent (Claude/Cursor)
+
 - Decides when to use search tools
 - Provides natural language queries
 - Handles errors and retries
 - Interprets results for the user
 
 ### Tier 2: Embedded Agent (GPT-5)
+
 - Lives inside the MCP tool
 - Translates natural language to Sentry query syntax
 - Has its own tools for field discovery
@@ -323,6 +358,7 @@ Some tools (the dataset search tools like `search_errors`/`search_traces`, and `
 ### Design Rationale
 
 This pattern is used when:
+
 - Query languages are complex (Sentry's search syntax)
 - Available fields vary by context (project-specific attributes)
 - Semantic understanding is required ("yesterday" → timeRange)

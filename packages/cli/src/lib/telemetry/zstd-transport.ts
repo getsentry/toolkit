@@ -12,7 +12,7 @@
  * when the transport is created, every envelope uses zstd; otherwise
  * every envelope uses gzip.
  *
- * This mirrors `@sentry/node-core/transports/http.js` `makeNodeTransport`
+ * This mirrors `@sentry/node/transports/http.js` `makeNodeTransport`
  * — URL parsing, `no_proxy` handling, proxy agent, CA certs, keepAlive,
  * IPv6 hostname unwrapping, rate-limit response header normalization —
  * but swaps out the gzip-via-stream-pipe for an async one-shot compress
@@ -26,9 +26,9 @@
  *   through `createGzip()` by the time `httpModule.request()` runs).
  */
 
-// biome-ignore lint/performance/noNamespaceImport: http module must be passed as a namespace object (matches SDK's HTTPModule interface)
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- http module must be passed as a namespace object (matches SDK's HTTPModule interface)
 import * as http from "node:http";
-// biome-ignore lint/performance/noNamespaceImport: same as above for https
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- same as above for https
 import * as https from "node:https";
 import { Readable } from "node:stream";
 import { promisify } from "node:util";
@@ -45,10 +45,10 @@ import {
   type TransportRequest,
   type TransportRequestExecutor,
 } from "@sentry/core";
-import {
-  makeNodeTransport,
-  type NodeTransportOptions,
-} from "@sentry/node-core/light";
+import { makeNodeTransport } from "@sentry/node";
+
+/** `@sentry/node` v11 no longer re-exports this type from its entry point. */
+type NodeTransportOptions = Parameters<typeof makeNodeTransport>[0];
 
 /** Codec actually applied to a given envelope. */
 type AppliedEncoding = "zstd" | "gzip" | "none";
@@ -98,10 +98,10 @@ const zstdCompressAsync =
  * wires up an executor.
  */
 export function makeCompressedTransport(
-  options: NodeTransportOptions
+  options: NodeTransportOptions,
 ): Transport {
   let urlSegments: URL;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     urlSegments = new URL(options.url);
   } catch {
@@ -155,7 +155,7 @@ export function makeCompressedTransport(
  * no_proxy. When true, the caller falls back to the SDK's default
  * transport (which handles CONNECT tunneling).
  *
- * Mirrors `@sentry/node-core/transports/http.js` `applyNoProxyOption`'s
+ * Mirrors `@sentry/node/transports/http.js` `applyNoProxyOption`'s
  * proxy-resolution priority:
  *   - http  → `options.proxy` | `http_proxy`
  *   - https → `options.proxy` | `https_proxy` | `http_proxy`
@@ -168,7 +168,7 @@ export function makeCompressedTransport(
  */
 export function shouldFallbackToDefault(
   url: URL,
-  options: NodeTransportOptions
+  options: NodeTransportOptions,
 ): boolean {
   const isHttps = url.protocol === "https:";
   const httpProxy = process.env.http_proxy ?? process.env.HTTP_PROXY;
@@ -195,19 +195,20 @@ type PerformRequestArgs = {
 };
 
 async function performRequest(
-  args: PerformRequestArgs
+  args: PerformRequestArgs,
 ): Promise<TransportMakeRequestResponse> {
   const { request, options, httpModule, agent, encoding } = args;
 
   const rawBuffer = normalizeBody(request.body);
   const { payload, encodingApplied } = await maybeCompress(rawBuffer, encoding);
 
+  // oxlint-disable-next-line unicorn/no-useless-fallback-in-spread -- Retain the existing fallback while migrating lint tools.
   const headers: Record<string, string> = { ...(options.headers ?? {}) };
   if (encodingApplied !== "none") {
     headers["content-encoding"] = encodingApplied;
   }
 
-  return new Promise<TransportMakeRequestResponse>((resolve, reject) => {
+  return await new Promise<TransportMakeRequestResponse>((resolve, reject) => {
     const req = httpModule.request(
       {
         method: "POST",
@@ -237,7 +238,7 @@ async function performRequest(
               : rateLimitsHeader,
           },
         });
-      }
+      },
     );
     req.on("error", reject);
     Readable.from(payload).pipe(req);
@@ -276,7 +277,7 @@ type CompressResult = {
  */
 export async function maybeCompress(
   buf: Buffer,
-  encoding: SelectedEncoding
+  encoding: SelectedEncoding,
 ): Promise<CompressResult> {
   const threshold = encoding === "zstd" ? ZSTD_THRESHOLD : GZIP_THRESHOLD;
   if (buf.length <= threshold) {
@@ -330,6 +331,6 @@ export function isNoProxyExempt(urlSegments: URL): boolean {
     return true;
   }
   return entries.some(
-    (ex) => urlSegments.host.endsWith(ex) || urlSegments.hostname.endsWith(ex)
+    (ex) => urlSegments.host.endsWith(ex) || urlSegments.hostname.endsWith(ex),
   );
 }

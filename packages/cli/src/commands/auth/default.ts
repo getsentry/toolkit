@@ -12,6 +12,11 @@
 import type { Command } from "@stricli/core";
 import type { SentryContext } from "../../context.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  choiceListParser,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { isAuthenticated } from "../../lib/db/auth.js";
 import { formatAuthStatus } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -19,6 +24,7 @@ import type { LoginResult } from "../../lib/interactive-login.js";
 import { FRESH_ALIASES, FRESH_FLAG } from "../../lib/list-command.js";
 import { formatLoginResult, loginCommand, parseLoginUrl } from "./login.js";
 import { type AuthStatusData, statusCommand } from "./status.js";
+import { SENTRY_SCOPES } from "../../lib/api-scope.js";
 
 type AuthDefaultFlags = {
   readonly token?: string;
@@ -48,7 +54,7 @@ const LOGIN_ONLY_FLAGS = [
  */
 export function resolveAuthDefaultTarget(
   flags: Readonly<Partial<AuthDefaultFlags>>,
-  authenticated = isAuthenticated()
+  authenticated = isAuthenticated(),
 ): "login" | "status" {
   for (const name of LOGIN_ONLY_FLAGS) {
     const value = flags[name];
@@ -74,7 +80,7 @@ function getRawFunc(command: Command<SentryContext>): RawCommandFunc {
   const raw = (command as unknown as { __rawFunc?: RawCommandFunc }).__rawFunc;
   if (!raw) {
     throw new Error(
-      "Command is missing __rawFunc; expected buildCommand output"
+      "Command is missing __rawFunc; expected buildCommand output",
     );
   }
   return raw;
@@ -120,14 +126,14 @@ export const authDefaultCommand = buildCommand({
     flags: {
       token: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Authenticate using an API token instead of OAuth",
         optional: true,
       },
       timeout: {
         kind: "parsed",
         parse: numberParser,
-        brief: "Timeout for OAuth flow in seconds (default: 900)",
+        brief: "Timeout for OAuth flow in seconds",
         default: "900",
       },
       force: {
@@ -137,7 +143,7 @@ export const authDefaultCommand = buildCommand({
       },
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: textParser(parseLoginUrl),
         brief:
           "Sentry instance URL to authenticate against (e.g. https://sentry.example.com). " +
           "Required for self-hosted; defaults to SaaS (https://sentry.io).",
@@ -152,7 +158,7 @@ export const authDefaultCommand = buildCommand({
       },
       scope: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(SENTRY_SCOPES),
         brief:
           "Request specific OAuth scopes (repeatable, comma-separated). " +
           "E.g. --scope project:read --scope org:read. Overrides the default scope set.",
@@ -175,7 +181,7 @@ export const authDefaultCommand = buildCommand({
     const raw = getRawFunc(command as Command<SentryContext>);
     const generator = raw.call(
       this,
-      flags as unknown as Record<string, unknown>
+      flags as unknown as Record<string, unknown>,
     );
 
     // Re-yield CommandOutput values so this command's wrapper renders once.

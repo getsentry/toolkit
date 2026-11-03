@@ -9,10 +9,20 @@ import { z } from "zod";
 import { SENTRY_GUIDES } from "./constants";
 import { validateResourceId, validateSlug } from "./utils/slug-validation";
 
+/** Recovery hint for a missing organization the server could not default. */
+export const MISSING_ORGANIZATION_SLUG_HINT =
+  "Required. Call `find_organizations()` to list your organizations, then retry with `organizationSlug` set to one of their slugs.";
+
 // Sentry slug lookups can be exact and case-sensitive on legacy instances.
 // Preserve caller casing for resource slugs; only trim and validate shape.
 export const ParamOrganizationSlug = z
-  .string()
+  .string({
+    // Tool registration makes a required slug optional and defaults it
+    // (see applyDefaultOrganization), but a null slug, or one inside a nested
+    // schema, still fails here, and this is the recovery hint it gets.
+    error: (issue) =>
+      issue.input == null ? MISSING_ORGANIZATION_SLUG_HINT : undefined,
+  })
   .trim()
   .superRefine(validateSlug)
   .describe(
@@ -55,6 +65,13 @@ export const ParamCursor = z
   .describe(
     "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page.",
   );
+
+// Shared by every read tool that calls the Sentry API, so keep it short: it
+// ships in the schema of each one.
+export const ParamFresh = z
+  .boolean()
+  .optional()
+  .describe("Bypass cached reads.");
 
 export const ParamIssueShortId = z
   .string()
@@ -142,11 +159,11 @@ export const ParamPeriod = z
   .string()
   .trim()
   .regex(
-    /^\d+[hdw]$/,
-    "Period must be a relative time window like `24h`, `7d`, `14d`, `30d`, or `90d`.",
+    /^\d+[mhdw]$/,
+    "Period must be a relative time window like `30m` (minutes), `1h`, `24h`, `7d`, or `90d`.",
   )
   .describe(
-    "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window.",
+    "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window.",
   );
 
 /**

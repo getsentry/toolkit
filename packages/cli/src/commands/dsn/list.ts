@@ -10,7 +10,8 @@ import {
   listOrganizationDsns,
   listProjectDsns,
 } from "../../lib/api/projects.js";
-import { parseOrgProjectArg, validateLimit } from "../../lib/arg-parsing.js";
+import { validateLimit } from "../../lib/arg-parsing.js";
+import { textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiTargetContextKey,
@@ -52,6 +53,7 @@ import {
   resolveProjectBoundTargets,
   resolveTargetSlugs,
 } from "../../lib/resolve-target.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 
 const PAGINATION_KEY = "dsn-list";
 const USAGE_HINT = "sentry dsn list <org>/<project>";
@@ -65,7 +67,7 @@ const listConfig: ListCommandMeta = {
 /** List an organization's keys directly, preserving its cursor history. */
 async function listForOrganization(
   org: string,
-  flags: BaseListFlags
+  flags: BaseListFlags,
 ): Promise<ListResult<DsnListItem>> {
   const target = `${org}/`;
   const contextKey = buildPaginationContextKey("org", target, {
@@ -74,11 +76,11 @@ async function listForOrganization(
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const response = await withProgress(
     { message: "Fetching DSNs...", json: flags.json },
-    () => listOrganizationDsns(org, { limit: flags.limit, cursor })
+    () => listOrganizationDsns(org, { limit: flags.limit, cursor }),
   );
   const { data, nextCursor } = response;
   advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
@@ -115,7 +117,7 @@ type DsnProjectPage = {
 /** Fetch a bounded project page, allowing callers to report partial failures. */
 async function fetchProjectPage(
   target: ResolvedTarget,
-  options: GroupFetchOptions
+  options: GroupFetchOptions,
 ): Promise<FetchResult<DsnProjectPage>> {
   const result = await withAuthGuard(async () => {
     const page = await listProjectDsns(target.org, target.project, {
@@ -151,7 +153,7 @@ const targetKey = (target: Pick<ResolvedTarget, "org" | "project">) =>
 /** Collect successful pages, reporting partial failures and throwing if all fail. */
 function collectProjectResults(
   results: FetchResult<DsnProjectPage>[],
-  targets: ResolvedTarget[]
+  targets: ResolvedTarget[],
 ) {
   const pages = new Map<string, DsnProjectPage>();
   const failures: { project: string; error: Error }[] = [];
@@ -170,7 +172,7 @@ function collectProjectResults(
   }
   if (failures.length > 0) {
     logger.warn(
-      `Failed to fetch DSNs from ${failures.map((failure) => failure.project).join(", ")}. Showing results from ${pages.size} project(s).`
+      `Failed to fetch DSNs from ${failures.map((failure) => failure.project).join(", ")}. Showing results from ${pages.size} project(s).`,
     );
   }
   return { pages, failures };
@@ -192,7 +194,7 @@ async function listForResolvedProjects<
       undefined,
       resolution.skippedSelfHosted
         ? `Found ${resolution.skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`
-        : undefined
+        : undefined,
     );
   }
 
@@ -200,8 +202,8 @@ async function listForResolvedProjects<
   // Canonical slugs keep both output and cursor identity stable as caches warm.
   const targets = await Promise.all(
     resolution.targets.map((target) =>
-      limitRequests(() => resolveTargetSlugs(target))
-    )
+      limitRequests(() => resolveTargetSlugs(target)),
+    ),
   );
   const { flags } = ctx;
   const firstTarget = targets[0];
@@ -210,18 +212,18 @@ async function listForResolvedProjects<
       ? buildPaginationContextKey(
           "project",
           `${firstTarget.org}/${firstTarget.project}`,
-          { limit: String(flags.limit) }
+          { limit: String(flags.limit) },
         )
       : buildMultiTargetContextKey(targets, { limit: flags.limit });
   const { cursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const sortedKeys = targets.map(targetKey).sort();
   const { startCursors, exhausted } = decodeTargetCursors(cursor, sortedKeys);
   const activeTargets = targets.filter(
-    (target) => !exhausted.has(targetKey(target))
+    (target) => !exhausted.has(targetKey(target)),
   );
   const { results, hasMore } = await withProgress(
     { message: "Fetching DSNs...", json: flags.json },
@@ -235,9 +237,9 @@ async function listForResolvedProjects<
           limitRequests(() => fetchProjectPage(target, options)),
         onProgress: (count) =>
           setMessage(
-            `Fetching DSNs, ${count} and counting (up to ${flags.limit})...`
+            `Fetching DSNs, ${count} and counting (up to ${flags.limit})...`,
           ),
-      })
+      }),
   );
   const { pages, failures } = collectProjectResults(results, activeTargets);
   const allItems = [...pages.values()].flatMap((page) => page.items);
@@ -302,14 +304,36 @@ export const listCommand = buildListCommand("dsn", {
       "Use <org>/ to list DSNs across all accessible projects in an organization.\n" +
       "Omit the target to detect projects from your config or DSNs, including monorepos.\n" +
       `${targetPatternExplanation()}\n\n` +
-      "Examples:\n" +
-      "  sentry dsn list\n" +
-      "  sentry dsn list my-org/my-project\n" +
-      "  sentry dsn list my-org/\n" +
-      "  sentry dsn list my-org/ -c next\n" +
-      "  sentry dsn list my-org/my-project -c next\n" +
-      "  sentry dsn list my-org/my-project --json\n\n" +
       "JSON fields: org, project, name, dsn, isActive, dateCreated.",
+    examples: [
+      {
+        description:
+          "List client keys for detected projects, including monorepos",
+        command: "sentry dsn list",
+      },
+      {
+        description: "List enabled and disabled DSNs for one project",
+        command: "sentry dsn list my-org/my-project",
+      },
+      {
+        description:
+          "List DSNs across all accessible projects in an organization",
+        command: "sentry dsn list my-org/",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry dsn list my-org/ --limit 10 -c next",
+      },
+      {
+        description: "Fetch the previous page",
+        command: "sentry dsn list my-org/ --limit 10 -c prev",
+      },
+      {
+        description: "Select public DSN fields as JSON",
+        command:
+          "sentry dsn list my-org/my-project --json --fields name,dsn,isActive",
+      },
+    ],
   },
   output: {
     human: formatDsnList,
@@ -321,16 +345,21 @@ export const listCommand = buildListCommand("dsn", {
     flags: {
       limit: {
         ...buildListLimitFlag("DSNs"),
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT),
+        ),
       },
     },
     aliases: { n: "limit" },
   },
-  async *func(this: SentryContext, flags: BaseListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: BaseListFlags,
+    target: ListCommandTarget,
+  ) {
     const result: ListResult<DsnListItem> = await dispatchOrgScopedList({
       config: listConfig,
-      parsed: parseOrgProjectArg(target),
+      parsed: (await target.resolved).parsed,
       cwd: this.cwd,
       flags,
       allowCursorInModes: ["auto-detect", "explicit", "project-search"],

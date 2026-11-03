@@ -43,6 +43,6 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
-    return getTraceDetails.handler(params, context);
+    return await getTraceDetails.handler(params, context);
   },
 });

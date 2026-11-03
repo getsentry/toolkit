@@ -27,20 +27,35 @@ Examples:
 - Constrained parameters are removed from the tool schemas entirely and injected server-side, so a scoped session cannot override them or reach another organization
 - Resource identifiers you pass (event, attachment, replay, profile, and client key IDs) are format-validated and URL-encoded, so they cannot rewrite the scoped path either
 - If you don't provide a scope, tools work across your accessible organizations when supported
+- Without a scope, a tool call that omits `organizationSlug` uses your organization when you can access exactly one. With several, the call fails with a ready-to-run retry and the list of organizations; the server never picks one for you
 - Some tools are filtered when not useful: `find_organizations` is hidden when scoped to an org, and `find_projects` is hidden when scoped to a project
 
 ## Access verification
 
 When you connect with a scoped path, we validate that:
+
 - The slugs are well-formed
 - The organization exists and you have access
 - If a project is included, the project exists and you have access
 
 If there’s a problem, you’ll receive a clear HTTP error when connecting:
+
 - 400: Invalid slug format
 - 401: Missing authentication
 - 403: You don’t have access to the specified org/project
 - 404: Organization or project not found
+
+For OAuth connections, project verification requests `collapse=organization`
+to avoid fetching organization metadata that is not needed for project
+capabilities. Successful verification is cached for 15 minutes. If project
+verification takes longer than five seconds, the request continues with unknown
+project capabilities. This result is cached for 60 seconds to reduce repeated
+delays; after it expires, the next request retries verification. Timeout results
+use separate cache keys, and verified results take precedence, so a concurrent
+timeout cannot overwrite verified capabilities or shorten their cache lifetime.
+Cache propagation and concurrent requests can still cause repeated verification
+or temporarily return unknown capabilities. Each tool still requires permission
+to access the requested data.
 
 ## Region awareness
 
@@ -66,6 +81,7 @@ For Sentry Cloud, your organization may be hosted in a regional cluster. When yo
 ## Reference
 
 Supported URL patterns:
+
 ```
 /mcp/{organizationSlug}/{projectSlug}
 /mcp/{organizationSlug}
@@ -77,5 +93,6 @@ Supported URL patterns:
 ```
 
 For implementation details and security notes, see:
+
 - `docs/specs/subpath-constraints.md`
 - `docs/architecture/overview.md`

@@ -28,19 +28,19 @@ import { useTestConfigDir } from "../helpers.js";
 describe("isTlsCertError", () => {
   test("detects 'unable to get local issuer certificate'", () => {
     expect(
-      isTlsCertError(new Error("unable to get local issuer certificate"))
+      isTlsCertError(new Error("unable to get local issuer certificate")),
     ).toBe(true);
   });
 
   test("detects 'unable to verify the first certificate'", () => {
     expect(
-      isTlsCertError(new Error("unable to verify the first certificate"))
+      isTlsCertError(new Error("unable to verify the first certificate")),
     ).toBe(true);
   });
 
   test("detects UNABLE_TO_VERIFY_LEAF_SIGNATURE", () => {
     expect(isTlsCertError(new Error("UNABLE_TO_VERIFY_LEAF_SIGNATURE"))).toBe(
-      true
+      true,
     );
   });
 
@@ -50,7 +50,7 @@ describe("isTlsCertError", () => {
 
   test("does NOT detect ERR_TLS_CERT_ALTNAME_INVALID (not a CA trust issue)", () => {
     expect(isTlsCertError(new Error("ERR_TLS_CERT_ALTNAME_INVALID"))).toBe(
-      false
+      false,
     );
   });
 
@@ -66,9 +66,9 @@ describe("isTlsCertError", () => {
     expect(
       isTlsCertError(
         new Error(
-          "request to https://sentry.io failed, reason: unable to get local issuer certificate"
-        )
-      )
+          "request to https://sentry.io failed, reason: unable to get local issuer certificate",
+        ),
+      ),
     ).toBe(true);
   });
 
@@ -84,7 +84,7 @@ describe("isTlsCertError", () => {
     const wrapper = new TypeError("fetch failed");
     wrapper.cause = cause;
     expect(getTlsCertErrorMessage(wrapper)).toBe(
-      "unable to get local issuer certificate"
+      "unable to get local issuer certificate",
     );
   });
 
@@ -117,7 +117,7 @@ describe("isTlsCertError", () => {
 
   test("returns false for non-Error values", () => {
     expect(isTlsCertError("unable to get local issuer certificate")).toBe(
-      false
+      false,
     );
     expect(isTlsCertError(null)).toBe(false);
     expect(isTlsCertError(undefined)).toBe(false);
@@ -380,6 +380,7 @@ describe("customFetch", () => {
     await customFetch("https://example.com", { headers: { "X-Test": "1" } });
     expect(capturedInit).toBeDefined();
     expect(capturedInit?.tls).toBeDefined();
+    // oxlint-disable-next-line no-unsafe-optional-chaining -- Existing test assumes the optional fixture is present.
     expect((capturedInit?.tls as { ca: string }).ca).toContain(CERT_PEM);
   });
 

@@ -99,7 +99,7 @@ export async function getUIAsync(opts: UIFactoryOptions): Promise<WizardUI> {
   if (shouldUseLogging(opts)) {
     return new LoggingUI();
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const { createInkUI } = await import("./ink-ui.js");
     return await createInkUI({ initialWelcome: opts.initialWelcome });

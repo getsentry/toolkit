@@ -121,7 +121,7 @@ function toNodeParams(params: SQLQueryBindings[]): SQLQueryBindings[] {
  *   `node-sqlite3-wasm` Statement).
  * @param kind Which driver produced `stmt`.
  */
-// biome-ignore lint/suspicious/noExplicitAny: backing driver types vary
+// oxlint-disable-next-line typescript/no-explicit-any -- backing driver types vary
 function wrapStatement(stmt: any, kind: DriverKind): StatementWrapper {
   return new Proxy(stmt, {
     get(target, prop) {
@@ -170,7 +170,7 @@ function wrapStatement(stmt: any, kind: DriverKind): StatementWrapper {
 
 /** Backing-driver constructor plus which kind it is. */
 type ResolvedDriver = {
-  // biome-ignore lint/suspicious/noExplicitAny: driver constructors differ
+  // oxlint-disable-next-line typescript/no-explicit-any -- driver constructors differ
   Ctor: any;
   kind: DriverKind;
 };
@@ -256,7 +256,7 @@ function resolveDriver(): ResolvedDriver {
   }
 
   const { Database: WasmDatabase } = _require("node-sqlite3-wasm") as {
-    // biome-ignore lint/suspicious/noExplicitAny: driver types loaded lazily
+    // oxlint-disable-next-line typescript/no-explicit-any -- driver types loaded lazily
     Database: any;
   };
   resolvedDriver = { Ctor: WasmDatabase, kind: "wasm" };
@@ -389,11 +389,11 @@ function writeLockOwner(dbPath: string): void {
 
 /** Read the recorded owner PID, or null if absent/unreadable. */
 function readLockOwner(dbPath: string): number | null {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const pid = Number.parseInt(
       readFileSync(lockOwnerPath(dbPath), "utf8"),
-      10
+      10,
     );
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
@@ -422,7 +422,7 @@ function removeLockOwner(dbPath: string): void {
  * - `transaction(fn)` — wrap a function in BEGIN/COMMIT/ROLLBACK
  */
 export class Database {
-  // biome-ignore lint/suspicious/noExplicitAny: backing driver resolved at runtime
+  // oxlint-disable-next-line typescript/no-explicit-any -- backing driver resolved at runtime
   private readonly db: any;
 
   /** Which backing driver this instance uses (for param normalisation). */

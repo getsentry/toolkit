@@ -9,11 +9,21 @@ import { run } from "@stricli/core";
 import { describe, expect, test } from "vitest";
 import { app } from "../../src/app.js";
 import type { SentryContext } from "../../src/context.js";
+import { withEnv } from "../../src/lib/env.js";
+import { envWithoutAgent } from "../helpers.js";
 
 /**
  * Run a help command and capture stdout output.
  */
 async function runHelp(args: string[]): Promise<string> {
+  return await runCli(["help", ...args]);
+}
+
+/**
+ * Run the CLI with `args` and capture stdout. Sets `commandPrefix` the way
+ * `buildContext` does so bare `sentry` and `sentry help` can be told apart.
+ */
+async function runCli(args: string[]): Promise<string> {
   let output = "";
   const mockContext: SentryContext = {
     process,
@@ -35,8 +45,15 @@ async function runHelp(args: string[]): Promise<string> {
     },
     stdin: process.stdin,
   };
+  const context = {
+    ...mockContext,
+    forCommand: ({ prefix }: { prefix: readonly string[] }): SentryContext => ({
+      ...mockContext,
+      commandPrefix: prefix,
+    }),
+  };
 
-  await run(app, ["help", ...args], mockContext);
+  await run(app, args, context);
   return output;
 }
 
@@ -73,12 +90,12 @@ describe("sentry help --json", () => {
 
     // Find a command that should have framework-injected flags
     const issueRoute = parsed.routes.find(
-      (r: { name: string }) => r.name === "issue"
+      (r: { name: string }) => r.name === "issue",
     );
     expect(issueRoute).toBeDefined();
 
     const listCmd = issueRoute.commands.find(
-      (c: { path: string }) => c.path === "sentry issue list"
+      (c: { path: string }) => c.path === "sentry issue list",
     );
     expect(listCmd).toBeDefined();
 
@@ -86,6 +103,26 @@ describe("sentry help --json", () => {
     // Framework-injected flags should be visible
     expect(flagNames).toContain("log-level");
     expect(flagNames).toContain("verbose");
+  });
+});
+
+describe("bare sentry vs sentry help", () => {
+  test("bare sentry shows the overview for humans", async () => {
+    const output = await withEnv(envWithoutAgent(), () => runCli([]));
+    expect(output).toContain("all commands:");
+    expect(output).not.toContain("sentry dashboard");
+  });
+
+  test("sentry help lists every command", async () => {
+    const output = await withEnv(envWithoutAgent(), () => runCli(["help"]));
+    expect(output).not.toContain("all commands:");
+    expect(output).toContain("sentry dashboard");
+  });
+
+  test("bare sentry --json keeps the overview marker out of JSON", async () => {
+    const parsed = JSON.parse(await runCli(["--json"]));
+    expect(parsed).toHaveProperty("routes");
+    expect(parsed).not.toHaveProperty("overview");
   });
 });
 
@@ -146,7 +183,7 @@ describe("sentry help --json <group> <command>", () => {
     const output = await runHelp(["--json", "event", "view"]);
     const parsed = JSON.parse(output);
     const attachments = parsed.jsonFields?.find(
-      (field: { name: string }) => field.name === "attachments"
+      (field: { name: string }) => field.name === "attachments",
     );
 
     expect(attachments).toMatchObject({

@@ -12,7 +12,6 @@ import {
   closeSync,
   existsSync,
   openSync,
-  realpathSync,
   statSync,
   unlinkSync,
   writeSync,
@@ -37,6 +36,7 @@ import {
   getGitHubRepositoryUrl,
   getPlatformBinaryName,
   type InstallationMethod,
+  isHomebrewInstall,
   isNightlyVersion,
   KNOWN_CURL_DIRS,
   PRIMARY_UPGRADE_SOURCE,
@@ -73,7 +73,7 @@ const log = logger.withTag("upgrade");
 // Re-export for backward compatibility — consumers that import
 // InstallationMethod from upgrade.ts continue to work.
 export type { InstallationMethod } from "./binary.js";
-// biome-ignore lint/performance/noBarrelFile: backward-compat re-export, not a barrel
+// backward-compat re-export, not a barrel
 export { parseInstallationMethod } from "./binary.js";
 
 /** Package managers that can be used for global installs */
@@ -118,29 +118,29 @@ export type ResolvedUpgradeVersion = {
 
 function extractReleaseVersions(
   data: unknown,
-  source: UpgradeSource
+  source: UpgradeSource,
 ): string[] {
   if (source.tagPrefix ? !Array.isArray(data) : Array.isArray(data)) {
     throw new UpgradeError(
       "network_error",
-      "GitHub returned invalid release metadata"
+      "GitHub returned invalid release metadata",
     );
   }
   const releases = Array.isArray(data) ? data : [data];
   return releases
     .filter(
       (release): release is Record<string, unknown> =>
-        typeof release === "object" && release !== null
+        typeof release === "object" && release !== null,
     )
     .filter((release) => !(release.draft || release.prerelease))
     .map((release) => release.tag_name)
     .filter(
       (tag): tag is string =>
-        typeof tag === "string" && tag.startsWith(source.tagPrefix)
+        typeof tag === "string" && tag.startsWith(source.tagPrefix),
     )
     .map((tag) => tag.slice(source.tagPrefix.length))
     .map((tag) =>
-      source.tagPrefix ? tag : tag.replace(VERSION_PREFIX_REGEX, "")
+      source.tagPrefix ? tag : tag.replace(VERSION_PREFIX_REGEX, ""),
     )
     .filter((tag) => semverValid(tag) === tag && semverPrerelease(tag) === null)
     .sort((a, b) => compareVersions(b, a));
@@ -148,7 +148,7 @@ function extractReleaseVersions(
 
 function getNextGitHubReleasePage(
   response: Response,
-  source: UpgradeSource
+  source: UpgradeSource,
 ): string | undefined {
   const link = response.headers.get("link");
   const match = link?.match(NEXT_PAGE_LINK_REGEX);
@@ -158,14 +158,14 @@ function getNextGitHubReleasePage(
   if (!URL.canParse(match[1])) {
     throw new UpgradeError(
       "network_error",
-      "GitHub returned an invalid release pagination URL"
+      "GitHub returned an invalid release pagination URL",
     );
   }
   const url = new URL(match[1]);
   const isSelectedSourcePath =
     url.pathname === `/repos/${source.githubRepo}/releases`;
   const isCanonicalRepositoryPath = CANONICAL_RELEASES_PATH_REGEX.test(
-    url.pathname
+    url.pathname,
   );
   const page = url.searchParams.get("page");
   if (
@@ -177,7 +177,7 @@ function getNextGitHubReleasePage(
   ) {
     throw new UpgradeError(
       "network_error",
-      "GitHub returned an invalid release pagination URL"
+      "GitHub returned an invalid release pagination URL",
     );
   }
   const nextPage = new URL(getGitHubLatestReleaseUrl(source));
@@ -195,7 +195,7 @@ function getNextGitHubReleasePage(
  */
 export function buildKnownCurlPaths(
   homeDir: string,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): string[] {
   const paths = KNOWN_CURL_DIRS.map((dir) => join(homeDir, dir) + sep);
   // Honor an absolute XDG_BIN_HOME, matching determineInstallDir's precedence.
@@ -266,7 +266,7 @@ export function getCurlInstallPaths(): {
   // Fallback to default path (for fresh installs or non-curl runs like tests)
   const defaultPath = join(
     determineInstallDir(homedir(), process.env),
-    getBinaryFilename()
+    getBinaryFilename(),
   );
   return getBinaryPaths(defaultPath);
 }
@@ -295,7 +295,7 @@ export function startCleanupOldBinary(): void {
  */
 function runCommand(
   command: string,
-  args: string[]
+  args: string[],
 ): Promise<{ stdout: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
@@ -327,7 +327,7 @@ function runCommand(
  * @returns true if sentry is installed globally via this package manager
  */
 async function isInstalledWith(pm: PackageManager): Promise<boolean> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const args =
       pm === "yarn"
@@ -340,27 +340,6 @@ async function isInstalledWith(pm: PackageManager): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Detect if the CLI binary is running from a Homebrew Cellar.
- *
- * Homebrew places the real binary deep in the Cellar
- * (e.g. `/opt/homebrew/Cellar/sentry/1.2.3/bin/sentry`) and exposes it
- * via a symlink at the prefix bin dir (e.g. `/opt/homebrew/bin/sentry`).
- * `process.execPath` typically reflects the symlink, not the realpath, so
- * we resolve symlinks first before checking for `/Cellar/`. Falls back to
- * the unresolved path if `realpathSync` throws (e.g. binary was deleted).
- */
-function isHomebrewInstall(): boolean {
-  let execPath = process.execPath;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    execPath = realpathSync(execPath);
-  } catch {
-    // Binary may have been deleted or moved; use the original path
-  }
-  return execPath.includes("/Cellar/");
 }
 
 /**
@@ -496,7 +475,7 @@ export async function detectInstallationMethod(): Promise<InstallationMethod> {
  */
 export async function fetchLatestFromGitHubWithSource(
   signal?: AbortSignal,
-  sources: readonly UpgradeSource[] = UPGRADE_SOURCES
+  sources: readonly UpgradeSource[] = UPGRADE_SOURCES,
 ): Promise<ResolvedUpgradeVersion> {
   const resolved = await resolveUpgradeSource({
     getProbeUrl: getGitHubLatestReleaseUrl,
@@ -510,7 +489,7 @@ export async function fetchLatestFromGitHubWithSource(
     const data = await parseUpgradeJson(
       response,
       signal,
-      "GitHub returned invalid release metadata"
+      "GitHub returned invalid release metadata",
     );
     versions.push(...extractReleaseVersions(data, resolved.source));
     const nextPage = getNextGitHubReleasePage(response, resolved.source);
@@ -519,7 +498,7 @@ export async function fetchLatestFromGitHubWithSource(
       if (!version) {
         throw new UpgradeError(
           "network_error",
-          "No version found in GitHub release"
+          "No version found in GitHub release",
         );
       }
       return { version, source: resolved.source };
@@ -527,19 +506,19 @@ export async function fetchLatestFromGitHubWithSource(
     if (visitedPages.has(nextPage)) {
       throw new UpgradeError(
         "network_error",
-        "GitHub returned cyclic release pagination"
+        "GitHub returned cyclic release pagination",
       );
     }
     visitedPages.add(nextPage);
     response = await fetchWithUpgradeError(
       nextPage,
       { headers: getGitHubHeaders(), signal },
-      "GitHub"
+      "GitHub",
     );
     if (!response.ok) {
       throw new UpgradeError(
         "network_error",
-        `Failed to fetch from GitHub: HTTP ${response.status}`
+        `Failed to fetch from GitHub: HTTP ${response.status}`,
       );
     }
   }
@@ -548,12 +527,12 @@ export async function fetchLatestFromGitHubWithSource(
 /** Fetch the latest standalone CLI version from the ordered GitHub sources. */
 export async function fetchLatestFromGitHub(
   signal?: AbortSignal,
-  source?: UpgradeSource
+  source?: UpgradeSource,
 ): Promise<string> {
   return (
     await fetchLatestFromGitHubWithSource(
       signal,
-      source ? [source] : UPGRADE_SOURCES
+      source ? [source] : UPGRADE_SOURCES,
     )
   ).version;
 }
@@ -568,20 +547,20 @@ export async function fetchLatestFromNpm(): Promise<string> {
   const response = await fetchWithUpgradeError(
     `${NPM_REGISTRY_URL}/latest`,
     { headers: { Accept: "application/json" } },
-    "npm registry"
+    "npm registry",
   );
 
   if (!response.ok) {
     throw new UpgradeError(
       "network_error",
-      `Failed to fetch from npm: ${response.status}`
+      `Failed to fetch from npm: ${response.status}`,
     );
   }
 
   const data = await parseUpgradeJson(
     response,
     undefined,
-    "npm registry returned invalid metadata"
+    "npm registry returned invalid metadata",
   );
   if (
     typeof data !== "object" ||
@@ -592,7 +571,7 @@ export async function fetchLatestFromNpm(): Promise<string> {
   ) {
     throw new UpgradeError(
       "network_error",
-      "npm registry returned invalid metadata"
+      "npm registry returned invalid metadata",
     );
   }
 
@@ -601,7 +580,7 @@ export async function fetchLatestFromNpm(): Promise<string> {
 
 function validateStableVersion(
   version: string | undefined,
-  source: string
+  source: string,
 ): string {
   if (!version) {
     throw new UpgradeError("network_error", `No version found in ${source}`);
@@ -609,7 +588,7 @@ function validateStableVersion(
   if (semverValid(version) !== version || semverPrerelease(version) !== null) {
     throw new UpgradeError(
       "network_error",
-      `${source} returned an invalid stable version`
+      `${source} returned an invalid stable version`,
     );
   }
   return version;
@@ -628,7 +607,7 @@ function validateStableVersion(
  */
 export async function fetchLatestNightlyVersionWithSource(
   signal?: AbortSignal,
-  sources: readonly UpgradeSource[] = UPGRADE_SOURCES
+  sources: readonly UpgradeSource[] = UPGRADE_SOURCES,
 ): Promise<ResolvedUpgradeVersion> {
   if (signal?.aborted) {
     throw signal.reason;
@@ -643,7 +622,7 @@ export async function fetchLatestNightlyVersionWithSource(
 async function resolveNightlyManifest(
   tag: string,
   signal: AbortSignal | undefined,
-  sources: readonly UpgradeSource[]
+  sources: readonly UpgradeSource[],
 ): Promise<{ source: UpgradeSource; manifest: OciManifest }> {
   for (const source of sources) {
     try {
@@ -675,12 +654,12 @@ async function resolveNightlyManifest(
 /** Fetch the latest nightly version from the ordered release sources. */
 export async function fetchLatestNightlyVersion(
   signal?: AbortSignal,
-  source?: UpgradeSource
+  source?: UpgradeSource,
 ): Promise<string> {
   return (
     await fetchLatestNightlyVersionWithSource(
       signal,
-      source ? [source] : UPGRADE_SOURCES
+      source ? [source] : UPGRADE_SOURCES,
     )
   ).version;
 }
@@ -699,7 +678,7 @@ export async function fetchLatestNightlyVersion(
  */
 export function fetchLatestVersion(
   method: InstallationMethod,
-  channel: ReleaseChannel = "stable"
+  channel: ReleaseChannel = "stable",
 ): Promise<string> {
   if (channel === "nightly") {
     return fetchLatestNightlyVersion();
@@ -712,7 +691,7 @@ export function fetchLatestVersion(
 /** Resolve the latest version and selected source for a standalone upgrade. */
 export function resolveLatestUpgradeVersion(
   channel: ReleaseChannel,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<ResolvedUpgradeVersion> {
   return channel === "nightly"
     ? fetchLatestNightlyVersionWithSource(signal)
@@ -721,13 +700,13 @@ export function resolveLatestUpgradeVersion(
 
 function validateNightlyManifestVersion(
   manifest: OciManifest,
-  expectedVersion: string
+  expectedVersion: string,
 ): void {
   const manifestVersion = getNightlyVersion(manifest);
   if (manifestVersion !== expectedVersion) {
     throw new UpgradeError(
       "network_error",
-      `Nightly manifest version ${manifestVersion} does not match requested version ${expectedVersion}`
+      `Nightly manifest version ${manifestVersion} does not match requested version ${expectedVersion}`,
     );
   }
 }
@@ -735,12 +714,12 @@ function validateNightlyManifestVersion(
 async function validatePinnedGitHubRelease(
   response: Response,
   version: string,
-  source: UpgradeSource
+  source: UpgradeSource,
 ): Promise<void> {
   const release = await parseUpgradeJson(
     response,
     undefined,
-    `GitHub returned invalid metadata for version ${version}`
+    `GitHub returned invalid metadata for version ${version}`,
   );
   const expectedTag = `${source.tagPrefix}${version}`;
   if (
@@ -753,21 +732,21 @@ async function validatePinnedGitHubRelease(
   ) {
     throw new UpgradeError(
       "network_error",
-      `GitHub returned invalid metadata for version ${version}`
+      `GitHub returned invalid metadata for version ${version}`,
     );
   }
 }
 
 /** Resolve and validate a pinned standalone version against ordered sources. */
 export async function resolveExistingUpgradeVersion(
-  version: string
+  version: string,
 ): Promise<ResolvedUpgradeVersion | null> {
   try {
     if (isNightlyVersion(version)) {
       const resolved = await resolveNightlyManifest(
         `nightly-${version}`,
         undefined,
-        UPGRADE_SOURCES
+        UPGRADE_SOURCES,
       );
       validateNightlyManifestVersion(resolved.manifest, version);
       return { version, source: resolved.source };
@@ -779,7 +758,7 @@ export async function resolveExistingUpgradeVersion(
     await validatePinnedGitHubRelease(
       selected.response,
       version,
-      selected.source
+      selected.source,
     );
     return { version, source: selected.source };
   } catch (error) {
@@ -804,7 +783,7 @@ export async function resolveExistingUpgradeVersion(
  */
 async function nightlyVersionExists(
   version: string,
-  source: UpgradeSource
+  source: UpgradeSource,
 ): Promise<boolean> {
   const token = await getAnonymousToken(source);
   try {
@@ -812,7 +791,7 @@ async function nightlyVersionExists(
       token,
       `nightly-${version}`,
       undefined,
-      source
+      source,
     );
     validateNightlyManifestVersion(manifest, version);
     return true;
@@ -826,19 +805,19 @@ async function nightlyVersionExists(
 
 async function standaloneVersionExists(
   version: string,
-  source?: UpgradeSource
+  source?: UpgradeSource,
 ): Promise<boolean> {
   if (!isNightlyVersion(version)) {
     validateStableVersion(version, "Requested standalone version");
   }
   if (source) {
     if (isNightlyVersion(version)) {
-      return nightlyVersionExists(version, source);
+      return await nightlyVersionExists(version, source);
     }
     const response = await fetchWithUpgradeError(
       getGitHubReleaseByTagUrl(version, source),
       { headers: getGitHubHeaders() },
-      "GitHub"
+      "GitHub",
     );
     if (response.ok) {
       await validatePinnedGitHubRelease(response, version, source);
@@ -849,7 +828,7 @@ async function standaloneVersionExists(
     }
     throw new UpgradeError(
       "network_error",
-      `Failed to fetch from GitHub: HTTP ${response.status}`
+      `Failed to fetch from GitHub: HTTP ${response.status}`,
     );
   }
   const resolved = await resolveExistingUpgradeVersion(version);
@@ -871,10 +850,10 @@ async function standaloneVersionExists(
 export async function versionExists(
   method: InstallationMethod,
   version: string,
-  source?: UpgradeSource
+  source?: UpgradeSource,
 ): Promise<boolean> {
   if (isNightlyVersion(version) || method === "curl" || method === "brew") {
-    return standaloneVersionExists(version, source);
+    return await standaloneVersionExists(version, source);
   }
 
   validateStableVersion(version, "Requested package version");
@@ -882,7 +861,7 @@ export async function versionExists(
   const response = await fetchWithUpgradeError(
     `${NPM_REGISTRY_URL}/${version}`,
     { method: "HEAD" },
-    "npm registry"
+    "npm registry",
   );
   if (response.ok) {
     return true;
@@ -892,7 +871,7 @@ export async function versionExists(
   }
   throw new UpgradeError(
     "network_error",
-    `Failed to fetch from npm: ${response.status}`
+    `Failed to fetch from npm: ${response.status}`,
   );
 }
 
@@ -922,7 +901,7 @@ function writeChunkSync(fd: number, chunk: Uint8Array): void {
     const n = writeSync(fd, chunk, written, chunk.byteLength - written);
     if (n <= 0) {
       throw new Error(
-        `writeSync returned ${n} for chunk of ${chunk.byteLength - written} bytes`
+        `writeSync returned ${n} for chunk of ${chunk.byteLength - written} bytes`,
       );
     }
     written += n;
@@ -938,13 +917,13 @@ function writeChunkSync(fd: number, chunk: Uint8Array): void {
 async function drainBodyToFd(
   body: ReadableStream<Uint8Array>,
   fd: number,
-  onBytes: (n: number) => void
+  onBytes: (n: number) => void,
 ): Promise<{ streamError: unknown; writeError: Error | undefined }> {
   let writeError: Error | undefined;
   let streamError: unknown;
   try {
     for await (const chunk of body.pipeThrough(
-      new DecompressionStream("gzip")
+      new DecompressionStream("gzip"),
     )) {
       if (writeError) {
         break;
@@ -984,7 +963,7 @@ async function drainBodyToFd(
 async function streamDecompressToFile(
   body: ReadableStream<Uint8Array>,
   destPath: string,
-  setMessage?: SetMessage
+  setMessage?: SetMessage,
 ): Promise<void> {
   // Indeterminate byte counter: the decompressed size isn't known ahead of
   // time (Content-Length covers only the compressed stream), so we show a live
@@ -996,7 +975,7 @@ async function streamDecompressToFile(
   // Drain the body to the fd. Awaited so we know before closeSync whether
   // the drain terminated with an error.
   const { streamError, writeError } = await drainBodyToFd(body, fd, (n) =>
-    progress.onProgress(n)
+    progress.onProgress(n),
   );
   progress.done();
 
@@ -1051,7 +1030,7 @@ async function downloadNightlyToPath(
   destPath: string,
   version?: string,
   setMessage?: SetMessage,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<void> {
   const token = await getAnonymousToken(source);
   const manifest = version
@@ -1066,13 +1045,13 @@ async function downloadNightlyToPath(
     token,
     layer.digest,
     undefined,
-    source
+    source,
   );
 
   if (!response.body) {
     throw new UpgradeError(
       "execution_failed",
-      "GHCR blob response had no body"
+      "GHCR blob response had no body",
     );
   }
   await streamDecompressToFile(response.body, destPath, setMessage);
@@ -1093,18 +1072,18 @@ async function downloadStableToPath(
   version: string,
   destPath: string,
   setMessage?: SetMessage,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<void> {
   const url = getBinaryDownloadUrl(version, source);
   const headers = getGitHubHeaders();
 
   // Try gzip-compressed download first (~60% smaller)
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const gzResponse = await fetchWithUpgradeError(
       `${url}.gz`,
       { headers },
-      "GitHub"
+      "GitHub",
     );
     if (gzResponse.ok && gzResponse.body) {
       await streamDecompressToFile(gzResponse.body, destPath, setMessage);
@@ -1120,7 +1099,7 @@ async function downloadStableToPath(
   if (!response.ok) {
     throw new UpgradeError(
       "execution_failed",
-      `Failed to download binary: HTTP ${response.status}`
+      `Failed to download binary: HTTP ${response.status}`,
     );
   }
 
@@ -1194,14 +1173,14 @@ async function waitForBinaryVisible(path: string): Promise<number> {
     }
     const delay = VERIFY_BASE_DELAY_MS * 2 ** (attempt - 1);
     log.debug(
-      `Downloaded binary not yet visible at ${path}, retrying in ${delay}ms (attempt ${attempt}/${VERIFY_MAX_ATTEMPTS})`
+      `Downloaded binary not yet visible at ${path}, retrying in ${delay}ms (attempt ${attempt}/${VERIFY_MAX_ATTEMPTS})`,
     );
     await setTimeout(delay);
   }
   throw new UpgradeError(
     "execution_failed",
     `Downloaded binary is missing or empty at ${path}. ` +
-      "This is usually transient — rerun `sentry cli upgrade` to retry."
+      "This is usually transient — rerun `sentry cli upgrade` to retry.",
   );
 }
 
@@ -1231,13 +1210,12 @@ async function waitForBinaryVisible(path: string): Promise<number> {
  * @returns The downloaded binary path and lock path to release
  * @throws {UpgradeError} When download fails
  */
-// biome-ignore lint/nursery/useMaxParams: compatibility API; source preserves one selected repository across the download.
 export async function downloadBinaryToTemp(
   version: string,
   downloadTag?: string,
   offline?: OfflineMode,
   setMessage?: SetMessage,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<DownloadResult> {
   const { tempPath, lockPath } = getCurlInstallPaths();
 
@@ -1245,7 +1223,7 @@ export async function downloadBinaryToTemp(
 
   try {
     // Clean up any leftover temp file from interrupted download
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       unlinkSync(tempPath);
     } catch {
@@ -1259,7 +1237,7 @@ export async function downloadBinaryToTemp(
       tempPath,
       !!offline,
       setMessage,
-      source
+      source,
     );
     let patchBytes: number | undefined;
     if (deltaResult) {
@@ -1271,7 +1249,7 @@ export async function downloadBinaryToTemp(
           ? `Cannot upgrade to ${version} in offline mode — no pre-downloaded update is available. ` +
               "Run `sentry cli upgrade` without `--offline` to download the update directly."
           : `Cannot upgrade to ${version} — the network is unavailable and no pre-downloaded update was found. ` +
-              "Check your internet connection and try again."
+              "Check your internet connection and try again.",
       );
     } else {
       log.debug("Downloading full binary");
@@ -1280,7 +1258,7 @@ export async function downloadBinaryToTemp(
         downloadTag,
         tempPath,
         setMessage,
-        source
+        source,
       );
     }
 
@@ -1296,7 +1274,7 @@ export async function downloadBinaryToTemp(
 
     // Clear consumed patch cache — patches for the old version are useless
     // after the binary has been updated (whether via delta or full download).
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     clearPatchCache().catch(() => {
       /* best-effort — don't fail the upgrade if cache cleanup fails */
     });
@@ -1323,13 +1301,12 @@ export async function downloadBinaryToTemp(
  * @param destPath - Path to write the patched binary
  * @returns Delta result with SHA-256 and size info, or null if delta is unavailable
  */
-// biome-ignore lint/nursery/useMaxParams: mirrors the established download helper while forwarding source affinity.
 async function tryDeltaUpgrade(
   version: string,
   destPath: string,
   offline?: boolean,
   setMessage?: SetMessage,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<DeltaResult | null> {
   return await attemptDeltaUpgrade(
     version,
@@ -1337,7 +1314,7 @@ async function tryDeltaUpgrade(
     destPath,
     offline,
     setMessage,
-    source
+    source,
   );
 }
 
@@ -1348,13 +1325,12 @@ async function tryDeltaUpgrade(
  * @param downloadTag - Git tag override for the download URL
  * @param destPath - Path to write the binary
  */
-// biome-ignore lint/nursery/useMaxParams: internal dispatch retains the established download arguments plus source affinity.
 async function downloadFullBinary(
   version: string,
   downloadTag: string | undefined,
   destPath: string,
   setMessage?: SetMessage,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<void> {
   if (isNightlyVersion(version)) {
     await downloadNightlyToPath(destPath, version, setMessage, source);
@@ -1363,7 +1339,7 @@ async function downloadFullBinary(
       downloadTag ?? version,
       destPath,
       setMessage,
-      source
+      source,
     );
   }
 }
@@ -1392,15 +1368,15 @@ function executeUpgradeHomebrew(): Promise<void> {
         reject(
           new UpgradeError(
             "execution_failed",
-            `brew upgrade failed with exit code ${code}`
-          )
+            `brew upgrade failed with exit code ${code}`,
+          ),
         );
       }
     });
 
     proc.on("error", (err) => {
       reject(
-        new UpgradeError("execution_failed", `brew failed: ${err.message}`)
+        new UpgradeError("execution_failed", `brew failed: ${err.message}`),
       );
     });
   });
@@ -1415,7 +1391,7 @@ function executeUpgradeHomebrew(): Promise<void> {
  */
 function executeUpgradePackageManager(
   pm: PackageManager,
-  version: string
+  version: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const args =
@@ -1437,15 +1413,15 @@ function executeUpgradePackageManager(
         reject(
           new UpgradeError(
             "execution_failed",
-            `${pm} install failed with exit code ${code}`
-          )
+            `${pm} install failed with exit code ${code}`,
+          ),
         );
       }
     });
 
     proc.on("error", (err) => {
       reject(
-        new UpgradeError("execution_failed", `${pm} failed: ${err.message}`)
+        new UpgradeError("execution_failed", `${pm} failed: ${err.message}`),
       );
     });
   });
@@ -1469,23 +1445,23 @@ function executeUpgradePackageManager(
  * @returns Download result with paths (curl), or null (package manager)
  * @throws {UpgradeError} When method is unknown or installation fails
  */
-// biome-ignore lint/nursery/useMaxParams: established 4-param shape; setMessage is a defaulted spinner-progress extension
+// oxlint-disable-next-line max-params -- established 4-param shape; setMessage is a defaulted spinner-progress extension
 export async function executeUpgrade(
   method: InstallationMethod,
   version: string,
   downloadTag?: string,
   offline?: OfflineMode,
   setMessage?: SetMessage,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<DownloadResult | null> {
   switch (method) {
     case "curl":
-      return downloadBinaryToTemp(
+      return await downloadBinaryToTemp(
         version,
         downloadTag,
         offline,
         setMessage,
-        source
+        source,
       );
     case "brew":
       await executeUpgradeHomebrew();

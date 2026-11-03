@@ -38,7 +38,9 @@ describe("homepage-content", () => {
     });
 
     it("escapes HTML in generated content", () => {
-      const html = generateHomepageFallbackHtml('https://example.com/"onload="');
+      const html = generateHomepageFallbackHtml(
+        'https://example.com/"onload="',
+      );
       expect(html).toContain("&quot;");
       expect(html).not.toContain('onload="');
     });

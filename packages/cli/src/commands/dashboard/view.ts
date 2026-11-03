@@ -7,9 +7,9 @@
 
 import type { SentryContext } from "../../context.js";
 import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { textParser } from "../../lib/completion-target.js";
 import type { DashboardViewData } from "../../lib/formatters/dashboard.js";
 import { createDashboardViewRenderer } from "../../lib/formatters/dashboard.js";
 import { ClearScreen, CommandOutput } from "../../lib/formatters/output.js";
@@ -21,7 +21,7 @@ import {
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
 import { resolveOrgRegion } from "../../lib/region.js";
-import { buildDashboardUrl } from "../../lib/sentry-urls.js";
+import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { GraphicsRendererPreference } from "../../lib/sixel.js";
 import {
   formatTimeRangeFlag,
@@ -31,16 +31,13 @@ import {
   type TimeRange,
   timeRangeToSeconds,
 } from "../../lib/time-range.js";
-import type {
-  DashboardWidget,
-  WidgetDataResult,
-} from "../../types/dashboard.js";
 import {
-  enrichDashboardError,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+  DashboardViewOutputSchema,
+  type DashboardWidget,
+  type WidgetDataResult,
+} from "../../types/dashboard.js";
+import { type DashboardArguments, dashboardArguments } from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
 
 /** Default auto-refresh interval in seconds */
 const DEFAULT_REFRESH_INTERVAL = 60;
@@ -70,7 +67,7 @@ function parseRefresh(value: string): number {
   const num = Number.parseInt(value, 10);
   if (Number.isNaN(num) || num < MIN_REFRESH_INTERVAL) {
     throw new Error(
-      `--refresh interval must be at least ${MIN_REFRESH_INTERVAL} seconds`
+      `--refresh interval must be at least ${MIN_REFRESH_INTERVAL} seconds`,
     );
   }
   return num;
@@ -115,7 +112,7 @@ function buildViewData(
     rendererPreference: GraphicsRendererPreference;
     graphicsCap: boolean;
     url: string;
-  }
+  },
 ): DashboardViewData {
   return {
     id: dashboard.id,
@@ -152,7 +149,7 @@ function buildViewData(
  */
 function resolveViewTimeRange(
   flagPeriod: TimeRange | undefined,
-  dashboardPeriod: string | null | undefined
+  dashboardPeriod: string | null | undefined,
 ): TimeRange {
   if (flagPeriod) {
     return flagPeriod;
@@ -167,33 +164,61 @@ export const viewCommand = buildCommand({
       "View a Sentry dashboard with rendered widget data.\n\n" +
       "Fetches actual data for each widget and displays sparkline charts,\n" +
       "tables, and big numbers in the terminal.\n\n" +
-      "The dashboard can be specified by numeric ID or title.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard view 12345\n" +
-      "  sentry dashboard view 'My Dashboard'\n" +
-      "  sentry dashboard view my-org 12345\n" +
-      "  sentry dashboard view my-org 'My Dashboard'\n" +
-      "  sentry dashboard view my-org/my-project 12345\n" +
-      "  sentry dashboard view 12345 --json\n" +
-      "  sentry dashboard view 12345 --period 7d\n" +
-      "  sentry dashboard view 12345 --renderer sixel\n" +
-      "  sentry dashboard view 12345 -r\n" +
-      "  sentry dashboard view 12345 -r 30\n" +
-      "  sentry dashboard view 12345 --web",
+      "The dashboard can be specified by numeric ID or title.",
+    examples: [
+      {
+        description: "View a dashboard by title",
+        command: "sentry dashboard view 'Frontend Performance'",
+      },
+      {
+        description: "View a dashboard by ID",
+        command: "sentry dashboard view 12345",
+      },
+      {
+        description: "View by ID in an explicit organization",
+        command: "sentry dashboard view my-org/12345",
+      },
+      {
+        description: "Include project context in the same argument",
+        command: "sentry dashboard view my-org/my-project/12345",
+      },
+      {
+        description:
+          "Pass the organization separately, e.g. for titles that contain a slash",
+        command: 'sentry dashboard view my-org/ "incidents/2026"',
+      },
+      {
+        description: "Override the time period",
+        command: "sentry dashboard view 12345 --period 7d",
+      },
+      {
+        description: "Render charts with sixel graphics",
+        command: "sentry dashboard view 12345 --renderer sixel",
+      },
+      {
+        description: "Auto-refresh every 30 seconds",
+        command: "sentry dashboard view 'Backend Performance' --refresh 30",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry dashboard view 12345 --json",
+      },
+      {
+        description: "Open in the browser",
+        command: "sentry dashboard view 12345 -w",
+      },
+    ],
   },
   output: {
     human: createDashboardViewRenderer,
     jsonExclude: ["rendererPreference", "graphicsCap"],
+    schema: DashboardViewOutputSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/project/dashboard",
+      usageHint: "sentry dashboard view <org>/ <id>",
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -203,7 +228,7 @@ export const viewCommand = buildCommand({
       fresh: FRESH_FLAG,
       refresh: {
         kind: "parsed",
-        parse: parseRefresh,
+        parse: textParser(parseRefresh),
         brief: "Auto-refresh interval in seconds (default: 60, min: 10)",
         optional: true,
         inferEmpty: true,
@@ -217,8 +242,7 @@ export const viewCommand = buildCommand({
       renderer: {
         kind: "enum",
         values: ["auto", "kitty", "sixel"],
-        brief:
-          "Graphics renderer (defaults to auto; falls back to auto when unavailable)",
+        brief: "Graphics renderer (falls back to auto when unavailable)",
         default: "auto",
       },
       "no-graphics-cap": {
@@ -235,18 +259,13 @@ export const viewCommand = buildCommand({
       t: "period",
     },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: DashboardArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard view <org>/ <id>"
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+    const { orgSlug, dashboardId } = await target.resolved;
     const url = buildDashboardUrl(orgSlug, dashboardId);
 
     if (flags.web) {
@@ -255,15 +274,17 @@ export const viewCommand = buildCommand({
     }
 
     // Fetch the dashboard definition (widget structure)
-    const dashboard = await withProgress(
-      { message: "Fetching dashboard...", json: flags.json },
-      () => getDashboard(orgSlug, dashboardId)
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const dashboard = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "view",
-      })
+      },
+      () =>
+        withProgress(
+          { message: "Fetching dashboard...", json: flags.json },
+          () => getDashboard(orgSlug, dashboardId),
+        ),
     );
 
     const regionUrl = await resolveOrgRegion(orgSlug);
@@ -281,7 +302,7 @@ export const viewCommand = buildCommand({
       const interval = flags.refresh;
       if (!flags.json) {
         logger.info(
-          `Auto-refreshing dashboard every ${interval}s. Press Ctrl+C to stop.`
+          `Auto-refreshing dashboard every ${interval}s. Press Ctrl+C to stop.`,
         );
       }
 
@@ -304,7 +325,7 @@ export const viewCommand = buildCommand({
             regionUrl,
             orgSlug,
             dashboard,
-            { ...widgetTimeOpts, periodSeconds }
+            { ...widgetTimeOpts, periodSeconds },
           );
 
           // Build output data before clearing so clear→render is instantaneous
@@ -337,7 +358,7 @@ export const viewCommand = buildCommand({
         queryAllWidgets(regionUrl, orgSlug, dashboard, {
           ...widgetTimeOpts,
           periodSeconds,
-        })
+        }),
     );
 
     yield new CommandOutput(
@@ -346,7 +367,7 @@ export const viewCommand = buildCommand({
         rendererPreference: flags.renderer,
         graphicsCap: !flags["no-graphics-cap"],
         url,
-      })
+      }),
     );
     return { hint: `Dashboard: ${url}` };
   },

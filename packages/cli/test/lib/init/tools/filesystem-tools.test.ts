@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-// biome-ignore lint/performance/noNamespaceImport: spyOn requires object reference
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- spyOn requires object reference
 import * as dsnIndex from "../../../../src/lib/dsn/index.js";
 import { executeTool } from "../../../../src/lib/init/tools/registry.js";
 import type {
@@ -52,7 +52,7 @@ describe("filesystem tools", () => {
 
   test("rejects an external cwd symlink for every filesystem and shell tool", async () => {
     const outsideDir = fs.mkdtempSync(
-      path.join(path.dirname(testDir), "init-tools-outside-")
+      path.join(path.dirname(testDir), "init-tools-outside-"),
     );
     const escapedCwd = path.join(testDir, "escape");
     fs.writeFileSync(path.join(outsideDir, "sentinel.txt"), "OUTSIDE\n");
@@ -115,11 +115,11 @@ describe("filesystem tools", () => {
         const result = await executeTool(payload, makeContext(testDir));
         expect(result.ok, payload.operation).toBe(false);
         expect(result.error, payload.operation).toContain(
-          "outside project directory"
+          "outside project directory",
         );
       }
       expect(fs.existsSync(path.join(outsideDir, "created-by-tool.txt"))).toBe(
-        false
+        false,
       );
     } finally {
       fs.rmSync(outsideDir, { recursive: true, force: true });
@@ -130,12 +130,12 @@ describe("filesystem tools", () => {
     fs.mkdirSync(path.join(testDir, "real", "nested"), { recursive: true });
     fs.writeFileSync(
       path.join(testDir, "real", "nested", "inside.txt"),
-      "inside\n"
+      "inside\n",
     );
     fs.symlinkSync(
       path.join(testDir, "real"),
       path.join(testDir, "alias"),
-      "dir"
+      "dir",
     );
 
     const result = await executeTool(
@@ -145,7 +145,7 @@ describe("filesystem tools", () => {
         cwd: path.join(testDir, "alias"),
         params: { paths: ["nested/inside.txt"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.data).toEqual({
@@ -172,7 +172,7 @@ describe("filesystem tools", () => {
             cwd,
             params: { path: "." },
           },
-          makeContext(testDir)
+          makeContext(testDir),
         );
         expect(result.ok, cwd).toBe(false);
         expect(result.error, cwd).toContain("outside project directory");
@@ -187,7 +187,7 @@ describe("filesystem tools", () => {
     fs.mkdirSync(path.join(testDir, "src"));
     fs.writeFileSync(
       path.join(testDir, "src", "app.ts"),
-      "console.log('x');\n"
+      "console.log('x');\n",
     );
 
     const result = await executeTool(
@@ -197,7 +197,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { path: ".", recursive: true, maxDepth: 3 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const entries = (result.data as { entries: Array<{ path: string }> })
       .entries;
@@ -224,7 +224,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { path: ".", recursive: true, maxDepth: 0, maxEntries: 100 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const byEntries = await executeTool(
       {
@@ -233,7 +233,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { path: ".", recursive: true, maxDepth: 10, maxEntries: 1 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(byDepth.data).toMatchObject({ truncated: true });
@@ -254,7 +254,7 @@ describe("filesystem tools", () => {
           cwd: testDir,
           params: { path: ".", recursive: true },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
       expect(result).toMatchObject({
@@ -283,7 +283,7 @@ describe("filesystem tools", () => {
             cwd: testDir,
             params: { path: "." },
           },
-          makeContext(testDir)
+          makeContext(testDir),
         );
         const entry = (
           result.data as { entries: Record<string, unknown>[] }
@@ -304,7 +304,7 @@ describe("filesystem tools", () => {
         openSpy.mockRestore();
         readSpy.mockRestore();
       }
-    }
+    },
   );
 
   test("reads files and checks existence in batches", async () => {
@@ -320,7 +320,7 @@ describe("filesystem tools", () => {
           resultVersion: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const existsResult = await executeTool(
       {
@@ -329,7 +329,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: ["exists.txt", "missing.txt"] },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect((readResult.data as any).files["exists.txt"]).toEqual({
@@ -348,7 +348,7 @@ describe("filesystem tools", () => {
   test("returns independent bounded V2 line ranges", async () => {
     const lines = Array.from(
       { length: 8 },
-      (_, index) => `line-${index + 1}:${"x".repeat(19_990)}\n`
+      (_, index) => `line-${index + 1}:${"x".repeat(19_990)}\n`,
     );
     fs.writeFileSync(path.join(testDir, "large.txt"), lines.join(""));
 
@@ -362,7 +362,7 @@ describe("filesystem tools", () => {
           resultVersion: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const later = await executeTool(
       {
@@ -375,7 +375,7 @@ describe("filesystem tools", () => {
           startLine: 5,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(first.data).toEqual({
@@ -404,7 +404,7 @@ describe("filesystem tools", () => {
     const firstLine = `${"x".repeat(39_997)}\r\n`;
     fs.writeFileSync(
       path.join(testDir, "windows.txt"),
-      `${firstLine}second\r\n`
+      `${firstLine}second\r\n`,
     );
 
     const result = await executeTool(
@@ -417,7 +417,7 @@ describe("filesystem tools", () => {
           resultVersion: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.data).toEqual({
@@ -442,8 +442,8 @@ describe("filesystem tools", () => {
         buffer: Buffer,
         offset: number,
         length: number,
-        position: number | null
-      ) => actualHandle.read(buffer, offset, Math.min(length, 3), position)
+        position: number | null,
+      ) => actualHandle.read(buffer, offset, Math.min(length, 3), position),
     );
     const openSpy = vi.spyOn(fs.promises, "open").mockResolvedValue({
       close: vi.fn().mockResolvedValue(undefined),
@@ -463,7 +463,7 @@ describe("filesystem tools", () => {
             startLine: 2,
           },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
       expect(result.data).toEqual({
@@ -491,7 +491,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: undefined,
       } as unknown as ToolPayload,
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result).toEqual({
@@ -508,7 +508,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: ["package.json"] },
       } as unknown as ToolPayload,
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result).toEqual({
@@ -524,7 +524,7 @@ describe("filesystem tools", () => {
     fs.mkdirSync(path.join(testDir, "posix"));
     fs.writeFileSync(
       path.join(testDir, "dir with spaces", "nested dir", "file name.ts"),
-      "mixed separators\n"
+      "mixed separators\n",
     );
     fs.writeFileSync(path.join(testDir, "posix", "file.ts"), "posix path\n");
 
@@ -538,7 +538,7 @@ describe("filesystem tools", () => {
           resultVersion: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.data).toEqual({
@@ -597,7 +597,7 @@ describe("filesystem tools", () => {
             cwd: testDir,
             params: { paths: [filePath], resultVersion: 2 },
           },
-          makeContext(testDir)
+          makeContext(testDir),
         );
 
         expect(result, filePath).toEqual({
@@ -623,7 +623,7 @@ describe("filesystem tools", () => {
           resultVersion: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result).toEqual({
@@ -636,12 +636,12 @@ describe("filesystem tools", () => {
     fs.writeFileSync(path.join(testDir, ".env.local"), "SECRET=value\n");
     fs.writeFileSync(
       path.join(testDir, ".netrc"),
-      "machine example.test login user password secret\n"
+      "machine example.test login user password secret\n",
     );
     fs.writeFileSync(path.join(testDir, ".pypirc"), "token=secret\n");
     fs.writeFileSync(
       path.join(testDir, ".npmrc"),
-      "//registry/:_authToken=secret\n"
+      "//registry/:_authToken=secret\n",
     );
     fs.writeFileSync(path.join(testDir, "binary.txt"), Buffer.from([0, 1, 2]));
 
@@ -652,7 +652,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: [".env.local"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const binary = await executeTool(
       {
@@ -661,7 +661,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: ["binary.txt"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const packageMetadata = await executeTool(
       {
@@ -670,7 +670,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: [".pypirc"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const netrc = await executeTool(
       {
@@ -679,7 +679,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: [".netrc"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const npmConfig = await executeTool(
       {
@@ -688,7 +688,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: [".npmrc"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     expect(environment.data).toEqual({
       files: {
@@ -739,7 +739,7 @@ describe("filesystem tools", () => {
   test("rejects aliases to sensitive files", async () => {
     fs.writeFileSync(
       path.join(testDir, ".netrc"),
-      "machine example.test login user password secret\n"
+      "machine example.test login user password secret\n",
     );
     fs.symlinkSync(".netrc", path.join(testDir, "credentials.txt"));
     fs.symlinkSync(".netrc", path.join(testDir, ".pypirc"));
@@ -751,7 +751,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: ["credentials.txt"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const sensitiveNameAlias = await executeTool(
       {
@@ -760,7 +760,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: [".pypirc"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(alias.data).toEqual({
@@ -790,7 +790,7 @@ describe("filesystem tools", () => {
           cwd: testDir,
           params: { paths: ["inside.txt"], resultVersion: 2 },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
       expect(result.data).toEqual({
@@ -806,7 +806,7 @@ describe("filesystem tools", () => {
   test("finds later lines without exposing a cursor protocol", async () => {
     fs.writeFileSync(
       path.join(testDir, "deep.txt"),
-      `${"x".repeat(270_000)}\ntarget\n`
+      `${"x".repeat(270_000)}\ntarget\n`,
     );
 
     const result = await executeTool(
@@ -820,7 +820,7 @@ describe("filesystem tools", () => {
           startLine: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.data).toEqual({
@@ -848,7 +848,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths, resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const overLimit = await executeTool(
       {
@@ -860,7 +860,7 @@ describe("filesystem tools", () => {
           resultVersion: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const files = (
       result.data as {
@@ -872,8 +872,8 @@ describe("filesystem tools", () => {
     expect(
       Object.values(files).reduce(
         (total, file) => total + Buffer.byteLength(file.content),
-        0
-      )
+        0,
+      ),
     ).toBe(40_000);
     expect(Object.values(files).every((file) => file.truncated)).toBe(true);
     expect(overLimit).toEqual({
@@ -894,7 +894,7 @@ describe("filesystem tools", () => {
           startLine: 2,
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result).toEqual({
@@ -914,7 +914,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { paths: ["many-lines.txt"], resultVersion: 2 },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.data).toEqual({
@@ -937,7 +937,7 @@ describe("filesystem tools", () => {
           resultVersion: 2,
         },
       } as ToolPayload,
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result).toEqual({
@@ -957,11 +957,11 @@ describe("filesystem tools", () => {
         buffer: Buffer,
         offset: number,
         length: number,
-        position: number | null
+        position: number | null,
       ) => {
         requestedLengths.push(length);
         return actualHandle.read(buffer, offset, length, position);
-      }
+      },
     );
     const openSpy = vi.spyOn(fs.promises, "open").mockResolvedValue({
       close: vi.fn().mockResolvedValue(undefined),
@@ -981,7 +981,7 @@ describe("filesystem tools", () => {
             startLine: 2,
           },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
       expect(result.data).toEqual({
@@ -1012,17 +1012,17 @@ describe("filesystem tools", () => {
         buffer: Buffer,
         offset: number,
         length: number,
-        position: number | null
+        position: number | null,
       ) => {
         const result = await actualHandle.read(
           buffer,
           offset,
           length,
-          position
+          position,
         );
         totalBytesRead += result.bytesRead;
         return result;
-      }
+      },
     );
     const openSpy = vi.spyOn(fs.promises, "open").mockResolvedValue({
       close: vi.fn().mockResolvedValue(undefined),
@@ -1041,7 +1041,7 @@ describe("filesystem tools", () => {
             resultVersion: 2,
           },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
       expect(result.data).toEqual({
@@ -1060,11 +1060,11 @@ describe("filesystem tools", () => {
   test("rejects invalid UTF-8 and incomplete multibyte lines", async () => {
     fs.writeFileSync(
       path.join(testDir, "invalid-utf8.txt"),
-      Buffer.from([0x61, 0x62, 0x63, 0xff])
+      Buffer.from([0x61, 0x62, 0x63, 0xff]),
     );
     fs.writeFileSync(
       path.join(testDir, "multibyte.txt"),
-      `${"é".repeat(20_001)}\n`
+      `${"é".repeat(20_001)}\n`,
     );
 
     const read = (filePath: string) =>
@@ -1078,7 +1078,7 @@ describe("filesystem tools", () => {
             resultVersion: 2,
           },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
     expect((await read("invalid-utf8.txt")).data).toEqual({
@@ -1110,7 +1110,7 @@ describe("filesystem tools", () => {
           cwd: testDir,
           params: { paths: ["directory"], resultVersion: 2 },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
       expect(result.data).toEqual({
@@ -1139,12 +1139,12 @@ describe("filesystem tools", () => {
           ],
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.ok).toBe(true);
     expect(
-      fs.readFileSync(path.join(testDir, ".env.sentry-build-plugin"), "utf-8")
+      fs.readFileSync(path.join(testDir, ".env.sentry-build-plugin"), "utf-8"),
     ).toContain("sntrys_test_token_123");
   });
 
@@ -1176,12 +1176,12 @@ describe("filesystem tools", () => {
             ],
           },
         },
-        makeContext(testDir)
+        makeContext(testDir),
       );
 
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(
-        /Invalid (?:file change path|file changes request)/
+        /Invalid (?:file change path|file changes request)/,
       );
     }
   });
@@ -1192,9 +1192,9 @@ describe("filesystem tools", () => {
       path.join(
         testDir,
         "Cary.ConversionFunnels.API",
-        "Cary.ConversionFunnels.API.csproj"
+        "Cary.ConversionFunnels.API.csproj",
       ),
-      "<Project></Project>\n"
+      "<Project></Project>\n",
     );
 
     const result = await executeTool(
@@ -1223,22 +1223,22 @@ describe("filesystem tools", () => {
           ],
         },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.ok).toBe(true);
     expect(
-      fs.readFileSync(path.join(testDir, "Directory.Packages.props"), "utf-8")
+      fs.readFileSync(path.join(testDir, "Directory.Packages.props"), "utf-8"),
     ).toContain("<Project>");
     expect(
       fs.readFileSync(
         path.join(
           testDir,
           "Cary.ConversionFunnels.API",
-          "Cary.ConversionFunnels.API.csproj"
+          "Cary.ConversionFunnels.API.csproj",
         ),
-        "utf-8"
-      )
+        "utf-8",
+      ),
     ).toContain("Sentry.AspNetCore");
   });
 
@@ -1246,7 +1246,7 @@ describe("filesystem tools", () => {
     fs.mkdirSync(path.join(testDir, "src"));
     fs.writeFileSync(
       path.join(testDir, "src", "app.ts"),
-      "Sentry.captureException(error);\n"
+      "Sentry.captureException(error);\n",
     );
 
     const grepResult = await executeTool(
@@ -1256,7 +1256,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { searches: [{ pattern: "captureException" }] },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
     const globResult = await executeTool(
       {
@@ -1265,11 +1265,11 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: { patterns: ["**/*.ts"] },
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect((grepResult.data as any).results[0].matches[0].path).toBe(
-      "src/app.ts"
+      "src/app.ts",
     );
     expect((globResult.data as any).results[0].files).toContain("src/app.ts");
   });
@@ -1292,7 +1292,7 @@ describe("filesystem tools", () => {
         cwd: testDir,
         params: {},
       },
-      makeContext(testDir)
+      makeContext(testDir),
     );
 
     expect(result.ok).toBe(true);
@@ -1300,7 +1300,7 @@ describe("filesystem tools", () => {
       expect.objectContaining({
         status: "installed",
         dsn: "https://abc@o1.ingest.sentry.io/42",
-      })
+      }),
     );
   });
 });

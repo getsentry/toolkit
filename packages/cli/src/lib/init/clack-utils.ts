@@ -124,7 +124,7 @@ const FEATURE_DISPLAY_ORDER = [
 
 /** Sort features into the canonical order used by summaries and final output. */
 export function sortFeatures(features: string[]): string[] {
-  return features.slice().sort((a, b) => {
+  return [...features].sort((a, b) => {
     const ai = FEATURE_DISPLAY_ORDER.indexOf(a);
     const bi = FEATURE_DISPLAY_ORDER.indexOf(b);
     return (

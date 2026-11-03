@@ -25,7 +25,7 @@ export async function fetchDocsContent(urls: string[]): Promise<string> {
   const charBudgetPerUrl = Math.floor(6000 / urls.length);
 
   const results = await Promise.all(
-    urls.map((url) => fetchOne(url, charBudgetPerUrl))
+    urls.map((url) => fetchOne(url, charBudgetPerUrl)),
   );
   return results.join("\n\n---\n\n");
 }

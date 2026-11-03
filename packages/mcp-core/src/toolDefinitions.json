@@ -1,7 +1,7 @@
 [
   {
     "name": "add_issue_note",
-    "description": "Add a human-visible comment to a Sentry issue's activity feed.\n\nUse this tool when the user explicitly asks to leave a note/comment, or when a triage workflow needs to record a user-approved explanation.\n\n<examples>\nadd_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')\nadd_issue_note(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/', text='Resolved by deploy 1.2.3.')\n</examples>\n\n<hints>\n- This mutates visible Sentry issue state by posting a comment.\n- Do not use this for private scratch notes, secrets, credentials, or unapproved content.\n</hints>",
+    "description": "Add a comment to a Sentry issue's activity feed.\n\nUse this tool to record findings, context, or decisions on an issue.\n\n<examples>\nadd_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')\nadd_issue_note(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/', text='Resolved by deploy 1.2.3.')\n</examples>\n\n<hints>\n- This mutates visible Sentry issue state by posting a comment.\n- Do not use this for private scratch notes, secrets, credentials, or unapproved content.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -276,21 +276,7 @@
                       "type": "string"
                     },
                     "integrationId": {
-                      "anyOf": [
-                        {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "number"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "number", "null"]
                     },
                     "data": {
                       "type": "object",
@@ -364,24 +350,10 @@
               "additionalProperties": false
             },
             "environment": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "triggers": {
               "anyOf": [
@@ -389,14 +361,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string",
@@ -408,14 +373,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -445,14 +403,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "logicType": {
                         "type": "string",
@@ -464,14 +415,7 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
@@ -489,34 +433,13 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
                             },
                             "integrationId": {
-                              "anyOf": [
-                                {
-                                  "anyOf": [
-                                    {
-                                      "type": "string"
-                                    },
-                                    {
-                                      "type": "number"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
+                              "type": ["string", "number", "null"]
                             },
                             "data": {
                               "type": "object",
@@ -668,14 +591,7 @@
           "maxLength": 200
         },
         "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "owner": {
           "description": "Owner actor, e.g. team:123 or user:123. Pass null to clear.",
@@ -711,14 +627,7 @@
             },
             "environment": {
               "default": null,
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "eventTypes": {
               "type": "array",
@@ -727,14 +636,7 @@
               }
             },
             "extrapolationMode": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "timeWindowSeconds": {
               "type": "integer",
@@ -912,27 +814,13 @@
               "type": "string"
             },
             "projectId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "enabled": {
               "type": "boolean"
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "workflowIds": {
               "type": "array",
@@ -944,14 +832,7 @@
               "type": "string"
             },
             "description": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "config": {
               "type": "object",
@@ -972,14 +853,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string"
@@ -990,14 +864,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -1040,14 +907,7 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "eventTypes": {
                         "type": "array",
@@ -1056,14 +916,7 @@
                         }
                       },
                       "extrapolationMode": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "timeWindowSeconds": {
                         "type": "number"
@@ -1088,24 +941,10 @@
               }
             },
             "dateCreated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "dateUpdated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": [
@@ -1193,14 +1032,7 @@
         "repository": {
           "default": null,
           "description": "Optional repository name to link to the project (e.g. 'getsentry/sentry'). The repo must already be connected to the organization via a VCS integration.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["organizationSlug", "teamSlug", "name"]
@@ -1331,7 +1163,10 @@
               {
                 "type": "string"
               }
-            ]
+            ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2
           },
           "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
@@ -1575,6 +1410,74 @@
     "surface": "catalog"
   },
   {
+    "name": "delete_monitor_environment",
+    "description": "Delete one environment from a Sentry cron monitor.\n\nUse find_monitors or get_monitor_details to identify the monitor and exact environment name.\n\nDeletion is irreversible and completes in the background. The monitor and its other environments are preserved. An already absent environment is treated as success.\n\n<examples>\ndelete_monitor_environment(organizationSlug='my-organization', projectSlug='backend', monitorSlug='nightly-import', environment='production')\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "monitorSlug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Monitor slug or GUID."
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact environment name to delete. Preserve whitespace and casing."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "projectSlug",
+        "monitorSlug",
+        "environment"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "monitorSlug": {
+          "type": "string"
+        },
+        "projectSlug": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        }
+      },
+      "required": ["success", "monitorSlug", "projectSlug", "environment"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["project:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "delete_uptime_monitor",
     "description": "Delete a Sentry HTTP uptime monitor.\n\nUse this tool when you need to permanently remove an uptime monitor.\n\nBe careful when using this tool! Deletion cannot be undone.\n\n<examples>\ndelete_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\n</examples>",
     "inputSchema": {
@@ -1636,21 +1539,45 @@
       "type": "object",
       "properties": {
         "name": {
+          "description": "The name of the available tool to execute.",
           "type": "string",
-          "minLength": 1,
-          "description": "The name of the available tool to execute."
+          "minLength": 1
         },
         "arguments": {
-          "default": {},
           "description": "Arguments for the target tool, matching the schema returned by search_sentry_tools.",
           "type": "object",
           "propertyNames": {
             "type": "string"
           },
           "additionalProperties": {}
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "args": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
         }
-      },
-      "required": ["name"]
+      }
     },
     "requiredScopes": [],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
@@ -1726,6 +1653,10 @@
           "exclusiveMinimum": 0,
           "maximum": 100,
           "description": "Maximum number of alert rules to return per alert family."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -1745,94 +1676,31 @@
                 "type": "string"
               },
               "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "actionMatch": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "filterMatch": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "frequencyMinutes": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["number", "null"]
               },
               "environment": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateCreated": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateUpdated": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastTriggered": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "webUrl": {
                 "type": "string"
@@ -1868,14 +1736,7 @@
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "enabled": {
                 "type": "boolean"
@@ -1888,74 +1749,25 @@
                 "enum": ["enabled", "disabled"]
               },
               "dataset": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "aggregate": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "query": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "timeWindowMinutes": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["number", "null"]
               },
               "environment": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateCreated": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "webUrl": {
                 "type": "string"
@@ -1989,14 +1801,7 @@
                   "type": "object",
                   "properties": {
                     "nextCursor": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     }
                   },
                   "required": ["nextCursor"],
@@ -2013,14 +1818,7 @@
                   "type": "object",
                   "properties": {
                     "nextCursor": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     }
                   },
                   "required": ["nextCursor"],
@@ -2104,6 +1902,10 @@
           "exclusiveMinimum": 0,
           "maximum": 100,
           "description": "Maximum number of dashboards to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2146,40 +1948,19 @@
                 }
               },
               "createdBy": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "dateCreated": {
                 "type": "string"
               },
               "lastVisited": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "isFavorited": {
                 "type": "boolean"
               },
               "prebuiltId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "url": {
                 "type": "string",
@@ -2204,20 +1985,243 @@
           }
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["dashboards", "nextCursor"],
       "additionalProperties": false
     },
     "requiredScopes": ["org:read"],
+    "skills": ["inspect"],
+    "surface": "catalog"
+  },
+  {
+    "name": "find_dropped_events",
+    "description": "Find events dropped before they were stored in Sentry — ground-truth data-fidelity information about what was and wasn't captured.\n\nEvents can be dropped client-side in the SDK (sample_rate, before_send) or\nserver-side at ingest (rate limited, over quota, filtered, invalid, abuse/spike\nprotection, cardinality limited). Accepted-only views (searches, aggregates,\ncharts) can't show this, so the data may be incomplete in ways they don't reveal\n— for example, a flat or spiky chart caused entirely by drops.\n\nUse this tool when you need to:\n- Explain why a chart is flat, lower than expected, or doesn't match what the user is sending\n- Confirm the data you need is actually in Sentry (not dropped) before trusting a query, aggregate, or dashboard\n- Attribute a volume anomaly to a specific drop reason (quota, spike protection, sampling, filters)\n- Tell the user why their data is missing and what to do about it (raise quota, fix sampling, etc.)\n\nReturns dropped event volume bucketed over time, with the drop `outcome` and `reason`\nfor each bucket, plus the accepted volume per bucket so you can compute the dropped share.\n\n<examples>\nfind_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')\nfind_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d')\nfind_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')\n</examples>\n\n<hints>\n- This is independent of any search query — it reports drops for the whole project/time range.\n- `outcome` is the drop kind (e.g. rate_limited, filtered); `reason` is the sub-cause (e.g. key_quota, sample_rate).\n- Each bucket's `tags` classify the drop: `intentional` (user-configured, e.g. sampling or filters) vs `unintentional` (not intended, e.g. quota or abuse).\n- Pass `outcome` and/or `reason` to scope the dropped side to one classification; the accepted volume is always returned in full.\n- An empty `droppedEvents` list means no drops in the window — the data can be trusted.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dataset": {
+          "default": "spans",
+          "type": "string",
+          "enum": ["spans", "logs", "metrics", "errors"],
+          "description": "Which data type to report drops for."
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statsPeriod": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Relative time range, e.g. '24h', '7d', '30d'. Mutually exclusive with start/end."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Absolute start (ISO 8601). Must be paired with end."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Absolute end (ISO 8601). Must be paired with start."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interval": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Bucket size, e.g. '1h', '1d'. Omit to let Sentry pick for the range."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "rate_limited",
+                "filtered",
+                "invalid",
+                "abuse",
+                "client_discard",
+                "cardinality_limited"
+              ],
+              "description": "Scope the dropped side to one top-level drop classification. Accepted volume is still returned in full."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Scope the dropped side to one reason (sub-classification within an outcome, e.g. 'spike_protection'). Combine with `outcome`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string"
+        },
+        "interval": {
+          "type": "number"
+        },
+        "droppedEvents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "count": {
+                "type": "number"
+              },
+              "tags": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "reason",
+              "category",
+              "start",
+              "end",
+              "count",
+              "tags"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "acceptedEvents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "count": {
+                "type": "number"
+              },
+              "tags": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "reason",
+              "category",
+              "start",
+              "end",
+              "count",
+              "tags"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["dataset", "interval", "droppedEvents", "acceptedEvents"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
     "skills": ["inspect"],
     "surface": "catalog"
   },
@@ -2246,6 +2250,10 @@
         "projectSlug": {
           "type": "string",
           "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "projectSlug"]
@@ -2320,6 +2328,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 100
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2339,27 +2351,13 @@
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "enabled": {
                 "type": "boolean"
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "workflowIds": {
                 "type": "array",
@@ -2384,14 +2382,7 @@
           }
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["monitors", "nextCursor"],
@@ -2477,6 +2468,10 @@
           "exclusiveMinimum": 0,
           "maximum": 99,
           "description": "Maximum number of monitors to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2490,14 +2485,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "slug": {
                 "type": "string"
@@ -2506,41 +2494,20 @@
                 "type": "string"
               },
               "projectSlug": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "owner": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastCheckIn": {
                 "anyOf": [
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -2552,7 +2519,7 @@
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -2569,44 +2536,16 @@
                     "type": "object",
                     "properties": {
                       "type": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "value": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "checkInMargin": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["number", "null"]
                       },
                       "maxRuntime": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["number", "null"]
                       }
                     },
                     "required": [
@@ -2628,31 +2567,17 @@
                   "type": "object",
                   "properties": {
                     "name": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     },
                     "status": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "null"]
                     },
                     "lastCheckIn": {
                       "anyOf": [
                         {
                           "type": "string",
                           "format": "date-time",
-                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                         },
                         {
                           "type": "null"
@@ -2725,6 +2650,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -2770,14 +2699,7 @@
           "type": "boolean"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["organizations", "hasMore", "nextCursor"],
@@ -2832,6 +2754,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2856,14 +2782,7 @@
           "type": "boolean"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["projects", "hasMore", "nextCursor"],
@@ -2918,6 +2837,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2936,14 +2859,14 @@
               "dateCreated": {
                 "type": "string",
                 "format": "date-time",
-                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
               },
               "dateReleased": {
                 "anyOf": [
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -2955,7 +2878,7 @@
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -2967,7 +2890,7 @@
                   {
                     "type": "string",
                     "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   {
                     "type": "null"
@@ -2992,29 +2915,15 @@
                         "type": "string"
                       },
                       "message": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "author": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "dateCreated": {
                         "type": "string",
                         "format": "date-time",
-                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                       }
                     },
                     "required": ["id", "message", "author", "dateCreated"],
@@ -3034,21 +2943,14 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "dateStarted": {
                         "anyOf": [
                           {
                             "type": "string",
                             "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                           },
                           {
                             "type": "null"
@@ -3060,7 +2962,7 @@
                           {
                             "type": "string",
                             "format": "date-time",
-                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                           },
                           {
                             "type": "null"
@@ -3152,6 +3054,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -3179,14 +3085,7 @@
           "type": "boolean"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         }
       },
       "required": ["teams", "hasMore", "nextCursor"],
@@ -3243,6 +3142,10 @@
           "exclusiveMinimum": 0,
           "maximum": 99,
           "description": "Maximum number of monitors to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -3344,6 +3247,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "conversationId"]
@@ -3355,14 +3262,7 @@
           "type": "string"
         },
         "title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "organizationSlug": {
           "type": "string"
@@ -3387,24 +3287,10 @@
           "additionalProperties": false
         },
         "startTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "endTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "traceIds": {
           "type": "array",
@@ -3445,27 +3331,13 @@
                 "type": "string"
               },
               "parentSpanId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "project": {
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ]
+                "type": ["string", "number"]
               },
               "timestamp": {
                 "type": "number"
@@ -3830,6 +3702,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "conversationId"]
@@ -3841,14 +3717,7 @@
           "type": "string"
         },
         "title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "organizationSlug": {
           "type": "string"
@@ -3873,24 +3742,10 @@
           "additionalProperties": false
         },
         "startTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "endTimestamp": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["number", "null"]
         },
         "traceIds": {
           "type": "array",
@@ -3931,27 +3786,13 @@
                 "type": "string"
               },
               "parentSpanId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "project": {
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ]
+                "type": ["string", "number"]
               },
               "timestamp": {
                 "type": "number"
@@ -4389,14 +4230,7 @@
         "cursor": {
           "default": null,
           "description": "Next cursor from the same section and filters.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "limit": {
           "default": 25,
@@ -4404,6 +4238,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 100
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "section"]
@@ -4576,14 +4414,7 @@
                 "type": "string"
               },
               "projectId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "enabled": {
                 "type": "boolean"
@@ -4607,14 +4438,7 @@
           }
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "inputGuide": {
           "type": "object",
@@ -4660,7 +4484,7 @@
   },
   {
     "name": "get_alert_rule",
-    "description": "Get details for a Sentry alert rule.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
+    "description": "Get details for one Sentry alert rule by ID or exact name.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\nTo list or search alert rules, use find_alert_rules instead.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4702,6 +4526,10 @@
           "type": "string",
           "minLength": 1,
           "description": "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "ruleIdOrName"]
@@ -4736,6 +4564,10 @@
           "type": "string",
           "minLength": 1,
           "description": "The dashboard's numeric ID or exact title."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "dashboardIdOrTitle"]
@@ -4803,6 +4635,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "projectSlug", "eventId"]
@@ -4865,6 +4701,10 @@
               "minLength": 1
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "issueId"]
@@ -4913,6 +4753,10 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 100
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -4965,6 +4809,10 @@
               "description": "The ID of the event. e.g. `c49541c747cb4d8aa3efb70ca5aba243`"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5007,6 +4855,10 @@
           "type": "string",
           "format": "uri",
           "description": "The URL of the issue. e.g. https://my-organization.sentry.io/issues/PROJECT-1Z43"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5049,6 +4901,10 @@
           "type": "string",
           "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
           "description": "The tag key to get values for (e.g., 'url', 'browser', 'environment', 'release')."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["tagKey"]
@@ -5074,37 +4930,16 @@
                 "type": "object",
                 "properties": {
                   "value": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "type": ["string", "null"]
                   },
                   "count": {
                     "type": "number"
                   },
                   "firstSeen": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "type": ["string", "null"]
                   },
                   "lastSeen": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "type": ["string", "null"]
                   }
                 },
                 "required": ["value", "count", "firstSeen", "lastSeen"],
@@ -5172,6 +5007,10 @@
           "exclusiveMinimum": 0,
           "maximum": 100,
           "description": "Maximum number of user reports to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5228,6 +5067,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "appId"]
@@ -5266,6 +5109,10 @@
           "type": "string",
           "pattern": "^\\d+$",
           "description": "Native Metric Monitor ID from find_metric_monitors."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "monitorId"]
@@ -5283,27 +5130,13 @@
               "type": "string"
             },
             "projectId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "enabled": {
               "type": "boolean"
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "workflowIds": {
               "type": "array",
@@ -5315,14 +5148,7 @@
               "type": "string"
             },
             "description": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "config": {
               "type": "object",
@@ -5343,14 +5169,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string"
@@ -5361,14 +5180,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -5411,14 +5223,7 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "eventTypes": {
                         "type": "array",
@@ -5427,14 +5232,7 @@
                         }
                       },
                       "extrapolationMode": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "timeWindowSeconds": {
                         "type": "number"
@@ -5459,24 +5257,10 @@
               }
             },
             "dateCreated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "dateUpdated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": [
@@ -5529,14 +5313,7 @@
         "projectSlugOrId": {
           "default": null,
           "description": "Optional project slug or numeric ID. Use this to disambiguate monitors with the same slug or to scope a monitor URL that includes a project segment.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "monitorSlug": {
           "type": "string",
@@ -5560,7 +5337,7 @@
           "anyOf": [
             {
               "type": "string",
-              "pattern": "^\\d+[hdw]$",
+              "pattern": "^\\d+[mhdw]$",
               "description": "Relative time range. Defaults to `24h` when `start` and `end` are omitted."
             },
             {
@@ -5574,7 +5351,7 @@
             {
               "type": "string",
               "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
               "description": "Absolute start time. Must be provided with `end`; do not combine with `period`."
             },
             {
@@ -5588,7 +5365,7 @@
             {
               "type": "string",
               "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
               "description": "Absolute end time. Must be provided with `start`; do not combine with `period`."
             },
             {
@@ -5621,6 +5398,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "monitorSlug"]
@@ -5658,14 +5439,7 @@
         },
         "projectSlugOrId": {
           "description": "Project slug or numeric ID",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
+          "type": ["string", "number"]
         },
         "transactionName": {
           "description": "Transaction name (e.g., '/api/users', 'POST /graphql')",
@@ -5675,12 +5449,12 @@
           "default": "7d",
           "description": "Profiling time window (default: '7d'). Use '1h' for very recent profiling data.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "compareAgainstPeriod": {
           "description": "Compare against this baseline profiling time window. Enables regression detection.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "focusOnUserCode": {
           "default": true,
@@ -5693,6 +5467,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 20
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5729,14 +5507,7 @@
         },
         "projectSlugOrId": {
           "description": "Project slug or numeric ID",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
+          "type": ["string", "number"]
         },
         "profileId": {
           "description": "Transaction profile ID from a profile flamegraph URL",
@@ -5757,6 +5528,10 @@
         "focusOnUserCode": {
           "default": true,
           "description": "Show only user code frames in the hotspot table. Set to false to include library frames.",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       }
@@ -5825,6 +5600,10 @@
           "exclusiveMinimum": 0,
           "maximum": 50,
           "description": "Maximum number of deploys and commits to return, up to 50."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "releaseVersion"]
@@ -5835,7 +5614,7 @@
   },
   {
     "name": "get_replay_details",
-    "description": "Get high-level information about a specific Sentry replay by URL or replay ID.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a specific replay\n- Want a concise replay summary plus the next issue or trace lookups to run\n\n<examples>\n### With replay URL\n```\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\n```\n\n### With organization and replay ID\n```\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f')\n```\n</examples>",
+    "description": "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a replay, or what a user saw and clicked\n- Need the moments before an error, a dead click, or the end of a session\n\n<examples>\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)\nget_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)\n</examples>\n\n<hints>\n- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds\n- The timeline header counts every recorded event, so you can see what to ask for next\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5862,6 +5641,67 @@
               "type": "null"
             }
           ]
+        },
+        "categories": {
+          "description": "Timeline categories to show. Default: notable events only (navigations, clicks, inputs, console warnings and errors, failed requests, feedback). Naming a category shows all of its events, such as every request for 'network' or every log level for 'console'.",
+          "anyOf": [
+            {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "navigation",
+                  "click",
+                  "input",
+                  "console",
+                  "network",
+                  "other"
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "startOffsetSeconds": {
+          "description": "Start of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+          "type": ["number", "null"]
+        },
+        "endOffsetSeconds": {
+          "description": "End of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+          "type": ["number", "null"]
+        },
+        "limit": {
+          "description": "Maximum timeline events to return (1-200, default 50).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skip": {
+          "description": "Number of matching timeline events to skip. Use the value a previous response gives to continue past the limit.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5890,7 +5730,7 @@
   },
   {
     "name": "get_sentry_resource",
-    "description": "Fetch a Sentry resource by URL, or by resourceType plus resourceId.\nPass a Sentry URL directly when possible; the resource type is auto-detected.\n\nSupports issues, events, traces, spans, agent conversations, replays, monitors, preprod snapshots, and snapshot images.\nTrace lookups return a condensed overview by default.\n\nAgent Conversations: A conversation is a set of spans sharing the same gen_ai.conversation.id. Use resourceType='ai_conversation' with a conversation ID, or pass a Sentry conversation URL, to fetch the transcript/details. To discover or list conversations, use search_agent_conversations. Conversations are NOT issues — do not use search_issues for conversation queries.\n\nFor preprod snapshot URLs (matching 'sentry.io/preprod/snapshots/'):\n- Without ?selectedSnapshot=: returns the snapshot diff summary (changed, added, removed images)\n- With ?selectedSnapshot=<image_file_name>: returns the image preview and metadata. Use the Sentry tool `get_snapshot_image` for full-resolution image bytes.\n\nResource IDs:\n- monitor: <monitorSlug>\n- snapshot: <snapshotId>\n\n<examples>\nget_sentry_resource(url='https://sentry.io/issues/PROJECT-123/')\nget_sentry_resource(resourceType='issue', organizationSlug='my-org', resourceId='PROJECT-123')\nget_sentry_resource(resourceType='ai_conversation', organizationSlug='my-org', resourceId='conversation-123')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/?selectedSnapshot=login_screen.png')\n</examples>",
+    "description": "Fetch a Sentry resource by URL, or by resourceType plus resourceId.\nPass a Sentry URL directly when possible; the resource type is auto-detected.\n\nSupports issues, events, traces, spans, agent conversations, replays, monitors, dashboards, preprod snapshots, and snapshot images.\nTrace lookups return a condensed overview by default.\n\nAgent Conversations: A conversation is a set of spans sharing the same gen_ai.conversation.id. Use resourceType='ai_conversation' with a conversation ID, or pass a Sentry conversation URL, to fetch the transcript/details. To discover or list conversations, use search_agent_conversations. Conversations are NOT issues — do not use search_issues for conversation queries.\n\nFor preprod snapshot URLs (matching 'sentry.io/preprod/snapshots/'):\n- Without ?selectedSnapshot=: returns the snapshot diff summary (changed, added, removed images)\n- With ?selectedSnapshot=<image_file_name>: returns the image preview and metadata. Use the Sentry tool `get_snapshot_image` for full-resolution image bytes.\n\nResource IDs:\n- monitor: <monitorSlug>\n- dashboard: <dashboardId or title>\n- snapshot: <snapshotId>\n\n<examples>\nget_sentry_resource(url='https://sentry.io/issues/PROJECT-123/')\nget_sentry_resource(resourceType='issue', organizationSlug='my-org', resourceId='PROJECT-123')\nget_sentry_resource(resourceType='ai_conversation', organizationSlug='my-org', resourceId='conversation-123')\nget_sentry_resource(url='https://sentry.sentry.io/dashboard/542438/')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/')\nget_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/?selectedSnapshot=login_screen.png')\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5900,7 +5740,7 @@
           "format": "uri"
         },
         "resourceType": {
-          "description": "Resource type. With a URL, can override a span-focused trace URL with `trace`. Use `monitor` with a monitor slug only when inspect monitor tools are available or `snapshot` with a snapshot artifact ID.",
+          "description": "Resource type. With a URL, can override a span-focused trace URL with `trace`. Use `monitor` with a monitor slug only when inspect monitor tools are available, `snapshot` with a snapshot artifact ID, or `dashboard` with a dashboard ID or exact title when inspect dashboard tools are available.",
           "type": "string",
           "enum": [
             "issue",
@@ -5909,16 +5749,33 @@
             "ai_conversation",
             "replay",
             "monitor",
-            "snapshot"
+            "snapshot",
+            "dashboard"
           ]
         },
         "resourceId": {
-          "description": "Resource identifier: issue shortId (e.g., 'PROJECT-123'), event ID, trace ID, agent conversation ID, replay ID, monitor slug when inspect monitor tools are available, or snapshot artifact ID. Required when not using a URL.",
+          "description": "Resource identifier: issue shortId (e.g., 'PROJECT-123'), event ID, trace ID, agent conversation ID, replay ID, monitor slug when inspect monitor tools are available, dashboard ID or title when inspect dashboard tools are available, or snapshot artifact ID. Required when not using a URL.",
           "type": "string"
         },
         "organizationSlug": {
           "type": "string",
           "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "resourceUrl": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5957,6 +5814,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "snapshotId"]
@@ -6002,6 +5863,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "snapshotId", "imageIdentifier"]
@@ -6041,6 +5906,10 @@
           "type": "string",
           "minLength": 1,
           "description": "The span ID within a trace. Use this with a trace resource to focus on a specific span."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "traceId", "spanId"]
@@ -6080,6 +5949,10 @@
           "type": "string",
           "minLength": 1,
           "description": "The span ID within a trace. Use this with a trace resource to focus on a specific span."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "traceId"]
@@ -6121,19 +5994,19 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
+          "pattern": "^\\d+[mhdw]$",
           "description": "Relative time range for recent checks. Defaults to `24h` when `start` and `end` are omitted."
         },
         "start": {
           "type": "string",
           "format": "date-time",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
           "description": "Absolute start time. Must be provided with `end`; do not combine with `period`."
         },
         "end": {
           "type": "string",
           "format": "date-time",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
           "description": "Absolute end time. Must be provided with `start`; do not combine with `period`."
         },
         "checkLimit": {
@@ -6142,6 +6015,10 @@
           "exclusiveMinimum": 0,
           "maximum": 50,
           "description": "Maximum number of recent checks to include."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "projectSlug", "uptimeMonitorId"]
@@ -6203,14 +6080,7 @@
             "type": "string"
           },
           "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              }
-            ]
+            "type": ["string", "number"]
           }
         }
       },
@@ -6565,7 +6435,7 @@
           "default": "30d",
           "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "start": {
           "description": "Explicit start time for the search window.",
@@ -6588,6 +6458,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -6606,14 +6480,7 @@
           "type": "number"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "conversations": {
           "type": "array",
@@ -6624,14 +6491,7 @@
                 "type": "string"
               },
               "title": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "url": {
                 "type": "string",
@@ -6674,24 +6534,10 @@
                 }
               },
               "firstInputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastOutputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "flow": {
                 "type": "array",
@@ -6711,24 +6557,10 @@
                     "type": "object",
                     "properties": {
                       "email": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "username": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       }
                     },
                     "required": ["email", "username"],
@@ -6830,7 +6662,7 @@
           "default": "30d",
           "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[hdw]$"
+          "pattern": "^\\d+[mhdw]$"
         },
         "start": {
           "description": "Explicit start time for the search window.",
@@ -6853,6 +6685,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -6871,14 +6707,7 @@
           "type": "number"
         },
         "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "conversations": {
           "type": "array",
@@ -6889,14 +6718,7 @@
                 "type": "string"
               },
               "title": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "url": {
                 "type": "string",
@@ -6939,24 +6761,10 @@
                 }
               },
               "firstInputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "lastOutputPreview": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
+                "type": ["string", "null"]
               },
               "flow": {
                 "type": "array",
@@ -6976,24 +6784,10 @@
                     "type": "object",
                     "properties": {
                       "email": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "username": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       }
                     },
                     "required": ["email", "username"],
@@ -7231,14 +7025,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7254,8 +7041,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7279,6 +7066,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7323,14 +7114,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). If omitted, event datasets default to -timestamp and replays default to -started_at. Use -count() for event aggregations. For dataset='replays', use replay sorts like -started_at or -count_errors.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7363,8 +7147,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7388,6 +7172,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7435,8 +7223,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "projectSlug": {
           "default": null,
@@ -7475,6 +7263,10 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -7484,7 +7276,7 @@
   },
   {
     "name": "search_issues",
-    "description": "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.\n\nProvide `query` as natural language or Sentry issue search syntax. When an embedded agent is configured, it fixes query and sort before running while preserving explicit Sentry search syntax.\n\nReturns grouped issues with metadata like title, status, and user count.\n\nCommon Query Syntax:\n- is:unresolved / is:resolved / is:ignored / is:for_review / is:new / is:regressed / is:escalating\n- level:error / level:warning\n- firstSeen:-24h / lastSeen:-7d\n- assigned:me / assigned_or_suggested:me\n- release:latest\n- issue.category:feedback\n- issue.priority:high\n- environment:production\n- userCount:>100\n\nDO NOT USE FOR COUNTS/AGGREGATIONS → use search_errors\nDO NOT USE FOR individual events with timestamps → use search_errors, search_logs, or search_traces\nDO NOT USE FOR details about a specific issue → use get_sentry_resource\n\n<examples>\nsearch_issues(organizationSlug='my-org', query='critical bugs from last week')\nsearch_issues(organizationSlug='my-org', query='is:unresolved is:unassigned', sort='freq')\nsearch_issues(organizationSlug='my-org', query='level:error firstSeen:-24h', projectSlugOrId='my-project')\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlugOrId>.\n- Parse org/project notation directly without calling find_organizations or find_projects.\n- The projectSlugOrId parameter accepts both project slugs (e.g., 'my-project') and numeric IDs (e.g., '123456').\n</hints>",
+    "description": "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.\n\nProvide `query` as natural language or Sentry issue search syntax. When an embedded agent is configured, it fixes query and sort before running while preserving explicit Sentry search syntax.\n\nReturns grouped issues with metadata like title, status, and user count.\n\nCommon Query Syntax:\n- is:unresolved / is:resolved / is:ignored / is:for_review / is:new / is:regressed / is:escalating\n- level:error / level:warning\n- firstSeen:-24h / lastSeen:-7d\n- assigned:me / assigned_or_suggested:me\n- release:latest\n- issue.category:feedback\n- issue.priority:high\n- environment:production\n- userCount:>100\n\nNo AND/OR or parentheses: spaces mean AND. For OR on one field use field:[a,b]; for several statuses use status:[resolved,ignored] or substatus:[regressed,escalating].\n\nDO NOT USE FOR COUNTS/AGGREGATIONS → use search_errors\nDO NOT USE FOR individual events with timestamps → use search_errors, search_logs, or search_traces\nDO NOT USE FOR details about a specific issue → use get_sentry_resource\n\n<examples>\nsearch_issues(organizationSlug='my-org', query='critical bugs from last week')\nsearch_issues(organizationSlug='my-org', query='is:unresolved is:unassigned', sort='freq')\nsearch_issues(organizationSlug='my-org', query='level:error firstSeen:-24h', projectSlugOrId='my-project')\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlugOrId>.\n- Parse org/project notation directly without calling find_organizations or find_projects.\n- The projectSlugOrId parameter accepts both project slugs (e.g., 'my-project') and numeric IDs (e.g., '123456').\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7506,14 +7298,7 @@
         "projectSlugOrId": {
           "default": null,
           "description": "The project's slug or numeric ID (optional)",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "regionUrl": {
           "default": null,
@@ -7536,13 +7321,17 @@
         },
         "period": {
           "default": "30d",
-          "description": "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 24h for very recent issues or 90d for broader historical searches.",
+          "description": "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 1h or 24h for very recent issues or 90d for broader historical searches.",
           "type": "string",
-          "enum": ["24h", "7d", "14d", "30d", "90d"]
+          "enum": ["1h", "24h", "7d", "14d", "30d", "90d"]
         },
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7554,7 +7343,7 @@
   },
   {
     "name": "search_logs",
-    "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7582,14 +7371,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7605,8 +7387,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7630,6 +7412,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7669,14 +7455,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7692,8 +7471,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7717,6 +7496,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7756,14 +7539,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7779,8 +7555,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7804,6 +7580,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7829,14 +7609,7 @@
         },
         "sort": {
           "description": "Replay sort (prefix with - for descending): -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -7869,8 +7642,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -7894,6 +7667,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -8017,14 +7794,7 @@
         },
         "sort": {
           "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "projectSlug": {
           "default": null,
@@ -8040,8 +7810,8 @@
         },
         "period": {
           "type": "string",
-          "pattern": "^\\d+[hdw]$",
-          "description": "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window."
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
         },
         "regionUrl": {
           "default": null,
@@ -8066,6 +7836,10 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -8073,6 +7847,57 @@
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
+  },
+  {
+    "name": "submit_feedback_to_sentry_team",
+    "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "A short phrase naming what the user asked you to do."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["missing", "broken", "confusing", "idea"],
+          "description": "missing: no tool could do it; broken: a tool failed or returned something wrong; confusing: a tool or its docs were unclear; idea: a suggestion."
+        },
+        "impact": {
+          "type": "string",
+          "enum": ["blocked", "worked_around", "friction"],
+          "description": "blocked: you could not finish; worked_around: you finished another way; friction: you finished, but it was harder than it should be."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "What you tried, including tool calls and any error, and what went wrong."
+        },
+        "toolName": {
+          "description": "The Sentry MCP tool the feedback is about, if any.",
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": ["task", "kind", "impact", "description"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "feedbackId": {
+          "type": "string",
+          "description": "ID of the feedback sent to the Sentry MCP maintainers."
+        }
+      },
+      "required": ["feedbackId"],
+      "additionalProperties": false
+    },
+    "requiredScopes": [],
+    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "surface": "catalog"
   },
   {
     "name": "unlink_issue",
@@ -8249,14 +8074,7 @@
           "type": "object",
           "properties": {
             "id": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
+              "type": ["string", "number"]
             },
             "logicType": {
               "type": "string",
@@ -8268,14 +8086,7 @@
                 "type": "object",
                 "properties": {
                   "id": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "number"
-                      }
-                    ]
+                    "type": ["string", "number"]
                   },
                   "type": {
                     "type": "string"
@@ -8296,14 +8107,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ]
+                "type": ["string", "number"]
               },
               "logicType": {
                 "type": "string",
@@ -8315,14 +8119,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "type": {
                       "type": "string"
@@ -8339,34 +8136,13 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "type": {
                       "type": "string"
                     },
                     "integrationId": {
-                      "anyOf": [
-                        {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "number"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                      "type": ["string", "number", "null"]
                     },
                     "data": {
                       "type": "object",
@@ -8460,24 +8236,10 @@
               "additionalProperties": false
             },
             "environment": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "triggers": {
               "anyOf": [
@@ -8485,14 +8247,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string",
@@ -8504,14 +8259,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -8541,14 +8289,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "logicType": {
                         "type": "string",
@@ -8560,14 +8301,7 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
@@ -8585,34 +8319,13 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                }
-                              ]
+                              "type": ["string", "number"]
                             },
                             "type": {
                               "type": "string"
                             },
                             "integrationId": {
-                              "anyOf": [
-                                {
-                                  "anyOf": [
-                                    {
-                                      "type": "string"
-                                    },
-                                    {
-                                      "type": "number"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
+                              "type": ["string", "number", "null"]
                             },
                             "data": {
                               "type": "object",
@@ -8897,14 +8610,7 @@
           "maxLength": 200
         },
         "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "status": {
           "type": "string",
@@ -8944,14 +8650,7 @@
               "minLength": 1
             },
             "environment": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "eventTypes": {
               "type": "array",
@@ -8960,14 +8659,7 @@
               }
             },
             "extrapolationMode": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "timeWindowSeconds": {
               "type": "integer",
@@ -9003,14 +8695,7 @@
           "type": "object",
           "properties": {
             "id": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
+              "type": ["string", "number"]
             },
             "logicType": {
               "type": "string"
@@ -9025,14 +8710,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "type": {
                         "type": "string",
@@ -9064,14 +8742,7 @@
                     "type": "object",
                     "properties": {
                       "id": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
+                        "type": ["string", "number"]
                       },
                       "type": {
                         "type": "string",
@@ -9156,27 +8827,13 @@
               "type": "string"
             },
             "projectId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "enabled": {
               "type": "boolean"
             },
             "owner": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "workflowIds": {
               "type": "array",
@@ -9188,14 +8845,7 @@
               "type": "string"
             },
             "description": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "config": {
               "type": "object",
@@ -9216,14 +8866,7 @@
                   "type": "object",
                   "properties": {
                     "id": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ]
+                      "type": ["string", "number"]
                     },
                     "logicType": {
                       "type": "string"
@@ -9234,14 +8877,7 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
+                            "type": ["string", "number"]
                           },
                           "type": {
                             "type": "string"
@@ -9284,14 +8920,7 @@
                         "type": "string"
                       },
                       "environment": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "eventTypes": {
                         "type": "array",
@@ -9300,14 +8929,7 @@
                         }
                       },
                       "extrapolationMode": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                        "type": ["string", "null"]
                       },
                       "timeWindowSeconds": {
                         "type": "number"
@@ -9332,24 +8954,10 @@
               }
             },
             "dateCreated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "dateUpdated": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": [
@@ -9458,14 +9066,7 @@
               "type": "string"
             },
             "platform": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             }
           },
           "required": ["id", "slug", "name", "platform"],
@@ -9547,20 +9148,16 @@
               {
                 "type": "string"
               }
-            ]
+            ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2
           },
           "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
         "body": {
           "description": "Request body. Pass `null` to clear the body.",
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": ["string", "null"]
         },
         "status": {
           "type": "string",
@@ -9694,7 +9291,15 @@
   {
     "name": "whoami",
     "description": "Identify the authenticated user in Sentry.\n\nUse this tool when you need to:\n- Get the user's name and email address.",
-    "inputSchema": {},
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      }
+    },
     "outputSchema": {
       "type": "object",
       "properties": {
@@ -9705,14 +9310,7 @@
               "type": "string"
             },
             "name": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": ["string", "null"]
             },
             "email": {
               "type": "string"
@@ -9720,6 +9318,25 @@
           },
           "required": ["id", "name", "email"],
           "additionalProperties": false
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": ["string", "null"]
+              },
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "name", "email"],
+            "additionalProperties": false
+          }
         },
         "sessionConstraints": {
           "anyOf": [

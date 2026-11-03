@@ -7,10 +7,10 @@
 
 import { describe, expect, test, vi } from "vitest";
 import { resolveCommitSpec } from "../../../src/commands/issue/resolve-commit-spec.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ValidationError } from "../../../src/lib/errors.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as gitLib from "../../../src/lib/git.js";
 import type { SentryRepository } from "../../../src/types/sentry.js";
 
@@ -36,7 +36,7 @@ describe("resolveCommitSpec — explicit mode", () => {
       const result = await resolveCommitSpec(
         { kind: "explicit", repository: "getsentry/cli", commit: "abc123" },
         "sentry",
-        "/tmp"
+        "/tmp",
       );
       expect(result).toEqual({
         commit: "abc123",
@@ -61,7 +61,7 @@ describe("resolveCommitSpec — explicit mode", () => {
       const result = await resolveCommitSpec(
         { kind: "explicit", repository: "getsentry/sentry", commit: "abc" },
         "sentry",
-        "/tmp"
+        "/tmp",
       );
       // API expects the canonical `name`, not the externalSlug
       expect(result.repository).toBe("Sentry Monolith");
@@ -79,8 +79,8 @@ describe("resolveCommitSpec — explicit mode", () => {
         resolveCommitSpec(
           { kind: "explicit", repository: "unknown/repo", commit: "abc" },
           "sentry",
-          "/tmp"
-        )
+          "/tmp",
+        ),
       ).rejects.toBeInstanceOf(ValidationError);
     } finally {
       listSpy.mockRestore();
@@ -95,7 +95,7 @@ describe("resolveCommitSpec — auto-detect mode", () => {
       .mockReturnValue(false);
     try {
       await expect(
-        resolveCommitSpec({ kind: "auto" }, "sentry", "/tmp")
+        resolveCommitSpec({ kind: "auto" }, "sentry", "/tmp"),
       ).rejects.toThrow(/requires a git repository/);
     } finally {
       gitSpy.mockRestore();
@@ -111,7 +111,7 @@ describe("resolveCommitSpec — auto-detect mode", () => {
     });
     try {
       await expect(
-        resolveCommitSpec({ kind: "auto" }, "sentry", "/tmp")
+        resolveCommitSpec({ kind: "auto" }, "sentry", "/tmp"),
       ).rejects.toThrow(/could not read HEAD/);
     } finally {
       gitSpy.mockRestore();
@@ -149,7 +149,7 @@ describe("resolveCommitSpec — auto-detect mode", () => {
       const result = await resolveCommitSpec(
         { kind: "auto" },
         "sentry",
-        process.cwd()
+        process.cwd(),
       );
       expect(result).toEqual({
         commit: "abc123def456",
@@ -176,7 +176,7 @@ describe("resolveCommitSpec — error messages are actionable", () => {
       const err = await resolveCommitSpec(
         { kind: "explicit", repository: "typo/repo", commit: "abc" },
         "sentry",
-        "/tmp"
+        "/tmp",
       ).catch((e: Error) => e);
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain("getsentry/cli");

@@ -80,7 +80,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    return fetchSnapshotImage(
+    return await fetchSnapshotImage(
       apiService,
       params.organizationSlug,
       params.snapshotId,

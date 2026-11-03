@@ -5,6 +5,7 @@
  * output is built as markdown and rendered via renderMarkdown().
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
 import type {
   AutofixState,
   RootCause,
@@ -13,7 +14,7 @@ import type {
 import { ApiError, SeerError } from "../errors.js";
 import { cyan } from "./colors.js";
 import { filterFields } from "./json.js";
-import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
+import { renderMarkdown } from "./markdown.js";
 
 // Spinner Frames
 
@@ -27,7 +28,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
  */
 export function getSpinnerFrame(tick: number): string {
   const index = tick % SPINNER_FRAMES.length;
-  // biome-ignore lint/style/noNonNullAssertion: index is always valid due to modulo
+  // oxlint-disable-next-line typescript/no-non-null-assertion -- index is always valid due to modulo
   return SPINNER_FRAMES[index]!;
 }
 
@@ -69,7 +70,7 @@ type BlockWithMessage = { message?: { content?: string | null } };
  * Returns undefined if no block message is available.
  */
 function getBlockProgressMessage(
-  blocks: BlockWithMessage[]
+  blocks: BlockWithMessage[],
 ): string | undefined {
   const lastBlock = blocks.at(-1);
   if (!lastBlock?.message?.content) {
@@ -153,9 +154,7 @@ export type IssueExplainData = {
 function buildRootCauseMarkdown(cause: RootCause, index: number): string {
   const lines: string[] = [];
 
-  lines.push(
-    `### Cause #${index}: ${escapeMarkdownInline(cause.description ?? "")}`
-  );
+  lines.push(`### Cause #${index}: ${text(cause.description ?? "")}`);
   lines.push("");
 
   if (cause.relevant_repos && cause.relevant_repos.length > 0) {
@@ -170,7 +169,7 @@ function buildRootCauseMarkdown(cause: RootCause, index: number): string {
     lines.push("**Reproduction steps:**");
     lines.push("");
     for (const step of cause.root_cause_reproduction) {
-      lines.push(`**${escapeMarkdownInline(step.title)}**`);
+      lines.push(`**${text(step.title)}**`);
       lines.push("");
       // code_snippet_and_analysis may itself contain markdown (code fences,
       // inline code, etc.) — pass it through as-is so marked renders it.
@@ -224,7 +223,7 @@ export function formatIssueExplain(data: IssueExplainData): string {
 
   const sections = data.results.map(
     (result) =>
-      `# ${escapeMarkdownInline(result.issue)}\n\n${buildRootCauseListMarkdown(result.rootCauses)}`
+      `# ${text(result.issue)}\n\n${buildRootCauseListMarkdown(result.rootCauses)}`,
   );
   return renderMarkdown(sections.join("\n\n---\n\n"));
 }
@@ -242,7 +241,7 @@ export function formatIssueExplain(data: IssueExplainData): string {
  */
 export function jsonTransformIssueExplain(
   data: IssueExplainData,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const filterRootCauses = (rootCauses: RootCause[]): unknown =>
     fields && fields.length > 0 ? filterFields(rootCauses, fields) : rootCauses;
@@ -272,7 +271,7 @@ export function jsonTransformIssueExplain(
 export function createSeerError(
   status: number,
   detail?: string,
-  orgSlug?: string
+  orgSlug?: string,
 ): SeerError | null {
   if (status === 402) {
     return new SeerError("no_budget", orgSlug);
@@ -307,7 +306,7 @@ export function createSeerError(
 export function handleSeerApiError(
   status: number,
   detail?: string,
-  orgSlug?: string
+  orgSlug?: string,
 ): Error {
   const seerError = createSeerError(status, detail, orgSlug);
   if (seerError) {
@@ -361,9 +360,7 @@ export function formatSolution(solution: SolutionArtifact): string {
   lines.push("## Solution");
   lines.push("");
 
-  lines.push(
-    `**Summary:** ${escapeMarkdownInline(solution.data.one_line_summary ?? "")}`
-  );
+  lines.push(`**Summary:** ${text(solution.data.one_line_summary ?? "")}`);
   lines.push("");
 
   if (solution.data.steps.length > 0) {
@@ -372,7 +369,7 @@ export function formatSolution(solution: SolutionArtifact): string {
     for (let i = 0; i < solution.data.steps.length; i++) {
       const step = solution.data.steps[i];
       if (step) {
-        lines.push(`${i + 1}. **${escapeMarkdownInline(step.title)}**`);
+        lines.push(`${i + 1}. **${text(step.title)}**`);
         lines.push("");
         // step.description may contain markdown — pass it through as-is
         lines.push(`   ${step.description.split("\n").join("\n   ")}`);

@@ -64,54 +64,54 @@ afterEach(() => {
 
 describe("auth token management", () => {
   test("setAuthToken stores token", async () => {
-    await setAuthToken("test-token-123");
+    setAuthToken("test-token-123");
 
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBe("test-token-123");
   });
 
   test("setAuthToken with expiration sets expiresAt", async () => {
     const before = Date.now();
-    await setAuthToken("expiring-token", 3600); // 1 hour
+    setAuthToken("expiring-token", 3600); // 1 hour
     const after = Date.now();
 
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.expiresAt).toBeGreaterThanOrEqual(before + 3600 * 1000);
     expect(auth?.expiresAt).toBeLessThanOrEqual(after + 3600 * 1000);
   });
 
   test("setAuthToken stores refresh token", async () => {
-    await setAuthToken("access-token", 3600, "refresh-token");
+    setAuthToken("access-token", 3600, "refresh-token");
 
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.refreshToken).toBe("refresh-token");
   });
 
   test("getAuthToken returns undefined for expired token", async () => {
     // Set a token that expires in the future, then we'll manipulate it
-    await setAuthToken("expired-token", -1); // Negative expires immediately
+    setAuthToken("expired-token", -1); // Negative expires immediately
 
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBeUndefined();
   });
 
   test("getAuthToken returns token if not expired", async () => {
-    await setAuthToken("valid-token", 3600); // 1 hour
+    setAuthToken("valid-token", 3600); // 1 hour
 
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBe("valid-token");
   });
 
   test("clearAuth removes auth data", async () => {
-    await setAuthToken("token-to-clear");
-    expect(await getAuthToken()).toBe("token-to-clear");
+    setAuthToken("token-to-clear");
+    expect(getAuthToken()).toBe("token-to-clear");
 
     await clearAuth();
-    expect(await getAuthToken()).toBeUndefined();
+    expect(getAuthToken()).toBeUndefined();
   });
 
   test("isAuthenticated returns true with valid token", async () => {
-    await setAuthToken("valid-token");
+    setAuthToken("valid-token");
     expect(isAuthenticated()).toBe(true);
   });
 
@@ -120,7 +120,7 @@ describe("auth token management", () => {
   });
 
   test("isAuthenticated returns false with expired token", async () => {
-    await setAuthToken("expired", -1); // Negative expires immediately
+    setAuthToken("expired", -1); // Negative expires immediately
     expect(isAuthenticated()).toBe(false);
   });
 });
@@ -171,7 +171,7 @@ describe("defaults management", () => {
 describe("refreshToken error handling", () => {
   test("network error during refresh does not clear auth", async () => {
     // Set up a token that needs refresh (expired but has refresh token)
-    await setAuthToken("still-valid-token", -1, "my-refresh-token"); // Expired
+    setAuthToken("still-valid-token", -1, "my-refresh-token"); // Expired
 
     // Set required env var for OAuth
     process.env.SENTRY_CLIENT_ID = "test-client-id";
@@ -194,14 +194,14 @@ describe("refreshToken error handling", () => {
     }
 
     // Auth should NOT be cleared on network error
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.token).toBe("still-valid-token");
     expect(auth?.refreshToken).toBe("my-refresh-token");
   });
 
   test("auth error during refresh clears auth", async () => {
     // Set up a token that needs refresh
-    await setAuthToken("revoked-token", -1, "invalid-refresh-token"); // Expired
+    setAuthToken("revoked-token", -1, "invalid-refresh-token"); // Expired
 
     process.env.SENTRY_CLIENT_ID = "test-client-id";
 
@@ -213,7 +213,7 @@ describe("refreshToken error handling", () => {
           error: "invalid_grant",
           error_description: "Token revoked",
         }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
 
     try {
@@ -226,7 +226,7 @@ describe("refreshToken error handling", () => {
     }
 
     // Auth SHOULD be cleared when server rejects refresh token
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth).toBeUndefined();
   });
 });
@@ -340,7 +340,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456,123:789"
+      "123:456,123:789",
     );
 
     // Same fingerprint
@@ -356,7 +356,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456,123:789"
+      "123:456,123:789",
     );
 
     // Different fingerprint (different DSN context)
@@ -383,7 +383,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456,123:789"
+      "123:456,123:789",
     );
 
     // No current fingerprint provided - skip validation
@@ -399,7 +399,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456"
+      "123:456",
     );
 
     // Uppercase alias with matching fingerprint
@@ -416,7 +416,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      "123:456"
+      "123:456",
     );
 
     // Current context has no SaaS DSNs (empty fingerprint)
@@ -431,7 +431,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      ""
+      "",
     );
 
     // Current context has SaaS DSNs
@@ -446,7 +446,7 @@ describe("DSN-fingerprinted project aliases", () => {
       {
         e: { orgSlug: "sentry", projectSlug: "spotlight-electron" },
       },
-      ""
+      "",
     );
 
     // Current context also has only self-hosted DSNs
@@ -583,8 +583,8 @@ describe("resolveConfigDir", () => {
           [CONFIG_DIR_ENV_VAR]: override,
           XDG_CONFIG_HOME: join(home, "xdg"),
         },
-        home
-      )
+        home,
+      ),
     ).toBe(override);
   });
 
@@ -604,7 +604,7 @@ describe("resolveConfigDir", () => {
   test("uses XDG_CONFIG_HOME/sentry when set to an absolute path", () => {
     const xdg = join(home, "xdg-config");
     expect(resolveConfigDir({ XDG_CONFIG_HOME: xdg }, home)).toBe(
-      join(xdg, "sentry")
+      join(xdg, "sentry"),
     );
   });
 
@@ -614,7 +614,7 @@ describe("resolveConfigDir", () => {
 
   test("ignores a non-absolute XDG_CONFIG_HOME per the XDG spec", () => {
     expect(resolveConfigDir({ XDG_CONFIG_HOME: "relative/path" }, home)).toBe(
-      join(home, ".config", "sentry")
+      join(home, ".config", "sentry"),
     );
   });
 });
@@ -644,14 +644,14 @@ describe("JSON to SQLite migration", () => {
           organization: "migrated-org",
           project: "migrated-project",
         },
-      })
+      }),
     );
 
     // Access the database (triggers migration)
-    const token = await getAuthToken();
+    const token = getAuthToken();
     expect(token).toBe("migrated-token");
 
-    const auth = await getAuthConfig();
+    const auth = getAuthConfig();
     expect(auth?.refreshToken).toBe("migrated-refresh");
 
     const org = getDefaultOrganization();
@@ -663,7 +663,7 @@ describe("JSON to SQLite migration", () => {
     // config.json should be deleted after migration
     const configExists = await access(configPath).then(
       () => true,
-      () => false
+      () => false,
     );
     expect(configExists).toBe(false);
   });

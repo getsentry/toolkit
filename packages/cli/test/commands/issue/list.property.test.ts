@@ -47,7 +47,7 @@ const {
 /** Generates a slug-like string: lowercase alpha + digits + dashes */
 const slugArb = array(
   constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789-".split("")),
-  { minLength: 1, maxLength: 12 }
+  { minLength: 1, maxLength: 12 },
 ).map((chars) => chars.join(""));
 
 /** Generates an IssueWithOptions for testing trimWithProjectGuarantee */
@@ -63,20 +63,20 @@ const issueWithOptionsArb = tuple(slugArb, slugArb).map(
       projectSlug: proj,
       isMultiProject: true,
     },
-  })
+  }),
 );
 
 /** Generates a Sentry cursor-like string (e.g. "1735689600:0:0") */
 const cursorStringArb = tuple(
   integer({ min: 1_700_000_000, max: 1_800_000_000 }),
   nat({ max: 10 }),
-  nat({ max: 1 })
+  nat({ max: 1 }),
 ).map(([ts, offset, flag]) => `${ts}:${offset}:${flag}`);
 
 /** Generates a cursor value: string or null (exhausted) */
 const cursorValueArb = oneof(
   cursorStringArb.map((c) => c as string | null),
-  constant(null)
+  constant(null),
 );
 
 /** Sort value arbitrary */
@@ -95,7 +95,7 @@ const sentryIssueArb = tuple(
   isoDateArb,
   isoDateArb,
   nat({ max: 100_000 }),
-  nat({ max: 50_000 })
+  nat({ max: 50_000 }),
 ).map(
   ([lastSeen, firstSeen, count, userCount]) =>
     ({
@@ -106,7 +106,7 @@ const sentryIssueArb = tuple(
       firstSeen,
       count: `${count}`,
       userCount,
-    }) as SentryIssue
+    }) as SentryIssue,
 );
 
 // --- trimWithProjectGuarantee ---
@@ -120,9 +120,9 @@ describe("property: trimWithProjectGuarantee", () => {
         (issues, limit) => {
           const result = trimWithProjectGuarantee(issues, limit);
           expect(result.length).toBeLessThanOrEqual(limit);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -139,9 +139,9 @@ describe("property: trimWithProjectGuarantee", () => {
             expect(idx).toBeGreaterThan(lastIdx);
             lastIdx = idx;
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -152,9 +152,9 @@ describe("property: trimWithProjectGuarantee", () => {
         (issues) => {
           const result = trimWithProjectGuarantee(issues, issues.length + 10);
           expect(result.length).toBe(issues.length);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -171,14 +171,14 @@ describe("property: trimWithProjectGuarantee", () => {
 
           const inputProjects = new Set(
             issues.map(
-              (i) => `${i.orgSlug}/${i.formatOptions.projectSlug ?? ""}`
-            )
+              (i) => `${i.orgSlug}/${i.formatOptions.projectSlug ?? ""}`,
+            ),
           );
 
           const resultProjects = new Set(
             result.map(
-              (i) => `${i.orgSlug}/${i.formatOptions.projectSlug ?? ""}`
-            )
+              (i) => `${i.orgSlug}/${i.formatOptions.projectSlug ?? ""}`,
+            ),
           );
 
           // If limit >= number of unique projects, every project is represented
@@ -188,9 +188,9 @@ describe("property: trimWithProjectGuarantee", () => {
             // If limit < projects, we should have exactly limit items
             expect(result.length).toBe(limit);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -203,9 +203,9 @@ describe("property: trimWithProjectGuarantee", () => {
           const first = trimWithProjectGuarantee(issues, limit);
           const second = trimWithProjectGuarantee(first, limit);
           expect(second).toEqual(first);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -219,15 +219,15 @@ describe("property: compound cursor encode/decode", () => {
         // Need at least one non-null cursor: all-null encodes to "" which decodes to []
         // (by design — all-exhausted is equivalent to "start fresh")
         array(cursorValueArb, { minLength: 1, maxLength: 20 }).filter((cs) =>
-          cs.some((c) => c !== null)
+          cs.some((c) => c !== null),
         ),
         (cursors) => {
           const encoded = encodeCompoundCursor(cursors);
           const decoded = decodeCompoundCursor(encoded);
           expect(decoded).toEqual(cursors);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -248,14 +248,14 @@ describe("property: compound cursor encode/decode", () => {
           {
             minLength: 1,
             maxLength: 10,
-          }
+          },
         ),
         (cursors) => {
           const encoded = encodeCompoundCursor(cursors);
           expect(encoded).not.toContain(`${CURSOR_SEP}${CURSOR_SEP}`);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -265,7 +265,7 @@ describe("property: compound cursor encode/decode", () => {
 
   test("legacy JSON cursor returns empty array (fresh start)", () => {
     expect(
-      decodeCompoundCursor('[{"org":"a","project":"b","cursor":"1:0:0"}]')
+      decodeCompoundCursor('[{"org":"a","project":"b","cursor":"1:0:0"}]'),
     ).toEqual([]);
   });
 
@@ -295,7 +295,7 @@ describe("property: getComparator", () => {
         const cmp = getComparator(sort);
         expect(typeof cmp).toBe("function");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -309,7 +309,7 @@ describe("property: getComparator", () => {
         // (Object.is(0, -0) is false, but 0 + -0 === 0)
         expect(ab + ba).toBe(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -319,7 +319,7 @@ describe("property: getComparator", () => {
         const cmp = getComparator(sort);
         expect(cmp(issue, issue)).toBe(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -408,9 +408,9 @@ describe("property: compareDates", () => {
           // ab + ba === 0 is the anti-symmetry check that handles 0/-0 correctly
           // (0 + -0 === 0, and 5 + -5 === 0)
           expect(ab + ba).toBe(0);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -424,7 +424,7 @@ describe("property: compareDates", () => {
       property(isoDateArb, (d) => {
         expect(compareDates(d, d)).toBe(0);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -444,9 +444,9 @@ describe("property: parseSort", () => {
         string().filter((s) => !VALID_SORT_VALUES.includes(s as SortValue)),
         (s) => {
           expect(() => parseSort(s)).toThrow(/Invalid sort value/);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -479,9 +479,9 @@ describe("property: buildProjectAliasMap", () => {
           }
 
           expect(Object.keys(entries).length).toBe(results.length);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -499,9 +499,9 @@ describe("property: buildProjectAliasMap", () => {
 
           const aliases = [...aliasMap.values()];
           expect(new Set(aliases).size).toBe(aliases.length);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

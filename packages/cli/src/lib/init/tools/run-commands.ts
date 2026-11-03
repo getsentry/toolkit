@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { addBreadcrumb } from "@sentry/node-core/light";
+import { addBreadcrumb } from "@sentry/node";
 import { whichSync } from "../../which.js";
 import { DEFAULT_COMMAND_TIMEOUT_MS } from "../constants.js";
 import type { RunCommandsPayload, ToolResult } from "../types.js";
@@ -63,7 +63,7 @@ function buildWindowsBatchCommand(executable: string, args: string[]): string {
  */
 export async function runCommands(
   payload: RunCommandsPayload,
-  context: Pick<ToolContext, "dryRun">
+  context: Pick<ToolContext, "dryRun">,
 ): Promise<ToolResult> {
   const timeoutMs = payload.params.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
   const parsedCommands: ReturnType<typeof parseCommand>[] = [];
@@ -121,7 +121,7 @@ export async function runCommands(
 async function runSingleCommand(
   command: ReturnType<typeof parseCommand>,
   cwd: string,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<{
   command: string;
   exitCode: number;

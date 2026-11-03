@@ -71,7 +71,7 @@ for (const file of files) {
   // 2) Flag at-prefixed repo-local references. These can force some agents to
   // inline the entire target file.
   const atPathRe =
-    /@(?:docs|packages|scripts)\/[A-Za-z0-9_.\-\/]+\.(?:mdc|md|ts|tsx|js|json)|@(?:AGENTS|README|TELEMETRY)\.md/g;
+    /@(?:docs|packages|scripts)\/[A-Za-z0-9_.\-/]+\.(?:mdc|md|ts|tsx|js|json)|@(?:AGENTS|README|TELEMETRY)\.md/g;
   for (const m of contentNoFences.matchAll(atPathRe)) {
     problems.push({
       file: rel,

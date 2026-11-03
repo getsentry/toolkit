@@ -118,6 +118,22 @@ export const infoCommand = buildCommand({
       "Use `--config-status-json` for a machine-readable status dump (for " +
       "external tooling); it always exits 0. Use `--no-defaults` to verify " +
       "only authentication, without requiring a default org/project.",
+    examples: [
+      {
+        description: "Print the resolved config and verify authentication",
+        command: "sentry info",
+      },
+      {
+        description:
+          "Verify only authentication (don't require a default org/project)",
+        command: "sentry info --no-defaults",
+      },
+      {
+        description:
+          "Machine-readable status for external tooling (always exits 0)",
+        command: "sentry info --config-status-json",
+      },
+    ],
   },
   // Reports auth status (including "Unauthorized") — must run without auth.
   auth: false,

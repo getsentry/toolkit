@@ -22,7 +22,7 @@ async function importKey(secret: string): Promise<CryptoKey> {
     );
   }
   const enc = new TextEncoder();
-  return crypto.subtle.importKey(
+  return await crypto.subtle.importKey(
     "raw",
     enc.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
@@ -56,7 +56,7 @@ async function signHex(key: CryptoKey, data: string): Promise<string> {
     key,
     enc.encode(data),
   );
-  return Array.from(new Uint8Array(signatureBuffer))
+  return [...new Uint8Array(signatureBuffer)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }

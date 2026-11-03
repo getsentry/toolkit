@@ -31,7 +31,7 @@ const toolDefinitions = [
 ] as const satisfies readonly AnyInitToolDefinition[];
 
 const toolRegistry = new Map<ToolOperation, AnyInitToolDefinition>(
-  toolDefinitions.map((tool) => [tool.operation, tool] as const)
+  toolDefinitions.map((tool) => [tool.operation, tool] as const),
 );
 
 /** Sentry API operations never inspect or mutate the local filesystem. */
@@ -54,7 +54,7 @@ export function describeTool(payload: ToolPayload): string {
  */
 export async function executeTool(
   payload: ToolPayload,
-  context: ToolContext
+  context: ToolContext,
 ): Promise<ToolResult> {
   const tool = toolRegistry.get(payload.operation);
   if (!tool) {

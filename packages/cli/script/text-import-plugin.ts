@@ -133,14 +133,14 @@ export const textImportPlugin: Plugin = {
           throw new Error(
             `text-import-plugin: failed to process ${sourcePath} → ${outPath}: ${
               err instanceof Error ? err.message : String(err)
-            }`
+            }`,
           );
         }
 
         // Emit a virtual module that exports the sidecar filename as a
         // string. For CJS bundles (npm distribution), the consumer resolves
         // the full path at runtime using import.meta.url. For ESM bundles
-        // (Node SEA binary), the sidecar is embedded via fossilize --assets
+        // (Node SEA binary), the sidecar is embedded as a fossilize asset
         // and extracted at runtime via node:sea.getAsset().
         return {
           path: outFilename,

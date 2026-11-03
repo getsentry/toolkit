@@ -59,42 +59,6 @@ export type VcsFlags = {
   "no-git-metadata"?: boolean;
 };
 
-/** Environment variables commonly set by CI providers. */
-const CI_ENV_VARS = [
-  "CI",
-  "JENKINS_URL",
-  "HUDSON_URL",
-  "TEAMCITY_VERSION",
-  "CIRCLE_BUILD_URL",
-  "bamboo_resultsUrl",
-  "GITHUB_ACTIONS",
-  "GITLAB_CI",
-  "TRAVIS_JOB_ID",
-  "BITRISE_BUILD_URL",
-  "GO_SERVER_URL",
-  "TF_BUILD",
-  "BUILDKITE",
-];
-
-/**
- * Detect whether we are running in a CI environment.
- *
- * @param env - Environment variables (defaults to `process.env`).
- */
-export function isCi(env: NodeJS.ProcessEnv = process.env): boolean {
-  return CI_ENV_VARS.some((name) => {
-    const value = env[name];
-    // Treat explicit opt-out values ("", "false", "0") as not-in-CI so a local
-    // `CI=false` does not silently enable git-metadata collection.
-    return (
-      value !== undefined &&
-      value !== "" &&
-      value !== "false" &&
-      value !== "0"
-    );
-  });
-}
-
 /** A 40-character lowercase hex SHA-1. */
 const SHA1_RE = /^[0-9a-f]{40}$/;
 
@@ -122,7 +86,7 @@ function validateShaFlag(value: string, flagName: string): string | undefined {
   if (!SHA1_RE.test(trimmed)) {
     throw new ValidationError(
       `Invalid --${flagName}: expected a 40-character hex SHA-1`,
-      flagName
+      flagName,
     );
   }
   return trimmed;
@@ -137,7 +101,7 @@ function validateShaFlag(value: string, flagName: string): string | undefined {
  */
 function readGithubEventSha(
   kind: "head" | "base",
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
 ): string | undefined {
   const eventPath = env.GITHUB_EVENT_PATH;
   if (!eventPath) {
@@ -154,6 +118,19 @@ function readGithubEventSha(
     return undefined;
   }
 }
+
+/**
+ * The VCS providers Sentry accepts for preprod uploads, by integration
+ * slug (`SUPPORTED_VCS_PROVIDERS` in getsentry/sentry's
+ * `organization_preprod_artifact_assemble.py`), offered by `--vcs-provider`.
+ */
+export const VCS_PROVIDERS = [
+  "github",
+  "github_enterprise",
+  "gitlab",
+  "bitbucket",
+  "bitbucket_server",
+];
 
 /** Extract a provider name (e.g. `github`) from a git remote URL's host. */
 function providerFromRemoteUrl(url: string): string | undefined {
@@ -224,7 +201,7 @@ function resolveHeadSha(
   flags: VcsFlags,
   cwd: string,
   env: NodeJS.ProcessEnv,
-  auto: boolean
+  auto: boolean,
 ): string | undefined {
   if (flags["head-sha"] !== undefined) {
     return validateShaFlag(flags["head-sha"], "head-sha");
@@ -239,7 +216,7 @@ function resolveHeadSha(
 function resolveHeadRepoName(
   flags: VcsFlags,
   cwd: string,
-  auto: boolean
+  auto: boolean,
 ): string | undefined {
   return flags["head-repo-name"] || (auto ? getRepositoryName(cwd) : undefined);
 }
@@ -257,7 +234,7 @@ function resolveBaseSha(
   baseRef: string | undefined,
   cwd: string,
   env: NodeJS.ProcessEnv,
-  auto: boolean
+  auto: boolean,
 ): string | undefined {
   if (flags["base-sha"] !== undefined) {
     return validateShaFlag(flags["base-sha"], "base-sha");
@@ -289,7 +266,7 @@ export function collectVcsMetadata(
   flags: VcsFlags,
   cwd: string,
   env: NodeJS.ProcessEnv,
-  autoCollect: boolean
+  autoCollect: boolean,
 ): VcsInfo {
   const remoteUrl = autoCollect ? getRemoteUrl(cwd) : undefined;
 

@@ -75,7 +75,7 @@ describe("property: stripTrailingNonHex", () => {
           throw new Error(`Expected stripped=${junk}, got ${result.stripped}`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -86,7 +86,7 @@ describe("property: stripTrailingNonHex", () => {
           throw new Error(`Expected null for exact-length input ${hex}`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -105,17 +105,17 @@ describe("property: stripTrailingNonHex", () => {
         if (result) {
           if (result.hex.length !== 32) {
             throw new Error(
-              `hex result length ${result.hex.length} !== 32 for input ${input}`
+              `hex result length ${result.hex.length} !== 32 for input ${input}`,
             );
           }
           if (!input.startsWith(result.hex)) {
             throw new Error(
-              `input ${input} does not start with returned hex ${result.hex}`
+              `input ${input} does not start with returned hex ${result.hex}`,
             );
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -127,7 +127,7 @@ describe("property: stripTrailingNonHex", () => {
           throw new Error(`Unexpected result for ${hex}${junk}`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -142,14 +142,14 @@ describe("property: extractHexCandidate", () => {
         }
         if (result.prefix && !/^[0-9a-f]*$/.test(result.prefix)) {
           throw new Error(
-            `prefix '${result.prefix}' contains non-hex chars (input: ${input})`
+            `prefix '${result.prefix}' contains non-hex chars (input: ${input})`,
           );
         }
         if (result.suffix && !/^[0-9a-f]*$/.test(result.suffix)) {
           throw new Error(`suffix '${result.suffix}' contains non-hex chars`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -164,7 +164,7 @@ describe("property: extractHexCandidate", () => {
           throw new Error(`Unexpected suffix ${result.suffix}`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -179,7 +179,7 @@ describe("property: valid hex IDs never need recovery", () => {
           throw new Error(`Expected ${hex}, got ${result}`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -191,11 +191,11 @@ describe("property: preNormalize", () => {
         const { cleaned } = preNormalize(input);
         if (cleaned.length > input.length) {
           throw new Error(
-            `Output grew: input=${input.length}, output=${cleaned.length}`
+            `Output grew: input=${input.length}, output=${cleaned.length}`,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -208,7 +208,7 @@ describe("property: preNormalize", () => {
           throw new Error(`Not idempotent: ${once} !== ${twice}`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -221,7 +221,7 @@ describe("property: looksLikeSlug vs extractHexCandidate", () => {
           throw new Error(`Pure hex ${hex} classified as slug`);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -248,11 +248,11 @@ describe("property: UUIDv7 round-trip via decode/age", () => {
         }
         if (decoded.createdAt.getTime() !== ms) {
           throw new Error(
-            `Round-trip failed: ${ms} → ${decoded.createdAt.getTime()}`
+            `Round-trip failed: ${ms} → ${decoded.createdAt.getTime()}`,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -268,11 +268,11 @@ describe("property: UUIDv7 round-trip via decode/age", () => {
         // Older ms → larger age (more days before `now`).
         if (msA < msB && ageA < ageB) {
           throw new Error(
-            `Monotonicity broken: ${msA}<${msB} but ${ageA}<${ageB}`
+            `Monotonicity broken: ${msA}<${msB} but ${ageA}<${ageB}`,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -290,12 +290,12 @@ describe("property: isOverNestedPath", () => {
           const expected = segments.length >= 4;
           if (isOverNestedPath(input) !== expected) {
             throw new Error(
-              `isOverNestedPath(${input}) expected ${expected}, got ${!expected}`
+              `isOverNestedPath(${input}) expected ${expected}, got ${!expected}`,
             );
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

@@ -50,7 +50,7 @@ export function chatCompletion(
   llm: LLMClient,
   model: string,
   messages: ChatMessage[],
-  maxTokens = 2048
+  maxTokens = 2048,
 ): Promise<string> {
   return llm.provider.chat(model, messages, maxTokens);
 }

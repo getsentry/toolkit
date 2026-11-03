@@ -43,12 +43,12 @@ describe("getSharedIssue", () => {
     const result = await getSharedIssue(
       "https://sentry.io",
       "example org",
-      "share/id"
+      "share/id",
     );
 
     expect(result.id).toBe("12345");
     expect(request?.url).toBe(
-      "https://sentry.io/api/0/organizations/example%20org/shared/issues/share%2Fid/"
+      "https://sentry.io/api/0/organizations/example%20org/shared/issues/share%2Fid/",
     );
     expect(request?.method).toBe("GET");
     expect(request?.headers.has("Authorization")).toBe(false);
@@ -65,7 +65,7 @@ describe("getSharedIssue", () => {
     globalThis.fetch = mockFetch(async () => Response.json(body));
 
     await expect(
-      getSharedIssue("https://sentry.io", "example-org", "share-id")
+      getSharedIssue("https://sentry.io", "example-org", "share-id"),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -73,7 +73,7 @@ describe("getSharedIssue", () => {
     globalThis.fetch = mockFetch(async () => new Response("not JSON"));
 
     await expect(
-      getSharedIssue("https://sentry.io", "example-org", "share-id")
+      getSharedIssue("https://sentry.io", "example-org", "share-id"),
     ).rejects.toMatchObject({
       name: "ApiError",
       message: expect.stringContaining("invalid JSON"),
@@ -89,12 +89,12 @@ describe("getSharedIssue", () => {
             start(controller) {
               controller.error(error);
             },
-          })
-        )
+          }),
+        ),
     );
 
     await expect(
-      getSharedIssue("https://sentry.io", "example-org", "share-id")
+      getSharedIssue("https://sentry.io", "example-org", "share-id"),
     ).rejects.toBe(error);
   });
 
@@ -105,7 +105,7 @@ describe("getSharedIssue", () => {
     globalThis.fetch = mockFetch(async () => new Response("", { status }));
 
     await expect(
-      getSharedIssue("https://sentry.io", "example-org", "share-id")
+      getSharedIssue("https://sentry.io", "example-org", "share-id"),
     ).rejects.toMatchObject({ name: "ApiError", status, message });
   });
 });

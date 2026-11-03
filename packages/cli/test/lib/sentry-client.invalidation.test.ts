@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import {
   getCachedResponse,
   storeCachedResponse,
@@ -32,7 +33,7 @@ function makeResponse(body: unknown, status = 200): Response {
 let originalFetch: typeof globalThis.fetch;
 type FetchHandler = (
   input: Request | string | URL,
-  init?: RequestInit
+  init?: RequestInit,
 ) => Promise<Response>;
 
 beforeEach(() => {
@@ -71,18 +72,18 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
     await storeCachedResponse(
       "GET",
       `${LIST_URL}?cursor=abc`,
       {},
-      makeResponse({ data: [] })
+      makeResponse({ data: [] }),
     );
 
     installMockFetch(async (input, init) => {
       expect(init?.method).toBe("PUT");
-      expect(String(input)).toBe(DETAIL_URL);
+      expect(extractInputUrl(input)).toBe(DETAIL_URL);
       return makeResponse({ id: "12345", status: "resolved" });
     });
     const response = await runAuthenticatedFetch(DETAIL_URL, "PUT");
@@ -92,7 +93,7 @@ describe("HTTP-layer auto-invalidation", () => {
     // already cleared when the caller sees the response.
     expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeUndefined();
     expect(
-      await getCachedResponse("GET", `${LIST_URL}?cursor=abc`, {})
+      await getCachedResponse("GET", `${LIST_URL}?cursor=abc`, {}),
     ).toBeUndefined();
   });
 
@@ -101,7 +102,7 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
 
     installMockFetch(async () => makeResponse({ error: "denied" }, 403));
@@ -115,13 +116,13 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ id: "12345" })
+      makeResponse({ id: "12345" }),
     );
 
     installMockFetch(async () => makeResponse({ id: "99999" }));
     await runAuthenticatedFetch(
       `${BASE}organizations/acme/issues/99999/`,
-      "GET"
+      "GET",
     );
     expect(await getCachedResponse("GET", DETAIL_URL, {})).toBeDefined();
   });
@@ -132,14 +133,14 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       `${orgListUrl}?cursor=xyz`,
       {},
-      makeResponse({ data: [] })
+      makeResponse({ data: [] }),
     );
 
     installMockFetch(async () => new Response(null, { status: 204 }));
     await runAuthenticatedFetch(`${BASE}projects/acme/frontend/`, "DELETE");
 
     expect(
-      await getCachedResponse("GET", `${orgListUrl}?cursor=xyz`, {})
+      await getCachedResponse("GET", `${orgListUrl}?cursor=xyz`, {}),
     ).toBeUndefined();
   });
 
@@ -149,7 +150,7 @@ describe("HTTP-layer auto-invalidation", () => {
       "GET",
       DETAIL_URL,
       {},
-      makeResponse({ owner: "a" })
+      makeResponse({ owner: "a" }),
     );
 
     setAuthToken("identity-b", 3600, "refresh-b");

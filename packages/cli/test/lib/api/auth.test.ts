@@ -23,7 +23,7 @@ describe("getCurrentAuthScopes", () => {
     expect(apiRequestToRegion).toHaveBeenCalledWith(
       expect.any(String),
       "",
-      expect.objectContaining({ schema: expect.any(Object) })
+      expect.objectContaining({ schema: expect.any(Object) }),
     );
   });
 

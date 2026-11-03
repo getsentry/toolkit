@@ -16,7 +16,9 @@ Define once, use everywhere:
 export const ParamOrganizationSlug = z
   .string()
   .trim()
-  .describe("The organization's slug. You can find a list using the `find_organizations()` tool.");
+  .describe(
+    "The organization's slug. You can find a list using the `find_organizations()` tool.",
+  );
 
 export const ParamRegionUrl = z
   .string()
@@ -27,17 +29,26 @@ export const ParamRegionUrl = z
 
 See: `packages/mcp-core/src/schema.ts`
 
+Keep `organizationSlug` required when the tool needs it. Tool registration
+makes it optional in the published schema, and `applyDefaultOrganization`
+(`packages/mcp-core/src/internal/tool-helpers/default-organization.ts`) fills
+it in when the caller can access exactly one organization, or fails with the
+list and a ready-to-run retry. Handlers never default the organization
+themselves.
+
 ### Flexible Schema Patterns
 
 ```typescript
 // Support multiple ID formats
-z.union([z.string(), z.number()])
+z.union([z.string(), z.number()]);
 
 // Optional with transforms
-z.string().optional().transform(val => val?.trim())
+z.string()
+  .optional()
+  .transform((val) => val?.trim());
 
 // Partial objects with passthrough
-IssueSchema.partial().passthrough()
+IssueSchema.partial().passthrough();
 ```
 
 ### Type Derivation
@@ -92,9 +103,9 @@ return {
     {
       uri: url.toString(),
       mimeType: "application/json",
-      text: JSON.stringify(data, null, 2)
-    }
-  ]
+      text: JSON.stringify(data, null, 2),
+    },
+  ],
 };
 ```
 
@@ -105,7 +116,7 @@ return {
 ```typescript
 if (!params.requiredParam) {
   throw new UserInputError(
-    "Required parameter is missing. Please provide requiredParam."
+    "Required parameter is missing. Please provide requiredParam.",
   );
 }
 ```
@@ -119,7 +130,7 @@ if (params.issueUrl) {
   // Use direct parameters
 } else {
   throw new UserInputError(
-    "Either issueUrl or both organizationSlug and issueId must be provided"
+    "Either issueUrl or both organizationSlug and issueId must be provided",
   );
 }
 ```
@@ -136,7 +147,7 @@ type ZodifyRecord<T extends Record<string, any>> = {
 
 // Const assertions for literal types
 export const TOOL_NAMES = ["tool1", "tool2"] as const;
-export type ToolName = typeof TOOL_NAMES[number];
+export type ToolName = (typeof TOOL_NAMES)[number];
 ```
 
 ## References

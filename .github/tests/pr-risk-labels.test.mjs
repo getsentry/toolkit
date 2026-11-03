@@ -119,7 +119,10 @@ for (const risk of ["low", "medium", "high"]) {
       },
       async ({ run, labels }) => {
         await run();
-        assert.deepEqual([...labels].sort(), ["area: auth", `risk: ${risk}`]);
+        assert.deepEqual(
+          [...labels].sort((a, b) => a.localeCompare(b)),
+          ["area: auth", `risk: ${risk}`],
+        );
       },
     );
   });

@@ -11,16 +11,21 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { proposeCompletions } from "@stricli/core";
 import { constantFrom, assert as fcAssert, property } from "fast-check";
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
+import generatedTargets from "../../src/generated/completion-targets.json";
 import {
-  ORG_ONLY_COMMANDS,
-  ORG_PROJECT_COMMANDS,
-} from "../../src/lib/complete.js";
+  COMPLETION_VALUES,
+  PROJECT_SPEC_TARGET,
+} from "../../src/lib/completion-target.js";
+import { getApiCompletionPaths } from "../../src/lib/api-schema.js";
+import { parsePeriod } from "../../src/lib/time-range.js";
 import {
   extractCommandTree,
   generateBashCompletion,
@@ -28,8 +33,8 @@ import {
   generateZshCompletion,
 } from "../../src/lib/completions.js";
 import {
-  isCommand,
-  isRouteMap,
+  extractCommandCompletions,
+  extractRouteGroups,
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
@@ -43,7 +48,7 @@ const binaryNameArb = constantFrom(
   "test-tool",
   "acme",
   "dev-helper",
-  "s"
+  "s",
 );
 
 // -- Helpers --
@@ -117,7 +122,7 @@ describe("property: cross-shell consistency", () => {
           expect(fish).toContain(group.name);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -136,7 +141,7 @@ describe("property: cross-shell consistency", () => {
           }
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -153,7 +158,7 @@ describe("property: cross-shell consistency", () => {
           expect(fish).toContain(cmd.name);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -171,7 +176,7 @@ describe("property: binary name parametrization", () => {
         expect(zsh).toContain(`_${name}()`);
         expect(fish).toContain(`complete -c ${name}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -210,7 +215,7 @@ describe("proposeCompletions: Stricli integration", () => {
       const completions = await proposeCompletions(
         app,
         [group.name, ""],
-        completionContext
+        completionContext,
       );
       const actual = completions.map((c) => c.completion).sort();
       const expected = group.subcommands.map((s) => s.name).sort();
@@ -226,7 +231,7 @@ describe("proposeCompletions: Stricli integration", () => {
       const completions = await proposeCompletions(
         app,
         [group.name, ""],
-        completionContext
+        completionContext,
       );
       const actual = completions.map((c) => c.completion);
       // With defaultCommand: "view", Stricli proposes flags for the view
@@ -250,7 +255,7 @@ describe("proposeCompletions: Stricli integration", () => {
       const completions = await proposeCompletions(
         app,
         [group.name, prefix],
-        completionContext
+        completionContext,
       );
 
       // Every returned completion should start with the prefix
@@ -269,37 +274,11 @@ describe("proposeCompletions: Stricli integration", () => {
   });
 });
 
-describe("property: flag extraction", () => {
-  const tree = extractCommandTree();
-
-  test("flags are non-empty arrays of objects with name and brief", () => {
-    for (const group of tree.groups) {
-      for (const sub of group.subcommands) {
-        for (const flag of sub.flags) {
-          expect(flag.name.length).toBeGreaterThan(0);
-          expect(typeof flag.brief).toBe("string");
-        }
-      }
-    }
-  });
-
-  test("no duplicate flag names within a command", () => {
-    for (const group of tree.groups) {
-      for (const sub of group.subcommands) {
-        const names = sub.flags.map((f) => f.name);
-        expect(new Set(names).size).toBe(names.length);
-      }
-    }
-  });
-
+describe("property: flag names", () => {
   test("hidden flags are excluded", () => {
-    for (const group of tree.groups) {
-      for (const sub of group.subcommands) {
-        // log-level and verbose are hidden — should not appear
-        const names = sub.flags.map((f) => f.name);
-        expect(names).not.toContain("log-level");
-        expect(names).not.toContain("verbose");
-      }
+    for (const command of Object.values(generatedTargets.commands)) {
+      // The global --log-level is hidden; the parser still accepts it
+      expect(command.flagNames).not.toHaveProperty("--log-level");
     }
   });
 });
@@ -316,10 +295,22 @@ describe("property: dynamic completion callback", () => {
         expect(zsh).toContain("__complete");
         expect(fish).toContain("__complete");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
+
+/**
+ * Stands in for bash-completion's `_init_completion`, which is not
+ * installed everywhere: the words split as bash split them.
+ */
+const INIT_COMPLETION_STUB = `_init_completion() {
+  cur="\${COMP_WORDS[COMP_CWORD]}"
+  prev="\${COMP_WORDS[COMP_CWORD-1]}"
+  words=("\${COMP_WORDS[@]}")
+  cword=$COMP_CWORD
+  return 0
+}`;
 
 describe("bash completion: real shell simulation", () => {
   test("top-level completion returns all known commands", async () => {
@@ -335,11 +326,7 @@ describe("bash completion: real shell simulation", () => {
         "-c",
         `
 # Stub _init_completion (not available outside bash-completion package)
-_init_completion() {
-  cur="\${COMP_WORDS[COMP_CWORD]}"
-  prev="\${COMP_WORDS[COMP_CWORD-1]}"
-  return 0
-}
+${INIT_COMPLETION_STUB}
 source "${tmpScript}"
 
 COMP_WORDS=(sentry "")
@@ -348,7 +335,7 @@ _sentry_completions
 echo "\${COMPREPLY[*]}"
 `,
       ],
-      { stdio: ["pipe", "pipe", "pipe"] }
+      { stdio: ["pipe", "pipe", "pipe"] },
     );
     const output = result.stdout.toString().trim();
     const completions = output.split(/\s+/);
@@ -376,11 +363,7 @@ echo "\${COMPREPLY[*]}"
         [
           "-c",
           `
-_init_completion() {
-  cur="\${COMP_WORDS[COMP_CWORD]}"
-  prev="\${COMP_WORDS[COMP_CWORD-1]}"
-  return 0
-}
+${INIT_COMPLETION_STUB}
 source "${tmpScript}"
 
 COMP_WORDS=(sentry "${group.name}" "")
@@ -389,7 +372,7 @@ _sentry_completions
 echo "\${COMPREPLY[*]}"
 `,
         ],
-        { stdio: ["pipe", "pipe", "pipe"] }
+        { stdio: ["pipe", "pipe", "pipe"] },
       );
       const output = result.stdout.toString().trim();
       const completions = output.split(/\s+/);
@@ -400,83 +383,169 @@ echo "\${COMPREPLY[*]}"
   });
 });
 
-describe("complete.ts: command set drift detection", () => {
-  /**
-   * Walk the Stricli route tree and collect all "group subcommand" paths
-   * that have any positional parameter with an org-related placeholder.
-   */
-  function collectOrgCommands(routeMap: RouteMap): Set<string> {
-    const orgCommands = new Set<string>();
+// Each completion starts the CLI from source
+describe(
+  "shell scripts: completion through __complete",
+  { timeout: 30_000 },
+  () => {
+    const cliDir = join(import.meta.dirname, "../..");
+    const hasFish = spawnSync("fish", ["--version"]).status === 0;
+    let root: string;
+    let env: NodeJS.ProcessEnv;
+    let workDir: string;
 
-    for (const entry of routeMap.getAllEntries()) {
-      if (entry.hidden) continue;
-      const name = entry.name.original;
+    beforeAll(() => {
+      root = mkdtempSync(join(tmpdir(), "sentry-shell-completion-"));
+      // A `sentry` on PATH that runs this checkout, from any directory
+      const binDir = join(root, "bin");
+      mkdirSync(binDir);
+      const tsx = createRequire(import.meta.url).resolve("tsx/esm");
+      writeFileSync(
+        join(binDir, "sentry"),
+        `#!/bin/sh\nexec "${process.execPath}" --import "${tsx}" --import "${join(cliDir, "script/require-shim.mjs")}" "${join(cliDir, "src/bin.ts")}" "$@"\n`,
+        { mode: 0o755 },
+      );
+      workDir = join(root, "work");
+      mkdirSync(join(workDir, "dist"), { recursive: true });
+      mkdirSync(join(workDir, "docs dir"));
+      writeFileSync(
+        join(root, "sentry.bash"),
+        generateBashCompletion("sentry"),
+      );
+      writeFileSync(
+        join(root, "sentry.fish"),
+        generateFishCompletion("sentry"),
+      );
+      env = {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        SENTRY_CONFIG_DIR: join(root, "config"),
+      };
+    });
 
-      if (isRouteMap(entry.target)) {
-        for (const sub of entry.target.getAllEntries()) {
-          if (sub.hidden || !isCommand(sub.target)) continue;
+    afterAll(() => {
+      rmSync(root, { recursive: true, force: true });
+    });
 
-          const pos = sub.target.parameters.positional;
-          if (!pos) continue;
-
-          const placeholder =
-            pos.kind === "tuple"
-              ? pos.parameters.map((p) => p.placeholder ?? "").join(" ")
-              : (pos.parameter?.placeholder ?? "");
-
-          // Any placeholder mentioning "org" suggests the command accepts
-          // an org target — it should be in one of the completion sets.
-          if (/\borg\b/i.test(placeholder) || placeholder === "issue") {
-            orgCommands.add(`${name} ${sub.name.original}`);
-          }
-        }
-      }
+    /**
+     * Run the bash completion function for the words after `sentry`, the
+     * last being completed, as bash would on TAB.
+     *
+     * @returns What COMPREPLY holds, and whether bash would add no space
+     */
+    function bashComplete(...words: string[]) {
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          `${INIT_COMPLETION_STUB}
+compopt() { echo "compopt $*"; }
+source "$0"
+COMP_WORDS=(sentry "$@")
+COMP_CWORD=$#
+_sentry_completions
+printf 'reply %s\\n' "\${COMPREPLY[@]}"`,
+          join(root, "sentry.bash"),
+          ...words,
+        ],
+        { cwd: workDir, env, encoding: "utf8" },
+      );
+      const lines = result.stdout.split("\n");
+      return {
+        replies: lines
+          .filter((line) => line.startsWith("reply ") && line !== "reply ")
+          .map((line) => line.slice("reply ".length)),
+        nospace: lines.includes("compopt -o nospace"),
+      };
     }
 
-    return orgCommands;
-  }
+    test("bash completes flag names at every depth", () => {
+      const issueList = bashComplete("issue", "list", "--");
+      expect(issueList.replies).toContain("--limit");
+      expect(issueList.replies).toContain("--json");
+      expect(bashComplete("alert", "issues", "list", "--li").replies).toEqual([
+        "--limit",
+      ]);
+    });
 
+    test("bash completes directories without a trailing space, escaped", () => {
+      expect(bashComplete("sourcemap", "upload", "d").replies).toEqual([
+        "dist/",
+        "docs\\ dir/",
+      ]);
+      expect(bashComplete("sourcemap", "upload", "docs\\ d")).toEqual({
+        replies: ["docs\\ dir/"],
+        nospace: true,
+      });
+    });
+
+    test("bash completes enum flag values", () => {
+      expect(bashComplete("event", "send", "--level", "").replies).toEqual([
+        "debug",
+        "info",
+        "warning",
+        "error",
+        "fatal",
+      ]);
+    });
+
+    test.skipIf(!hasFish)(
+      "fish completes flags with descriptions, values, and nested subcommands",
+      () => {
+        const fishComplete = (line: string) =>
+          spawnSync(
+            "fish",
+            [
+              "--no-config",
+              "-c",
+              'source $argv[1]; complete -C "$argv[2]"',
+              join(root, "sentry.fish"),
+              line,
+            ],
+            { cwd: workDir, env, encoding: "utf8" },
+          ).stdout.trim();
+        expect(fishComplete("sentry alert issues list --li")).toBe(
+          "--limit\tMaximum number of issue alert rules to list",
+        );
+        expect(fishComplete("sentry event send --level wa")).toBe("warning");
+        expect(fishComplete("sentry sourcemap upload docs")).toBe("docs dir/");
+        expect(fishComplete("sentry alert issues l")).toBe(
+          "list\tList issue alert rules",
+        );
+      },
+    );
+  },
+);
+
+describe("complete.ts: generated completion targets", () => {
   // Use the ESM import (routes) instead of require() which fails under
   // vitest because Node's CJS require can't resolve .js→.ts for transitive imports.
-  const appRoutes = routes as unknown as RouteMap;
+  const commands = extractCommandCompletions(routes as unknown as RouteMap);
+  const groups = extractRouteGroups(routes as unknown as RouteMap);
 
-  test("every command in ORG_PROJECT_COMMANDS exists in the route tree", () => {
-    const tree = extractCommandTree();
-    const allPaths = new Set<string>();
-    for (const g of tree.groups) {
-      for (const s of g.subcommands) {
-        allPaths.add(`${g.name} ${s.name}`);
-      }
-    }
-    for (const cmd of ORG_PROJECT_COMMANDS) {
-      expect(allPaths.has(cmd)).toBe(true);
+  // A mismatch means src/generated/completion-targets.json is stale.
+  // Regenerate with: pnpm run generate:completions
+  test("generated completion targets match the route tree", () => {
+    expect(generatedTargets).toEqual({
+      commands,
+      groups,
+      values: { ...COMPLETION_VALUES, apiPaths: getApiCompletionPaths() },
+    });
+  });
+
+  test("every suggested period is one --period accepts", () => {
+    const { periodPresets, periodUnits } = COMPLETION_VALUES;
+    for (const period of [
+      ...Object.keys(periodPresets),
+      ...periodUnits.map((unit) => `7${unit}`),
+    ]) {
+      expect(() => parsePeriod(period)).not.toThrow();
     }
   });
 
-  test("every command in ORG_ONLY_COMMANDS exists in the route tree", () => {
-    const tree = extractCommandTree();
-    const allPaths = new Set<string>();
-    for (const g of tree.groups) {
-      for (const s of g.subcommands) {
-        allPaths.add(`${g.name} ${s.name}`);
-      }
-    }
-    for (const cmd of ORG_ONLY_COMMANDS) {
-      expect(allPaths.has(cmd)).toBe(true);
-    }
-  });
-
-  test("org-positional commands are in at least one set", () => {
-    const orgCommands = collectOrgCommands(appRoutes);
-    const combined = new Set([...ORG_PROJECT_COMMANDS, ...ORG_ONLY_COMMANDS]);
-    for (const cmd of orgCommands) {
-      expect(combined.has(cmd)).toBe(true);
-    }
-  });
-
-  test("no commands are in both sets", () => {
-    for (const cmd of ORG_PROJECT_COMMANDS) {
-      expect(ORG_ONLY_COMMANDS.has(cmd)).toBe(false);
-    }
+  test("project create completes name:platform specs", () => {
+    expect(generatedTargets.commands["project create"]?.positionals).toEqual([
+      PROJECT_SPEC_TARGET,
+    ]);
   });
 });

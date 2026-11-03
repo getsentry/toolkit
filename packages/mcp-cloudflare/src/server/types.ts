@@ -30,6 +30,14 @@ export type WorkerProps = {
    * This field exists only for backward compatibility during the transition period.
    */
   grantedScopes?: string[];
+  /**
+   * Scopes Sentry actually granted on the upstream access token, as returned
+   * in the `scope` field of Sentry's OAuth token response. Unlike
+   * `grantedScopes` (derived from selected skills), this reflects what the
+   * stored Sentry token can really do. Absent on grants created before this
+   * field existed.
+   */
+  upstreamScopes?: string[];
   /** Primary authorization method - array of skill strings */
   grantedSkills?: string[];
 

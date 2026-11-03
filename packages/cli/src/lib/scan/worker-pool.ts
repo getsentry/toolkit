@@ -130,7 +130,7 @@ export function getWorkerPool(): WorkerPool {
   }
   if (!isWorkerSupported()) {
     throw new Error(
-      "Worker pool requested but Workers are unavailable in this runtime"
+      "Worker pool requested but Workers are unavailable in this runtime",
     );
   }
 
@@ -230,7 +230,7 @@ export function getWorkerPool(): WorkerPool {
             }
             ourSlot.reject(err);
           }
-        }
+        },
       );
       return result;
     },
@@ -244,7 +244,7 @@ export function getWorkerPool(): WorkerPool {
         }
         pw.inflight = 0;
         unrefWorker(pw.worker);
-        // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+        // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
         try {
           pw.worker.terminate();
         } catch {
@@ -294,7 +294,7 @@ export function decodeWorkerMatches(
   result: WorkerGrepResult,
   paths: readonly string[],
   relPaths: readonly string[],
-  mtimes: readonly number[] | null = null
+  mtimes: readonly number[] | null = null,
 ): GrepMatch[] {
   const { ints, linePoolBytes } = result;
   const linePool = LINE_POOL_DECODER.decode(linePoolBytes);

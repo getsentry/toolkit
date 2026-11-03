@@ -23,7 +23,7 @@ const log = logger.withTag("span-tree");
 function truncateSpanTree(
   spans: TraceSpan[],
   maxDepth: number,
-  currentDepth = 1
+  currentDepth = 1,
 ): TraceSpan[] {
   if (currentDepth > maxDepth) {
     return [];
@@ -64,7 +64,7 @@ export type SpanTreeResult = {
 export async function getSpanTreeLines(
   orgSlug: string,
   event: SentryEvent,
-  maxDepth: number
+  maxDepth: number,
 ): Promise<SpanTreeResult> {
   const traceId = event.contexts?.trace?.trace_id ?? null;
   const parsed = event.dateCreated
@@ -86,7 +86,7 @@ export async function getSpanTreeLines(
     const spans = await getDetailedTrace(
       orgSlug,
       traceId,
-      timestamp === undefined ? {} : { timestamp }
+      timestamp === undefined ? {} : { timestamp },
     );
     const lines = formatSimpleSpanTree(traceId, spans, maxDepth);
     // Truncate spans to match depth limit for JSON output

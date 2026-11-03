@@ -101,6 +101,7 @@ export const FULL_BANNER_LINES: BannerLine[] = colorize(BANNER_ROWS_FULL);
 export function bannerLinesWidth(lines: readonly BannerLine[]): number {
   let max = 0;
   for (const { content } of lines) {
+    // oxlint-disable-next-line typescript/no-misused-spread -- width is measured in code points
     const width = [...content].length;
     if (width > max) {
       max = width;
@@ -139,7 +140,7 @@ export function bannerLinesForWidth(columns: number): BannerLine[] {
  * string when the terminal is too narrow for even the text mark.
  */
 export function formatBanner(
-  columns: number = process.stdout.columns ?? 80
+  columns: number = process.stdout.columns ?? 80,
 ): string {
   return bannerLinesForWidth(columns)
     .map(({ content, color }) => chalk.hex(color)(content))

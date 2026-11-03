@@ -14,7 +14,7 @@
  * captured bindings) so that `spyOn` replacements take effect.
  */
 
-// biome-ignore lint/performance/noNamespaceImport: live binding required for test spyOn compatibility
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- live binding required for test spyOn compatibility
 import * as clack from "@clack/prompts";
 import { isPlainOutput, stripAnsi } from "../formatters/plain-detect.js";
 
@@ -110,5 +110,5 @@ export const multiselect: typeof clack.multiselect = (...args) =>
   clack.multiselect(...args);
 
 export const isCancel: typeof clack.isCancel = (
-  value: unknown
+  value: unknown,
 ): value is symbol => clack.isCancel(value);

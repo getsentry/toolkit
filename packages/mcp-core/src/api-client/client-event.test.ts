@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { testEvents } from "../internal/test-fixtures";
 import { SentryApiService } from "./client";
-import { ApiValidationError } from "./errors";
+import { ApiValidationError } from "@sentry/toolkit-core/api-client/errors";
 
 const request = {
   organizationSlug: "test-org",
@@ -78,5 +78,31 @@ describe("getEventForIssue context validation", () => {
     const event = await client.getEventForIssue(request);
     expect(event.context).toEqual(context);
     expect(log).not.toHaveBeenCalled();
+  });
+});
+
+describe("getEventForIssue request", () => {
+  const client = new SentryApiService({ accessToken: "test-token" });
+
+  it.each([
+    "latest",
+    "recommended",
+    "oldest",
+    "7ca573c0f4814912aaa9bdc77d1a7d51",
+  ])("asks Sentry to skip adjacent-event lookups for %s", async (eventId) => {
+    let collapse: string[] = [];
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/organizations/test-org/issues/123/events/${eventId}/`,
+        ({ request }) => {
+          collapse = new URL(request.url).searchParams.getAll("collapse");
+          return HttpResponse.json(testEvents.pythonException("Invalid value"));
+        },
+      ),
+    );
+
+    await client.getEventForIssue({ ...request, eventId });
+
+    expect(collapse).toEqual(["adjacentEvents"]);
   });
 });

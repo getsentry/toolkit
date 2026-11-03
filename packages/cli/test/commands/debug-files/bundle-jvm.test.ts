@@ -25,7 +25,7 @@ type BundleJvmFlags = {
 type CmdFunc = (
   this: unknown,
   flags: BundleJvmFlags,
-  sourcePath: string
+  sourcePath: string,
 ) => Promise<unknown>;
 
 function makeContext() {
@@ -56,7 +56,7 @@ describe("sentry debug-files bundle-jvm", () => {
     });
     await writeFile(
       join(tempDir, "src", "main", "java", "com", "example", "Main.java"),
-      "public class Main {}"
+      "public class Main {}",
     );
 
     const ctx = makeContext();
@@ -66,7 +66,7 @@ describe("sentry debug-files bundle-jvm", () => {
         output: outputDir,
         "debug-id": VALID_DEBUG_ID,
       },
-      tempDir
+      tempDir,
     );
 
     // Verify the ZIP was created
@@ -93,7 +93,7 @@ describe("sentry debug-files bundle-jvm", () => {
           output: outputDir,
           "debug-id": "not-a-uuid",
         },
-        tempDir
+        tempDir,
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -113,7 +113,7 @@ describe("sentry debug-files bundle-jvm", () => {
           output: outputDir,
           "debug-id": VALID_DEBUG_ID,
         },
-        join(tempDir, "nonexistent")
+        join(tempDir, "nonexistent"),
       );
       expect.unreachable("should have thrown");
     } catch (err) {
@@ -133,7 +133,7 @@ describe("sentry debug-files bundle-jvm", () => {
         output: outputDir,
         "debug-id": VALID_DEBUG_ID,
       },
-      tempDir
+      tempDir,
     );
 
     const writeCall = ctx.stdout.write.mock.calls[0];
@@ -155,7 +155,7 @@ describe("sentry debug-files bundle-jvm", () => {
     await mkdir(join(tempDir, "src", "main", "java"), { recursive: true });
     await writeFile(
       join(tempDir, "src", "main", "java", "App.java"),
-      "class App {}"
+      "class App {}",
     );
 
     const ctx = makeContext();
@@ -166,7 +166,7 @@ describe("sentry debug-files bundle-jvm", () => {
         "debug-id": VALID_DEBUG_ID,
         exclude: ["generated"],
       },
-      tempDir
+      tempDir,
     );
 
     const writeCall = ctx.stdout.write.mock.calls[0];
@@ -184,7 +184,7 @@ describe("sentry debug-files bundle-jvm", () => {
     await mkdir(join(tempDir, "src", "main", "java"), { recursive: true });
     await writeFile(
       join(tempDir, "src", "main", "java", "App.java"),
-      "class App {}"
+      "class App {}",
     );
 
     const ctx = makeContext();
@@ -194,7 +194,7 @@ describe("sentry debug-files bundle-jvm", () => {
         output: outputDir,
         "debug-id": VALID_DEBUG_ID,
       },
-      tempDir
+      tempDir,
     );
 
     expect(existsSync(join(outputDir, `${VALID_DEBUG_ID}.zip`))).toBe(true);

@@ -6,22 +6,52 @@
  */
 
 import { access, readFile } from "node:fs/promises";
-// biome-ignore lint/performance/noNamespaceImport: Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
+import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../context.js";
-import { appendSearchParams, rawApiRequest } from "../lib/api-client.js";
+import {
+  appendSearchParams,
+  consumePage,
+  decodePageCursor,
+  type PagePosition,
+  parseLinkHeader,
+  type PreparedRawApiRequest,
+  prepareRawApiRequest,
+  rawApiRequest,
+} from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
-import { OutputError, ValidationError } from "../lib/errors.js";
+import {
+  choiceParser,
+  parseApiEndpoint,
+  parseFilePath,
+  parseText,
+} from "../lib/completion-target.js";
+import { applyCustomHeaders } from "../lib/custom-headers.js";
+import { getIdentityFingerprint } from "../lib/db/auth.js";
+import {
+  advancePaginationState,
+  buildPaginationContextKey,
+  type CursorDirection,
+  hasPreviousPage,
+  resolveCursor,
+} from "../lib/db/pagination.js";
+import {
+  OutputError,
+  stringifyUnknown,
+  ValidationError,
+} from "../lib/errors.js";
 import { filterFields } from "../lib/formatters/json.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { validateEndpoint } from "../lib/input-validation.js";
 import { imageBytesToKitty } from "../lib/kitty-image.js";
+import { LIST_CURSOR_FLAG } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
-import { getDefaultSdkConfig, getSdkConfig } from "../lib/sentry-client.js";
+import { buildCacheKey } from "../lib/response-cache.js";
 import {
   canRenderKitty,
   canRenderSixel,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../lib/sixel.js";
 import { imageBytesToSixel } from "../lib/sixel-image.js";
 import { setOrgProjectContext } from "../lib/telemetry.js";
@@ -32,11 +62,14 @@ const log = logger.withTag("api");
 const LINE_BREAK_PATTERN = /[ \t]*[\r\n]+[ \t]*/g;
 const API_PREFIX = "/api/0";
 const API_PREFIX_WITH_SLASH = `${API_PREFIX}/`;
+const PAGINATION_KEY = "api";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 type ApiFlags = {
   readonly method: HttpMethod;
+  /** Shared navigation keyword or opaque pagination cursor for GET requests. */
+  readonly cursor?: string;
   readonly data?: string;
   readonly field?: string[];
   readonly "raw-field"?: string[];
@@ -61,7 +94,7 @@ const VALID_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "DELETE", "PATCH"];
  * @internal Exported for testing
  */
 export async function readStdin(
-  stdin: NodeJS.ReadStream & { fd: 0 }
+  stdin: NodeJS.ReadStream & { fd: 0 },
 ): Promise<string> {
   const chunks: Buffer[] = [];
 
@@ -84,7 +117,7 @@ export function parseMethod(value: string): HttpMethod {
   const upper = value.toUpperCase();
   if (!VALID_METHODS.includes(upper as HttpMethod)) {
     throw new Error(
-      `Invalid method: ${value}. Must be one of: ${VALID_METHODS.join(", ")}`
+      `Invalid method: ${value}. Must be one of: ${VALID_METHODS.join(", ")}`,
     );
   }
   return upper as HttpMethod;
@@ -253,7 +286,7 @@ function isApiPathSlug(segment: string | undefined): segment is string {
  * @internal Exported for testing
  */
 export function parseOrgProjectFromApiPath(
-  endpoint: string
+  endpoint: string,
 ): { org: string; project?: string } | undefined {
   const path = endpoint.split("?", 1)[0] ?? "";
   const segments = path.split("/").filter((segment) => segment.length > 0);
@@ -300,7 +333,7 @@ function tagOrgFromApiPath(endpoint: string): void {
  * @internal Exported for testing
  */
 export function parseFieldValue(value: string): unknown {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(value);
   } catch {
@@ -359,7 +392,7 @@ function validatePathSegments(path: string[]): void {
     if (DANGEROUS_KEYS.has(segment)) {
       throw new ValidationError(
         `Invalid field key: "${segment}" is not allowed`,
-        "field"
+        "field",
       );
     }
 
@@ -368,7 +401,7 @@ function validatePathSegments(path: string[]): void {
     if (segment === "" && i < path.length - 1) {
       throw new ValidationError(
         "Invalid field key: empty brackets [] can only appear at the end of a key",
-        "field"
+        "field",
       );
     }
   }
@@ -415,21 +448,21 @@ function validateTypeCompatibility(
   existing: unknown,
   expectsArray: boolean,
   path: string[],
-  index: number
+  index: number,
 ): void {
   const pathStr = formatPathForError(path, index);
 
   if (expectsArray && !Array.isArray(existing)) {
     throw new ValidationError(
       `expected array type under "${pathStr}", got ${getTypeName(existing)}`,
-      "field"
+      "field",
     );
   }
 
   if (!(expectsArray || isTraversableObject(existing))) {
     throw new ValidationError(
       `expected map type under "${pathStr}", got ${getTypeName(existing)}`,
-      "field"
+      "field",
     );
   }
 }
@@ -441,7 +474,7 @@ function validateTypeCompatibility(
  */
 function navigateToParent(
   obj: Record<string, unknown>,
-  path: string[]
+  path: string[],
 ): unknown {
   let current: unknown = obj;
 
@@ -489,7 +522,7 @@ function navigateToParent(
 export function setNestedValue(
   obj: Record<string, unknown>,
   key: string,
-  value: unknown
+  value: unknown,
 ): void {
   const path = parseFieldKey(key);
   validatePathSegments(path);
@@ -528,7 +561,7 @@ export function setNestedValue(
  * @internal Exported for testing
  */
 export function normalizeFields(
-  fields: string[] | undefined
+  fields: string[] | undefined,
 ): string[] | undefined {
   if (!fields || fields.length === 0) {
     return fields;
@@ -555,7 +588,7 @@ export function normalizeFields(
       const value = field.substring(colonIndex + 1);
       const corrected = `${key}=${value}`;
       log.warn(
-        `field '${field}' looks like it uses ':' instead of '=' — interpreting as '${corrected}'`
+        `field '${field}' looks like it uses ':' instead of '=' — interpreting as '${corrected}'`,
       );
       return corrected;
     }
@@ -575,7 +608,7 @@ export function normalizeFields(
 function processField(
   result: Record<string, unknown>,
   field: string,
-  raw: boolean
+  raw: boolean,
 ): void {
   const eqIndex = field.indexOf("=");
 
@@ -587,7 +620,7 @@ function processField(
     }
     throw new ValidationError(
       `Invalid field format: ${field}. Expected key=value`,
-      "field"
+      "field",
     );
   }
 
@@ -610,7 +643,7 @@ function processField(
  */
 export function parseFields(
   fields: string[],
-  raw = false
+  raw = false,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
@@ -643,7 +676,7 @@ function stringifyValue(value: unknown): string {
  * @internal Exported for testing
  */
 export function buildQueryParams(
-  fields: string[]
+  fields: string[],
 ): Record<string, string | string[]> {
   const result: Record<string, string | string[]> = {};
 
@@ -652,7 +685,7 @@ export function buildQueryParams(
     if (eqIndex === -1) {
       throw new ValidationError(
         `Invalid field format: ${field}. Expected key=value`,
-        "field"
+        "field",
       );
     }
 
@@ -689,7 +722,7 @@ export function buildQueryParams(
  * @internal Exported for testing
  */
 export function buildRawQueryParams(
-  fields: string[]
+  fields: string[],
 ): Record<string, string | string[]> {
   const result: Record<string, string | string[]> = {};
 
@@ -698,7 +731,7 @@ export function buildRawQueryParams(
     if (eqIndex === -1) {
       throw new ValidationError(
         `Invalid field format: ${field}. Expected key=value`,
-        "field"
+        "field",
       );
     }
 
@@ -706,7 +739,7 @@ export function buildRawQueryParams(
     if (key === "") {
       throw new ValidationError(
         "Invalid field key format: key cannot be empty",
-        "field"
+        "field",
       );
     }
 
@@ -740,7 +773,7 @@ export function buildRawQueryParams(
  */
 export function buildQueryParamsFromFields(
   typedFields?: string[],
-  rawFields?: string[]
+  rawFields?: string[],
 ): Record<string, string | string[]> {
   const typedParams =
     typedFields && typedFields.length > 0 ? buildQueryParams(typedFields) : {};
@@ -764,7 +797,7 @@ export function buildQueryParamsFromFields(
 export function prepareRequestOptions(
   method: HttpMethod,
   typedFields?: string[],
-  rawFields?: string[]
+  rawFields?: string[],
 ): {
   body?: Record<string, unknown>;
   params?: Record<string, string | string[]>;
@@ -803,7 +836,7 @@ export function parseHeaders(headers: string[]): Record<string, string> {
     if (colonIndex === -1) {
       throw new ValidationError(
         `Invalid header format: ${header}. Expected Key: Value`,
-        "header"
+        "header",
       );
     }
 
@@ -826,9 +859,9 @@ export function parseHeaders(headers: string[]): Record<string, string> {
  * @internal Exported for testing
  */
 export function parseDataBody(
-  data: string
+  data: string,
 ): Record<string, unknown> | unknown[] | string {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(data) as Record<string, unknown> | unknown[];
   } catch {
@@ -841,7 +874,7 @@ export function parseDataBody(
  * Duplicate keys are collected into arrays.
  */
 function parseUrlEncodedParams(
-  data: string
+  data: string,
 ): Record<string, string | string[]> {
   const params: Record<string, string | string[]> = {};
   for (const [key, value] of new URLSearchParams(data)) {
@@ -873,7 +906,7 @@ function parseUrlEncodedParams(
  * @internal Exported for testing
  */
 export function dataToQueryParams(
-  data: Record<string, unknown> | unknown[] | string
+  data: Record<string, unknown> | unknown[] | string,
 ): Record<string, string | string[]> {
   if (typeof data === "string") {
     return parseUrlEncodedParams(data);
@@ -886,7 +919,7 @@ export function dataToQueryParams(
       "Cannot use --data with a JSON primitive or array for GET requests. " +
         "Only JSON objects and URL-encoded strings can be converted to query parameters. " +
         "Use --method POST to send this data as a request body.",
-      "data"
+      "data",
     );
   }
 
@@ -911,7 +944,7 @@ export function dataToQueryParams(
  * @internal
  */
 function tryParseJsonField(
-  field: string
+  field: string,
 ): Record<string, unknown> | unknown[] | undefined {
   if (field.includes("=")) {
     return;
@@ -920,7 +953,7 @@ function tryParseJsonField(
     return;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(field) as Record<string, unknown> | unknown[];
   } catch {
@@ -966,14 +999,14 @@ export function extractJsonBody(fields: string[] | undefined): {
       throw new ValidationError(
         "Multiple JSON bodies detected in field arguments. " +
           "Use --data/-d to pass an inline JSON body explicitly.",
-        "field"
+        "field",
       );
     }
 
     jsonBody = parsed;
     const preview = field.length > 60 ? `${field.substring(0, 57)}...` : field;
     log.info(
-      `'${preview}' was used as the request body. Use --data/-d to pass inline JSON next time.`
+      `'${preview}' was used as the request body. Use --data/-d to pass inline JSON next time.`,
     );
   }
 
@@ -990,7 +1023,7 @@ export function extractJsonBody(fields: string[] | undefined): {
  */
 export async function buildBodyFromInput(
   inputPath: string,
-  stdin: NodeJS.ReadStream & { fd: 0 }
+  stdin: NodeJS.ReadStream & { fd: 0 },
 ): Promise<Record<string, unknown> | string> {
   let content: string;
 
@@ -999,7 +1032,7 @@ export async function buildBodyFromInput(
   } else {
     const exists = await access(inputPath).then(
       () => true,
-      () => false
+      () => false,
     );
     if (!exists) {
       throw new ValidationError(`File not found: ${inputPath}`, "input");
@@ -1008,7 +1041,7 @@ export async function buildBodyFromInput(
   }
 
   // Try to parse as JSON for the API client
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(content) as Record<string, unknown>;
   } catch {
@@ -1027,7 +1060,7 @@ export async function buildBodyFromInput(
  */
 export function buildBodyFromFields(
   typedFields: string[] | undefined,
-  rawFields: string[] | undefined
+  rawFields: string[] | undefined,
 ): Record<string, unknown> | undefined {
   const hasTypedFields = typedFields && typedFields.length > 0;
   const hasRawFields = rawFields && rawFields.length > 0;
@@ -1071,7 +1104,7 @@ export function formatApiResponse(data: unknown): string {
   if (typeof data === "object") {
     return JSON.stringify(data, null, 2);
   }
-  return String(data);
+  return stringifyUnknown(data);
 }
 
 /**
@@ -1082,7 +1115,7 @@ export function formatApiResponse(data: unknown): string {
 export function formatBinaryErrorBody(
   status: number,
   headers: Headers,
-  body: Uint8Array
+  body: Uint8Array,
 ): string {
   const contentType = headers.get("content-type") ?? "unknown";
   return (
@@ -1100,7 +1133,7 @@ export function formatEmptyErrorBody(
   status: number,
   statusText: string | undefined,
   method: string | undefined,
-  endpoint: string | undefined
+  endpoint: string | undefined,
 ): string {
   const statusLabel = [status, statusText].filter(Boolean).join(" ");
   const request = method && endpoint ? ` — ${method} /api/0/${endpoint}` : "";
@@ -1125,14 +1158,14 @@ type ApiResponseOutput = {
 /** Throw the appropriate output error for a non-successful API response. */
 function throwApiResponseError(
   response: ApiResponseOutput,
-  options: ApiResponseOutputOptions
+  options: ApiResponseOutputOptions,
 ): never {
   const isBinary = response.body instanceof Uint8Array;
   const errorBody = isBinary
     ? formatBinaryErrorBody(
         response.status,
         response.headers,
-        response.body as Uint8Array
+        response.body as Uint8Array,
       )
     : response.body;
 
@@ -1157,18 +1190,25 @@ function throwApiResponseError(
         response.status,
         response.statusText,
         options.method,
-        options.endpoint
-      )
+        options.endpoint,
+      ),
     );
   }
   throw new OutputError(response.body);
 }
 
-/** Add HTTP metadata to textual responses in JSON output mode. */
+/** Server continuations plus navigation available in the local cursor history. */
+type ApiPaginationMetadata = ReturnType<typeof parseLinkHeader> & {
+  /** Whether this query has a previously visited page in the local history. */
+  hasPrev?: boolean;
+};
+
+/** Add HTTP and pagination metadata to textual responses in JSON output mode. */
 function formatApiResponseOutput(
   response: ApiResponseOutput,
   output: unknown,
-  json: boolean
+  json: boolean,
+  pagination: ApiPaginationMetadata,
 ): unknown {
   if (!json || output instanceof Uint8Array) {
     return output;
@@ -1177,6 +1217,9 @@ function formatApiResponseOutput(
     status: response.status,
     statusText: response.statusText,
     body: output,
+    ...(pagination.nextCursor || pagination.prevCursor || pagination.hasPrev
+      ? { pagination }
+      : {}),
   };
 }
 
@@ -1203,52 +1246,84 @@ function formatApiResponseJson(data: unknown, fields?: string[]): unknown {
 }
 
 /**
- * Resolve the full URL that rawApiRequest would use for a request.
- *
- * Mirrors the URL construction in rawApiRequest:
- * `${baseUrl}/api/0/${endpoint}?${queryString}`
- * @internal Exported for testing
+ * Compose query parameters without URL fragments.
  */
-export function resolveRequestUrl(
+function resolveRequestEndpoint(
   endpoint: string,
-  params?: Record<string, string | string[]>,
-  baseUrl?: string
+  params: Record<string, string | string[]> | undefined,
 ): string {
-  // Use the same SDK config selection as rawApiRequest to ensure
-  // trailing slashes are stripped and the URL matches what would be sent.
-  const { baseUrl: normalizedBaseUrl } = baseUrl
-    ? getSdkConfig(baseUrl)
-    : getDefaultSdkConfig();
-  const normalizedEndpoint = endpoint.startsWith("/")
-    ? endpoint.slice(1)
-    : endpoint;
-  const endpointWithParams = appendSearchParams(normalizedEndpoint, params);
-  return `${normalizedBaseUrl}/api/0/${endpointWithParams}`;
+  const withoutFragment = endpoint.split("#", 1)[0] ?? endpoint;
+  return appendSearchParams(withoutFragment, params);
 }
 
+/** Pagination resolved for one GET, without mutating its saved history. */
+type ApiPagination = {
+  /** SDK-prepared request with the resolved server cursor and page size. */
+  prepared: PreparedRawApiRequest;
+  /** Identity-scoped fingerprint of the caller's request, excluding cursor. */
+  contextKey: string;
+  /** Navigation operation to commit after a successful response. */
+  direction: CursorDirection;
+  /** Original cursor, including any bookmark, saved for backward navigation. */
+  currentCursor: string | undefined;
+  /** Shared decoded position; skip counts rows already returned to the caller. */
+  position: PagePosition;
+};
+
 /**
- * Resolve effective request headers, mirroring rawApiRequest logic.
- *
- * Auto-adds Content-Type: application/json for non-string object bodies
- * when no Content-Type was explicitly provided.
- *
- * @internal Exported for testing
+ * Resolve CLI navigation and custom cursors while retaining a single request.
+ * Context uses the caller's query before cursor-derived page-size overrides, so
+ * repeating the same arguments with `next` finds the same walk. Header/body
+ * values participate in an opaque fingerprint and are never stored as plaintext.
  */
-export function resolveEffectiveHeaders(
-  customHeaders: Record<string, string> | undefined,
-  body: unknown
-): Record<string, string> {
-  // Mirror rawApiRequest exactly: auto-add Content-Type for any non-string,
-  // non-undefined body when no Content-Type was explicitly provided.
-  const isStringBody = typeof body === "string";
-  const headers = { ...(customHeaders ?? {}) };
-  const hasContentType = Object.keys(headers).some(
-    (k) => k.toLowerCase() === "content-type"
+async function resolveApiNavigation(
+  endpoint: string,
+  cursorFlag: string | undefined,
+  request: NonNullable<Parameters<typeof rawApiRequest>[1]>,
+): Promise<ApiPagination> {
+  const queryIndex = endpoint.indexOf("?");
+  const query = new URLSearchParams(
+    queryIndex === -1 ? "" : endpoint.slice(queryIndex + 1),
   );
-  if (!(isStringBody || hasContentType) && body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-  return headers;
+  const inputCursor = query.getAll("cursor").at(-1);
+  const context = await prepareRawApiRequest(endpoint, request, {
+    cursor: null,
+  });
+  const contextUrl = context.request.url;
+  const effectiveHeaders = new Headers(context.request.headers);
+  applyCustomHeaders(effectiveHeaders, contextUrl);
+  effectiveHeaders.delete("authorization");
+  effectiveHeaders.delete("sentry-trace");
+  effectiveHeaders.delete("baggage");
+  const identity = JSON.stringify([
+    getIdentityFingerprint(),
+    [...effectiveHeaders],
+    request.body,
+  ]);
+  const contextKey = buildPaginationContextKey(
+    "api",
+    await buildCacheKey("GET", contextUrl, identity),
+  );
+  const { cursor, direction } = resolveCursor(
+    cursorFlag,
+    PAGINATION_KEY,
+    contextKey,
+  );
+  const currentCursor = cursorFlag === undefined ? inputCursor : cursor;
+  const position = decodePageCursor(currentCursor);
+  return {
+    prepared:
+      cursorFlag === undefined && inputCursor === undefined
+        ? context
+        : await prepareRawApiRequest(endpoint, request, {
+            cursor: position.cursor ?? null,
+            per_page: position.perPage,
+          }),
+    contextKey,
+    direction,
+    currentCursor,
+    position,
+  };
 }
 
 /**
@@ -1262,7 +1337,7 @@ export function resolveEffectiveHeaders(
  */
 export function buildFromFields(
   method: HttpMethod,
-  flags: Pick<ApiFlags, "field" | "raw-field">
+  flags: Pick<ApiFlags, "field" | "raw-field">,
 ): {
   body?: Record<string, unknown> | unknown[];
   params?: Record<string, string | string[]>;
@@ -1288,7 +1363,7 @@ export function buildFromFields(
       throw new ValidationError(
         "Cannot combine a JSON array body with field flags (-F/-f). " +
           "Use --data/-d to pass the array as the full body without extra fields.",
-        "field"
+        "field",
       );
     }
     if (body) {
@@ -1296,13 +1371,13 @@ export function buildFromFields(
       // silently drop nested fields from the JSON body (e.g. statusDetails.ignoreCount
       // overwritten by statusDetails[minCount]=5).
       const conflicts = Object.keys(options.body).filter(
-        (k) => k in (body as Record<string, unknown>)
+        (k) => k in (body as Record<string, unknown>),
       );
       if (conflicts.length > 0) {
         throw new ValidationError(
           `Field flag(s) conflict with detected JSON body at key(s): ${conflicts.join(", ")}. ` +
             "Use --data/-d to pass the full JSON body, or use only field flags (-F/-f).",
-          "field"
+          "field",
         );
       }
     }
@@ -1327,7 +1402,7 @@ export function buildFromFields(
  */
 export async function resolveBody(
   flags: Pick<ApiFlags, "method" | "data" | "input" | "field" | "raw-field">,
-  stdin: NodeJS.ReadStream & { fd: 0 }
+  stdin: NodeJS.ReadStream & { fd: 0 },
 ): Promise<{
   body?: Record<string, unknown> | unknown[] | string;
   params?: Record<string, string | string[]>;
@@ -1336,7 +1411,7 @@ export async function resolveBody(
     throw new ValidationError(
       "Cannot use --data and --input together. " +
         "Use --data/-d for inline JSON, or --input for file/stdin.",
-      "data"
+      "data",
     );
   }
 
@@ -1347,7 +1422,7 @@ export async function resolveBody(
     throw new ValidationError(
       "Cannot use --data with --field or --raw-field. " +
         "Use --data/-d for a full JSON body, or -F/-f for individual fields.",
-      "data"
+      "data",
     );
   }
 
@@ -1383,7 +1458,7 @@ export async function resolveBody(
 function recordApiErrorAttributes(
   status: number,
   endpoint: string,
-  method: string
+  method: string,
 ): void {
   const span = Sentry.getActiveSpan();
   if (span) {
@@ -1396,10 +1471,10 @@ function recordApiErrorAttributes(
 /** Log outgoing request details in `> ` curl-verbose style. */
 function logRequest(
   method: string,
-  endpoint: string,
-  headers: Record<string, string> | undefined
+  url: string,
+  headers: Record<string, string> | undefined,
 ): void {
-  log.debug(`> ${method} /api/0/${endpoint}`);
+  log.debug(`> ${method} ${url}`);
   if (headers) {
     for (const [key, value] of Object.entries(headers)) {
       log.debug(`> ${key}: ${value}`);
@@ -1415,7 +1490,7 @@ function logResponse(response: {
   headers: Headers;
 }): void {
   log.debug(
-    `< HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`
+    `< HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`,
   );
   response.headers.forEach((value, key) => {
     log.debug(`< ${key}: ${value}`);
@@ -1445,7 +1520,7 @@ export function isApiErrorStatus(status: number): boolean {
 
 export function resolveApiResponseOutput(
   response: ApiResponseOutput,
-  options: ApiResponseOutputOptions
+  options: ApiResponseOutputOptions,
 ): unknown {
   const isError = isApiErrorStatus(response.status);
 
@@ -1485,7 +1560,7 @@ export function resolveApiResponseOutput(
 export function resolveBinaryTtyOutput(
   body: Uint8Array,
   headers: Headers,
-  allowGraphics = true
+  allowGraphics = true,
 ): string | undefined {
   if (allowGraphics) {
     // Cap the rendered width to the terminal's pixel budget so a wide image
@@ -1494,7 +1569,12 @@ export function resolveBinaryTtyOutput(
     const maxWidth = terminalPixelWidth();
     const contentType = headers.get("content-type");
     if (canRenderKitty()) {
-      const kitty = imageBytesToKitty(body, contentType, maxWidth);
+      const kitty = imageBytesToKitty(
+        body,
+        contentType,
+        maxWidth,
+        tmuxKittyPlacement(),
+      );
       if (kitty) {
         return kitty;
       }
@@ -1509,7 +1589,7 @@ export function resolveBinaryTtyOutput(
 
   log.warn(
     "Binary response written to a TTY — redirect stdout to a file " +
-      "(e.g. `> file.bin`) to capture raw bytes cleanly."
+      "(e.g. `> file.bin`) to capture raw bytes cleanly.",
   );
   return;
 }
@@ -1524,6 +1604,11 @@ export const apiCommand = buildCommand({
       "Absolute HTTP(S) Sentry URLs are also accepted; their origin is " +
       "validated against your authenticated host. " +
       "Authentication is handled automatically using your stored credentials.\n\n" +
+      "Pagination: --json includes nextCursor/prevCursor and hasPrev in " +
+      "pagination when navigation is available. Repeat the same GET and " +
+      "filters with --cursor next, prev, or first, or pass a raw cursor. " +
+      "Shared custom cursors restore page size and skip rows already read. " +
+      "Each invocation fetches one page.\n\n" +
       "Body options:\n" +
       '  --data/-d \'{"key":"value"}\'   Inline JSON body (like curl -d)\n' +
       '  --input/-i file.json          Read body from file (or "-" for stdin)\n\n' +
@@ -1532,13 +1617,80 @@ export const apiCommand = buildCommand({
       "  key[sub]=value     Nested object: {key: {sub: value}}\n" +
       "  key[]=value        Array append: {key: [value]}\n" +
       "  key[]              Empty array: {key: []}\n\n" +
-      "Use --raw-field/-f to send values as strings without JSON parsing.\n\n" +
-      "Examples:\n" +
-      "  sentry api organizations/\n" +
-      "  sentry api issues/123/ -X PUT -F status=resolved\n" +
-      '  sentry api issues/123/ -X PUT -d \'{"status":"resolved"}\'\n' +
-      "  sentry api projects/my-org/my-project/ -F options[sampleRate]=0.5\n" +
-      "  sentry api teams/my-org/my-team/members/ -F user[email]=user@example.com",
+      "Use --raw-field/-f to send values as strings without JSON parsing.",
+    examples: [
+      {
+        description: "List organizations",
+        command: "sentry api organizations/",
+      },
+      {
+        description: "Read a page and its pagination metadata",
+        command: "sentry api organizations/ -f per_page=2 --json",
+      },
+      {
+        description: "Continue the same query using shared pagination",
+        command: "sentry api organizations/ -f per_page=2 --cursor next --json",
+      },
+      {
+        description: "Return to the previously visited page",
+        command: "sentry api organizations/ -f per_page=2 --cursor prev --json",
+      },
+      {
+        description: "Get a specific issue",
+        command: "sentry api issues/123456789/",
+      },
+      {
+        description: "Create a release",
+        command:
+          "sentry api organizations/my-org/releases/ -X POST -F version=1.0.0",
+      },
+      {
+        description: "Update an issue status",
+        command: "sentry api issues/123456789/ -X PUT -F status=resolved",
+      },
+      {
+        description: "Send an inline JSON body",
+        command:
+          'sentry api issues/123456789/ -X PUT -d \'{"status":"resolved"}\'',
+      },
+      {
+        description: "Set a nested field",
+        command:
+          "sentry api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5",
+      },
+      {
+        description: "Assign an issue",
+        command:
+          'sentry api issues/123456789/ -X PUT --field assignedTo="user@example.com"',
+      },
+      {
+        description: "Delete a project",
+        command: "sentry api projects/my-org/my-project/ -X DELETE",
+      },
+      {
+        description: "Add custom headers",
+        command: 'sentry api organizations/ -H "X-Custom: value"',
+      },
+      {
+        description: "Read the request body from a file",
+        command:
+          "sentry api projects/my-org/my-project/releases/ -X POST --input release.json",
+      },
+      {
+        description: "Show the full HTTP request and response",
+        command: "sentry api organizations/ --verbose",
+      },
+      {
+        description: "Preview the request without sending it",
+        command: "sentry api organizations/ --dry-run",
+      },
+      {
+        description:
+          "Save a binary response, such as an event attachment, to a file",
+        command:
+          'sentry api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png',
+      },
+    ],
   },
   parameters: {
     positional: {
@@ -1546,7 +1698,7 @@ export const apiCommand = buildCommand({
       parameters: [
         {
           brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
-          parse: String,
+          parse: parseApiEndpoint,
           placeholder: "endpoint",
         },
       ],
@@ -1554,42 +1706,43 @@ export const apiCommand = buildCommand({
     flags: {
       method: {
         kind: "parsed",
-        parse: parseMethod,
+        parse: choiceParser(VALID_METHODS, parseMethod),
         brief: "The HTTP method for the request",
         default: "GET" as const,
         placeholder: "method",
       },
+      cursor: LIST_CURSOR_FLAG,
       data: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Inline JSON body for the request (like curl -d)",
         optional: true,
         placeholder: "json",
       },
       field: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a typed parameter (key=value, key[sub]=value, key[]=value)",
         variadic: true,
         optional: true,
       },
       "raw-field": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a string parameter without JSON parsing",
         variadic: true,
         optional: true,
       },
       header: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a HTTP request header in key:value format",
         variadic: true,
         optional: true,
       },
       input: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           'The file to use as body for the HTTP request (use "-" to read from standard input)',
         optional: true,
@@ -1613,6 +1766,7 @@ export const apiCommand = buildCommand({
     },
     aliases: {
       X: "method",
+      c: "cursor",
       d: "data",
       F: "field",
       f: "raw-field",
@@ -1622,6 +1776,12 @@ export const apiCommand = buildCommand({
   },
   async *func(this: SentryContext, flags: ApiFlags, endpoint: string) {
     const { stdin } = this;
+    if (flags.cursor !== undefined && flags.method !== "GET") {
+      throw new ValidationError(
+        "--cursor is only supported for GET requests",
+        "cursor",
+      );
+    }
 
     const { normalizedEndpoint, requestBaseUrl, strippedApiPrefix } =
       resolveApiTarget(endpoint);
@@ -1632,22 +1792,36 @@ export const apiCommand = buildCommand({
       // only surface the detail at debug level for troubleshooting
       // (getsentry/cli#785 item #11).
       log.debug(
-        "Stripped /api/0/ prefix from endpoint (auto-added by the API client)"
+        "Stripped /api/0/ prefix from endpoint (auto-added by the API client)",
       );
     }
     const { body, params } = await resolveBody(flags, stdin);
+    const composedEndpoint = resolveRequestEndpoint(normalizedEndpoint, params);
 
     const headers =
       flags.header && flags.header.length > 0
         ? parseHeaders(flags.header)
         : undefined;
+    const request = {
+      method: flags.method,
+      body,
+      headers,
+      baseUrl: requestBaseUrl,
+    };
+    const navigation =
+      flags.method === "GET"
+        ? await resolveApiNavigation(composedEndpoint, flags.cursor, request)
+        : undefined;
+    const prepared =
+      navigation?.prepared ??
+      (await prepareRawApiRequest(composedEndpoint, request));
 
     // Dry-run mode: preview the request that would be sent
     if (flags["dry-run"]) {
       yield new CommandOutput({
-        method: flags.method,
-        url: resolveRequestUrl(normalizedEndpoint, params, requestBaseUrl),
-        headers: resolveEffectiveHeaders(headers, body),
+        method: prepared.request.method,
+        url: prepared.request.url,
+        headers: Object.fromEntries(prepared.request.headers),
         body: body ?? null,
       });
       return;
@@ -1656,18 +1830,12 @@ export const apiCommand = buildCommand({
     const verbose = flags.verbose && !flags.silent;
 
     if (verbose) {
-      logRequest(flags.method, normalizedEndpoint, headers);
+      logRequest(flags.method, prepared.request.url, headers);
     }
 
     // The shared authenticated fetch validates requestBaseUrl against the
     // token host and registered regional origins before adding credentials.
-    const response = await rawApiRequest(normalizedEndpoint, {
-      method: flags.method,
-      body,
-      params,
-      headers,
-      baseUrl: requestBaseUrl,
-    });
+    const response = await rawApiRequest(prepared);
 
     const isError = isApiErrorStatus(response.status);
 
@@ -1682,7 +1850,50 @@ export const apiCommand = buildCommand({
       recordApiErrorAttributes(
         response.status,
         normalizedEndpoint,
-        flags.method
+        flags.method,
+      );
+    }
+
+    let pagination: ApiPaginationMetadata = parseLinkHeader(
+      response.headers.get("link"),
+    );
+    if (navigation && !isError) {
+      const envelope =
+        response.body !== null &&
+        typeof response.body === "object" &&
+        "data" in response.body &&
+        Array.isArray(response.body.data)
+          ? response.body
+          : undefined;
+      const rows = Array.isArray(response.body)
+        ? response.body
+        : envelope?.data;
+      if (Array.isArray(rows)) {
+        const page = consumePage<unknown>(
+          { data: rows, ...pagination },
+          navigation.position,
+        );
+        response.body = envelope ? { ...envelope, data: page.data } : page.data;
+        pagination = {
+          nextCursor: page.nextCursor,
+          prevCursor: pagination.prevCursor,
+        };
+      } else if (navigation.position.skip > 0) {
+        throw new ValidationError(
+          "Cannot resume a mid-page cursor: response body is not an array or a data envelope",
+          "cursor",
+        );
+      }
+      advancePaginationState(
+        PAGINATION_KEY,
+        navigation.contextKey,
+        navigation.direction,
+        pagination.nextCursor,
+        navigation.currentCursor ?? "",
+      );
+      pagination.hasPrev = hasPreviousPage(
+        PAGINATION_KEY,
+        navigation.contextKey,
       );
     }
 
@@ -1706,7 +1917,7 @@ export const apiCommand = buildCommand({
       const sixel = resolveBinaryTtyOutput(
         output,
         response.headers,
-        !flags.json
+        !flags.json,
       );
       if (sixel !== undefined) {
         return yield new CommandOutput(sixel);
@@ -1717,7 +1928,7 @@ export const apiCommand = buildCommand({
     // formatter, no trailing newline). Textual JSON responses expose the HTTP
     // metadata so callers can distinguish an empty success from an error.
     return yield new CommandOutput(
-      formatApiResponseOutput(response, output, flags.json)
+      formatApiResponseOutput(response, output, flags.json, pagination),
     );
   },
 });

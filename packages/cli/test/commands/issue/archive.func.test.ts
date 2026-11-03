@@ -20,11 +20,11 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -34,11 +34,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
@@ -354,5 +354,40 @@ describe("archiveCommand.func()", () => {
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     expect(output).toContain("Archived");
     expect(output).toContain("CLI-G5");
+  });
+
+  test("parses the issue before resolving it", async () => {
+    resolveIssueSpy.mockResolvedValue({
+      org: "test-org",
+      issue: makeMockIssue(),
+    });
+    updateSpy.mockResolvedValue(makeMockIssue());
+
+    const { context } = createMockContext();
+    await func.call(context, { json: false }, "test-org/CLI-G5");
+
+    expect(resolveIssueSpy).toHaveBeenCalledExactlyOnceWith({
+      issueArg: {
+        text: "test-org/CLI-G5",
+        parsed: {
+          type: "explicit",
+          org: "test-org",
+          project: "cli",
+          suffix: "G5",
+        },
+      },
+      cwd: context.cwd,
+      command: "archive",
+      commandBase: "sentry issue",
+    });
+  });
+
+  test("rejects a malformed issue without resolving it", async () => {
+    const { context } = createMockContext();
+    await expect(
+      func.call(context, { json: false }, "test-org/"),
+    ).rejects.toThrow(/Missing issue ID after slash/);
+    expect(resolveIssueSpy).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 });

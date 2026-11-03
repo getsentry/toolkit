@@ -6,32 +6,59 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import {
+  aggregateShorthandParser,
+  choiceParser,
+  DASHBOARD_TARGET,
+  type DatasetCompletion,
+  fieldParser,
+  parseText,
+} from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetAdded } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
-import { buildDashboardUrl } from "../../../lib/sentry-urls.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../../lib/positional-parse.js";
+import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   assignDefaultLayout,
-  type DashboardDetail,
-  type DashboardWidget,
+  DashboardWidgetChangeOutputSchema,
+  DEFAULT_WIDGET_TYPE,
+  DISPLAY_TYPES,
   FALLBACK_LAYOUT,
+  GRID_COLUMN_POSITIONS,
+  GRID_WIDTHS,
   prepareDashboardForUpdate,
   validateWidgetLayout,
+  WIDGET_LAYOUT_MODES,
+  WIDGET_TYPES,
   type WidgetLayoutFlags,
   type WidgetLayoutMode,
+  type DashboardWidgetChangeOutput,
 } from "../../../types/dashboard.js";
 import {
+  type DashboardInput,
+  parseDashboardInput,
+  type ResolvedDashboard,
+  resolveDashboardInput,
+} from "../arguments.js";
+import {
   buildWidgetFromFlags,
-  enrichDashboardError,
+  withDashboardErrors,
   normalizeDataset,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
   validateWidgetEnums,
+  WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
+
+/** What `--query`, `--sort`, and `--group-by` complete: a spans widget's by default. */
+const FIELD_COMPLETION: DatasetCompletion = {
+  ...WIDGET_FIELD_COMPLETION,
+  default: DEFAULT_WIDGET_TYPE,
+};
 
 type AddFlags = WidgetQueryFlags &
   WidgetLayoutFlags & {
@@ -41,18 +68,21 @@ type AddFlags = WidgetQueryFlags &
     readonly fields?: string[];
   };
 
-type AddResult = {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-};
+const USAGE_HINT =
+  "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>";
+
+/** `widget add` arguments: the dashboard, then the widget title. */
+type WidgetAddInput = DashboardInput & { readonly title: string };
+
+/** The arguments of `widget add`. */
+type WidgetAddArguments = BoundArguments<WidgetAddInput, ResolvedDashboard>;
 
 /**
  * Parse positional args for widget add.
  * Last arg is widget title, rest go to dashboard resolution.
  */
-function parseAddPositionalArgs(args: string[]): {
-  dashboardArgs: string[];
+function parseAddPositionalArgs(args: readonly string[]): {
+  dashboardArgs: readonly string[];
   title: string;
 } {
   if (args.length < 2) {
@@ -60,14 +90,14 @@ function parseAddPositionalArgs(args: string[]): {
       "Widget title is required as a positional argument.\n\n" +
         "Example:\n" +
         '  sentry dashboard widget add <dashboard> "My Widget" --display line --query count',
-      "title"
+      "title",
     );
   }
   if (args.length > 3) {
     throw new ValidationError(
       `Too many positional arguments (got ${args.length}, expected at most 3).\n\n` +
         "Usage: sentry dashboard widget add [<org/project>] <dashboard> <title>",
-      "positional"
+      "positional",
     );
   }
 
@@ -82,14 +112,6 @@ export const addCommand = buildCommand({
     fullDescription:
       "Add a widget to an existing Sentry dashboard.\n\n" +
       "The dashboard can be specified by numeric ID or title.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard widget add 'My Dashboard' \"Error Count\" \\\n" +
-      "    --display big_number --query count\n\n" +
-      "  sentry dashboard widget add 'My Dashboard' \"Errors by Browser\" \\\n" +
-      "    --display line --query count --group-by browser.name\n\n" +
-      "  sentry dashboard widget add 'My Dashboard' \"Top Endpoints\" \\\n" +
-      "    --display table --query count --query p95:span.duration \\\n" +
-      "    --group-by transaction --sort -count --limit 10\n\n" +
       "Query shorthand (--query flag):\n" +
       "  count          → count()         (bare name = no-arg aggregate)\n" +
       "  p95:span.duration → p95(span.duration)  (colon = function with arg)\n" +
@@ -99,56 +121,102 @@ export const addCommand = buildCommand({
       "  -count         → -count()        (descending)\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
       "and size in the 6-column dashboard grid. Omitted values use auto-layout.",
+    examples: [
+      {
+        description: "Add a counter widget",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
+      },
+      {
+        description: "Use a dashboard ID in an explicit organization",
+        command:
+          'sentry dashboard widget add my-org/12345 "Error Count" --display big_number --query count',
+      },
+      {
+        description: "Line chart with group-by",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Errors by Browser\" --display line --query count --group-by browser.name",
+      },
+      {
+        description: "Table with multiple aggregates, sorted descending",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Top Endpoints\" --display table --query count --query p95:span.duration --group-by transaction --sort -count --limit 10",
+      },
+      {
+        description: "Bar chart with a search filter",
+        command:
+          'sentry dashboard widget add \'My Dashboard\' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description',
+      },
+      {
+        description: "P95 latency KPI",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"P95\" --display big_number --query p95:span.duration",
+      },
+      {
+        description: "Throughput KPI",
+        command:
+          "sentry dashboard widget add 'My Dashboard' \"Throughput\" --display big_number --query epm",
+      },
+      {
+        description: "Custom metric percentiles from the tracemetrics dataset",
+        command:
+          'sentry dashboard widget add \'My Dashboard\' "Latency" --display line --dataset tracemetrics --query "p50(value,completion.duration_ms,distribution,none)" --query "p90(value,completion.duration_ms,distribution,none)"',
+      },
+    ],
   },
   output: {
     human: formatWidgetAdded,
+    schema: DashboardWidgetChangeOutputSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/dashboard/title",
-        brief: "[<org/project>] <dashboard> <title>",
-        parse: String,
+    positional: boundArguments({
+      placeholder: "org/project/dashboard/title",
+      brief: "[<org/project>] <dashboard> <title>",
+      kind: DASHBOARD_TARGET,
+      parse: (args): WidgetAddInput => {
+        const { dashboardArgs, title } = parseAddPositionalArgs(args);
+        return { ...parseDashboardInput(dashboardArgs, USAGE_HINT), title };
       },
-    },
+      resolve: (input: WidgetAddInput, context: SentryContext) =>
+        resolveDashboardInput(input, context.cwd, USAGE_HINT),
+    }),
     flags: {
       display: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(DISPLAY_TYPES),
         brief:
           "Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)",
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(WIDGET_TYPES),
         brief:
           "Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue",
         optional: true,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: aggregateShorthandParser(FIELD_COMPLETION),
         brief: "Aggregate expression (e.g. count, p95:span.duration)",
         variadic: true,
         optional: true,
       },
       where: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search conditions filter (e.g. is:unresolved)",
         optional: true,
       },
       "group-by": {
         kind: "parsed",
-        parse: String,
+        parse: fieldParser(FIELD_COMPLETION),
         brief: "Group-by column (repeatable)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: aggregateShorthandParser(FIELD_COMPLETION),
         brief: "Order by (prefix - for desc, e.g. -count)",
         optional: true,
       },
@@ -160,7 +228,7 @@ export const addCommand = buildCommand({
       },
       col: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_COLUMN_POSITIONS, numberParser),
         brief: "Grid column position (0-based, 0–5)",
         optional: true,
       },
@@ -172,7 +240,7 @@ export const addCommand = buildCommand({
       },
       width: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_WIDTHS, numberParser),
         brief: "Widget width in grid columns (1–6)",
         optional: true,
       },
@@ -184,7 +252,7 @@ export const addCommand = buildCommand({
       },
       layout: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(WIDGET_LAYOUT_MODES),
         brief: "Layout mode: sequential (append in order) or dense (fill gaps)",
         default: "sequential",
       },
@@ -201,10 +269,12 @@ export const addCommand = buildCommand({
       y: "row",
     },
   },
-  async *func(this: SentryContext, flags: AddFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { dashboardArgs, title } = parseAddPositionalArgs(args);
+  async *func(
+    this: SentryContext,
+    flags: AddFlags,
+    target: WidgetAddArguments,
+  ) {
+    const { title } = target.parsed;
 
     // Resolve dataset aliases (e.g. "errors" → "error-events") once, up front.
     // Every downstream consumer — enum validation, dataset-aware aggregate
@@ -215,15 +285,7 @@ export const addCommand = buildCommand({
     // Validate enums before any network calls (fail fast)
     validateWidgetEnums(flags.display, dataset);
 
-    const { dashboardRef, targetArg } =
-      parseDashboardPositionalArgs(dashboardArgs);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>"
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+    const { orgSlug, dashboardId } = await target.resolved;
 
     let newWidget = buildWidgetFromFlags({
       title,
@@ -239,12 +301,11 @@ export const addCommand = buildCommand({
     // Validate layout mode before any network calls
     if (
       flags.layout &&
-      flags.layout !== "sequential" &&
-      flags.layout !== "dense"
+      !(WIDGET_LAYOUT_MODES as readonly string[]).includes(flags.layout)
     ) {
       throw new ValidationError(
-        `Invalid --layout mode "${flags.layout}". Valid values: sequential, dense`,
-        "layout"
+        `Invalid --layout mode "${flags.layout}". Valid values: ${WIDGET_LAYOUT_MODES.join(", ")}`,
+        "layout",
       );
     }
     const layoutMode: WidgetLayoutMode =
@@ -255,9 +316,13 @@ export const addCommand = buildCommand({
     validateWidgetLayout(flags);
 
     // GET current dashboard → append widget with layout → PUT
-    const current = await getDashboard(orgSlug, dashboardId).catch(
-      async (error: unknown) =>
-        enrichDashboardError(error, { orgSlug, dashboardId, operation: "view" })
+    const current = await withDashboardErrors(
+      {
+        orgSlug,
+        dashboardId,
+        operation: "view",
+      },
+      () => getDashboard(orgSlug, dashboardId),
     );
     const updateBody = prepareDashboardForUpdate(current);
 
@@ -288,22 +353,19 @@ export const addCommand = buildCommand({
       const finalLayout = newWidget.layout ?? baseLayout;
       validateWidgetLayout(
         { col: finalLayout.x, width: finalLayout.w },
-        finalLayout
+        finalLayout,
       );
     }
 
     updateBody.widgets.push(newWidget);
 
-    const updated = await updateDashboard(
-      orgSlug,
-      dashboardId,
-      updateBody
-    ).catch(async (error: unknown) =>
-      enrichDashboardError(error, {
+    const updated = await withDashboardErrors(
+      {
         orgSlug,
         dashboardId,
         operation: "update",
-      })
+      },
+      () => updateDashboard(orgSlug, dashboardId, updateBody),
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 
@@ -311,7 +373,7 @@ export const addCommand = buildCommand({
       dashboard: updated,
       widget: newWidget,
       url,
-    } as AddResult);
+    } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };
   },
 });

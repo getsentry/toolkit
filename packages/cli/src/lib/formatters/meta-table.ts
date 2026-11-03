@@ -8,7 +8,8 @@
  * for numeric fields.
  */
 
-import { escapeMarkdownCell } from "./markdown.js";
+import { tableCell } from "@sentry/toolkit-core/markdown";
+import { stringifyUnknown } from "../errors.js";
 import { appendUnitSuffix, formatNumber } from "./numbers.js";
 import type { Column } from "./table.js";
 
@@ -33,7 +34,7 @@ export const NUMERIC_FIELD_TYPES = new Set([
 export function formatCellValue(
   value: unknown,
   fieldType?: string,
-  unit?: string | null
+  unit?: string | null,
 ): string {
   if (value === null || value === undefined) {
     return "—";
@@ -47,7 +48,7 @@ export function formatCellValue(
     }
     return formatNumber(value);
   }
-  return escapeMarkdownCell(String(value));
+  return tableCell(stringifyUnknown(value));
 }
 
 /**
@@ -66,7 +67,7 @@ export function formatCellValue(
 export function buildMetaColumns(
   fieldNames: string[],
   fieldTypes?: Record<string, string>,
-  fieldUnits?: Record<string, string | null>
+  fieldUnits?: Record<string, string | null>,
 ): Column<Record<string, unknown>>[] {
   return fieldNames.map((name) => {
     const fieldType = fieldTypes?.[name];

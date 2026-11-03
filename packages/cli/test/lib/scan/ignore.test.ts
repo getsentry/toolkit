@@ -185,7 +185,7 @@ describe("IgnoreStack — input validation", () => {
     try {
       const stack = await IgnoreStack.create({ cwd, alwaysSkipDirs: [] });
       expect(() => stack.isIgnored("/etc/passwd", false)).toThrow(
-        /relative path/
+        /relative path/,
       );
     } finally {
       cleanup();

@@ -144,7 +144,7 @@ function makeHandle(): TtyForwardingHandle {
  *   Production callers pass no args — the defaults do the right thing.
  */
 export function forwardFreshTtyToStdin(
-  deps: TtyDeps = {}
+  deps: TtyDeps = {},
 ): TtyForwardingHandle {
   const { openTty = defaultOpenTty, isTty = defaultIsTty } = deps;
 
@@ -160,7 +160,7 @@ export function forwardFreshTtyToStdin(
   }
 
   let fd: number;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     fd = openTty();
   } catch {
@@ -284,7 +284,7 @@ export function closeFreshTtyForwarding(): void {
   // `setRawMode(false)`), the TTY is still in raw mode — leaving it there
   // produces a shell with no echo after a crash. Best-effort: the fresh fd
   // may already be destroyed from a prior error, so swallow any throw.
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     fresh.setRawMode(false);
   } catch {
@@ -315,7 +315,7 @@ export function closeFreshTtyForwarding(): void {
   // user presses a key. Now that the original `.pause()` is restored,
   // invoke it directly so stock Node/Bun cleanup can finish. Idempotent:
   // safe when stdin was already paused.
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     original.pause.call(process.stdin);
   } catch {

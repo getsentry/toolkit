@@ -10,16 +10,18 @@
  * - project-search → find project by slug across all orgs
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../../context.js";
 import { buildProjectAliasMap } from "../../../lib/alias.js";
 import type { IssueAlertRule } from "../../../lib/api/alerts.js";
-import { MAX_PAGINATION_PAGES } from "../../../lib/api/infrastructure.js";
+import { paginate } from "../../../lib/api/infrastructure.js";
+import { listIssueAlertsPaginated } from "../../../lib/api-client.js";
 import {
-  API_MAX_PER_PAGE,
-  listIssueAlertsPaginated,
-} from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+  type ParsedOrgProject,
+  parseCursorFlag,
+} from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
+import { parseText } from "../../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiTargetContextKey,
@@ -38,10 +40,7 @@ import {
   ValidationError,
   withAuthGuard,
 } from "../../../lib/errors.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-} from "../../../lib/formatters/markdown.js";
+import { colorTag } from "../../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../../lib/formatters/table.js";
 import {
@@ -51,7 +50,6 @@ import {
   LIST_MAX_LIMIT,
   LIST_TARGET_POSITIONAL,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../../lib/list-command.js";
 import { logger } from "../../../lib/logger.js";
@@ -71,7 +69,8 @@ import {
   type ResolvedTarget,
   resolveProjectBoundTargets,
 } from "../../../lib/resolve-target.js";
-import { buildIssueAlertsUrl } from "../../../lib/sentry-urls.js";
+import { buildIssueAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import type { ListCommandTarget } from "../../../lib/target-positional.js";
 import type { ProjectAliasEntry, Writer } from "../../../types/index.js";
 import {
   assertAlertListLimit,
@@ -134,46 +133,18 @@ const issueAlertListMeta: ListCommandMeta = {
  */
 async function fetchRulesForTarget(
   target: ResolvedTarget,
-  options: { limit: number; startCursor?: string }
+  options: { limit: number; startCursor?: string },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
-    const rules: IssueAlertRule[] = [];
-    let serverCursor = options.startCursor;
-
-    for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-      const { data, nextCursor } = await listIssueAlertsPaginated(
-        target.org,
-        target.project,
-        {
-          perPage: Math.min(options.limit - rules.length, API_MAX_PER_PAGE),
-          cursor: serverCursor,
-        }
-      );
-
-      for (const rule of data) {
-        rules.push(rule);
-        if (rules.length >= options.limit) {
-          return {
-            target,
-            rules,
-            hasMore: !!nextCursor,
-            nextCursor: nextCursor ?? undefined,
-          };
-        }
-      }
-
-      if (!nextCursor) {
-        return { target, rules, hasMore: false };
-      }
-      serverCursor = nextCursor;
-    }
-
-    return {
-      target,
-      rules,
-      hasMore: !!serverCursor,
-      nextCursor: serverCursor ?? undefined,
-    };
+    const { data: rules, nextCursor } = await paginate(
+      { limit: options.limit, cursor: options.startCursor },
+      (perPage, cursor) =>
+        listIssueAlertsPaginated(target.org, target.project, {
+          perPage,
+          cursor,
+        }),
+    );
+    return { target, rules, hasMore: !!nextCursor, nextCursor };
   });
 
   if (!result.ok) {
@@ -187,8 +158,8 @@ async function fetchRulesForTarget(
 }
 
 async function resolveWebUrl(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
-  cwd: string
+  parsed: ParsedOrgProject,
+  cwd: string,
 ): Promise<string> {
   if (parsed.type === "explicit") {
     return buildIssueAlertsUrl(parsed.org, parsed.project);
@@ -206,7 +177,7 @@ async function resolveWebUrl(
     const resolution = await classifyProjectSearchTarget(parsed);
     if (resolution.kind === "organization") {
       logger.warn(
-        `'${parsed.projectSlug}' is an organization, not a project. Opening organization '${resolution.org}'.`
+        `'${parsed.projectSlug}' is an organization, not a project. Opening organization '${resolution.org}'.`,
       );
       return buildIssueAlertsUrl(resolution.org);
     }
@@ -226,36 +197,36 @@ async function resolveWebUrl(
   if (orgs.length !== 1) {
     throw new ValidationError(
       "--web resolved alert rules in multiple organizations. Specify an explicit <org>/ or <org>/<project> target.",
-      "target"
+      "target",
     );
   }
 
   const projects = [...new Set(targets.map((t) => t.project))];
   return buildIssueAlertsUrl(
-    // biome-ignore lint/style/noNonNullAssertion: orgs length is checked above
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- orgs length is checked above
     orgs[0]!,
-    projects.length === 1 ? projects[0] : undefined
+    projects.length === 1 ? projects[0] : undefined,
   );
 }
 
 // Mode handler
 
 type ResolvedTargetsOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
   projectSearchResolution?: ProjectSearchTargetResolution;
 };
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: inherent multi-target resolution, compound cursor, error handling, and display logic
+// inherent multi-target resolution, compound cursor, error handling, and display logic
 async function handleResolvedTargets(
-  options: ResolvedTargetsOptions
+  options: ResolvedTargetsOptions,
 ): Promise<IssueAlertListResult> {
   const { parsed, flags, cwd, projectSearchResolution } = options;
 
   const { targets, footer, detectedDsns } = await resolveProjectBoundTargets(
     parsed,
-    { cwd, usageHint: USAGE_HINT, projectSearchResolution }
+    { cwd, usageHint: USAGE_HINT, projectSearchResolution },
   );
 
   if (targets.length === 0) {
@@ -270,11 +241,11 @@ async function handleResolvedTargets(
   const { cursor: rawCursor, direction } = resolveCursor(
     flags.cursor,
     PAGINATION_KEY,
-    contextKey
+    contextKey,
   );
   const { startCursors, exhausted: exhaustedTargets } = decodeTargetCursors(
     rawCursor,
-    sortedTargetKeys
+    sortedTargetKeys,
   );
 
   const activeTargets =
@@ -298,32 +269,32 @@ async function handleResolvedTargets(
         fetchGroup: fetchRulesForTarget,
         onProgress: (fetched) => {
           setMessage(
-            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`
+            `${baseMessage}, ${fetched} and counting (up to ${flags.limit})...`,
           );
         },
-      })
+      }),
   );
 
   const validResults: AlertRuleListFetchResult[] = [];
   const failures: { target: ResolvedTarget; error: Error }[] = [];
 
   for (let i = 0; i < results.length; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: index within bounds
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
     const result = results[i]!;
     if (result.success) {
       validResults.push(result.data);
     } else {
-      // biome-ignore lint/style/noNonNullAssertion: index within bounds
+      // oxlint-disable-next-line typescript/no-non-null-assertion -- index within bounds
       failures.push({ target: activeTargets[i]!, error: result.error });
     }
   }
 
   if (validResults.length === 0 && failures.length > 0) {
-    // biome-ignore lint/style/noNonNullAssertion: guarded by failures.length > 0
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- guarded by failures.length > 0
     const { error: first } = failures[0]!;
     throwAlertListFetchFailure(
       `Failed to fetch alert rules from ${targets.length} project(s)`,
-      first
+      first,
     );
   }
 
@@ -332,7 +303,7 @@ async function handleResolvedTargets(
       .map(({ target: t }) => `${t.org}/${t.project}`)
       .join(", ");
     logger.warn(
-      `Failed to fetch alert rules from ${failedNames}. Showing results from ${validResults.length} project(s).`
+      `Failed to fetch alert rules from ${failedNames}. Showing results from ${validResults.length} project(s).`,
     );
   }
 
@@ -353,20 +324,20 @@ async function handleResolvedTargets(
 
   // Apply client-side name filter
   const allRows: AlertRuleRow[] = validResults.flatMap((r) =>
-    r.rules.map((rule) => ({ rule, target: r.target }))
+    r.rules.map((rule) => ({ rule, target: r.target })),
   );
   const filteredRows = flags.query
     ? allRows.filter((row) =>
         (row.rule.name ?? "")
           .toLowerCase()
-          .includes(flags.query?.toLowerCase() ?? "")
+          .includes(flags.query?.toLowerCase() ?? ""),
       )
     : allRows;
 
   const displayRows = trimWithGroupGuarantee(
     filteredRows,
     flags.limit,
-    (row) => `${row.target.org}/${row.target.project}`
+    (row) => `${row.target.org}/${row.target.project}`,
   );
   const trimmed = displayRows.length < filteredRows.length;
   const cursorValues: (string | null)[] = sortedTargetKeys.map((key) => {
@@ -397,7 +368,7 @@ async function handleResolvedTargets(
     PAGINATION_KEY,
     contextKey,
     direction,
-    compoundNextCursor
+    compoundNextCursor,
   );
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
@@ -406,7 +377,7 @@ async function handleResolvedTargets(
     failures,
     "project",
     ({ target: t }) => `${t.org}/${t.project}`,
-    ({ error }) => error
+    ({ error }) => error,
   );
 
   const nav = paginationHint({
@@ -465,7 +436,7 @@ function formatIssueAlertListHuman(result: IssueAlertListResult): string {
 
   const rows = result.displayRows ?? [];
   const uniqueProjects = new Set(
-    rows.map((r) => `${r.target.org}/${r.target.project}`)
+    rows.map((r) => `${r.target.org}/${r.target.project}`),
   );
   const isMultiProject = uniqueProjects.size > 1;
 
@@ -481,7 +452,7 @@ function formatIssueAlertListHuman(result: IssueAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, target }) => ({
     id: r.id,
-    name: escapeMarkdownCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name ?? "(untitled)"),
     ...(isMultiProject && {
       project: `${target.org}/${target.project}`,
     }),
@@ -528,14 +499,32 @@ export const listCommand = buildListCommand("alert issues", {
     fullDescription:
       "List issue alert rules for one or more Sentry projects.\n\n" +
       "Issue alerts trigger notifications when error events match conditions.\n\n" +
-      "Target patterns:\n" +
-      "  sentry alert issues list                     # auto-detect from DSN or config\n" +
-      "  sentry alert issues list <org>/<project>     # explicit org and project\n" +
-      "  sentry alert issues list <org>/              # all projects in org\n" +
-      "  sentry alert issues list <project>           # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows alert rules from all detected projects.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
+    examples: [
+      {
+        description: "List issue alert rules (project auto-detected)",
+        command: "sentry alert issues list",
+      },
+      {
+        description: "List issue alert rules for a project",
+        command: "sentry alert issues list my-org/my-project",
+      },
+      {
+        description: "Filter rules by name",
+        command: 'sentry alert issues list my-org/my-project --query "spike"',
+      },
+      {
+        description:
+          "List issue alert rules for all projects in an organization",
+        command: "sentry alert issues list my-org/",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry alert issues list frontend",
+      },
+    ],
   },
   output: {
     human: formatIssueAlertListHuman,
@@ -552,7 +541,7 @@ export const listCommand = buildListCommand("alert issues", {
       limit: buildListLimitFlag("issue alert rules"),
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Filter rules by name",
         optional: true,
       },
@@ -566,20 +555,24 @@ export const listCommand = buildListCommand("alert issues", {
     },
     aliases: { ...LIST_BASE_ALIASES, w: "web", q: "query" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
-    const parsed = parseOrgProjectArg(target);
+    const { parsed } = await target.resolved;
     assertAlertListLimit(flags.limit);
 
     if (flags.web) {
       await openInBrowser(
         await resolveWebUrl(parsed, cwd),
-        "issue alert rules"
+        "issue alert rules",
       );
       return;
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: shared handler accepts any mode variant
+    // oxlint-disable-next-line typescript/no-explicit-any -- shared handler accepts any mode variant
     const resolveAndHandle: ModeHandler<any> = (ctx) =>
       handleResolvedTargets({ ...ctx, flags });
 

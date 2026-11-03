@@ -44,6 +44,6 @@ search_issues({
   organizationSlug: "my-org",
   query: "critical bugs from last week",
   limit: 25,
-  includeExplanation: true
-})
+  includeExplanation: true,
+});
 ```

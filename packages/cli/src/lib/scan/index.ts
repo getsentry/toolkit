@@ -1,4 +1,4 @@
-// biome-ignore-all lint/performance/noBarrelFile: intentional public API
+// Intentional public API barrel.
 /**
  * Scan module — pure-TS ripgrep-compatible file scanner.
  *
@@ -34,10 +34,7 @@ export {
   readHeadAndSniff,
 } from "./binary.js";
 export type { ConcurrentOptions, MapFilesOptions } from "./concurrent.js";
-export {
-  mapFilesConcurrent,
-  mapFilesConcurrentStream,
-} from "./concurrent.js";
+export { mapFilesConcurrent, mapFilesConcurrentStream } from "./concurrent.js";
 export {
   BINARY_SNIFF_BYTES,
   CONCURRENCY_LIMIT,

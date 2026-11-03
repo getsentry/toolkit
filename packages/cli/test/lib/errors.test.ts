@@ -16,6 +16,7 @@ import {
   isSearchQueryParseError,
   isUserError,
   OutputError,
+  RateLimitError,
   ResolutionError,
   SeerError,
   stringifyUnknown,
@@ -50,7 +51,7 @@ describe("AuthError", () => {
   test("not_authenticated has default message", () => {
     const err = new AuthError("not_authenticated");
     expect(err.message).toBe(
-      "Not authenticated. Run 'sentry auth login' first."
+      "Not authenticated. Run 'sentry auth login' first.",
     );
     expect(err.reason).toBe("not_authenticated");
   });
@@ -58,7 +59,7 @@ describe("AuthError", () => {
   test("expired has default message", () => {
     const err = new AuthError("expired");
     expect(err.message).toBe(
-      "Authentication expired. Run 'sentry auth login' to re-authenticate."
+      "Authentication expired. Run 'sentry auth login' to re-authenticate.",
     );
     expect(err.reason).toBe("expired");
   });
@@ -103,7 +104,7 @@ describe("ConfigError", () => {
   test("format() includes suggestion", () => {
     const err = new ConfigError("Invalid config", "Check the config file");
     expect(err.format()).toBe(
-      "Invalid config\n\nSuggestion: Check the config file"
+      "Invalid config\n\nSuggestion: Check the config file",
     );
   });
 
@@ -121,10 +122,10 @@ describe("ContextError", () => {
     expect(formatted).toContain("Provide it explicitly:");
     expect(formatted).toContain("sentry org list");
     expect(formatted).toContain(
-      "Run from a directory with a Sentry DSN in source code or .env files"
+      "Run from a directory with a Sentry DSN in source code or .env files",
     );
     expect(formatted).toContain(
-      "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables"
+      "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
     );
   });
 
@@ -150,18 +151,18 @@ describe("ContextError", () => {
       "Organization",
       "sentry org list",
       undefined,
-      "Found 2 DSN(s) that could not be resolved"
+      "Found 2 DSN(s) that could not be resolved",
     );
     const formatted = err.format();
     expect(formatted).toContain("Could not auto-detect organization.");
     // Default alternatives are present
     expect(formatted).toContain("Or:");
     expect(formatted).toContain(
-      "Run from a directory with a Sentry DSN in source code or .env files"
+      "Run from a directory with a Sentry DSN in source code or .env files",
     );
     // Note appears as a separate section
     expect(formatted).toContain(
-      "Note: Found 2 DSN(s) that could not be resolved"
+      "Note: Found 2 DSN(s) that could not be resolved",
     );
     // Note appears after alternatives
     const orIndex = formatted.indexOf("Or:");
@@ -174,7 +175,7 @@ describe("ContextError", () => {
       "Resource",
       "sentry resource get",
       [],
-      "Some diagnostic info"
+      "Some diagnostic info",
     );
     const formatted = err.format();
     expect(formatted).toContain("Resource is required.");
@@ -187,7 +188,7 @@ describe("ContextError", () => {
       "Organization",
       "sentry org list",
       undefined,
-      "test note"
+      "test note",
     );
     expect(err.note).toBe("test note");
   });
@@ -202,7 +203,7 @@ describe("ResolutionError", () => {
       [
         "No issue with numeric ID 99124558 found",
         "If this is a short ID suffix, try: sentry issue view <project>-99124558",
-      ]
+      ],
     );
     const formatted = err.format();
     expect(formatted).toContain("Issue 99124558 not found.");
@@ -219,7 +220,7 @@ describe("ResolutionError", () => {
       "Project 'cli'",
       "is ambiguous",
       "sentry issue view <org>/cli-G",
-      ["Found in: sentry, acme"]
+      ["Found in: sentry, acme"],
     );
     const formatted = err.format();
     expect(formatted).toContain("Project 'cli' is ambiguous.");
@@ -232,11 +233,11 @@ describe("ResolutionError", () => {
     const err = new ResolutionError(
       'Event abc123 in organization "acme"',
       "not found",
-      "sentry event view acme/<project> abc123"
+      "sentry event view acme/<project> abc123",
     );
     const formatted = err.format();
     expect(formatted).toContain(
-      'Event abc123 in organization "acme" not found.'
+      'Event abc123 in organization "acme" not found.',
     );
     expect(formatted).toContain("Try:");
     expect(formatted).not.toContain("Or:");
@@ -246,7 +247,7 @@ describe("ResolutionError", () => {
     const err = new ResolutionError(
       "Issue suffix 'G'",
       "could not be resolved without project context",
-      "sentry issue view <org>/<project>-G"
+      "sentry issue view <org>/<project>-G",
     );
     expect(err.resource).toBe("Issue suffix 'G'");
     expect(err.headline).toBe("could not be resolved without project context");
@@ -258,7 +259,7 @@ describe("ResolutionError", () => {
     const err = new ResolutionError(
       "Issue 1",
       "not found",
-      "sentry issue view 1"
+      "sentry issue view 1",
     );
     expect(err).toBeInstanceOf(CliError);
     expect(err.name).toBe("ResolutionError");
@@ -285,8 +286,8 @@ describe("buildValidationMessage", () => {
       buildValidationMessage(
         "Invalid flag.",
         ["sentry release set-commits 1.0.0 --from v0.9.0"],
-        "Range is always <ref>..HEAD."
-      )
+        "Range is always <ref>..HEAD.",
+      ),
     ).toBe(
       [
         "Invalid flag.",
@@ -295,7 +296,7 @@ describe("buildValidationMessage", () => {
         "  sentry release set-commits 1.0.0 --from v0.9.0",
         "",
         "Note: Range is always <ref>..HEAD.",
-      ].join("\n")
+      ].join("\n"),
     );
   });
 
@@ -324,7 +325,7 @@ describe("UpgradeError", () => {
   test("unknown_method has default message", () => {
     const err = new UpgradeError("unknown_method");
     expect(err.message).toBe(
-      "Could not detect installation method. Use --method to specify."
+      "Could not detect installation method. Use --method to specify.",
     );
     expect(err.reason).toBe("unknown_method");
   });
@@ -408,7 +409,7 @@ describe("SeerError", () => {
     const err = new SeerError("no_budget");
     const formatted = err.format();
     expect(formatted).toContain(
-      "upgrade your plan in your organization's billing settings"
+      "upgrade your plan in your organization's billing settings",
     );
   });
 
@@ -427,17 +428,17 @@ describe("stringifyUnknown", () => {
 
   test("extracts message from Error instances", () => {
     expect(stringifyUnknown(new Error("something broke"))).toBe(
-      "something broke"
+      "something broke",
     );
     expect(stringifyUnknown(new TypeError("bad type"))).toBe("bad type");
   });
 
   test("serializes plain objects to JSON", () => {
     expect(stringifyUnknown({ code: "not_found" })).toBe(
-      '{"code":"not_found"}'
+      '{"code":"not_found"}',
     );
     expect(stringifyUnknown({ detail: { message: "Forbidden" } })).toBe(
-      '{"detail":{"message":"Forbidden"}}'
+      '{"detail":{"message":"Forbidden"}}',
     );
   });
 
@@ -536,6 +537,11 @@ describe("isUserError", () => {
       new TypeError("fetch failed"),
       true,
     ],
+    [
+      "raw terminated TypeError (mid-body network drop)",
+      new TypeError("terminated"),
+      true,
+    ],
     ["ApiError 400", new ApiError("bad request", 400), false],
     [
       // A user's unparseable --query becomes a ValidationError at the command
@@ -565,11 +571,23 @@ describe("isNetworkError", () => {
     expect(isNetworkError(new TypeError("fetch failed"))).toBe(true);
   });
 
+  test("true for a raw 'terminated' TypeError (mid-body connection drop)", () => {
+    const err = new TypeError("terminated", {
+      cause: new Error("read ETIMEDOUT"),
+    });
+    expect(isNetworkError(err)).toBe(true);
+    expect(isNetworkError(new TypeError("terminated"))).toBe(true);
+  });
+
+  test("false for a plain Error with message 'terminated'", () => {
+    expect(isNetworkError(new Error("terminated"))).toBe(false);
+  });
+
   test("false for ApiError status 0 (shared with TLS cert errors)", () => {
     // status 0 is also used for TLS cert errors, which must stay actionable.
     expect(isNetworkError(new ApiError("Network error", 0))).toBe(false);
     expect(isNetworkError(new ApiError("TLS certificate error", 0))).toBe(
-      false
+      false,
     );
   });
 
@@ -593,8 +611,8 @@ describe("isSearchQueryParseError", () => {
   test("true for a 400 whose detail reports an unparseable query", () => {
     expect(
       isSearchQueryParseError(
-        new ApiError("bad", 400, "Error parsing search query: invalid status")
-      )
+        new ApiError("bad", 400, "Error parsing search query: invalid status"),
+      ),
     ).toBe(true);
   });
 
@@ -602,13 +620,13 @@ describe("isSearchQueryParseError", () => {
     const detail =
       "Error parsing search query: Empty string after 'status:'\n\nSuggestions:";
     expect(isSearchQueryParseError(new ApiError("wrapped", 400, detail))).toBe(
-      true
+      true,
     );
   });
 
   test("false for a 400 without a query parse detail", () => {
     expect(
-      isSearchQueryParseError(new ApiError("bad", 400, "Other failure"))
+      isSearchQueryParseError(new ApiError("bad", 400, "Other failure")),
     ).toBe(false);
     expect(isSearchQueryParseError(new ApiError("no detail", 400))).toBe(false);
   });
@@ -616,8 +634,8 @@ describe("isSearchQueryParseError", () => {
   test("false when status is not 400 (other 4xx handled elsewhere)", () => {
     expect(
       isSearchQueryParseError(
-        new ApiError("x", 422, "Error parsing search query: ...")
-      )
+        new ApiError("x", 422, "Error parsing search query: ..."),
+      ),
     ).toBe(false);
   });
 });
@@ -627,7 +645,7 @@ describe("toSearchQueryError", () => {
     new ApiError(
       "Failed to fetch issues",
       400,
-      "Error parsing search query: bad"
+      "Error parsing search query: bad",
     );
 
   test("converts a parse 400 to a ValidationError when the user supplied --query", () => {
@@ -639,7 +657,7 @@ describe("toSearchQueryError", () => {
   test("includes the server detail and a search-syntax suggestion in the message", () => {
     const result = toSearchQueryError(
       parseError(),
-      "is:403"
+      "is:403",
     ) as ValidationError;
     expect(result.message).toContain("Error parsing search query: bad");
     expect(result.message).toContain("Sentry search reference");
@@ -677,7 +695,7 @@ describe("exit codes", () => {
 
   test("AuthError maps reasons to exit codes", () => {
     expect(new AuthError("not_authenticated").exitCode).toBe(
-      EXIT.AUTH_NOT_AUTHENTICATED
+      EXIT.AUTH_NOT_AUTHENTICATED,
     );
     expect(new AuthError("expired").exitCode).toBe(EXIT.AUTH_EXPIRED);
     expect(new AuthError("invalid").exitCode).toBe(EXIT.AUTH_INVALID);
@@ -688,20 +706,26 @@ describe("exit codes", () => {
     expect(new HostScopeError("blocked").exitCode).toBe(EXIT.AUTH_HOST_SCOPE);
     // URL mismatch form (no tokenHost)
     expect(
-      new HostScopeError("Request", "https://other.sentry.io").exitCode
+      new HostScopeError("Request", "https://other.sentry.io").exitCode,
     ).toBe(EXIT.AUTH_HOST_SCOPE);
     // URL mismatch form (with tokenHost)
     expect(
       new HostScopeError(
         "Request",
         "https://other.sentry.io",
-        "https://sentry.io"
-      ).exitCode
+        "https://sentry.io",
+      ).exitCode,
     ).toBe(EXIT.AUTH_HOST_SCOPE);
   });
 
   test("ApiError has exit code API", () => {
     expect(new ApiError("fail", 500).exitCode).toBe(EXIT.API);
+  });
+
+  test("RateLimitError has exit code RATE_LIMITED", () => {
+    const err = new RateLimitError("/api/0/organizations/", 2000);
+    expect(err.exitCode).toBe(EXIT.RATE_LIMITED);
+    expect(err.status).toBe(429);
   });
 
   test("ConfigError has exit code CONFIG", () => {
@@ -714,13 +738,13 @@ describe("exit codes", () => {
 
   test("ContextError has exit code CONTEXT_MISSING", () => {
     expect(new ContextError("Organization", "sentry org list").exitCode).toBe(
-      EXIT.CONTEXT_MISSING
+      EXIT.CONTEXT_MISSING,
     );
   });
 
   test("ResolutionError has exit code RESOLUTION", () => {
     expect(
-      new ResolutionError("X", "not found", "sentry x view").exitCode
+      new ResolutionError("X", "not found", "sentry x view").exitCode,
     ).toBe(EXIT.RESOLUTION);
   });
 
@@ -752,15 +776,15 @@ describe("exit codes", () => {
 
   test("WizardError accepts custom exit code for workflow sub-codes", () => {
     expect(
-      new WizardError("deps failed", { exitCode: EXIT.WIZARD_DEPS }).exitCode
+      new WizardError("deps failed", { exitCode: EXIT.WIZARD_DEPS }).exitCode,
     ).toBe(EXIT.WIZARD_DEPS);
     expect(
       new WizardError("codemod failed", { exitCode: EXIT.WIZARD_CODEMOD })
-        .exitCode
+        .exitCode,
     ).toBe(EXIT.WIZARD_CODEMOD);
     expect(
       new WizardError("verify stopped", { exitCode: EXIT.WIZARD_VERIFY })
-        .exitCode
+        .exitCode,
     ).toBe(EXIT.WIZARD_VERIFY);
   });
 
@@ -786,19 +810,19 @@ describe("withAuthGuard", () => {
 
   test("rethrows AuthError('not_authenticated')", async () => {
     await expect(
-      withAuthGuard(() => Promise.reject(new AuthError("not_authenticated")))
+      withAuthGuard(() => Promise.reject(new AuthError("not_authenticated"))),
     ).rejects.toBeInstanceOf(AuthError);
   });
 
   test("rethrows AuthError('expired')", async () => {
     await expect(
-      withAuthGuard(() => Promise.reject(new AuthError("expired")))
+      withAuthGuard(() => Promise.reject(new AuthError("expired"))),
     ).rejects.toBeInstanceOf(AuthError);
   });
 
   test("rethrows AuthError('invalid')", async () => {
     await expect(
-      withAuthGuard(() => Promise.reject(new AuthError("invalid")))
+      withAuthGuard(() => Promise.reject(new AuthError("invalid"))),
     ).rejects.toBeInstanceOf(AuthError);
   });
 

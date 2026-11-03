@@ -29,12 +29,12 @@ const HOST_LABEL = stringMatching(/^[a-z0-9][a-z0-9-]{0,20}$/);
 
 /** Two-label lowercase host (e.g. "example.com") */
 const simpleHostArb = tuple(HOST_LABEL, HOST_LABEL).map(
-  ([a, b]) => `${a}.${b}`
+  ([a, b]) => `${a}.${b}`,
 );
 
 /** Non-SaaS host: never ends with `sentry.io` */
 const nonSaasHostArb = simpleHostArb.filter(
-  (h) => h !== "sentry.io" && !h.endsWith(".sentry.io")
+  (h) => h !== "sentry.io" && !h.endsWith(".sentry.io"),
 );
 
 /** SaaS host: any subdomain of sentry.io (including bare `sentry.io`) */
@@ -62,7 +62,7 @@ describe("property: normalizeOrigin is idempotent", () => {
         }
         expect(normalizeOrigin(once)).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -73,14 +73,14 @@ describe("property: SaaS equivalence is reflexive + symmetric", () => {
       property(saasSubdomainArb, saasSubdomainArb, (a, b) => {
         // Both a and b are https://<label>.sentry.io
         expect(isHostTrusted(`https://${a}/any/path`, `https://${b}`)).toBe(
-          true
+          true,
         );
         // And the converse
         expect(isHostTrusted(`https://${b}/any/path`, `https://${a}`)).toBe(
-          true
+          true,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -88,10 +88,10 @@ describe("property: SaaS equivalence is reflexive + symmetric", () => {
     fcAssert(
       property(saasSubdomainArb, (subdomain) => {
         expect(
-          isHostTrusted(`https://${subdomain}/`, "https://sentry.io")
+          isHostTrusted(`https://${subdomain}/`, "https://sentry.io"),
         ).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -101,10 +101,10 @@ describe("property: SaaS trust-class rejects http:// and non-default ports", () 
     fcAssert(
       property(saasSubdomainArb, (subdomain) => {
         expect(isHostTrusted(`http://${subdomain}/`, "https://sentry.io")).toBe(
-          false
+          false,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -113,10 +113,10 @@ describe("property: SaaS trust-class rejects http:// and non-default ports", () 
       property(saasSubdomainArb, (subdomain) => {
         // Port 8443 is never default for https (443) or http (80).
         expect(
-          isHostTrusted(`https://${subdomain}:8443/`, "https://sentry.io")
+          isHostTrusted(`https://${subdomain}:8443/`, "https://sentry.io"),
         ).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -130,7 +130,7 @@ describe("property: non-SaaS hosts require exact origin match", () => {
         }
         expect(isHostTrusted(`https://${a}/`, `https://${b}`)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -139,14 +139,14 @@ describe("property: non-SaaS hosts require exact origin match", () => {
       property(nonSaasHostArb, saasSubdomainArb, (nonSaas, saas) => {
         // Non-SaaS token → SaaS request: not trusted
         expect(isHostTrusted(`https://${saas}/`, `https://${nonSaas}`)).toBe(
-          false
+          false,
         );
         // SaaS token → non-SaaS request: not trusted
         expect(isHostTrusted(`https://${nonSaas}/`, `https://${saas}`)).toBe(
-          false
+          false,
         );
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -167,7 +167,7 @@ describe("property: no subdomain-attack against non-SaaS hosts", () => {
           expect(isHostTrusted(tldAttack, trusted)).toBe(false);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -181,7 +181,7 @@ describe("property: no subdomain-attack against non-SaaS hosts", () => {
         const lookalike = `https://sentry.io.${prefix}.${evilTld}/`;
         expect(isHostTrusted(lookalike, "https://sentry.io")).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -195,7 +195,7 @@ describe("property: unparseable candidates are never trusted", () => {
         expect(isHostTrusted("", trusted)).toBe(false);
         expect(isHostTrusted("javascript:alert(1)", trusted)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

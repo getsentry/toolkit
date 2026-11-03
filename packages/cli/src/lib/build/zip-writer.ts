@@ -126,7 +126,7 @@ export class DeterministicZipWriter {
     name: string,
     crc: number,
     size: number,
-    options: ZipEntryOptions
+    options: ZipEntryOptions,
   ): Promise<CentralRecord> {
     const nameBytes = Buffer.from(name, "utf-8");
     // fflate sets the UTF-8 name flag (bit 11) when the encoded name is longer
@@ -171,7 +171,7 @@ export class DeterministicZipWriter {
   async addData(
     name: string,
     data: Uint8Array,
-    options: ZipEntryOptions = {}
+    options: ZipEntryOptions = {},
   ): Promise<void> {
     const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
     const crc = crc32(buf) >>> 0;
@@ -194,7 +194,7 @@ export class DeterministicZipWriter {
   async addFile(
     name: string,
     sourcePath: string,
-    options: ZipEntryOptions = {}
+    options: ZipEntryOptions = {},
   ): Promise<void> {
     const src = await open(sourcePath, "r");
     try {
@@ -285,6 +285,7 @@ export class DeterministicZipWriter {
    * once; the resulting file is incomplete but the handle won't leak.
    */
   async close(): Promise<void> {
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- Closing an already closed handle is harmless during error cleanup.
     await this.fh.close().catch(() => {
       // Already closed — ignore.
     });

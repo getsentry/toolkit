@@ -34,15 +34,16 @@ import {
 } from "./helpers.js";
 
 describe("readVarUint32 / writeVarUint32", () => {
-  test.each([
-    0, 1, 127, 128, 624_485, 0xff_ff_ff_ff,
-  ])("round-trips %i", (value) => {
-    const encoded = writeVarUint32(value);
-    expect(readVarUint32(encoded, 0)).toEqual({
-      value,
-      size: encoded.length,
-    });
-  });
+  test.each([0, 1, 127, 128, 624_485, 0xff_ff_ff_ff])(
+    "round-trips %i",
+    (value) => {
+      const encoded = writeVarUint32(value);
+      expect(readVarUint32(encoded, 0)).toEqual({
+        value,
+        size: encoded.length,
+      });
+    },
+  );
 
   test("reads a padded, non-canonical encoding", () => {
     // 0x01 spread over four groups. Legal, and some toolchains emit it.
@@ -77,13 +78,13 @@ describe("parseSections", () => {
     const sections = parseSections(
       wasmModule([
         customSection("build_id", byteVector(fromHex("00".repeat(16)))),
-      ])
+      ]),
     );
     expect(sections).toHaveLength(1);
     expect(sections[0]?.id).toBe(0);
     expect(sections[0]?.name).toBe("build_id");
     expect(toHex(sections[0]?.contents as Uint8Array)).toBe(
-      `10${"00".repeat(16)}`
+      `10${"00".repeat(16)}`,
     );
   });
 
@@ -184,7 +185,7 @@ describe("custom section encoding", () => {
     const encoded = encodeModule([makeBuildIdSection(buildId)]);
     expect(toHex(encoded.subarray(WASM_HEADER.length))).toBe(
       // id 0 | payload 26 | name len 8 | "build_id" | vec len 16 | 16 bytes
-      "001a086275696c645f696410000102030405060708090a0b0c0d0e0f"
+      "001a086275696c645f696410000102030405060708090a0b0c0d0e0f",
     );
   });
 
@@ -194,7 +195,7 @@ describe("custom section encoding", () => {
     ]);
     expect(toHex(encoded.subarray(WASM_HEADER.length))).toBe(
       // id 0 | payload 35 | name len 19 | name | str len 14 | "app.debug.wasm"
-      "00231365787465726e616c5f64656275675f696e666f0e6170702e64656275672e7761736d"
+      "00231365787465726e616c5f64656275675f696e666f0e6170702e64656275672e7761736d",
     );
   });
 });
@@ -217,7 +218,7 @@ describe("section predicates", () => {
         customSection("name", fromHex("00")),
         customSection("producers", fromHex("00")),
         section(CODE_SECTION_ID, fromHex("00")),
-      ])
+      ]),
     );
     expect(isDebugSection(debugSection as never)).toBe(true);
     expect(isNameSection(debugSection as never)).toBe(false);

@@ -18,7 +18,7 @@ describe("property: crc32Fallback", () => {
       property(uint8Array({ maxLength: 4096 }), (data) => {
         expect(crc32Fallback(data)).toBe(nativeCrc32(data));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -29,7 +29,7 @@ describe("property: crc32Fallback", () => {
         expect(crc32Fallback(b, crc32Fallback(a))).toBe(crc32Fallback(joined));
         expect(crc32Fallback(b, nativeCrc32(a))).toBe(nativeCrc32(joined));
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

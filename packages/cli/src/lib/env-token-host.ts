@@ -34,14 +34,81 @@
  *   4. getDefaultUrl() fallback   ← may write env.SENTRY_URL
  */
 
-import { DEFAULT_SENTRY_URL } from "./constants.js";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
+import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import { getRawEnvToken } from "./db/auth.js";
-import { getEnv } from "./env.js";
-import { normalizeUserInputToOrigin } from "./sentry-urls.js";
+import { getEnv, withEnv } from "./env.js";
+import { ConfigError } from "./errors.js";
 import { parseSntrysClaim } from "./token-claims.js";
 
-/** Pinned host. `undefined` means not yet captured. */
-let pinnedHost: string | undefined;
+type HostSnapshot = {
+  host: string;
+  /** Whether `host` came from the token's `sntrys_` claim. */
+  hostFromClaim: boolean;
+  configuredHost: string | null;
+  claimError?: ConfigError;
+  /**
+   * The env token present when the snapshot was taken. A token set later
+   * (the `.sentryclirc` shim copies `[auth] token` into `SENTRY_AUTH_TOKEN`)
+   * was not scoped by this snapshot.
+   */
+  token?: string;
+};
+const EXPLICIT_SCHEME_RE = /^([a-z][a-z\d+.-]*):\/\//i;
+
+function normalizeHost(
+  input: string | undefined,
+  source: string,
+): string | undefined {
+  if (!input) {
+    return;
+  }
+  const scheme = input.trim().match(EXPLICIT_SCHEME_RE)?.[1]?.toLowerCase();
+  try {
+    if (scheme && scheme !== "http" && scheme !== "https") {
+      throw new TypeError("Unsupported URL scheme");
+    }
+    const parsed = new URL(normalizeUrl(input) as string);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password
+    ) {
+      throw new TypeError("Invalid URL");
+    }
+    return parsed.origin;
+  } catch {
+    throw new ConfigError(`${source} must be a credential-free HTTP(S) URL.`);
+  }
+}
+
+function captureClaimHost(token: string | undefined): {
+  host?: string;
+  error?: ConfigError;
+} {
+  if (!token?.startsWith("sntrys_")) {
+    return {};
+  }
+  const claim = parseSntrysClaim(token);
+  if (!claim) {
+    // Opaque tokens, including legacy sntrys_ strings without a usable claim,
+    // still use the configured URL or SaaS. No claimed host was trusted.
+    return {};
+  }
+  try {
+    return { host: normalizeHost(claim.url, "The active token URL claim") };
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      return { error };
+    }
+    throw error;
+  }
+}
+
+const snapshotState = {
+  byEnv: new WeakMap<NodeJS.ProcessEnv, HostSnapshot>(),
+};
 
 /**
  * Snapshot the env-token's scoping host. Idempotent — second and subsequent
@@ -56,23 +123,30 @@ let pinnedHost: string | undefined;
  * 3. `DEFAULT_SENTRY_URL` (SaaS).
  */
 export function captureEnvTokenHost(): void {
-  if (pinnedHost !== undefined) {
-    return;
-  }
-  // Claim first: for sntrys_ tokens, the embedded url is authoritative.
-  const claimHost = normalizeUserInputToOrigin(
-    parseSntrysClaim(getRawEnvToken())?.url
-  );
-  if (claimHost) {
-    pinnedHost = claimHost;
-    return;
-  }
-  // Env fallback: for non-sntrys_ tokens (no claim available).
   const env = getEnv();
-  const envHost = normalizeUserInputToOrigin(
-    env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim()
-  );
-  pinnedHost = envHost ?? DEFAULT_SENTRY_URL;
+  if (snapshotState.byEnv.has(env)) {
+    return;
+  }
+  const configuredHost =
+    normalizeHost(
+      env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim(),
+      env.SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL",
+    ) ?? null;
+  snapshotState.byEnv.set(env, snapshotEnvToken(configuredHost));
+}
+
+/** Scope the current env token to its claim, else `configuredHost`, else SaaS. */
+function snapshotEnvToken(configuredHost: string | null): HostSnapshot {
+  const token = getRawEnvToken();
+  // Claim first: for sntrys_ tokens, the embedded url is authoritative.
+  const claim = captureClaimHost(token);
+  return {
+    configuredHost,
+    host: claim.host ?? configuredHost ?? DEFAULT_SENTRY_URL,
+    hostFromClaim: claim.host !== undefined,
+    ...(claim.error ? { claimError: claim.error } : {}),
+    ...(token ? { token } : {}),
+  };
 }
 
 /**
@@ -81,13 +155,92 @@ export function captureEnvTokenHost(): void {
  * auto-capture covers library-mode callers that bypass the boot.
  */
 export function getEnvTokenHost(): string {
-  if (pinnedHost === undefined) {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
     captureEnvTokenHost();
   }
-  return pinnedHost ?? DEFAULT_SENTRY_URL;
+  const snapshot = snapshotState.byEnv.get(env);
+  if (snapshot?.claimError) {
+    throw snapshot.claimError;
+  }
+  return snapshot?.host ?? DEFAULT_SENTRY_URL;
+}
+
+/**
+ * The env token's host when it is known from a trusted source: the token's
+ * `sntrys_` claim, or a Sentry SaaS origin (the default when no server is
+ * configured). Gates using the env token as an account of its own, next to
+ * stored logins (see `getEnvAccount` in `db/auth.ts`).
+ *
+ * A self-hosted `SENTRY_HOST`/`SENTRY_URL` alone is not enough: in layered
+ * CI it can be injected without access to the token (see the trust model
+ * above), and treating it as the token's server would send the token there
+ * even when a stored login exists. Such tokens keep the stored-login-first
+ * behavior; `SENTRY_FORCE_ENV_TOKEN` opts into them explicitly.
+ *
+ * `undefined` as well when the current env token was not present at the
+ * snapshot (a `.sentryclirc` token, whose server is unknown) or its claim
+ * is malformed.
+ */
+export function getTrustedEnvTokenHost(): string | undefined {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
+    captureEnvTokenHost();
+  }
+  const snapshot = snapshotState.byEnv.get(env);
+  const token = getRawEnvToken();
+  if (!(snapshot && token) || snapshot.claimError || snapshot.token !== token) {
+    return;
+  }
+  if (!(snapshot.hostFromClaim || isSaaSTrustOrigin(snapshot.host))) {
+    return;
+  }
+  return snapshot.host;
+}
+
+/**
+ * Scope the env token in `derived`, a copy of the current environment, as if
+ * it had been set at startup: to its `sntrys_` claim, else the
+ * `SENTRY_HOST`/`SENTRY_URL` this environment had at boot, else SaaS. By now
+ * the copy's `SENTRY_HOST`/`SENTRY_URL` can come from a `.sentryclirc` or the
+ * persisted default, which must not scope the token. The copy may carry a
+ * different token than the boot environment did (`sentry mcp`'s deprecated
+ * `--access-token`), so the token is read from the copy.
+ */
+export function scopeEnvTokenToBootHost(derived: NodeJS.ProcessEnv): void {
+  const configuredHost = getBootConfiguredSentryUrl() ?? null;
+  snapshotState.byEnv.set(
+    derived,
+    withEnv(derived, () => snapshotEnvToken(configuredHost)),
+  );
+}
+
+/**
+ * Give `derived`, a copy of the current environment, the env-token host this
+ * environment snapshotted instead of one re-read from the copy, so the copy
+ * scopes its env token the same way.
+ */
+export function inheritEnvTokenHost(derived: NodeJS.ProcessEnv): void {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
+    captureEnvTokenHost();
+  }
+  const snapshot = snapshotState.byEnv.get(env);
+  if (snapshot) {
+    snapshotState.byEnv.set(derived, snapshot);
+  }
+}
+
+/** Only the explicit URL captured at boot may migrate a legacy stored login. */
+export function getBootConfiguredSentryUrl(): string | undefined {
+  const env = getEnv();
+  if (!snapshotState.byEnv.has(env)) {
+    captureEnvTokenHost();
+  }
+  return snapshotState.byEnv.get(env)?.configuredHost ?? undefined;
 }
 
 /** @internal */
 export function resetEnvTokenHostForTesting(): void {
-  pinnedHost = undefined;
+  snapshotState.byEnv = new WeakMap<NodeJS.ProcessEnv, HostSnapshot>();
 }

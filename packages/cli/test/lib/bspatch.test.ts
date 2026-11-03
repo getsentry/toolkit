@@ -52,7 +52,7 @@ function writeI64LE(buf: Uint8Array, offset: number, value: number): void {
 function buildDiffOnlyPatch(
   oldBytes: Uint8Array,
   newBytes: Uint8Array,
-  chunkSize = newBytes.length
+  chunkSize = newBytes.length,
 ): Uint8Array {
   if (oldBytes.length !== newBytes.length) {
     throw new Error("diff-only patch requires equal lengths");
@@ -61,7 +61,7 @@ function buildDiffOnlyPatch(
 
   // One control tuple per chunk: readDiffBy=chunk, readExtraBy=0, seekBy=0.
   const chunks: number[] = [];
-  for (let remaining = len; remaining > 0; ) {
+  for (let remaining = len; remaining > 0;) {
     const c = Math.min(chunkSize, remaining);
     chunks.push(c);
     remaining -= c;
@@ -84,7 +84,7 @@ function buildDiffOnlyPatch(
   const extraZ = new Uint8Array(zstdCompressSync(new Uint8Array(0)));
 
   const patch = new Uint8Array(
-    32 + controlZ.length + diffZ.length + extraZ.length
+    32 + controlZ.length + diffZ.length + extraZ.length,
   );
   patch.set(new TextEncoder().encode("TRDIFF10"), 0);
   writeI64LE(patch, 8, controlZ.length);
@@ -114,7 +114,7 @@ function makeBytes(seed: number, len: number): Uint8Array {
 describe("parsePatchHeader: fixtures", () => {
   test("parses valid small fixture header", async () => {
     const patchData = new Uint8Array(
-      await readFile(join(FIXTURES_DIR, "small.trdiff10"))
+      await readFile(join(FIXTURES_DIR, "small.trdiff10")),
     );
     const header = parsePatchHeader(patchData);
     expect(header.controlLen).toBeGreaterThan(0);
@@ -124,7 +124,7 @@ describe("parsePatchHeader: fixtures", () => {
 
   test("parses valid large fixture header", async () => {
     const patchData = new Uint8Array(
-      await readFile(join(FIXTURES_DIR, "large.trdiff10"))
+      await readFile(join(FIXTURES_DIR, "large.trdiff10")),
     );
     const header = parsePatchHeader(patchData);
     expect(header.controlLen).toBeGreaterThan(0);
@@ -185,7 +185,7 @@ describe("applyPatch", () => {
   test("patches small text files correctly", async () => {
     const oldPath = join(FIXTURES_DIR, "small-old.bin");
     const patchData = new Uint8Array(
-      await readFile(join(FIXTURES_DIR, "small.trdiff10"))
+      await readFile(join(FIXTURES_DIR, "small.trdiff10")),
     );
     const destPath = tempFile("small-out.bin");
 
@@ -210,7 +210,7 @@ describe("applyPatch", () => {
   test("patches large binary files correctly", async () => {
     const oldPath = join(FIXTURES_DIR, "large-old.bin");
     const patchData = new Uint8Array(
-      await readFile(join(FIXTURES_DIR, "large.trdiff10"))
+      await readFile(join(FIXTURES_DIR, "large.trdiff10")),
     );
     const destPath = tempFile("large-out.bin");
 
@@ -235,7 +235,7 @@ describe("applyPatch", () => {
   test("returns correct SHA-256 hex digest", async () => {
     const oldPath = join(FIXTURES_DIR, "small-old.bin");
     const patchData = new Uint8Array(
-      await readFile(join(FIXTURES_DIR, "small.trdiff10"))
+      await readFile(join(FIXTURES_DIR, "small.trdiff10")),
     );
     const destPath = tempFile("sha256-out.bin");
 
@@ -260,7 +260,7 @@ describe("applyPatch", () => {
 
     try {
       await expect(applyPatch(oldPath, buf, destPath)).rejects.toThrow(
-        "Invalid patch format"
+        "Invalid patch format",
       );
     } finally {
       try {
@@ -276,7 +276,7 @@ describe("applyPatchChainInMemory", () => {
   function tempFile(name: string): string {
     return join(
       tmpdir(),
-      `bspatch-chain-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`
+      `bspatch-chain-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`,
     );
   }
 
@@ -350,7 +350,7 @@ describe("applyPatchChainInMemory", () => {
     // control entries include diff, extra, and seek operations.
     const oldPath = join(FIXTURES_DIR, "large-old.bin");
     const patchData = new Uint8Array(
-      await readFile(join(FIXTURES_DIR, "large.trdiff10"))
+      await readFile(join(FIXTURES_DIR, "large.trdiff10")),
     );
     const destPath = tempFile("single-chain.bin");
 
@@ -358,11 +358,11 @@ describe("applyPatchChainInMemory", () => {
       const sha256 = await applyPatchChainInMemory(
         oldPath,
         [patchData],
-        destPath
+        destPath,
       );
       const expected = await readFile(join(FIXTURES_DIR, "large-new.bin"));
       expect(new Uint8Array(await readFile(destPath))).toEqual(
-        new Uint8Array(expected)
+        new Uint8Array(expected),
       );
       expect(sha256).toBe(createHash("sha256").update(expected).digest("hex"));
     } finally {
@@ -378,7 +378,7 @@ describe("applyPatchChainInMemory", () => {
 
     try {
       await expect(
-        applyPatchChainInMemory(oldPath, [], destPath)
+        applyPatchChainInMemory(oldPath, [], destPath),
       ).rejects.toThrow("empty patch chain");
     } finally {
       if (existsSync(destPath)) {
@@ -392,7 +392,7 @@ describe("applyPatchToMemory", () => {
   function tempFile(name: string): string {
     return join(
       tmpdir(),
-      `bspatch-mem-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`
+      `bspatch-mem-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`,
     );
   }
 
@@ -402,7 +402,7 @@ describe("applyPatchToMemory", () => {
     const oldPath = join(FIXTURES_DIR, "large-old.bin");
     const oldBytes = new Uint8Array(await readFile(oldPath));
     const patchData = new Uint8Array(
-      await readFile(join(FIXTURES_DIR, "large.trdiff10"))
+      await readFile(join(FIXTURES_DIR, "large.trdiff10")),
     );
     const destPath = tempFile("disk.bin");
 
@@ -479,7 +479,7 @@ describe("addDiffChunk SWAR wrapping-add", () => {
       for (let i = 0; i < n; i++) oldBytes[i] = (i * 17) % 256;
       const expected = referenceAdd(
         oldBytes,
-        Uint8Array.from({ length: n }, (_, i) => (i * 29) % 256)
+        Uint8Array.from({ length: n }, (_, i) => (i * 29) % 256),
       );
       const patch = buildDiffOnlyPatch(oldBytes, expected);
       const out = await applyPatchToMemory(oldBytes, patch);
@@ -520,7 +520,7 @@ describe("FileOldReader block cache", () => {
   function tempFile(name: string): string {
     return join(
       tmpdir(),
-      `bspatch-cache-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`
+      `bspatch-cache-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`,
     );
   }
 
@@ -541,7 +541,7 @@ describe("FileOldReader block cache", () => {
    */
   async function runBothReaders(
     oldBytes: Uint8Array,
-    patch: Uint8Array
+    patch: Uint8Array,
   ): Promise<{ fileSha: string; fileBytesSha: string; memSha: string }> {
     const oldPath = tempFile("old.bin");
     const destPath = tempFile("out.bin");
@@ -571,7 +571,7 @@ describe("FileOldReader block cache", () => {
     const expected = sha(newBytes);
     const { fileSha, fileBytesSha, memSha } = await runBothReaders(
       oldBytes,
-      patch
+      patch,
     );
     expect(fileSha).toBe(expected);
     expect(fileBytesSha).toBe(expected);
@@ -588,7 +588,7 @@ describe("FileOldReader block cache", () => {
     const expected = sha(newBytes);
     const { fileSha, fileBytesSha, memSha } = await runBothReaders(
       oldBytes,
-      patch
+      patch,
     );
     expect(fileSha).toBe(expected);
     expect(fileBytesSha).toBe(expected);
@@ -607,7 +607,7 @@ describe("FileOldReader block cache", () => {
     const expected = sha(newBytes);
     const { fileSha, fileBytesSha, memSha } = await runBothReaders(
       oldBytes,
-      patch
+      patch,
     );
     expect(fileSha).toBe(expected);
     expect(fileBytesSha).toBe(expected);

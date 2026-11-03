@@ -58,6 +58,9 @@ export type CliResult = {
 export function getCliCommand(): string[] {
   const binaryPath = process.env.SENTRY_CLI_BINARY;
   if (binaryPath) {
+    if (/\.[cm]?js$/i.test(binaryPath)) {
+      return [process.execPath, binaryPath];
+    }
     return [binaryPath];
   }
   return [
@@ -78,7 +81,7 @@ export async function runCli(
   options?: {
     cwd?: string;
     env?: Record<string, string>;
-  }
+  },
 ): Promise<CliResult> {
   const cliDir = join(import.meta.dirname, "..");
   const [cmdBin, ...cmdArgs] = getCliCommand();
@@ -100,7 +103,7 @@ export async function runCli(
   });
 
   const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", (code) => resolve(code ?? 1))
+    proc.on("close", (code) => resolve(code ?? 1)),
   );
 
   return {
@@ -128,7 +131,7 @@ export type E2EContext = {
  */
 export function createE2EContext(
   configDir: string,
-  serverUrl: string
+  serverUrl: string,
 ): E2EContext {
   // Use the constant directly instead of require() to avoid .js→.ts
   // resolution issues in vitest Node workers.
@@ -162,7 +165,7 @@ export function createE2EContext(
       const prevDir = process.env[CONFIG_DIR_ENV_VAR];
       process.env[CONFIG_DIR_ENV_VAR] = configDir;
       try {
-        await dbSetAuthToken(token, undefined, undefined, { host: serverUrl });
+        dbSetAuthToken(token, undefined, undefined, { host: serverUrl });
         closeDatabase();
       } finally {
         if (prevDir !== undefined) {

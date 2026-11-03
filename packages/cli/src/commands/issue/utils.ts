@@ -16,22 +16,19 @@ import {
   type IssueSort,
   listIssuesPaginated,
   listOrganizations,
+  listOrganizationsUncached,
   ORG_FANOUT_CONCURRENCY,
   triggerRootCauseAnalysis,
   tryGetIssueByShortId,
 } from "../../lib/api-client.js";
-import {
-  type IssueSelector,
-  type ParsedIssueArg,
-  parseIssueArg,
-  splitNewlineArg,
-} from "../../lib/arg-parsing.js";
+import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   clearCachedIssueOrg,
   getCachedIssueOrg,
   setCachedIssueOrg,
 } from "../../lib/db/issue-org-cache.js";
 import { getProjectByAlias } from "../../lib/db/project-aliases.js";
+import { getCachedOrganizations } from "../../lib/db/regions.js";
 import { detectAllDsns } from "../../lib/dsn/index.js";
 import {
   ApiError,
@@ -41,60 +38,33 @@ import {
   withAuthGuard,
 } from "../../lib/errors.js";
 import { getProgressMessage } from "../../lib/formatters/seer.js";
+import {
+  type IssueArgument,
+  type ParsedIssueArg,
+  parseIssueArgument,
+} from "../../lib/issue-arguments.js";
 import { expandToFullShortId, isShortSuffix } from "../../lib/issue-id.js";
 import { logger } from "../../lib/logger.js";
 import { poll } from "../../lib/polling.js";
 import { resolveEffectiveOrg } from "../../lib/region.js";
 import {
+  resolveConfiguredOrg,
   resolveFromDsn,
   resolveOrg,
   resolveOrgAndProject,
+  resolveProjectIdsInOrg,
 } from "../../lib/resolve-target.js";
-import { parseSentryUrl } from "../../lib/sentry-url-parser.js";
-import { buildIssueUrl } from "../../lib/sentry-urls.js";
+import {
+  applySentryUrlContext,
+  parseSentryUrl,
+} from "../../lib/sentry-url-parser.js";
+import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import { isAllDigits } from "../../lib/utils.js";
+import { isAllDigits, shellQuote } from "../../lib/utils.js";
 import type { SentryIssue } from "../../types/index.js";
 import { type AutofixState, isTerminalStatus } from "../../types/seer.js";
 
 const log = logger.withTag("issue.utils");
-
-/** Shared positional parameter for issue ID */
-export const issueIdPositional = {
-  kind: "tuple",
-  parameters: [
-    {
-      placeholder: "issue",
-      brief:
-        "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix",
-      parse: String,
-    },
-  ],
-} as const;
-
-/** Variadic positional parameter for commands that accept multiple issues. */
-export const issueIdsPositional = {
-  kind: "array",
-  parameter: {
-    placeholder: "issue",
-    brief: "One or more issue IDs",
-    parse: String,
-  },
-} as const;
-
-/**
- * Normalize variadic issue arguments.
- *
- * Newline-separated values are expanded for pasted or piped input. Duplicate
- * tokens are removed while preserving the first-seen order. Commas remain
- * part of the identifier, matching the CLI's positional-argument convention.
- *
- * @param args - Raw positional arguments
- * @returns Normalized issue identifiers
- */
-export function collectIssueArgs(args: readonly string[]): string[] {
-  return [...new Set(args.flatMap(splitNewlineArg))];
-}
 
 /**
  * Map issue identifiers with the standard organization fan-out concurrency.
@@ -103,19 +73,19 @@ export function collectIssueArgs(args: readonly string[]): string[] {
  * If every operation fails, the first error is rethrown without invoking
  * `onError`, avoiding duplicate warning and error output.
  *
- * @param issueArgs - Normalized issue identifiers
+ * @param issueArgs - Issue identifiers, parsed
  * @param operation - Async work to perform for each identifier
  * @param onError - Called for each failed identifier
  * @returns Successful operation results in input order
  */
 export async function mapIssueArgsConcurrently<T>(
-  issueArgs: readonly string[],
-  operation: (issueArg: string) => Promise<T>,
-  onError: (issueArg: string, reason: unknown) => void
+  issueArgs: readonly IssueArgument[],
+  operation: (issueArg: IssueArgument) => Promise<T>,
+  onError: (issueArg: IssueArgument, reason: unknown) => void,
 ): Promise<T[]> {
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
   const settled = await Promise.allSettled(
-    issueArgs.map((issueArg) => limit(() => operation(issueArg)))
+    issueArgs.map((issueArg) => limit(() => operation(issueArg))),
   );
 
   const values: T[] = [];
@@ -155,11 +125,33 @@ export async function mapIssueArgsConcurrently<T>(
  * @param command - The issue subcommand (e.g., "view", "explain")
  * @param issueId - The user-provided issue ID
  * @param base - Base command prefix (default: "sentry issue")
+ * @param trailingArgs - Additional arguments preserved and shell-quoted for retries
  */
 export function buildCommandHint(
   command: string,
   issueId: string,
-  base = "sentry issue"
+  base = "sentry issue",
+  trailingArgs: readonly string[] = [],
+): string {
+  return appendCommandArguments(
+    buildIssueTargetHint(command, issueId, base),
+    trailingArgs,
+  );
+}
+
+/** Preserve command-specific positionals and flags in issue recovery hints. */
+function appendCommandArguments(
+  command: string,
+  trailingArgs: readonly string[],
+): string {
+  return [command, ...trailingArgs.map(shellQuote)].join(" ");
+}
+
+/** Build the issue target portion without command-specific trailing arguments. */
+function buildIssueTargetHint(
+  command: string,
+  issueId: string,
+  base: string,
 ): string {
   // URLs are self-contained — no enrichment needed
   if (issueId.startsWith("http://") || issueId.startsWith("https://")) {
@@ -237,6 +229,8 @@ type IssueCommandContext = {
   command: string;
   /** Command domain used for recovery suggestions. */
   commandBase: string;
+  /** Remaining positional arguments and flags to preserve in retry commands. */
+  trailingArgs: readonly string[];
 };
 
 /**
@@ -250,7 +244,7 @@ type IssueCommandContext = {
 async function tryResolveFromAlias(
   alias: string,
   suffix: string,
-  cwd: string
+  cwd: string,
 ): Promise<StrictResolvedIssue | null> {
   // Detect DSNs to get fingerprint for validation
   const detection = await detectAllDsns(cwd);
@@ -279,9 +273,9 @@ async function tryResolveFromAlias(
 async function resolveProjectSearchFallback(
   projectSlug: string,
   suffix: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
-  const { command, commandBase, commandHint } = commandContext;
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
   const { projects } = await findProjectsBySlug(projectSlug.toLowerCase());
 
   if (projects.length === 0) {
@@ -293,8 +287,8 @@ async function resolveProjectSearchFallback(
       [
         "No issue with this short ID found in any accessible organization",
         "Check the project prefix and suffix, or use a numeric issue ID",
-        `Specify the org: ${commandBase} ${command} <org>/${fullShortId}`,
-      ]
+        `Specify the org: ${appendCommandArguments(`${commandBase} ${command} <org>/${fullShortId}`, trailingArgs)}`,
+      ],
     );
   }
 
@@ -306,8 +300,8 @@ async function resolveProjectSearchFallback(
       commandHint,
       [
         `Found in: ${orgList}`,
-        `Specify the org: ${commandBase} ${command} <org>/${projectSlug}-${suffix}`,
-      ]
+        `Specify the org: ${appendCommandArguments(`${commandBase} ${command} <org>/${projectSlug}-${suffix}`, trailingArgs)}`,
+      ],
     );
   }
 
@@ -327,7 +321,46 @@ async function resolveProjectSearchFallback(
   throw new ResolutionError(
     `Project '${projectSlug}'`,
     "not found",
-    commandHint
+    commandHint,
+  );
+}
+
+/** Search the supplied orgs and preserve failures when none could be queried. */
+async function findIssuesByShortId(
+  orgSlugs: readonly string[],
+  fullShortId: string,
+): Promise<StrictResolvedIssue[]> {
+  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
+  const results = await Promise.all(
+    orgSlugs.map((org) =>
+      limit(() =>
+        withAuthGuard(async () => {
+          const issue = await tryGetIssueByShortId(org, fullShortId, {
+            collapse: ISSUE_DETAIL_COLLAPSE,
+          });
+          return issue ? { org, issue } : null;
+        }),
+      ),
+    ),
+  );
+
+  // If every org failed with a real error (403, 5xx, network timeout),
+  // surface it instead of falling through to a misleading "not found".
+  // Only throw when ALL results are errors — if some orgs returned clean
+  // 404s ({ok: true, value: null}), fall through to the fallback for a
+  // precise error message.
+  const realErrors = results.filter(
+    (r): r is AuthGuardFailure => r !== undefined && !r.ok,
+  );
+  if (realErrors.length === results.length && realErrors.length > 0) {
+    const firstError = realErrors[0]?.error;
+    if (firstError instanceof Error) {
+      throw firstError;
+    }
+  }
+
+  return results.flatMap((result) =>
+    result.ok && result.value ? [result.value] : [],
   );
 }
 
@@ -336,9 +369,10 @@ async function resolveProjectSearchFallback(
  *
  * Resolution order:
  * 1. Try alias cache (fast, local)
- * 2. Check DSN detection cache
- * 3. Try shortid endpoint directly across all orgs (fast path)
- * 4. Fall back to findProjectsBySlug for precise error messages
+ * 2. Use the configured organization, if any
+ * 3. Check DSN detection cache for the matching project
+ * 4. Search accessible orgs, refreshing a cached list once on a miss
+ * 5. Fall back to findProjectsBySlug for precise error messages
  *
  * @param projectSlug - Project slug to search for
  * @param suffix - Issue suffix (uppercase)
@@ -349,20 +383,30 @@ async function resolveProjectSearch(
   projectSlug: string,
   suffix: string,
   cwd: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
-  const { command, commandBase, commandHint } = commandContext;
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
   // 1. Try alias cache first (fast, local lookup)
   const aliasResult = await tryResolveFromAlias(
     projectSlug.toLowerCase(),
     suffix,
-    cwd
+    cwd,
   );
   if (aliasResult) {
     return aliasResult;
   }
 
-  // 2. Check if DSN detection already resolved this project.
+  const fullShortId = expandToFullShortId(suffix, projectSlug);
+  const configured = await resolveConfiguredOrg({ cwd });
+  if (configured) {
+    const org = await resolveEffectiveOrg(configured.org);
+    const issue = await getIssueByShortId(org, fullShortId, {
+      collapse: ISSUE_DETAIL_COLLAPSE,
+    });
+    return { org, issue };
+  }
+
+  // Check if DSN detection already resolved this project.
   //    resolveFromDsn() reads from the DSN cache (populated by detectAllDsns
   //    in tryResolveFromAlias above) + project cache. This avoids the expensive
   //    listOrganizations() fan-out when the DSN matches the target project.
@@ -378,40 +422,33 @@ async function resolveProjectSearch(
     dsnTarget &&
     dsnTarget.project.toLowerCase() === projectSlug.toLowerCase()
   ) {
-    const fullShortId = expandToFullShortId(suffix, dsnTarget.project);
     const issue = await getIssueByShortId(dsnTarget.org, fullShortId, {
       collapse: ISSUE_DETAIL_COLLAPSE,
     });
     return { org: dsnTarget.org, issue };
   }
 
-  // 3. Fast path: try resolving the short ID directly across all orgs.
+  // Try resolving the short ID directly across all orgs.
   //    The shortid endpoint validates both project existence and issue existence
   //    in a single call, eliminating the separate getProject() round-trip.
   //    Concurrency-limited to avoid overwhelming the API for enterprise users.
-  const fullShortId = expandToFullShortId(suffix, projectSlug);
+  const hadCachedOrganizations = getCachedOrganizations().length > 0;
   const orgs = await listOrganizations();
 
-  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
-  const results = await Promise.all(
-    orgs.map((org) =>
-      limit(() =>
-        withAuthGuard(() =>
-          tryGetIssueByShortId(org.slug, fullShortId, {
-            collapse: ISSUE_DETAIL_COLLAPSE,
-          })
-        )
-      )
-    )
+  let successes = await findIssuesByShortId(
+    orgs.map((org) => org.slug),
+    fullShortId,
   );
 
-  const successes: StrictResolvedIssue[] = [];
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i];
-    const org = orgs[i];
-    if (result && org && result.ok && result.value) {
-      successes.push({ org: org.slug, issue: result.value });
-    }
+  // A nonempty cache need not include every accessible org. Refresh once on
+  // a miss, and only search orgs not already queried in this invocation.
+  if (successes.length === 0 && hadCachedOrganizations) {
+    const searchedOrgs = new Set(orgs.map((org) => org.slug));
+    const freshOrgs = await listOrganizationsUncached();
+    const newOrgSlugs = freshOrgs
+      .map((org) => org.slug)
+      .filter((org) => !searchedOrgs.has(org));
+    successes = await findIssuesByShortId(newOrgSlugs, fullShortId);
   }
 
   if (successes.length === 1 && successes[0]) {
@@ -426,29 +463,18 @@ async function resolveProjectSearch(
       commandHint,
       [
         `Found in: ${orgList}`,
-        `Specify the org: ${commandBase} ${command} <org>/${projectSlug}-${suffix}`,
-      ]
+        `Specify the org: ${appendCommandArguments(`${commandBase} ${command} <org>/${projectSlug}-${suffix}`, trailingArgs)}`,
+      ],
     );
   }
 
-  // If every org failed with a real error (403, 5xx, network timeout),
-  // surface it instead of falling through to a misleading "not found".
-  // Only throw when ALL results are errors — if some orgs returned clean
-  // 404s ({ok: true, value: null}), fall through to the fallback for a
-  // precise error message.
-  const realErrors = results.filter(
-    (r): r is AuthGuardFailure => r !== undefined && !r.ok
-  );
-  if (realErrors.length === results.length && realErrors.length > 0) {
-    const firstError = realErrors[0]?.error;
-    if (firstError instanceof Error) {
-      throw firstError;
-    }
-  }
-
-  // 4. Fall back to findProjectsBySlug for precise error messages
+  // Fall back to findProjectsBySlug for precise error messages
   //    and retry the issue lookup (handles transient failures).
-  return resolveProjectSearchFallback(projectSlug, suffix, commandContext);
+  return await resolveProjectSearchFallback(
+    projectSlug,
+    suffix,
+    commandContext,
+  );
 }
 
 /**
@@ -461,14 +487,14 @@ async function resolveProjectSearch(
 async function resolveSuffixOnly(
   suffix: string,
   cwd: string,
-  commandHint: string
+  commandHint: string,
 ): Promise<StrictResolvedIssue> {
   const target = await resolveOrgAndProject({ cwd });
   if (!target) {
     throw new ResolutionError(
       `Issue suffix '${suffix}'`,
       "could not be resolved without project context",
-      commandHint
+      commandHint,
     );
   }
   const fullShortId = expandToFullShortId(suffix, target.project);
@@ -493,17 +519,17 @@ async function resolveSuffixOnly(
 function resolveExplicitOrgSuffix(
   org: string,
   suffix: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): never {
-  const { command, commandBase, commandHint } = commandContext;
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
   throw new ResolutionError(
     `Issue suffix '${suffix}'`,
     "could not be resolved without project context",
     commandHint,
     [
       `The format '${org}/${suffix}' requires a project to build the full issue ID.`,
-      `Use: ${commandBase} ${command} ${org}/<project>-${suffix}`,
-    ]
+      `Use: ${appendCommandArguments(`${commandBase} ${command} ${org}/<project>-${suffix}`, trailingArgs)}`,
+    ],
   );
 }
 
@@ -544,7 +570,7 @@ async function resolveSelector(
   selector: IssueSelector,
   explicitOrg: string | undefined,
   cwd: string,
-  commandContext: IssueCommandContext
+  commandContext: IssueCommandContext,
 ): Promise<StrictResolvedIssue> {
   const { commandHint } = commandContext;
   // Resolve org: explicit from `org/@latest` or auto-detected from DSN/defaults
@@ -559,15 +585,38 @@ async function resolveSelector(
     orgSlug = resolved.org;
   }
 
-  const sort = SELECTOR_SORT_MAP[selector];
-  const label = SELECTOR_LABELS[selector];
+  const issue = await findSelectorIssue(selector, orgSlug);
+  return { org: orgSlug, issue };
+}
+
+/**
+ * The top unresolved issue a magic `@` selector picks in an organization,
+ * or in one of its projects.
+ *
+ * @param selector - The magic selector (e.g., `@latest`, `@most_frequent`)
+ * @param org - Organization slug
+ * @param project - Project slug to look in, selected by its numeric ID
+ *   (a `project:<slug>` filter misses projects that are not actively
+ *   selected, #1317); omit for the whole organization
+ * @throws {ResolutionError} When no unresolved issue matches, or the
+ *   project does not exist
+ */
+export async function findSelectorIssue(
+  selector: IssueSelector,
+  org: string,
+  project?: string,
+): Promise<SentryIssue> {
+  const projects = project
+    ? await resolveProjectIdsInOrg(org, [project])
+    : undefined;
 
   // Fetch just the top issue with the appropriate sort.
   // Collapse all non-essential fields since we only need the issue identity.
-  const { data: issues } = await listIssuesPaginated(orgSlug, "", {
-    sort,
+  const { data: issues } = await listIssuesPaginated(org, "", {
+    sort: SELECTOR_SORT_MAP[selector],
     perPage: 1,
     query: "is:unresolved",
+    projects,
     collapse: ISSUE_DETAIL_COLLAPSE,
   });
 
@@ -576,12 +625,70 @@ async function resolveSelector(
     throw new ResolutionError(
       `Selector '${selector}'`,
       "no unresolved issues found",
-      `sentry issue list ${orgSlug}/ -q "is:resolved"`,
-      [`The ${label} issue selector only matches unresolved issues.`]
+      `sentry issue list ${org}/${project ?? ""} -q "is:resolved"`,
+      [
+        `The ${SELECTOR_LABELS[selector]} issue selector only matches unresolved issues.`,
+      ],
     );
   }
+  return issue;
+}
 
-  return { org: orgSlug, issue };
+/**
+ * How many issues a search fetches: enough to tell one match from several,
+ * and to list a few of them
+ */
+const SEARCH_CANDIDATES = 5;
+
+/**
+ * Resolve search text (an argument with spaces, which no identifier has) to
+ * the one issue it matches in the auto-detected org. The org's issue search
+ * takes free text, which matches issue titles and messages; it also looks up
+ * an event ID or short ID that is the whole query.
+ *
+ * @throws {ResolutionError} When no issue or several match, listing them and
+ *   pointing at `sentry issue list --query`
+ */
+async function resolveIssueSearch(
+  query: string,
+  cwd: string,
+  commandContext: IssueCommandContext,
+): Promise<StrictResolvedIssue> {
+  const { command, commandBase, commandHint, trailingArgs } = commandContext;
+  const resolved = await resolveOrg({ cwd });
+  if (!resolved) {
+    throw new ContextError("Organization", commandHint);
+  }
+  const { org } = resolved;
+  const { data: issues, nextCursor } = await listIssuesPaginated(org, "", {
+    query,
+    perPage: SEARCH_CANDIDATES,
+    collapse: ISSUE_DETAIL_COLLAPSE,
+  });
+  const [issue] = issues;
+  if (issue && issues.length === 1) {
+    return { org, issue };
+  }
+
+  const listCommand = `sentry issue list ${org}/ --query ${shellQuote(query)}`;
+  if (!issue) {
+    throw new ResolutionError(
+      `Search ${shellQuote(query)}`,
+      `matched no issues in '${org}'`,
+      listCommand,
+      ["Pass an issue ID or short ID instead, e.g. CLI-G or 123456789"],
+    );
+  }
+  const count = nextCursor ? `${issues.length}+` : String(issues.length);
+  throw new ResolutionError(
+    `Search ${shellQuote(query)}`,
+    `matched ${count} issues in '${org}'`,
+    listCommand,
+    issues.map(
+      (candidate) =>
+        `${appendCommandArguments(`${commandBase} ${command} ${org}/${candidate.shortId}`, trailingArgs)}  (${candidate.title})`,
+    ),
+  );
 }
 
 /**
@@ -599,7 +706,7 @@ async function resolveSelector(
 async function resolveShareIssue(
   share: Extract<ParsedIssueArg, { type: "share" }>,
   cwd: string,
-  commandHint: string
+  commandHint: string,
 ): Promise<StrictResolvedIssue> {
   const { shareId, org, baseUrl } = share;
   const resolvedOrg = org
@@ -620,14 +727,19 @@ async function resolveShareIssue(
  * Options for resolving an issue ID.
  */
 export type ResolveIssueOptions = {
-  /** User-provided issue argument (raw CLI input) */
-  issueArg: string;
+  /**
+   * The issue argument: parsed by the command's positional, or as typed (it
+   * is parsed here then)
+   */
+  issueArg: string | IssueArgument;
   /** Current working directory for context resolution */
   cwd: string;
   /** Command name for error messages (e.g., "view", "explain") */
   command: string;
   /** Base command prefix for error hints (default: "sentry issue") */
   commandBase?: string;
+  /** Remaining positional arguments and flags to preserve in retry commands. */
+  trailingArgs?: readonly string[];
 };
 
 /**
@@ -640,7 +752,7 @@ export type ResolveIssueOptions = {
  * @param permalink - Issue permalink URL from the Sentry API response
  */
 function extractOrgFromPermalink(
-  permalink: string | undefined
+  permalink: string | undefined,
 ): string | undefined {
   if (!permalink) {
     return;
@@ -674,7 +786,7 @@ type FetchIssueByNumericIdResult = {
 async function fetchIssueByNumericId(
   id: string,
   explicitOrg: string | undefined,
-  cachedOrg: string | null | undefined
+  cachedOrg: string | null | undefined,
 ): Promise<FetchIssueByNumericIdResult> {
   if (explicitOrg) {
     const issue = await getIssueInOrg(explicitOrg, id, {
@@ -722,9 +834,9 @@ async function fetchIssueByNumericId(
 async function resolveNumericIssue(
   id: string,
   cwd: string,
-  command: string,
-  commandBase = "sentry issue"
+  commandContext: IssueCommandContext,
 ): Promise<ResolvedIssueResult> {
+  const { command, commandBase, trailingArgs } = commandContext;
   const resolvedOrg = await resolveOrg({ cwd });
   // Prefer explicit context over the cache — `resolveOrg()` already factors
   // in env vars and config defaults that may point at a different org.
@@ -733,7 +845,7 @@ async function resolveNumericIssue(
     const { issue, cacheEvicted } = await fetchIssueByNumericId(
       id,
       resolvedOrg?.org,
-      cachedOrg
+      cachedOrg,
     );
     // When `cacheEvicted` is true, the cached org slug was stale (404'd) and
     // the helper fell through to the unscoped endpoint. Do NOT let the stale
@@ -756,7 +868,7 @@ async function resolveNumericIssue(
         setCachedIssueOrg(id, org);
       } catch (cacheErr) {
         log.debug(
-          `Failed to cache issue-org mapping for ${id}: ${String(cacheErr)}`
+          `Failed to cache issue-org mapping for ${id}: ${String(cacheErr)}`,
         );
       }
     }
@@ -773,20 +885,28 @@ async function resolveNumericIssue(
       // suggesting the old slug in the hint would mislead the user. Only
       // explicit `resolvedOrg` is worth preserving.
       const orgHint = resolvedOrg?.org ?? "<org>";
-      const hint = `${commandBase} ${command} ${orgHint}/${id}`;
+      const hint = appendCommandArguments(
+        `${commandBase} ${command} ${orgHint}/${id}`,
+        trailingArgs,
+      );
       throw new ResolutionError(`Issue ${id}`, "not found", hint, [
         `No issue with numeric ID ${id} found — you may not have access, or it may have been deleted.`,
-        `If this is a short ID suffix, try: ${commandBase} ${command} <project>-${id}`,
+        `If this is a short ID suffix, try: ${appendCommandArguments(`${commandBase} ${command} <project>-${id}`, trailingArgs)}`,
       ]);
     }
     throw err;
   }
 }
 
+/** An issue argument, parsed unless the command's positional parsed it. */
+function issueArgumentOf(issueArg: string | IssueArgument): IssueArgument {
+  return typeof issueArg === "string" ? parseIssueArgument(issueArg) : issueArg;
+}
+
 /**
  * Resolve an issue ID to organization slug and full issue object.
  *
- * Supports all issue ID formats (now parsed by parseIssueArg in arg-parsing.ts):
+ * Supports all issue ID formats (parsed by parseIssueArgument in issue-arguments.ts):
  * - selector: "@latest", "sentry/@most_frequent" → top issue by criteria
  * - explicit: "sentry/cli-G" → org + project + suffix
  * - explicit-org-suffix: "sentry/G" → org + suffix (needs DSN for project)
@@ -794,6 +914,7 @@ async function resolveNumericIssue(
  * - project-search: "cli-G" → search for project across orgs
  * - suffix-only: "G" (requires DSN context)
  * - numeric: "123456789" (direct fetch, no org)
+ * - search: "login timeout" (the one issue the text matches)
  *
  * @param options - Resolution options
  * @returns Object with org slug and full issue
@@ -801,23 +922,32 @@ async function resolveNumericIssue(
  * @throws {ResolutionError} When an issue or project could not be found or resolved
  */
 export async function resolveIssue(
-  options: ResolveIssueOptions
+  options: ResolveIssueOptions,
 ): Promise<ResolvedIssueResult> {
-  const { issueArg, cwd, command, commandBase } = options;
+  const { cwd, command, commandBase, trailingArgs = [] } = options;
   const effectiveCommandBase = commandBase ?? "sentry issue";
-  const parsed = parseIssueArg(issueArg);
-  const commandHint = buildCommandHint(command, issueArg, effectiveCommandBase);
+  const { text, parsed, baseUrl } = issueArgumentOf(options.issueArg);
+  if (baseUrl) {
+    applySentryUrlContext(baseUrl);
+  }
+  const commandHint = buildCommandHint(
+    command,
+    text,
+    effectiveCommandBase,
+    trailingArgs,
+  );
   const commandContext: IssueCommandContext = {
     command,
     commandBase: effectiveCommandBase,
     commandHint,
+    trailingArgs,
   };
 
   let result: ResolvedIssueResult;
 
   switch (parsed.type) {
     case "numeric":
-      result = await resolveNumericIssue(parsed.id, cwd, command, commandBase);
+      result = await resolveNumericIssue(parsed.id, cwd, commandContext);
       break;
 
     case "explicit": {
@@ -847,8 +977,8 @@ export async function resolveIssue(
             commandHint,
             [
               `No issue with numeric ID ${parsed.numericId} found in org '${org}' — you may not have access, or it may have been deleted.`,
-              `If this is a short ID suffix, try: ${effectiveCommandBase} ${command} <project>-${parsed.numericId}`,
-            ]
+              `If this is a short ID suffix, try: ${appendCommandArguments(`${effectiveCommandBase} ${command} <project>-${parsed.numericId}`, trailingArgs)}`,
+            ],
           );
         }
         throw err;
@@ -869,7 +999,7 @@ export async function resolveIssue(
         parsed.projectSlug,
         parsed.suffix,
         cwd,
-        commandContext
+        commandContext,
       );
       break;
 
@@ -884,7 +1014,7 @@ export async function resolveIssue(
         parsed.selector,
         parsed.org,
         cwd,
-        commandContext
+        commandContext,
       );
       break;
 
@@ -893,11 +1023,16 @@ export async function resolveIssue(
       result = await resolveShareIssue(parsed, cwd, commandHint);
       break;
 
+    case "search":
+      // Text, not an identifier: the issue it alone matches
+      result = await resolveIssueSearch(parsed.query, cwd, commandContext);
+      break;
+
     default: {
       // Exhaustive check - this should never be reached
       const _exhaustive: never = parsed;
       throw new Error(
-        `Unexpected issue arg type: ${JSON.stringify(_exhaustive)}`
+        `Unexpected issue arg type: ${JSON.stringify(_exhaustive)}`,
       );
     }
   }
@@ -906,7 +1041,7 @@ export async function resolveIssue(
   if (result.org) {
     setOrgProjectContext(
       [result.org],
-      result.issue.project?.slug ? [result.issue.project.slug] : []
+      result.issue.project?.slug ? [result.issue.project.slug] : [],
     );
   }
 
@@ -919,18 +1054,27 @@ export async function resolveIssue(
  * This is a stricter wrapper around resolveIssue that throws if org is undefined.
  *
  * @param options - Resolution options
- * @returns Object with org slug and numeric issue ID
+ * @returns Object with org slug, numeric issue ID, and the issue's project ID when known
  * @throws {ContextError} When organization cannot be resolved
  */
 export async function resolveOrgAndIssueId(
-  options: ResolveIssueOptions
-): Promise<{ org: string; issueId: string }> {
+  options: ResolveIssueOptions,
+): Promise<{ org: string; issueId: string; projectId?: string }> {
   const result = await resolveIssue(options);
   if (!result.org) {
-    const commandHint = buildCommandHint(options.command, options.issueArg);
+    const commandHint = buildCommandHint(
+      options.command,
+      issueArgumentOf(options.issueArg).text,
+      options.commandBase,
+      options.trailingArgs,
+    );
     throw new ContextError("Organization", commandHint);
   }
-  return { org: result.org, issueId: result.issue.id };
+  return {
+    org: result.org,
+    issueId: result.issue.id,
+    projectId: result.issue.project?.id,
+  };
 }
 
 type PollAutofixOptions = {
@@ -975,7 +1119,7 @@ type EnsureRootCauseOptions = {
  * @returns The completed autofix state with root causes
  */
 export async function ensureRootCauseAnalysis(
-  options: EnsureRootCauseOptions
+  options: EnsureRootCauseOptions,
 ): Promise<AutofixState> {
   const { org, issueId, json, force = false } = options;
 
@@ -1030,7 +1174,7 @@ export async function ensureRootCauseAnalysis(
  */
 function shouldStopPolling(
   state: AutofixState,
-  stopOnWaitingForUser: boolean
+  stopOnWaitingForUser: boolean,
 ): boolean {
   if (isTerminalStatus(state.status)) {
     return true;
@@ -1054,7 +1198,7 @@ function shouldStopPolling(
  * @throws {Error} On timeout
  */
 export async function pollAutofixState(
-  options: PollAutofixOptions
+  options: PollAutofixOptions,
 ): Promise<AutofixState> {
   const {
     orgSlug,

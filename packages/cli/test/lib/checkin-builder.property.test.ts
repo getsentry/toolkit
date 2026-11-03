@@ -28,7 +28,7 @@ const crontabArb = constantFrom(
   "0 * * * *",
   "*/5 * * * *",
   "0 0 * * *",
-  "30 2 * * 1"
+  "30 2 * * 1",
 );
 
 const positiveIntArb = integer({ min: 1, max: 1440 });
@@ -46,7 +46,7 @@ describe("property: buildMonitorConfig", () => {
           expect(buildMonitorConfig(flags)).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -107,7 +107,7 @@ describe("property: buildMonitorConfig", () => {
         expect(config?.failure_issue_threshold).toBe(thresholds.failure);
         expect(config?.recovery_threshold).toBe(thresholds.recovery);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -131,9 +131,9 @@ describe("property: buildCheckIn", () => {
           expect(checkIn.check_in_id).toBe(checkInId);
           expect(checkIn.monitor_slug).toBe(monitorSlug);
           expect(checkIn.status).toBe(status);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 

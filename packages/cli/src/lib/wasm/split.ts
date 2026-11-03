@@ -96,7 +96,7 @@ export type SplitWasmResult = {
  */
 export function splitWasm(
   bytes: Uint8Array,
-  options: SplitWasmOptions = {}
+  options: SplitWasmOptions = {},
 ): SplitWasmResult {
   let sections = parseSections(bytes);
   let moduleChanged = false;
@@ -116,7 +116,7 @@ export function splitWasm(
   if (options.strip) {
     const stripNames = options.stripNames ?? false;
     const kept = sections.filter(
-      (section) => !isStrippable(section, stripNames)
+      (section) => !isStrippable(section, stripNames),
     );
     if (kept.length !== sections.length) {
       sections = kept;

@@ -37,7 +37,7 @@ const { readFileSync } = require("node:fs");
 
 const textEncoder = new TextEncoder();
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: hot regex loop with literal gate + line counter + line-bound extraction + per-file cap is inherently branchy
+// hot regex loop with literal gate + line counter + line-bound extraction + per-file cap is inherently branchy
 self.onmessage = (event) => {
   const {
     paths,
@@ -121,7 +121,7 @@ self.onmessage = (event) => {
   const linePoolBytes = textEncoder.encode(linePool);
   self.postMessage(
     { type: "result", ints: packed, linePoolBytes },
-    { transfer: [packed.buffer, linePoolBytes.buffer] }
+    { transfer: [packed.buffer, linePoolBytes.buffer] },
   );
 };
 

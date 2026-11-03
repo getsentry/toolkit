@@ -72,6 +72,7 @@ Tests are how we validate **ANY** functionality works before manual testing.
 ### Test Isolation
 
 Every test must:
+
 - Run independently without affecting other tests
 - Use temporary directories for file operations
 - Clean up resources after completion

@@ -27,7 +27,7 @@ let originalFetch: typeof globalThis.fetch;
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
   resetAuthenticatedFetch();
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 });
 
@@ -42,14 +42,14 @@ describe("deleteIssueAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("DELETE");
       expect(req.url).toBe(
-        `${DEFAULT_SENTRY_URL}/api/0/organizations/test-org/workflows/42/`
+        `${DEFAULT_SENTRY_URL}/api/0/organizations/test-org/workflows/42/`,
       );
       expect(req.headers.get("Authorization")).toBe("Bearer test-token");
       return new Response(null, { status: 204 });
     });
 
     await expect(
-      deleteIssueAlertRule("test-org", "42")
+      deleteIssueAlertRule("test-org", "42"),
     ).resolves.toBeUndefined();
   });
 });
@@ -109,11 +109,11 @@ describe("getIssueAlertRule", () => {
   test("throws 404 ApiError when no attached rule matches", async () => {
     globalThis.fetch = mockFetch(async () =>
       // Only an unattached workflow comes back → filtered out → not found.
-      Response.json([workflowRule({ id: "42", detectorIds: [] })])
+      Response.json([workflowRule({ id: "42", detectorIds: [] })]),
     );
 
     await expect(
-      getIssueAlertRule("test-org", "test-project", "42")
+      getIssueAlertRule("test-org", "test-project", "42"),
     ).rejects.toMatchObject({ name: "ApiError", status: 404 });
   });
 });
@@ -150,7 +150,9 @@ describe("listMetricAlertsPaginated", () => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/");
       expect(url.searchParams.get("query")).toBe("type:metric_issue");
-      return Response.json([metricDetector({ id: "9", name: "P95 latency" })]);
+      return Response.json([
+        metricDetector({ id: "9", name: "P95 latency", workflowIds: ["42"] }),
+      ]);
     });
 
     const { data } = await listMetricAlertsPaginated("test-org");
@@ -167,6 +169,9 @@ describe("listMetricAlertsPaginated", () => {
       environment: "prod",
       projects: ["backend"],
     });
+    expect(data[0]).not.toHaveProperty("config");
+    expect(data[0]).not.toHaveProperty("conditionGroup");
+    expect(data[0]).not.toHaveProperty("workflowIds");
   });
 });
 
@@ -176,7 +181,7 @@ describe("getMetricAlertRule", () => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/9/");
       return Response.json(
-        metricDetector({ id: "9", name: "Disabled rule", enabled: false })
+        metricDetector({ id: "9", name: "Disabled rule", enabled: false }),
       );
     });
 
@@ -201,8 +206,8 @@ describe("getMetricAlertRule", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -228,8 +233,8 @@ describe("getMetricAlertRule", () => {
               },
             },
           ],
-        })
-      )
+        }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -239,11 +244,51 @@ describe("getMetricAlertRule", () => {
     expect(rule.timeWindow).toBe(10);
   });
 
+  test.each([
+    ["events", ["error", "default"], "errors"],
+    ["events_analytics_platform", ["trace_item_span"], "spans"],
+    ["events_analytics_platform", ["trace_item_log"], "logs"],
+    [
+      "events_analytics_platform",
+      ["trace_item_metric"],
+      "events_analytics_platform",
+    ],
+    ["events_analytics_platform", [], "events_analytics_platform"],
+    ["metrics", [], "metrics"],
+  ])(
+    "maps native dataset %s with eventTypes %j to CLI dataset %s",
+    async (dataset, eventTypes, expected) => {
+      globalThis.fetch = mockFetch(async () =>
+        Response.json(
+          metricDetector({
+            dataSources: [
+              {
+                type: "snuba_query_subscription",
+                queryObj: {
+                  snubaQuery: {
+                    aggregate: "count()",
+                    dataset,
+                    eventTypes,
+                    query: "",
+                    timeWindow: 300,
+                  },
+                },
+              },
+            ],
+          }),
+        ),
+      );
+
+      const rule = await getMetricAlertRule("test-org", "9");
+      expect(rule.dataset).toBe(expected);
+    },
+  );
+
   test("prefers projectSlug and falls back to a projects array for projects", async () => {
     globalThis.fetch = mockFetch(async () =>
       Response.json(
-        metricDetector({ projectSlug: undefined, projects: ["frontend"] })
-      )
+        metricDetector({ projectSlug: undefined, projects: ["frontend"] }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -255,8 +300,8 @@ describe("getMetricAlertRule", () => {
       Response.json(
         metricDetector({
           dataSources: [{ snubaQuery: { timeWindow: "not-a-number" } }],
-        })
-      )
+        }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -265,7 +310,7 @@ describe("getMetricAlertRule", () => {
 
   test("rejects a non-metric detector with a 404 instead of mapping it", async () => {
     globalThis.fetch = mockFetch(async () =>
-      Response.json(metricDetector({ type: "uptime_domain_failure" }))
+      Response.json(metricDetector({ type: "uptime_domain_failure" })),
     );
 
     await expect(getMetricAlertRule("test-org", "9")).rejects.toMatchObject({
@@ -277,8 +322,8 @@ describe("getMetricAlertRule", () => {
   test("reconstructs the legacy actor identifier from an object owner", async () => {
     globalThis.fetch = mockFetch(async () =>
       Response.json(
-        metricDetector({ owner: { type: "team", id: "42", name: "backend" } })
-      )
+        metricDetector({ owner: { type: "team", id: "42", name: "backend" } }),
+      ),
     );
 
     const rule = await getMetricAlertRule("test-org", "9");
@@ -292,7 +337,7 @@ describe("createIssueAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("POST");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/workflows/"
+        "/api/0/organizations/test-org/workflows/",
       );
       expect(await req.json()).toEqual({ name: "New", detectorIds: [7] });
       return Response.json(workflowRule({ id: "5", name: "New" }));
@@ -312,7 +357,7 @@ describe("updateIssueAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("PUT");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/workflows/42/"
+        "/api/0/organizations/test-org/workflows/42/",
       );
       expect(await req.json()).toEqual({ name: "Renamed" });
       return Response.json(workflowRule({ id: "42", name: "Renamed" }));
@@ -349,7 +394,7 @@ describe("resolveErrorDetectorId", () => {
     });
 
     await expect(
-      resolveErrorDetectorId("test-org", "test-project")
+      resolveErrorDetectorId("test-org", "test-project"),
     ).resolves.toBe(7);
   });
 
@@ -357,7 +402,7 @@ describe("resolveErrorDetectorId", () => {
     globalThis.fetch = mockFetch(async () => Response.json([]));
 
     await expect(
-      resolveErrorDetectorId("test-org", "test-project")
+      resolveErrorDetectorId("test-org", "test-project"),
     ).rejects.toMatchObject({ name: "ApiError", status: 404 });
   });
 });
@@ -368,14 +413,14 @@ describe("deleteMetricAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("DELETE");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/detectors/9/"
+        "/api/0/organizations/test-org/detectors/9/",
       );
       expect(req.headers.get("Authorization")).toBe("Bearer test-token");
       return new Response(null, { status: 204 });
     });
 
     await expect(
-      deleteMetricAlertRule("test-org", "9")
+      deleteMetricAlertRule("test-org", "9"),
     ).resolves.toBeUndefined();
   });
 });
@@ -386,7 +431,7 @@ describe("createMetricAlertRule", () => {
       const req = new Request(input!, init);
       expect(req.method).toBe("POST");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/projects/backend/detectors/"
+        "/api/0/organizations/test-org/projects/backend/detectors/",
       );
       expect(await req.json()).toEqual({
         name: "P95 latency",
@@ -394,7 +439,7 @@ describe("createMetricAlertRule", () => {
         dataSources: [
           {
             aggregate: "p95(span.duration)",
-            dataset: "spans",
+            dataset: "events_analytics_platform",
             query: "environment:prod",
             queryType: 1,
             eventTypes: ["trace_item_span"],
@@ -406,12 +451,16 @@ describe("createMetricAlertRule", () => {
         config: { detectionType: "static" },
         conditionGroup: {
           logicType: "any",
-          conditions: [{ alertThreshold: 500, actions: [{ id: "notify" }] }],
+          // The legacy trigger becomes a threshold plus a resolution condition.
+          conditions: [
+            { type: "gt", comparison: 500, conditionResult: 75 },
+            { type: "lte", comparison: 500, conditionResult: 0 },
+          ],
         },
       });
       return Response.json(
         { ...metricDetector({ id: "77", name: "P95 latency" }) },
-        { status: 201 }
+        { status: 201 },
       );
     });
 
@@ -422,7 +471,7 @@ describe("createMetricAlertRule", () => {
       dataset: "spans",
       timeWindow: 5,
       environment: "prod",
-      triggers: [{ alertThreshold: 500, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 500 }],
       projects: ["backend"],
     });
     expect(created.id).toBe("77");
@@ -444,14 +493,176 @@ describe("createMetricAlertRule", () => {
       aggregate: "count()",
       dataset: "errors",
       timeWindow: 15,
-      triggers: [{ alertThreshold: 100, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 100 }],
       projects: ["backend"],
     });
 
     const source = (sentBody.dataSources as Record<string, unknown>[])[0];
+    expect(source?.dataset).toBe("events");
     expect(source?.queryType).toBe(0);
     expect(source?.eventTypes).toEqual(["error", "default"]);
     expect(source?.timeWindow).toBe(900);
+  });
+
+  test("maps logs to the EAP dataset with trace_item_log and connects workflows", async () => {
+    let sentBody: Record<string, unknown> = {};
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sentBody = (await new Request(input!, init).json()) as Record<
+        string,
+        unknown
+      >;
+      return Response.json(metricDetector({ id: "1" }), { status: 201 });
+    });
+
+    await createMetricAlertRule("test-org", {
+      name: "AI chat failures",
+      query: "action:ai.chat result:error",
+      aggregate: "count()",
+      dataset: "logs",
+      timeWindow: 5,
+      triggers: [{ alertThreshold: 0, resolveThreshold: 0 }],
+      projects: ["backend"],
+      workflowIds: [42],
+    });
+
+    expect(sentBody.dataSources).toEqual([
+      {
+        aggregate: "count()",
+        dataset: "events_analytics_platform",
+        query: "action:ai.chat result:error",
+        queryType: 1,
+        eventTypes: ["trace_item_log"],
+        timeWindow: 300,
+      },
+    ]);
+    expect(sentBody.conditionGroup).toEqual({
+      logicType: "any",
+      conditions: [
+        { type: "gt", comparison: 0, conditionResult: 75 },
+        { type: "lte", comparison: 0, conditionResult: 0 },
+      ],
+    });
+    expect(sentBody.workflowIds).toEqual([42]);
+  });
+
+  test("maps sessions to the crash-rate metrics dataset", async () => {
+    let sentBody: Record<string, unknown> = {};
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sentBody = (await new Request(input!, init).json()) as Record<
+        string,
+        unknown
+      >;
+      return Response.json(metricDetector({ id: "1" }), { status: 201 });
+    });
+
+    await createMetricAlertRule("test-org", {
+      name: "Crash rate",
+      query: "",
+      aggregate:
+        "percentage(sessions_crashed, sessions) AS _crash_rate_alert_aggregate",
+      dataset: "sessions",
+      timeWindow: 60,
+      triggers: [{ alertThreshold: 1 }],
+      projects: ["backend"],
+    });
+
+    const source = (sentBody.dataSources as Record<string, unknown>[])[0];
+    expect(source?.dataset).toBe("metrics");
+    expect(source?.queryType).toBe(2);
+    expect(source?.eventTypes).toEqual([]);
+  });
+
+  test("translates warning and below-threshold triggers", async () => {
+    let sentBody: Record<string, unknown> = {};
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sentBody = (await new Request(input!, init).json()) as Record<
+        string,
+        unknown
+      >;
+      return Response.json(metricDetector({ id: "1" }), { status: 201 });
+    });
+
+    await createMetricAlertRule("test-org", {
+      name: "Low throughput",
+      query: "",
+      aggregate: "count()",
+      dataset: "spans",
+      timeWindow: 5,
+      triggers: [
+        { alertThreshold: 10, label: "critical", thresholdType: 1 },
+        { alertThreshold: 50, label: "warning", thresholdType: 1 },
+      ],
+      projects: ["backend"],
+    });
+
+    expect(
+      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+    ).toEqual([
+      { type: "lt", comparison: 10, conditionResult: 75 },
+      { type: "lt", comparison: 50, conditionResult: 50 },
+      { type: "gte", comparison: 10, conditionResult: 0 },
+    ]);
+  });
+
+  test("drops empty trigger actions from detector conditions", async () => {
+    let sentBody: Record<string, unknown> = {};
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sentBody = (await new Request(input!, init).json()) as Record<
+        string,
+        unknown
+      >;
+      return Response.json(metricDetector({ id: "1" }), { status: 201 });
+    });
+
+    await createMetricAlertRule("test-org", {
+      name: "Error spike",
+      query: "is:unresolved",
+      aggregate: "count()",
+      dataset: "errors",
+      timeWindow: 5,
+      triggers: [
+        { label: "critical", alertThreshold: 11, actions: [] },
+        { label: "warning", alertThreshold: 5, actions: [] },
+      ],
+      projects: ["backend"],
+    });
+
+    expect(
+      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+    ).toEqual([
+      { type: "gt", comparison: 11, conditionResult: 75 },
+      { type: "gt", comparison: 5, conditionResult: 50 },
+      { type: "lte", comparison: 11, conditionResult: 0 },
+    ]);
+  });
+
+  test("passes native detector conditions through unchanged", async () => {
+    let sentBody: Record<string, unknown> = {};
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sentBody = (await new Request(input!, init).json()) as Record<
+        string,
+        unknown
+      >;
+      return Response.json(metricDetector({ id: "1" }), { status: 201 });
+    });
+
+    const conditions = [
+      { type: "gte", comparison: 5, conditionResult: 75 },
+      { type: "lt", comparison: 5, conditionResult: 0 },
+    ];
+    await createMetricAlertRule("test-org", {
+      name: "Native",
+      query: "",
+      aggregate: "count()",
+      dataset: "errors",
+      timeWindow: 5,
+      triggers: conditions,
+      projects: ["backend"],
+    });
+
+    expect(
+      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+    ).toEqual(conditions);
   });
 
   test("throws ValidationError when no project is provided", async () => {
@@ -462,8 +673,8 @@ describe("createMetricAlertRule", () => {
         aggregate: "count()",
         dataset: "errors",
         timeWindow: 5,
-        triggers: [{ alertThreshold: 1, actions: [{ id: "notify" }] }],
-      })
+        triggers: [{ alertThreshold: 1 }],
+      }),
     ).rejects.toMatchObject({ name: "ValidationError" });
   });
 });
@@ -487,13 +698,178 @@ describe("getMetricAlertRuleDocument", () => {
   });
 });
 
+describe("metric alert edit round-trip", () => {
+  test("keeps the stored eventTypes of an unmodelled EAP monitor", async () => {
+    const storedSource = {
+      type: "snuba_query_subscription",
+      queryObj: {
+        snubaQuery: {
+          aggregate: "sum(value,my.metric,counter,-)",
+          dataset: "events_analytics_platform",
+          eventTypes: ["trace_item_metric"],
+          queryType: 1,
+          query: "",
+          timeWindow: 300,
+        },
+      },
+    };
+    let putSource: Record<string, unknown> | undefined;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putSource = (body.dataSources as Record<string, unknown>[])[0];
+      }
+      return Response.json(metricDetector({ dataSources: [storedSource] }));
+    });
+
+    const doc = await getMetricAlertRuleDocument("test-org", "9");
+    await putMetricAlertRule("test-org", "9", { ...doc, name: "Renamed" });
+
+    expect(putSource).toMatchObject({
+      dataset: "events_analytics_platform",
+      eventTypes: ["trace_item_metric"],
+      queryType: 1,
+    });
+  });
+});
+
+describe("metric alert edit round-trip without event types", () => {
+  test.each([
+    ["empty", { eventTypes: [] }],
+    ["missing", {}],
+  ])(
+    "does not rewrite an EAP monitor with %s eventTypes onto spans",
+    async (_label, eventTypes) => {
+      const storedSource = {
+        type: "snuba_query_subscription",
+        queryObj: {
+          snubaQuery: {
+            aggregate: "count()",
+            dataset: "events_analytics_platform",
+            ...eventTypes,
+            queryType: 1,
+            query: "",
+            timeWindow: 300,
+          },
+        },
+      };
+      let putSource: Record<string, unknown> | undefined;
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input!, init);
+        if (req.method === "PUT") {
+          const body = (await req.json()) as Record<string, unknown>;
+          putSource = (body.dataSources as Record<string, unknown>[])[0];
+        }
+        return Response.json(metricDetector({ dataSources: [storedSource] }));
+      });
+
+      const doc = await getMetricAlertRuleDocument("test-org", "9");
+      expect(doc.dataset).toBe("events_analytics_platform");
+      await putMetricAlertRule("test-org", "9", { ...doc, name: "Renamed" });
+
+      expect(putSource).toMatchObject({
+        dataset: "events_analytics_platform",
+        eventTypes: [],
+        queryType: 1,
+      });
+    },
+  );
+});
+
+describe("metric alert edit round-trip of detector config", () => {
+  test("keeps a percent detector's config on a rename", async () => {
+    const storedConfig = { detectionType: "percent", comparisonDelta: 3600 };
+    let putConfig: unknown;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putConfig = body.config;
+      }
+      return Response.json(metricDetector({ config: storedConfig }));
+    });
+
+    const doc = await getMetricAlertRuleDocument("test-org", "9");
+    await putMetricAlertRule("test-org", "9", { ...doc, name: "Renamed" });
+
+    expect(putConfig).toEqual(storedConfig);
+  });
+
+  test.each([
+    ["percent", { detectionType: "percent", comparisonDelta: 3600 }],
+    ["dynamic", { detectionType: "dynamic" }],
+  ])(
+    "switches a %s detector to static for threshold triggers",
+    async (_label, storedConfig) => {
+      let putConfig: unknown;
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input!, init);
+        if (req.method === "PUT") {
+          const body = (await req.json()) as Record<string, unknown>;
+          putConfig = body.config;
+        }
+        return Response.json(metricDetector({ config: storedConfig }));
+      });
+
+      const doc = await getMetricAlertRuleDocument("test-org", "9");
+      await putMetricAlertRule("test-org", "9", {
+        ...doc,
+        triggers: [{ alertThreshold: 100 }],
+      });
+
+      expect(putConfig).toEqual({ detectionType: "static" });
+    },
+  );
+
+  test("keeps the stored config for native detector conditions", async () => {
+    const storedConfig = { detectionType: "percent", comparisonDelta: 3600 };
+    let putConfig: unknown;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putConfig = body.config;
+      }
+      return Response.json(metricDetector({ config: storedConfig }));
+    });
+
+    const doc = await getMetricAlertRuleDocument("test-org", "9");
+    await putMetricAlertRule("test-org", "9", {
+      ...doc,
+      triggers: [
+        { type: "gt", comparison: 110, conditionResult: 75 },
+        { type: "lte", comparison: 105, conditionResult: 0 },
+      ],
+    });
+
+    expect(putConfig).toEqual(storedConfig);
+  });
+
+  test("defaults to static detection without a stored config", async () => {
+    let putConfig: unknown;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.method === "PUT") {
+        const body = (await req.json()) as Record<string, unknown>;
+        putConfig = body.config;
+      }
+      return Response.json(metricDetector({}));
+    });
+
+    await putMetricAlertRule("test-org", "9", { name: "Renamed" });
+
+    expect(putConfig).toEqual({ detectionType: "static" });
+  });
+});
+
 describe("putMetricAlertRule", () => {
   test("PUTs a nested detector body to the /detectors/{id}/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input!, init);
       expect(req.method).toBe("PUT");
       expect(new URL(req.url).pathname).toBe(
-        "/api/0/organizations/test-org/detectors/9/"
+        "/api/0/organizations/test-org/detectors/9/",
       );
       const body = (await req.json()) as Record<string, unknown>;
       expect(body.name).toBe("Renamed");
@@ -510,7 +886,7 @@ describe("putMetricAlertRule", () => {
       dataset: "spans",
       timeWindow: 5,
       status: 1,
-      triggers: [{ alertThreshold: 500, actions: [{ id: "notify" }] }],
+      triggers: [{ alertThreshold: 500 }],
     });
     expect(updated.id).toBe("9");
   });

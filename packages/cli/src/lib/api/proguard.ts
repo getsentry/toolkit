@@ -93,7 +93,7 @@ type AssembleCheckResult = {
 function checkAssembleResponse(
   response: DifAssembleResponse,
   checksums: string[],
-  endpoint: string
+  endpoint: string,
 ): AssembleCheckResult {
   const missingChecksums = new Set<string>();
   let allDone = true;
@@ -110,7 +110,7 @@ function checkAssembleResponse(
         "ProGuard mapping assembly failed",
         500,
         entry.detail ?? "Unknown error",
-        endpoint
+        endpoint,
       );
     }
     if (entry.state === "ok" || entry.state === "created") {
@@ -138,7 +138,7 @@ function checkAssembleResponse(
  * @throws {ApiError} If the upload or assembly fails
  */
 export async function uploadProguardMappings(
-  options: ProguardUploadOptions
+  options: ProguardUploadOptions,
 ): Promise<void> {
   const { org, project, mappings } = options;
 
@@ -150,7 +150,7 @@ export async function uploadProguardMappings(
   const chunkedMappings: ChunkedMapping[] = mappings.map((mapping) => {
     const { chunks, overallChecksum } = hashBuffer(
       mapping.content,
-      serverOptions.chunkSize
+      serverOptions.chunkSize,
     );
     return { mapping, chunks, overallChecksum };
   });
@@ -175,14 +175,14 @@ export async function uploadProguardMappings(
       method: "POST",
       body: assembleBody,
       schema: DifAssembleResponseSchema,
-    }
+    },
   );
 
   const checksums = chunkedMappings.map((cm) => cm.overallChecksum);
   const { allDone, missingChecksums } = checkAssembleResponse(
     firstAssemble,
     checksums,
-    assembleEndpoint
+    assembleEndpoint,
   );
 
   if (allDone) {
@@ -235,7 +235,7 @@ async function pollDifAssembly(params: {
         method: "POST",
         body,
         schema: DifAssembleResponseSchema,
-      }
+      },
     );
 
     const { allDone } = checkAssembleResponse(pollResult, checksums, endpoint);
@@ -248,6 +248,6 @@ async function pollDifAssembly(params: {
     "ProGuard mapping assembly timed out",
     408,
     `Assembly did not complete within ${ASSEMBLE_MAX_WAIT_MS / 1000}s`,
-    endpoint
+    endpoint,
   );
 }

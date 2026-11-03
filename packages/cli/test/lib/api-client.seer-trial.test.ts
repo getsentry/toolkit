@@ -12,6 +12,7 @@ import {
 } from "../../src/lib/api-client.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("test-product-trial-api-");
@@ -20,7 +21,7 @@ let originalFetch: typeof globalThis.fetch;
 beforeEach(async () => {
   originalFetch = globalThis.fetch;
 
-  await setAuthToken("test-token");
+  setAuthToken("test-token");
   setOrgRegion("test-org", "https://sentry.io");
 });
 
@@ -56,8 +57,8 @@ describe("getProductTrials", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }
-        )
+          },
+        ),
     );
 
     const trials = await getProductTrials("test-org");
@@ -75,7 +76,7 @@ describe("getProductTrials", () => {
         new Response(JSON.stringify({}), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     const trials = await getProductTrials("test-org");
@@ -89,7 +90,7 @@ describe("getProductTrials", () => {
         new Response(JSON.stringify({ productTrials: [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     const trials = await getProductTrials("test-org");
@@ -107,7 +108,7 @@ describe("getProductTrials", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await getProductTrials("test-org");
@@ -122,7 +123,7 @@ describe("getProductTrials", () => {
         new Response(JSON.stringify({ detail: "Not found" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(getProductTrials("test-org")).rejects.toThrow();
@@ -140,7 +141,7 @@ describe("startProductTrial", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "seerUsers");
@@ -161,7 +162,7 @@ describe("startProductTrial", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "seerAutofix");
@@ -182,7 +183,7 @@ describe("startProductTrial", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "replays");
@@ -199,13 +200,13 @@ describe("startProductTrial", () => {
 
     globalThis.fetch = mockFetch(
       async (input: RequestInfo | URL, init?: RequestInit) => {
-        capturedUrl = input.toString();
+        capturedUrl = extractInputUrl(input);
         capturedMethod = init?.method ?? "GET";
         return new Response(JSON.stringify({}), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
+      },
     );
 
     await startProductTrial("test-org", "seerUsers");
@@ -220,7 +221,7 @@ describe("startProductTrial", () => {
         new Response(JSON.stringify({ detail: "Forbidden" }), {
           status: 403,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
     );
 
     await expect(startProductTrial("test-org", "seerUsers")).rejects.toThrow();

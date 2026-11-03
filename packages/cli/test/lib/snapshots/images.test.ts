@@ -103,10 +103,10 @@ describe("validateImageSizes", () => {
 
   test("throws listing images over the pixel limit", () => {
     expect(() => validateImageSizes([img(8001, 5000)])).toThrow(
-      ValidationError
+      ValidationError,
     );
     expect(() => validateImageSizes([img(8001, 5000)])).toThrow(
-      String(MAX_PIXELS_PER_IMAGE)
+      String(MAX_PIXELS_PER_IMAGE),
     );
   });
 });
@@ -132,7 +132,7 @@ describe("splitAndTrim", () => {
 describe("normalizeImageNames", () => {
   test("strips a leading ./ and backslashes → forward slashes", () => {
     expect(normalizeImageNames(["./img/a.png", "img\\b.png", "c.png"])).toEqual(
-      ["img/a.png", "img/b.png", "c.png"]
+      ["img/a.png", "img/b.png", "c.png"],
     );
   });
 });

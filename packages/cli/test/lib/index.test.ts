@@ -93,7 +93,7 @@ describe("createSentrySDK() library API", () => {
     await sdk.run("--version");
     // Check that no new SENTRY_OUTPUT_FORMAT key leaked
     expect(process.env.SENTRY_OUTPUT_FORMAT).toBe(
-      envBefore.SENTRY_OUTPUT_FORMAT
+      envBefore.SENTRY_OUTPUT_FORMAT,
     );
     expect(process.env.SENTRY_AUTH_TOKEN).toBe(envBefore.SENTRY_AUTH_TOKEN);
   });
@@ -107,7 +107,7 @@ describe("createSentrySDK() library API", () => {
       // expected
     }
     expect(process.env.SENTRY_OUTPUT_FORMAT).toBe(
-      envBefore.SENTRY_OUTPUT_FORMAT
+      envBefore.SENTRY_OUTPUT_FORMAT,
     );
   });
 

@@ -39,9 +39,9 @@ afterEach(() => {
 describe("buildObjectUrl", () => {
   test("joins usecase, scope, and key (stripping a trailing slash)", () => {
     expect(
-      buildObjectUrl({ ...config, usecase: "preprod" }, "123/456/abc")
+      buildObjectUrl({ ...config, usecase: "preprod" }, "123/456/abc"),
     ).toBe(
-      "https://objectstore.example.com/v1/objects/preprod/org=123;project=456/123/456/abc"
+      "https://objectstore.example.com/v1/objects/preprod/org=123;project=456/123/456/abc",
     );
   });
 });
@@ -52,7 +52,7 @@ describe("objectExists", () => {
     expect(await objectExists(config, "123/456/abc")).toBe(true);
     const [url, init] = customFetchMock.mock.calls[0] ?? [];
     expect(url).toContain(
-      "/v1/objects/preprod_snapshots/org=123;project=456/123/456/abc"
+      "/v1/objects/preprod_snapshots/org=123;project=456/123/456/abc",
     );
     expect(init.method).toBe("HEAD");
     expect(init.headers["x-os-auth"]).toBe("Bearer jwt-token");
@@ -89,7 +89,7 @@ describe("putObject", () => {
 
     const [url, init] = customFetchMock.mock.calls[0] ?? [];
     expect(url).toBe(
-      "https://objectstore.example.com/v1/objects/preprod_snapshots/org=123;project=456/123/456/abc"
+      "https://objectstore.example.com/v1/objects/preprod_snapshots/org=123;project=456/123/456/abc",
     );
     expect(init.method).toBe("PUT");
     expect(init.headers["x-os-auth"]).toBe("Bearer jwt-token");
@@ -105,7 +105,7 @@ describe("putObject", () => {
       statusText: "too large",
     });
     await expect(putObject(config, "k", new Uint8Array([0]))).rejects.toThrow(
-      ApiError
+      ApiError,
     );
   });
 });

@@ -89,7 +89,7 @@ const MAX_PREREAD_TOTAL_BYTES = 512 * 1024;
  * Pre-compute the initial directory listing before the first workflow call.
  */
 export async function precomputeDirListing(
-  directory: string
+  directory: string,
 ): Promise<DirEntry[]> {
   const result = await listDir({
     type: "tool",
@@ -105,14 +105,14 @@ export async function precomputeDirListing(
  */
 export async function preReadCommonFiles(
   directory: string,
-  dirListing: DirEntry[]
+  dirListing: DirEntry[],
 ): Promise<Record<string, string | null>> {
   // `listDir` emits POSIX-normalized paths regardless of host OS,
   // so `COMMON_CONFIG_FILES` (POSIX) membership checks don't need
   // any per-path separator translation.
   const listingPaths = new Set(dirListing.map((entry) => entry.path));
   const toRead = COMMON_CONFIG_FILES.filter((filePath) =>
-    listingPaths.has(filePath)
+    listingPaths.has(filePath),
   );
 
   const cache: Record<string, string | null> = {};
@@ -145,10 +145,10 @@ type CommonConfigRead =
 
 async function readCommonConfigFile(
   directory: string,
-  filePath: string
+  filePath: string,
 ): Promise<CommonConfigRead> {
   let opened: OpenedProjectFile | undefined;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const result = await openProjectFile(directory, filePath);
     if ("error" in result) {
@@ -166,7 +166,7 @@ async function readCommonConfigFile(
         buffer,
         bytesRead,
         buffer.length - bytesRead,
-        bytesRead
+        bytesRead,
       );
       if (readResult.bytesRead === 0) {
         return { status: "unreadable" };

@@ -1,10 +1,9 @@
 /**
- * Unit tests for issue view helpers: newline expansion, JSON shape, and
+ * Unit tests for issue view helpers: JSON shape and
  * human formatting. Command-body coverage lives in view.func.test.ts.
  */
 
 import { describe, expect, test } from "vitest";
-import { collectIssueArgs } from "../../../src/commands/issue/utils.js";
 import {
   formatIssueView,
   jsonTransformIssueView,
@@ -30,32 +29,6 @@ function sampleView(overrides: Partial<SentryIssue> = {}) {
     trace: null,
   };
 }
-
-describe("collectIssueArgs", () => {
-  test("expands newline-separated args", () => {
-    expect(collectIssueArgs(["IOS-1\nIOS-2\nIOS-3"])).toEqual([
-      "IOS-1",
-      "IOS-2",
-      "IOS-3",
-    ]);
-  });
-
-  test("handles mixed arguments and removes duplicates", () => {
-    expect(collectIssueArgs(["IOS-1", "IOS-2\nIOS-3", "IOS-2"])).toEqual([
-      "IOS-1",
-      "IOS-2",
-      "IOS-3",
-    ]);
-  });
-
-  test("does not split on commas", () => {
-    expect(collectIssueArgs(["IOS-1,IOS-2"])).toEqual(["IOS-1,IOS-2"]);
-  });
-
-  test("handles empty array", () => {
-    expect(collectIssueArgs([])).toEqual([]);
-  });
-});
 
 describe("formatIssueView", () => {
   test("renders a single issue without a separator", () => {
@@ -95,7 +68,7 @@ describe("jsonTransformIssueView", () => {
         event: null,
         replayIds: [],
         trace: null,
-      })
+      }),
     );
   });
 
@@ -131,7 +104,7 @@ describe("jsonTransformIssueView", () => {
         issues: [sampleView()],
         requestedCount: 1,
       },
-      ["shortId"]
+      ["shortId"],
     );
     expect(result).toEqual({ shortId: "CLI-123" });
   });
@@ -145,7 +118,7 @@ describe("jsonTransformIssueView", () => {
         ],
         requestedCount: 2,
       },
-      ["shortId"]
+      ["shortId"],
     );
     expect(result).toEqual([{ shortId: "IOS-1" }, { shortId: "IOS-2" }]);
   });

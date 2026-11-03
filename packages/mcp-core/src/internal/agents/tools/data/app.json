@@ -7,12 +7,7 @@
       "description": "Scrubber-safe OAuth error code returned by Sentry MCP or the OAuth provider.",
       "type": "string",
       "note": "Emitted under app.access.* so default Sentry data scrubbing does not redact values via sensitive substrings (auth/oauth, token, bearer, credentials). invalid_token responses are bucketed as invalid_access.",
-      "examples": [
-        "invalid_access",
-        "invalid_grant",
-        "invalid_client",
-        "other"
-      ]
+      "examples": ["invalid_access", "invalid_grant", "invalid_client", "other"]
     },
     "app.access.error.reason": {
       "description": "Low-cardinality scrubber-safe bucket for an OAuth error description.",
@@ -28,19 +23,12 @@
     "app.access.grant.age_bucket": {
       "description": "Bounded MCP grant age at refresh or revocation.",
       "type": "string",
-      "examples": [
-        "lt_1h",
-        "1d_7d",
-        "gte_30d",
-        "unknown"
-      ]
+      "examples": ["lt_1h", "1d_7d", "gte_30d", "unknown"]
     },
     "app.access.grant.id_hash": {
       "description": "Deterministic non-secret fingerprint of a Sentry MCP OAuth grant ID used to correlate grant lifecycle logs.",
       "type": "string",
-      "examples": [
-        "a1b2c3d4"
-      ]
+      "examples": ["a1b2c3d4"]
     },
     "app.access.grant.revoked_reason": {
       "description": "Reason a Sentry MCP OAuth wrapper grant was revoked.",
@@ -54,36 +42,22 @@
     "app.access.grant.shape": {
       "description": "Shape of the Sentry MCP OAuth grant used during refresh.",
       "type": "string",
-      "examples": [
-        "refreshable"
-      ]
+      "examples": ["refreshable"]
     },
     "app.access.method": {
       "description": "How the MCP request obtained upstream Sentry access.",
       "type": "string",
-      "examples": [
-        "mcp_grant",
-        "sentry_access"
-      ]
+      "examples": ["mcp_grant", "sentry_access"]
     },
     "app.access.probe.reason": {
       "description": "Sentry MCP bucket for an indeterminate upstream OAuth access probe.",
       "type": "string",
-      "examples": [
-        "rate_limit",
-        "server_error",
-        "unknown"
-      ]
+      "examples": ["rate_limit", "server_error", "unknown"]
     },
     "app.access.probe.status_code": {
       "description": "HTTP status returned by the upstream Sentry access-validity probe.",
       "type": "string",
-      "examples": [
-        "200",
-        "401",
-        "429",
-        "500"
-      ]
+      "examples": ["200", "401", "429", "500"]
     },
     "app.access.refresh.outcome": {
       "description": "Outcome bucket for a Sentry MCP OAuth refresh/token-exchange path.",
@@ -110,212 +84,135 @@
     "app.access.upstream.expires_in_bucket": {
       "description": "Bounded remaining time before the original upstream Sentry expiry at refresh or revocation.",
       "type": "string",
-      "examples": [
-        "expired",
-        "lt_1h",
-        "1d_7d",
-        "unknown"
-      ]
+      "examples": ["expired", "lt_1h", "1d_7d", "unknown"]
     },
     "app.client.family": {
       "description": "Sentry MCP low-cardinality bucket for the MCP client family.",
       "type": "string",
       "note": "Resolved from the MCP client's User-Agent on direct MCP requests, or from the registered client name on browser-mediated OAuth endpoints.",
-      "examples": [
-        "claude-code",
-        "cursor",
-        "codex",
-        "unknown"
-      ]
+      "examples": ["claude-code", "cursor", "codex", "unknown"]
     },
     "app.consent.skill": {
       "description": "Sentry MCP skill granted during OAuth approval.",
       "type": "string",
-      "examples": [
-        "inspect",
-        "docs",
-        "project-management"
-      ]
+      "examples": ["inspect", "docs", "project-management"]
     },
     "app.consent.skill.<skill>.granted": {
       "description": "Whether a normalized Sentry MCP skill was granted for a specific MCP request.",
       "type": "boolean",
       "note": "The dynamic <skill> segment uses the skill id with hyphens replaced by underscores.",
-      "examples": [
-        "app.consent.skill.project_management.granted"
-      ]
+      "examples": ["app.consent.skill.project_management.granted"]
     },
     "app.constraint.organization_slug": {
       "description": "Sentry MCP organization slug constraint applied to the MCP session.",
       "type": "string",
-      "examples": [
-        "my-org"
-      ]
+      "examples": ["my-org"]
     },
     "app.constraint.project_slug": {
       "description": "Sentry MCP project slug constraint applied to the MCP session.",
       "type": "string",
-      "examples": [
-        "backend"
-      ]
+      "examples": ["backend"]
     },
     "app.installation.id": {
       "description": "A unique identifier representing the installation of an application on a specific device\n",
       "type": "string",
       "note": "Its value SHOULD persist across launches of the same application installation, including through application upgrades.\nIt SHOULD change if the application is uninstalled or if all applications of the vendor are uninstalled.\nAdditionally, users might be able to reset this value (e.g. by clearing application data).\nIf an app is installed multiple times on the same device (e.g. in different accounts on Android), each `app.installation.id` SHOULD have a different value.\nIf multiple OpenTelemetry SDKs are used within the same application, they SHOULD use the same value for `app.installation.id`.\nHardware IDs (e.g. serial number, IMEI, MAC address) MUST NOT be used as the `app.installation.id`.\n\nFor iOS, this value SHOULD be equal to the [vendor identifier](https://developer.apple.com/documentation/uikit/uidevice/identifierforvendor).\n\nFor Android, examples of `app.installation.id` implementations include:\n\n- [Firebase Installation ID](https://firebase.google.com/docs/projects/manage-installations).\n- A globally unique UUID which is persisted across sessions in your application.\n- [App set ID](https://developer.android.com/identity/app-set-id).\n- [`Settings.getString(Settings.Secure.ANDROID_ID)`](https://developer.android.com/reference/android/provider/Settings.Secure#ANDROID_ID).\n\nMore information about Android identifier best practices can be found [here](https://developer.android.com/training/articles/user-data-ids).\n",
       "stability": "development",
-      "examples": [
-        "2ab2916d-a51f-4ac8-80ee-45ac31a28092"
-      ]
+      "examples": ["2ab2916d-a51f-4ac8-80ee-45ac31a28092"]
     },
     "app.rate_limit.scope": {
       "description": "Scope of a Sentry MCP local rate-limit response.",
       "type": "string",
-      "examples": [
-        "ip",
-        "user",
-        "sentry_access"
-      ],
+      "examples": ["ip", "user", "sentry_access"],
       "note": "sentry_access is the scrubber-safe bucket for direct Sentry access-header rate limits."
     },
     "app.referrer.family": {
       "description": "Sentry MCP low-cardinality bucket for the external referrer host.",
       "type": "string",
-      "examples": [
-        "sentry-docs",
-        "github",
-        "unknown"
-      ]
+      "examples": ["sentry-docs", "github", "unknown"]
     },
     "app.request.duration_ms": {
       "description": "Sentry MCP request duration in milliseconds.",
       "type": "number",
-      "examples": [
-        "42",
-        "1250"
-      ]
+      "examples": ["42", "1250"]
     },
     "app.resource.type": {
       "description": "Sentry MCP resource type resolved by get_sentry_resource.",
       "type": "string",
-      "examples": [
-        "issue",
-        "event",
-        "trace",
-        "replay"
-      ]
+      "examples": ["issue", "event", "trace", "replay"]
     },
     "app.response.reason": {
       "description": "Sentry MCP local response reason bucket.",
       "type": "string",
-      "examples": [
-        "local_rate_limit"
-      ]
+      "examples": ["local_rate_limit"]
     },
     "app.response.status_class": {
       "description": "HTTP response status family for Sentry MCP response metrics.",
       "type": "string",
-      "examples": [
-        "2xx",
-        "4xx",
-        "5xx"
-      ]
+      "examples": ["2xx", "4xx", "5xx"]
     },
     "app.route.group": {
       "description": "Sentry MCP coarse route family.",
       "type": "string",
-      "examples": [
-        "mcp",
-        "oauth",
-        "chat",
-        "search"
-      ]
+      "examples": ["mcp", "oauth", "chat", "search"]
     },
     "app.screen.coordinate.x": {
       "description": "The x (horizontal) coordinate of a screen coordinate, in screen pixels.",
       "type": "number",
       "stability": "development",
-      "examples": [
-        "0",
-        "131"
-      ]
+      "examples": ["0", "131"]
     },
     "app.screen.coordinate.y": {
       "description": "The y (vertical) component of a screen coordinate, in screen pixels.\n",
       "type": "number",
       "stability": "development",
-      "examples": [
-        "12",
-        "99"
-      ]
+      "examples": ["12", "99"]
     },
     "app.server.mode.experimental": {
       "description": "Whether Sentry MCP experimental mode is enabled for the request or stdio session.",
       "type": "boolean",
       "note": "Metrics and tags record this as the low-cardinality string values `true` or `false`; spans record it as a boolean.",
-      "examples": [
-        true,
-        false
-      ]
+      "examples": [true, false]
     },
     "app.server.version": {
       "description": "Sentry MCP server package version.",
       "type": "string",
-      "examples": [
-        "0.35.0"
-      ]
+      "examples": ["0.35.0"]
     },
     "app.transport": {
       "description": "Sentry MCP product transport label.",
       "type": "string",
-      "examples": [
-        "http",
-        "stdio"
-      ]
+      "examples": ["http", "stdio"]
     },
     "app.upstream.host": {
       "description": "Configured upstream Sentry host for Sentry MCP.",
       "type": "string",
-      "examples": [
-        "sentry.io"
-      ]
+      "examples": ["sentry.io"]
     },
     "app.url.full": {
       "description": "Configured Sentry MCP URL for stdio telemetry.",
       "type": "string",
       "note": "Do not include credentials or access tokens in this URL.",
-      "examples": [
-        "https://mcp.sentry.dev/mcp"
-      ]
+      "examples": ["https://mcp.sentry.dev/mcp"]
     },
     "app.utm_source": {
       "description": "Sanitized in-product utm_source query parameter for Sentry MCP attribution.",
       "type": "string",
-      "examples": [
-        "docs",
-        "product"
-      ]
+      "examples": ["docs", "product"]
     },
     "app.widget.id": {
       "description": "An identifier that uniquely differentiates this widget from other widgets in the same application.\n",
       "type": "string",
       "note": "A widget is an application component, typically an on-screen visual GUI element.\n",
       "stability": "development",
-      "examples": [
-        "f9bc787d-ff05-48ad-90e1-fca1d46130b3",
-        "submit_order_1829"
-      ]
+      "examples": ["f9bc787d-ff05-48ad-90e1-fca1d46130b3", "submit_order_1829"]
     },
     "app.widget.name": {
       "description": "The name of an application widget.",
       "type": "string",
       "note": "A widget is an application component, typically an on-screen visual GUI element.\n",
       "stability": "development",
-      "examples": [
-        "submit",
-        "attack",
-        "Clear Cart"
-      ]
+      "examples": ["submit", "attack", "Clear Cart"]
     }
   }
 }

@@ -5,9 +5,10 @@
  * Uses isolated temp directories per test to avoid interference.
  */
 
-import { readdir } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import CachePolicy from "http-cache-semantics";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import {
   buildCacheKey,
@@ -15,7 +16,6 @@ import {
   disableResponseCache,
   getCachedResponse,
   invalidateCachedResponsesMatching,
-  normalizeUrl,
   resetCacheState,
   storeCachedResponse,
 } from "../../src/lib/response-cache.js";
@@ -49,7 +49,7 @@ afterEach(() => {
 function mockResponse(
   body: unknown,
   status = 200,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -96,7 +96,7 @@ describe("store and retrieve", () => {
     const cached = await getCachedResponse(
       TEST_METHOD,
       "https://us.sentry.io/api/0/organizations/nonexistent/projects/",
-      {}
+      {},
     );
     expect(cached).toBeUndefined();
   });
@@ -165,7 +165,7 @@ describe("non-2xx responses", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse({ detail: "not found" }, 404)
+      mockResponse({ detail: "not found" }, 404),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
@@ -177,7 +177,7 @@ describe("non-2xx responses", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse({ detail: "server error" }, 500)
+      mockResponse({ detail: "server error" }, 500),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
@@ -240,7 +240,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     process.env.SENTRY_NO_CACHE = "1";
@@ -256,7 +256,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     // Remove the bypass to verify nothing was written
@@ -271,7 +271,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     disableResponseCache();
@@ -288,7 +288,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(freshBody)
+      mockResponse(freshBody),
     );
 
     // Re-enable cache reads to verify the write succeeded
@@ -308,7 +308,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(staleBody)
+      mockResponse(staleBody),
     );
 
     // Activate --fresh: reads are bypassed, but writes still go through
@@ -323,7 +323,7 @@ describe("cache bypass", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(freshBody)
+      mockResponse(freshBody),
     );
 
     // Re-enable cache reads (simulates next invocation without --fresh)
@@ -337,62 +337,18 @@ describe("cache bypass", () => {
 });
 
 // ---------------------------------------------------------------------------
-// normalizeUrl
-// ---------------------------------------------------------------------------
-
-describe("normalizeUrl", () => {
-  test("sorts query params alphabetically", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.io/api/0/issues/?b=2&a=1"
-    );
-    expect(result).toBe("GET|https://sentry.io/api/0/issues/?a=1&b=2");
-  });
-
-  test("uppercases the method", () => {
-    const result = normalizeUrl("get", "https://sentry.io/api/0/issues/");
-    expect(result).toMatch(/^GET\|/);
-  });
-
-  test("throws on invalid URLs", () => {
-    expect(() => normalizeUrl("GET", "not-a-valid-url")).toThrow();
-  });
-
-  test("handles self-hosted URLs with unusual schemes", () => {
-    const result = normalizeUrl(
-      "GET",
-      "https://sentry.mycompany.internal/api/0/issues/"
-    );
-    expect(result).toBe("GET|https://sentry.mycompany.internal/api/0/issues/");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildCacheKey
+// buildCacheKey — key derivation is tested in toolkit-core; this covers the
+// CLI wrapper's default identity, taken from the active login
 // ---------------------------------------------------------------------------
 
 describe("buildCacheKey", () => {
-  test("produces a 64-char hex string", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test("is deterministic", () => {
-    expect(buildCacheKey("GET", TEST_URL)).toBe(buildCacheKey("GET", TEST_URL));
-  });
-
-  test("different methods produce different keys", () => {
-    expect(buildCacheKey("GET", TEST_URL)).not.toBe(
-      buildCacheKey("POST", TEST_URL)
-    );
-  });
-
-  test("different identities produce different keys for the same URL", () => {
+  test("different identities produce different keys for the same URL", async () => {
     // Switching accounts must route reads/writes through a different
     // namespace so users never see each other's cached data.
     setAuthToken("alice_access", 3600, "alice_refresh");
-    const aliceKey = buildCacheKey("GET", TEST_URL);
+    const aliceKey = await buildCacheKey("GET", TEST_URL);
     setAuthToken("bob_access", 3600, "bob_refresh");
-    const bobKey = buildCacheKey("GET", TEST_URL);
+    const bobKey = await buildCacheKey("GET", TEST_URL);
     expect(aliceKey).not.toBe(bobKey);
   });
 });
@@ -413,7 +369,7 @@ describe("invalid URL handling", () => {
       "GET",
       "not-a-valid-url",
       {},
-      mockResponse({ ok: true })
+      mockResponse({ ok: true }),
     );
   });
 });
@@ -430,7 +386,7 @@ describe("no-cache tier", () => {
       TEST_METHOD,
       autofixUrl,
       {},
-      mockResponse({ autofix: { status: "PROCESSING" } })
+      mockResponse({ autofix: { status: "PROCESSING" } }),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, autofixUrl, {});
@@ -444,11 +400,72 @@ describe("no-cache tier", () => {
       TEST_METHOD,
       rootCauseUrl,
       {},
-      mockResponse({ cause: "something" })
+      mockResponse({ cause: "something" }),
     );
 
     const cached = await getCachedResponse(TEST_METHOD, rootCauseUrl, {});
     expect(cached).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fallback TTL tiers
+// ---------------------------------------------------------------------------
+
+describe("fallback TTL tiers", () => {
+  const MINUTE = 60 * 1000;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function isCachedAfter(url: string, elapsedMs: number) {
+    await storeCachedResponse(TEST_METHOD, url, {}, mockResponse(TEST_BODY));
+    vi.setSystemTime(Date.now() + elapsedMs);
+    return (await getCachedResponse(TEST_METHOD, url, {})) !== undefined;
+  }
+
+  test("organization event details are reused for up to 5 minutes", async () => {
+    const url =
+      "https://us.sentry.io/api/0/organizations/myorg/events/proj:abc123/";
+    expect(await isCachedAfter(url, 4 * MINUTE)).toBe(true);
+    vi.setSystemTime(Date.now() + 2 * MINUTE);
+    expect(await getCachedResponse(TEST_METHOD, url, {})).toBeUndefined();
+  });
+
+  test("an issue's latest event expires after 60 seconds", async () => {
+    const url =
+      "https://us.sentry.io/api/0/organizations/myorg/issues/123/events/latest/";
+    expect(await isCachedAfter(url, 2 * MINUTE)).toBe(false);
+  });
+
+  test("project event details expire after 60 seconds", async () => {
+    const url =
+      "https://us.sentry.io/api/0/projects/myorg/myproject/events/abc123/";
+    expect(await isCachedAfter(url, 2 * MINUTE)).toBe(false);
+  });
+
+  test("full traces expire after 60 seconds", async () => {
+    const url = `https://us.sentry.io/api/0/organizations/myorg/trace/${"a".repeat(32)}/`;
+    expect(await isCachedAfter(url, 2 * MINUTE)).toBe(false);
+  });
+
+  test("server max-age still wins over the fallback tier", async () => {
+    const url =
+      "https://us.sentry.io/api/0/organizations/myorg/issues/123/events/latest/";
+    await storeCachedResponse(
+      TEST_METHOD,
+      url,
+      {},
+      mockResponse(TEST_BODY, 200, { "cache-control": "private, max-age=300" }),
+    );
+    vi.setSystemTime(Date.now() + 4 * MINUTE);
+    expect(await getCachedResponse(TEST_METHOD, url, {})).toBeDefined();
   });
 });
 
@@ -462,13 +479,13 @@ describe("file structure", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cacheDir = join(getConfigDir(), "cache", "responses");
     const files = await readdir(cacheDir);
     expect(files.length).toBe(1);
-    expect(files[0]).toMatch(/^[0-9a-f]{64}\.json$/);
+    expect(files[0]).toMatch(/^[0-9a-f]{64}\.v2\.json$/);
   });
 
   test("atomic write leaves no temp file behind on success", async () => {
@@ -476,7 +493,7 @@ describe("file structure", () => {
       TEST_METHOD,
       TEST_URL,
       {},
-      mockResponse(TEST_BODY)
+      mockResponse(TEST_BODY),
     );
 
     const cacheDir = join(getConfigDir(), "cache", "responses");
@@ -505,14 +522,14 @@ describe("atomic write regression", () => {
         TEST_METHOD,
         TEST_URL,
         {},
-        mockResponse({ data: `stale-${i}` })
+        mockResponse({ data: `stale-${i}` }),
       );
       const freshBody = { data: `fresh-${i}` };
       await storeCachedResponse(
         TEST_METHOD,
         TEST_URL,
         {},
-        mockResponse(freshBody)
+        mockResponse(freshBody),
       );
 
       const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
@@ -537,13 +554,13 @@ describe("invalidateCachedResponsesMatching", () => {
       "GET",
       ORG_LIST_URL,
       {},
-      mockResponse({ matched: true })
+      mockResponse({ matched: true }),
     );
     await storeCachedResponse(
       "GET",
       `${OTHER_PREFIX}?cursor=def`,
       {},
-      mockResponse({ matched: false })
+      mockResponse({ matched: false }),
     );
 
     await invalidateCachedResponsesMatching(ORG_PREFIX);
@@ -553,7 +570,7 @@ describe("invalidateCachedResponsesMatching", () => {
     const survivor = await getCachedResponse(
       "GET",
       `${OTHER_PREFIX}?cursor=def`,
-      {}
+      {},
     );
     expect(survivor).toBeDefined();
   });
@@ -566,7 +583,7 @@ describe("invalidateCachedResponsesMatching", () => {
       "GET",
       ORG_LIST_URL,
       {},
-      mockResponse({ owner: "a" })
+      mockResponse({ owner: "a" }),
     );
     expect(await getCachedResponse("GET", ORG_LIST_URL, {})).toBeDefined();
 
@@ -598,14 +615,14 @@ describe("invalidateCachedResponsesMatching with query params", () => {
       "GET",
       `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
       {},
-      mockResponse({ id: "12345" })
+      mockResponse({ id: "12345" }),
     );
     expect(
       await getCachedResponse(
         "GET",
         `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
-        {}
-      )
+        {},
+      ),
     ).toBeDefined();
 
     // Mutation-side invalidator uses the base URL (no params).
@@ -615,8 +632,100 @@ describe("invalidateCachedResponsesMatching with query params", () => {
       await getCachedResponse(
         "GET",
         `${DETAIL_BASE}?collapse=stats&collapse=lifetime`,
-        {}
-      )
+        {},
+      ),
     ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Compressed entries and entries from older CLI versions
+// ---------------------------------------------------------------------------
+
+describe("entry format", () => {
+  const cacheDir = () => join(getConfigDir(), "cache", "responses");
+
+  test("stores a compressed body and serves it byte for byte", async () => {
+    // Whitespace and key order survive, which re-serialized JSON would lose.
+    const text = `{ "issues": ${JSON.stringify(
+      Array.from({ length: 100 }, (_, i) => ({
+        id: String(i),
+        status: "unresolved",
+      })),
+    )} }`;
+    await storeCachedResponse(
+      TEST_METHOD,
+      TEST_URL,
+      {},
+      new Response(text, { headers: { "content-type": "application/json" } }),
+    );
+
+    const [file] = await readdir(cacheDir());
+    const raw = await readFile(join(cacheDir(), file!), "utf-8");
+    const stored = JSON.parse(raw) as { body: { encoding: string } };
+    expect(["zstd", "br"]).toContain(stored.body.encoding);
+    expect(raw.length).toBeLessThan(text.length);
+
+    const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
+    expect(await cached!.text()).toBe(text);
+  });
+
+  test("does not cache a body that is not JSON", async () => {
+    await storeCachedResponse(
+      TEST_METHOD,
+      TEST_URL,
+      {},
+      new Response("<html>maintenance</html>", { status: 200 }),
+    );
+
+    expect(await getCachedResponse(TEST_METHOD, TEST_URL, {})).toBeUndefined();
+  });
+
+  /** Write an entry the way CLI versions before compression did. */
+  async function writeLegacyEntry(url: string, body: unknown): Promise<string> {
+    const key = await buildCacheKey(TEST_METHOD, url);
+    const policy = new CachePolicy(
+      { url, method: "GET", headers: {} },
+      { status: 200, headers: { "content-type": "application/json" } },
+      { shared: false },
+    );
+    const now = Date.now();
+    await mkdir(cacheDir(), { recursive: true });
+    const path = join(cacheDir(), `${key}.json`);
+    await writeFile(
+      path,
+      JSON.stringify({
+        policy: policy.toObject(),
+        body,
+        status: 200,
+        headers: { link: '<https://us.sentry.io/next>; rel="next"' },
+        url,
+        identity: undefined,
+        createdAt: now,
+        expiresAt: now + 60_000,
+      }),
+    );
+    return path;
+  }
+
+  test("serves an entry written by an older CLI version", async () => {
+    await writeLegacyEntry(TEST_URL, TEST_BODY);
+
+    const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
+
+    expect(await cached!.json()).toEqual(TEST_BODY);
+    expect(cached!.headers.get("link")).toContain('rel="next"');
+  });
+
+  test("replaces an older CLI version's entry when storing", async () => {
+    const legacyPath = await writeLegacyEntry(TEST_URL, { stale: true });
+    const fresh = { stale: false };
+
+    await storeCachedResponse(TEST_METHOD, TEST_URL, {}, mockResponse(fresh));
+
+    const files = await readdir(cacheDir());
+    expect(files).not.toContain(legacyPath.split("/").at(-1));
+    const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
+    expect(await cached!.json()).toEqual(fresh);
   });
 });

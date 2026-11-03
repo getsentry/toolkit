@@ -96,7 +96,7 @@ async function resolveProjectIds({
     return undefined;
   }
 
-  return Promise.all(
+  return await Promise.all(
     projects.map(async (projectSlugOrId) => {
       if (projectSlugOrId === "-1" || isNumericId(projectSlugOrId)) {
         return projectSlugOrId;

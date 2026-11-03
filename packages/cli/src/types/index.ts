@@ -1,4 +1,4 @@
-// biome-ignore-all lint/performance/noBarrelFile: intentional public API
+// Intentional public API barrel.
 /**
  * Type definitions for the Sentry CLI
  *
@@ -24,11 +24,13 @@ export type {
   AgentConversationDetails,
   AgentConversationSpan,
   ConversationListItem,
+  ConversationStats,
 } from "./conversation.js";
 export {
   AgentConversationDetailsSchema,
   AgentConversationSpanSchema,
   ConversationListItemSchema,
+  ConversationStatsSchema,
 } from "./conversation.js";
 // Dashboard types
 export type {
@@ -105,6 +107,7 @@ export {
   ReplayRelatedTraceSchema,
   ReplaySdkSchema,
   ReplayUserSchema,
+  ReplayViewOutputFields,
   ReplayViewOutputSchema,
 } from "./replay.js";
 export type {
@@ -147,11 +150,13 @@ export type {
   RequestEntry,
   SentryDeploy,
   SentryEvent,
+  SentryIntegration,
   SentryIssue,
   SentryLog,
   SentryMonitor,
   SentryOrganization,
   SentryProject,
+  ReleaseUpdateOutput,
   SentryRelease,
   SentryRepository,
   SentryTeam,
@@ -175,19 +180,29 @@ export {
   CustomerTrialInfoSchema,
   DetailedLogsResponseSchema,
   DetailedSentryLogSchema,
+  type EventViewAttachment,
+  EventViewOutputFields,
   EventViewOutputSchema,
   ISSUE_LEVELS,
   ISSUE_STATUSES,
   IssueEventSchema,
+  IssueViewOutputFields,
   IssueViewOutputSchema,
   LogsResponseSchema,
   MonitorConfigSchema,
   ProductTrialSchema,
   RegionSchema,
+  ReleaseUpdateOutputFields,
+  ReleaseUpdateOutputSchema,
   RepositoryProviderSchema,
+  SentryDeploySchema,
+  SentryIntegrationSchema,
   SentryIssueSchema,
   SentryLogSchema,
   SentryMonitorSchema,
+  SentryOrganizationSchema,
+  SentryProjectSchema,
+  SentryReleaseSchema,
   SentryRepositorySchema,
   SentryTeamSchema,
   SentryUserSchema,
@@ -202,6 +217,8 @@ export {
   TransactionsResponseSchema,
   UserRegionsResponseSchema,
 } from "./sentry.js";
+
+export { DryRunOutputField, opaque, type WithOutputFields } from "./output.js";
 
 // I/O types
 

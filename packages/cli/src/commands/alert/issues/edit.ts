@@ -10,20 +10,40 @@ import {
   getIssueAlertWorkflowDocument,
   updateIssueAlertRule,
 } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
-import { ContextError, ValidationError } from "../../../lib/errors.js";
+import {
+  choiceListParser,
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseText,
+} from "../../../lib/completion-target.js";
+import {
+  ContextError,
+  stringifyUnknown,
+  ValidationError,
+} from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
+  ISSUE_MATCH_MODES,
+  ISSUE_TRIGGER_NAMES,
   matchToLogicType,
+  parseIssueConditions,
   parseJsonObjectList,
   parseMatchMode,
   parseStatusFlag,
+  RULE_STATUSES,
   triggerLogicType,
-  validateIssueRuleArrays,
+  validateIssueActions,
+  validateIssueTriggers,
 } from "../mutation-utils.js";
-import { parseIssueRuleArg, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
+import {
+  type IssueAlertEditOutput,
+  IssueAlertEditOutputSchema,
+} from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled";
@@ -40,12 +60,6 @@ type EditFlags = {
   readonly owner?: string;
   readonly json: boolean;
   readonly fields?: string[];
-};
-
-type EditResult = Record<string, unknown> & {
-  org: string;
-  project: string;
-  id: string;
 };
 
 function hasIssueMutations(flags: EditFlags): boolean {
@@ -66,7 +80,7 @@ function validateIssueEditFlags(flags: EditFlags): void {
   if (!hasIssueMutations(flags)) {
     throw new ValidationError(
       "Pass at least one editable field (for example --name or --status).",
-      "name"
+      "name",
     );
   }
   if (flags.frequency !== undefined && flags.frequency <= 0) {
@@ -74,12 +88,23 @@ function validateIssueEditFlags(flags: EditFlags): void {
   }
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: per-flag merge with user-only validation
+/** The `conditions` of a data-condition group in the workflow body. */
+function groupConditions(
+  group: unknown,
+): Record<string, unknown>[] | undefined {
+  const conditions =
+    group !== null && typeof group === "object"
+      ? (group as Record<string, unknown>).conditions
+      : undefined;
+  return Array.isArray(conditions) ? conditions : undefined;
+}
+
+// per-flag merge with user-only validation
 function applyIssueEdits(
   body: Record<string, unknown>,
-  flags: EditFlags
+  flags: EditFlags,
 ): Record<string, unknown> {
-  const conditions = parseJsonObjectList(flags.condition, "condition");
+  const conditions = parseIssueConditions(flags.condition);
   const actions = parseJsonObjectList(flags.action, "action");
   const filters = parseJsonObjectList(flags.filter, "filter");
 
@@ -148,16 +173,23 @@ function applyIssueEdits(
     body.actionFilters = actionFilters;
   }
 
-  if (conditions !== undefined) {
-    validateIssueRuleArrays(conditions, actions, "conditions");
+  // Check the rule as it will be after the edit: clearing either its
+  // triggers or its filters must not leave an alert on every event.
+  if (conditions !== undefined || filters !== undefined) {
+    validateIssueTriggers(
+      groupConditions(body.triggers),
+      groupConditions(
+        Array.isArray(body.actionFilters) ? body.actionFilters[0] : undefined,
+      ),
+    );
   }
   if (actions !== undefined) {
-    validateIssueRuleArrays(conditions, actions, "actions");
+    validateIssueActions(actions);
   }
   return body;
 }
 
-function formatEdited(r: EditResult): string {
+function formatEdited(r: IssueAlertEditOutput): string {
   return `Updated issue alert rule ${r.id} in ${r.org}/${r.project}: ${String(r.name)} (${String(r.status)}).`;
 }
 
@@ -167,51 +199,66 @@ export const editCommand = buildCommand({
     fullDescription:
       "Update an issue alert rule by id or name. You must set at least one of --name or " +
       "--status.\n\n" +
-      "The CLI loads the current rule, applies your changes, and updates it via the API.\n\n" +
-      "Examples:\n" +
-      "  sentry alert issues edit my-org/my-app/12 --name 'Prod errors'\n" +
-      "  sentry alert issues edit my-org/my-app/'Old name' --status disabled\n" +
-      "  sentry alert issues edit 12 --name 'Renamed' --status active\n" +
-      '  sentry alert issues edit my-org/my-app/12 --condition \'{"id":"sentry.rules.conditions.first_seen_event.FirstSeenEventCondition"}\'',
+      "The CLI loads the current rule, applies your changes, and updates it via the API.",
+    examples: [
+      {
+        description: "Rename an issue alert rule",
+        command:
+          "sentry alert issues edit my-org/my-project/12345 --name 'Prod errors'",
+      },
+      {
+        description: "Disable a rule selected by name",
+        command:
+          "sentry alert issues edit my-org/my-project/'Old name' --status disabled",
+      },
+      {
+        description:
+          "Rename and enable a rule (organization and project auto-detected)",
+        command:
+          "sentry alert issues edit 12345 --name 'Renamed' --status active",
+      },
+      {
+        description: "Replace the rule's conditions",
+        command:
+          'sentry alert issues edit my-org/my-project/12345 --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\'',
+      },
+    ],
   },
   output: {
     human: formatEdited,
-    jsonTransform: (r: EditResult) => r,
+    schema: IssueAlertEditOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        issueRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "New rule name",
       },
       status: {
         kind: "parsed",
-        parse: parseStatusFlag,
+        parse: choiceParser(RULE_STATUSES, parseStatusFlag),
         optional: true,
         brief: "Rule status: active or disabled",
       },
       condition: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(ISSUE_TRIGGER_NAMES),
         variadic: true,
         optional: true,
-        brief: "Condition object JSON (repeatable, or pass one JSON array)",
+        brief:
+          "Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Action object JSON (repeatable, or pass one JSON array)",
@@ -224,26 +271,28 @@ export const editCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
       filter: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Filter object JSON (repeatable, or pass one JSON array)",
       },
       "filter-match": {
         kind: "parsed",
-        parse: (value: string) => parseMatchMode(value, "filter-match"),
+        parse: choiceParser(ISSUE_MATCH_MODES, (value) =>
+          parseMatchMode(value, "filter-match"),
+        ),
         optional: true,
         brief: "Filter match mode: all or any",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },
@@ -254,12 +303,15 @@ export const editCommand = buildCommand({
       m: "filter-match",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
     validateIssueEditFlags(flags);
 
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
       usageHint: USAGE_HINT,
@@ -271,7 +323,7 @@ export const editCommand = buildCommand({
     const { target, rule } = await resolveIssueAlertRule(
       targets,
       ref,
-      USAGE_HINT
+      USAGE_HINT,
     );
 
     const body = {
@@ -284,12 +336,12 @@ export const editCommand = buildCommand({
       ...updated,
       org: target.org,
       project: target.project,
-      id: String(updated.id ?? rule.id),
+      id: stringifyUnknown(updated.id ?? rule.id),
       // The workflows endpoint returns `enabled` rather than `status`; map it
       // back to a status label so human/JSON output matches the create path.
-      status: String(
-        updated.status ?? (updated.enabled === false ? "disabled" : "active")
+      status: stringifyUnknown(
+        updated.status ?? (updated.enabled === false ? "disabled" : "active"),
       ),
-    } satisfies EditResult);
+    } satisfies IssueAlertEditOutput);
   },
 });

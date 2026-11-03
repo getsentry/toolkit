@@ -10,9 +10,7 @@ export function setupMockServer(handlers: Array<any> = []): SetupServer {
  * Start the MSW server with common configuration for Sentry MCP tests
  * This helper ensures consistent configuration across all test suites
  */
-export function startMockServer(options?: {
-  ignoreOpenAI?: boolean;
-}): void {
+export function startMockServer(options?: { ignoreOpenAI?: boolean }): void {
   const { ignoreOpenAI = true } = options || {};
 
   mswServer.listen({

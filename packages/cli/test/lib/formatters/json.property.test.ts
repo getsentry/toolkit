@@ -31,12 +31,12 @@ import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 /** Generates simple field names (lowercase letters, 1-8 chars) */
 const fieldNameArb = array(
   constantFrom(..."abcdefghijklmnopqrstuvwxyz".split("")),
-  { minLength: 1, maxLength: 8 }
+  { minLength: 1, maxLength: 8 },
 ).map((chars) => chars.join(""));
 
 /** Generates dot-notated paths (1-3 segments) */
 const fieldPathArb = array(fieldNameArb, { minLength: 1, maxLength: 3 }).map(
-  (segments) => segments.join(".")
+  (segments) => segments.join("."),
 );
 
 /** Generates a flat object with known string keys and JSON-compatible values */
@@ -56,7 +56,7 @@ describe("property: filterFields", () => {
         const result = filterFields(obj, []);
         expect(result).toEqual({});
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -71,9 +71,9 @@ describe("property: filterFields", () => {
           for (const key of resultKeys) {
             expect(fields).toContain(key);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -89,7 +89,7 @@ describe("property: filterFields", () => {
           expect(result[key]).toEqual(obj[key]);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -103,11 +103,11 @@ describe("property: filterFields", () => {
           const result = filterFields(obj, extraFields);
           // Result should never have more keys than the source
           expect(
-            Object.keys(result as Record<string, unknown>).length
+            Object.keys(result as Record<string, unknown>).length,
           ).toBeLessThanOrEqual(Object.keys(obj).length);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -120,9 +120,9 @@ describe("property: filterFields", () => {
           const once = filterFields(obj, fields);
           const twice = filterFields(once, fields);
           expect(twice).toEqual(once);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -140,9 +140,9 @@ describe("property: filterFields", () => {
           for (let i = 0; i < items.length; i++) {
             expect(result[i]).toEqual(filterFields(items[i], fields));
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -152,7 +152,7 @@ describe("property: filterFields", () => {
     const safeNestedArb = dictionary(
       fieldNameArb,
       dictionary(fieldNameArb, jsonValue(), { minKeys: 1, maxKeys: 5 }),
-      { minKeys: 1, maxKeys: 5 }
+      { minKeys: 1, maxKeys: 5 },
     );
 
     fcAssert(
@@ -182,7 +182,39 @@ describe("property: filterFields", () => {
         >;
         expect(result[nestedKey]?.[innerKey]).toEqual(inner[innerKey]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("nested projections are order-independent, idempotent, and do not mutate data", () => {
+    const items = array(flatObjectArb, { maxLength: 5 });
+    const selectors = uniqueArray(
+      constantFrom(
+        "items",
+        "items.id",
+        "items.data",
+        "items.data.http.method",
+        "items.0",
+        "items.0.data.http.method",
+        "missing.path",
+      ),
+      { minLength: 1 },
+    );
+    fcAssert(
+      property(items, selectors, (values, fields) => {
+        const data = {
+          items: values.map((value, index) => ({
+            id: index,
+            data: { "http.method": value },
+          })),
+        };
+        const original = JSON.stringify(data);
+        const result = filterFields(data, fields);
+        expect(filterFields(data, fields.toReversed())).toEqual(result);
+        expect(filterFields(result, fields)).toEqual(result);
+        expect(JSON.stringify(data)).toBe(original);
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -194,9 +226,9 @@ describe("property: filterFields", () => {
         (value, fields) => {
           const result = filterFields(value, fields);
           expect(result).toBe(value);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -214,9 +246,9 @@ describe("property: parseFieldsList", () => {
           const joined = fields.join(",");
           const parsed = parseFieldsList(joined);
           expect(new Set(parsed)).toEqual(new Set(fields));
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -228,9 +260,9 @@ describe("property: parseFieldsList", () => {
           const input = fields.join(",");
           const parsed = parseFieldsList(input);
           expect(parsed.length).toBe(new Set(parsed).size);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -242,9 +274,9 @@ describe("property: parseFieldsList", () => {
           const withSpaces = fields.map((f) => `  ${f}  `).join(" , ");
           const clean = fields.join(",");
           expect(parseFieldsList(withSpaces)).toEqual(parseFieldsList(clean));
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -256,9 +288,9 @@ describe("property: parseFieldsList", () => {
           const withEmpty = `,${fields.join(",,")},`;
           const parsed = parseFieldsList(withEmpty);
           expect(parsed).toEqual(parseFieldsList(fields.join(",")));
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -268,7 +300,7 @@ describe("property: parseFieldsList", () => {
         const input = ",".repeat(count);
         expect(parseFieldsList(input)).toEqual([]);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

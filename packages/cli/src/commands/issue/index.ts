@@ -2,10 +2,13 @@ import { buildRouteMap } from "../../lib/route-map.js";
 import { archiveCommand } from "./archive.js";
 import { eventsCommand } from "./events.js";
 import { explainCommand } from "./explain.js";
+import { linkCommand } from "./link.js";
 import { listCommand } from "./list.js";
 import { mergeCommand } from "./merge.js";
 import { planCommand } from "./plan.js";
 import { resolveCommand } from "./resolve.js";
+import { tagsCommand } from "./tags.js";
+import { unlinkCommand } from "./unlink.js";
 import { unresolveCommand } from "./unresolve.js";
 import { viewCommand } from "./view.js";
 
@@ -13,6 +16,7 @@ export const issueRoute = buildRouteMap({
   routes: {
     list: listCommand,
     events: eventsCommand,
+    tags: tagsCommand,
     explain: explainCommand,
     plan: planCommand,
     view: viewCommand,
@@ -20,6 +24,8 @@ export const issueRoute = buildRouteMap({
     unresolve: unresolveCommand,
     archive: archiveCommand,
     merge: mergeCommand,
+    link: linkCommand,
+    unlink: unlinkCommand,
   },
   // `reopen` is a friendlier synonym for `unresolve`, `ignore` for `archive`.
   aliases: { reopen: "unresolve", ignore: "archive" },
@@ -31,26 +37,19 @@ export const issueRoute = buildRouteMap({
       "Commands:\n" +
       "  list       List issues in a project\n" +
       "  events     List events for a specific issue\n" +
+      "  tags       Show the top values of an issue tag\n" +
       "  view       View details of one or more issues\n" +
       "  explain    Analyze one or more issues using Seer AI\n" +
       "  plan       Generate a solution plan using Seer AI\n" +
       "  resolve    Mark an issue as resolved (optionally in a release)\n" +
       "  unresolve  Reopen a resolved issue (alias: reopen)\n" +
       "  archive    Archive/ignore an issue (alias: ignore)\n" +
-      "  merge      Merge 2+ issues into a single group\n\n" +
-      "Magic selectors (available for view, events, explain, plan, resolve, unresolve, archive):\n" +
+      "  merge      Merge 2+ issues into a single group\n" +
+      "  link       Link an existing external issue\n" +
+      "  unlink     Remove an external issue link\n\n" +
+      "Magic selectors (available for view, events, tags, explain, plan, resolve, unresolve, archive):\n" +
       "  @latest          Most recent unresolved issue\n" +
       "  @most_frequent   Issue with the highest event frequency\n\n" +
-      "Examples:\n" +
-      "  sentry issue view @latest\n" +
-      "  sentry issue view FRONT-ABC BACK-2\n" +
-      "  sentry issue explain FRONT-ABC BACK-2\n" +
-      "  sentry issue events CLI-G\n" +
-      "  sentry issue resolve CLI-12Z --in 0.26.1\n" +
-      "  sentry issue archive CLI-AB --until auto\n" +
-      "  sentry issue merge CLI-K9 CLI-15H CLI-15N\n" +
-      "  sentry issue explain @most_frequent\n" +
-      "  sentry issue plan my-org/@latest\n\n" +
       "Alias: `sentry issues` → `sentry issue list`",
     hideRoute: {},
   },

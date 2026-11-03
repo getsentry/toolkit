@@ -5,8 +5,8 @@
  * and viewCommand func() body in src/commands/event/view.ts
  */
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as Sentry from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   collectEventIds,
@@ -15,7 +15,7 @@ import {
   fetchMultipleEvents,
   formatEventView,
   jsonTransformEventView,
-  parsePositionalArgs,
+  parseEventViewInput,
   resolveAutoDetectTarget,
   resolveEventTarget,
   resolveOrgAllTarget,
@@ -30,11 +30,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.mocked access
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ProjectSpecificationType } from "../../../src/lib/arg-parsing.js";
 
@@ -45,11 +45,11 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -68,11 +68,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 
@@ -83,24 +83,24 @@ vi.mock("../../../src/lib/span-tree.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as spanTree from "../../../src/lib/span-tree.js";
 import type { SentryEvent } from "../../../src/types/index.js";
 
-describe("parsePositionalArgs", () => {
+describe("parseEventViewInput", () => {
   describe("single argument (event ID only)", () => {
     test("parses single arg as event ID", () => {
-      const result = parsePositionalArgs(["abc123def456"]);
+      const result = parseEventViewInput(["abc123def456"]);
       expect(result.eventId).toBe("abc123def456");
       expect(result.targetArg).toBeUndefined();
     });
 
     test("parses UUID-like event ID", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       ]);
       expect(result.eventId).toBe("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
@@ -108,32 +108,32 @@ describe("parsePositionalArgs", () => {
     });
 
     test("parses short event ID", () => {
-      const result = parsePositionalArgs(["abc"]);
+      const result = parseEventViewInput(["abc"]);
       expect(result.eventId).toBe("abc");
       expect(result.targetArg).toBeUndefined();
     });
 
     test("detects issue short ID and sets issueShortId", () => {
-      const result = parsePositionalArgs(["BRUNCHIE-APP-29"]);
+      const result = parseEventViewInput(["BRUNCHIE-APP-29"]);
       expect(result.eventId).toBe("@latest");
       expect(result.targetArg).toBeUndefined();
       expect(result.issueShortId).toBe("BRUNCHIE-APP-29");
     });
 
     test("detects short issue ID like CLI-G", () => {
-      const result = parsePositionalArgs(["CLI-G"]);
+      const result = parseEventViewInput(["CLI-G"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueShortId).toBe("CLI-G");
     });
 
     test("does not detect lowercase slug as issue short ID", () => {
-      const result = parsePositionalArgs(["my-project"]);
+      const result = parseEventViewInput(["my-project"]);
       expect(result.eventId).toBe("my-project");
       expect(result.issueShortId).toBeUndefined();
     });
 
     test("detects org/ISSUE-SHORT-ID pattern (CLI-9K)", () => {
-      const result = parsePositionalArgs(["figma/FULLSCREEN-2RN"]);
+      const result = parseEventViewInput(["figma/FULLSCREEN-2RN"]);
       expect(result.eventId).toBe("@latest");
       // Trailing slash signals OrgAll mode so downstream resolves org correctly
       expect(result.targetArg).toBe("figma/");
@@ -141,14 +141,14 @@ describe("parsePositionalArgs", () => {
     });
 
     test("detects org/CLI-G pattern", () => {
-      const result = parsePositionalArgs(["sentry/CLI-G"]);
+      const result = parseEventViewInput(["sentry/CLI-G"]);
       expect(result.eventId).toBe("@latest");
       expect(result.targetArg).toBe("sentry/");
       expect(result.issueShortId).toBe("CLI-G");
     });
 
     test("detects SHORT-ID/EVENT-ID pattern (CLI-HV)", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "CLI-G5/abc123def456abc123def456abc123de",
       ]);
       expect(result.eventId).toBe("abc123def456abc123def456abc123de");
@@ -157,7 +157,7 @@ describe("parsePositionalArgs", () => {
     });
 
     test("detects multi-dash SHORT-ID/EVENT-ID pattern", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "PHP-SYMFONY-HY/7388f6a62b7d436ab77bb5365f97a1ac",
       ]);
       expect(result.eventId).toBe("7388f6a62b7d436ab77bb5365f97a1ac");
@@ -166,7 +166,7 @@ describe("parsePositionalArgs", () => {
     });
 
     test("normalizes UUID-format event ID in SHORT-ID/EVENT-ID", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "CLI-G5/7388f6a6-2b7d-436a-b77b-b5365f97a1ac",
       ]);
       expect(result.eventId).toBe("7388f6a62b7d436ab77bb5365f97a1ac");
@@ -175,88 +175,183 @@ describe("parsePositionalArgs", () => {
 
     test("org/SHORT-ID takes precedence over SHORT-ID/EVENT-ID", () => {
       // "figma/FULLSCREEN-2RN" → org + issue, not issue + event
-      const result = parsePositionalArgs(["figma/FULLSCREEN-2RN"]);
+      const result = parseEventViewInput(["figma/FULLSCREEN-2RN"]);
       expect(result.eventId).toBe("@latest");
       expect(result.targetArg).toBe("figma/");
       expect(result.issueShortId).toBe("FULLSCREEN-2RN");
     });
 
     test("does not detect org/lowercase-slug as issue short ID", () => {
-      // "my-org/my-project" is a normal org/project target, not an issue short ID.
-      // parseSlashSeparatedArg will throw ContextError as expected.
-      expect(() => parsePositionalArgs(["my-org/my-project"])).toThrow(
-        "Event ID"
-      );
+      // "my-org/my-project" is a normal org/project target, not an issue
+      // short ID: without an event ID, it takes the default @latest (CLI-CG)
+      const result = parseEventViewInput(["my-org/my-project"]);
+      expect(result.issueShortId).toBeUndefined();
+      expect(result.selector).toBe("@latest");
+      expect(result.targetArg).toBe("my-org/my-project");
     });
   });
 
   describe("two arguments (target + event ID)", () => {
     test("parses org/project target and event ID", () => {
-      const result = parsePositionalArgs(["my-org/frontend", "abc123def456"]);
+      const result = parseEventViewInput(["my-org/frontend", "abc123def456"]);
       expect(result.targetArg).toBe("my-org/frontend");
       expect(result.eventId).toBe("abc123def456");
     });
 
     test("parses project-only target and event ID", () => {
-      const result = parsePositionalArgs(["frontend", "abc123def456"]);
+      const result = parseEventViewInput(["frontend", "abc123def456"]);
       expect(result.targetArg).toBe("frontend");
       expect(result.eventId).toBe("abc123def456");
     });
 
     test("parses org/ target (all projects) and event ID", () => {
-      const result = parsePositionalArgs(["my-org/", "abc123def456"]);
+      const result = parseEventViewInput(["my-org/", "abc123def456"]);
       expect(result.targetArg).toBe("my-org/");
       expect(result.eventId).toBe("abc123def456");
     });
 
-    test("auto-redirects issue short ID in first arg to issueShortId (CLI-MP)", () => {
-      // "JAVASCRIPT-NUXT-52" matches looksLikeIssueShortId → redirect to issue's
-      // latest event instead of treating it as a project slug (which would fail).
-      const result = parsePositionalArgs([
-        "JAVASCRIPT-NUXT-52",
-        "abc123def456",
-      ]);
-      expect(result.issueShortId).toBe("JAVASCRIPT-NUXT-52");
+    test.each([
+      "7388f6a62b7d436ab77bb5365f97a1ac",
+      "7388F6A6-2B7D-436A-B77B-B5365F97A1AC",
+    ])(
+      "preserves and normalizes the event ID after an issue short ID: %s",
+      (eventId) => {
+        const result = parseEventViewInput(["JAVASCRIPT-NUXT-52", eventId]);
+        expect(result.issueShortId).toBe("JAVASCRIPT-NUXT-52");
+        expect(result.eventId).toBe("7388f6a62b7d436ab77bb5365f97a1ac");
+        expect(result.targetArg).toBeUndefined();
+        expect(result.warnings).toEqual([]);
+      },
+    );
+
+    test("reads an issue short ID before a target as reversed arguments", () => {
+      const result = parseEventViewInput(["CAM-82X", "my-org/frontend"]);
       expect(result.eventId).toBe("@latest");
-      expect(result.targetArg).toBeUndefined();
-      expect(result.warning).toContain("issue short ID");
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.targetArg).toBe("my-org/frontend");
+      expect(result.warnings).toEqual([
+        "Arguments appear reversed. Interpreting as: my-org/frontend CAM-82X",
+      ]);
     });
 
-    test("auto-redirects simple issue short ID like CAM-82X", () => {
-      const result = parsePositionalArgs(["CAM-82X", "95fd7f5a"]);
-      expect(result.issueShortId).toBe("CAM-82X");
+    test("reads an issue short ID after org/project/ as the issue", () => {
+      const result = parseEventViewInput(["my-org/frontend/CAM-82X"]);
       expect(result.eventId).toBe("@latest");
-      expect(result.targetArg).toBeUndefined();
-      expect(result.warning).toContain("issue short ID");
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.targetArg).toBe("my-org/frontend");
+    });
+
+    test("reads an event ID after org/project/<short-id> as the issue's event", () => {
+      const eventId = "7388f6a62b7d436ab77bb5365f97a1ac";
+      const result = parseEventViewInput(["my-org/frontend/CAM-82X", eventId]);
+      expect(result.eventId).toBe(eventId);
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.targetArg).toBe("my-org/frontend");
+    });
+
+    test("reads an all-digit event ID after <short-id>/ as the issue's event", () => {
+      const eventId = "12345678901234567890123456789012";
+      const result = parseEventViewInput([`CAM-82X/${eventId}`]);
+      expect(result.eventId).toBe(eventId);
+      expect(result.issueShortId).toBe("CAM-82X");
+      expect(result.issueId).toBeUndefined();
+    });
+
+    test("<org>/<short-id> and <org>/<numeric-id> keep their order around <short-id>/<event-id>", () => {
+      expect(parseEventViewInput(["my-org/CAM-82X"])).toMatchObject({
+        issueShortId: "CAM-82X",
+        targetArg: "my-org/",
+      });
+      // A short number is no event ID: the issue ID, after a target
+      expect(parseEventViewInput(["CAM-82X/123"])).toMatchObject({
+        issueId: "123",
+        targetArg: "CAM-82X/",
+      });
+    });
+
+    test("rejects an incomplete event ID after <short-id>/", () => {
+      // Not project `CAM-82X` with a partial event ID to recover
+      expect(() => parseEventViewInput(["CAM-82X/95fd7f5a"])).toThrow(
+        ValidationError,
+      );
+    });
+
+    test("rejects an incomplete event ID instead of selecting latest", () => {
+      expect(() => parseEventViewInput(["CAM-82X", "95fd7f5a"])).toThrow(
+        ValidationError,
+      );
     });
   });
 
-  describe("error cases", () => {
-    test("throws ContextError for empty args", () => {
-      expect(() => parsePositionalArgs([])).toThrow(ContextError);
+  describe("magic selectors", () => {
+    test("no arguments default to @latest in the auto-detected org", () => {
+      expect(parseEventViewInput([])).toEqual({
+        eventId: "@latest",
+        targetArg: undefined,
+        selector: "@latest",
+        target: { type: "auto-detect" },
+        baseUrl: undefined,
+        warnings: [],
+      });
     });
 
-    test("throws ContextError with usage hint", () => {
-      try {
-        parsePositionalArgs([]);
-        expect.unreachable("Should have thrown");
-      } catch (error) {
-        expect(error).toBeInstanceOf(ContextError);
-        expect((error as ContextError).message).toContain("Event ID");
-      }
+    test.each([
+      ["@latest", "@latest"],
+      ["@most_frequent", "@most_frequent"],
+      ["@Most-Frequent", "@most_frequent"],
+    ])("bare %s selects %s", (arg, selector) => {
+      const result = parseEventViewInput([arg]);
+      expect(result.selector).toBe(selector);
+      expect(result.eventId).toBe("@latest");
+      expect(result.target).toEqual({ type: "auto-detect" });
+    });
+
+    test("<org>/@selector selects in the org", () => {
+      const result = parseEventViewInput(["my-org/@most_frequent"]);
+      expect(result.selector).toBe("@most_frequent");
+      expect(result.target).toEqual({ type: "org-all", org: "my-org" });
+    });
+
+    test.each([
+      [["my-org/my-project/@latest"]],
+      [["my-org/my-project", "@latest"]],
+      [["@latest", "my-org/my-project"]],
+    ])("%j selects in the project", (args) => {
+      const result = parseEventViewInput(args);
+      expect(result.selector).toBe("@latest");
+      expect(result.target).toEqual({
+        type: "explicit",
+        org: "my-org",
+        project: "my-project",
+      });
+    });
+
+    test("org only (org/, no event ID) defaults to @latest in the org", () => {
+      const result = parseEventViewInput(["sentry/"]);
+      expect(result.selector).toBe("@latest");
+      expect(result.target).toEqual({ type: "org-all", org: "sentry" });
+    });
+
+    test.each([
+      [["@latest", "abc123def456abc123def456abc123de"]],
+      [["@latest", "CLI-G"]],
+      [["my-org/@latest", "my-project"]],
+      [["my-org/my-project", "@latest", "@latest"]],
+    ])("%j rejects a selector with IDs", (args) => {
+      expect(() => parseEventViewInput(args)).toThrow(ValidationError);
     });
   });
 
   describe("numeric issue IDs and bare 'latest'", () => {
     test("bare numeric ID maps to issueId + latest sentinel", () => {
-      const result = parsePositionalArgs(["17370"]);
+      const result = parseEventViewInput(["17370"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueId).toBe("17370");
       expect(result.targetArg).toBeUndefined();
     });
 
     test("org/numeric-ID maps to org-all target + issueId (CLI-1F5)", () => {
-      const result = parsePositionalArgs(["my-org/17370"]);
+      const result = parseEventViewInput(["my-org/17370"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueId).toBe("17370");
       // Trailing slash signals org-all so the org resolves downstream.
@@ -264,25 +359,25 @@ describe("parsePositionalArgs", () => {
     });
 
     test("org/project + numeric second arg maps to issueId", () => {
-      const result = parsePositionalArgs(["my-org/frontend", "17370"]);
+      const result = parseEventViewInput(["my-org/frontend", "17370"]);
       expect(result.eventId).toBe("@latest");
       expect(result.issueId).toBe("17370");
       expect(result.targetArg).toBe("my-org/frontend");
     });
 
     test("bare 'latest' (single arg) throws ContextError", () => {
-      expect(() => parsePositionalArgs(["latest"])).toThrow(ContextError);
+      expect(() => parseEventViewInput(["latest"])).toThrow(ContextError);
     });
 
     test("'latest' as second arg throws ContextError", () => {
-      expect(() => parsePositionalArgs(["my-org/frontend", "latest"])).toThrow(
-        ContextError
+      expect(() => parseEventViewInput(["my-org/frontend", "latest"])).toThrow(
+        ContextError,
       );
     });
 
     test("bare 'latest' error mentions Issue ID", () => {
       try {
-        parsePositionalArgs(["latest"]);
+        parseEventViewInput(["latest"]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -291,19 +386,19 @@ describe("parsePositionalArgs", () => {
     });
 
     test("'LATEST' is case-insensitive", () => {
-      expect(() => parsePositionalArgs(["LATEST"])).toThrow(ContextError);
+      expect(() => parseEventViewInput(["LATEST"])).toThrow(ContextError);
     });
   });
 
   describe("slash-separated org/project/eventId (single arg)", () => {
     test("parses org/project/eventId as target + event ID", () => {
-      const result = parsePositionalArgs(["sentry/cli/abc123def"]);
+      const result = parseEventViewInput(["sentry/cli/abc123def"]);
       expect(result.targetArg).toBe("sentry/cli");
       expect(result.eventId).toBe("abc123def");
     });
 
     test("parses with long hex event ID", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "my-org/frontend/a1b2c3d4e5f67890abcdef1234567890",
       ]);
       expect(result.targetArg).toBe("my-org/frontend");
@@ -311,22 +406,30 @@ describe("parsePositionalArgs", () => {
     });
 
     test("handles hyphenated org and project slugs", () => {
-      const result = parsePositionalArgs(["my-org/my-project/deadbeef"]);
+      const result = parseEventViewInput(["my-org/my-project/deadbeef"]);
       expect(result.targetArg).toBe("my-org/my-project");
       expect(result.eventId).toBe("deadbeef");
     });
 
-    test("one slash (org/project, missing event ID) throws ContextError", () => {
-      expect(() => parsePositionalArgs(["sentry/cli"])).toThrow(ContextError);
+    test("one slash (org/project, no event ID) defaults to @latest in the project (CLI-CG)", () => {
+      const result = parseEventViewInput(["sentry/cli"]);
+      expect(result.eventId).toBe("@latest");
+      expect(result.selector).toBe("@latest");
+      expect(result.targetArg).toBe("sentry/cli");
+      expect(result.target).toMatchObject({
+        type: "explicit",
+        org: "sentry",
+        project: "cli",
+      });
     });
 
     test("trailing slash (org/project/) throws ContextError", () => {
-      expect(() => parsePositionalArgs(["sentry/cli/"])).toThrow(ContextError);
+      expect(() => parseEventViewInput(["sentry/cli/"])).toThrow(ContextError);
     });
 
-    test("one-slash ContextError mentions Event ID", () => {
+    test("trailing-slash ContextError mentions Event ID", () => {
       try {
-        parsePositionalArgs(["sentry/cli"]);
+        parseEventViewInput(["sentry/cli/"]);
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ContextError);
@@ -337,7 +440,7 @@ describe("parsePositionalArgs", () => {
 
   describe("edge cases", () => {
     test("collects extra args as additional event IDs", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "my-org/frontend",
         "abc123",
         "extra-arg",
@@ -347,10 +450,10 @@ describe("parsePositionalArgs", () => {
       expect(result.extraEventIds).toEqual(["extra-arg"]);
     });
 
-    test("handles empty string event ID in two-arg case", () => {
-      const result = parsePositionalArgs(["my-org/frontend", ""]);
-      expect(result.targetArg).toBe("my-org/frontend");
-      expect(result.eventId).toBe("");
+    test("an empty event ID after a target is a missing one", () => {
+      expect(() => parseEventViewInput(["my-org/frontend", ""])).toThrow(
+        ContextError,
+      );
     });
   });
 
@@ -367,7 +470,7 @@ describe("parsePositionalArgs", () => {
 
       // First arg has 2+ slashes → routed through single-arg path to correctly
       // extract org/project and first event ID, remaining become extraEventIds.
-      const result = parsePositionalArgs(expanded);
+      const result = parseEventViewInput(expanded);
       expect(result.targetArg).toBe("perzimo/perzimo-server");
       expect(result.eventId).toBe("189945b37884462cb9134bd5cabeaa3d");
       expect(result.extraEventIds).toEqual([
@@ -378,7 +481,7 @@ describe("parsePositionalArgs", () => {
 
     test("single arg with newlines goes through single-arg path after expansion", () => {
       // When there's only one line (no newlines), single-arg path works normally
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "perzimo/perzimo-server/189945b37884462cb9134bd5cabeaa3d",
       ]);
       expect(result.eventId).toBe("189945b37884462cb9134bd5cabeaa3d");
@@ -388,7 +491,7 @@ describe("parsePositionalArgs", () => {
 
     test("first arg with 2+ slashes routes through single-arg path and collects extras", () => {
       // Simulates expanded "org/project/id1\nid2\nid3" → 3 args
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "perzimo/perzimo-server/189945b37884462cb9134bd5cabeaa3d",
         "60c277e6c73f41c58ca46231b46dc0f8",
         "722e1158dfa147ec90ed831c4d096ae7",
@@ -402,7 +505,7 @@ describe("parsePositionalArgs", () => {
     });
 
     test("collects multiple extra event IDs", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "my-org/frontend",
         "abc123",
         "def456",
@@ -414,12 +517,12 @@ describe("parsePositionalArgs", () => {
     });
 
     test("no extra IDs when only two args", () => {
-      const result = parsePositionalArgs(["my-org/frontend", "abc123"]);
+      const result = parseEventViewInput(["my-org/frontend", "abc123"]);
       expect(result.extraEventIds).toBeUndefined();
     });
   });
 
-  // URL integration tests — applySentryUrlContext may set SENTRY_HOST/SENTRY_URL as a side effect.
+  // URL tests — parsing returns the server; resolving applies it.
   // Host-scoping: self-hosted URLs now require the token to be scoped to the
   // same host. Tests seed SENTRY_HOST before parsing so env-token-host matches.
   describe("Sentry URL inputs", () => {
@@ -431,9 +534,8 @@ describe("parsePositionalArgs", () => {
       savedSentryHost = process.env.SENTRY_HOST;
       delete process.env.SENTRY_URL;
       delete process.env.SENTRY_HOST;
-      const { resetEnvTokenHostForTesting } = await import(
-        "../../../src/lib/env-token-host.js"
-      );
+      const { resetEnvTokenHostForTesting } =
+        await import("../../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
     });
 
@@ -448,32 +550,43 @@ describe("parsePositionalArgs", () => {
       } else {
         delete process.env.SENTRY_HOST;
       }
-      const { resetEnvTokenHostForTesting } = await import(
-        "../../../src/lib/env-token-host.js"
-      );
+      const { resetEnvTokenHostForTesting } =
+        await import("../../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
     });
 
     test("event URL extracts eventId and passes org as OrgAll target", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "https://sentry.io/organizations/my-org/issues/32886/events/abc123def456/",
       ]);
       expect(result.eventId).toBe("abc123def456");
       expect(result.targetArg).toBe("my-org/");
     });
 
-    test("self-hosted event URL extracts eventId, passes org, sets SENTRY_URL (requires matching token host)", () => {
+    test("self-hosted event URL extracts eventId and org, and returns the server without applying it", () => {
       process.env.SENTRY_HOST = "https://sentry.example.com";
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "https://sentry.example.com/organizations/acme/issues/999/events/deadbeef/",
       ]);
       expect(result.eventId).toBe("deadbeef");
       expect(result.targetArg).toBe("acme/");
-      expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");
+      expect(result.baseUrl).toBe("https://sentry.example.com");
+      // Parsing has no side effects; resolving the arguments applies it
+      expect(process.env.SENTRY_URL).toBeUndefined();
+    });
+
+    test("self-hosted issue URL returns the server without applying it", () => {
+      process.env.SENTRY_HOST = "https://sentry.example.com";
+      const result = parseEventViewInput([
+        "https://sentry.example.com/organizations/acme/issues/999/",
+      ]);
+      expect(result.issueId).toBe("999");
+      expect(result.baseUrl).toBe("https://sentry.example.com");
+      expect(process.env.SENTRY_URL).toBeUndefined();
     });
 
     test("issue URL without event ID returns issueId for latest event fetch", () => {
-      const result = parsePositionalArgs([
+      const result = parseEventViewInput([
         "https://sentry.io/organizations/my-org/issues/32886/",
       ]);
       expect(result.issueId).toBe("32886");
@@ -483,7 +596,7 @@ describe("parsePositionalArgs", () => {
 
     test("org-only URL throws ContextError", () => {
       expect(() =>
-        parsePositionalArgs(["https://sentry.io/organizations/my-org/"])
+        parseEventViewInput(["https://sentry.io/organizations/my-org/"]),
       ).toThrow(ContextError);
     });
   });
@@ -512,7 +625,7 @@ describe("resolveProjectBoundSlug", () => {
       findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
 
       await expect(resolveProjectBoundSlug("my-project", HINT)).rejects.toThrow(
-        ResolutionError
+        ResolutionError,
       );
     });
 
@@ -525,10 +638,10 @@ describe("resolveProjectBoundSlug", () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ResolutionError);
         expect((error as ResolutionError).message).toContain(
-          'Project "frontend"'
+          'Project "frontend"',
         );
         expect((error as ResolutionError).message).toContain(
-          "Check that you have access"
+          "Check that you have access",
         );
         // Message says "not found", not "is required"
         expect((error as ResolutionError).message).toContain("not found");
@@ -604,7 +717,7 @@ describe("resolveProjectBoundSlug", () => {
       });
 
       await expect(resolveProjectBoundSlug("frontend", HINT)).rejects.toThrow(
-        ValidationError
+        ValidationError,
       );
     });
 
@@ -621,7 +734,7 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "frontend",
           HINT,
-          "sentry event view <org>/frontend event-456"
+          "sentry event view <org>/frontend event-456",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
@@ -648,14 +761,14 @@ describe("resolveProjectBoundSlug", () => {
         await resolveProjectBoundSlug(
           "api",
           HINT,
-          "sentry event view <org>/api abc123"
+          "sentry event view <org>/api abc123",
         );
         expect.unreachable("Should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError);
         const message = (error as ValidationError).message;
         expect(message).toContain(
-          "Example: sentry event view <org>/api abc123"
+          "Example: sentry event view <org>/api abc123",
         );
       }
     });
@@ -766,7 +879,7 @@ describe("resolveEventTarget", () => {
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");
     resolveProjectBoundSlugSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundSlug"
+      "resolveProjectBoundSlug",
     );
     setTagSpy = vi.spyOn(Sentry, "setTag");
     setOrgRegion("acme", DEFAULT_SENTRY_URL);
@@ -900,7 +1013,7 @@ describe("resolveOrgAllTarget", () => {
     resolveEventInOrgSpy.mockResolvedValue(null);
 
     await expect(
-      resolveOrgAllTarget("acme", "notfound", "/tmp")
+      resolveOrgAllTarget("acme", "notfound", "/tmp"),
     ).rejects.toBeInstanceOf(ResolutionError);
   });
 
@@ -909,7 +1022,7 @@ describe("resolveOrgAllTarget", () => {
     resolveEventInOrgSpy.mockRejectedValue(err);
 
     await expect(resolveOrgAllTarget("acme", "abc123", "/tmp")).rejects.toBe(
-      err
+      err,
     );
   });
 });
@@ -1034,7 +1147,7 @@ describe("viewCommand.func", () => {
     openInBrowserSpy = vi.spyOn(browser, "openInBrowser");
     resolveProjectBoundSlugSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundSlug"
+      "resolveProjectBoundSlug",
     );
     listEventAttachmentsSpy = vi
       .spyOn(apiClient, "listEventAttachments")
@@ -1071,10 +1184,10 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       VALID_EVENT_ID,
-      "test-org/test-proj"
+      "test-org/test-proj",
     );
 
-    // Command should complete without error (warning goes to consola, not stdout)
+    // Command should complete without error (warning goes to the logger, not stdout)
     expect(getEventSpy).toHaveBeenCalled();
   });
 
@@ -1093,7 +1206,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     expect(result?.hint).toBeUndefined();
@@ -1115,16 +1228,16 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     expect(listEventAttachmentsSpy).toHaveBeenCalledWith(
       "test-org",
       "test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
     const output = JSON.parse(
-      stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(output.attachments).toEqual([
       expect.objectContaining({
@@ -1153,7 +1266,7 @@ describe("viewCommand.func", () => {
       context,
       { json: false, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     const output = stdoutWrite.mock.calls
@@ -1173,7 +1286,7 @@ describe("viewCommand.func", () => {
       success: false,
     });
     listEventAttachmentsSpy.mockRejectedValue(
-      new Error("attachments unavailable")
+      new Error("attachments unavailable"),
     );
 
     const { context, stdoutWrite } = createMockContext();
@@ -1182,56 +1295,14 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test-org/test-proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     const output = JSON.parse(
-      stdoutWrite.mock.calls.map((call) => call[0]).join("")
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
     );
     expect(output.eventID).toBe(VALID_EVENT_ID);
     expect(output.attachments).toEqual([]);
-  });
-
-  test("auto-redirects issue short ID in two-arg form via issueShortId path", async () => {
-    // "CAM-82X" as first arg matches looksLikeIssueShortId → sets issueShortId,
-    // NOT targetArg. The resolveIssueShortcut path fetches the latest event.
-    const resolveOrgSpy = vi
-      .spyOn(resolveTarget, "resolveOrg")
-      .mockResolvedValue({
-        org: "cam-org",
-      });
-    const getIssueByShortIdSpy = vi
-      .spyOn(apiClient, "getIssueByShortId")
-      .mockResolvedValue({ id: "999", shortId: "CAM-82X" } as never);
-    const getLatestEventSpy = vi
-      .spyOn(apiClient, "getLatestEvent")
-      .mockResolvedValue(sampleEvent);
-    getSpanTreeLinesSpy.mockResolvedValue({
-      lines: [],
-      spans: null,
-      traceId: null,
-      success: false,
-    });
-
-    const { context } = createMockContext();
-    const func = await viewCommand.loader();
-    // First arg "CAM-82X" is an issue short ID, second arg "95fd7f5a" is ignored
-    await func.call(
-      context,
-      { json: true, web: false, spans: 0 },
-      "CAM-82X",
-      "95fd7f5a"
-    );
-
-    // Should NOT go through resolveProjectBoundSlug (the old buggy path)
-    expect(resolveProjectBoundSlugSpy).not.toHaveBeenCalled();
-    // Should resolve via issue short ID path
-    expect(getIssueByShortIdSpy).toHaveBeenCalledWith("cam-org", "CAM-82X");
-    expect(getLatestEventSpy).toHaveBeenCalled();
-
-    resolveOrgSpy.mockRestore();
-    getIssueByShortIdSpy.mockRestore();
-    getLatestEventSpy.mockRestore();
   });
 
   test("numeric issue ID resolves org via resolveOrg then fetches latest event", async () => {
@@ -1263,7 +1334,7 @@ describe("viewCommand.func", () => {
     expect(listEventAttachmentsSpy).toHaveBeenCalledWith(
       "auto-org",
       "auto-project",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     resolveOrgSpy.mockRestore();
@@ -1289,15 +1360,121 @@ describe("viewCommand.func", () => {
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
-      "my-org/17370"
+      "my-org/17370",
     );
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
     expect(getLatestEventSpy).toHaveBeenCalledWith("my-org", "17370");
 
     resolveOrgSpy.mockRestore();
+    getLatestEventSpy.mockRestore();
+  });
+
+  test("org/project without an event ID shows the latest event of the project's @latest issue (CLI-CG)", async () => {
+    const projectIdsSpy = vi
+      .spyOn(resolveTarget, "resolveProjectIdsInOrg")
+      .mockResolvedValue([42]);
+    const listIssuesSpy = vi
+      .spyOn(apiClient, "listIssuesPaginated")
+      .mockResolvedValue({
+        data: [{ id: "17370", shortId: "TEST-PROJ-1" }],
+      } as never);
+    const getLatestEventSpy = vi
+      .spyOn(apiClient, "getLatestEvent")
+      .mockResolvedValue(sampleEvent);
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 0 },
+      "test-org/test-proj",
+    );
+
+    // Selected by numeric ID, not `project:<slug>` (#1317)
+    expect(projectIdsSpy).toHaveBeenCalledWith("test-org", ["test-proj"]);
+    expect(listIssuesSpy).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({
+        sort: "date",
+        perPage: 1,
+        query: "is:unresolved",
+        projects: [42],
+      }),
+    );
+    expect(getLatestEventSpy).toHaveBeenCalledWith("test-org", "17370");
+    expect(listEventAttachmentsSpy).toHaveBeenCalledWith(
+      "test-org",
+      "test-proj",
+      VALID_EVENT_ID,
+    );
+    const output = JSON.parse(
+      stdoutWrite.mock.calls.map((call) => call[0]).join(""),
+    );
+    expect(output.eventID).toBe(VALID_EVENT_ID);
+
+    projectIdsSpy.mockRestore();
+    listIssuesSpy.mockRestore();
+    getLatestEventSpy.mockRestore();
+  });
+
+  test("@most_frequent without a target looks across the auto-detected org", async () => {
+    const resolveOrgSpy = vi
+      .spyOn(resolveTarget, "resolveOrg")
+      .mockResolvedValue({ org: "test-org" });
+    const listIssuesSpy = vi
+      .spyOn(apiClient, "listIssuesPaginated")
+      .mockResolvedValue({
+        data: [
+          {
+            id: "17370",
+            shortId: "TEST-PROJ-1",
+            project: { slug: "test-proj" },
+          },
+        ],
+      } as never);
+    const getLatestEventSpy = vi
+      .spyOn(apiClient, "getLatestEvent")
+      .mockResolvedValue(sampleEvent);
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 0 },
+      "@most_frequent",
+    );
+
+    expect(listIssuesSpy).toHaveBeenCalledWith(
+      "test-org",
+      "",
+      expect.objectContaining({ sort: "freq", projects: undefined }),
+    );
+    expect(getLatestEventSpy).toHaveBeenCalledWith("test-org", "17370");
+    expect(getEventSpy).not.toHaveBeenCalled();
+
+    resolveOrgSpy.mockRestore();
+    listIssuesSpy.mockRestore();
+    getLatestEventSpy.mockRestore();
+  });
+
+  test("a selector fails when no unresolved issue matches", async () => {
+    const listIssuesSpy = vi
+      .spyOn(apiClient, "listIssuesPaginated")
+      .mockResolvedValue({ data: [] } as never);
+    const getLatestEventSpy = vi.spyOn(apiClient, "getLatestEvent");
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await expect(
+      func.call(context, { json: true, web: false, spans: 0 }, "test-org/"),
+    ).rejects.toThrow(ResolutionError);
+    expect(getLatestEventSpy).not.toHaveBeenCalled();
+
+    listIssuesSpy.mockRestore();
     getLatestEventSpy.mockRestore();
   });
 
@@ -1327,11 +1504,11 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "my-org/my-project",
-      "CAM-82X"
+      "CAM-82X",
     );
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ org: "my-org" })
+      expect.objectContaining({ org: "my-org" }),
     );
     expect(getLatestEventSpy).toHaveBeenCalled();
 
@@ -1348,7 +1525,9 @@ describe("viewCommand.func", () => {
       traceId: null,
       success: false,
     });
-    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+    // Resolution looks up the raw slug before the command reports its normalized form.
+    // Seed it so the warning test never attempts an unrelated network lookup.
+    setOrgRegion("test_org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
     const func = await viewCommand.loader();
@@ -1357,7 +1536,7 @@ describe("viewCommand.func", () => {
       context,
       { json: true, web: false, spans: 0 },
       "test_org/test_proj",
-      VALID_EVENT_ID
+      VALID_EVENT_ID,
     );
 
     // parseOrgProjectArg normalizes "test_org/test_proj" → "test-org/test-proj"
@@ -1376,8 +1555,24 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, spans: 0 }, "--h")
+      func.call(context, { json: false, web: false, spans: 0 }, "--h"),
     ).rejects.toThrow();
+  });
+
+  test("parses the arguments before any API call", async () => {
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+
+    await expect(
+      func.call(
+        context,
+        { json: true, web: false, spans: 0 },
+        "CAM-82X",
+        "95fd7f5a",
+      ),
+    ).rejects.toThrow("Invalid event ID");
+    expect(getEventSpy).not.toHaveBeenCalled();
+    expect(getIssueInOrgSpy).not.toHaveBeenCalled();
   });
 
   test("throws error for non-hex event ID", async () => {
@@ -1385,7 +1580,7 @@ describe("viewCommand.func", () => {
     const func = await viewCommand.loader();
 
     await expect(
-      func.call(context, { json: false, web: false, spans: 0 }, "not-a-hex-id")
+      func.call(context, { json: false, web: false, spans: 0 }, "not-a-hex-id"),
     ).rejects.toThrow();
   });
 });
@@ -1413,7 +1608,7 @@ describe("fetchEventWithContext", () => {
       mockEvent,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "my-org",
@@ -1431,7 +1626,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "my-org",
@@ -1443,7 +1638,7 @@ describe("fetchEventWithContext", () => {
 
   test("falls back to org-wide search on 404 and finds event", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     const resolvedEvent = {
       ...mockEvent,
@@ -1459,7 +1654,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "my-org",
@@ -1470,19 +1665,19 @@ describe("fetchEventWithContext", () => {
 
   test("throws ResolutionError when project-scoped, org-wide, and cross-org all fail", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     vi.spyOn(apiClient, "findEventAcrossOrgs").mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
   });
 
   test("falls back to cross-org search when org-wide returns null", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     const crossOrgEvent = {
@@ -1499,7 +1694,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "other-org",
@@ -1510,7 +1705,7 @@ describe("fetchEventWithContext", () => {
 
   test("cross-org fallback passes excludeOrgs when same-org search succeeded", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     // Same-org search completed successfully (returned null = definitive "not found")
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
@@ -1519,7 +1714,7 @@ describe("fetchEventWithContext", () => {
       .mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
 
     expect(findSpy).toHaveBeenCalledWith("abc123", {
@@ -1529,18 +1724,18 @@ describe("fetchEventWithContext", () => {
 
   test("cross-org does not exclude org when same-org search threw", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     // Same-org search threw a transient error — org was NOT definitively searched
     vi.spyOn(apiClient, "resolveEventInOrg").mockRejectedValue(
-      new Error("500 Internal Server Error")
+      new Error("500 Internal Server Error"),
     );
     const findSpy = vi
       .spyOn(apiClient, "findEventAcrossOrgs")
       .mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
 
     // excludeOrgs should be undefined so cross-org retries the same org
@@ -1551,18 +1746,18 @@ describe("fetchEventWithContext", () => {
 
   test("cross-org excludes org when same-org search was rate-limited (429)", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     // Same-org search hit a rate limit — retrying it immediately is futile (CLI-2Y1)
     vi.spyOn(apiClient, "resolveEventInOrg").mockRejectedValue(
-      new ApiError("Too Many Requests", 429)
+      new ApiError("Too Many Requests", 429),
     );
     const findSpy = vi
       .spyOn(apiClient, "findEventAcrossOrgs")
       .mockResolvedValue(null);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
 
     // org must be excluded — re-querying a rate-limited endpoint immediately
@@ -1574,29 +1769,29 @@ describe("fetchEventWithContext", () => {
 
   test("swallows non-auth cross-org errors and throws ResolutionError", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     vi.spyOn(apiClient, "findEventAcrossOrgs").mockRejectedValue(
-      new Error("Network timeout")
+      new Error("Network timeout"),
     );
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(ResolutionError);
   });
 
   test("propagates AuthError from cross-org fallback", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockResolvedValue(null);
     vi.spyOn(apiClient, "findEventAcrossOrgs").mockRejectedValue(
-      new AuthError("expired", "Token expired")
+      new AuthError("expired", "Token expired"),
     );
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(AuthError);
   });
 
@@ -1604,18 +1799,18 @@ describe("fetchEventWithContext", () => {
   // that event/view.ts captured at module load time. The resolveEventInOrg
   // mock doesn't take effect, so AuthError isn't thrown before cross-org
   // fallback. Tested via the Bun test suite.
-  // biome-ignore lint/suspicious/noSkippedTests: vitest barrel-mock limitation — mock doesn't intercept module-load binding
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest barrel-mock limitation — mock doesn't intercept module-load binding
   test.skip("propagates AuthError from same-org fallback", async () => {
     vi.mocked(apiClient.getEvent).mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.mocked(apiClient.resolveEventInOrg).mockRejectedValue(
-      new AuthError("expired", "Token expired")
+      new AuthError("expired", "Token expired"),
     );
     const findSpy = vi.mocked(apiClient.findEventAcrossOrgs);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow(AuthError);
     // Cross-org should never be attempted when auth is broken
     expect(findSpy).not.toHaveBeenCalled();
@@ -1623,10 +1818,10 @@ describe("fetchEventWithContext", () => {
 
   test("tries cross-org fallback even when org-wide search throws", async () => {
     vi.spyOn(apiClient, "getEvent").mockRejectedValue(
-      new ApiError("Not found", 404)
+      new ApiError("Not found", 404),
     );
     vi.spyOn(apiClient, "resolveEventInOrg").mockRejectedValue(
-      new Error("500 Internal Server Error")
+      new Error("500 Internal Server Error"),
     );
     const crossOrgEvent = {
       ...mockEvent,
@@ -1644,7 +1839,7 @@ describe("fetchEventWithContext", () => {
       null,
       "my-org",
       "my-project",
-      "abc123"
+      "abc123",
     );
     expect(result).toEqual({
       org: "other-org",
@@ -1656,15 +1851,15 @@ describe("fetchEventWithContext", () => {
 
   // Skip: same vitest barrel-mock limitation — getEvent mock doesn't
   // intercept the binding captured by event/view.ts at module load time.
-  // biome-ignore lint/suspicious/noSkippedTests: vitest barrel-mock limitation — mock doesn't intercept module-load binding
+  // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest barrel-mock limitation — mock doesn't intercept module-load binding
   test.skip("propagates non-404 errors without fallback", async () => {
     vi.mocked(apiClient.getEvent).mockRejectedValue(
-      new ApiError("Server error", 500)
+      new ApiError("Server error", 500),
     );
     const resolveEventSpy = vi.mocked(apiClient.resolveEventInOrg);
 
     await expect(
-      fetchEventWithContext(null, "my-org", "my-project", "abc123")
+      fetchEventWithContext(null, "my-org", "my-project", "abc123"),
     ).rejects.toThrow("Server error");
     expect(resolveEventSpy).not.toHaveBeenCalled();
   });
@@ -1775,7 +1970,7 @@ describe("collectEventIds", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parsePositionalArgs: extraEventIds collection
+// parseEventViewInput: extraEventIds collection
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -1847,7 +2042,7 @@ describe("jsonTransformEventView", () => {
       requestedCount: 1,
     });
     expect(result).toEqual(
-      expect.objectContaining({ eventID: "abc123", trace: null })
+      expect.objectContaining({ eventID: "abc123", trace: null }),
     );
     // Should NOT be an array
     expect(Array.isArray(result)).toBe(false);
@@ -1885,7 +2080,7 @@ describe("jsonTransformEventView", () => {
         events: [{ event: mockEvent("abc123"), trace: null }],
         requestedCount: 1,
       },
-      ["eventID"]
+      ["eventID"],
     );
     expect(result).toEqual({ eventID: "abc123" });
   });
@@ -1899,7 +2094,7 @@ describe("jsonTransformEventView", () => {
         ],
         requestedCount: 2,
       },
-      ["eventID"]
+      ["eventID"],
     );
     expect(result).toEqual([{ eventID: "event1" }, { eventID: "event2" }]);
   });
@@ -1950,7 +2145,7 @@ describe("fetchMultipleEvents", () => {
     const event2 = mockEvent("event2");
     vi.spyOn(apiClient, "getEvent").mockImplementation(
       (_org: string, _proj: string, id: string) =>
-        Promise.resolve(id === "event1" ? event1 : event2)
+        Promise.resolve(id === "event1" ? event1 : event2),
     );
 
     const result = await fetchMultipleEvents({
@@ -1971,7 +2166,7 @@ describe("fetchMultipleEvents", () => {
       (_org: string, _proj: string, id: string) =>
         id === "event1"
           ? Promise.resolve(event1)
-          : Promise.reject(new Error("not found"))
+          : Promise.reject(new Error("not found")),
     );
 
     const result = await fetchMultipleEvents({
@@ -1998,24 +2193,24 @@ describe("fetchMultipleEvents", () => {
         project: "my-project",
         prefetchedEvent: null,
         primaryId: "event1",
-      })
+      }),
     ).rejects.toThrow("Server error");
   });
 });
 
-describe("parsePositionalArgs: extraEventIds", () => {
+describe("parseEventViewInput: extraEventIds", () => {
   test("no extras for single arg", () => {
-    const result = parsePositionalArgs(["abc123"]);
+    const result = parseEventViewInput(["abc123"]);
     expect(result.extraEventIds).toBeUndefined();
   });
 
   test("no extras for two args", () => {
-    const result = parsePositionalArgs(["my-org/proj", "abc123"]);
+    const result = parseEventViewInput(["my-org/proj", "abc123"]);
     expect(result.extraEventIds).toBeUndefined();
   });
 
   test("collects extras for three+ args", () => {
-    const result = parsePositionalArgs([
+    const result = parseEventViewInput([
       "my-org/proj",
       "abc123",
       "def456",
@@ -2026,12 +2221,15 @@ describe("parsePositionalArgs: extraEventIds", () => {
 
   test("collects extras when args are swapped", () => {
     // When swap is detected: first looks like hex ID, second looks like target
-    const result = parsePositionalArgs([
+    const result = parseEventViewInput([
       "abc123def456abc123def456abc123de",
       "test-org/test-proj",
       "extra1",
     ]);
-    expect(result.warning).toBeDefined();
+    expect(result.targetArg).toBe("test-org/test-proj");
+    expect(result.warnings).toEqual([
+      "Arguments appear reversed. Interpreting as: test-org/test-proj abc123def456abc123def456abc123de",
+    ]);
     expect(result.extraEventIds).toEqual(["extra1"]);
   });
 });

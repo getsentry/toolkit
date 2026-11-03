@@ -16,11 +16,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.mocked access
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as apiClient from "../../../src/lib/api-client.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 
@@ -31,11 +31,11 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.mocked access
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ValidationError } from "../../../src/lib/errors.js";
@@ -47,11 +47,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for vi.mocked access
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRepository } from "../../../src/types/sentry.js";
 
@@ -227,13 +227,75 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
 describe("listCommand.func — explicit org/project (org-scoped with note)", () => {
   const listRepositoriesSpy = vi.mocked(apiClient.listRepositories);
+  const listRepositoriesPaginatedSpy = vi.mocked(
+    apiClient.listRepositoriesPaginated,
+  );
 
   beforeEach(async () => {
     setOrgRegion("my-org", DEFAULT_SENTRY_URL);
+    // `<org>/<name>` tries repository names first; none is like `my-project`.
+    listRepositoriesPaginatedSpy.mockResolvedValue({
+      data: sampleRepos,
+      nextCursor: undefined,
+    });
   });
 
   afterEach(() => {
     listRepositoriesSpy.mockReset();
+    listRepositoriesPaginatedSpy.mockReset();
+  });
+
+  test("<org>/<name> keeps repositories named like it", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(
+      context,
+      { limit: 30, json: true },
+      "my-org/sentry-javascript",
+    );
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items.map((repo: { name: string }) => repo.name)).toEqual([
+      "getsentry/sentry-javascript",
+    ]);
+    // The server narrows by name; the whole-org listing is never read.
+    expect(listRepositoriesPaginatedSpy).toHaveBeenCalledWith("my-org", {
+      cursor: undefined,
+      perPage: 100,
+      query: "sentry-javascript",
+    });
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
+  });
+
+  test("<org>/<name> fuzzily matches the repo name without its owner", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(
+      context,
+      { limit: 30, json: true },
+      "my-org/sentry-javscript",
+    );
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items.map((repo: { name: string }) => repo.name)).toEqual([
+      "getsentry/sentry-javascript",
+    ]);
+    // Matched by name, so no whole-org fallback.
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
+  });
+
+  test("<org>/<glob> with no matches stays empty", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await listCommand.loader();
+    await func.call(context, { limit: 30, json: true }, "my-org/other/*");
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    expect(items).toEqual([]);
+    // A glob is never a project slug: no whole-org fallback.
+    expect(listRepositoriesSpy).not.toHaveBeenCalled();
   });
 
   test("explicit org/project uses org part (repos are org-scoped)", async () => {
@@ -275,7 +337,7 @@ describe("listCommand.func — auto-detect mode", () => {
   const listRepositoriesSpy = vi.mocked(apiClient.listRepositories);
   const listOrganizationsSpy = vi.mocked(apiClient.listOrganizations);
   const resolveOrgsForListingSpy = vi.mocked(
-    resolveTarget.resolveOrgsForListing
+    resolveTarget.resolveOrgsForListing,
   );
 
   beforeEach(() => {
@@ -367,10 +429,10 @@ describe("listCommand.func — auto-detect mode", () => {
 
 describe("listCommand.func — org-all mode (cursor pagination)", () => {
   const listRepositoriesPaginatedSpy = vi.mocked(
-    apiClient.listRepositoriesPaginated
+    apiClient.listRepositoriesPaginated,
   );
   const advancePaginationStateSpy = vi.mocked(
-    paginationDb.advancePaginationState
+    paginationDb.advancePaginationState,
   );
   const hasPreviousPageSpy = vi.mocked(paginationDb.hasPreviousPage);
   const resolveCursorSpy = vi.mocked(paginationDb.resolveCursor);
@@ -414,12 +476,12 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
 
     const { context, stdoutWrite } = createMockContext();
     const func = await listCommand.loader();
-    await func.call(context, { limit: 25, json: true }, "my-org/");
+    await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("hasMore", true);
-    expect(parsed).toHaveProperty("nextCursor", "cursor:abc:123");
+    expect(parsed.nextCursor).toContain("cursor:abc:123");
     expect(advancePaginationStateSpy).toHaveBeenCalled();
   });
 
@@ -486,12 +548,12 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     await func.call(
       context,
       { limit: 25, json: false, cursor: "explicit:cursor:value" },
-      "my-org/"
+      "my-org/",
     );
 
     expect(listRepositoriesPaginatedSpy).toHaveBeenCalledWith(
       "my-org",
-      expect.objectContaining({ cursor: "explicit:cursor:value" })
+      expect.objectContaining({ cursor: "explicit:cursor:value" }),
     );
   });
 
@@ -510,12 +572,12 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     await func.call(
       context,
       { limit: 25, json: false, cursor: "next" },
-      "my-org/"
+      "my-org/",
     );
 
     expect(listRepositoriesPaginatedSpy).toHaveBeenCalledWith(
       "my-org",
-      expect.objectContaining({ cursor: "cached:cursor:456" })
+      expect.objectContaining({ cursor: "cached:cursor:456" }),
     );
   });
 
@@ -523,7 +585,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     resolveCursorSpy.mockImplementation(() => {
       throw new ValidationError(
         "No next page saved for this query. Run without --cursor first.",
-        "cursor"
+        "cursor",
       );
     });
 
@@ -531,7 +593,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     const func = await listCommand.loader();
 
     await expect(
-      func.call(context, { limit: 25, json: false, cursor: "next" }, "my-org/")
+      func.call(context, { limit: 25, json: false, cursor: "next" }, "my-org/"),
     ).rejects.toThrow("No next page saved");
   });
 
@@ -543,8 +605,8 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
       func.call(
         context,
         { limit: 25, json: false, cursor: "some-cursor" },
-        "my-org/my-project"
-      )
+        "my-org/my-project",
+      ),
     ).rejects.toThrow(ValidationError);
   });
 
@@ -560,7 +622,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
 
     expect(listRepositoriesPaginatedSpy).toHaveBeenCalledWith(
       "my-org",
-      expect.objectContaining({ perPage: 10 })
+      expect.objectContaining({ perPage: 10 }),
     );
   });
 });

@@ -91,7 +91,7 @@ describe("wrapCall", () => {
     // Seed the report with the packager sourcemap path (from a prior bundle call).
     writeFileSync(
       reportPath,
-      JSON.stringify({ packager_sourcemap_path: pkgMap })
+      JSON.stringify({ packager_sourcemap_path: pkgMap }),
     );
 
     setArgs(["/tools/compose-source-maps.js", "-o", hermesMap]);
@@ -130,7 +130,7 @@ describe("wrapCall", () => {
     writeFileSync(hermesMap, JSON.stringify({ version: 3 }));
     writeFileSync(
       reportPath,
-      JSON.stringify({ packager_sourcemap_path: pkgMap })
+      JSON.stringify({ packager_sourcemap_path: pkgMap }),
     );
 
     setArgs(["/tools/compose-source-maps.js", "-o", hermesMap]);
@@ -141,7 +141,7 @@ describe("wrapCall", () => {
     });
 
     expect(
-      JSON.parse(readFileSync(hermesMap, "utf-8")).debugId
+      JSON.parse(readFileSync(hermesMap, "utf-8")).debugId,
     ).toBeUndefined();
   });
 });

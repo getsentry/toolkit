@@ -11,8 +11,7 @@
  */
 
 import type { SentryRepository } from "../../types/index.js";
-import { recordCacheHit } from "../telemetry.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, recordCacheHit } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 /**
@@ -73,7 +72,7 @@ export function getCachedRepos(orgSlug: string): SentryRepository[] | null {
  */
 export function setCachedRepos(
   orgSlug: string,
-  repos: SentryRepository[]
+  repos: SentryRepository[],
 ): void {
   const db = getDatabase();
   runUpsert(
@@ -84,7 +83,7 @@ export function setCachedRepos(
       repos_json: JSON.stringify(repos),
       cached_at: Date.now(),
     },
-    ["org_slug"]
+    ["org_slug"],
   );
 }
 

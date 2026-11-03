@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listIssueEvents } from "../../lib/api-client.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -29,7 +30,8 @@ import {
   formatEventsHuman,
   jsonTransformEvents,
 } from "../event/shared-events.js";
-import { buildCommandHint, issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
+import { buildCommandHint } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -48,7 +50,7 @@ export const PAGINATION_KEY = "issue-events";
 /** Build the CLI hint for fetching the next page, preserving active flags. */
 function nextPageHint(
   issueArg: string,
-  flags: Pick<EventsFlags, "query" | "full" | "period">
+  flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
   return appendEventsFlags(`sentry issue events ${issueArg} -c next`, flags);
 }
@@ -56,7 +58,7 @@ function nextPageHint(
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
 function prevPageHint(
   issueArg: string,
-  flags: Pick<EventsFlags, "query" | "full" | "period">
+  flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
   return appendEventsFlags(`sentry issue events ${issueArg} -c prev`, flags);
 }
@@ -71,18 +73,41 @@ export const eventsCommand = buildListCommand("issue", {
     fullDescription:
       "List events belonging to a Sentry issue.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7\n" +
       "  <project>-suffix - Project + suffix: cli-G\n" +
       "  ID               - Short ID: CLI-G\n" +
-      "  numeric          - Numeric ID: 123456789\n\n" +
-      "Examples:\n" +
-      "  sentry issue events CLI-G\n" +
-      "  sentry issue events @latest --limit 50\n" +
-      "  sentry issue events 123456789 --full\n" +
-      '  sentry issue events CLI-G -q "user.email:foo@bar.com"\n' +
-      "  sentry issue events CLI-G --json",
+      "  numeric          - Numeric ID: 123456789",
+    examples: [
+      {
+        description: "List recent events for an issue",
+        command: "sentry issue events FRONT-ABC",
+      },
+      {
+        description: "List events for the most recent issue",
+        command: "sentry issue events @latest --limit 50",
+      },
+      {
+        description: "Filter events by search query",
+        command: 'sentry issue events FRONT-ABC --query "browser:Chrome"',
+      },
+      {
+        description: "Show full event details",
+        command: "sentry issue events FRONT-ABC --full",
+      },
+      {
+        description: "Limit results and filter by time period",
+        command: "sentry issue events FRONT-ABC --limit 50 --period 24h",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry issue events FRONT-ABC -c next",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry issue events FRONT-ABC --json",
+      },
+    ],
   },
   output: {
     human: formatEventsHuman,
@@ -90,26 +115,22 @@ export const eventsCommand = buildListCommand("issue", {
     schema: IssueEventSchema,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND_NAME }),
     flags: EVENTS_FLAGS,
     aliases: EVENTS_ALIASES,
   },
-  async *func(this: SentryContext, flags: EventsFlags, issueArg: string) {
-    const { cwd } = this;
+  async *func(this: SentryContext, flags: EventsFlags, target: IssueTarget) {
+    const issueArg = target.raw ?? "";
     const timeRange = flags.period;
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND_NAME,
-    });
+    const { org, issue } = await target.resolved;
 
     // Org is required for region-routed events endpoint
     if (!org) {
       throw new ContextError(
         "Organization",
-        buildCommandHint(COMMAND_NAME, issueArg)
+        buildCommandHint(COMMAND_NAME, issueArg),
       );
     }
 
@@ -117,12 +138,12 @@ export const eventsCommand = buildListCommand("issue", {
     const contextKey = buildPaginationContextKey(
       "issue-events",
       `${org}/${issue.id}`,
-      { q: flags.query, period: serializeTimeRange(timeRange) }
+      { q: flags.query, period: serializeTimeRange(timeRange) },
     );
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: events, nextCursor } = await withProgress(
@@ -140,7 +161,7 @@ export const eventsCommand = buildListCommand("issue", {
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     // Update pagination state (handles both advance and truncation)

@@ -13,6 +13,7 @@ import type { SentryContext } from "../../context.js";
 import type { ProguardMapping } from "../../lib/api/proguard.js";
 import { uploadProguardMappings } from "../../lib/api/proguard.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -78,7 +79,7 @@ function validateUuidFormat(uuid: string): void {
   if (!UUID_RE.test(uuid)) {
     throw new ValidationError(
       `Invalid UUID format: '${uuid}'. Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
-      "uuid"
+      "uuid",
     );
   }
 }
@@ -99,25 +100,25 @@ async function readMappingFile(path: string): Promise<Buffer> {
     if (code === "ENOENT") {
       throw new ValidationError(
         `ProGuard mapping file '${path}' does not exist.`,
-        "path"
+        "path",
       );
     }
     if (code === "EISDIR") {
       throw new ValidationError(
         `Path '${path}' is a directory, not a ProGuard mapping file.`,
-        "path"
+        "path",
       );
     }
     const msg = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
       `Cannot read ProGuard mapping file '${path}': ${msg}`,
-      "path"
+      "path",
     );
   }
   if (content.length === 0) {
     throw new ValidationError(
       `ProGuard mapping file '${path}' is empty.`,
-      "path"
+      "path",
     );
   }
   return content;
@@ -134,7 +135,7 @@ function deduplicateMappings(mappings: ProguardMapping[]): ProguardMapping[] {
     const existing = seen.get(m.uuid);
     if (existing) {
       log.warn(
-        `Skipping '${m.path}': identical content as '${existing}' (UUID ${m.uuid})`
+        `Skipping '${m.path}': identical content as '${existing}' (UUID ${m.uuid})`,
       );
       continue;
     }
@@ -156,13 +157,31 @@ export const uploadCommand = buildCommand({
       "Upload one or more ProGuard/R8 mapping files to Sentry using " +
       "the chunk-upload protocol. Each mapping is identified by a " +
       "deterministic UUID derived from its content.\n\n" +
-      "Org/project are auto-detected from DSN, env vars, or config defaults.\n\n" +
-      "Usage:\n" +
-      "  sentry proguard upload mapping.txt\n" +
-      "  sentry proguard upload build/mapping1.txt build/mapping2.txt\n" +
-      "  sentry proguard upload mapping.txt --uuid 5db7294d-87fc-5726-a5c0-4a90679657a5\n" +
-      "  sentry proguard upload mapping.txt --no-upload\n" +
-      "  sentry proguard upload mapping.txt --json",
+      "Org/project are auto-detected from DSN, env vars, or config defaults.",
+    examples: [
+      {
+        description: "Upload a ProGuard/R8 mapping file",
+        command:
+          "sentry proguard upload ./app/build/outputs/mapping/release/mapping.txt",
+      },
+      {
+        description: "Upload multiple mapping files",
+        command: "sentry proguard upload mapping-release.txt mapping-debug.txt",
+      },
+      {
+        description: "Validate without uploading",
+        command: "sentry proguard upload mapping.txt --no-upload",
+      },
+      {
+        description: "Fail if no mapping files are found (useful in CI)",
+        command: "sentry proguard upload ./mapping/ --require-one",
+      },
+      {
+        description: "Upload with an explicit UUID",
+        command:
+          "sentry proguard upload mapping.txt --uuid 5db7294d-87fc-5726-a5c0-4a90679657a5",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -172,14 +191,14 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Paths to ProGuard/R8 mapping files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       uuid: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Force a specific UUID instead of computing from file content " +
           "(only valid with a single file)",
@@ -213,7 +232,7 @@ export const uploadCommand = buildCommand({
       if (flags["require-one"]) {
         throw new ValidationError(
           "No mapping files provided (--require-one is set)",
-          "path"
+          "path",
         );
       }
       throw new ContextError("Mapping file path(s)", USAGE_HINT, []);
@@ -223,7 +242,7 @@ export const uploadCommand = buildCommand({
     if (flags.uuid && paths.length > 1) {
       throw new ValidationError(
         "--uuid cannot be used with multiple files (each file needs a unique UUID)",
-        "uuid"
+        "uuid",
       );
     }
 

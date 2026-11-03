@@ -9,7 +9,7 @@ import type { TimeseriesResult } from "../../../src/types/dashboard.js";
 const ESC = "\x1b";
 
 function makeTimeseries(
-  overrides: Partial<TimeseriesResult> = {}
+  overrides: Partial<TimeseriesResult> = {},
 ): TimeseriesResult {
   return {
     type: "timeseries",

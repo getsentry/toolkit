@@ -4,6 +4,7 @@
  * List Session Replays from Sentry.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   isReplaySortValue,
@@ -12,17 +13,18 @@ import {
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
+  choiceParser,
+  parseEnvironmentList,
+  textParser,
+} from "../../lib/completion-target.js";
+import {
   advancePaginationState,
   buildPaginationContextKey,
   hasPreviousPage,
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { toSearchQueryError } from "../../lib/errors.js";
-import {
-  escapeMarkdownCell,
-  formatRelativeTime,
-  formatTable,
-} from "../../lib/formatters/index.js";
+import { formatRelativeTime, formatTable } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import type { Column } from "../../lib/formatters/table.js";
@@ -35,6 +37,7 @@ import {
   LIST_MAX_LIMIT,
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
+  ORG_ALL_TARGET_BRIEF,
   PERIOD_ALIASES,
   paginationHint,
   targetPatternExplanation,
@@ -44,8 +47,11 @@ import {
   getReplayUserLabel,
   parseReplayEnvironmentFilter,
 } from "../../lib/replay-search.js";
-import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type OrgOptionalTarget,
+  orgOptionalTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
@@ -92,7 +98,6 @@ const SORT_MAP: Record<ReplaySortKey, ReplaySortValue> = {
 const DEFAULT_PERIOD = LIST_PERIOD_FLAG.default;
 const DEFAULT_SORT: ReplaySortValue = SORT_MAP.date;
 const PAGINATION_KEY = "replay-list";
-const COMMAND_NAME = "replay list";
 
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
@@ -114,7 +119,7 @@ export function parseSort(value: string): ReplaySortValue {
   }
 
   throw new Error(
-    `Invalid sort value. Must be one of: ${Object.keys(SORT_MAP).join(", ")} or a replay sort like -count_rage_clicks`
+    `Invalid sort value. Must be one of: ${Object.keys(SORT_MAP).join(", ")} or a replay sort like -count_rage_clicks`,
   );
 }
 
@@ -129,8 +134,8 @@ function replayUserLabel(replay: ReplayListItem): string {
 const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   {
     header: "ID",
-    value: (replay) => `\`${replay.id.slice(0, 8)}\``,
-    minWidth: 8,
+    value: (replay) => `\`${replay.id}\``,
+    minWidth: 32,
     shrinkable: false,
   },
   {
@@ -157,7 +162,7 @@ const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   },
   {
     header: "USER",
-    value: (replay) => escapeMarkdownCell(replayUserLabel(replay)),
+    value: (replay) => tableCell(replayUserLabel(replay)),
     minWidth: 16,
     truncate: true,
   },
@@ -177,7 +182,7 @@ function formatScope(org: string, project?: string): string {
 
 function appendReplayFlags(
   base: string,
-  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">
+  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   const parts: string[] = [];
   appendQueryHint(parts, flags.query);
@@ -194,22 +199,22 @@ function appendReplayFlags(
 function nextPageHint(
   org: string,
   project: string | undefined,
-  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">
+  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
     `sentry replay list ${formatScope(org, project)} -c next`,
-    flags
+    flags,
   );
 }
 
 function prevPageHint(
   org: string,
   project: string | undefined,
-  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">
+  flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
     `sentry replay list ${formatScope(org, project)} -c prev`,
-    flags
+    flags,
   );
 }
 
@@ -225,7 +230,7 @@ function formatReplayListHuman(result: ReplayListResult): string {
 
 function jsonTransformReplayList(
   result: ReplayListResult,
-  fields?: string[]
+  fields?: string[],
 ): unknown {
   const items =
     fields && fields.length > 0
@@ -252,21 +257,56 @@ export const listCommand = buildListCommand("replay", {
     brief: "List recent Session Replays",
     fullDescription:
       "List recent Session Replays from Sentry.\n\n" +
-      "Target patterns:\n" +
-      "  sentry replay list              # auto-detect org from config or DSN\n" +
-      "  sentry replay list <org>/       # list all org replays\n" +
-      "  sentry replay list <org>/<proj> # list replays for one project\n" +
-      "  sentry replay list <project>    # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
-      "Examples:\n" +
-      "  sentry replay list\n" +
-      "  sentry replay list sentry/\n" +
-      "  sentry replay list sentry/cli --limit 50\n" +
-      "  sentry replay list sentry/cli --sort duration\n" +
-      '  sentry replay list sentry/cli -q "user.email:foo@example.com"\n' +
-      "  sentry replay list sentry/cli -e production -e canary\n" +
-      "  sentry replay list sentry/cli --period 24h\n\n" +
       "Alias: `sentry replays` → `sentry replay list`",
+    examples: [
+      {
+        description: "List recent replays (project auto-detected)",
+        command: "sentry replay list",
+      },
+      {
+        description: "List recent replays for a project",
+        command: "sentry replay list my-org/frontend",
+      },
+      {
+        description: "Search across all projects in an organization",
+        command: 'sentry replay list my-org/ --query "environment:production"',
+      },
+      {
+        description: "Change the time window and sort",
+        command:
+          "sentry replay list my-org/frontend --period 24h --sort errors",
+      },
+      {
+        description: "Find replays for a user",
+        command:
+          'sentry replay list my-org/frontend -q "user.email:foo@example.com"',
+      },
+      {
+        description: "Filter by environments",
+        command: "sentry replay list my-org/frontend -e production -e canary",
+      },
+      {
+        description: "Show more results",
+        command: "sentry replay list my-org/frontend --limit 50",
+      },
+      {
+        description: "Fetch the next page",
+        command: "sentry replay list my-org/frontend -c next",
+      },
+      {
+        description: "Fetch the previous page",
+        command: "sentry replay list my-org/frontend -c prev",
+      },
+      {
+        description: "Output as JSON",
+        command: "sentry replay list my-org/frontend --json",
+      },
+      {
+        description: "Find a project across organizations",
+        command: "sentry replay list frontend",
+      },
+    ],
   },
   output: {
     human: formatReplayListHuman,
@@ -279,8 +319,8 @@ export const listCommand = buildListCommand("replay", {
       parameters: [
         {
           placeholder: "org/project",
-          brief: "<org>/, <org>/<project>, or <project> (search)",
-          parse: String,
+          brief: ORG_ALL_TARGET_BRIEF,
+          parse: orgOptionalTarget,
           optional: true,
         },
       ],
@@ -288,7 +328,7 @@ export const listCommand = buildListCommand("replay", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of replays (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -300,14 +340,14 @@ export const listCommand = buildListCommand("replay", {
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(Object.keys(SORT_MAP), parseSort),
         brief:
           "Sort by: date, oldest, duration, errors, activity, or a raw replay sort field",
         default: "date",
@@ -322,13 +362,16 @@ export const listCommand = buildListCommand("replay", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: OrgOptionalTarget,
+  ) {
     const timeRange = flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
     const { query } = flags;
 
-    const resolved = await resolveOrgOptionalFromArg(target, cwd, COMMAND_NAME);
+    const resolved = await target.resolved;
 
     const contextKey = buildPaginationContextKey(
       "replay",
@@ -338,12 +381,12 @@ export const listCommand = buildListCommand("replay", {
         sort: flags.sort,
         q: query,
         period: serializeTimeRange(timeRange),
-      }
+      },
     );
     const { cursor, direction } = resolveCursor(
       flags.cursor,
       PAGINATION_KEY,
-      contextKey
+      contextKey,
     );
 
     const { data: replays, nextCursor } = await withProgress(
@@ -364,7 +407,7 @@ export const listCommand = buildListCommand("replay", {
         }).catch((error: unknown): never => {
           // An unparseable user --query is a user input mistake, not a CLI bug.
           throw toSearchQueryError(error, flags.query);
-        })
+        }),
     );
 
     advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);

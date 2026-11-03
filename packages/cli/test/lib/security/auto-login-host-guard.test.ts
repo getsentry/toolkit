@@ -154,7 +154,7 @@ describe("auto-login host guard", () => {
       expect(msg).toBe(
         "Refusing to log in against https://sentry.example.com — --url was not provided.\n\n" +
           "To authenticate against this self-hosted instance, confirm the host explicitly:\n" +
-          "  sentry auth login --url https://sentry.example.com"
+          "  sentry auth login --url https://sentry.example.com",
       );
     });
 
@@ -164,10 +164,10 @@ describe("auto-login host guard", () => {
         rcSource: "/repo/.sentryclirc",
       });
       expect(msg).toContain(
-        "this URL was read from .sentryclirc (/repo/.sentryclirc) but hasn't been confirmed as trusted yet"
+        "this URL was read from .sentryclirc (/repo/.sentryclirc) but hasn't been confirmed as trusted yet",
       );
       expect(msg).toContain(
-        "  sentry auth login --url https://sentry.example.com --token <your-token>"
+        "  sentry auth login --url https://sentry.example.com --token <your-token>",
       );
     });
   });

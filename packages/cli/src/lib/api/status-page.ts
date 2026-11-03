@@ -98,12 +98,12 @@ type SummaryResponse = {
  *   custom URL to point at a self-hosted or regional Statuspage instance.
  */
 export async function fetchSentryStatus(
-  baseUrl: string = SENTRY_STATUS_PAGE_URL
+  baseUrl: string = SENTRY_STATUS_PAGE_URL,
 ): Promise<SentryStatus> {
   const normalized = baseUrl.replace(TRAILING_SLASHES, "");
 
   const summary = await tryFetchStatuspageSummary(normalized);
-  return summary ?? probeSelfHostedHealth(normalized);
+  return await (summary ?? probeSelfHostedHealth(normalized));
 }
 
 /**
@@ -115,7 +115,7 @@ export async function fetchSentryStatus(
  * throws.
  */
 async function tryFetchStatuspageSummary(
-  normalized: string
+  normalized: string,
 ): Promise<SentryStatus | undefined> {
   const endpoint = `${normalized}/api/v2/summary.json`;
 
@@ -181,7 +181,7 @@ async function tryFetchStatuspageSummary(
  * HTTP 200 whenever the web process is up, masking real backend outages.
  */
 async function probeSelfHostedHealth(
-  normalized: string
+  normalized: string,
 ): Promise<SentryStatus> {
   const healthEndpoint = `${normalized}/_health/?full=1`;
   try {

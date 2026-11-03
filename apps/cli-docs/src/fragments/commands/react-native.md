@@ -1,21 +1,4 @@
-## Examples
 
-```bash
-# Upload a bundle + sourcemap by debug ID (called by the Gradle plugin)
-sentry react-native gradle \
-  --bundle index.android.bundle \
-  --sourcemap index.android.bundle.map
-
-# Also associate with a release and distribution(s)
-sentry react-native gradle \
-  --bundle index.android.bundle \
-  --sourcemap index.android.bundle.map \
-  --release com.example.app@1.0.0 \
-  --dist 1000
-
-# Xcode build phase (usually added automatically to your build script)
-sentry react-native xcode
-```
 
 ## Xcode build step (`react-native xcode`)
 

@@ -31,11 +31,12 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.13.15",
-    "@cloudflare/vitest-pool-workers": "catalog:",
+    "@cloudflare/vitest-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
     "@sentry/mcp-core": "workspace:*",
     "@sentry/mcp-server-mocks": "workspace:*",
     "@sentry/mcp-server-tsconfig": "workspace:*",
+    "@sentry/toolkit-core": "workspace:*",
     "@sentry/vite-plugin": "catalog:",
     "@tailwindcss/typography": "catalog:",
     "@tailwindcss/vite": "catalog:",
@@ -45,10 +46,11 @@
     "@vitejs/plugin-react": "catalog:",
     "tailwindcss": "catalog:",
     "urlpattern-polyfill": "^10.1.0",
+    "undici": "^7.30.1",
     "vite": "catalog:",
     "vitest": "catalog:",
     "miniflare": "catalog:",
-    "wrangler": "4.80.0"
+    "wrangler": "catalog:"
   },
   "dependencies": {
     "@ai-sdk/mcp": "catalog:",

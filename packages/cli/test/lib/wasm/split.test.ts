@@ -51,7 +51,7 @@ function hasCodeSection(bytes: Uint8Array): boolean {
 /** Value of the module's `external_debug_info` section, if it has one. */
 function externalDebugInfo(bytes: Uint8Array): string | null {
   const found = parseSections(bytes).find(
-    (entry) => entry.name === "external_debug_info"
+    (entry) => entry.name === "external_debug_info",
   );
   return found?.contents ? readByteVectorString(found.contents) : null;
 }
@@ -80,7 +80,7 @@ describe("build id handling", () => {
     expect(toHex(result.buildId)).toBe(toHex(supplied));
     expect(result.moduleChanged).toBe(true);
     expect(
-      toHex(buildIdFromSections(parseSections(result.module)) as Uint8Array)
+      toHex(buildIdFromSections(parseSections(result.module)) as Uint8Array),
     ).toBe(toHex(supplied));
   });
 });
@@ -106,12 +106,12 @@ describe("debug companion", () => {
     expect(
       toHex(
         buildIdFromSections(
-          parseSections(result.companion as Uint8Array)
-        ) as Uint8Array
-      )
+          parseSections(result.companion as Uint8Array),
+        ) as Uint8Array,
+      ),
     ).toBe(toHex(result.buildId));
     expect(
-      toHex(buildIdFromSections(parseSections(result.module)) as Uint8Array)
+      toHex(buildIdFromSections(parseSections(result.module)) as Uint8Array),
     ).toBe(toHex(result.buildId));
   });
 
@@ -159,7 +159,7 @@ describe("stripping", () => {
     const result = splitWasm(wasmModule([malformed]), { strip: true });
 
     expect(parseSections(result.module).filter((s) => s.id === 0)).toHaveLength(
-      2
+      2,
     );
   });
 });
@@ -171,7 +171,7 @@ describe("external_debug_info", () => {
     });
 
     expect(externalDebugInfo(result.module)).toBe(
-      "https://cdn.example/app.debug.wasm"
+      "https://cdn.example/app.debug.wasm",
     );
     expect(result.moduleChanged).toBe(true);
   });

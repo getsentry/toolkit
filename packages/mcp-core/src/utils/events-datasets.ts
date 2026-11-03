@@ -7,6 +7,15 @@ export const PUBLIC_EVENTS_DATASETS = [
 ] as const;
 
 export type PublicEventsDataset = (typeof PUBLIC_EVENTS_DATASETS)[number];
+
+export const DROPPED_EVENTS_DATASETS = [
+  "spans",
+  "logs",
+  "metrics",
+  "errors",
+] as const;
+
+export type DroppedEventsDataset = (typeof DROPPED_EVENTS_DATASETS)[number];
 export type EventsApiDataset =
   | "spans"
   | "errors"

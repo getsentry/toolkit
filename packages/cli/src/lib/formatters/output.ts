@@ -134,7 +134,9 @@ export type OutputConfig<T> = {
    */
   jsonTransform?: (data: T, fields?: string[]) => unknown;
   /**
-   * Zod schema describing the shape of JSON output (after transform/exclude).
+   * Valibot schema describing the shape of JSON output (after transform/exclude).
+   * Declare it once and derive the command's output type from it; see
+   * "Declaring Command Output" in `packages/cli/AGENTS.md`.
    *
    * For list commands with {@link jsonTransform}, this should describe the
    * **item** type (what `--fields` operates on), not the envelope.
@@ -223,7 +225,7 @@ type RenderContext = {
  */
 function applyJsonExclude(
   data: unknown,
-  excludeKeys: readonly string[] | undefined
+  excludeKeys: readonly string[] | undefined,
 ): unknown {
   if (!excludeKeys || excludeKeys.length === 0) {
     return data;
@@ -281,15 +283,14 @@ function emitJsonObject(stdout: Writer, obj: unknown): void {
  * @param renderer - Per-invocation renderer (from `config.human()`)
  * @param ctx - Rendering context with flag values
  */
-// biome-ignore lint/nursery/useMaxParams: Framework function — config/renderer/ctx are all required for JSON vs human split.
 export function renderCommandOutput(
   stdout: Writer,
   data: unknown,
-  // biome-ignore lint/suspicious/noExplicitAny: Variance erasure — config/renderer are paired at build time, but the framework iterates over unknown yields.
+  // oxlint-disable-next-line typescript/no-explicit-any -- Variance erasure — config/renderer are paired at build time, but the framework iterates over unknown yields.
   config: OutputConfig<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Renderer type mirrors erased OutputConfig<T>
+  // oxlint-disable-next-line typescript/no-explicit-any -- Renderer type mirrors erased OutputConfig<T>
   renderer: HumanRenderer<any>,
-  ctx: RenderContext
+  ctx: RenderContext,
 ): void {
   // Binary bodies (Uint8Array) must bypass text formatters entirely — no
   // JSON pretty-print, no trailing newline, no string coercion. This is the
@@ -354,7 +355,7 @@ type ValibotSchemaNode = {
   type: string;
   /** Inner schema for wrapper types (optional / nullable / nullish). */
   wrapped?: ValibotSchemaNode;
-  /** Member schemas for union / picklist. */
+  /** Member schemas for union / variant / picklist. */
   options?: unknown[];
   /** Item schema for array. */
   item?: ValibotSchemaNode;
@@ -462,7 +463,10 @@ function valibotTypeToString(input: ValibotSchemaNode): {
       : `${inner.type} | null`;
     return { type: nullableType, optional: true };
   }
-  if (schema.type === "union" && schema.options?.length) {
+  if (
+    (schema.type === "union" || schema.type === "variant") &&
+    schema.options?.length
+  ) {
     return resolveValibotUnion(schema.options as ValibotSchemaNode[]);
   }
 
@@ -499,6 +503,47 @@ export function extractSchemaFields(schema: GenericSchema): SchemaFieldInfo[] {
       optional,
     };
   });
+}
+
+/** Wrapper types {@link objectsOf} looks through to the schema they hold. */
+const WRAPPER_TYPES = new Set(["optional", "nullable", "nullish", "array"]);
+
+/**
+ * The object schemas a value of `schema` can be: through pipes, wrappers,
+ * array items (`--fields` paths reach into arrays), and union and variant
+ * members.
+ */
+function objectsOf(schema: ValibotSchemaNode): ValibotSchemaNode[] {
+  const node = unwrapPipe(schema);
+  if (WRAPPER_TYPES.has(node.type)) {
+    const inner = node.wrapped ?? node.item;
+    return inner ? objectsOf(inner) : [];
+  }
+  if (node.type === "union" || node.type === "variant") {
+    return (node.options as ValibotSchemaNode[]).flatMap(objectsOf);
+  }
+  return node.entries ? [node] : [];
+}
+
+/**
+ * Every field path a valibot schema describes, in `--fields` dot notation:
+ * each top-level field, then the fields of nested objects
+ * (`metadata.title`), parents before children.
+ *
+ * @param schema - A valibot schema (typically `object({...})`)
+ */
+export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
+  const paths = new Set<string>();
+  const visit = (node: ValibotSchemaNode, prefix: string) => {
+    for (const { entries = {} } of objectsOf(node)) {
+      for (const [name, field] of Object.entries(entries)) {
+        paths.add(`${prefix}${name}`);
+        visit(field, `${prefix}${name}.`);
+      }
+    }
+  };
+  visit(schema as unknown as ValibotSchemaNode, "");
+  return [...paths];
 }
 
 /**

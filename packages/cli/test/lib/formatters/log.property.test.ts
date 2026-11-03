@@ -40,7 +40,7 @@ const severityArb = oneof(
   constant("warning"),
   constant("error"),
   constant("debug"),
-  constant("fatal")
+  constant("fatal"),
 );
 
 /** Optional string (string or null) */
@@ -76,13 +76,13 @@ const detailedLogArb = createDetailedLogArb();
 
 /** Strip ANSI escape codes */
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI control chars
+  // oxlint-disable-next-line no-control-regex -- ANSI control chars
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 describe("formatLogDetails properties", () => {
   test("always returns a non-empty string", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -90,56 +90,56 @@ describe("formatLogDetails properties", () => {
           const result = formatLogDetails(log, orgSlug);
           expect(typeof result).toBe("string");
           expect(result.length).toBeGreaterThan(0);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("always contains the log ID", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
         (log: DetailedSentryLog, orgSlug: string) => {
           const result = stripAnsi(formatLogDetails(log, orgSlug));
           expect(result).toContain(log["sentry.item_id"]);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("always contains timestamp info", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
         (log: DetailedSentryLog, orgSlug: string) => {
           const result = stripAnsi(formatLogDetails(log, orgSlug));
           expect(result).toContain("Timestamp");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("always contains severity info", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
         (log: DetailedSentryLog, orgSlug: string) => {
           const result = stripAnsi(formatLogDetails(log, orgSlug));
           expect(result).toContain("Severity");
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("trace URL only appears when trace ID is present", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -151,14 +151,14 @@ describe("formatLogDetails properties", () => {
           } else {
             expect(result).not.toContain("/traces/");
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("SDK section only appears when sdk.name is present", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -168,14 +168,14 @@ describe("formatLogDetails properties", () => {
             expect(result).toContain("SDK");
             expect(result).toContain(log["sdk.name"]);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("Source Location section only appears when code fields are present", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -187,14 +187,14 @@ describe("formatLogDetails properties", () => {
           } else {
             expect(result).not.toContain("Source Location");
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("formatting is deterministic: same input always produces same output", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -202,14 +202,14 @@ describe("formatLogDetails properties", () => {
           const result1 = formatLogDetails(log, orgSlug);
           const result2 = formatLogDetails(log, orgSlug);
           expect(result1).toEqual(result2);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("output is a string (not array)", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         detailedLogArb,
         orgSlugArb,
@@ -217,9 +217,9 @@ describe("formatLogDetails properties", () => {
           const result = formatLogDetails(log, orgSlug);
           expect(typeof result).toBe("string");
           expect(Array.isArray(result)).toBe(false);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

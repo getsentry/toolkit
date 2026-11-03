@@ -4,34 +4,31 @@
  * Human-readable formatting for Session Replay data in the CLI.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { ListProjectReplayRecordingSegmentsResponse } from "@sentry/api";
 
+import type { InferOutput } from "valibot";
 import type {
   ReplayActivityEvent,
   ReplayDetails,
   ReplayRelatedIssue,
   ReplayRelatedTrace,
+  ReplayViewOutputFields,
 } from "../../types/index.js";
 import { getReplayUserLabel } from "../replay-search.js";
-import { buildReplayUrl } from "../sentry-urls.js";
-import {
-  escapeMarkdownCell,
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-} from "./markdown.js";
+import { buildReplayUrl } from "../sentry-web-urls.js";
+import { mdKvTable, renderMarkdown } from "./markdown.js";
 import {
   formatDurationCompactMs,
   formatDurationVerbose,
 } from "./time-utils.js";
 
-/** Data bag assembled by replay view before rendering. */
-export type ReplayViewData = {
-  org: string;
+/**
+ * Data bag assembled by replay view before rendering: the replay plus the
+ * fields JSON output adds to it ({@link ReplayViewOutputFields}).
+ */
+export type ReplayViewData = InferOutput<typeof ReplayViewOutputFields> & {
   replay: ReplayDetails;
-  activity: ReplayActivityEvent[];
-  relatedIssues: ReplayRelatedIssue[];
-  relatedTraces: ReplayRelatedTrace[];
 };
 
 type MarkdownRow = [string, string];
@@ -39,7 +36,7 @@ type ReplayRecordingSegments = ListProjectReplayRecordingSegmentsResponse;
 type ReplayRecordingEvent = ReplayRecordingSegments[number][number];
 
 function hasReplayTag(
-  value: unknown
+  value: unknown,
 ): value is { payload?: unknown; tag: string } {
   return (
     typeof value === "object" &&
@@ -61,7 +58,7 @@ function hasReplayHref(value: unknown): value is { href: string } {
 }
 
 function hasPerformanceSpanFields(
-  value: unknown
+  value: unknown,
 ): value is { data?: unknown; description?: unknown; op?: unknown } {
   return (
     typeof value === "object" &&
@@ -80,7 +77,7 @@ function hasNumericDuration(value: unknown): value is { duration: number } {
 }
 
 function hasClickFields(
-  value: unknown
+  value: unknown,
 ): value is { label?: unknown; selector?: unknown } {
   return (
     typeof value === "object" &&
@@ -90,7 +87,7 @@ function hasClickFields(
 }
 
 function hasBreadcrumbFields(
-  value: unknown
+  value: unknown,
 ): value is { category?: unknown; message?: unknown } {
   return (
     typeof value === "object" &&
@@ -119,7 +116,7 @@ function compactDetails(values: Array<string | null>): string[] {
 }
 
 function summarizePerformanceSpan(
-  payload: unknown
+  payload: unknown,
 ): Omit<ReplayActivityEvent, "timestampMs"> | null {
   if (!hasPerformanceSpanFields(payload)) {
     return null;
@@ -147,7 +144,7 @@ function summarizePerformanceSpan(
 function summarizeClickLikeEvent(
   label: string,
   payload: unknown,
-  includeLabel = false
+  includeLabel = false,
 ): Omit<ReplayActivityEvent, "timestampMs"> {
   if (!hasClickFields(payload)) {
     return { label, details: [] };
@@ -166,7 +163,7 @@ function summarizeClickLikeEvent(
 }
 
 function summarizeBreadcrumb(
-  payload: unknown
+  payload: unknown,
 ): Omit<ReplayActivityEvent, "timestampMs"> | null {
   if (!hasBreadcrumbFields(payload)) {
     return null;
@@ -199,20 +196,20 @@ const TAGGED_REPLAY_EVENT_SUMMARIZERS: Record<
 
 function summarizeTaggedReplayEvent(
   tag: string,
-  payload: unknown
+  payload: unknown,
 ): Omit<ReplayActivityEvent, "timestampMs"> | null {
   const summarize = TAGGED_REPLAY_EVENT_SUMMARIZERS[tag];
   return summarize ? summarize(payload) : null;
 }
 
 function summarizeReplayEvent(
-  event: ReplayRecordingEvent
+  event: ReplayRecordingEvent,
 ): ReplayActivityEvent | null {
   const timestampMs = getEventTimestampMillis(event.timestamp);
   if (hasReplayTag(event.data)) {
     const replayEvent = summarizeTaggedReplayEvent(
       event.data.tag,
-      event.data.payload
+      event.data.payload,
     );
     if (replayEvent) {
       return { timestampMs, ...replayEvent };
@@ -233,7 +230,7 @@ function summarizeReplayEvent(
 /** Extract a capped list of activity events from replay recording segments. */
 export function extractReplayActivityEvents(
   segments: ReplayRecordingSegments | null,
-  maxEvents: number
+  maxEvents: number,
 ): ReplayActivityEvent[] {
   if (!segments) {
     return [];
@@ -265,7 +262,7 @@ function formatList(values: string[] | undefined): string | undefined {
 function pushMarkdownRow(
   rows: MarkdownRow[],
   label: string,
-  value: string | undefined
+  value: string | undefined,
 ): void {
   if (!value) {
     return;
@@ -281,7 +278,7 @@ function formatYesNo(value: boolean | null | undefined): string | undefined {
 }
 
 function formatNullableCount(
-  value: number | null | undefined
+  value: number | null | undefined,
 ): string | undefined {
   if (value === null || value === undefined) {
     return;
@@ -290,10 +287,10 @@ function formatNullableCount(
 }
 
 function formatJoinedMarkdown(
-  values: Array<string | null | undefined>
+  values: Array<string | null | undefined>,
 ): string | undefined {
   const joined = values.filter(Boolean).join(" ");
-  return joined ? escapeMarkdownCell(joined) : undefined;
+  return joined ? tableCell(joined) : undefined;
 }
 
 function formatReplayLocation(replay: ReplayDetails): string | undefined {
@@ -305,12 +302,12 @@ function formatReplayLocation(replay: ReplayDetails): string | undefined {
   const location = [geo.city, geo.region, geo.country_code]
     .filter(Boolean)
     .join(", ");
-  return location ? escapeMarkdownCell(location) : undefined;
+  return location ? tableCell(location) : undefined;
 }
 
 function buildReplayOverviewRows(
   org: string,
-  replay: ReplayDetails
+  replay: ReplayDetails,
 ): MarkdownRow[] {
   const rows: MarkdownRow[] = [["Replay ID", `\`${replay.id}\``]];
   pushMarkdownRow(rows, "Link", buildReplayUrl(org, replay.id));
@@ -318,43 +315,45 @@ function buildReplayOverviewRows(
   pushMarkdownRow(
     rows,
     "Started",
-    replay.started_at ? new Date(replay.started_at).toLocaleString() : undefined
+    replay.started_at
+      ? new Date(replay.started_at).toLocaleString()
+      : undefined,
   );
   pushMarkdownRow(
     rows,
     "Finished",
     replay.finished_at
       ? new Date(replay.finished_at).toLocaleString()
-      : undefined
+      : undefined,
   );
   pushMarkdownRow(
     rows,
     "Duration",
     replay.duration !== null && replay.duration !== undefined
       ? formatDurationVerbose(replay.duration)
-      : undefined
+      : undefined,
   );
   pushMarkdownRow(
     rows,
     "Environment",
-    replay.environment ? escapeMarkdownCell(replay.environment) : undefined
+    replay.environment ? tableCell(replay.environment) : undefined,
   );
   pushMarkdownRow(
     rows,
     "Platform",
-    replay.platform ? escapeMarkdownCell(replay.platform) : undefined
+    replay.platform ? tableCell(replay.platform) : undefined,
   );
   pushMarkdownRow(
     rows,
     "Project ID",
     replay.project_id !== null && replay.project_id !== undefined
       ? String(replay.project_id)
-      : undefined
+      : undefined,
   );
   pushMarkdownRow(
     rows,
     "Replay Type",
-    replay.replay_type ? escapeMarkdownCell(replay.replay_type) : undefined
+    replay.replay_type ? tableCell(replay.replay_type) : undefined,
   );
   pushMarkdownRow(rows, "Archived", formatYesNo(replay.is_archived));
   pushMarkdownRow(rows, "Viewed", formatYesNo(replay.has_viewed));
@@ -363,12 +362,12 @@ function buildReplayOverviewRows(
   pushMarkdownRow(
     rows,
     "Rage Clicks",
-    formatNullableCount(replay.count_rage_clicks)
+    formatNullableCount(replay.count_rage_clicks),
   );
   pushMarkdownRow(
     rows,
     "Dead Clicks",
-    formatNullableCount(replay.count_dead_clicks)
+    formatNullableCount(replay.count_dead_clicks),
   );
 
   return rows;
@@ -377,20 +376,16 @@ function buildReplayOverviewRows(
 function buildReplayUserRows(replay: ReplayDetails): MarkdownRow[] {
   const rows: MarkdownRow[] = [];
   const userLabel = getReplayUserLabel(replay);
-  pushMarkdownRow(
-    rows,
-    "User",
-    userLabel ? escapeMarkdownCell(userLabel) : undefined
-  );
+  pushMarkdownRow(rows, "User", userLabel ? tableCell(userLabel) : undefined);
   pushMarkdownRow(
     rows,
     "Email",
-    replay.user?.email ? escapeMarkdownCell(replay.user.email) : undefined
+    replay.user?.email ? tableCell(replay.user.email) : undefined,
   );
   pushMarkdownRow(
     rows,
     "IP",
-    replay.user?.ip ? escapeMarkdownCell(replay.user.ip) : undefined
+    replay.user?.ip ? tableCell(replay.user.ip) : undefined,
   );
   pushMarkdownRow(rows, "Location", formatReplayLocation(replay));
   return rows;
@@ -401,12 +396,12 @@ function buildReplayClientRows(replay: ReplayDetails): MarkdownRow[] {
   pushMarkdownRow(
     rows,
     "Browser",
-    formatJoinedMarkdown([replay.browser?.name, replay.browser?.version])
+    formatJoinedMarkdown([replay.browser?.name, replay.browser?.version]),
   );
   pushMarkdownRow(
     rows,
     "OS",
-    formatJoinedMarkdown([replay.os?.name, replay.os?.version])
+    formatJoinedMarkdown([replay.os?.name, replay.os?.version]),
   );
   pushMarkdownRow(
     rows,
@@ -416,17 +411,17 @@ function buildReplayClientRows(replay: ReplayDetails): MarkdownRow[] {
       replay.device?.family,
       replay.device?.name,
       replay.device?.model_id,
-    ])
+    ]),
   );
   pushMarkdownRow(
     rows,
     "SDK",
-    formatJoinedMarkdown([replay.sdk?.name, replay.sdk?.version])
+    formatJoinedMarkdown([replay.sdk?.name, replay.sdk?.version]),
   );
   pushMarkdownRow(
     rows,
     "Dist",
-    replay.dist ? escapeMarkdownCell(replay.dist) : undefined
+    replay.dist ? tableCell(replay.dist) : undefined,
   );
   return rows;
 }
@@ -434,7 +429,7 @@ function buildReplayClientRows(replay: ReplayDetails): MarkdownRow[] {
 function pushKvSection(
   lines: string[],
   rows: MarkdownRow[],
-  title?: string
+  title?: string,
 ): void {
   if (rows.length === 0) {
     return;
@@ -446,7 +441,7 @@ function pushKvSection(
 function pushListSection(
   lines: string[],
   title: string,
-  values: string[] | undefined
+  values: string[] | undefined,
 ): void {
   const content = formatList(values);
   if (!content) {
@@ -467,10 +462,10 @@ function pushTagsSection(lines: string[], replay: ReplayDetails): void {
   lines.push("### Tags");
   lines.push("");
   for (const [key, values] of Object.entries(replay.tags).sort(([a], [b]) =>
-    a.localeCompare(b)
+    a.localeCompare(b),
   )) {
     lines.push(
-      `- \`${escapeMarkdownInline(key)}\`: ${values.map((value) => `\`${escapeMarkdownInline(value)}\``).join(", ")}`
+      `- ${inlineCode(key)}: ${values.map((value) => inlineCode(value)).join(", ")}`,
     );
   }
 }
@@ -478,7 +473,7 @@ function pushTagsSection(lines: string[], replay: ReplayDetails): void {
 function pushActivitySection(
   lines: string[],
   replay: ReplayDetails,
-  activity: ReplayActivityEvent[]
+  activity: ReplayActivityEvent[],
 ): void {
   lines.push("");
   lines.push("### Activity");
@@ -505,21 +500,21 @@ function pushActivitySection(
         : "";
     const details =
       event.details.length > 0
-        ? ` · ${event.details.map((detail) => escapeMarkdownInline(detail)).join(" · ")}`
+        ? ` · ${event.details.map((detail) => text(detail)).join(" · ")}`
         : "";
-    lines.push(`- ${prefix}\`${escapeMarkdownInline(event.label)}\`${details}`);
+    lines.push(`- ${prefix}${inlineCode(event.label)}${details}`);
   }
 }
 
 function formatRelatedIssueLine(
   org: string,
-  issue: ReplayRelatedIssue
+  issue: ReplayRelatedIssue,
 ): string {
   if (!(issue.shortId && issue.title)) {
     return `- Event \`${issue.eventId}\``;
   }
 
-  return `- \`${issue.shortId}\`: ${escapeMarkdownInline(issue.title)} (view: \`sentry issue view ${org}/${issue.shortId}\`)`;
+  return `- \`${issue.shortId}\`: ${text(issue.title)} (view: \`sentry issue view ${org}/${issue.shortId}\`)`;
 }
 
 function buildRelatedTraceStats(trace: ReplayRelatedTrace): string[] {
@@ -542,7 +537,7 @@ function buildRelatedTraceStats(trace: ReplayRelatedTrace): string[] {
 
 function formatRelatedTraceLine(
   org: string,
-  trace: ReplayRelatedTrace
+  trace: ReplayRelatedTrace,
 ): string {
   const stats = buildRelatedTraceStats(trace);
   const suffix = stats.length > 0 ? ` (${stats.join(", ")})` : "";
@@ -553,7 +548,7 @@ function pushRelatedSection(
   lines: string[],
   org: string,
   relatedIssues: ReplayRelatedIssue[],
-  relatedTraces: ReplayRelatedTrace[]
+  relatedTraces: ReplayRelatedTrace[],
 ): void {
   if (relatedIssues.length === 0 && relatedTraces.length === 0) {
     return;
@@ -635,6 +630,6 @@ export function formatReplayDownloadResult(data: ReplayDownloadData): string {
       ["Events", String(data.eventCount)],
       ["Duration", formatDurationCompactMs(data.durationMs)],
       ["Saved to", data.output],
-    ])
+    ]),
   );
 }

@@ -6,7 +6,12 @@ import {
 } from "../api-client.js";
 import { getAuthToken } from "../db/auth.js";
 import { ApiError, AuthError, HostScopeError, WizardError } from "../errors.js";
-import { buildOrgNotFoundError, resolveOrCreateTeam } from "../resolve-team.js";
+import {
+  buildOrgNotFoundError,
+  canCreateProjectInTeam,
+  pickDefaultTeam,
+  resolveOrCreateTeam,
+} from "../resolve-team.js";
 import { captureOAuthScopeRecoveryGate } from "../scope-recovery.js";
 import { slugify } from "../utils.js";
 import { WizardCancelledError } from "./clack-utils.js";
@@ -44,7 +49,7 @@ type ProjectSelection = Pick<
  */
 export async function resolveInitContext(
   initial: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<ResolvedInitContext | null> {
   return await withPreflightHandling(ui, async () => {
     const seed = await resolveInitContextSeed(initial, ui);
@@ -57,13 +62,16 @@ export async function resolveInitContext(
       org,
       initial,
       seed,
-      ui
+      ui,
     );
     if (!projectSelection) {
       return null;
     }
 
-    const team = await resolveTeam(org, initial, ui);
+    // Team only matters when init creates a project.
+    const team = projectSelection.existingProject
+      ? undefined
+      : await resolveTeam(org, initial, ui);
 
     return buildResolvedInitContext(initial, org, team, projectSelection);
   });
@@ -71,7 +79,7 @@ export async function resolveInitContext(
 
 async function withPreflightHandling(
   ui: WizardUI,
-  action: () => Promise<ResolvedInitContext | null>
+  action: () => Promise<ResolvedInitContext | null>,
 ): Promise<ResolvedInitContext | null> {
   try {
     return await action();
@@ -104,7 +112,7 @@ function buildResolvedInitContext(
   initial: WizardOptions,
   org: string,
   team: string | undefined,
-  selection: ProjectSelection
+  selection: ProjectSelection,
 ): ResolvedInitContext {
   return {
     directory: initial.directory,
@@ -123,7 +131,7 @@ function buildResolvedInitContext(
 
 async function resolveInitContextSeed(
   initial: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<InitContextSeed | null> {
   const detected = await resolveDetectedProject(initial, ui);
   if (detected?.shouldAbort) {
@@ -140,7 +148,7 @@ async function resolveInitContextSeed(
 async function ensureOrg(
   org: string | undefined,
   initial: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<string> {
   if (org) {
     return org;
@@ -158,7 +166,7 @@ async function resolveProjectSelection(
   org: string,
   initial: WizardOptions,
   seed: InitContextSeed,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<ProjectSelection | null> {
   if (!seed.project) {
     return {
@@ -184,7 +192,7 @@ async function resolveProjectSelection(
 
 function mergeProjectSelection(
   seed: InitContextSeed,
-  resolved: ExistingProjectChoice
+  resolved: ExistingProjectChoice,
 ): ProjectSelection {
   const project = "project" in resolved ? resolved.project : seed.project;
   const clearedProject =
@@ -200,7 +208,7 @@ function mergeProjectSelection(
 
 async function resolveDetectedProject(
   initial: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<{
   org?: string;
   project?: string;
@@ -212,7 +220,7 @@ async function resolveDetectedProject(
   }
 
   let detectedProject: { orgSlug: string; projectSlug: string } | null = null;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     detectedProject = await detectExistingProject(initial.directory);
   } catch {
@@ -224,7 +232,7 @@ async function resolveDetectedProject(
 
   const existingProject = await tryGetExistingProjectData(
     detectedProject.orgSlug,
-    detectedProject.projectSlug
+    detectedProject.projectSlug,
   ).catch(() => null);
 
   if (initial.yes) {
@@ -337,14 +345,14 @@ function toPreflightWizardError(error: unknown): WizardError {
     return new WizardError(error.format());
   }
   return new WizardError(
-    error instanceof Error ? error.message : String(error)
+    error instanceof Error ? error.message : String(error),
   );
 }
 
 async function resolveTeam(
   org: string,
   initial: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<string | undefined> {
   if (!initial.team) {
     return await resolveImplicitTeam(org, initial, ui);
@@ -379,10 +387,6 @@ async function resolveTeam(
   }
 }
 
-function canCreateProjectInTeam(team: SentryTeam): boolean {
-  return Array.isArray(team.access) && team.access.includes("team:admin");
-}
-
 /**
  * Whether the user's access scopes indicate they can create projects
  * regardless of the org's `allowMemberProjectCreation` flag.
@@ -409,7 +413,7 @@ function canBypassMemberCreationRestriction(access: unknown): boolean {
 
 async function assertOrgScopedCreationCanProceed(org: string): Promise<void> {
   let organization: Awaited<ReturnType<typeof getOrganization>>;
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     organization = await getOrganization(org);
   } catch {
@@ -428,7 +432,7 @@ async function assertOrgScopedCreationCanProceed(org: string): Promise<void> {
 
 async function listTeamsForImplicitInit(
   org: string,
-  unattended: boolean
+  unattended: boolean,
 ): Promise<SentryTeam[] | undefined> {
   const scopeRecovery = captureOAuthScopeRecoveryGate();
   try {
@@ -457,11 +461,11 @@ async function listTeamsForImplicitInit(
 async function resolveImplicitTeam(
   org: string,
   initial: WizardOptions,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<string | undefined> {
   const teams = await listTeamsForImplicitInit(
     org,
-    initial.yes || initial.dryRun
+    initial.yes || initial.dryRun,
   );
   if (!teams) {
     return;
@@ -474,12 +478,15 @@ async function resolveImplicitTeam(
     await assertOrgScopedCreationCanProceed(org);
     return;
   }
+  const defaultTeam = pickDefaultTeam(candidateTeams) as SentryTeam;
   if (candidateTeams.length === 1 || initial.yes) {
-    return (candidateTeams[0] as SentryTeam).slug;
+    return defaultTeam.slug;
   }
 
   const selected = await ui.select<string>({
     message: "Which team should own this project?",
+    filterable: true,
+    initialValue: defaultTeam.slug,
     options: candidateTeams.map((team) => ({
       value: team.slug,
       label: team.slug,
@@ -508,7 +515,7 @@ function handleOrgListError(error: unknown): { ok: false; error: string } {
     }
     lines.push(
       "Specify the org on the command line:  sentry init <org-slug>/",
-      "Or set an environment variable:       SENTRY_ORG=<org-slug> sentry init"
+      "Or set an environment variable:       SENTRY_ORG=<org-slug> sentry init",
     );
     return { ok: false, error: lines.join("\n  ") };
   }
@@ -527,7 +534,7 @@ function handleOrgListError(error: unknown): { ok: false; error: string } {
 async function resolveOrgSlug(
   cwd: string,
   yes: boolean,
-  ui: WizardUI
+  ui: WizardUI,
 ): Promise<string | { ok: false; error: string }> {
   const resolved = await resolveOrgPrefetched(cwd);
   if (resolved && !NUMERIC_ORG_ID_RE.test(resolved.org)) {
@@ -546,7 +553,8 @@ async function resolveOrgSlug(
   }
   orgs.sort(
     (left, right) =>
-      left.name.localeCompare(right.name) || left.slug.localeCompare(right.slug)
+      left.name.localeCompare(right.name) ||
+      left.slug.localeCompare(right.slug),
   );
   if (orgs.length === 0) {
     return {
@@ -572,6 +580,7 @@ async function resolveOrgSlug(
 
   const selected = await ui.select<string>({
     message: "Which organization should the project be created in?",
+    filterable: true,
     options: orgs.map((org) => ({
       value: org.slug,
       label: org.name,
@@ -585,7 +594,7 @@ async function resolveOrgSlug(
 }
 
 async function detectExistingProject(
-  cwd: string
+  cwd: string,
 ): Promise<{ orgSlug: string; projectSlug: string } | null> {
   const { detectDsn } = await import("../dsn/index.js");
   const dsn = await detectDsn(cwd);
@@ -593,7 +602,7 @@ async function detectExistingProject(
     return null;
   }
 
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const { resolveDsnByPublicKey } = await import("../resolve-target.js");
     const resolved = await resolveDsnByPublicKey(dsn);

@@ -39,7 +39,7 @@ import { apiRequestToRegion } from "./infrastructure.js";
 // ── Re-exports for backward compatibility ───────────────────────────
 // These were originally defined in this module. External consumers
 // (commands, tests) may still import them from here.
-// biome-ignore lint/performance/noBarrelFile: backward-compat re-exports, not a barrel
+// backward-compat re-exports, not a barrel
 export {
   type AssembleResponse,
   AssembleResponseSchema,
@@ -126,7 +126,7 @@ export function resolveUploadWait(flags: {
   if (waitFor !== undefined && (!Number.isFinite(waitFor) || waitFor <= 0)) {
     throw new ValidationError(
       "--wait-for must be a positive number of seconds.",
-      "wait-for"
+      "wait-for",
     );
   }
   return {
@@ -173,7 +173,7 @@ export async function buildArtifactBundle(
     release?: string;
     dist?: string;
     compression?: ZipCompression;
-  }
+  },
 ): Promise<void> {
   // Build manifest.json
   const filesManifest: Record<
@@ -279,7 +279,7 @@ export async function uploadSourcemaps(options: UploadOptions): Promise<void> {
     });
   } finally {
     // Always clean up the temp file
-    // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     await unlink(tmpZipPath).catch(() => {
       // Best-effort cleanup — OS temp directory will eventually purge it
     });
@@ -318,7 +318,7 @@ async function uploadArtifactBundle(opts: {
   // Step 3: Split into chunks, hash each chunk + compute overall checksum
   const { chunks, overallChecksum } = await hashChunks(
     tmpZipPath,
-    serverOptions.chunkSize
+    serverOptions.chunkSize,
   );
 
   const regionUrl = await resolveOrgRegion(org);
@@ -340,7 +340,7 @@ async function uploadArtifactBundle(opts: {
       method: "POST",
       body: assembleBody,
       schema: AssembleResponseSchema,
-    }
+    },
   );
 
   // Fail fast on server-side assembly error
@@ -349,7 +349,7 @@ async function uploadArtifactBundle(opts: {
       "Artifact bundle assembly failed",
       500,
       firstAssemble.detail ?? "Unknown error",
-      assembleEndpoint
+      assembleEndpoint,
     );
   }
 

@@ -79,13 +79,13 @@ function createAzureOpenAIFetch(baseUrl: string): typeof fetch {
     }
 
     if (input instanceof Request) {
-      return fetch(new Request(requestUrl.toString(), input), {
+      return await fetch(new Request(requestUrl.toString(), input), {
         ...init,
         headers,
       });
     }
 
-    return fetch(requestUrl.toString(), {
+    return await fetch(requestUrl.toString(), {
       ...init,
       headers,
     });

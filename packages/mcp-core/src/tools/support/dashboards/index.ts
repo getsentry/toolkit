@@ -58,7 +58,7 @@ export async function resolveDashboardProjectConstraint({
     return null;
   }
 
-  return apiService.getProject({
+  return await apiService.getProject({
     organizationSlug,
     projectSlugOrId: scopedProjectSlug,
   });

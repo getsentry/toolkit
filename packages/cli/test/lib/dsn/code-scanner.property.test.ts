@@ -49,7 +49,7 @@ const contentArb = array(constantFrom(...BENIGN_CHARS), {
 const DSN_RE =
   /https?:\/\/[a-z0-9]+(?::[a-z0-9]+)?@[a-z0-9.-]+(?:\.[a-z]+|:[0-9]+)\/\d+/gi;
 function referenceMatches(content: string): string[] {
-  return Array.from(new Set(Array.from(content.matchAll(DSN_RE), (m) => m[0])));
+  return [...new Set(Array.from(content.matchAll(DSN_RE), (m) => m[0]))];
 }
 
 describe("property: extractDsnsFromContent fast-path invariance", () => {
@@ -63,7 +63,7 @@ describe("property: extractDsnsFromContent fast-path invariance", () => {
           .replace(/HTTP/g, "XXXX");
         expect(extractDsnsFromContent(clean)).toEqual([]);
       }),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) },
     );
   });
 
@@ -80,7 +80,7 @@ describe("property: extractDsnsFromContent fast-path invariance", () => {
           expect(reference.has(dsn)).toBe(true);
         }
       }),
-      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) }
+      { numRuns: Math.min(DEFAULT_NUM_RUNS, 100) },
     );
   });
 });

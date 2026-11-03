@@ -1,4 +1,3 @@
-import { ApiClientError } from "../../api-client";
 import type { Issue } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -23,6 +22,10 @@ import {
   ParamReason,
   ParamRegionUrl,
 } from "../../schema";
+import {
+  ApiClientError,
+  ApiValidationError,
+} from "@sentry/toolkit-core/api-client/errors";
 import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
@@ -56,12 +59,14 @@ type IgnoreState = {
   message: string;
 };
 
+// `string & {}` keeps the known literals in autocomplete without collapsing
+// the union to plain `string`.
 type IssueStatusDisplay =
   | "resolved"
   | "resolvedInNextRelease"
   | "unresolved"
   | "ignored"
-  | string;
+  | (string & {});
 
 type IgnoreParams = {
   status?: string;
@@ -573,9 +578,22 @@ function buildIgnoreUpdate(
 }
 
 type ReasonCommentResult =
-  | { posted: true }
+  | { posted: true; duplicate?: boolean }
   | { posted: false; skipped: true }
   | { posted: false; error: string };
+
+/**
+ * Sentry rejects a note whose text the same user already posted on the issue.
+ * That happens when a client retries `update_issue` with the same `reason`;
+ * the comment already exists, so the desired outcome is already achieved.
+ */
+function isDuplicateCommentError(error: unknown): boolean {
+  return (
+    error instanceof ApiValidationError &&
+    error.status === 400 &&
+    error.message.toLowerCase().includes("already posted that comment")
+  );
+}
 
 async function tryPostReasonComment(
   apiService: {
@@ -600,6 +618,9 @@ async function tryPostReasonComment(
     });
     return { posted: true };
   } catch (error) {
+    if (isDuplicateCommentError(error)) {
+      return { posted: true, duplicate: true };
+    }
     if (!(error instanceof ApiClientError)) {
       logIssue(error);
     }
@@ -616,6 +637,9 @@ function formatReasonCommentLine(
 ): string {
   if (!reason || ("skipped" in result && result.skipped)) {
     return "";
+  }
+  if (result.posted && result.duplicate) {
+    return `- **Comment already present**: "${reason}"\n`;
   }
   if (result.posted) {
     return `- **Comment posted**: "${reason}"\n`;

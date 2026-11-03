@@ -35,7 +35,7 @@ describe("uuidToBytes", () => {
     ["unhyphenated and uppercase", "A1B2C3D4E5F6478899AABBCCDDEEFF00"],
   ])("parses a %s UUID", (_label, uuid) => {
     expect(toHex(uuidToBytes(uuid) as Uint8Array)).toBe(
-      "a1b2c3d4e5f6478899aabbccddeeff00"
+      "a1b2c3d4e5f6478899aabbccddeeff00",
     );
   });
 
@@ -67,7 +67,7 @@ describe("buildIdFromSections", () => {
   test("finds the id in a module that has one", () => {
     const buildId = fromHex("000102030405060708090a0b0c0d0e0f");
     const found = buildIdFromSections(
-      parseSections(moduleWithBuildId(buildId))
+      parseSections(moduleWithBuildId(buildId)),
     );
     expect(toHex(found as Uint8Array)).toBe(toHex(buildId));
   });
@@ -89,7 +89,7 @@ describe("buildIdFromSections", () => {
       customSection("build_id", byteVector(fromHex("22".repeat(16)))),
     ]);
     expect(
-      toHex(buildIdFromSections(parseSections(duplicated)) as Uint8Array)
+      toHex(buildIdFromSections(parseSections(duplicated)) as Uint8Array),
     ).toBe("11".repeat(16));
   });
 
@@ -100,7 +100,7 @@ describe("buildIdFromSections", () => {
       customSection("build_id", byteVector(fromHex("33".repeat(16)))),
     ]);
     expect(toHex(buildIdFromSections(parseSections(mixed)) as Uint8Array)).toBe(
-      "33".repeat(16)
+      "33".repeat(16),
     );
   });
 
@@ -110,7 +110,7 @@ describe("buildIdFromSections", () => {
       customSection("build_id", fromHex("20ff")),
     ]);
     expect(toHex(buildIdFromSections(parseSections(mixed)) as Uint8Array)).toBe(
-      "44".repeat(16)
+      "44".repeat(16),
     );
   });
 });

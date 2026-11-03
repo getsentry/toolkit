@@ -5,6 +5,8 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
+import type { IssueEventDetailsResponse } from "@sentry/api";
+import { codeBlock, inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
   DefaultEventSchema,
@@ -30,6 +32,7 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
   findMostRelevantInAppFrame,
@@ -43,7 +46,6 @@ import {
   getAutofixArtifactSummaries,
   getStatusDisplayName,
   isTerminalStatus,
-  wrapSeerContent,
 } from "./tool-helpers/seer";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
 import { isPlainObject } from "./type-guards";
@@ -182,15 +184,6 @@ export function formatFrameHeader(
 }
 
 /**
- * Whether the shared formatter covers this event type, and so whether its body should be used
- * instead of the local rendering.
- *
- * "default" is an error event without exception data, "generic" a performance regression or
- * metric issue, "csp" a Content Security Policy violation. Anything else (a transaction, most
- * notably) keeps the local path, which renders things the shared body does not carry such as
- * the fetched performance trace.
- */
-/**
  * Whether to read the issue's metadata instead of its top level fields. Performance issues can
  * have various categories such as 'db_query', but the issueType starts with 'performance_'.
  *
@@ -208,10 +201,12 @@ export function isPerformanceIssueType(issue: {
   );
 }
 
-export function usesSharedFormatterBody(event: { type?: unknown }): boolean {
+/** Whether this server can render the event type; anything else arrives as an UnknownEvent. */
+export function isSupportedEventType(event: { type?: unknown }): boolean {
   return (
     event.type === "error" ||
     event.type === "default" ||
+    event.type === "transaction" ||
     event.type === "generic" ||
     event.type === "csp"
   );
@@ -435,15 +430,13 @@ function formatExceptionInterfaceOutput(
     // Use the actual exception type and value as the heading
     const exceptionTitle = `${exception.type}${exception.value ? `: ${exception.value}` : ""}`;
 
-    parts.push(index === 0 ? "### Error" : `### ${exceptionTitle}`);
+    parts.push(index === 0 ? "### Error" : `### ${text(exceptionTitle)}`);
     parts.push("");
 
     // Add the error details in a code block for the first exception
     // to maintain backward compatibility
     if (index === 0) {
-      parts.push("```");
-      parts.push(exceptionTitle);
-      parts.push("```");
+      parts.push(codeBlock(exceptionTitle));
       parts.push("");
     }
 
@@ -475,17 +468,17 @@ function formatExceptionInterfaceOutput(
       parts.push("**Stacktrace:**");
     }
 
-    parts.push("```");
     parts.push(
-      frames
-        .map((frame) => {
-          const header = formatFrameHeader(frame, undefined, event.platform);
-          const context = renderInlineContext(frame);
-          return `${header}${context}`;
-        })
-        .join("\n"),
+      codeBlock(
+        frames
+          .map((frame) => {
+            const header = formatFrameHeader(frame, undefined, event.platform);
+            const context = renderInlineContext(frame);
+            return `${header}${context}`;
+          })
+          .join("\n"),
+      ),
     );
-    parts.push("```");
   });
 
   parts.push("");
@@ -576,9 +569,7 @@ function formatCspInterfaceOutput(event: Event, data: any) {
   if (data.original_policy) {
     parts.push("");
     parts.push("**Original Policy:**");
-    parts.push("```");
-    parts.push(data.original_policy);
-    parts.push("```");
+    parts.push(codeBlock(data.original_policy));
   }
 
   parts.push("");
@@ -605,7 +596,7 @@ function formatMessageInterfaceOutput(
     return "";
   }
   const message = data.formatted || data.message || "";
-  return `### Error\n\n${"```"}\n${message}\n${"```"}\n\n`;
+  return `### Error\n\n${codeBlock(message)}\n\n`;
 }
 
 function formatThreadsInterfaceOutput(
@@ -644,17 +635,17 @@ function formatThreadsInterfaceOutput(
     parts.push("**Stacktrace:**");
   }
 
-  parts.push("```");
   parts.push(
-    frames
-      .map((frame) => {
-        const header = formatFrameHeader(frame, undefined, event.platform);
-        const context = renderInlineContext(frame);
-        return `${header}${context}`;
-      })
-      .join("\n"),
+    codeBlock(
+      frames
+        .map((frame) => {
+          const header = formatFrameHeader(frame, undefined, event.platform);
+          const context = renderInlineContext(frame);
+          return `${header}${context}`;
+        })
+        .join("\n"),
+    ),
   );
-  parts.push("```");
   parts.push("");
 
   return parts.join("\n");
@@ -775,17 +766,17 @@ export function formatThreadStacktraceOutput({
     parts.push("**Full Stacktrace:**");
   }
 
-  parts.push("```");
   parts.push(
-    frames
-      .map((frame) => {
-        const header = formatFrameHeader(frame, undefined, event.platform);
-        const context = renderInlineContext(frame);
-        return `${header}${context}`;
-      })
-      .join("\n"),
+    codeBlock(
+      frames
+        .map((frame) => {
+          const header = formatFrameHeader(frame, undefined, event.platform);
+          const context = renderInlineContext(frame);
+          return `${header}${context}`;
+        })
+        .join("\n"),
+    ),
   );
-  parts.push("```");
   parts.push("");
 
   return parts.join("\n");
@@ -890,7 +881,14 @@ function formatVariableValue(value: unknown, maxLength = 80): string {
       }
       return stringified;
     }
-    return String(value);
+    if (
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      typeof value === "bigint"
+    ) {
+      return String(value);
+    }
+    return `<${typeof value}>`;
   } catch {
     // Handle circular references or other stringify errors
     return `<${typeof value}>`;
@@ -1487,9 +1485,7 @@ function formatN1QueryEvidence(
 
     // Show the query pattern - if single line, render as SQL block; if multiple, as list
     if (repeatingLines.length === 1) {
-      parts.push("```sql");
-      parts.push(repeatingLines[0]);
-      parts.push("```");
+      parts.push(codeBlock(repeatingLines[0], "sql"));
       parts.push("");
     } else {
       parts.push("**Repeated operations:**");
@@ -1515,9 +1511,7 @@ function formatN1QueryEvidence(
   if (traceLines.length > 0) {
     parts.push(`### Span Tree (Limited to ${MAX_SPANS_IN_TREE} spans)`);
     parts.push("");
-    parts.push("```");
-    parts.push(...traceLines);
-    parts.push("```");
+    parts.push(codeBlock(traceLines.join("\n")));
     parts.push("");
   } else {
     const spanTree = isValidSpanArray(spansData)
@@ -1527,9 +1521,7 @@ function formatN1QueryEvidence(
     if (spanTree.length > 0) {
       parts.push(`### Span Tree (Limited to ${MAX_SPANS_IN_TREE} spans)`);
       parts.push("");
-      parts.push("```");
-      parts.push(...renderPerformanceSpanTree(spanTree));
-      parts.push("```");
+      parts.push(codeBlock(renderPerformanceSpanTree(spanTree).join("\n")));
       parts.push("");
     } else if (isValidSpanArray(spansData)) {
       // Only show offender summaries if we have spans data but couldn't build a tree
@@ -1691,36 +1683,168 @@ function formatPrimitive(value: unknown): string | undefined {
   return isPrimitive(value) ? String(value) : undefined;
 }
 
+const METRIC_ISSUE_OCCURRENCE_TYPE = 8001;
+
+type MetricIssueEvidenceData = Extract<
+  NonNullable<IssueEventDetailsResponse["occurrence"]>,
+  { type: typeof METRIC_ISSUE_OCCURRENCE_TYPE }
+>["evidenceData"];
+type MetricIssueDataSource = MetricIssueEvidenceData["dataSources"][number];
+type MetricIssueSnubaQuery = MetricIssueDataSource["queryObj"]["snubaQuery"];
+type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
+
 /**
- * Extracts the Snuba query from metric alert evidence data.
+ * Keys come from the generated `@sentry/api` metric occurrence type, so a
+ * renamed or misspelled evidence key fails tsc. Values stay `unknown`: the
+ * event is parsed with a loose Zod schema and older events can omit fields.
  */
-function getMetricAlertSnubaQuery(
-  evidenceData: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const dataSources = evidenceData.data_sources;
+type Unverified<T> = { readonly [K in keyof T]?: unknown };
+
+function asUnverified<T>(value: unknown): Unverified<T> | undefined {
+  return isPlainObject(value) ? (value as Unverified<T>) : undefined;
+}
+
+type MetricAlertQuery = {
+  dataset?: string;
+  aggregate?: string;
+  query?: string;
+  timeWindowSeconds?: number;
+  environment?: string;
+  eventTypes: string[];
+};
+
+type MetricAlertContext = {
+  evidenceData: Unverified<MetricIssueEvidenceData>;
+  query?: MetricAlertQuery;
+  monitorId?: string;
+  alertRuleId?: string;
+};
+
+/**
+ * Reads metric alert evidence from a metric issue event. The event API
+ * camelCases occurrence payloads recursively, so evidence keys arrive as
+ * `dataSources[].queryObj.snubaQuery`, `detectorId`, and `alertId`.
+ */
+function getMetricAlertContext(event: Event): MetricAlertContext | undefined {
+  if (event.type !== "generic") {
+    return undefined;
+  }
+  const occurrence = (event as GenericEvent).occurrence;
+  const evidenceData = asUnverified<MetricIssueEvidenceData>(
+    occurrence?.evidenceData,
+  );
+  if (occurrence?.type !== METRIC_ISSUE_OCCURRENCE_TYPE || !evidenceData) {
+    return undefined;
+  }
+
+  return {
+    evidenceData,
+    query: getMetricAlertQuery(evidenceData),
+    monitorId: formatPrimitive(evidenceData.detectorId),
+    alertRuleId: formatPrimitive(evidenceData.alertId),
+  };
+}
+
+function getMetricAlertQuery(
+  evidenceData: Unverified<MetricIssueEvidenceData>,
+): MetricAlertQuery | undefined {
+  const dataSources = evidenceData.dataSources;
   if (!Array.isArray(dataSources)) {
     return undefined;
   }
 
   for (const dataSource of dataSources) {
-    if (!isPlainObject(dataSource)) {
+    const queryObj = asUnverified<MetricIssueDataSource["queryObj"]>(
+      asUnverified<MetricIssueDataSource>(dataSource)?.queryObj,
+    );
+    const snubaQuery = asUnverified<MetricIssueSnubaQuery>(
+      queryObj?.snubaQuery,
+    );
+    if (!snubaQuery) {
       continue;
     }
-    const queryObj = dataSource.query_obj;
-    if (!isPlainObject(queryObj)) {
-      continue;
-    }
-    const snubaQuery = queryObj.snuba_query;
-    if (isPlainObject(snubaQuery)) {
-      return snubaQuery;
-    }
+    const timeWindow = snubaQuery.timeWindow;
+    return {
+      dataset: formatPrimitive(snubaQuery.dataset),
+      aggregate: formatPrimitive(snubaQuery.aggregate),
+      query: formatPrimitive(snubaQuery.query)?.trim() || undefined,
+      timeWindowSeconds:
+        typeof timeWindow === "number" ? timeWindow : undefined,
+      environment: formatPrimitive(snubaQuery.environment),
+      eventTypes: Array.isArray(snubaQuery.eventTypes)
+        ? snubaQuery.eventTypes.filter(
+            (eventType): eventType is string => typeof eventType === "string",
+          )
+        : [],
+    };
   }
 
   return undefined;
 }
 
+type MetricAlertDatasetKind = "errors" | "logs" | "spans" | "metrics";
+
+/** Mirrors the Sentry UI's backend dataset -> detector dataset mapping. */
+function getMetricAlertDatasetKind(
+  query: MetricAlertQuery,
+): MetricAlertDatasetKind | undefined {
+  if (query.dataset === "events") {
+    return "errors";
+  }
+  if (query.dataset === "events_analytics_platform") {
+    if (query.eventTypes.includes("trace_item_log")) {
+      return "logs";
+    }
+    if (query.eventTypes.includes("trace_item_metric")) {
+      return "metrics";
+    }
+    return "spans";
+  }
+  return undefined;
+}
+
+const METRIC_ALERT_SEARCH_TOOLS: Record<
+  MetricAlertDatasetKind,
+  { toolName: string; label: string }
+> = {
+  errors: { toolName: "search_errors", label: "Errors" },
+  logs: { toolName: "search_logs", label: "Logs" },
+  spans: { toolName: "search_traces", label: "Spans" },
+  metrics: { toolName: "search_metrics", label: "Application metrics" },
+};
+
+/** Returns the window the monitor aggregated over for this occurrence. */
+function getMetricAlertEvaluatedWindow(
+  event: Event,
+  query: MetricAlertQuery | undefined,
+): { start: Date; end: Date } | undefined {
+  const dateCreated = (event as GenericEvent).dateCreated;
+  if (!dateCreated || query?.timeWindowSeconds == null) {
+    return undefined;
+  }
+  const end = new Date(dateCreated);
+  if (Number.isNaN(end.getTime())) {
+    return undefined;
+  }
+  return {
+    start: new Date(end.getTime() - query.timeWindowSeconds * 1000),
+    end,
+  };
+}
+
+function formatSearchFilterValue(value: string): string {
+  return /[\s"(),:]/.test(value) ? JSON.stringify(value) : value;
+}
+
+/** Smallest relative search period that reaches back to `start`. */
+function formatPeriodSince(start: Date, now: number): string {
+  const elapsedMs = Math.max(now - start.getTime(), 0);
+  const hours = Math.max(Math.ceil(elapsedMs / 3_600_000), 1);
+  return hours <= 48 ? `${hours}h` : `${Math.ceil(hours / 24)}d`;
+}
+
 function formatMetricAlertCondition(
-  condition: Record<string, unknown>,
+  condition: Unverified<MetricIssueCondition>,
 ): string | undefined {
   const comparison = condition.comparison;
   const formattedComparison = formatPrimitive(comparison);
@@ -1737,7 +1861,7 @@ function formatMetricAlertCondition(
       return type === "lte" ? "at or below" : "below";
     }
     if (type != null) {
-      return String(type);
+      return formatUnknown(type);
     }
     return undefined;
   })();
@@ -1763,28 +1887,46 @@ function formatMetricAlertValue(value: unknown): string | undefined {
 }
 
 function formatMetricAlertDetails(
-  evidenceData: Record<string, unknown>,
+  event: Event,
+  context: MetricAlertContext,
 ): string {
+  const { evidenceData, query } = context;
   const parts: string[] = ["### Metric Alert Details", ""];
 
-  const snubaQuery = getMetricAlertSnubaQuery(evidenceData);
-  if (snubaQuery) {
-    if (snubaQuery.dataset != null) {
-      parts.push(`**Dataset**: ${String(snubaQuery.dataset)}`);
+  if (context.monitorId) {
+    parts.push(`**Monitor ID**: ${context.monitorId}`);
+  }
+  if (context.alertRuleId) {
+    parts.push(`**Alert Rule ID**: ${context.alertRuleId}`);
+  }
+
+  if (query) {
+    const datasetKind = getMetricAlertDatasetKind(query);
+    const dataset = datasetKind
+      ? METRIC_ALERT_SEARCH_TOOLS[datasetKind].label
+      : query.dataset && inlineCode(query.dataset);
+    if (dataset) {
+      parts.push(`**Dataset**: ${dataset}`);
     }
-    if (snubaQuery.aggregate != null) {
-      parts.push(`**Aggregate**: ${String(snubaQuery.aggregate)}`);
+    if (query.aggregate) {
+      parts.push(`**Aggregate**: ${inlineCode(query.aggregate)}`);
     }
-    if (snubaQuery.query != null && String(snubaQuery.query).length > 0) {
-      parts.push(`**Query**: \`${String(snubaQuery.query)}\``);
+    if (query.query) {
+      parts.push(`**Query**: ${inlineCode(query.query)}`);
     }
-    if (snubaQuery.time_window != null) {
-      parts.push(`**Interval**: ${String(snubaQuery.time_window)} second(s)`);
+    if (query.timeWindowSeconds != null) {
+      parts.push(`**Interval**: ${query.timeWindowSeconds} second(s)`);
     }
-    if (snubaQuery.environment != null) {
-      parts.push(`**Environment**: ${String(snubaQuery.environment)}`);
+    if (query.environment) {
+      parts.push(`**Environment**: ${inlineCode(query.environment)}`);
     }
-    parts.push("");
+  }
+
+  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
+  if (evaluatedWindow) {
+    parts.push(
+      `**Evaluated Window**: ${evaluatedWindow.start.toISOString()} to ${evaluatedWindow.end.toISOString()}`,
+    );
   }
 
   const formattedValue = formatMetricAlertValue(evidenceData.value);
@@ -1803,12 +1945,93 @@ function formatMetricAlertDetails(
     }
   }
 
-  if (evidenceData.alert_id != null) {
-    parts.push(`**Alert Rule ID**: ${String(evidenceData.alert_id)}`);
-  }
-
   parts.push("");
   return `${parts.join("\n")}\n`;
+}
+
+/**
+ * Follow-up notes for metric issues: the monitor configuration and a search
+ * call that reproduces the monitor query over the evaluated window.
+ */
+function buildMetricAlertResponseNotes({
+  organizationSlug,
+  issue,
+  event,
+  context,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  context: MetricAlertContext;
+  experimentalMode: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}): string[] {
+  const notes: string[] = [];
+
+  if (context.monitorId) {
+    const monitorInstruction = formatToolCallInstruction({
+      toolName: "get_metric_monitor_details",
+      arguments: { organizationSlug, monitorId: context.monitorId },
+      showArguments: true,
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+      fallbackInstruction: "",
+    });
+    if (monitorInstruction) {
+      notes.push(
+        `Metric Monitor configuration and connected Alerts: ${monitorInstruction}`,
+      );
+    }
+  }
+
+  const query = context.query;
+  const datasetKind = query ? getMetricAlertDatasetKind(query) : undefined;
+  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
+  if (!query || !datasetKind || !evaluatedWindow) {
+    return notes;
+  }
+
+  const { toolName, label } = METRIC_ALERT_SEARCH_TOOLS[datasetKind];
+  // Sentry search binds implicit AND tighter than OR, so group an OR query
+  // before appending the environment filter.
+  const monitorQuery =
+    query.query && query.environment && /\bOR\b/.test(query.query)
+      ? `(${query.query})`
+      : query.query;
+  const searchQuery = [
+    monitorQuery,
+    query.environment
+      ? `environment:${formatSearchFilterValue(query.environment)}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const searchInstruction = formatToolCallInstruction({
+    toolName,
+    arguments: {
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      ...(searchQuery ? { query: searchQuery } : {}),
+      period: formatPeriodSince(evaluatedWindow.start, Date.now()),
+    },
+    showArguments: true,
+    experimentalMode,
+    availableToolNames,
+    directToolNames,
+    fallbackInstruction: "",
+  });
+  if (searchInstruction) {
+    notes.push(
+      `${label} matched by the monitor query: ${searchInstruction}, then focus on ${evaluatedWindow.start.toISOString()} to ${evaluatedWindow.end.toISOString()}`,
+    );
+  }
+
+  return notes;
 }
 
 /**
@@ -1831,10 +2054,12 @@ function formatGenericEventOutput(event: Event): string {
     return "";
   }
 
-  const evidenceData = occurrence.evidenceData;
-  if (occurrence.type === 8001 && evidenceData) {
-    return formatMetricAlertDetails(evidenceData);
+  const metricAlertContext = getMetricAlertContext(event);
+  if (metricAlertContext) {
+    return formatMetricAlertDetails(event, metricAlertContext);
   }
+
+  const evidenceData = occurrence.evidenceData;
 
   // Add a section header for performance regression details
   if (evidenceData) {
@@ -1861,7 +2086,11 @@ function formatTags(tags: z.infer<typeof EventSchema>["tags"]) {
     return "";
   }
   return `### Tags\n\n${tags
-    .map((tag) => `**${tag.key}**: ${tag.value}`)
+    .map(
+      // A code span cannot be empty, so a null or empty value gets a placeholder.
+      (tag) =>
+        `**${text(tag.key)}**: ${tag.value ? inlineCode(tag.value) : "(empty)"}`,
+    )
     .join("\n")}\n\n`;
 }
 
@@ -1954,24 +2183,17 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
     parts.push("");
   }
 
-  // Prefer the shared formatter's analysis for the body when the endpoint provides it, but
-  // keep the status handling around it: a run that failed or needs input must say so either
-  // way. Seer content is LLM-generated, so wrap it in the untrusted-data boundary.
-  if (autofixState.formatted?.content) {
-    parts.push(wrapSeerContent(autofixState.formatted.content, autofix.run_id));
-  } else {
-    // Summarize from the run's artifacts: the solution if available, otherwise
-    // the root cause if it has been identified.
-    const { rootCause, solution } = getAutofixArtifactSummaries(autofix);
-    if (solution) {
-      parts.push("**Summary:**");
-      parts.push(solution);
-    } else if (rootCause) {
-      parts.push("**Root Cause Identified:**");
-      parts.push(rootCause);
-    } else if (!isTerminalStatus(autofix.status)) {
-      parts.push("Analysis has started but no results yet.");
-    }
+  // Summarize from the run's artifacts: the solution if available, otherwise
+  // the root cause if it has been identified.
+  const { rootCause, solution } = getAutofixArtifactSummaries(autofix);
+  if (solution) {
+    parts.push("**Summary:**");
+    parts.push(solution);
+  } else if (rootCause) {
+    parts.push("**Root Cause Identified:**");
+    parts.push(rootCause);
+  } else if (!isTerminalStatus(autofix.status)) {
+    parts.push("Analysis has started but no results yet.");
   }
 
   if (autofix.status === "error") {
@@ -2046,19 +2268,19 @@ export function formatIssueOutput({
   if (isPerformanceIssue && issue.metadata) {
     // For performance issues, use metadata for better context
     const issueTitle = issue.metadata.title || issue.title;
-    output += `**Description**: ${issueTitle}\n`;
+    output += `**Description**: ${text(issueTitle)}\n`;
 
     if (issue.metadata.location) {
-      output += `**Location**: ${issue.metadata.location}\n`;
+      output += `**Location**: ${text(issue.metadata.location)}\n`;
     }
     if (issue.metadata.value) {
-      output += `**Query Pattern**: \`${issue.metadata.value}\`\n`;
+      output += `**Query Pattern**: ${inlineCode(issue.metadata.value)}\n`;
     }
   } else {
     // For regular errors and other issues
-    output += `**Description**: ${issue.title}\n`;
+    output += `**Description**: ${text(issue.title)}\n`;
     if (issue.culprit) {
-      output += `**Culprit**: ${issue.culprit}\n`;
+      output += `**Culprit**: ${text(issue.culprit)}\n`;
     }
   }
 
@@ -2080,11 +2302,11 @@ export function formatIssueOutput({
   // Add assignee information if assigned
   if (issue.assignedTo) {
     if (typeof issue.assignedTo === "string") {
-      output += `**Assigned To**: ${issue.assignedTo}\n`;
+      output += `**Assigned To**: ${text(issue.assignedTo)}\n`;
     } else {
       const assignee = issue.assignedTo;
       const type = assignee.type === "team" ? "Team" : "User";
-      output += `**Assigned To**: ${assignee.name} (${type})\n`;
+      output += `**Assigned To**: ${text(assignee.name)} (${type})\n`;
     }
   }
 
@@ -2102,7 +2324,7 @@ export function formatIssueOutput({
   }
 
   output += `**Platform**: ${issue.platform}\n`;
-  output += `**Project**: ${issue.project.name}\n`;
+  output += `**Project**: ${text(issue.project.name)}\n`;
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 
@@ -2132,14 +2354,7 @@ export function formatIssueOutput({
   // Event type union is: ErrorEvent | DefaultEvent | TransactionEvent | GenericEvent | CspEvent
   // But in practice we may have other types returned as UnknownEvent
   const eventType = event.type;
-  const isUnsupportedType =
-    eventType !== "error" &&
-    eventType !== "default" &&
-    eventType !== "transaction" &&
-    eventType !== "generic" &&
-    eventType !== "csp";
-
-  if (isUnsupportedType) {
+  if (!isSupportedEventType(event)) {
     // Log to Sentry for tracking new/unknown event types
     const sentryEventId = logIssue(
       `Unsupported event type encountered: ${String(eventType)}`,
@@ -2170,13 +2385,15 @@ export function formatIssueOutput({
 
     if (aiConversations && aiConversations.length > 0) {
       output += "\n## Response Notes\n\n";
-      output += formatAIConversationResponseNote({
+      output += buildAIConversationResponseNotes({
         aiConversations,
         organizationSlug,
         experimentalMode: experimentalMode ?? false,
         availableToolNames,
         directToolNames,
-      });
+      })
+        .map((note) => `- ${note}\n`)
+        .join("");
     }
 
     // For unsupported event types, return early without trying to render event details
@@ -2184,56 +2401,41 @@ export function formatIssueOutput({
   }
 
   output += `**Event ID**: ${event.id}\n`;
-  output += `**Type**: ${event.type}\n`;
-  const isSharedFormatterType = usesSharedFormatterBody(event);
-  if (isSharedFormatterType) {
+  output += `**Type**: ${formatUnknown(event.type)}\n`;
+  // default: error without exception data, generic: performance/metric issue, csp: CSP violation
+  if (
+    event.type === "error" ||
+    event.type === "default" ||
+    event.type === "generic" ||
+    event.type === "csp"
+  ) {
     const typedEvent = event as
       | z.infer<typeof ErrorEventSchema>
       | z.infer<typeof DefaultEventSchema>
       | z.infer<typeof GenericEventSchema>
-      | any; // CSP events don't have a schema yet
+      | { dateCreated?: string | null }; // CSP events don't have a schema yet
     if (typedEvent.dateCreated) {
-      output += `**Occurred At**: ${new Date(typedEvent.dateCreated).toISOString()}\n`;
+      const d = new Date(typedEvent.dateCreated);
+      if (!isNaN(d.getTime())) {
+        output += `**Occurred At**: ${d.toISOString()}\n`;
+      }
     }
   }
   if (event.message) {
     output += `**Message**:\n${event.message}\n`;
   }
   output += "\n";
-  // only a markdown body belongs in this output; a json body is for structuredContent, and
-  // pasting it here would put a serialized object in the middle of the prose
-  if (
-    isSharedFormatterType &&
-    event.formatted?.format === "markdown" &&
-    event.formatted.content
-  ) {
-    // the shared formatter body doesn't include the replay note — add it here to match formatEventOutput
-    output += formatIssueReplayOutput({
+  output += formatEventOutput(event, {
+    performanceTrace,
+    replaySummary: {
       apiService,
       organizationSlug,
-      event,
       relatedReplayIds,
       experimentalMode: experimentalMode ?? false,
       availableToolNames,
       directToolNames,
-    });
-    const formattedContent = event.formatted.content;
-    output += formattedContent.endsWith("\n")
-      ? formattedContent
-      : `${formattedContent}\n`;
-  } else {
-    output += formatEventOutput(event, {
-      performanceTrace,
-      replaySummary: {
-        apiService,
-        organizationSlug,
-        relatedReplayIds,
-        experimentalMode: experimentalMode ?? false,
-        availableToolNames,
-        directToolNames,
-      },
-    });
-  }
+    },
+  });
 
   // Add Seer context if available
   if (autofixState) {
@@ -2249,27 +2451,84 @@ export function formatIssueOutput({
     output += "\n";
   }
 
+  output += "## Response Notes\n\n";
+  for (const note of buildIssueResponseNotes({
+    organizationSlug,
+    issue,
+    event,
+    apiService,
+    aiConversations,
+    experimentalMode,
+    availableToolNames,
+    directToolNames,
+  })) {
+    output += `- ${note}\n`;
+  }
+  return output;
+}
+
+export function buildIssueResponseNotes({
+  organizationSlug,
+  issue,
+  event,
+  apiService,
+  aiConversations,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  apiService: SentryApiService;
+  aiConversations?: AIConversationReference[];
+  experimentalMode?: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}): string[] {
+  const notes: string[] = [];
   const traceId =
     typeof event.contexts?.trace?.trace_id === "string" &&
     event.contexts.trace.trace_id.length > 0
       ? event.contexts.trace.trace_id
       : undefined;
 
-  output += "## Response Notes\n\n";
   const commitIssueReference = /^\d+$/.test(issue.shortId)
     ? apiService.getIssueUrl(organizationSlug, issue.shortId)
     : issue.shortId;
-  output += `- Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.\n`;
-  output +=
-    "- The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.\n";
+  notes.push(
+    `Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.`,
+  );
+  // Metric issues have no stacktrace, and their trace context belongs to the
+  // monitor evaluation rather than the data that breached the threshold.
+  const metricAlertContext = getMetricAlertContext(event);
+  if (metricAlertContext) {
+    notes.push(
+      ...buildMetricAlertResponseNotes({
+        organizationSlug,
+        issue,
+        event,
+        context: metricAlertContext,
+        experimentalMode: experimentalMode ?? false,
+        availableToolNames,
+        directToolNames,
+      }),
+    );
+  } else {
+    notes.push(
+      "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
+    );
+  }
   if (aiConversations && aiConversations.length > 0) {
-    output += formatAIConversationResponseNote({
-      aiConversations,
-      organizationSlug,
-      experimentalMode: experimentalMode ?? false,
-      availableToolNames,
-      directToolNames,
-    });
+    notes.push(
+      ...buildAIConversationResponseNotes({
+        aiConversations,
+        organizationSlug,
+        experimentalMode: experimentalMode ?? false,
+        availableToolNames,
+        directToolNames,
+      }),
+    );
   }
   const issueEventSearchInstruction = formatToolCallInstruction({
     toolName: "search_issue_events",
@@ -2283,7 +2542,7 @@ export function formatIssueOutput({
     directToolNames,
     fallbackInstruction: "Issue event search is not available in this session",
   });
-  output += `- Issue event search: ${issueEventSearchInstruction}\n`;
+  notes.push(`Issue event search: ${issueEventSearchInstruction}`);
   const hasMultipleThreads = event.entries?.some((entry) => {
     if (entry.type !== "threads") {
       return false;
@@ -2308,10 +2567,10 @@ export function formatIssueOutput({
         "to fetch a full thread stacktrace by numeric Thread ID or exact thread Name. Omit `thread` to use Sentry's default selected thread",
     });
     if (stacktraceInstruction) {
-      output += `- Thread stacktrace lookup: ${stacktraceInstruction}\n`;
+      notes.push(`Thread stacktrace lookup: ${stacktraceInstruction}`);
     }
   }
-  if (traceId) {
+  if (traceId && !metricAlertContext) {
     const traceDetailsInstruction = formatToolCallInstruction({
       toolName: "get_sentry_resource",
       arguments: {
@@ -2349,9 +2608,11 @@ export function formatIssueOutput({
       fallbackInstruction:
         "Related log search is not available in this session",
     });
-    output += `- Full distributed trace and span tree: ${traceDetailsInstruction}\n`;
-    output += `- Related span search: ${spanSearchInstruction}\n`;
-    output += `- Related log search: ${logSearchInstruction}\n`;
+    notes.push(
+      `Full distributed trace and span tree: ${traceDetailsInstruction}`,
+    );
+    notes.push(`Related span search: ${spanSearchInstruction}`);
+    notes.push(`Related log search: ${logSearchInstruction}`);
   }
   if (experimentalMode) {
     const breadcrumbsInstruction = formatToolCallInstruction({
@@ -2365,12 +2626,14 @@ export function formatIssueOutput({
       fallbackInstruction:
         "Issue breadcrumbs are not available in this session",
     });
-    output += `- Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}\n`;
+    notes.push(
+      `Breadcrumb trail leading up to this error: ${breadcrumbsInstruction}`,
+    );
   }
-  return output;
+  return notes;
 }
 
-function formatAIConversationResponseNote({
+function buildAIConversationResponseNotes({
   aiConversations,
   organizationSlug,
   experimentalMode,
@@ -2382,7 +2645,7 @@ function formatAIConversationResponseNote({
   experimentalMode: boolean;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
-}): string {
+}): string[] {
   const instructions = formatAIConversationActionInstructions({
     organizationSlug,
     aiConversations,
@@ -2396,13 +2659,19 @@ function formatAIConversationResponseNote({
     const spanSuffix = conversation.spanId
       ? ` Matching span: \`${conversation.spanId}\`.`
       : "";
-    return `- Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
+    return [
+      `Agent conversation found in this trace: \`${conversation.conversationId}\`.${spanSuffix}`,
+      ...instructions,
+    ];
   }
 
   const conversationIds = aiConversations
     .map((conversation) => `\`${conversation.conversationId}\``)
     .join(", ");
-  return `- Multiple agent conversations were found in this trace: ${conversationIds}.\n${instructions.map((instruction) => `- ${instruction}`).join("\n")}\n`;
+  return [
+    `Multiple agent conversations were found in this trace: ${conversationIds}.`,
+    ...instructions,
+  ];
 }
 
 const MAX_DISPLAY_REPLAYS = 5;
@@ -2540,7 +2809,7 @@ function normalizeReplayId(replayId: string | null | undefined): string | null {
   return trimmedReplayId.replace(/-/g, "");
 }
 
-function stripReplayMetadata(event: Event): Event {
+export function stripReplayMetadata(event: Event): Event {
   const tags = event.tags?.filter(
     (tag) => tag.key !== "replay.id" && tag.key !== "replayId",
   );

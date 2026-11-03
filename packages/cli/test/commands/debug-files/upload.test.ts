@@ -16,10 +16,16 @@ import { zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { app } from "../../../src/app.js";
 import type { SentryContext } from "../../../src/context.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as chunkUpload from "../../../src/lib/api/chunk-upload.js";
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as debugFilesApi from "../../../src/lib/api/debug-files.js";
+import { parseDebugFile } from "../../../src/lib/dif/index.js";
+import {
+  WATCH_ARM64_32_DEBUG_ID,
+  WATCH_ARM64_DEBUG_ID,
+  watchFatMachO,
+} from "../../fixtures/dif/macho.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 useTestConfigDir("debug-files-upload-");
@@ -80,7 +86,7 @@ async function writeBreakpadZip(name = "symbols.zip"): Promise<string> {
   const path = join(tempDir, name);
   await writeFile(
     path,
-    zipSync({ "example.sym": new TextEncoder().encode(BREAKPAD_FIXTURE) })
+    zipSync({ "example.sym": new TextEncoder().encode(BREAKPAD_FIXTURE) }),
   );
   return path;
 }
@@ -91,7 +97,7 @@ const EMBEDDED_PE_DEBUG_ID = "d8eb7dca-4883-4b10-a1f7-048ea1ea388b-cfb0fc89";
 /** Copy a committed binary DIF fixture into `tempDir` under `name`. */
 async function writeDifFixture(fixture: string, name: string): Promise<string> {
   const bytes = readFileSync(
-    new URL(`../../fixtures/dif/${fixture}`, import.meta.url)
+    new URL(`../../fixtures/dif/${fixture}`, import.meta.url),
   );
   const path = join(tempDir, name);
   await writeFile(path, bytes);
@@ -117,7 +123,7 @@ async function writeIl2cppFixture(): Promise<void> {
 
 /** Run `debug-files upload` and capture stdout + exit code. */
 async function runUpload(
-  args: string[]
+  args: string[],
 ): Promise<{ output: string; error: string; exitCode: number | undefined }> {
   let output = "";
   let error = "";
@@ -200,7 +206,7 @@ describe("sentry debug-files upload", () => {
     async () => {
       const { exitCode } = await runUpload(["--derived-data", "--no-upload"]);
       expect(exitCode).not.toBe(0);
-    }
+    },
   );
 
   // ── --no-upload (dry-run) ────────────────────────────────────────
@@ -387,7 +393,7 @@ describe("sentry debug-files upload", () => {
       "INFO CODE_ID DAA5130F2A41F7FBC8662048F3294F3D439CA7FF",
     ].join("\n")}\n${Array.from(
       { length: 500 },
-      (_, i) => `PUBLIC ${i.toString(16)} 0 sym_${i}`
+      (_, i) => `PUBLIC ${i.toString(16)} 0 sym_${i}`,
     ).join("\n")}`;
     await writeFile(join(tempDir, "big.sym"), bigBody);
 
@@ -706,6 +712,45 @@ describe("sentry debug-files upload", () => {
     expect(difs[0]?.name).toBe("App.pdb");
     expect(difs[0]?.debugId).toBe(EMBEDDED_PE_DEBUG_ID);
     expect(difs[0]?.content).toBeInstanceOf(Buffer);
+  });
+
+  // ── Fat Mach-O ───────────────────────────────────────────────────
+
+  test("uploads each slice of a fat Mach-O dSYM as its own DIF", async () => {
+    process.env.SENTRY_ORG = "test-org";
+    process.env.SENTRY_PROJECT = "test-project";
+    await writeFile(join(tempDir, "FooWatch"), watchFatMachO());
+    const spy = vi
+      .spyOn(debugFilesApi, "uploadDebugFiles")
+      .mockResolvedValue([]);
+
+    await runUpload([tempDir]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const difs = spy.mock.calls[0]?.[0]?.difs ?? [];
+    expect(difs.map((d) => [d.name, d.debugId])).toEqual([
+      ["FooWatch", WATCH_ARM64_DEBUG_ID],
+      ["FooWatch", WATCH_ARM64_32_DEBUG_ID],
+    ]);
+    // Sentry's assemble step accepts one object per file.
+    for (const dif of difs) {
+      const { objects } = parseDebugFile(new Uint8Array(dif.content));
+      expect(objects.map((o) => o.debugId)).toEqual([dif.debugId]);
+    }
+  });
+
+  test("--id uploads only the matching slice of a fat Mach-O", async () => {
+    process.env.SENTRY_ORG = "test-org";
+    process.env.SENTRY_PROJECT = "test-project";
+    await writeFile(join(tempDir, "FooWatch"), watchFatMachO());
+    const spy = vi
+      .spyOn(debugFilesApi, "uploadDebugFiles")
+      .mockResolvedValue([]);
+
+    await runUpload(["--id", WATCH_ARM64_32_DEBUG_ID, tempDir]);
+    const difs = spy.mock.calls[0]?.[0]?.difs ?? [];
+    expect(difs).toHaveLength(1);
+    const { objects } = parseDebugFile(new Uint8Array(difs[0]?.content ?? []));
+    expect(objects.map((o) => o.debugId)).toEqual([WATCH_ARM64_32_DEBUG_ID]);
   });
 
   // ── IL2CPP line mappings ─────────────────────────────────────────

@@ -43,7 +43,7 @@ function createContext() {
       stdout: {
         write: (data: string | Uint8Array) => {
           writes.push(
-            typeof data === "string" ? data : new TextDecoder().decode(data)
+            typeof data === "string" ? data : new TextDecoder().decode(data),
           );
           return true;
         },
@@ -102,7 +102,7 @@ describe("snapshots diff", () => {
       harness.context,
       { output: outDir, "fail-on-diff": true },
       baseDir,
-      headDir
+      headDir,
     );
 
     expect(harness.exitCode).toBe(1);
@@ -118,7 +118,7 @@ describe("snapshots diff", () => {
       harness.context,
       { output: outDir, "fail-on-diff": true },
       baseDir,
-      headDir
+      headDir,
     );
 
     expect(harness.exitCode ?? 0).toBe(0);
@@ -149,7 +149,7 @@ describe("snapshots diff", () => {
       removedHarness.context,
       { output: outDir, "fail-on-diff": true },
       baseDir,
-      headDir
+      headDir,
     );
     expect(removedHarness.exitCode).toBe(1);
 
@@ -159,7 +159,7 @@ describe("snapshots diff", () => {
       skippedHarness.context,
       { output: outDir, "fail-on-diff": true, selective: true },
       baseDir,
-      headDir
+      headDir,
     );
     expect(skippedHarness.exitCode ?? 0).toBe(0);
   });
@@ -175,7 +175,7 @@ describe("snapshots diff", () => {
       harness.context,
       { output: outDir, "fail-on-diff": true },
       baseDir,
-      headDir
+      headDir,
     );
 
     // Errored images count toward --fail-on-diff, and the run still completes.
@@ -193,7 +193,7 @@ describe("snapshots diff", () => {
       harness.context,
       { output: outDir, "no-antialiasing": true },
       baseDir,
-      headDir
+      headDir,
     );
 
     expect(existsSync(join(outDir, "a.png"))).toBe(true);
@@ -203,7 +203,7 @@ describe("snapshots diff", () => {
     const harness = createContext();
     const func = await diffCommand.loader();
     await expect(
-      func.call(harness.context, {}, join(tmpDir, "nope"), headDir)
+      func.call(harness.context, {}, join(tmpDir, "nope"), headDir),
     ).rejects.toThrow(ValidationError);
   });
 });

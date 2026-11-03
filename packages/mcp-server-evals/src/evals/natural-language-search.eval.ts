@@ -72,7 +72,7 @@ describeEval("natural-language-search-events", {
           value.includes("metric.type:distribution"),
         fields: (value: unknown) =>
           Array.isArray(value) &&
-          value.includes("environment") &&
+          value.includes("sentry.environment") &&
           value.includes(
             "p95(value,http.request.duration,distribution,millisecond)",
           ),

@@ -18,7 +18,8 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { setEnv } from "./env.js";
+import { withEnv } from "./env.js";
+import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
 /** CLI flag names/aliases that trigger infinite streaming output. */
@@ -35,7 +36,7 @@ function hasStreamingFlag(args: string[]): boolean {
  */
 function buildIsolatedEnv(
   options?: SentryOptions,
-  jsonByDefault = true
+  jsonByDefault = true,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (options?.token) {
@@ -73,7 +74,8 @@ export type FlagDef = {
   default?: unknown;
   optional?: boolean;
   parse?: (value: string) => unknown;
-  variadic?: boolean;
+  /** `true` or a separator string — Stricli collects either form into an array. */
+  variadic?: boolean | string;
 };
 
 /** Resolved command: handler function + flag definitions for default application. */
@@ -97,9 +99,10 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
   const key = path.join(".");
   let cached = commandCache.get(key);
   if (!cached) {
-    const { routes } = await import("../app.js");
+    const { loadSdkApp } = await import("../sdk-app.js");
+    const { routes } = await loadSdkApp(path);
     // Walk route tree: routes → sub-route → command
-    // biome-ignore lint/suspicious/noExplicitAny: Stricli's RoutingTarget union requires runtime duck-typing
+    // oxlint-disable-next-line typescript/no-explicit-any -- Stricli's RoutingTarget union requires runtime duck-typing
     let target: any = routes;
     for (const segment of path) {
       target = target.getRoutingTargetForInput(segment);
@@ -113,8 +116,8 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
     cached = {
       loader: () =>
         command.loader().then(
-          // biome-ignore lint/suspicious/noExplicitAny: Stricli CommandModule shape has a default export
-          (m: any) => (typeof m === "function" ? m : m.default)
+          // oxlint-disable-next-line typescript/no-explicit-any -- Stricli CommandModule shape has a default export
+          (m: any) => (typeof m === "function" ? m : m.default),
         ),
       flagDefs,
     };
@@ -160,6 +163,9 @@ function resolveFlagDefault(def: FlagDef): unknown {
  *   (same as Stricli's `parseInput` path in `parseInputsForFlag`).
  * - For `kind: "boolean"` / `kind: "enum"` flags with a `default`, uses the raw value.
  * - Skips flags already set (non-`undefined`) by the caller.
+ * - Wraps a scalar caller value for a variadic flag in an array. Stricli always
+ *   hands variadic flags to the handler as arrays, so an untyped caller passing
+ *   `{ field: "title" }` would otherwise crash on array methods (CLI-28C).
  *
  * @param flags - The flags object from the SDK caller (may have `undefined` values).
  * @param flagDefs - The command's Stricli flag definitions.
@@ -167,15 +173,17 @@ function resolveFlagDefault(def: FlagDef): unknown {
  */
 export function applyFlagDefaults(
   flags: Record<string, unknown>,
-  flagDefs: Record<string, FlagDef>
+  flagDefs: Record<string, FlagDef>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   // Copy caller-provided flags, skipping undefined values so they
   // don't shadow the defaults we're about to apply.
   for (const [key, value] of Object.entries(flags)) {
-    if (value !== undefined) {
-      result[key] = value;
+    if (value === undefined) {
+      continue;
     }
+    result[key] =
+      flagDefs[key]?.variadic && !Array.isArray(value) ? [value] : value;
   }
   // Apply defaults for any flag not already set by the caller
   for (const [name, def] of Object.entries(flagDefs)) {
@@ -190,27 +198,14 @@ export function applyFlagDefaults(
   return result;
 }
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequences use ESC (0x1b)
+// oxlint-disable-next-line no-control-regex -- ANSI escape sequences use ESC (0x1b)
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
-
-/**
- * Install the structured `headers` option for this invocation.
- *
- * Lazy import: `custom-headers.ts` pulls in the SQLite defaults module, which
- * must not load when the SDK is merely imported.
- */
-async function applyHeadersOption(
-  headers: Record<string, string> | undefined
-): Promise<void> {
-  const { setCustomHeadersOverride } = await import("./custom-headers.js");
-  setCustomHeadersOverride(headers);
-}
 
 /** Flush Sentry telemetry (no beforeExit handler in library mode). */
 async function flushTelemetry(): Promise<void> {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const Sentry = await import("@sentry/node-core/light");
+    const Sentry = await import("@sentry/node");
     const client = Sentry.getClient();
     if (client) {
       await client.flush(3000);
@@ -224,13 +219,13 @@ async function flushTelemetry(): Promise<void> {
 function buildSdkError(
   stderrChunks: string[],
   exitCode: number,
-  thrown?: unknown
+  thrown?: unknown,
 ): SentryError {
   const stderrStr = stderrChunks.join("");
   const message =
     stderrStr.replace(ANSI_RE, "").trim() ||
     (thrown instanceof Error ? thrown.message : undefined) ||
-    (thrown !== undefined ? String(thrown) : undefined) ||
+    (thrown !== undefined ? stringifyUnknown(thrown) : undefined) ||
     `Command failed with exit code ${exitCode}`;
   return new SentryError(message, exitCode, stderrStr);
 }
@@ -253,7 +248,7 @@ function extractExitCode(thrown: unknown): number {
  */
 function concatChunksToBytes(chunks: Array<string | Uint8Array>): Uint8Array {
   const parts = chunks.map((c) =>
-    typeof c === "string" ? new TextEncoder().encode(c) : c
+    typeof c === "string" ? new TextEncoder().encode(c) : c,
   );
   const total = parts.reduce((sum, p) => sum + p.byteLength, 0);
   const out = new Uint8Array(total);
@@ -271,7 +266,7 @@ function concatChunksToBytes(chunks: Array<string | Uint8Array>): Uint8Array {
  */
 export function parseOutput<T>(
   capturedResult: unknown,
-  stdoutChunks: Array<string | Uint8Array>
+  stdoutChunks: Array<string | Uint8Array>,
 ): T {
   if (capturedResult !== undefined) {
     return capturedResult as T;
@@ -286,7 +281,7 @@ export function parseOutput<T>(
   if (!stdoutStr.trim()) {
     return undefined as T;
   }
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     return JSON.parse(stdoutStr) as T;
   } catch {
@@ -331,7 +326,7 @@ type CaptureOptions = {
 async function buildCaptureContext(
   env: NodeJS.ProcessEnv,
   cwd: string,
-  opts?: CaptureOptions
+  opts?: CaptureOptions,
 ): Promise<CaptureContext> {
   const stdoutChunks: Array<string | Uint8Array> = [];
   const stderrChunks: string[] = [];
@@ -359,7 +354,7 @@ async function buildCaptureContext(
 
   const { getConfigDir } = await import("./db/index.js");
 
-  // biome-ignore lint/suspicious/noExplicitAny: abortSignal is an internal extension to the fake process
+  // oxlint-disable-next-line typescript/no-explicit-any -- abortSignal is an internal extension to the fake process
   const fakeProcess: any = {
     stdout,
     stderr,
@@ -410,56 +405,53 @@ async function executeWithCapture<T>(
   options: SentryOptions | undefined,
   executor: (
     captureCtx: CaptureContext,
-    span: Span | undefined
-  ) => Promise<void>
+    span: Span | undefined,
+  ) => Promise<void>,
 ): Promise<T> {
   const env = buildIsolatedEnv(options);
   const cwd = options?.cwd ?? process.cwd();
-  setEnv(env);
+  return await withEnv(env, async () => {
+    const { withCustomHeadersOverride } = await import("./custom-headers.js");
+    return await withCustomHeadersOverride(options?.headers, async () => {
+      const captureCtx = await buildCaptureContext(env, cwd);
+      const { withTelemetry } = await import("./telemetry.js");
 
-  try {
-    await applyHeadersOption(options?.headers);
-    const captureCtx = await buildCaptureContext(env, cwd);
-    const { withTelemetry } = await import("./telemetry.js");
+      try {
+        await withTelemetry(async (span) => await executor(captureCtx, span), {
+          libraryMode: true,
+        });
+      } catch (thrown) {
+        await flushTelemetry();
 
-    try {
-      await withTelemetry(async (span) => executor(captureCtx, span), {
-        libraryMode: true,
-      });
-    } catch (thrown) {
-      await flushTelemetry();
+        // OutputError: data was already rendered (captured) before the throw.
+        // Return it despite the non-zero exit code — this is the "HTTP 404 body"
+        // pattern where the data is useful even though the operation "failed".
+        const captured = captureCtx.getCapturedResult();
+        if (captured !== undefined) {
+          return captured as T;
+        }
 
-      // OutputError: data was already rendered (captured) before the throw.
-      // Return it despite the non-zero exit code — this is the "HTTP 404 body"
-      // pattern where the data is useful even though the operation "failed".
-      const captured = captureCtx.getCapturedResult();
-      if (captured !== undefined) {
-        return captured as T;
+        const exitCode =
+          extractExitCode(thrown) || captureCtx.context.process.exitCode || 1;
+        throw buildSdkError(captureCtx.stderrChunks, exitCode, thrown);
       }
 
-      const exitCode =
-        extractExitCode(thrown) || captureCtx.context.process.exitCode || 1;
-      throw buildSdkError(captureCtx.stderrChunks, exitCode, thrown);
-    }
+      await flushTelemetry();
 
-    await flushTelemetry();
+      // Check exit code (Stricli sets it without throwing for some errors)
+      if (captureCtx.context.process.exitCode !== 0) {
+        throw buildSdkError(
+          captureCtx.stderrChunks,
+          captureCtx.context.process.exitCode,
+        );
+      }
 
-    // Check exit code (Stricli sets it without throwing for some errors)
-    if (captureCtx.context.process.exitCode !== 0) {
-      throw buildSdkError(
-        captureCtx.stderrChunks,
-        captureCtx.context.process.exitCode
+      return parseOutput<T>(
+        captureCtx.getCapturedResult(),
+        captureCtx.stdoutChunks,
       );
-    }
-
-    return parseOutput<T>(
-      captureCtx.getCapturedResult(),
-      captureCtx.stdoutChunks
-    );
-  } finally {
-    await applyHeadersOption(undefined);
-    setEnv(process.env);
-  }
+    });
+  });
 }
 
 /**
@@ -474,8 +466,8 @@ function executeWithStream<T>(
   options: SentryOptions | undefined,
   executor: (
     captureCtx: CaptureContext,
-    span: Span | undefined
-  ) => Promise<void>
+    span: Span | undefined,
+  ) => Promise<void>,
 ): AsyncChannel<T> {
   const controller = new AbortController();
 
@@ -495,47 +487,48 @@ function executeWithStream<T>(
   });
 
   // Fire-and-forget — command runs in background
-  (async () => {
-    const env = buildIsolatedEnv(options);
+  const env = buildIsolatedEnv(options);
+  const invocation = withEnv(env, async () => {
     const cwd = options?.cwd ?? process.cwd();
-    setEnv(env);
 
     let captureCtx: CaptureContext | undefined;
     try {
-      await applyHeadersOption(options?.headers);
-      captureCtx = await buildCaptureContext(env, cwd, {
-        channel: channel as AsyncChannel<unknown>,
-        abortSignal: controller.signal,
-      });
+      const { withCustomHeadersOverride } = await import("./custom-headers.js");
+      await withCustomHeadersOverride(options?.headers, async () => {
+        captureCtx = await buildCaptureContext(env, cwd, {
+          channel: channel as AsyncChannel<unknown>,
+          abortSignal: controller.signal,
+        });
 
-      const { withTelemetry } = await import("./telemetry.js");
+        const { withTelemetry } = await import("./telemetry.js");
 
-      // biome-ignore lint/style/noNonNullAssertion: captureCtx is assigned on the line above
-      await withTelemetry(async (span) => executor(captureCtx!, span), {
-        libraryMode: true,
-      });
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- captureCtx is assigned on the line above
+        await withTelemetry(async (span) => await executor(captureCtx!, span), {
+          libraryMode: true,
+        });
 
-      // Check exit code — Stricli sets it without throwing for some errors
-      if (captureCtx.context.process.exitCode !== 0) {
-        channel.error(
-          buildSdkError(
-            captureCtx.stderrChunks,
-            captureCtx.context.process.exitCode
-          )
-        );
-      } else {
-        // Drain any raw stdout the command wrote directly (via stdout.write)
-        // instead of yielding via captureObject — e.g. a binary Uint8Array
-        // body. Without this, those bytes accumulate in stdoutChunks and are
-        // dropped when the channel closes. No streaming-capable command emits
-        // binary today, but this keeps the streaming path faithful to the
-        // capture path (see parseOutput) if one ever does.
-        const trailing = parseOutput<T>(undefined, captureCtx.stdoutChunks);
-        if (trailing !== undefined) {
-          channel.push(trailing);
+        // Check exit code — Stricli sets it without throwing for some errors
+        if (captureCtx.context.process.exitCode !== 0) {
+          channel.error(
+            buildSdkError(
+              captureCtx.stderrChunks,
+              captureCtx.context.process.exitCode,
+            ),
+          );
+        } else {
+          // Drain any raw stdout the command wrote directly (via stdout.write)
+          // instead of yielding via captureObject — e.g. a binary Uint8Array
+          // body. Without this, those bytes accumulate in stdoutChunks and are
+          // dropped when the channel closes. No streaming-capable command emits
+          // binary today, but this keeps the streaming path faithful to the
+          // capture path (see parseOutput) if one ever does.
+          const trailing = parseOutput<T>(undefined, captureCtx.stdoutChunks);
+          if (trailing !== undefined) {
+            channel.push(trailing);
+          }
+          channel.close();
         }
-        channel.close();
-      }
+      });
     } catch (thrown) {
       const stderrChunks = captureCtx?.stderrChunks ?? [];
       const exitCode =
@@ -547,10 +540,11 @@ function executeWithStream<T>(
       channel.error(err);
     } finally {
       await flushTelemetry();
-      await applyHeadersOption(undefined);
-      setEnv(process.env);
     }
-  })();
+  });
+  invocation.catch((error: unknown) => {
+    channel.error(error instanceof Error ? error : buildSdkError([], 1, error));
+  });
 
   return channel;
 }
@@ -569,8 +563,13 @@ export function buildInvoker(options?: SentryOptions) {
     commandPath: string[],
     flags: Record<string, unknown>,
     positionalArgs: string[],
-    meta?: { streaming?: boolean }
+    meta?: { streaming?: boolean },
   ): Promise<T> | AsyncIterable<T> {
+    // Usage hints read the command path Stricli's forCommand would set
+    const direct = {
+      commandPrefix: ["sentry", ...commandPath],
+      directInvoke: true,
+    };
     if (meta?.streaming) {
       return executeWithStream<T>(options, async (ctx, span) => {
         const { handler, flagDefs } = await resolveCommand(commandPath);
@@ -580,9 +579,9 @@ export function buildInvoker(options?: SentryOptions) {
         }
         const resolvedFlags = applyFlagDefaults(flags, flagDefs);
         await handler.call(
-          ctx.context,
+          { ...ctx.context, ...direct },
           { ...resolvedFlags, json: true },
-          ...positionalArgs
+          ...positionalArgs,
         );
       });
     }
@@ -595,9 +594,9 @@ export function buildInvoker(options?: SentryOptions) {
       }
       const resolvedFlags = applyFlagDefaults(flags, flagDefs);
       await handler.call(
-        ctx.context,
+        { ...ctx.context, ...direct },
         { ...resolvedFlags, json: true },
-        ...positionalArgs
+        ...positionalArgs,
       );
     });
   };
@@ -621,9 +620,10 @@ export function buildRunner(options?: SentryOptions) {
     if (hasStreamingFlag(args)) {
       return executeWithStream<unknown>(options, async (ctx, span) => {
         const { run: stricliRun } = await import("@stricli/core");
-        const { app } = await import("../app.js");
+        const { loadSdkApp } = await import("../sdk-app.js");
+        const { app } = await loadSdkApp(args);
         const { buildContext } = await import("../context.js");
-        // biome-ignore lint/suspicious/noExplicitAny: fakeProcess duck-types the process interface
+        // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
         const process_ = ctx.context.process as any;
         await stricliRun(app, args, buildContext(process_, span));
       });
@@ -631,9 +631,10 @@ export function buildRunner(options?: SentryOptions) {
 
     return executeWithCapture<unknown>(options, async (ctx, span) => {
       const { run: stricliRun } = await import("@stricli/core");
-      const { app } = await import("../app.js");
+      const { loadSdkApp } = await import("../sdk-app.js");
+      const { app } = await loadSdkApp(args);
       const { buildContext } = await import("../context.js");
-      // biome-ignore lint/suspicious/noExplicitAny: fakeProcess duck-types the process interface
+      // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
       const process_ = ctx.context.process as any;
       await stricliRun(app, args, buildContext(process_, span));
     });

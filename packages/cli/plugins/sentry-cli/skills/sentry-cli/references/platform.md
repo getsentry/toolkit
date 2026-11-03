@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-platform
-version: 0.47.0-dev.0
+version: 0.48.0-dev.0
 description: List valid Sentry platform identifiers
 requires:
   bins: ["sentry"]
@@ -26,9 +26,6 @@ sentry platform list
 
 # Filter by substring
 sentry platform list --search python
-
-# Shortcut for `sentry platform list`
-sentry platforms
 
 # Output as JSON
 sentry platform list --json

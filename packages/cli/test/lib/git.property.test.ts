@@ -27,7 +27,7 @@ describe("property: parseRemoteUrl", () => {
         const result = parseRemoteUrl(url);
         expect(result).toBe(`${owner}/${repo}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -38,7 +38,7 @@ describe("property: parseRemoteUrl", () => {
         const result = parseRemoteUrl(url);
         expect(result).toBe(`${owner}/${repo}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -49,7 +49,7 @@ describe("property: parseRemoteUrl", () => {
         const result = parseRemoteUrl(url);
         expect(result).toBe(`${owner}/${repo}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -60,7 +60,7 @@ describe("property: parseRemoteUrl", () => {
         const result = parseRemoteUrl(url);
         expect(result).toBe(`${owner}/${repo}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -68,19 +68,19 @@ describe("property: parseRemoteUrl", () => {
 describe("unit: parseRemoteUrl edge cases", () => {
   test("standard GitHub HTTPS", () => {
     expect(parseRemoteUrl("https://github.com/getsentry/cli.git")).toBe(
-      "getsentry/cli"
+      "getsentry/cli",
     );
   });
 
   test("standard GitHub SSH", () => {
     expect(parseRemoteUrl("git@github.com:getsentry/cli.git")).toBe(
-      "getsentry/cli"
+      "getsentry/cli",
     );
   });
 
   test("GitLab HTTPS", () => {
     expect(parseRemoteUrl("https://gitlab.com/my-group/my-project.git")).toBe(
-      "my-group/my-project"
+      "my-group/my-project",
     );
   });
 
@@ -90,13 +90,13 @@ describe("unit: parseRemoteUrl edge cases", () => {
 
   test("SSH with port (ssh:// protocol)", () => {
     expect(parseRemoteUrl("ssh://git@github.com:22/owner/repo.git")).toBe(
-      "owner/repo"
+      "owner/repo",
     );
   });
 
   test("SSH with port (no .git)", () => {
     expect(parseRemoteUrl("ssh://git@github.com:443/owner/repo")).toBe(
-      "owner/repo"
+      "owner/repo",
     );
   });
 

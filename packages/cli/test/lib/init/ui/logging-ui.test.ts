@@ -82,7 +82,7 @@ describe("LoggingUI lifecycle messages", () => {
         '$ sentry cli feedback "sentry init was cancelled"',
         "",
         "",
-      ].join("\n")
+      ].join("\n"),
     );
     expect(stderr()).toBe("");
   });
@@ -177,28 +177,28 @@ describe("LoggingUI spinner", () => {
 describe("LoggingUI prompts throw", () => {
   test("select rejects with LoggingUIPromptError", async () => {
     const { ui } = createUI();
-    expect(
+    await expect(
       ui.select({
         message: "Pick one",
         options: [{ value: "a", label: "A" }],
-      })
+      }),
     ).rejects.toBeInstanceOf(LoggingUIPromptError);
   });
 
   test("multiselect rejects with LoggingUIPromptError", async () => {
     const { ui } = createUI();
-    expect(
+    await expect(
       ui.multiselect({
         message: "Pick many",
         options: [{ value: "a", label: "A" }],
-      })
+      }),
     ).rejects.toBeInstanceOf(LoggingUIPromptError);
   });
 
   test("confirm rejects with LoggingUIPromptError", async () => {
     const { ui } = createUI();
-    expect(ui.confirm({ message: "Sure?" })).rejects.toBeInstanceOf(
-      LoggingUIPromptError
+    await expect(ui.confirm({ message: "Sure?" })).rejects.toBeInstanceOf(
+      LoggingUIPromptError,
     );
   });
 
@@ -242,7 +242,7 @@ describe("LoggingUI disposal", () => {
       ui.intro("hi");
     }
     expect(stripAnsi(Buffer.concat(stdoutChunks).toString("utf-8"))).toBe(
-      "hi\n"
+      "hi\n",
     );
   });
 });

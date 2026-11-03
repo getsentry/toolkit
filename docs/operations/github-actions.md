@@ -1,6 +1,8 @@
 # GitHub Actions
 
-CI/CD workflows for the Sentry MCP project.
+Toolkit CI covers the CLI, MCP, and shared packages. The Cloudflare deployment
+workflows below serve the MCP and Docs MCP Workers; CLI release and docs
+workflows are listed in the [CLI guide](../cli/README.md).
 
 `pnpm build` builds the MCP workspace; `pnpm build:cli` builds the imported CLI
 and docs when `SENTRY_CLIENT_ID` is available.
@@ -8,6 +10,7 @@ and docs when `SENTRY_CLIENT_ID` is available.
 ## Workflows
 
 ### test.yml
+
 Runs on pushes to `main`, pull requests, and merge queue entries. Discovery
 reads pnpm workspace projects and their package scripts. Pull requests check
 changed projects, their workspace consumers, and semantic dependencies (the CLI
@@ -15,10 +18,14 @@ docs depend on `sentry`). Root-level changes and non-PR events check every
 enabled project. Each project has its own build, lint, typecheck, test, policy,
 and E2E steps when those scripts exist. The always-present `test` job checks
 discovery, installation, repository quality, and every selected project.
-Package-specific exceptions live in `package.json#sentryCi`; the standalone
-smoke-test suite remains in its own workflow.
+It is the required status check for `main` and `release/**`, so no other
+job may use the check name `test`: GitHub would accept that check in its place.
+Package-specific checks and exceptions live in `package.json#sentryCi`; see
+[Package CI checks](#package-ci-checks). The standalone smoke-test suite remains
+in its own workflow.
 
 ### deploy.yml
+
 Runs after a successful `Test` push run on `main`. Checks out the tested commit
 and requires that it is still the tip of `main`. Builds once, records the active
 production version, and uploads one new version of `sentry-mcp` from Vite's
@@ -31,7 +38,26 @@ version to 100% and repeat the smoke tests. On failure,
 it restores the exact captured prior version only if the live deployments still
 belong to this run.
 
+Cloudflare can list the previous deployment first for a few seconds after a
+deploy succeeds, so every check that follows a deploy re-reads the deployment
+list for up to 30 seconds. Recovery fails rather than passing when Wrangler
+staged a candidate that Cloudflare never lists. A leftover stage (one version
+at 100%, the candidate at 0%) counts as its 100% version, so the next
+deployment can replace it. Failure messages name the check that failed.
+
+### deploy-docs-mcp.yml
+
+Uses the same successful `Test` push gate, tested `main` revision, and protected
+`production` secrets to deploy the existing private `docs-mcp` Worker. It uploads
+without moving traffic, checks that production is unchanged, activates the exact
+version, and verifies its ID, ownership marker, and 100% traffic in Cloudflare.
+It preserves runtime variables and secrets and keeps public URLs disabled.
+Private service-binding functionality must be checked through a real consumer.
+Disconnect the old Init Workers Builds connection before merging this workflow
+for its first deployment. See the [Docs MCP cutover guide](../../apps/docs-mcp/README.md#deployment-ownership).
+
 ### recover-cloudflare-deployment.yml
+
 Manual `workflow_dispatch` recovery accepts a deployment run ID and attempt.
 It runs trusted current-`main` code in the protected `production` environment,
 checks the completed source run, and derives the prior version from contiguous
@@ -45,15 +71,18 @@ only its 404 response. When the route exists, the smoke test compares its
 version ID with the restored version.
 
 ### migrate-cloudflare-token.yml
+
 Moves the Cloudflare API token from a repository secret into the protected
 `production` environment. Only `main` in the Toolkit repository can run it.
 Copy and removal are separate dispatches so a normal production deployment can
 prove that the environment copy works before the repository copy is deleted.
 
 ### eval.yml
+
 Runs evaluation tests against the MCP server.
 
 ### pr-risk-jev.yml
+
 Classifies PR risk with Jev and publishes one `risk: low`, `risk: medium`, or
 `risk: high` label. Runs when a non-draft PR is opened, updated with a push,
 reopened, marked ready for review, or edited. Manual dispatch accepts a PR number
@@ -67,9 +96,56 @@ are cleared and the PR stays unclassified. Results are retained as workflow
 artifacts for 30 days.
 
 ### pr-risk-labels-test.yml
+
 Runs the label publisher's regression tests when its workflow or tests change.
 Covers label replacement, stale revisions, failed classifications, and concurrent
 label creation.
+
+## Package CI checks
+
+Add a check for one workspace package to that package's `package.json`, not to
+a new workflow. `scripts/ci-projects.mjs` reads each package's scripts and its
+`sentryCi` object, and `test.yml` runs the result for every pull request that
+changes the package or one of its workspace dependencies. A path-filtered
+workflow for one package duplicates that selection and is not a required check.
+
+Each step runs a package script. Without a `sentryCi` override, the first
+script that exists is used:
+
+| Field        | Default scripts                | Notes                                                                           |
+| ------------ | ------------------------------ | ------------------------------------------------------------------------------- |
+| `prepare`    | `ci:prepare`                   | Runs before the build.                                                          |
+| `build`      | `build`                        |                                                                                 |
+| `lint`       | `lint`                         |                                                                                 |
+| `typecheck`  | `typecheck`, `tsc`, `check`    |                                                                                 |
+| `test`       | `test:ci`, `test:unit`, `test` |                                                                                 |
+| `policy`     | `ci:policy`                    |                                                                                 |
+| `e2e`        | `ci:e2e`, `test:e2e`           | Runs on Node 24 after the other steps.                                          |
+| `npmRuntime` | none                           | Runs the script, packs the package, and runs its binary on Node 20, 22, and 24. |
+
+Set a field to a script name to override it, or to `false` to skip it. The
+other fields are:
+
+- `coverage`, `junit`: report paths the job verifies, or `false`.
+- `dependencies`: extra workspace packages whose changes select this one.
+- `enabled`: `false` removes the package from the matrix.
+- `roles`: names that `node scripts/ci-projects.mjs --roles NAME` resolves to
+  the package name and path, so a specialized workflow need not hard-code them.
+
+For example, `@sentry/logger` checks its packed tarball from a clean consumer
+project:
+
+```json
+{
+  "sentryCi": { "e2e": "test:package" },
+  "scripts": { "test:package": "bash test/package/check.sh" }
+}
+```
+
+A new workflow fits only when the matrix job cannot run the check: another
+operating system, a deployment, secrets, or pull request comments and labels.
+`scripts/workflow-policy.test.mjs` fails for a workflow that runs on pull
+requests unless its list names that workflow and the reason.
 
 ## Required Secrets
 
@@ -94,18 +170,20 @@ Other configuration:
 ## Deployment Architecture
 
 ### Workers
+
 - **`sentry-mcp`** - Production worker at `https://mcp.sentry.dev`
 - The candidate is tested on the production Worker at 0% traffic before promotion.
 
 ### Resource Isolation
+
 The existing canary Worker has separate resources; exact-version rollout does
 not deploy it. The production candidate uses the production bindings:
 
-| Resource | Production | Canary |
-|----------|------------|---------|
-| KV Namespace | `8dd5e9bafe1945298e2d5ca3b408a553` | `a3fe0d23b2d34416930e284362a88a3b` |
-| Rate Limiter IDs | `1001`, `1002`, `1003`, `1004` | `2001`, `2002`, `2003`, `2004` |
-| Wrangler Config | `wrangler.jsonc` | `wrangler.canary.jsonc` |
+| Resource         | Production                         | Canary                             |
+| ---------------- | ---------------------------------- | ---------------------------------- |
+| KV Namespace     | `8dd5e9bafe1945298e2d5ca3b408a553` | `a3fe0d23b2d34416930e284362a88a3b` |
+| Rate Limiter IDs | `1001`, `1002`, `1003`, `1004`     | `2001`, `2002`, `2003`, `2004`     |
+| Wrangler Config  | `wrangler.jsonc`                   | `wrangler.canary.jsonc`            |
 
 ### Deployment Flow
 
@@ -116,11 +194,12 @@ confirm the restored version fails the job rather than guessing a recovery.
 ## Manual Deployment
 
 Manual dispatch cannot deploy a new revision. Use a reviewed change and its
-passing `Test` run to deploy. To restore an owned deployment after its runner
-has stopped, dispatch `Recover Cloudflare Deployment` from `main` with the
-failed deployment run ID and attempt. Verify the active Cloudflare version and
-live smoke-test result; if ownership has changed, investigate rather than
-retrying against mutable history. Never run bare `wrangler rollback`.
+passing `Test` run to deploy. For the main `sentry-mcp` Worker, restore an owned
+deployment after its runner has stopped by dispatching `Recover Cloudflare
+Deployment` from `main` with the failed deployment run ID and attempt. Verify
+the active Cloudflare version and live smoke-test result; if ownership has
+changed, investigate rather than retrying against mutable history. This recovery
+workflow does not target Docs MCP. Never run bare `wrangler rollback`.
 
 ## Cloudflare token migration
 

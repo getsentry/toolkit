@@ -6,10 +6,15 @@
  */
 
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
+import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
+import { logger } from "../../../src/lib/logger.js";
 import { Hono } from "hono";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   buildApp,
+  consumeSSE,
+  configureExistingRetention,
   feedSSELine,
   isServerRunning,
   parsePort,
@@ -35,7 +40,8 @@ type ServeFunc = (
     format: "human" | "json";
     attributes: boolean;
     open: boolean;
-  }
+    session?: string;
+  },
 ) => Promise<void>;
 
 function interceptShutdownSignal() {
@@ -44,7 +50,7 @@ function interceptShutdownSignal() {
   const originalOnce = process.once.bind(process);
   const onSpy = vi.spyOn(process, "on").mockImplementation(((
     event: string,
-    listener: () => void
+    listener: () => void,
   ) => {
     if (event === "SIGINT") {
       handler = listener;
@@ -54,7 +60,7 @@ function interceptShutdownSignal() {
   }) as typeof process.on);
   const onceSpy = vi.spyOn(process, "once").mockImplementation(((
     event: string,
-    listener: () => void
+    listener: () => void,
   ) => {
     if (event === "SIGINT") {
       handler = listener;
@@ -76,6 +82,133 @@ function interceptShutdownSignal() {
     },
   };
 }
+
+test("reports the scoped SSE endpoint without leaking its capability on initial attach failure", async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(null, { status: 401 }));
+  const writes: string[] = [];
+  const spy = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((chunk: string | Uint8Array) => {
+      writes.push(chunk.toString());
+      return true;
+    });
+  try {
+    await consumeSSE({
+      url: "http://127.0.0.1:8969",
+      streamUrl:
+        "http://127.0.0.1:8969/_local/v1/sessions/session-id/stream?cap=fixture-secret",
+      activeFilters: new Set(),
+      signal: new AbortController().signal,
+    });
+  } finally {
+    globalThis.fetch = savedFetch;
+    spy.mockRestore();
+  }
+  expect(writes.join("")).toContain("/_local/v1/sessions/session-id/stream");
+  expect(writes.join("")).not.toContain("fixture-secret");
+});
+
+test.each([
+  { quiet: false, closedBeforeAttach: true },
+  { quiet: true, closedBeforeAttach: true },
+  { quiet: false, closedBeforeAttach: false },
+  { quiet: true, closedBeforeAttach: false },
+])(
+  "stops a scoped tail on Close ($quiet quiet, $closedBeforeAttach already closed)",
+  async ({ quiet, closedBeforeAttach }) => {
+    const plane = createLocalControlPlane({ controlToken: "tail-test" });
+    const session = plane.sessionStore.create({
+      label: "saved",
+      cwd: "/saved",
+    });
+    const { ingest, stream } = plane.sessionStore.getCapabilities(session.id);
+    const base = `http://localhost:8969/_local/v1/sessions/${session.id}`;
+    await plane.app.request(`${base}/ingest/${ingest}`, {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: '{"event_id":"saved"}\n{"type":"event"}\n{"message":"saved event"}',
+    });
+    if (closedBeforeAttach) plane.sessionStore.close(session.id);
+    const savedFetch = globalThis.fetch;
+    let requests = 0;
+    globalThis.fetch = async (input, init) => {
+      requests += 1;
+      const url = input instanceof Request ? input.url : input.toString();
+      const response = await plane.app.request(url, init);
+      if (!closedBeforeAttach)
+        queueMicrotask(() => plane.sessionStore.close(session.id));
+      return response;
+    };
+    const output: string[] = [];
+    const stdout = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk) => {
+        output.push(chunk.toString());
+        return true;
+      });
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      await consumeSSE({
+        url: "http://localhost:8969",
+        streamUrl: `${base}/stream?cap=${stream}`,
+        activeFilters: new Set(),
+        signal: AbortSignal.timeout(1200),
+        useJson: true,
+        quiet,
+      });
+      expect(requests).toBe(1);
+      expect(info.mock.calls.flat().join(" ")).not.toContain("reconnecting");
+      if (quiet) expect(output).toHaveLength(0);
+      else {
+        expect(output).toHaveLength(1);
+        expect(output.join("")).toContain("saved event");
+      }
+    } finally {
+      globalThis.fetch = savedFetch;
+      stdout.mockRestore();
+      info.mockRestore();
+    }
+  },
+);
+
+test("keeps reading after a retained reset notification until Close", async () => {
+  const savedFetch = globalThis.fetch;
+  const envelope = [{}, [[{ type: "event" }, { message: "after reset" }]]];
+  globalThis.fetch = async () =>
+    new Response(
+      [
+        'event: sentry.local.session\ndata: {"state":"retained","action":"reset"}\n\n',
+        `event: application/x-sentry-envelope\ndata: ${JSON.stringify(envelope)}\n\n`,
+        'event: sentry.local.session\ndata: {"state":"retained"}\n\n',
+      ].join(""),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  const output: string[] = [];
+  const stdout = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation((chunk) => {
+      output.push(chunk.toString());
+      return true;
+    });
+  const signal = AbortSignal.timeout(1000);
+  try {
+    await consumeSSE({
+      url: "http://localhost:8969",
+      activeFilters: new Set(),
+      signal,
+      useJson: true,
+    });
+    expect(signal.aborted).toBe(false);
+    expect(output).toHaveLength(1);
+    expect(output.join("")).toContain("after reset");
+  } finally {
+    globalThis.fetch = savedFetch;
+    stdout.mockRestore();
+  }
+});
 
 describe("parsePort", () => {
   test("parses valid port numbers", () => {
@@ -102,6 +235,22 @@ describe("parsePort", () => {
 });
 
 describe("sentry local serve --open", () => {
+  let info: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    info = vi.spyOn(logger, "info").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    info.mockRestore();
+  });
+  function expectViewerHint() {
+    const hints = info.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.startsWith("View events at "));
+    expect(hints).toHaveLength(1);
+    const url = new URL(hints[0]!.slice("View events at ".length));
+    expect(url.origin).toBe("https://local.sentry.dev");
+    expect(new URL(url.searchParams.get("url")!).pathname).toBe("/stream");
+  }
   const flags = {
     host: "127.0.0.1",
     quiet: true,
@@ -110,6 +259,57 @@ describe("sentry local serve --open", () => {
     attributes: false,
     open: true,
   };
+
+  test("scoped serve opens the viewer with explicit session discovery", async () => {
+    const daemon = await import("../../../src/commands/local/daemon.js");
+    const { server, port } = await tryListen(
+      buildApp(createSpotlightBuffer(5)),
+      0,
+      "127.0.0.1",
+    );
+    const streamUrl = `http://127.0.0.1:${port}/stream`;
+    const directoryUrl = `http://127.0.0.1:${port}/_local/v1/ui/sessions?cap=directory-secret`;
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        id: "web",
+        cwd: "/web",
+        label: "web",
+        streamUrl,
+        ingestUrl: streamUrl,
+        directoryUrl,
+      });
+    const retain = vi
+      .spyOn(daemon, "retainLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const signal = interceptShutdownSignal();
+    const opener = vi.mocked(openBrowser);
+    opener.mockClear();
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+    try {
+      const command = func.call(
+        { cwd: "/web" },
+        { ...flags, port, session: "web" },
+      );
+      await vi.waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
+      signal.trigger();
+      await command;
+      expectViewerHint();
+      const url = new URL(opener.mock.calls[0]![0]);
+      expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
+        directoryUrl,
+      );
+      expect(url.search).toBe("");
+    } finally {
+      signal.restore();
+      create.mockRestore();
+      retain.mockRestore();
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  });
 
   test("opens the UI after starting an owned receiver", async () => {
     const signal = interceptShutdownSignal();
@@ -122,14 +322,15 @@ describe("sentry local serve --open", () => {
       await vi.waitFor(() => expect(openBrowserMock).toHaveBeenCalledTimes(1));
       signal.trigger();
       await command;
+      expectViewerHint();
     } finally {
       signal.restore();
     }
 
     expect(openBrowserMock).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/
-      )
+        /^http:\/\/localhost:5173\/#stream=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fstream$/,
+      ),
     );
   });
 
@@ -147,7 +348,7 @@ describe("sentry local serve --open", () => {
     const { server, port } = await tryListen(
       buildApp(createSpotlightBuffer(10)),
       0,
-      "127.0.0.1"
+      "127.0.0.1",
     );
     const func = (await serverCommand.loader()) as unknown as ServeFunc;
 
@@ -156,6 +357,7 @@ describe("sentry local serve --open", () => {
       await vi.waitFor(() => expect(openBrowserMock).toHaveBeenCalledTimes(1));
       signal.trigger();
       await command;
+      expectViewerHint();
     } finally {
       signal.restore();
       globalThis.fetch = savedFetch;
@@ -163,7 +365,7 @@ describe("sentry local serve --open", () => {
     }
 
     expect(openBrowserMock).toHaveBeenCalledWith(
-      `http://localhost:5173/#stream=http%3A%2F%2F127.0.0.1%3A${port}%2Fstream`
+      `http://localhost:5173/#stream=http%3A%2F%2F127.0.0.1%3A${port}%2Fstream`,
     );
   });
 });
@@ -179,7 +381,7 @@ describe("feedSSELine", () => {
     feedSSELine(
       "event: application/x-sentry-envelope",
       state,
-      (type, data, id) => events.push({ type, data, id })
+      (type, data, id) => events.push({ type, data, id }),
     );
     expect(state.eventType).toBe("application/x-sentry-envelope");
     expect(events).toHaveLength(0);
@@ -189,7 +391,7 @@ describe("feedSSELine", () => {
     const state = makeState();
     const events: Array<{ type: string; data: string; id: string }> = [];
     feedSSELine("data: hello", state, (type, data, id) =>
-      events.push({ type, data, id })
+      events.push({ type, data, id }),
     );
     expect(state.dataLines).toEqual(["hello"]);
     expect(events).toHaveLength(0);
@@ -199,7 +401,7 @@ describe("feedSSELine", () => {
     const state = makeState();
     const events: Array<{ type: string; data: string; id: string }> = [];
     feedSSELine("id: abc-123", state, (type, data, id) =>
-      events.push({ type, data, id })
+      events.push({ type, data, id }),
     );
     expect(state.id).toBe("abc-123");
   });
@@ -318,6 +520,136 @@ async function readFirstSSEEvent(streamPath: string): Promise<string> {
 }
 
 describe("buildApp", () => {
+  test("hosted retention updates preserve standalone data and leave other controls blocked", async () => {
+    const retention = createLocalRetentionBuffer(500);
+    const app = buildApp(retention.buffer, { uiActions: true, retention });
+    await app.request("/stream", {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: TEST_ENVELOPE,
+    });
+    const before = retention.buffer.read({ all: true });
+    const origin = "https://local.sentry.dev";
+    const preflight = await app.request("/retention", {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(preflight.headers.get("Access-Control-Allow-Private-Network")).toBe(
+      "true",
+    );
+    const updated = await app.request("/retention", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: '{"maxEnvelopes":50000}',
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    expect(await updated.json()).toMatchObject({
+      maxEnvelopes: 50000,
+      retainedEnvelopes: 1,
+    });
+    for (const value of [-1, 0, 1.5, 50001, "1000", null]) {
+      expect(
+        (
+          await app.request("/retention", {
+            method: "POST",
+            headers: { Origin: origin },
+            body: JSON.stringify({ maxEnvelopes: value }),
+          })
+        ).status,
+      ).toBe(400);
+    }
+    expect(retention.buffer.read({ all: true })).toEqual(before);
+    expect(
+      (
+        await app.request("/clear", {
+          method: "DELETE",
+          headers: { Origin: origin },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await app.request("/retention", {
+          method: "POST",
+          headers: { Origin: "https://evil.example" },
+          body: '{"maxEnvelopes":1000}',
+        })
+      ).status,
+    ).toBe(403);
+    const disabled = buildApp(retention.buffer, {
+      uiActions: false,
+      retention,
+    });
+    expect(
+      (
+        await disabled.request("/retention", {
+          method: "POST",
+          headers: { Origin: origin },
+          body: '{"maxEnvelopes":1000}',
+        })
+      ).status,
+    ).toBe(403);
+  });
+
+  test("changes legacy retention only when explicit and preserves history on rejected decreases", async () => {
+    const retention = createLocalRetentionBuffer(2);
+    const app = buildApp(retention.buffer, { uiActions: true, retention });
+    await app.request("/stream", {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: TEST_ENVELOPE,
+    });
+    const retained = retention.buffer.read({ all: true });
+    for (const origin of ["https://example.com"]) {
+      expect(
+        (
+          await app.request("/retention", {
+            method: "POST",
+            headers: { Origin: origin },
+            body: '{"maxEnvelopes":1000}',
+          })
+        ).status,
+      ).toBe(403);
+    }
+    const fetchMock = vi.fn(
+      async (url: string, init?: RequestInit) =>
+        await app.request(new URL(url).pathname, init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await configureExistingRetention("http://127.0.0.1:8969");
+      expect(fetchMock).not.toHaveBeenCalled();
+      await configureExistingRetention("http://127.0.0.1:8969", 1000);
+      expect(retention.getSettings().maxEnvelopes).toBe(1000);
+      expect(retention.buffer.read({ all: true })).toEqual(retained);
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 0),
+      ).rejects.toThrow(/integer/);
+      fetchMock.mockImplementation(
+        async () => new Response("{}", { status: 200 }),
+      );
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 2000),
+      ).rejects.toThrow(/did not confirm/);
+      fetchMock.mockImplementation(
+        async () => new Response(null, { status: 404 }),
+      );
+      await expect(
+        configureExistingRetention("http://127.0.0.1:8969", 2000),
+      ).rejects.toThrow(/does not support/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("health endpoint returns OK", async () => {
     const buffer = createSpotlightBuffer(10);
     const app = buildApp(buffer);
@@ -412,7 +744,7 @@ describe("buildApp", () => {
       headers: { Origin: "http://localhost:3000" },
     });
     expect(res.headers.get("access-control-allow-origin")).toBe(
-      "http://localhost:3000"
+      "http://localhost:3000",
     );
   });
 
@@ -424,7 +756,7 @@ describe("buildApp", () => {
       headers: { Origin: "https://local.sentry.dev" },
     });
     expect(res.headers.get("access-control-allow-origin")).toBe(
-      "https://local.sentry.dev"
+      "https://local.sentry.dev",
     );
     if (res.body) {
       await res.body.cancel();
@@ -489,13 +821,13 @@ describe("buildApp", () => {
       },
     });
     expect(res.headers.get("access-control-allow-headers")).toContain(
-      "Last-Event-ID"
+      "Last-Event-ID",
     );
     expect(res.headers.get("access-control-allow-private-network")).toBe(
-      "true"
+      "true",
     );
     expect(res.headers.get("vary")).toContain(
-      "Access-Control-Request-Private-Network"
+      "Access-Control-Request-Private-Network",
     );
   });
 
@@ -530,7 +862,7 @@ describe("buildApp", () => {
 
     expect((await app.request("/capabilities")).status).toBe(403);
     expect((await app.request("/clear", { method: "DELETE" })).status).toBe(
-      403
+      403,
     );
   });
 
@@ -658,7 +990,7 @@ describe("isServerRunning", () => {
 
     try {
       await expect(isServerRunning(`http://127.0.0.1:${port}`)).resolves.toBe(
-        true
+        true,
       );
     } finally {
       globalThis.fetch = savedFetch;

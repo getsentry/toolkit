@@ -8,11 +8,13 @@ import {
   parseStatusFlag,
   resolveMetricDataset,
   statusToMetricValue,
+  parseIssueConditions,
   triggerLogicType,
-  validateIssueRuleArrays,
+  validateIssueActions,
+  validateIssueTriggers,
   validateMetricDataset,
   validateMetricTimeWindow,
-  validateMetricTriggers,
+  parseWorkflowIds,
 } from "../../../src/commands/alert/mutation-utils.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 
@@ -119,6 +121,30 @@ describe("parseJsonObjectList", () => {
     ]);
   });
 
+  test("reads comma-joined objects as an array", () => {
+    expect(parseJsonObjectList(['{"a":1},{"b":2}'], "test")).toEqual([
+      { a: 1 },
+      { b: 2 },
+    ]);
+    expect(parseJsonObjectList(['{"a":1},{"b":2}', '{"c":3}'], "test")).toEqual(
+      [{ a: 1 }, { b: 2 }, { c: 3 }],
+    );
+  });
+
+  test("hints at stripped quotes without guessing the value", () => {
+    // From CLI-1ZD: `targetIdentifier` may have been the string "5096157".
+    const error = validationError(() =>
+      parseJsonObjectList(
+        [
+          "{type:email,data:{},config:{targetType:user,targetIdentifier:5096157}}",
+        ],
+        "action",
+      ),
+    );
+    expect(error.field).toBe("action");
+    expect(error.message).toContain("stripped the double quotes");
+  });
+
   test("throws ValidationError for invalid JSON", () => {
     try {
       parseJsonObjectList(["not-json"], "test");
@@ -138,53 +164,132 @@ describe("parseJsonObjectList", () => {
   });
 });
 
-describe("validateIssueRuleArrays", () => {
-  test("throws for undefined conditions", () => {
-    try {
-      validateIssueRuleArrays(undefined, [{ id: "a" }], "conditions");
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+/** A trigger condition as the workflows API takes it. */
+function trigger(type: string) {
+  return { type, comparison: true, conditionResult: true };
+}
+
+/** The ValidationError a call throws, or fails the test. */
+function validationError(run: () => unknown): ValidationError {
+  try {
+    run();
+  } catch (error) {
+    expect(error).toBeInstanceOf(ValidationError);
+    return error as ValidationError;
+  }
+  return expect.unreachable("should have thrown");
+}
+
+// Inputs below are real `--condition` values from CLI-1ZD.
+describe("parseIssueConditions", () => {
+  test("passes JSON through unchanged", () => {
+    expect(
+      parseIssueConditions([
+        '{"type":"first_seen_event","comparison":true,"conditionResult":true}',
+      ]),
+    ).toEqual([trigger("first_seen_event")]);
+    expect(parseIssueConditions(["[]"])).toEqual([]);
+    expect(parseIssueConditions(undefined)).toBeUndefined();
   });
 
-  test("throws for empty conditions", () => {
-    try {
-      validateIssueRuleArrays([], [{ id: "a" }], "conditions");
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+  test.each([
+    ["first-seen", ["first_seen_event"]],
+    ["first_seen_event", ["first_seen_event"]],
+    ["Regression", ["regression_event"]],
+    ["resolved", ["issue_resolved_trigger"]],
+    ["new-high-priority", ["new_high_priority_issue"]],
+    ["every-event", ["every_event"]],
+    ["first-seen, regression", ["first_seen_event", "regression_event"]],
+  ])("expands trigger name %j", (raw, types) => {
+    expect(parseIssueConditions([raw])).toEqual(types.map(trigger));
   });
 
-  test("throws for undefined actions", () => {
-    try {
-      validateIssueRuleArrays([{ id: "a" }], undefined, "actions");
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+  test("expands repeated trigger names", () => {
+    expect(parseIssueConditions(["first-seen", "reappeared"])).toEqual([
+      trigger("first_seen_event"),
+      trigger("reappeared_event"),
+    ]);
   });
 
-  test("throws for empty actions", () => {
-    try {
-      validateIssueRuleArrays([{ id: "a" }], [], "actions");
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+  test("restores trigger JSON whose quotes the shell stripped", () => {
+    expect(
+      parseIssueConditions([
+        "{type:first_seen_event,comparison:true,conditionResult:true}",
+      ]),
+    ).toEqual([trigger("first_seen_event")]);
+    expect(
+      parseIssueConditions([
+        "{type:first_seen_event,comparison:true,conditionResult:true},{type:regression_event,comparison:true,conditionResult:true}",
+      ]),
+    ).toEqual([trigger("first_seen_event"), trigger("regression_event")]);
+    expect(parseIssueConditions(["[{type: reappeared_event}]"])).toEqual([
+      trigger("reappeared_event"),
+    ]);
   });
 
-  test("passes for non-empty conditions", () => {
+  test.each([
+    // Not a boolean trigger: its other fields could have been strings.
+    "{type:event_frequency_count,comparison:{value:50,interval:1d}}",
+    // A false comparison is not what the name alone means.
+    "{type:first_seen_event,comparison:false}",
+    // Unknown keys may carry meaning the canonical object drops.
+    "{type:first_seen_event,extra:1}",
+    "{type:first_seen}",
+  ])("refuses quote-stripped JSON it cannot restore exactly: %s", (raw) => {
+    const error = validationError(() => parseIssueConditions([raw]));
+    expect(error.field).toBe("condition");
+    expect(error.message).toContain("stripped the double quotes");
+    expect(error.message).toContain("first-seen, regression");
+  });
+
+  test("lists trigger names for an unknown name", () => {
+    const error = validationError(() => parseIssueConditions(["first-sen"]));
+    expect(error.message).toContain(
+      'condition must be valid JSON (got "first-sen")',
+    );
+    expect(error.message).not.toContain("stripped");
+    expect(error.message).toContain("first-seen, regression");
+  });
+});
+
+describe("validateIssueTriggers", () => {
+  test("passes with triggers", () => {
     expect(() =>
-      validateIssueRuleArrays([{ id: "a" }], undefined, "conditions")
+      validateIssueTriggers([trigger("first_seen_event")], undefined),
     ).not.toThrow();
+  });
+
+  test.each([undefined, []])(
+    "passes without triggers (%j) when filters are given",
+    (conditions) => {
+      expect(() =>
+        validateIssueTriggers(conditions, [{ type: "event_frequency_count" }]),
+      ).not.toThrow();
+    },
+  );
+
+  test.each([
+    [undefined, undefined],
+    [[], []],
+  ])("throws without triggers or filters (%j, %j)", (conditions, filters) => {
+    const error = validationError(() =>
+      validateIssueTriggers(conditions, filters),
+    );
+    expect(error.field).toBe("condition");
+    expect(error.message).toContain("--filter");
+    expect(error.message).toContain("first-seen");
+  });
+});
+
+describe("validateIssueActions", () => {
+  test.each([undefined, []])("throws for %j actions", (actions) => {
+    expect(validationError(() => validateIssueActions(actions)).field).toBe(
+      "action",
+    );
   });
 
   test("passes for non-empty actions", () => {
-    expect(() =>
-      validateIssueRuleArrays(undefined, [{ id: "a" }], "actions")
-    ).not.toThrow();
+    expect(() => validateIssueActions([{ id: "a" }])).not.toThrow();
   });
 });
 
@@ -226,15 +331,12 @@ describe("normalizeMetricDataset", () => {
     expect(normalizeMetricDataset("  Error-Events  ")).toBe("errors");
   });
 
-  test.each([
-    "errors",
-    "sessions",
-    "events",
-    "spans",
-    "metrics",
-  ])('passes canonical value "%s" through unchanged', (value) => {
-    expect(normalizeMetricDataset(value)).toBe(value);
-  });
+  test.each(["errors", "sessions", "events", "spans", "metrics"])(
+    'passes canonical value "%s" through unchanged',
+    (value) => {
+      expect(normalizeMetricDataset(value)).toBe(value);
+    },
+  );
 
   test("lowercases unknown values but leaves them otherwise unchanged", () => {
     expect(normalizeMetricDataset("Unknown")).toBe("unknown");
@@ -267,18 +369,16 @@ describe("resolveMetricDataset", () => {
     });
   });
 
-  test.each([
-    "transaction",
-    "transactions",
-    "Transactions",
-    "  TRANSACTION ",
-  ])('routes "%s" to spans and adds is_transaction:true with a notice', (input) => {
-    const result = resolveMetricDataset(input, "environment:prod");
-    expect(result.dataset).toBe("spans");
-    expect(result.query).toBe("environment:prod is_transaction:true");
-    expect(result.notice).toContain("spans");
-    expect(result.notice).toContain("is_transaction:true");
-  });
+  test.each(["transaction", "transactions", "Transactions", "  TRANSACTION "])(
+    'routes "%s" to spans and adds is_transaction:true with a notice',
+    (input) => {
+      const result = resolveMetricDataset(input, "environment:prod");
+      expect(result.dataset).toBe("spans");
+      expect(result.query).toBe("environment:prod is_transaction:true");
+      expect(result.notice).toContain("spans");
+      expect(result.notice).toContain("is_transaction:true");
+    },
+  );
 
   test("adds the filter to an empty query", () => {
     const result = resolveMetricDataset("transactions", "");
@@ -289,14 +389,14 @@ describe("resolveMetricDataset", () => {
   test("does not duplicate an existing is_transaction:true filter", () => {
     const result = resolveMetricDataset(
       "transactions",
-      "environment:prod is_transaction:true"
+      "environment:prod is_transaction:true",
     );
     expect(result.query).toBe("environment:prod is_transaction:true");
   });
 });
 
 describe("validateMetricDataset", () => {
-  const valid = ["errors", "sessions", "events", "spans", "metrics"];
+  const valid = ["errors", "sessions", "events", "spans", "logs", "metrics"];
 
   for (const dataset of valid) {
     test(`passes for "${dataset}"`, () => {
@@ -304,14 +404,12 @@ describe("validateMetricDataset", () => {
     });
   }
 
-  test.each([
-    "error",
-    "error-events",
-    "METRIC",
-    "span",
-  ])('passes for alias "%s"', (dataset) => {
-    expect(() => validateMetricDataset(dataset)).not.toThrow();
-  });
+  test.each(["error", "error-events", "METRIC", "span", "log"])(
+    'passes for alias "%s"',
+    (dataset) => {
+      expect(() => validateMetricDataset(dataset)).not.toThrow();
+    },
+  );
 
   test.each([
     "tracemetrics",
@@ -352,58 +450,17 @@ describe("validateMetricTimeWindow", () => {
   });
 });
 
-describe("validateMetricTriggers", () => {
-  test("throws for undefined triggers", () => {
-    try {
-      validateMetricTriggers(undefined);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+describe("parseWorkflowIds", () => {
+  test("returns undefined when absent", () => {
+    expect(parseWorkflowIds(undefined)).toBeUndefined();
   });
 
-  test("throws for empty triggers", () => {
-    try {
-      validateMetricTriggers([]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
+  test("splits repeatable and comma-separated ids", () => {
+    expect(parseWorkflowIds(["12,34", "56"])).toEqual([12, 34, 56]);
   });
 
-  test("throws for missing alertThreshold", () => {
-    try {
-      validateMetricTriggers([{ actions: [{ id: "a" }] }]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("throws for missing actions array", () => {
-    try {
-      validateMetricTriggers([{ alertThreshold: 100 }]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("throws for empty actions array", () => {
-    try {
-      validateMetricTriggers([{ alertThreshold: 100, actions: [] }]);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ValidationError);
-    }
-  });
-
-  test("passes for valid trigger", () => {
-    expect(() =>
-      validateMetricTriggers([
-        { alertThreshold: 100, actions: [{ type: "email" }] },
-      ])
-    ).not.toThrow();
+  test("rejects non-numeric ids", () => {
+    expect(() => parseWorkflowIds(["abc"])).toThrow(ValidationError);
   });
 });
 

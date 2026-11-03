@@ -107,8 +107,18 @@ Translate upstream API shapes into user-facing terms:
   identifiers needed for follow-up.
 - Drop empty, nullish, or unknown placeholder values before rendering details.
 - Cap long repeated lists and say how many additional items were omitted.
+- Truncate long text with plain `slice`. A cut can leave half of an emoji, and
+  strict JSON clients such as Codex reject that lone surrogate, so the server
+  replaces it with U+FFFD in every tool response. Formatters do not need
+  surrogate-aware slicing.
 - Prefer shared helpers for dates, actors, IDs, and unknown values. If a helper
   emits noisy placeholders for a domain-specific field, filter before calling it.
+- Render untrusted values with `@sentry/toolkit-core/markdown`, chosen by what
+  the value is: `inlineCode` for identifiers, slugs, queries, and short values,
+  `codeBlock` for multi-line data such as messages and stack traces, and `text`
+  for values that should read as prose. Each keeps the value inside its line or
+  block, so upstream data cannot add headings, list items, or links. Prefer
+  `inlineCode`: it needs no escaping, so the model reads the value unchanged.
 
 When changing Sentry API endpoint usage, validate the upstream behavior in
 `~/src/sentry` as required by [../../AGENTS.md](../../AGENTS.md). API schemas
@@ -124,6 +134,14 @@ the same data. Without a commit, the structured field is `null` and Markdown
 omits the section. Commit lookup is optional: failures do not prevent issue
 details from loading, but unexpected server or response-validation failures
 are reported to Sentry.
+
+For metric issues, `Metric Alert Details` comes from the occurrence's
+`evidenceData`, which the event API returns camelCased
+(`dataSources[].queryObj.snubaQuery`, `detectorId`). It shows the Metric
+Monitor ID, dataset, aggregate, query, interval, environment, evaluated window,
+value, and threshold. Response Notes replace the stacktrace and trace hints with
+`get_metric_monitor_details` and a pre-filled `search_errors`, `search_logs`,
+`search_traces`, or `search_metrics` call for the monitor's query.
 
 The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
@@ -263,3 +281,11 @@ For output-format changes:
 If the raw tool result is clean but the agent final answer adds unrelated
 content, treat that as a client/agent prompt issue rather than a tool response
 formatting issue.
+
+### Cron Monitor Environment Deletion
+
+`delete_monitor_environment` schedules irreversible deletion of one exact
+environment from a project-scoped cron monitor. The structured response
+identifies the project, monitor, and environment; `success` means the deletion
+was accepted or the target was already absent. Deletion completes in the
+background, preserving the monitor and its other environments.

@@ -20,8 +20,10 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { run } from "@stricli/core";
-import { describe, expect, test } from "vitest";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as Sentry from "@sentry/node";
+import { ExitCode, run } from "@stricli/core";
+import { describe, expect, test, vi } from "vitest";
 import { app } from "../../src/app.js";
 import type { SentryContext } from "../../src/context.js";
 import { CLI_VERSION } from "../../src/lib/constants.js";
@@ -36,7 +38,7 @@ const emptyCwd = mkdtempSync(join(tmpdir(), "scanner-flags-cwd-"));
 
 /** Run the real app with a mock context, capturing stdout and stderr. */
 async function runApp(
-  args: string[]
+  args: string[],
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   let stdout = "";
   let stderr = "";
@@ -47,21 +49,22 @@ async function runApp(
       return true;
     },
   };
-  const context: SentryContext = {
-    process: {
-      ...process,
-      // Route the underlying process streams into our buffers too — Stricli's
-      // argument-scanner errors write to context.process.stderr, not context.stderr.
-      stdout: {
-        write(data: string | Uint8Array) {
-          stdout +=
-            typeof data === "string" ? data : new TextDecoder().decode(data);
-          return true;
-        },
+  const mockProcess = {
+    ...process,
+    // Route the underlying process streams into our buffers too — Stricli's
+    // argument-scanner errors write to context.process.stderr, not context.stderr.
+    stdout: {
+      write(data: string | Uint8Array) {
+        stdout +=
+          typeof data === "string" ? data : new TextDecoder().decode(data);
+        return true;
       },
-      stderr: captureStderr,
-      exitCode: undefined,
-    } as unknown as typeof process,
+    },
+    stderr: captureStderr,
+    exitCode: undefined,
+  } as unknown as typeof process;
+  const context: SentryContext = {
+    process: mockProcess,
     env: { ...process.env },
     cwd: emptyCwd,
     homeDir: "/tmp",
@@ -77,8 +80,8 @@ async function runApp(
     stdin: process.stdin,
   };
 
-  const exitCode = await run(app, args, context);
-  return { stdout, stderr, exitCode: exitCode ?? 0 };
+  await run(app, args, context);
+  return { stdout, stderr, exitCode: mockProcess.exitCode ?? 0 };
 }
 
 /**
@@ -86,6 +89,15 @@ async function runApp(
  * subcommand — the failure mode the patch fixes for global flags at depth.
  */
 const NO_COMMAND_REGISTERED = "No command registered";
+
+describe("agent-conversation view required target", () => {
+  test("rejects missing target at the parser before authentication", async () => {
+    const { stderr, exitCode } = await runApp(["agent-conversation", "view"]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Conversation ID is required");
+    expect(stderr).not.toMatch(/not authenticated|log in|authorization/i);
+  });
+});
 
 describe("top-level flags on a leaf command (bash-hook, no auth)", () => {
   // bash-hook runs without auth and emits its script to stdout, so a successful
@@ -183,13 +195,13 @@ describe("a value flag does not swallow --help", () => {
     expect(stdout).toContain("USAGE");
   });
 
-  test.each([
-    "--json",
-    "-v",
-  ])("%s after a missing value flag still reaches the leaf command", async (flag) => {
-    const { stderr } = await runApp(["--org", flag, "issue", "list"]);
-    expect(stderr).not.toContain(NO_COMMAND_REGISTERED);
-  });
+  test.each(["--json", "-v"])(
+    "%s after a missing value flag still reaches the leaf command",
+    async (flag) => {
+      const { stderr } = await runApp(["--org", flag, "issue", "list"]);
+      expect(stderr).not.toContain(NO_COMMAND_REGISTERED);
+    },
+  );
 });
 
 describe("escape sequence is still respected", () => {
@@ -305,5 +317,50 @@ describe("--help --json renders structured help via renderHelp hook", () => {
     const parsed = JSON.parse(stdout);
     expect(parsed).toHaveProperty("error");
     expect(parsed.error).toContain("nope");
+  });
+});
+
+describe("arguments that fail to parse", () => {
+  // Stricli parses flags and positionals before the command runs; any parse
+  // failure, including a CliError from our parsers, exits InvalidArgument.
+
+  test("an invalid flag value", async () => {
+    const { stderr, exitCode } = await runApp([
+      "issue",
+      "list",
+      "--period",
+      "bogus",
+    ]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "bogus" for period');
+  });
+
+  test("is reported to Sentry for UX research", async () => {
+    const messageSpy = vi.spyOn(Sentry, "captureEvent");
+    try {
+      await runApp(["issue", "list", "--period", "bogus"]);
+      expect(messageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "invalid_argument",
+          contexts: {
+            invalid_argument: expect.objectContaining({
+              cause_class: "ValidationError",
+              message: expect.stringContaining(
+                'Failed to parse "bogus" for period',
+              ),
+            }),
+          },
+        }),
+      );
+    } finally {
+      messageSpy.mockRestore();
+    }
+  });
+
+  test("an invalid org/project target", async () => {
+    const { stderr, exitCode } = await runApp(["trace", "list", "@latest"]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "@latest"');
+    expect(stderr).toContain("is an issue selector");
   });
 });

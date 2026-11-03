@@ -3,20 +3,10 @@
  */
 
 import { getEnv } from "./env.js";
+import { ConfigError } from "./errors.js";
 
 /** Build-time constant injected by esbuild/bun */
 declare const SENTRY_CLI_VERSION: string | undefined;
-
-/**
- * Build-time debug ID for sourcemap resolution, injected by esbuild.
- *
- * During the build, esbuild's `define` replaces this identifier with a
- * placeholder UUID string literal. After esbuild finishes, the build
- * script replaces the placeholder with the real debug ID (derived from
- * the minified JS + sourcemap content hash). The same-length swap keeps
- * sourcemap character positions valid.
- */
-declare const __SENTRY_DEBUG_ID__: string | undefined;
 
 /** Default Sentry SaaS hostname */
 export const DEFAULT_SENTRY_HOST = "sentry.io";
@@ -34,6 +24,7 @@ export const NODE_MODULES_DIRNAME = "node_modules";
 
 /** Matches strings that already start with http:// or https:// */
 const HAS_PROTOCOL_RE = /^https?:\/\//i;
+const EXPLICIT_SCHEME_RE = /^([a-z][a-z\d+.-]*):\/\//i;
 
 /**
  * Normalize a URL string by ensuring it has a protocol prefix.
@@ -71,8 +62,65 @@ export function normalizeUrl(url: string | undefined): string | undefined {
  * with `https://` to prevent invalid URL construction downstream.
  */
 export function getConfiguredSentryUrl(): string | undefined {
-  const raw = getEnv().SENTRY_HOST || getEnv().SENTRY_URL || undefined;
-  return normalizeUrl(raw);
+  const env = getEnv();
+  const raw = env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim();
+  if (!raw) {
+    return;
+  }
+  const scheme = raw.match(EXPLICIT_SCHEME_RE)?.[1]?.toLowerCase();
+  const normalized = normalizeUrl(raw);
+  try {
+    if (scheme && scheme !== "http" && scheme !== "https") {
+      throw new TypeError("Unsupported URL scheme");
+    }
+    const parsed = new URL(normalized as string);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password
+    ) {
+      throw new TypeError("Invalid Sentry URL");
+    }
+    return normalized;
+  } catch {
+    throw new ConfigError(
+      "SENTRY_HOST/SENTRY_URL is not a valid URL; use a credential-free HTTP(S) URL.",
+    );
+  }
+}
+
+/** `SENTRY_URL` values the CLI applied from `defaults.url`, per invocation env. */
+const persistedDefaultUrls = new WeakMap<NodeJS.ProcessEnv, string>();
+
+/**
+ * Record that `env.SENTRY_URL` was set from the persisted default URL (not
+ * by the user), so account selection may route to another stored
+ * account's server instead of treating it as an explicit choice.
+ */
+export function markPersistedDefaultUrl(url: string): void {
+  persistedDefaultUrls.set(getEnv(), url);
+}
+
+/**
+ * Forget which URL came from `defaults.url`, so the configured URL counts as
+ * an explicit server choice from now on (e.g. a pasted SaaS URL pinning the
+ * server to the same value as the persisted default). Tests also use it to
+ * reset state.
+ */
+export function clearPersistedDefaultUrl(): void {
+  persistedDefaultUrls.delete(getEnv());
+}
+
+/** Whether the configured URL is still the one applied from `defaults.url`. */
+export function isPersistedDefaultUrlInEffect(): boolean {
+  const env = getEnv();
+  const applied = persistedDefaultUrls.get(env);
+  return (
+    applied !== undefined &&
+    !env.SENTRY_HOST?.trim() &&
+    env.SENTRY_URL?.trim() === applied
+  );
 }
 
 /** CLI version string, available for help output and other uses */
@@ -125,32 +173,3 @@ export function getUserAgent(): string {
  */
 export const SENTRY_CLI_DSN =
   "https://1188a86f3f8168f089450587b00bca66@o1.ingest.us.sentry.io/4510776311808000";
-
-/**
- * Register the build-time debug ID with the Sentry SDK's native discovery.
- *
- * The SDK reads `globalThis._sentryDebugIds` (a map of Error.stack → debugId)
- * during event processing to populate `debug_meta.images`, which the server
- * uses to match uploaded sourcemaps.
- *
- * Previously this was done by a runtime IIFE snippet prepended to the bundle
- * output by `injectDebugId()`. That broke ESM because the snippet appeared
- * before `import` declarations. Placing the same logic here — inside the
- * module, after all imports — is valid ESM and feeds the SDK's existing
- * mechanism directly.
- */
-if (typeof __SENTRY_DEBUG_ID__ !== "undefined") {
-  // biome-ignore lint/plugin: grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    // biome-ignore lint/suspicious/useErrorMessage: stack trace capture only
-    const stack = new Error().stack;
-    if (stack) {
-      // biome-ignore lint/suspicious/noExplicitAny: SDK reads this untyped global
-      const g = globalThis as any;
-      g._sentryDebugIds = g._sentryDebugIds || {};
-      g._sentryDebugIds[stack] = __SENTRY_DEBUG_ID__;
-    }
-  } catch (_) {
-    // Non-critical — sourcemap resolution degrades gracefully
-  }
-}

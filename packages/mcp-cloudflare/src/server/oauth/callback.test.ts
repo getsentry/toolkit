@@ -78,7 +78,7 @@ function createTestEnv(): Env {
 }
 
 async function createClient(testEnv: Env, name = "Test Client") {
-  return testEnv.OAUTH_PROVIDER.createClient({
+  return await testEnv.OAUTH_PROVIDER.createClient({
     clientName: name,
     redirectUris: [REDIRECT_URI],
     tokenEndpointAuthMethod: "none",
@@ -106,7 +106,7 @@ async function createSignedCallbackState(
     exp: now + 10 * 60 * 1000,
   } as unknown as OAuthState;
 
-  return signState(payload, COOKIE_SECRET);
+  return await signState(payload, COOKIE_SECRET);
 }
 
 async function approveClient(
@@ -171,7 +171,7 @@ async function callCallback(
     url.searchParams.set("error_description", options.errorDescription);
   }
 
-  return oauthApp.fetch(
+  return await oauthApp.fetch(
     new Request(url, {
       method: "GET",
       headers: options.cookie ? { Cookie: options.cookie } : undefined,
@@ -662,6 +662,82 @@ describe("oauth callback routes", () => {
         result?: { protocolVersion: string };
       }>(mcpResponse);
       expect(body.result?.protocolVersion).toBeDefined();
+    });
+
+    it("stores the scopes Sentry actually granted alongside skill-derived grantedScopes", async () => {
+      // Sentry returns the token's real scopes in the token response. With
+      // only `inspect` selected, skill-derived grantedScopes are read-only,
+      // but the upstream token can still carry write scopes.
+      exchangeCodeForAccessToken.mockResolvedValueOnce([
+        {
+          access_token: "sentry-access-token",
+          refresh_token: "sentry-refresh-token",
+          expires_in: 3600,
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          token_type: "bearer",
+          user: { id: "user-123", name: "Test User" },
+          scope: "team:write org:read event:write  project:write alerts:write",
+        },
+        null,
+      ]);
+
+      const testEnv = createTestEnv();
+      const completeAuthorization = vi.spyOn(
+        testEnv.OAUTH_PROVIDER,
+        "completeAuthorization",
+      );
+      const oauthApp = createTestApp();
+      const client = await createClient(testEnv);
+      const cookie = await approveClient(oauthApp, testEnv, client.clientId);
+      const state = await createSignedCallbackState(client.clientId);
+
+      const callbackResponse = await callCallback(oauthApp, testEnv, {
+        state,
+        code: "test-code",
+        cookie,
+      });
+
+      expect(callbackResponse.status).toBe(302);
+      expect(completeAuthorization).toHaveBeenCalledOnce();
+      const props = completeAuthorization.mock.calls[0]![0].props as Record<
+        string,
+        unknown
+      >;
+
+      expect(props.upstreamScopes).toEqual([
+        "alerts:write",
+        "event:write",
+        "org:read",
+        "project:write",
+        "team:write",
+      ]);
+      expect(props.grantedSkills).toEqual(["inspect"]);
+      expect(props.grantedScopes).not.toEqual(props.upstreamScopes);
+    });
+
+    it("omits upstreamScopes when Sentry's token response has no scope", async () => {
+      const testEnv = createTestEnv();
+      const completeAuthorization = vi.spyOn(
+        testEnv.OAUTH_PROVIDER,
+        "completeAuthorization",
+      );
+      const oauthApp = createTestApp();
+      const client = await createClient(testEnv);
+      const cookie = await approveClient(oauthApp, testEnv, client.clientId);
+      const state = await createSignedCallbackState(client.clientId);
+
+      const callbackResponse = await callCallback(oauthApp, testEnv, {
+        state,
+        code: "test-code",
+        cookie,
+      });
+
+      expect(callbackResponse.status).toBe(302);
+      const props = completeAuthorization.mock.calls[0]![0].props as Record<
+        string,
+        unknown
+      >;
+      expect(props.upstreamScopes).toBeUndefined();
     });
 
     it("completes callback for a scoped resource, exchanges the code, and uses the token at the same scoped /mcp path", async () => {

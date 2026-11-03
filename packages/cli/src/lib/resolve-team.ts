@@ -12,10 +12,10 @@
  *    - On other errors: surface status + generic hint
  * 3. If zero teams → auto-create a team named after the project (slug-based),
  *    or defer init-specific creation until the final slug is known
- * 4. If exactly one team → auto-select it
- * 5. Filter to teams the user belongs to (`isMember === true`)
- *    - If exactly one member team → auto-select it
- * 6. Multiple candidate teams → error with team list and `--team` hint
+ * 4. Prefer teams the user belongs to (`isMember === true`), falling back to
+ *    all org teams when membership is unknown or empty
+ * 5. Pick a deterministic default from the candidates (see `pickDefaultTeam`),
+ *    unless the caller supplied `onAmbiguous` to choose among several
  *
  * The auto-created team (step 3) mirrors the Sentry UI behavior where new
  * organizations always have at least one team.
@@ -32,7 +32,7 @@ import {
 } from "./errors.js";
 import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
-import { getSentryBaseUrl } from "./sentry-urls.js";
+import { getSentryBaseUrl } from "./sentry-web-urls.js";
 
 const log = logger.withTag("resolve-team");
 
@@ -83,7 +83,7 @@ export type ResolveTeamOptions = {
   deferAutoCreateOnEmptyOrg?: boolean;
   /**
    * Called when multiple candidate teams remain after membership filtering.
-   * Return the selected team slug. If not provided, a ContextError is thrown.
+   * Return the selected team slug. If not provided, `pickDefaultTeam` decides.
    */
   onAmbiguous?: (candidates: SentryTeam[]) => Promise<string>;
 };
@@ -129,14 +129,14 @@ export type ResolvedTeam = ResolvedConcreteTeam | DeferredResolvedTeam;
 async function handleListTeamsError(
   error: unknown,
   orgSlug: string,
-  options: ResolveTeamOptions
+  options: ResolveTeamOptions,
 ): Promise<never> {
   if (error instanceof ApiError) {
     if (error.status === 404) {
       return await buildOrgNotFoundError(
         orgSlug,
         options.usageHint,
-        options.detectedFrom
+        options.detectedFrom,
       );
     }
     if (error.status === 403) {
@@ -149,7 +149,7 @@ async function handleListTeamsError(
       `Organization '${orgSlug}'`,
       `could not be accessed (${error.status})`,
       `${options.usageHint} --team <team-slug>`,
-      ["The organization may not exist, or you may lack access"]
+      ["The organization may not exist, or you may lack access"],
     );
   }
   throw error;
@@ -159,15 +159,15 @@ export async function resolveOrCreateTeam(
   orgSlug: string,
   options: ResolveTeamOptions & {
     deferAutoCreateOnEmptyOrg?: false | undefined;
-  }
+  },
 ): Promise<ResolvedConcreteTeam>;
 export async function resolveOrCreateTeam(
   orgSlug: string,
-  options: ResolveTeamOptions & { deferAutoCreateOnEmptyOrg: true }
+  options: ResolveTeamOptions & { deferAutoCreateOnEmptyOrg: true },
 ): Promise<ResolvedTeam>;
 export async function resolveOrCreateTeam(
   orgSlug: string,
-  options: ResolveTeamOptions
+  options: ResolveTeamOptions,
 ): Promise<ResolvedTeam> {
   if (options.team) {
     return { slug: options.team, source: "explicit" };
@@ -182,43 +182,49 @@ export async function resolveOrCreateTeam(
 
   // No teams — auto-create one if a slug was provided
   if (teams.length === 0) {
-    return resolveEmptyTeams(orgSlug, options);
+    return await resolveEmptyTeams(orgSlug, options);
   }
 
-  // Single team — auto-select
-  if (teams.length === 1) {
-    return { slug: (teams[0] as SentryTeam).slug, source: "auto-selected" };
-  }
-
-  // Multiple teams — prefer teams the user belongs to
+  // Prefer teams the user belongs to
   const memberTeams = teams.filter((t) => t.isMember === true);
   const candidates = memberTeams.length > 0 ? memberTeams : teams;
 
-  if (candidates.length === 1) {
-    return {
-      slug: (candidates[0] as SentryTeam).slug,
-      source: "auto-selected",
-    };
-  }
-
-  // Multiple candidates — let caller choose or throw
-  if (options.onAmbiguous) {
+  if (candidates.length > 1 && options.onAmbiguous) {
     const slug = await options.onAmbiguous(candidates);
     return { slug, source: "auto-selected" };
   }
 
-  const label =
-    memberTeams.length > 0
-      ? `You belong to ${candidates.length} teams in ${orgSlug}`
-      : `Multiple teams found in ${orgSlug}`;
-  throw new ContextError(
-    "Team",
-    `${options.usageHint} --team ${(candidates[0] as SentryTeam).slug}`,
-    [
-      `${label}. Specify one with --team`,
-      ...candidates.map((t) => `Available: ${t.slug}`),
-    ]
-  );
+  const team = pickDefaultTeam(candidates) as SentryTeam;
+  return { slug: team.slug, source: "auto-selected" };
+}
+
+/** Whether the user is Team Admin on a team and can create projects in it. */
+export function canCreateProjectInTeam(team: SentryTeam): boolean {
+  return Array.isArray(team.access) && team.access.includes("team:admin");
+}
+
+function teamCreatedAt(team: SentryTeam): number {
+  const time = team.dateCreated ? Date.parse(team.dateCreated) : Number.NaN;
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+}
+
+/**
+ * Pick the default team for project creation when the caller omitted one.
+ *
+ * Prefers teams where the user can create projects, then the earliest-created
+ * team (matching Sentry's own default-team rule), with slug order as a
+ * tie-breaker so the choice is stable across runs.
+ */
+export function pickDefaultTeam(
+  teams: readonly SentryTeam[],
+): SentryTeam | undefined {
+  const adminTeams = teams.filter(canCreateProjectInTeam);
+  const pool = adminTeams.length > 0 ? adminTeams : teams;
+  return [...pool].sort(
+    (left, right) =>
+      teamCreatedAt(left) - teamCreatedAt(right) ||
+      left.slug.localeCompare(right.slug),
+  )[0];
 }
 
 /**
@@ -228,7 +234,7 @@ export async function resolveOrCreateTeam(
  */
 function resolveEmptyTeams(
   orgSlug: string,
-  options: ResolveTeamOptions
+  options: ResolveTeamOptions,
 ): Promise<ResolvedTeam> | ResolvedTeam {
   if (options.deferAutoCreateOnEmptyOrg) {
     return { source: "deferred" };
@@ -252,7 +258,7 @@ function resolveEmptyTeams(
  */
 async function autoCreateTeam(
   orgSlug: string,
-  slug: string
+  slug: string,
 ): Promise<ResolvedTeam> {
   try {
     const team = await createTeam(orgSlug, slug);
@@ -274,7 +280,7 @@ async function autoCreateTeam(
         `Create a team manually at ${getSentryBaseUrl()}/settings/${orgSlug}/teams/` +
         (error instanceof ApiError
           ? `\n\nAPI error (${error.status}): ${error.detail ?? error.message}`
-          : "")
+          : ""),
     );
   }
 }
@@ -291,7 +297,7 @@ async function autoCreateTeam(
 export async function buildOrgNotFoundError(
   orgSlug: string,
   usageHint: string,
-  detectedFrom?: string
+  detectedFrom?: string,
 ): Promise<never> {
   // Try resolving DSN-style org IDs (e.g., o1081365 → actual slug)
   const effectiveOrg = await resolveEffectiveOrg(orgSlug);
@@ -300,12 +306,12 @@ export async function buildOrgNotFoundError(
       `Organization '${orgSlug}'`,
       `not found (did you mean '${effectiveOrg}'?)`,
       usageHint,
-      [`Try using '${effectiveOrg}' as the org slug instead of '${orgSlug}'`]
+      [`Try using '${effectiveOrg}' as the org slug instead of '${orgSlug}'`],
     );
   }
 
   const orgHint = await fetchOrgListHint(
-    `Specify org explicitly: ${usageHint}`
+    `Specify org explicitly: ${usageHint}`,
   );
 
   const suggestions: string[] = [];
@@ -318,6 +324,6 @@ export async function buildOrgNotFoundError(
     `Organization '${orgSlug}'`,
     "not found",
     usageHint,
-    suggestions
+    suggestions,
   );
 }

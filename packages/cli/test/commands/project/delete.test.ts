@@ -4,8 +4,8 @@
  * Tests for the project delete command in src/commands/project/delete.ts.
  * Uses spyOn to mock api-client and resolve-target for the func() body
  * without real HTTP calls or database access. The interactive type-out
- * confirmation tests use vi.mock() on node:tty and the logger module
- * to control the prompt.
+ * confirmation tests use vi.mock() on node:tty and the prompt module
+ * to control the answer.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -28,13 +28,12 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     // intentional no-op
   }
 
-  // Mock the logger to intercept the .prompt() call made by the module-scoped
-  // `log = logger.withTag("project.delete")` inside delete.ts.
-  const _mockPrompt = vi.fn(
-    (): Promise<string | symbol> => Promise.resolve("acme-corp/my-app")
+  // Stub the logger module-scoped as `log = logger.withTag("project.delete")`
+  // in delete.ts; the prompt module is mocked with `_mockPrompt` below.
+  const _mockPrompt = vi.fn((): Promise<string | symbol> =>
+    Promise.resolve("acme-corp/my-app"),
   );
   const _fakeLog: {
-    prompt: typeof _mockPrompt;
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
@@ -42,7 +41,6 @@ const { mockIsatty, ttyExports, noop, mockPrompt, fakeLog } = vi.hoisted(() => {
     success: ReturnType<typeof vi.fn>;
     withTag: () => typeof _fakeLog;
   } = {
-    prompt: _mockPrompt,
     info: vi.fn(_noop),
     warn: vi.fn(_noop),
     error: vi.fn(_noop),
@@ -65,6 +63,8 @@ vi.mock("node:tty", () => ({
   default: ttyExports,
 }));
 
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: mockPrompt }));
+
 vi.mock("../../../src/lib/logger.js", () => ({
   logger: fakeLog,
   setLogLevel: vi.fn(noop),
@@ -81,9 +81,8 @@ vi.mock("../../../src/lib/logger.js", () => ({
 
 // Dynamic import: must run AFTER vi.mock() so the module-scoped logger
 // binding inside delete.ts picks up fakeLog.
-const { deleteCommand } = await import(
-  "../../../src/commands/project/delete.js"
-);
+const { deleteCommand } =
+  await import("../../../src/commands/project/delete.js");
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -92,11 +91,11 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ApiError, ContextError } from "../../../src/lib/errors.js";
 
@@ -107,11 +106,11 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
     Object.entries(actual).map(([k, v]) => [
       k,
       typeof v === "function" ? vi.fn(v) : v,
-    ])
+    ]),
   );
 });
 
-// biome-ignore lint/performance/noNamespaceImport: needed for spyOn mocking
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryProject } from "../../../src/types/index.js";
 
@@ -134,6 +133,7 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd: "/tmp",
+      commandPrefix: ["sentry", "project", "delete"],
     },
     stdoutWrite,
     stderrWrite,
@@ -152,7 +152,7 @@ describe("project delete", () => {
     getOrganizationSpy = vi.spyOn(apiClient, "getOrganization");
     resolveProjectBoundTargetSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundTarget"
+      "resolveProjectBoundTarget",
     );
 
     // Default mocks
@@ -202,7 +202,7 @@ describe("project delete", () => {
         project: "my-app",
       }),
       "/tmp",
-      "project delete"
+      "project delete",
     );
   });
 
@@ -217,7 +217,7 @@ describe("project delete", () => {
         projectSlug: "my-app",
       }),
       "/tmp",
-      "project delete"
+      "project delete",
     );
     expect(deleteProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
   });
@@ -228,7 +228,7 @@ describe("project delete", () => {
 
     // isatty(0) returns false in test environments (non-TTY)
     await expect(
-      func.call(context, { ...defaultFlags, yes: false }, "acme-corp/my-app")
+      func.call(context, { ...defaultFlags, yes: false }, "acme-corp/my-app"),
     ).rejects.toThrow("non-interactive mode");
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -236,14 +236,14 @@ describe("project delete", () => {
 
   test("propagates 404 from getProject", async () => {
     getProjectSpy.mockRejectedValue(
-      new ApiError("Not found", 404, "Project not found")
+      new ApiError("Not found", 404, "Project not found"),
     );
 
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
 
     await expect(
-      func.call(context, defaultFlags, "acme-corp/my-app")
+      func.call(context, defaultFlags, "acme-corp/my-app"),
     ).rejects.toThrow(ApiError);
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -251,7 +251,7 @@ describe("project delete", () => {
 
   test("403 with member role suggests asking an admin", async () => {
     deleteProjectSpy.mockRejectedValue(
-      new ApiError("Forbidden", 403, "You do not have permission")
+      new ApiError("Forbidden", 403, "You do not have permission"),
     );
     getOrganizationSpy.mockResolvedValue({
       id: "1",
@@ -278,7 +278,7 @@ describe("project delete", () => {
 
   test("403 with owner role suggests checking token scope", async () => {
     deleteProjectSpy.mockRejectedValue(
-      new ApiError("Forbidden", 403, "You do not have permission")
+      new ApiError("Forbidden", 403, "You do not have permission"),
     );
     getOrganizationSpy.mockResolvedValue({
       id: "1",
@@ -305,7 +305,7 @@ describe("project delete", () => {
 
   test("403 with role fetch failure shows fallback message", async () => {
     deleteProjectSpy.mockRejectedValue(
-      new ApiError("Forbidden", 403, "You do not have permission")
+      new ApiError("Forbidden", 403, "You do not have permission"),
     );
     getOrganizationSpy.mockRejectedValue(new Error("network error"));
 
@@ -344,7 +344,7 @@ describe("project delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     expect(getProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
@@ -362,7 +362,7 @@ describe("project delete", () => {
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true, json: true },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -382,7 +382,7 @@ describe("project delete", () => {
     await func.call(
       context,
       { ...defaultFlags, json: true },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -394,13 +394,26 @@ describe("project delete", () => {
     });
   });
 
+  test("--fields filters the JSON output", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await deleteCommand.loader();
+    await func.call(
+      context,
+      { ...defaultFlags, json: true, fields: ["project"] },
+      "acme-corp/my-app",
+    );
+
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    expect(JSON.parse(output.trim())).toEqual({ project: "my-app" });
+  });
+
   test("rejects auto-detect target", async () => {
     const { context } = createMockContext();
     const func = await deleteCommand.loader();
 
     // Empty string triggers auto-detect in parseOrgProjectArg
     await expect(func.call(context, defaultFlags, "")).rejects.toThrow(
-      ContextError
+      ContextError,
     );
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -411,8 +424,8 @@ describe("project delete", () => {
  * Tests for the interactive type-out confirmation prompt.
  *
  * These rely on `vi.mock()` at the top of this file to stub `node:tty`
- * (so `isatty(0)` returns true) and the logger (so `.prompt()` returns a
- * controllable value).
+ * (so `isatty(0)` returns true) and the prompt module (so `prompt()`
+ * returns a controllable value).
  */
 describe("project delete — interactive confirmation", () => {
   let getProjectSpy: ReturnType<typeof spyOn>;
@@ -426,6 +439,7 @@ describe("project delete — interactive confirmation", () => {
         stdout: { write: stdoutWrite },
         stderr: { write: vi.fn(() => true) },
         cwd: "/tmp",
+        commandPrefix: ["sentry", "project", "delete"],
       },
       stdoutWrite,
     };
@@ -437,7 +451,7 @@ describe("project delete — interactive confirmation", () => {
     deleteProjectSpy = vi.spyOn(apiClient, "deleteProject");
     resolveProjectBoundTargetSpy = vi.spyOn(
       resolveTarget,
-      "resolveProjectBoundTarget"
+      "resolveProjectBoundTarget",
     );
 
     getProjectSpy.mockResolvedValue(sampleProject);
@@ -466,7 +480,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     expect(deleteProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
@@ -482,7 +496,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -490,7 +504,7 @@ describe("project delete — interactive confirmation", () => {
   });
 
   test("cancels when user presses Ctrl+C (Symbol)", async () => {
-    // consola returns Symbol(clack:cancel) on Ctrl+C — truthy but not a string.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — truthy but not a string.
     mockPrompt.mockResolvedValue(Symbol("clack:cancel"));
 
     const { context } = createPromptMockContext();
@@ -498,7 +512,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -513,7 +527,7 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     expect(deleteProjectSpy).not.toHaveBeenCalled();
@@ -527,12 +541,12 @@ describe("project delete — interactive confirmation", () => {
     await func.call(
       context,
       { yes: false, "dry-run": false },
-      "acme-corp/my-app"
+      "acme-corp/my-app",
     );
 
     expect(mockPrompt).toHaveBeenCalledWith(
       expect.stringContaining("acme-corp/my-app"),
-      expect.objectContaining({ type: "text" })
+      expect.objectContaining({ type: "text" }),
     );
   });
 });

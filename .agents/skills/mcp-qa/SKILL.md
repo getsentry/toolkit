@@ -19,28 +19,26 @@ Fix any failures before proceeding.
 This is the primary QA path for tool behavior. Stdio runs the local MCP server
 against prod Sentry without depending on the Cloudflare worker, local `/mcp`
 route, or Cloudflare OAuth configuration.
-When validating code or tool changes, build first because the test client
-launches `packages/mcp-server/dist/index.js`:
+The test client launches `sentry mcp` from CLI source
+(`pnpm --dir packages/cli run cli mcp`), which reads mcp-core's build output, so
+build first when validating code or tool changes:
 
 ```bash
 pnpm -w run build
 ```
 
-Check auth first:
+Check auth first. `sentry mcp` uses the CLI's credentials:
 
 ```bash
-pnpm --filter @sentry/mcp-server start auth status
+pnpm --filter sentry run cli auth status
 ```
 
-If no cache exists, warm the device-code cache:
+If you are not logged in, log in once (or pass `--access-token` to the test
+client):
 
 ```bash
-pnpm --filter @sentry/mcp-server start auth login
+pnpm --filter sentry run cli auth login
 ```
-
-Device-code auth uses the bundled stdio public client ID, requires no client
-secret, is separate from the Cloudflare OAuth app, and caches the token in
-`~/.sentry/mcp.json`.
 
 First prove startup and auth:
 
@@ -77,7 +75,6 @@ that is not part of the tool response. Review raw tool output against
 and free of raw API JSON, internal implementation IDs, empty placeholders, and
 unrelated instructions.
 
-
 ## 3. Real Agent Clients
 
 Use these when validating Claude Code, Codex, or behavior that only reproduces
@@ -88,6 +85,7 @@ pnpm -w run build
 ```
 
 What this verifies:
+
 - The CLI is installed and can see the named MCP server
 - The provider can run a connectivity prompt against Sentry MCP
 - The final answer includes the authenticated email from `whoami`
@@ -96,9 +94,9 @@ For agent-client-specific behavior, replace the default harness prompt with the
 same realistic prod prompt used for stdio QA. Passing QA requires the same
 changed-tool transcript evidence, not only `whoami`.
 
-as an isolated auth cache. Real clients do not give stdio subprocesses a TTY,
-so warm the cache before running the harness. It also runs the built
-`packages/mcp-server/dist/index.js`, so build first to avoid stale code.
+Real clients do not give stdio subprocesses a TTY, so log in with
+`sentry auth login` before running the harness. Build first to avoid stale
+mcp-core code.
 
 ## 4. Cloudflare HTTP Only When Relevant
 
@@ -144,7 +142,7 @@ dev-time source execution:
 
 ```bash
 pnpm -w run build
-pnpm --filter @sentry/mcp-server start auth status
+pnpm --filter sentry run cli auth status
 pnpm -w run cli --transport stdio "who am I?"
 ```
 

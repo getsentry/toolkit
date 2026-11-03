@@ -18,10 +18,10 @@ import {
   detectSwappedViewArgs,
   looksLikeIssueShortId,
   normalizeSlug,
-  parseIssueArg,
   parseOrgProjectArg,
   parseSelector,
 } from "../../src/lib/arg-parsing.js";
+import { parseIssueArg } from "../../src/lib/issue-arguments.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 // Arbitraries for generating valid inputs
@@ -40,7 +40,7 @@ const numericIdArb = stringMatching(/^[1-9][0-9]{0,15}$/);
 
 describe("parseIssueArg properties", () => {
   test("numeric-only inputs always return type 'numeric'", async () => {
-    await fcAssert(
+    fcAssert(
       property(numericIdArb, (input) => {
         const result = parseIssueArg(input);
         expect(result.type).toBe("numeric");
@@ -48,12 +48,12 @@ describe("parseIssueArg properties", () => {
           expect(result.id).toBe(input);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("suffix is always uppercase in result", async () => {
-    await fcAssert(
+    fcAssert(
       property(suffixArb, (suffix) => {
         const result = parseIssueArg(suffix);
         // suffix-only type (no dash, no slash, not numeric)
@@ -61,12 +61,12 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(suffix.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("org/project-suffix returns type 'explicit' with uppercase suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, suffixArb),
         ([org, project, suffix]) => {
@@ -79,14 +79,14 @@ describe("parseIssueArg properties", () => {
             expect(result.project).toBe(project);
             expect(result.suffix).toBe(suffix.toUpperCase());
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("org/numericId returns type 'explicit-org-numeric'", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, numericIdArb), ([org, numericId]) => {
         const input = `${org}/${numericId}`;
         const result = parseIssueArg(input);
@@ -97,12 +97,12 @@ describe("parseIssueArg properties", () => {
           expect(result.numericId).toBe(numericId);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("org/suffix (no dash) returns type 'explicit-org-suffix' with uppercase suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, suffixArb), ([org, suffix]) => {
         // Skip if suffix looks numeric (would be explicit-org-numeric)
         if (/^\d+$/.test(suffix)) return;
@@ -116,12 +116,12 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(suffix.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("project-suffix returns type 'project-search' with uppercase suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(projectSlugArb, suffixArb), ([project, suffix]) => {
         const input = `${project}-${suffix}`;
         const result = parseIssueArg(input);
@@ -132,17 +132,17 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(suffix.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("alphanumeric input without dash/slash that isn't numeric returns 'suffix-only'", async () => {
     // Generate alphanumeric strings that contain at least one letter (not pure numeric)
     const alphanumericWithLetterArb = stringMatching(
-      /^[a-zA-Z][a-zA-Z0-9]{0,9}$/
+      /^[a-zA-Z][a-zA-Z0-9]{0,9}$/,
     );
 
-    await fcAssert(
+    fcAssert(
       property(alphanumericWithLetterArb, (input) => {
         const result = parseIssueArg(input);
 
@@ -151,7 +151,7 @@ describe("parseIssueArg properties", () => {
           expect(result.suffix).toBe(input.toUpperCase());
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -170,15 +170,15 @@ describe("parseIssueArg properties", () => {
     const validInputArb = oneof(
       numericIdArb,
       tuple(orgSlugArb, projectSlugArb, suffixArb).map(
-        ([o, p, s]) => `${o}/${p}-${s}`
+        ([o, p, s]) => `${o}/${p}-${s}`,
       ),
       tuple(orgSlugArb, numericIdArb).map(([o, n]) => `${o}/${n}`),
       tuple(orgSlugArb, suffixArb).map(([o, s]) => `${o}/${s}`),
       tuple(projectSlugArb, suffixArb).map(([p, s]) => `${p}-${s}`),
-      suffixArb
+      suffixArb,
     );
 
-    await fcAssert(
+    fcAssert(
       property(validInputArb, (input) => {
         try {
           const result = parseIssueArg(input);
@@ -187,7 +187,7 @@ describe("parseIssueArg properties", () => {
           // Some generated inputs may throw - that's expected for invalid formats
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -195,12 +195,12 @@ describe("parseIssueArg properties", () => {
     const inputArb = oneof(
       numericIdArb,
       tuple(orgSlugArb, projectSlugArb, suffixArb).map(
-        ([o, p, s]) => `${o}/${p}-${s}`
+        ([o, p, s]) => `${o}/${p}-${s}`,
       ),
-      suffixArb
+      suffixArb,
     );
 
-    await fcAssert(
+    fcAssert(
       property(inputArb, (input) => {
         const originalInput = input;
         try {
@@ -211,17 +211,18 @@ describe("parseIssueArg properties", () => {
         // String is immutable in JS, but this verifies no weird side effects
         expect(input).toBe(originalInput);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
   /** Forbidden characters (besides the structural #) that must always be rejected. */
-  const forbiddenCharArb = constantFrom("?", "%", " ", "\t");
+  // A space makes words, which are a search rather than an identifier
+  const forbiddenCharArb = constantFrom("?", "%", "\t");
 
   test("org/project#FULL-SHORTID is equivalent to org/project/FULL-SHORTID", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, suffixArb),
         ([org, project, suffix]) => {
@@ -229,14 +230,14 @@ describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
           const hashForm = parseIssueArg(`${org}/${project}#${shortId}`);
           const slashForm = parseIssueArg(`${org}/${project}/${shortId}`);
           expect(hashForm).toEqual(slashForm);
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("project#FULL-SHORTID always yields project-search with extracted suffix", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(projectSlugArb, suffixArb), ([project, suffix]) => {
         const result = parseIssueArg(`${project}#${project}-${suffix}`);
         expect(result).toEqual({
@@ -245,19 +246,19 @@ describe("parseIssueArg: GitHub-style # separator properties (CLI-1G1)", () => {
           suffix: suffix.toUpperCase(),
         });
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("forbidden character in fragment always throws", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(projectSlugArb, suffixArb, forbiddenCharArb),
         ([project, suffix, bad]) => {
           expect(() => parseIssueArg(`${project}#${suffix}${bad}x`)).toThrow();
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -266,17 +267,17 @@ describe("parseOrgProjectArg properties", () => {
   test("undefined or empty string returns type 'auto-detect'", async () => {
     const emptyInputArb = constantFrom(undefined, "", "  ", "\t", "\n");
 
-    await fcAssert(
+    fcAssert(
       property(emptyInputArb, (input) => {
         const result = parseOrgProjectArg(input);
         expect(result.type).toBe("auto-detect");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("org/project returns type 'explicit'", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, projectSlugArb), ([org, project]) => {
         const input = `${org}/${project}`;
         const result = parseOrgProjectArg(input);
@@ -285,14 +286,54 @@ describe("parseOrgProjectArg properties", () => {
         if (result.type === "explicit") {
           expect(result.org).toBe(org);
           expect(result.project).toBe(project);
+          expect(result.projects).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("org/a,b stays one project unless list parsing is enabled", async () => {
+    fcAssert(
+      property(
+        tuple(orgSlugArb, projectSlugArb, projectSlugArb),
+        ([org, first, second]) => {
+          const result = parseOrgProjectArg(`${org}/${first},${second}`);
+          expect(result.type).toBe("explicit");
+          if (result.type === "explicit") {
+            expect(result.project).toBe(`${first},${second}`);
+            expect(result.projects).toBeUndefined();
+          }
+        },
+      ),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("org/a,b returns both slugs when list parsing is enabled", async () => {
+    fcAssert(
+      property(
+        tuple(orgSlugArb, projectSlugArb, projectSlugArb),
+        ([org, first, second]) => {
+          if (first === second) {
+            return;
+          }
+          const result = parseOrgProjectArg(`${org}/${first},${second}`, {
+            multi: true,
+          });
+          expect(result.type).toBe("explicit");
+          if (result.type === "explicit") {
+            expect(result.project).toBe(first);
+            expect(result.projects).toEqual([first, second]);
+          }
+        },
+      ),
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("org/ (trailing slash) returns type 'org-all'", async () => {
-    await fcAssert(
+    fcAssert(
       property(orgSlugArb, (org) => {
         const input = `${org}/`;
         const result = parseOrgProjectArg(input);
@@ -302,12 +343,12 @@ describe("parseOrgProjectArg properties", () => {
           expect(result.org).toBe(org);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("project without slash returns type 'project-search'", async () => {
-    await fcAssert(
+    fcAssert(
       property(projectSlugArb, (project) => {
         const result = parseOrgProjectArg(project);
 
@@ -316,12 +357,12 @@ describe("parseOrgProjectArg properties", () => {
           expect(result.projectSlug).toBe(project);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("/project (leading slash) returns type 'project-search'", async () => {
-    await fcAssert(
+    fcAssert(
       property(projectSlugArb, (project) => {
         const input = `/${project}`;
         const result = parseOrgProjectArg(input);
@@ -331,7 +372,7 @@ describe("parseOrgProjectArg properties", () => {
           expect(result.projectSlug).toBe(project);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -343,10 +384,10 @@ describe("parseOrgProjectArg properties", () => {
       tuple(orgSlugArb, projectSlugArb).map(([o, p]) => `${o}/${p}`),
       orgSlugArb.map((o) => `${o}/`),
       projectSlugArb,
-      projectSlugArb.map((p) => `/${p}`)
+      projectSlugArb.map((p) => `/${p}`),
     );
 
-    await fcAssert(
+    fcAssert(
       property(validInputArb, (input) => {
         try {
           const result = parseOrgProjectArg(input);
@@ -355,12 +396,12 @@ describe("parseOrgProjectArg properties", () => {
           // Some inputs may throw - that's expected
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("whitespace is trimmed from input", async () => {
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, constantFrom("", " ", "  ")),
         ([org, project, ws]) => {
@@ -372,9 +413,9 @@ describe("parseOrgProjectArg properties", () => {
             expect(result.org).toBe(org);
             expect(result.project).toBe(project);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -383,7 +424,7 @@ describe("parseIssueArg and parseOrgProjectArg consistency", () => {
   test("parseIssueArg uses parseOrgProjectArg for dash-separated inputs", async () => {
     // When parseIssueArg gets "org/project-suffix", it should parse "org/project"
     // the same way parseOrgProjectArg would
-    await fcAssert(
+    fcAssert(
       property(
         tuple(orgSlugArb, projectSlugArb, suffixArb),
         ([org, project, suffix]) => {
@@ -405,16 +446,16 @@ describe("parseIssueArg and parseOrgProjectArg consistency", () => {
             expect(issueResult.org).toBe(orgProjectResult.org);
             expect(issueResult.project).toBe(orgProjectResult.project);
           }
-        }
+        },
       ),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 /** Generates all-lowercase slug-like strings with at least one dash */
 const lowercaseSlugWithDashArb = stringMatching(
-  /^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)+$/
+  /^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)+$/,
 );
 
 /** Generates alphanumeric strings without dashes */
@@ -431,81 +472,81 @@ const displayNameLikeArb = stringMatching(/^[A-Za-z][A-Za-z0-9 _-]{0,20}$/);
 
 describe("normalizeSlug properties (no-op)", () => {
   test("always returns the input unchanged", async () => {
-    await fcAssert(
+    fcAssert(
       property(displayNameLikeArb, (input) => {
         const result = normalizeSlug(input);
         expect(result.slug).toBe(input);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("normalized is always false", async () => {
-    await fcAssert(
+    fcAssert(
       property(displayNameLikeArb, (input) => {
         const result = normalizeSlug(input);
         expect(result.normalized).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("idempotent: normalizing twice yields same result as normalizing once", async () => {
-    await fcAssert(
+    fcAssert(
       property(displayNameLikeArb, (input) => {
         const first = normalizeSlug(input);
         const second = normalizeSlug(first.slug);
         expect(second.slug).toBe(first.slug);
         expect(second.normalized).toBe(first.normalized);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 describe("looksLikeIssueShortId properties", () => {
   test("all-lowercase slugs with dashes never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("strings without dashes never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(noDashAlphanumArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("strings with slashes never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(withSlashArb, (input) => {
         expect(looksLikeIssueShortId(input)).toBe(false);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("two-part lowercase slugs do not match with ignoreCase", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         if (input.split("-").length === 2) {
           expect(looksLikeIssueShortId(input, { ignoreCase: true })).toBe(
-            false
+            false,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("three-plus-part lowercase slugs without alphanumeric final segment do not match with ignoreCase", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         const parts = input.split("-");
         const lastPart = parts.at(-1) ?? "";
@@ -513,16 +554,16 @@ describe("looksLikeIssueShortId properties", () => {
         const hasLetter = /[a-z]/.test(lastPart);
         if (parts.length >= 3 && !(hasDigit && hasLetter)) {
           expect(looksLikeIssueShortId(input, { ignoreCase: true })).toBe(
-            false
+            false,
           );
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("three-plus-part lowercase slugs with alphanumeric final segment match with ignoreCase", async () => {
-    await fcAssert(
+    fcAssert(
       property(lowercaseSlugWithDashArb, (input) => {
         const parts = input.split("-");
         const lastPart = parts.at(-1) ?? "";
@@ -534,7 +575,7 @@ describe("looksLikeIssueShortId properties", () => {
           expect(looksLikeIssueShortId(input, { ignoreCase: true })).toBe(true);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
@@ -549,31 +590,31 @@ describe("parseSelector properties", () => {
     "@Most_Frequent",
     "@MOST_FREQUENT",
     "@mostfrequent",
-    "@most-frequent"
+    "@most-frequent",
   );
 
   test("recognized selectors always return a canonical value", async () => {
-    await fcAssert(
+    fcAssert(
       property(selectorVariantArb, (input) => {
         const result = parseSelector(input);
         expect(result).toBeDefined();
         expect(["@latest", "@most_frequent"]).toContain(result!);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("non-@ strings never match", async () => {
-    await fcAssert(
+    fcAssert(
       property(orgSlugArb, (input) => {
         expect(parseSelector(input)).toBeUndefined();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("bare @selector parses to type 'selector'", async () => {
-    await fcAssert(
+    fcAssert(
       property(selectorVariantArb, (input) => {
         const result = parseIssueArg(input);
         expect(result.type).toBe("selector");
@@ -582,12 +623,12 @@ describe("parseSelector properties", () => {
           expect(result.org).toBeUndefined();
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("org/@selector parses to type 'selector' with org", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(orgSlugArb, selectorVariantArb), ([org, sel]) => {
         const input = `${org}/${sel}`;
         const result = parseIssueArg(input);
@@ -597,50 +638,50 @@ describe("parseSelector properties", () => {
           expect(result.org).toBe(org);
         }
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("canonical form is stable regardless of casing", async () => {
-    await fcAssert(
+    fcAssert(
       property(selectorVariantArb, (input) => {
         const direct = parseSelector(input);
         const lower = parseSelector(input.toLowerCase());
         expect(direct).toBe(lower);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });
 
 describe("detectSwappedViewArgs properties", () => {
   test("symmetric inverse: if swap(a,b) is non-null then swap(b,a) is null when exactly one has slash", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(noSlashArb, withSlashArb), ([noSlash, withSlash]) => {
         // noSlash first, withSlash second → swapped → non-null
         expect(detectSwappedViewArgs(noSlash, withSlash)).not.toBeNull();
         // withSlash first, noSlash second → correct → null
         expect(detectSwappedViewArgs(withSlash, noSlash)).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("both without slashes always returns null", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(noSlashArb, noSlashArb), ([a, b]) => {
         expect(detectSwappedViewArgs(a, b)).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
   test("both with slashes always returns null", async () => {
-    await fcAssert(
+    fcAssert(
       property(tuple(withSlashArb, withSlashArb), ([a, b]) => {
         expect(detectSwappedViewArgs(a, b)).toBeNull();
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

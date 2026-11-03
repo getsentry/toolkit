@@ -32,7 +32,7 @@ const DEFAULT_HEIGHT = 120;
  */
 export function renderTimeseriesAsSixel(
   data: TimeseriesResult,
-  opts: RenderSixelOpts = {}
+  opts: RenderSixelOpts = {},
 ): string | undefined {
   const {
     maxPixelWidth = DEFAULT_WIDTH,

@@ -27,13 +27,13 @@ const hostnameArb = array(
     minLength: 2,
     maxLength: 12,
   }).map((chars) => chars.join("")),
-  { minLength: 2, maxLength: 4 }
+  { minLength: 2, maxLength: 4 },
 ).map((labels) => labels.join("."));
 
 /** Arbitrary for strings that already have a protocol */
 const withProtocolArb = oneof(
   hostnameArb.map((h) => `https://${h}`),
-  hostnameArb.map((h) => `http://${h}`)
+  hostnameArb.map((h) => `http://${h}`),
 );
 
 /** Arbitrary for any input (bare hostname, with protocol, empty, whitespace) */
@@ -41,7 +41,7 @@ const anyInputArb = oneof(
   hostnameArb,
   withProtocolArb,
   constantFrom("", " ", "  \t\n"),
-  string({ minLength: 0, maxLength: 5 })
+  string({ minLength: 0, maxLength: 5 }),
 );
 
 describe("property: normalizeUrl", () => {
@@ -53,10 +53,10 @@ describe("property: normalizeUrl", () => {
           return;
         }
         expect(
-          result.startsWith("https://") || result.startsWith("http://")
+          result.startsWith("https://") || result.startsWith("http://"),
         ).toBe(true);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -66,7 +66,7 @@ describe("property: normalizeUrl", () => {
         const result = normalizeUrl(hostname);
         expect(result).toBe(`https://${hostname}`);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -76,7 +76,7 @@ describe("property: normalizeUrl", () => {
         const result = normalizeUrl(url);
         expect(result).toBe(url);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -87,7 +87,7 @@ describe("property: normalizeUrl", () => {
         const twice = normalizeUrl(once);
         expect(twice).toBe(once);
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 
@@ -103,7 +103,7 @@ describe("property: normalizeUrl", () => {
         // harmless — the HTTP request will simply fail with a DNS error).
         expect(result).toStartWith("https://");
       }),
-      { numRuns: DEFAULT_NUM_RUNS }
+      { numRuns: DEFAULT_NUM_RUNS },
     );
   });
 });

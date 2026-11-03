@@ -8,7 +8,6 @@ import {
   findEndpointsByPath,
   getAllEndpoints,
   getAllResources,
-  getEndpoint,
   getEndpointsByResource,
   getResourceSummaries,
   parseEndpointQuery,
@@ -84,51 +83,30 @@ describe("getEndpointsByResource", () => {
   });
 });
 
-describe("getEndpoint", () => {
-  test("finds specific endpoint by operationId substring", () => {
-    const ep = getEndpoint("issues", "getOrganizationIssue");
-    expect(ep).toBeDefined();
-    expect(ep?.resource).toBe("issues");
-    expect(ep?.method).toBe("GET");
-    expect(ep?.fn).toBe("getOrganizationIssue");
-  });
-
-  test("is case-insensitive", () => {
-    const ep1 = getEndpoint("issues", "list");
-    const ep2 = getEndpoint("Issues", "List");
-    expect(ep1).toEqual(ep2);
-  });
-
-  test("returns undefined for unknown endpoint", () => {
-    expect(getEndpoint("issues", "xyznonexistent123")).toBeUndefined();
-    expect(getEndpoint("nonexistent", "list")).toBeUndefined();
-  });
-});
-
 describe("parseEndpointQuery", () => {
   test("parses METHOD + OpenAPI path", () => {
     const parsed = parseEndpointQuery(
-      "GET /api/0/organizations/{organization_id_or_slug}/issues/"
+      "GET /api/0/organizations/{organization_id_or_slug}/issues/",
     );
     expect(parsed.method).toBe("GET");
     expect(parsed.path).toBe(
-      "/api/0/organizations/{organization_id_or_slug}/issues/"
+      "/api/0/organizations/{organization_id_or_slug}/issues/",
     );
   });
 
   test("parses a bare /api/ path and adds a trailing slash", () => {
     const parsed = parseEndpointQuery(
-      "/api/0/organizations/{organization_id_or_slug}/issues"
+      "/api/0/organizations/{organization_id_or_slug}/issues",
     );
     expect(parsed.method).toBeUndefined();
     expect(parsed.path).toBe(
-      "/api/0/organizations/{organization_id_or_slug}/issues/"
+      "/api/0/organizations/{organization_id_or_slug}/issues/",
     );
   });
 
   test("parses a full Sentry URL and strips the query string", () => {
     const parsed = parseEndpointQuery(
-      "https://sentry.io/api/0/organizations/acme/issues/?query=is:unresolved"
+      "https://sentry.io/api/0/organizations/acme/issues/?query=is:unresolved",
     );
     expect(parsed.path).toBe("/api/0/organizations/acme/issues/");
   });
@@ -142,10 +120,16 @@ describe("parseEndpointQuery", () => {
 });
 
 describe("findEndpointsByPath", () => {
+  test("preserves SDK operation names for endpoints with optional arguments", () => {
+    const matches = findEndpointsByPath("/api/0/organizations/", "GET");
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.fn).toBe("listOrganizations");
+  });
+
   test("matches a concrete org slug against {organization_id_or_slug}", () => {
     const matches = findEndpointsByPath(
       "/api/0/organizations/acme/issues/",
-      "GET"
+      "GET",
     );
     expect(matches).toHaveLength(1);
     expect(matches[0]?.fn).toBe("listOrganizationIssues");
@@ -154,7 +138,7 @@ describe("findEndpointsByPath", () => {
   test("does not treat a query {param} as a wildcard for static siblings", () => {
     const matches = findEndpointsByPath(
       "/api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/{snapshot_id}/",
-      "GET"
+      "GET",
     );
     expect(matches.map((e) => e.fn)).toEqual([
       "getOrganizationPreprodArtifactSnapshot",
@@ -164,7 +148,7 @@ describe("findEndpointsByPath", () => {
   test("prefers a static segment over a neighboring {param}", () => {
     const matches = findEndpointsByPath(
       "/api/0/organizations/acme/preprodartifacts/snapshots/latest-base/",
-      "GET"
+      "GET",
     );
     expect(matches.map((e) => e.fn)).toEqual([
       "getOrganizationPreprodArtifactSnapshotLatestBase",
@@ -174,7 +158,7 @@ describe("findEndpointsByPath", () => {
   test("does not match getProject when the query is an OpenAPI /issues/ path", () => {
     const matches = findEndpointsByPath(
       "/api/0/projects/{organization_id_or_slug}/issues/",
-      "GET"
+      "GET",
     );
     expect(matches).toEqual([]);
   });
@@ -192,7 +176,7 @@ describe("findEndpointsByIdentifier", () => {
       (candidate) =>
         candidate.fn &&
         candidate.operationId &&
-        candidate.fn !== candidate.operationId
+        candidate.fn !== candidate.operationId,
     );
     expect(endpoint).toBeDefined();
     if (!endpoint) {
@@ -204,7 +188,7 @@ describe("findEndpointsByIdentifier", () => {
 
   test("is case-insensitive but does not accept partial identifiers", () => {
     expect(findEndpointsByIdentifier("LISTORGANIZATIONEVENTS")[0]?.fn).toBe(
-      "listOrganizationEvents"
+      "listOrganizationEvents",
     );
     expect(findEndpointsByIdentifier("OrganizationEvents")).toEqual([]);
   });

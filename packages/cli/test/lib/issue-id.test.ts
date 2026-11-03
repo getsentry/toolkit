@@ -61,7 +61,7 @@ describe("expandToFullShortId representative examples", () => {
   test("expands suffix with project slug", () => {
     expect(expandToFullShortId("G", "craft")).toBe("CRAFT-G");
     expect(expandToFullShortId("4y", "spotlight-electron")).toBe(
-      "SPOTLIGHT-ELECTRON-4Y"
+      "SPOTLIGHT-ELECTRON-4Y",
     );
   });
 
@@ -89,7 +89,7 @@ describe("short ID resolution flow", () => {
 
   function resolveIssueId(
     input: string,
-    defaultProject?: string
+    defaultProject?: string,
   ): string | null {
     // Check alias-suffix pattern first
     const aliasSuffix = parseAliasSuffix(input);
@@ -120,7 +120,7 @@ describe("short ID resolution flow", () => {
 
   test("resolves short suffix with default project", () => {
     expect(resolveIssueId("4y", "spotlight-electron")).toBe(
-      "SPOTLIGHT-ELECTRON-4Y"
+      "SPOTLIGHT-ELECTRON-4Y",
     );
     expect(resolveIssueId("G", "craft")).toBe("CRAFT-G");
     // Pure numeric suffix works when project context is available
@@ -129,7 +129,7 @@ describe("short ID resolution flow", () => {
 
   test("passes through full short ID", () => {
     expect(resolveIssueId("SPOTLIGHT-ELECTRON-4Y")).toBe(
-      "SPOTLIGHT-ELECTRON-4Y"
+      "SPOTLIGHT-ELECTRON-4Y",
     );
     expect(resolveIssueId("craft-g")).toBe("CRAFT-G");
   });

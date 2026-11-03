@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("delta-upgrade-mocked-");
@@ -61,7 +62,7 @@ afterEach(() => {
 });
 
 function mockFetch(
-  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>
+  fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = fn as typeof globalThis.fetch;
 }
@@ -73,7 +74,8 @@ function mockFetch(
 const BINARY_NAME = getPlatformBinaryName();
 
 function versionHex(version: string): string {
-  return Array.from(version)
+  return version
+    .split("")
     .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
     .join("");
 }
@@ -81,7 +83,7 @@ function versionHex(version: string): string {
 function tempFile(name: string): string {
   return join(
     tmpdir(),
-    `delta-iso-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`
+    `delta-iso-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`,
   );
 }
 
@@ -143,7 +145,7 @@ describe("resolveStableDelta", () => {
     // All sizes stay 0 — this will produce an empty output
 
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.startsWith("https://api.github.com/")) {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
@@ -163,7 +165,7 @@ describe("resolveStableDelta", () => {
       // 4. Apply patch (produces empty file)
       // 5. SHA-256 check fails → throws
       await expect(
-        resolveStableDelta("0.14.0", oldBinaryPath, destPath)
+        resolveStableDelta("0.14.0", oldBinaryPath, destPath),
       ).rejects.toThrow("SHA-256 mismatch");
     } finally {
       if (existsSync(oldBinaryPath)) unlinkSync(oldBinaryPath);
@@ -182,7 +184,7 @@ describe("resolveStableDelta", () => {
       const result = await resolveStableDelta(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -203,7 +205,7 @@ describe("resolveNightlyDelta", () => {
 
     // Mock GHCR: token exchange succeeds, nightly manifest has no .gz layer
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
           status: 200,
@@ -230,7 +232,7 @@ describe("resolveNightlyDelta", () => {
               },
             ],
           }),
-          { status: 200 }
+          { status: 200 },
         );
       }
       // listTags runs in parallel with fetchManifest — must not 404
@@ -244,7 +246,7 @@ describe("resolveNightlyDelta", () => {
       const result = await resolveNightlyDelta(
         "0.0.0-dev.200",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -259,7 +261,7 @@ describe("resolveNightlyDelta", () => {
 
     // Mock GHCR: nightly manifest has .gz layer, but no patch tags
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.includes("ghcr.io/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
           status: 200,
@@ -286,7 +288,7 @@ describe("resolveNightlyDelta", () => {
               },
             ],
           }),
-          { status: 200 }
+          { status: 200 },
         );
       }
       if (urlStr.includes("/tags/list")) {
@@ -299,7 +301,7 @@ describe("resolveNightlyDelta", () => {
       const result = await resolveNightlyDelta(
         "0.0.0-dev.200",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -318,7 +320,7 @@ describe("attemptDeltaUpgrade", () => {
     const result = await attemptDeltaUpgrade(
       "0.0.0-dev.100",
       "/tmp/fake-binary",
-      "/tmp/fake-dest"
+      "/tmp/fake-dest",
     );
     expect(result).toBeNull();
   });
@@ -335,7 +337,7 @@ describe("attemptDeltaUpgrade", () => {
       const result = await attemptDeltaUpgrade(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -386,7 +388,7 @@ describe("attemptDeltaUpgrade", () => {
 
     // Return garbage patch data
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.startsWith("https://api.github.com/")) {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
@@ -395,7 +397,7 @@ describe("attemptDeltaUpgrade", () => {
           new Uint8Array([0, 1, 2, 3]).buffer as ArrayBuffer,
           {
             status: 200,
-          }
+          },
         );
       }
       return new Response("Not Found", { status: 404 });
@@ -406,7 +408,7 @@ describe("attemptDeltaUpgrade", () => {
       const result = await attemptDeltaUpgrade(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).toBeNull();
     } finally {
@@ -467,7 +469,7 @@ describe("attemptDeltaUpgrade", () => {
     ];
 
     mockFetch(async (url) => {
-      const urlStr = String(url);
+      const urlStr = extractInputUrl(url);
       if (urlStr.startsWith("https://api.github.com/")) {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
@@ -481,7 +483,7 @@ describe("attemptDeltaUpgrade", () => {
       const result = await attemptDeltaUpgrade(
         "0.14.0",
         oldBinaryPath,
-        destPath
+        destPath,
       );
       expect(result).not.toBeNull();
       expect(result!.sha256).toBe(expectedSha256);

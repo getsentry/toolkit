@@ -6,14 +6,22 @@
  * `process.env` is never mutated.
  */
 
-let _env: NodeJS.ProcessEnv = process.env;
+import { AsyncLocalStorage } from "node:async_hooks";
+
+const invocationEnvironments = new AsyncLocalStorage<NodeJS.ProcessEnv>();
+const envState: { defaultEnv: NodeJS.ProcessEnv } = { defaultEnv: process.env };
 
 /** Get the active environment. Library mode overrides this; CLI uses process.env. */
 export function getEnv(): NodeJS.ProcessEnv {
-  return _env;
+  return invocationEnvironments.getStore() ?? envState.defaultEnv;
 }
 
 /** Set the active environment for this invocation. */
 export function setEnv(env: NodeJS.ProcessEnv): void {
-  _env = env;
+  envState.defaultEnv = env;
+}
+
+/** Isolate overlapping SDK invocations without changing the process environment. */
+export function withEnv<T>(env: NodeJS.ProcessEnv, callback: () => T): T {
+  return invocationEnvironments.run(env, callback);
 }

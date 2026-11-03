@@ -24,8 +24,7 @@
  * deletion, which we already handle via 404 eviction.
  */
 
-import { recordCacheHit } from "../telemetry.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, recordCacheHit } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 type IssueOrgRow = {
@@ -77,7 +76,7 @@ export function setCachedIssueOrg(numericId: string, orgSlug: string): void {
       org_slug: orgSlug,
       cached_at: Date.now(),
     },
-    ["issue_id"]
+    ["issue_id"],
   );
 }
 

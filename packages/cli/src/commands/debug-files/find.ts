@@ -19,6 +19,11 @@ import {
   type FindResult,
   findDebugFiles,
 } from "../../lib/dif/find.js";
+import {
+  choiceParser,
+  parseDirectoryPath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -47,10 +52,10 @@ function formatFindResult(data: FindResult): string {
           (m) =>
             `${colorTag("muted", m.id)} \`${m.path}\` [${colorTag(
               "yellow",
-              m.type
-            )}]`
+              m.type,
+            )}]`,
         )
-        .join("\n")
+        .join("\n"),
     );
   } else {
     sections.push(colorTag("muted", "No debug information files found."));
@@ -58,7 +63,7 @@ function formatFindResult(data: FindResult): string {
   if (data.missing.length > 0) {
     const lines = data.missing.map((m) => `  ${m.id} (${m.hint})`).join("\n");
     sections.push(
-      `${colorTag("yellow", "Missing debug information files:")}\n${lines}`
+      `${colorTag("yellow", "Missing debug information files:")}\n${lines}`,
     );
   }
   return renderMarkdown(sections.join("\n\n"));
@@ -74,9 +79,9 @@ function resolveTypes(flags: FindFlags): string[] {
     if (!FIND_DIF_TYPES.includes(type)) {
       throw new ValidationError(
         `Unknown debug file type '${type}'. Valid types: ${FIND_DIF_TYPES.join(
-          ", "
+          ", ",
         )}`,
-        "type"
+        "type",
       );
     }
   }
@@ -87,7 +92,7 @@ function resolveTypes(flags: FindFlags): string[] {
 async function resolveSearchPaths(
   flags: FindFlags,
   types: string[],
-  cwd: string
+  cwd: string,
 ): Promise<string[]> {
   const paths: string[] = [];
   // dSYMs live in Xcode DerivedData; only search it when dSYMs are wanted.
@@ -115,11 +120,23 @@ export const findCommand = buildCommand({
       "Searches Xcode's DerivedData (for dSYMs), the current directory, and " +
       "any extra `--path` directories, matching each file's embedded debug id " +
       "against the requested ids. Local-only — no API calls.\n\n" +
-      "Exits non-zero if any id could not be located.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files find <debug-id> [<debug-id>...]\n" +
-      "  sentry debug-files find <id> --type dsym --path ./build\n" +
-      "  sentry debug-files find <id> --no-cwd --no-well-known -p /symbols",
+      "Exits non-zero if any id could not be located.",
+    examples: [
+      {
+        description: "Locate debug files for a debug identifier on disk",
+        command: "sentry debug-files find <debug-id>",
+      },
+      {
+        description: "Search only for dSYMs, including an extra directory",
+        command:
+          "sentry debug-files find <debug-id> --type dsym --path ./build",
+      },
+      {
+        description: "Search only an explicit directory and output JSON",
+        command:
+          "sentry debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json",
+      },
+    ],
   },
   // Purely local filesystem search — no Sentry API calls, no auth needed.
   auth: false,
@@ -132,13 +149,13 @@ export const findCommand = buildCommand({
       parameter: {
         placeholder: "id",
         brief: "Debug identifier(s) to search for",
-        parse: String,
+        parse: parseText,
       },
     },
     flags: {
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(FIND_DIF_TYPES),
         variadic: true,
         brief:
           "Only consider debug files of the given type (repeatable). Default: all",
@@ -156,7 +173,7 @@ export const findCommand = buildCommand({
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         variadic: true,
         brief: "Add a directory to search recursively (repeatable)",
         optional: true,
@@ -178,7 +195,7 @@ export const findCommand = buildCommand({
 
     const result = await findDebugFiles({ ids, types, paths });
     log.debug(
-      `Located ${result.matches.length} file(s); ${result.missing.length} id(s) missing`
+      `Located ${result.matches.length} file(s); ${result.missing.length} id(s) missing`,
     );
 
     yield new CommandOutput(result);

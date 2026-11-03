@@ -101,7 +101,7 @@ describe("sentry project list", () => {
       ]);
 
       expect(result.exitCode).toBe(0);
-    }
+    },
   );
 
   test("supports --json output", { timeout: 15_000 }, async () => {
@@ -225,7 +225,7 @@ describe("sentry project view", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("DSN");
       expect(result.stdout).toContain(TEST_DSN);
-    }
+    },
   );
 
   test("supports --json output", { timeout: 15_000 }, async () => {

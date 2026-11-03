@@ -95,10 +95,10 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     originalFetch = globalThis.fetch;
     globalThis.fetch = (async (
       input: RequestInfo | URL,
-      init?: RequestInit
+      init?: RequestInit,
     ) => {
       const headers = new Headers(
-        init?.headers ?? (input instanceof Request ? input.headers : undefined)
+        init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
       fetchCalls.push({
         url: extractFetchUrl(input),
@@ -128,12 +128,12 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
         token: "user-saas-api-token-secret",
         force: false,
         timeout: 900,
-      })
+      }),
     ).rejects.toBeInstanceOf(HostScopeError);
 
     // Critical: the user's token NEVER hit the wire.
     const leaked = fetchCalls.filter((c) =>
-      c.authorization?.includes("user-saas-api-token-secret")
+      c.authorization?.includes("user-saas-api-token-secret"),
     );
     expect(leaked).toEqual([]);
     // And no requests to the attacker at all
@@ -155,7 +155,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     const context = createContext();
 
     await expect(
-      func.call(context, { force: false, timeout: 900 })
+      func.call(context, { force: false, timeout: 900 }),
     ).rejects.toBeInstanceOf(HostScopeError);
 
     const toEvil = fetchCalls.filter((c) => urlHostnameIn(c.url, ["evil.com"]));
@@ -182,13 +182,13 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
         url: "https://sentry.example.com",
         force: false,
         timeout: 900,
-      })
+      }),
     ).rejects.toThrow(); // our fetch mock throws
 
     const toEvil = fetchCalls.filter((c) => urlHostnameIn(c.url, ["evil.com"]));
     expect(toEvil).toEqual([]);
     const toIntended = fetchCalls.filter((c) =>
-      urlHostnameIn(c.url, ["sentry.example.com"])
+      urlHostnameIn(c.url, ["sentry.example.com"]),
     );
     expect(toIntended.length).toBeGreaterThan(0);
   });
@@ -209,7 +209,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
         token: "legit-token",
         force: false,
         timeout: 900,
-      })
+      }),
     ).rejects.toBeInstanceOf(HostScopeError);
 
     // No network I/O attempted.
@@ -223,9 +223,8 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     // hostA's anchor as a free pass — the refusal guard checks anchor↔host
     // match, not anchor existence.
     captureEnvTokenHost();
-    const { registerLoginTrustAnchor } = await import(
-      "../../../src/lib/token-host.js"
-    );
+    const { registerLoginTrustAnchor } =
+      await import("../../../src/lib/token-host.js");
     registerLoginTrustAnchor("https://sentry.hosta.com");
 
     process.env.SENTRY_URL = "https://evil.com";
@@ -238,7 +237,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
         token: "user-saas-api-token-secret",
         force: false,
         timeout: 900,
-      })
+      }),
     ).rejects.toBeInstanceOf(HostScopeError);
 
     const toEvil = fetchCalls.filter((c) => urlHostnameIn(c.url, ["evil.com"]));
