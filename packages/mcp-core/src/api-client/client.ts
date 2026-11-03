@@ -59,6 +59,7 @@ import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
+import { isFreshRead } from "../internal/fresh-reads";
 import { logIssue, logWarn } from "../telem/logging";
 import type { SentryProtocol } from "../types";
 import {
@@ -354,10 +355,12 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
 /**
  * Every request goes through the shared transport. `SentryApiService` sets its
  * own headers, including Authorization, so the transport only retries; as
- * before, it adds no timeout.
+ * before, it adds no timeout. `fresh` passes on a tool call's `fresh: true`,
+ * for when the transport gets a cache.
  */
 const transport = createApiTransport({
   retry: REQUEST_RETRY_POLICY,
+  fresh: isFreshRead,
   isIdempotent: createIdempotentOperationMatcher(() =>
     selectIdempotentWrites(operations),
   ),

@@ -2946,6 +2946,7 @@ describe("buildServer", () => {
       ).toEqual([
         "categories",
         "endOffsetSeconds",
+        "fresh",
         "limit",
         "regionUrl",
         "replayId",
