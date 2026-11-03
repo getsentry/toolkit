@@ -30,6 +30,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import { toNumericId } from "../../lib/resolve-target.js";
 import {
@@ -109,13 +110,13 @@ function formatListHuman(result: ConversationListResult): string {
 function jsonTransform(
   result: ConversationListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<ConversationListItem> {
   const items =
     fields && fields.length > 0
       ? result.conversations.map((c) => filterFields(c, fields))
       : result.conversations;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<ConversationListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,

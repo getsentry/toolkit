@@ -531,13 +531,14 @@ export function buildListCommand<
   const CONTEXT extends CommandContext = CommandContext,
   OUTPUT = never,
   SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
   routeName: string,
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
     readonly docs: CommandDocumentation;
     readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
-    readonly output?: OutputConfig<OUTPUT, SCHEMA>;
+    readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
     readonly auth?: boolean;
   },
   options?: ListCommandOptions,
@@ -611,7 +612,7 @@ export function buildListCommand<
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
-  return buildCommand({
+  return buildCommand<FLAGS, ARGS, CONTEXT, OUTPUT, SCHEMA, TRANSFORMED>({
     ...builderArgs,
     parameters: mergedParams,
     func: wrappedFunc,
@@ -684,14 +685,17 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
   docs: OrgListCommandDocs,
   routeName: string,
 ): Command<SentryContext> {
+  // `OrgListConfig.schema` checks the entity against the schema; the generic
+  // `TWithOrg` can't be checked here, so the schema's type is erased.
+  const output: OutputConfig<ListResult<TWithOrg>> = {
+    human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
+    jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>
+      jsonTransformListResult(result, fields),
+    schema: config.schema && orgListItemSchema(config.schema),
+  };
   return buildListCommand(routeName, {
     docs,
-    output: {
-      human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
-      jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>
-        jsonTransformListResult(result, fields),
-      schema: config.schema && orgListItemSchema(config.schema),
-    } satisfies OutputConfig<ListResult<TWithOrg>>,
+    output,
     parameters: {
       positional: config.namesOf
         ? NAMED_LIST_ORG_TARGET_POSITIONAL

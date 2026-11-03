@@ -21,6 +21,7 @@ import {
   LIST_PERIOD_FLAG,
   PERIOD_ALIASES,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
 import { appendPeriodHint, type TimeRange } from "../../lib/time-range.js";
 import type { IssueEvent } from "../../types/index.js";
@@ -154,13 +155,13 @@ export function formatEventsHuman(result: EventsResult): string {
 export function jsonTransformEvents(
   result: EventsResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<IssueEvent> {
   const items =
     fields && fields.length > 0
       ? result.events.map((e) => filterFields(e, fields))
       : result.events;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<IssueEvent> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: result.hasPrev,
