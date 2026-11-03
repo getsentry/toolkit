@@ -1539,21 +1539,45 @@
       "type": "object",
       "properties": {
         "name": {
+          "description": "The name of the available tool to execute.",
           "type": "string",
-          "minLength": 1,
-          "description": "The name of the available tool to execute."
+          "minLength": 1
         },
         "arguments": {
-          "default": {},
           "description": "Arguments for the target tool, matching the schema returned by search_sentry_tools.",
           "type": "object",
           "propertyNames": {
             "type": "string"
           },
           "additionalProperties": {}
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "args": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
         }
-      },
-      "required": ["name"]
+      }
     },
     "requiredScopes": [],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
