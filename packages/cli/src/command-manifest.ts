@@ -271,7 +271,7 @@ export const COMMAND_MANIFEST: Readonly<Record<string, ManifestEntry>> = {
   mcp: {
     brief: "Start a local Sentry MCP server",
     usage:
-      "[--access-token value] [--org value] [--project value] [--skills value] [--all-skills] [--disable-skills value] [--experimental] [--agent-provider value] [--openai-base-url value] [--openai-model value] [--anthropic-base-url value] [--anthropic-model value] [--mcp-url value] [--sentry-dsn value] [<org/project>]",
+      "[--access-token value] [--org value] [--project value] [--skills value] [--all-skills] [--disable-skills value] [--experimental] [--commands] [--read-only] [--agent-provider value] [--openai-base-url value] [--openai-model value] [--anthropic-base-url value] [--anthropic-model value] [--mcp-url value] [--sentry-dsn value] [<org/project>]",
     placeholder: "[<org/project>]",
     load: () => import("./commands/mcp.js").then((m) => m.mcpCommand),
   },

@@ -41,6 +41,10 @@ export type McpServerConfig = {
   agentProvider?: McpAgentProvider;
   agentProviderFromFlag: boolean;
   experimental: boolean;
+  /** Serve CLI commands (`search_sentry` and the execute tools) instead of the tool catalog. */
+  commands: boolean;
+  /** With `commands`: list no write tool, and refuse write calls. */
+  readOnly: boolean;
   /** Skills granted for this session. */
   finalSkills: Set<Skill>;
   organizationSlug?: string;
@@ -174,6 +178,11 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
     );
   }
   const finalSkills = resolveSkills(input, sentryHost);
+  if (input.readOnly && !input.commands) {
+    throw new ValidationError(
+      "--read-only works only with --commands. To limit the tool catalog, pass --skills.",
+    );
+  }
 
   return {
     sentryHost,
@@ -194,6 +203,8 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
     agentProvider: resolveAgentProvider(input.agentProvider),
     agentProviderFromFlag: input.agentProviderFromFlag,
     experimental: input.experimental,
+    commands: input.commands,
+    readOnly: input.readOnly,
     finalSkills,
     organizationSlug: input.organizationSlug,
     projectSlug: input.projectSlug,

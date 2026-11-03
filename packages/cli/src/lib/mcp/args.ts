@@ -32,6 +32,10 @@ export type McpFlags = {
   readonly "all-skills": boolean;
   readonly "disable-skills"?: string;
   readonly experimental: boolean;
+  /** Serve CLI commands instead of the tool catalog. */
+  readonly commands: boolean;
+  /** With `--commands`: no write tool, and write calls are refused. */
+  readonly "read-only": boolean;
   readonly org?: string;
   readonly project?: string;
   /** Deprecated alias of `--org`. */
@@ -196,6 +200,8 @@ export type McpMergedArgs = {
   allSkills: boolean;
   disableSkills?: string;
   experimental: boolean;
+  commands: boolean;
+  readOnly: boolean;
   organizationSlug?: string;
   projectSlug?: string;
 };
@@ -255,6 +261,8 @@ export function mergeMcpArgs(
     allSkills: flags["all-skills"],
     disableSkills: flags["disable-skills"] ?? env.disableSkills,
     experimental: flags.experimental,
+    commands: flags.commands,
+    readOnly: flags["read-only"],
     organizationSlug: scopeFlag(flags, "org", "organization-slug", scope?.org),
     projectSlug: scopeFlag(flags, "project", "project-slug", scope?.project),
   };

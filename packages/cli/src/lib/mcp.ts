@@ -440,6 +440,26 @@ export async function serveMcp(
   const { token, pin } = await withEnv(credentialEnv, () =>
     resolveMcpCredentialWithLogin(config),
   );
+
+  if (config.commands) {
+    // The startup account only: calls are not routed between stored logins.
+    // A stored login is refreshed before each call when it is near expiry.
+    const getToken =
+      pin.kind === "stored" && !deprecatedToken
+        ? () =>
+            withEnv(credentialEnv, async () => {
+              const refreshed = await resolveCliMcpCredential(config, { pin });
+              return refreshed.token;
+            })
+        : async () => token;
+    const { createCliCommandTools } = await import("./mcp/command-surface.js");
+    await serveMcpStdio(config, {
+      accessToken: token,
+      env,
+      tools: createCliCommandTools({ config, cwd, getToken }),
+    });
+    return;
+  }
   // A static token (`--access-token`, `SENTRY_AUTH_TOKEN`) is the only
   // credential; a stored login can route calls to the other stored logins.
   const router =

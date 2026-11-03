@@ -25,10 +25,13 @@ const toolTypesModule = await import("../src/tools/types.ts");
 function parseArgs() {
   const args = process.argv.slice(2);
   let outputFile: string | null = null;
+  let commands = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--output" || arg === "-o") {
+    if (arg === "--commands") {
+      commands = true;
+    } else if (arg === "--output" || arg === "-o") {
       outputFile = args[i + 1];
       if (!outputFile) {
         throw new Error("--output requires a file path");
@@ -39,6 +42,7 @@ function parseArgs() {
 Usage: tsx measure-token-cost.ts [options]
 
 Options:
+  --commands           Measure the command surface (sentry mcp --commands)
   -o, --output <file>  Write JSON output to file
   -h, --help          Show this help message
 
@@ -50,7 +54,7 @@ Examples:
     }
   }
 
-  return { outputFile };
+  return { outputFile, commands };
 }
 
 type ToolDefinition = {
@@ -150,7 +154,7 @@ async function main() {
   let encoder: Tiktoken | null = null;
 
   try {
-    const { outputFile } = parseArgs();
+    const { outputFile, commands } = parseArgs();
 
     // Load tools
     const toolsDefault = toolsModule.default as
@@ -160,13 +164,18 @@ async function main() {
       throw new Error("Failed to import tools from src/tools/index.ts");
     }
 
-    const toolsToMeasure = Object.fromEntries(
-      Object.entries(toolsDefault).filter(
-        ([, tool]) =>
-          surfacesModule.isTopLevelTool(tool, false) &&
-          toolTypesModule.isToolVisibleInMode(tool, false),
-      ),
-    );
+    const toolsToMeasure = commands
+      ? ((await import("../src/command-surface/index.ts")).createCommandTools({
+          runtime: "stdio",
+          run: async () => undefined,
+        }) as Record<string, ToolDefinition>)
+      : Object.fromEntries(
+          Object.entries(toolsDefault).filter(
+            ([, tool]) =>
+              surfacesModule.isTopLevelTool(tool, false) &&
+              toolTypesModule.isToolVisibleInMode(tool, false),
+          ),
+        );
 
     // Format as MCP would send them (as a complete tools array)
     const mcpTools = formatToolsForMCP(toolsToMeasure);

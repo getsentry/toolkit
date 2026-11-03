@@ -201,8 +201,29 @@ export function applyFlagDefaults(
 // oxlint-disable-next-line no-control-regex -- ANSI escape sequences use ESC (0x1b)
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
+/**
+ * Run `executor` in a telemetry span, or without one when the caller turned
+ * telemetry off (`SentryOptions.telemetry`).
+ */
+async function withSdkTelemetry(
+  options: SentryOptions | undefined,
+  executor: (span: Span | undefined) => Promise<void>,
+): Promise<void> {
+  if (options?.telemetry === false) {
+    await executor(undefined);
+    return;
+  }
+  const { withTelemetry } = await import("./telemetry.js");
+  await withTelemetry(executor, { libraryMode: true });
+}
+
 /** Flush Sentry telemetry (no beforeExit handler in library mode). */
-async function flushTelemetry(): Promise<void> {
+async function flushTelemetry(
+  options: SentryOptions | undefined,
+): Promise<void> {
+  if (options?.telemetry === false) {
+    return;
+  }
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const Sentry = await import("@sentry/node");
@@ -299,7 +320,8 @@ type CaptureContext = {
       stdin: NodeJS.ReadStream & { fd: 0 };
       env: NodeJS.ProcessEnv;
       cwd: () => string;
-      exitCode: number;
+      /** Unset until something fails, as on Node's own `process`. */
+      exitCode: number | undefined;
     };
     stdout: Writer;
     stderr: Writer;
@@ -361,7 +383,9 @@ async function buildCaptureContext(
     stdin: process.stdin,
     env,
     cwd: () => cwd,
-    exitCode: 0,
+    // Unset, as on Node's `process`: Stricli's `run()` records a failure
+    // with `exitCode ??= code`, which a 0 here would swallow.
+    exitCode: undefined,
   };
 
   if (opts?.abortSignal) {
@@ -414,14 +438,14 @@ async function executeWithCapture<T>(
     const { withCustomHeadersOverride } = await import("./custom-headers.js");
     return await withCustomHeadersOverride(options?.headers, async () => {
       const captureCtx = await buildCaptureContext(env, cwd);
-      const { withTelemetry } = await import("./telemetry.js");
 
       try {
-        await withTelemetry(async (span) => await executor(captureCtx, span), {
-          libraryMode: true,
-        });
+        await withSdkTelemetry(
+          options,
+          async (span) => await executor(captureCtx, span),
+        );
       } catch (thrown) {
-        await flushTelemetry();
+        await flushTelemetry(options);
 
         // OutputError: data was already rendered (captured) before the throw.
         // Return it despite the non-zero exit code — this is the "HTTP 404 body"
@@ -436,14 +460,12 @@ async function executeWithCapture<T>(
         throw buildSdkError(captureCtx.stderrChunks, exitCode, thrown);
       }
 
-      await flushTelemetry();
+      await flushTelemetry(options);
 
       // Check exit code (Stricli sets it without throwing for some errors)
-      if (captureCtx.context.process.exitCode !== 0) {
-        throw buildSdkError(
-          captureCtx.stderrChunks,
-          captureCtx.context.process.exitCode,
-        );
+      const exitCode = captureCtx.context.process.exitCode ?? 0;
+      if (exitCode !== 0) {
+        throw buildSdkError(captureCtx.stderrChunks, exitCode);
       }
 
       return parseOutput<T>(
@@ -495,26 +517,21 @@ function executeWithStream<T>(
     try {
       const { withCustomHeadersOverride } = await import("./custom-headers.js");
       await withCustomHeadersOverride(options?.headers, async () => {
-        captureCtx = await buildCaptureContext(env, cwd, {
+        const ctx = await buildCaptureContext(env, cwd, {
           channel: channel as AsyncChannel<unknown>,
           abortSignal: controller.signal,
         });
+        captureCtx = ctx;
 
-        const { withTelemetry } = await import("./telemetry.js");
-
-        // oxlint-disable-next-line typescript/no-non-null-assertion -- captureCtx is assigned on the line above
-        await withTelemetry(async (span) => await executor(captureCtx!, span), {
-          libraryMode: true,
-        });
+        await withSdkTelemetry(
+          options,
+          async (span) => await executor(ctx, span),
+        );
 
         // Check exit code — Stricli sets it without throwing for some errors
-        if (captureCtx.context.process.exitCode !== 0) {
-          channel.error(
-            buildSdkError(
-              captureCtx.stderrChunks,
-              captureCtx.context.process.exitCode,
-            ),
-          );
+        const exitCode = captureCtx.context.process.exitCode ?? 0;
+        if (exitCode !== 0) {
+          channel.error(buildSdkError(captureCtx.stderrChunks, exitCode));
         } else {
           // Drain any raw stdout the command wrote directly (via stdout.write)
           // instead of yielding via captureObject — e.g. a binary Uint8Array
@@ -539,7 +556,7 @@ function executeWithStream<T>(
           : buildSdkError(stderrChunks, exitCode, thrown);
       channel.error(err);
     } finally {
-      await flushTelemetry();
+      await flushTelemetry(options);
     }
   });
   invocation.catch((error: unknown) => {

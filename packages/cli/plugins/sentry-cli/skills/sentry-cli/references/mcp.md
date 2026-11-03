@@ -29,6 +29,8 @@ Start a local Sentry MCP server
 - `--all-skills - Grant every active skill, including seer on self-hosted`
 - `--disable-skills <value> - Skills to remove, comma-separated`
 - `--experimental - Enable forward-looking tool variants and experimental features`
+- `--commands - Serve CLI commands through search_sentry, execute_sentry_read, and execute_sentry_write instead of the tool catalog (preview)`
+- `--read-only - With --commands: list no write tool and refuse write calls`
 - `--agent-provider <value> - LLM provider for AI-powered search: openai, azure-openai, anthropic, or openrouter`
 - `--openai-base-url <value> - OpenAI API base URL`
 - `--openai-model <value> - OpenAI model (default: gpt-5)`
@@ -54,6 +56,9 @@ sentry mcp --all-skills
 
 # Grant only some skills
 sentry mcp --skills inspect,triage
+
+# Serve CLI commands instead of the tool catalog, read-only
+sentry mcp --commands --read-only
 
 # Pick the LLM provider for AI-powered search
 sentry mcp --agent-provider anthropic

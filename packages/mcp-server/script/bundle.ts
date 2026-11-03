@@ -43,6 +43,7 @@ const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
 const FORBIDDEN_INPUTS: ReadonlyArray<RegExp> = [
   /[\\/]packages[\\/]cli[\\/]src[\\/](?:app\.ts$|commands[\\/](?!auth[\\/]|help\.ts$|mcp\.ts$|local[\\/]loopback\.ts$))/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:agent-skills|complete|completions)\.ts$/,
+  /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/]mcp[\\/]command-surface\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:sixel|sixel-image|kitty-image|formatters[\\/]sixel-dashboard)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]generated[\\/]banner-image\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:bash-hook|build|dif|init|react-native|snapshots|sourcemap|wasm)[\\/]/,
@@ -74,6 +75,32 @@ const stubModulesPlugin: Plugin = {
     b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
       contents: "module.exports = {};",
       loader: "js",
+    }));
+  },
+};
+
+/**
+ * `sentry mcp --commands` runs CLI commands, which this package does not
+ * bundle yet (#1909), so its module (`lib/mcp/command-surface.ts`) becomes
+ * one that refuses the flag.
+ */
+const commandSurfaceStubPlugin: Plugin = {
+  name: "stub-command-surface",
+  setup(b) {
+    b.onResolve({ filter: /^\.\/mcp\/command-surface\.js$/ }, (args) => ({
+      path: args.path,
+      namespace: "command-surface-stub",
+      pluginData: { resolveDir: args.resolveDir },
+    }));
+    b.onLoad({ filter: /.*/, namespace: "command-surface-stub" }, (args) => ({
+      contents: [
+        'import { ValidationError } from "./errors.js";',
+        "export function createCliCommandTools() {",
+        '  throw new ValidationError("--commands is not available in @sentry/mcp-server yet. Run `sentry mcp --commands` from the Sentry CLI instead.");',
+        "}",
+      ].join("\n"),
+      loader: "ts",
+      resolveDir: (args.pluginData as { resolveDir: string }).resolveDir,
     }));
   },
 };
@@ -139,6 +166,7 @@ const result = await build({
   external: ["node:*"],
   metafile: true,
   plugins: [
+    commandSurfaceStubPlugin,
     stubModulesPlugin,
     textImportPlugin,
     requireAliasPlugin,
