@@ -149,8 +149,6 @@ export default defineTool({
     "- Check monitor status, owner, project, schedule, or recent environment state",
     "- When `hasMore` is true, narrow the results with project, environment, owner, or query filters",
     "",
-    "To create a cron monitor, use create_monitor.",
-    "",
     "<examples>",
     "find_monitors(organizationSlug='my-organization')",
     "find_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')",

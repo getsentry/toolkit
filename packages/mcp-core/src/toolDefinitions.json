@@ -2518,7 +2518,7 @@
   },
   {
     "name": "find_monitors",
-    "description": "List or search Sentry cron monitors, which track scheduled jobs through check-ins.\nFor HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\nTo create a cron monitor, use create_monitor.\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
+    "description": "List or search Sentry cron monitors, which track scheduled jobs through check-ins.\nFor HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
