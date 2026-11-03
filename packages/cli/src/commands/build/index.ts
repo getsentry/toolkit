@@ -5,6 +5,7 @@
  * is ported separately.
  */
 
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { downloadCommand } from "./download.js";
 import { uploadCommand } from "./upload.js";
@@ -15,7 +16,7 @@ export const buildRoute = buildRouteMap({
     download: downloadCommand,
   },
   docs: {
-    brief: "Manage mobile build artifacts",
+    brief: topLevelBrief("build"),
     fullDescription:
       "Upload and download mobile build artifacts (APK/AAB/IPA/XCArchive) for " +
       "Sentry preprod size analysis. Sentry SaaS only.",

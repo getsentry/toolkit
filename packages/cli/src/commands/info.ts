@@ -6,6 +6,7 @@
  * `--config-status-json` machine-readable contract used by external tooling.
  */
 
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { getCurrentUser } from "../lib/api/users.js";
 import { buildCommand } from "../lib/command.js";
@@ -111,7 +112,7 @@ function formatInfo(data: InfoStatus): string {
 
 export const infoCommand = buildCommand({
   docs: {
-    brief: "Print configuration and verify authentication",
+    brief: topLevelBrief("info"),
     fullDescription:
       "Print the resolved Sentry server URL and default organization/project, " +
       "and verify authentication against the server.\n\n" +

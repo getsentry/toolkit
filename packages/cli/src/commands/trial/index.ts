@@ -1,3 +1,4 @@
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { listCommand } from "./list.js";
 import { startCommand } from "./start.js";
@@ -8,7 +9,7 @@ export const trialRoute = buildRouteMap({
     start: startCommand,
   },
   docs: {
-    brief: "Manage product trials",
+    brief: topLevelBrief("trial"),
     fullDescription:
       "List and start product trials for your organization.\n\n" +
       "Alias: `sentry trials` → `sentry trial list`",

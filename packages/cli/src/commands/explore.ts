@@ -12,6 +12,7 @@ import {
   isTracemetricsAggregate,
 } from "@sentry/toolkit-core/events-fields";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
@@ -665,7 +666,7 @@ function buildResultHint(rowCount: number, nav: string): string | undefined {
 
 export const exploreCommand = buildListCommand("explore", {
   docs: {
-    brief: "Query aggregate event data (Explore)",
+    brief: topLevelBrief("explore"),
     fullDescription:
       "Query the Sentry Explore API for aggregate event data.\n\n" +
       "Supports arbitrary fields including columns (title, project),\n" +

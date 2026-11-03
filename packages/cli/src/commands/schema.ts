@@ -5,6 +5,7 @@
  * operations, and endpoint details from the generated API index.
  */
 
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   type ApiEndpoint,
@@ -441,7 +442,7 @@ type SchemaFlags = {
 export const schemaCommand = buildCommand({
   auth: false,
   docs: {
-    brief: "Browse the Sentry API schema",
+    brief: topLevelBrief("schema"),
     fullDescription:
       "Browse and search the Sentry API schema. Shows available resources, " +
       "operations, and endpoint details. Search by API concepts or CLI command paths; " +

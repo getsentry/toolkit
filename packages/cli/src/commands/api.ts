@@ -8,6 +8,7 @@
 import { access, readFile } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   appendSearchParams,
@@ -1597,7 +1598,7 @@ export function resolveBinaryTtyOutput(
 export const apiCommand = buildCommand({
   output: { human: formatApiResponse, jsonTransform: formatApiResponseJson },
   docs: {
-    brief: "Make an authenticated API request",
+    brief: topLevelBrief("api"),
     fullDescription:
       "Make a raw API request to the Sentry API. Similar to 'gh api' for GitHub. " +
       "The endpoint is relative to /api/0/ (do not include the prefix). " +

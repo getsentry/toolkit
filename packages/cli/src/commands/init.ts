@@ -19,6 +19,7 @@
 
 import path from "node:path";
 import { setTag } from "@sentry/node";
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   looksLikePath,
@@ -357,7 +358,7 @@ export const initCommand = buildCommand<
   SentryContext
 >({
   docs: {
-    brief: "Initialize Sentry in your project (experimental)",
+    brief: topLevelBrief("init"),
     customUsage: ["[<target>] [<directory>]"],
     fullDescription:
       "EXPERIMENTAL: This command may modify your source files.\n\n" +

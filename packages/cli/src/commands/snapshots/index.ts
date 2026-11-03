@@ -4,6 +4,7 @@
  * Exposes `upload`, `download`, and `diff`.
  */
 
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { diffCommand } from "./diff.js";
 import { downloadCommand } from "./download.js";
@@ -16,6 +17,6 @@ export const snapshotsRoute = buildRouteMap({
     upload: uploadCommand,
   },
   docs: {
-    brief: "Manage and compare snapshots",
+    brief: topLevelBrief("snapshots"),
   },
 });

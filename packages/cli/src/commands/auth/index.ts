@@ -1,3 +1,4 @@
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { authDefaultCommand } from "./default.js";
 import { listCommand } from "./list.js";
@@ -24,7 +25,7 @@ export const authRoute = buildRouteMap({
   },
   defaultCommand: "default",
   docs: {
-    brief: "Authenticate with Sentry",
+    brief: topLevelBrief("auth"),
     fullDescription:
       "Manage authentication with Sentry. Use 'sentry auth' to log in when logged out " +
       "or show status when logged in. Explicit subcommands: 'sentry auth login', " +

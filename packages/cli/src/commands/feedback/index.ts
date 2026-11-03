@@ -4,6 +4,7 @@
  * Search, inspect, and manage modern Sentry User Feedback.
  */
 
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { listCommand } from "./list.js";
 import { resolveCommand } from "./resolve.js";
@@ -22,7 +23,7 @@ export const feedbackRoute = buildRouteMap({
   aliases: { reopen: "unresolve" },
   defaultCommand: "view",
   docs: {
-    brief: "Manage User Feedback",
+    brief: topLevelBrief("feedback"),
     fullDescription:
       "Search, inspect, and manage modern User Feedback from your Sentry organization.\n\n" +
       "Commands:\n" +

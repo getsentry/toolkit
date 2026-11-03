@@ -4,6 +4,7 @@
  * Route map for release management commands.
  */
 
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { archiveCommand } from "./archive.js";
 import { createCommand } from "./create.js";
@@ -32,7 +33,7 @@ export const releaseRoute = buildRouteMap({
     "propose-version": proposeVersionCommand,
   },
   docs: {
-    brief: "Work with Sentry releases",
+    brief: topLevelBrief("release"),
     fullDescription:
       "List, create, finalize, and deploy Sentry releases.\n\n" +
       "Alias: `sentry releases` → `sentry release list`",

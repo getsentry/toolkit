@@ -4,6 +4,7 @@
  * Search, inspect, and download Session Replays.
  */
 
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { downloadCommand } from "./download.js";
 import { listCommand } from "./list.js";
@@ -17,7 +18,7 @@ export const replayRoute = buildRouteMap({
   },
   defaultCommand: "view",
   docs: {
-    brief: "Search and inspect Session Replays",
+    brief: topLevelBrief("replay"),
     fullDescription:
       "Search and inspect Session Replays from your Sentry organization.\n\n" +
       "Commands:\n" +

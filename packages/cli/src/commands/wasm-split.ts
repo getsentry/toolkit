@@ -17,6 +17,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import {
@@ -55,7 +56,7 @@ type WasmSplitResult = {
 
 export const wasmSplitCommand = buildCommand({
   docs: {
-    brief: "Add build ids to WebAssembly modules and split out debug data",
+    brief: topLevelBrief("wasm-split"),
     fullDescription:
       "Add a build id to a WebAssembly module and optionally split its debug " +
       "data into a companion file. Sentry matches a wasm stack frame to its " +

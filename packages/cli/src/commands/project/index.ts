@@ -1,3 +1,4 @@
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { createCommand } from "./create.js";
 import { deleteCommand } from "./delete.js";
@@ -13,7 +14,7 @@ export const projectRoute = buildRouteMap({
   },
   defaultCommand: "view",
   docs: {
-    brief: "Work with Sentry projects",
+    brief: topLevelBrief("project"),
     fullDescription:
       "List and manage Sentry projects in your organizations.\n\n" +
       "Alias: `sentry projects` → `sentry project list`",

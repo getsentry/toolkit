@@ -7,6 +7,7 @@
  * when the server starts, not for `--help`.
  */
 
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import {
@@ -67,7 +68,7 @@ export const mcpCommand = buildCommand({
   auth: false,
   skipRcUrlCheck: true,
   docs: {
-    brief: "Start a local Sentry MCP server",
+    brief: topLevelBrief("mcp"),
     fullDescription:
       "Serve the Sentry MCP tools over stdio, for MCP clients such as Claude Code, Cursor, or VS Code. " +
       "Uses the current Sentry CLI login, refreshing it as needed, and stays on the account it started with. " +

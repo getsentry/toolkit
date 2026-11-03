@@ -3,57 +3,14 @@ import { afterEach, describe, expect, test } from "vitest";
 import { loadAppForArgs } from "../../src/app-for-args.js";
 import { app, routes } from "../../src/app.js";
 import { COMMAND_MANIFEST } from "../../src/command-manifest.js";
+import generatedTopLevelRoutes from "../../src/generated/top-level-routes.json";
 import type { SentryContext } from "../../src/context.js";
 import type { CliApplication } from "../../src/lib/application.js";
 import { withEnv } from "../../src/lib/env.js";
 import { printCustomHelp } from "../../src/lib/help.js";
-import {
-  getPositionalString,
-  isCommand,
-  isRouteMap,
-  type RouteMapEntry,
-} from "../../src/lib/introspect.js";
 import { setRoutes } from "../../src/lib/route-registry.js";
+import { describeTopLevelRoutes } from "../../script/lib/top-level-routes.js";
 import { envWithoutAgent, useTestConfigDir } from "../helpers.js";
-
-/** The usage config Stricli formats `sentry --help` with. */
-const USAGE_CONFIG = app.config.documentation;
-
-/**
- * What `COMMAND_MANIFEST` should say about a top-level route of `app.ts`,
- * without its loader.
- */
-function describeRoute(entry: RouteMapEntry): Record<string, unknown> {
-  if (entry.hidden) {
-    return { hidden: true };
-  }
-  const { target } = entry;
-  if (isRouteMap(target)) {
-    return {
-      brief: target.brief,
-      subcommands: target
-        .getAllEntries()
-        .filter((sub) => !sub.hidden)
-        .map((sub) => sub.name.original),
-    };
-  }
-  if (!isCommand(target)) {
-    throw new Error(`Route ${entry.name.original} is neither kind`);
-  }
-  const prefix = `sentry ${entry.name.original}`;
-  const usageLine = (
-    target as unknown as {
-      formatUsageLine: (args: unknown) => string;
-    }
-  ).formatUsageLine({ prefix: prefix.split(" "), config: USAGE_CONFIG });
-  const placeholder =
-    target.__primaryUsage ?? getPositionalString(target.parameters.positional);
-  return {
-    brief: target.brief,
-    usage: usageLine.slice(prefix.length + 1),
-    ...(placeholder ? { placeholder } : {}),
-  };
-}
 
 describe("COMMAND_MANIFEST", () => {
   test("lists every top-level route of app.ts, in its order", () => {
@@ -62,20 +19,14 @@ describe("COMMAND_MANIFEST", () => {
     );
   });
 
-  test("says what app.ts's routes show in help", () => {
-    const manifest = Object.fromEntries(
-      Object.entries(COMMAND_MANIFEST).map(([name, { load, ...entry }]) => [
-        name,
-        entry,
-      ]),
-    );
-    const actual = Object.fromEntries(
-      routes
-        .getAllEntries()
-        .map((entry) => [entry.name.original, describeRoute(entry)]),
-    );
-    // On failure, copy the entries from the expected side into the manifest
-    expect(manifest).toEqual(actual);
+  test("gives each visible route of app.ts its brief", () => {
+    // A top-level route sets `brief: topLevelBrief(name)` instead of its own
+    for (const entry of routes.getAllEntries()) {
+      const manifest = COMMAND_MANIFEST[entry.name.original];
+      if (manifest && !manifest.hidden) {
+        expect(entry.target.brief).toBe(manifest.brief);
+      }
+    }
   });
 
   test("loads the command or route map app.ts uses", async () => {
@@ -84,6 +35,15 @@ describe("COMMAND_MANIFEST", () => {
         entry.target,
       );
     }
+  });
+});
+
+describe("generated/top-level-routes.json", () => {
+  test("is what the route tree says", () => {
+    // On failure, run `pnpm run generate:top-level-routes`
+    expect(generatedTopLevelRoutes).toEqual(
+      describeTopLevelRoutes(routes, app.config.documentation),
+    );
   });
 });
 

@@ -10,6 +10,7 @@
  * - `sentry help --json <command>`: Emits specific command/group metadata as JSON
  */
 
+import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import { parseCommandPath } from "../lib/completion-target.js";
@@ -24,7 +25,7 @@ import {
 export const helpCommand = buildCommand({
   auth: false,
   docs: {
-    brief: "Display help for a command",
+    brief: topLevelBrief("help"),
     fullDescription:
       "Display help information. Run 'sentry' for an overview, 'sentry help' " +
       "to list every command, " +

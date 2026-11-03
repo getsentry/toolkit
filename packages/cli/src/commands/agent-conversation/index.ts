@@ -4,6 +4,7 @@
  * List and view agent conversations from Sentry Explore.
  */
 
+import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import { listCommand } from "./list.js";
 import { viewCommand } from "./view.js";
@@ -15,7 +16,7 @@ export const conversationRoute = buildRouteMap({
   },
   defaultCommand: "list",
   docs: {
-    brief: "List and view agent conversations",
+    brief: topLevelBrief("agent-conversation"),
     fullDescription:
       "List and view agent conversations from Sentry Explore.\n\n" +
       "Commands:\n" +
