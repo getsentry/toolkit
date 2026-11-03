@@ -91,6 +91,17 @@ export function resolveRenderer<T>(human: HumanOutput<T>): HumanRenderer<T> {
 export type HumanOutput<T> = ((data: T) => string) | (() => HumanRenderer<T>);
 
 /**
+ * Keys `jsonExclude` can strip: the data's top-level keys, or each item's
+ * keys when the data is an array (see `applyJsonExclude`). Distributes over
+ * unions, so a key of any member counts.
+ */
+type JsonExcludeKey<T> = T extends readonly (infer Item)[]
+  ? Item extends unknown
+    ? keyof Item & string
+    : never
+  : keyof T & string;
+
+/**
  * Output configuration declared on `buildCommand` for automatic rendering.
  *
  * When present, `--json` and `--fields` flags are injected and the wrapper
@@ -118,7 +129,7 @@ export type OutputConfig<T> = {
    * Ignored when {@link jsonTransform} is set — the transform is
    * responsible for shaping the final JSON output.
    */
-  jsonExclude?: ReadonlyArray<keyof T & string>;
+  jsonExclude?: ReadonlyArray<JsonExcludeKey<T>>;
   /**
    * Custom JSON serialization transform.
    *
@@ -183,6 +194,16 @@ export class ClearScreen {
   /** Brand field for instanceof checks — never read, just exists. */
   readonly _brand = "ClearScreen" as const;
 }
+
+/**
+ * Values a command generator may yield.
+ *
+ * `buildCommand` infers `T` from the command's {@link OutputConfig}, so a
+ * yielded {@link CommandOutput} must match the type that `human`,
+ * `jsonTransform`, and `jsonExclude` take. Commands without an output
+ * config get `T = never` and may only yield {@link ClearScreen}.
+ */
+export type CommandYield<T> = CommandOutput<T> | ClearScreen;
 
 /**
  * Return type for command generators.
