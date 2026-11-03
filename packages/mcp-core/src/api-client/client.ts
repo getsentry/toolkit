@@ -43,6 +43,13 @@ import {
   listDashboards,
 } from "@sentry/toolkit-core/api-client/endpoints/dashboards";
 import {
+  deleteMonitorEnvironment,
+  getMonitor,
+  getMonitorStats,
+  listMonitorCheckIns,
+  listMonitors,
+} from "@sentry/toolkit-core/api-client/endpoints/monitors";
+import {
   getEventCommitters,
   getRelease,
   listReleaseCommits,
@@ -66,6 +73,12 @@ import {
   createTeam,
   listTeams,
 } from "@sentry/toolkit-core/api-client/endpoints/teams";
+import {
+  applyStatsMixinTimeParams,
+  applyTimeParams,
+  normalizeStatsPeriod,
+  parseStatsPeriod,
+} from "@sentry/toolkit-core/api-client/time-params";
 import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
@@ -293,30 +306,9 @@ type ExplorerUrlParams = ExplorerAggregateParams & {
   end?: string;
 };
 
-function normalizeStatsPeriod(statsPeriod?: string): string | undefined {
-  const normalized = statsPeriod?.trim();
-  return normalized || undefined;
-}
-
 function formatWorkflowNameQuery(query: string): string {
   const escapedQuery = query.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `name:"*${escapedQuery}*"`;
-}
-
-function parseStatsPeriod(statsPeriod: string): {
-  amount: number;
-  unit: string;
-} {
-  const match = /^(\d+)([smhdw])$/.exec(statsPeriod);
-  if (!match) {
-    throw new ApiValidationError(
-      "statsPeriod must use a supported relative time format, such as `24h`, `7d`, or `2w`.",
-    );
-  }
-  return {
-    amount: Number(match[1]),
-    unit: match[2],
-  };
 }
 
 function getNextCursor(linkHeader: string | null): string | null {
@@ -693,109 +685,6 @@ export class SentryApiService {
    */
   private isPublicSaas(): boolean {
     return isPublicSentryHost(this.host);
-  }
-
-  /**
-   * Validates and applies time parameters to a URLSearchParams object.
-   *
-   * Enforces mutual exclusivity between relative (statsPeriod) and
-   * absolute (start/end) time ranges, and ensures start/end are paired.
-   *
-   * @param queryParams The URLSearchParams to modify
-   * @param statsPeriod Relative time period (e.g., "24h", "7d")
-   * @param start Absolute start time (ISO 8601)
-   * @param end Absolute end time (ISO 8601)
-   * @throws {ApiValidationError} If time parameters are invalid
-   */
-  private applyTimeParams(
-    queryParams: URLSearchParams,
-    statsPeriod?: string,
-    start?: string,
-    end?: string,
-  ): void {
-    if (statsPeriod && (start || end)) {
-      throw new ApiValidationError(
-        "Cannot use both statsPeriod and start/end parameters. Use either statsPeriod for relative time or start/end for absolute time.",
-      );
-    }
-    if ((start && !end) || (!start && end)) {
-      throw new ApiValidationError(
-        "Both start and end parameters must be provided together for absolute time ranges.",
-      );
-    }
-    if (statsPeriod) {
-      queryParams.set("statsPeriod", statsPeriod);
-    } else if (start && end) {
-      queryParams.set("start", start);
-      queryParams.set("end", end);
-    }
-  }
-
-  private applyStatsMixinTimeParams(
-    queryParams: URLSearchParams,
-    statsPeriod?: string,
-    start?: string,
-    end?: string,
-    resolutionSeconds?: number,
-  ): void {
-    if (statsPeriod && (start || end)) {
-      throw new ApiValidationError(
-        "Cannot use both statsPeriod and start/end parameters. Use either statsPeriod for relative time or start/end for absolute time.",
-      );
-    }
-    if ((start && !end) || (!start && end)) {
-      throw new ApiValidationError(
-        "Both start and end parameters must be provided together for absolute time ranges.",
-      );
-    }
-
-    let since: number;
-    let until: number;
-
-    if (start && end) {
-      const startMs = Date.parse(start);
-      const endMs = Date.parse(end);
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
-        throw new ApiValidationError(
-          "start and end parameters must be valid ISO 8601 date strings.",
-        );
-      }
-      since = Math.floor(startMs / 1000);
-      until = Math.floor(endMs / 1000);
-    } else {
-      const period = statsPeriod ?? "24h";
-      const { amount, unit } = parseStatsPeriod(period);
-      let unitSeconds: number;
-      switch (unit) {
-        case "s":
-          unitSeconds = 1;
-          break;
-        case "m":
-          unitSeconds = 60;
-          break;
-        case "h":
-          unitSeconds = 60 * 60;
-          break;
-        case "d":
-          unitSeconds = 60 * 60 * 24;
-          break;
-        case "w":
-          unitSeconds = 60 * 60 * 24 * 7;
-          break;
-        default:
-          throw new ApiValidationError(
-            "statsPeriod must use a supported relative time format, such as `24h`, `7d`, or `2w`.",
-          );
-      }
-      until = Math.floor(Date.now() / 1000);
-      since = until - amount * unitSeconds;
-    }
-
-    queryParams.set("since", String(since));
-    queryParams.set("until", String(until));
-    if (resolutionSeconds !== undefined) {
-      queryParams.set("resolution", `${resolutionSeconds}s`);
-    }
   }
 
   /** Headers for every request after `Content-Type`. */
@@ -2673,32 +2562,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<MonitorList> {
-    const searchQuery = new URLSearchParams();
-    if (projectSlug) {
-      searchQuery.append("projectSlug", projectSlug);
-    }
-    if (environment) {
-      searchQuery.append("environment", environment);
-    }
-    if (owner) {
-      searchQuery.append("owner", owner);
-    }
-    if (query) {
-      searchQuery.set("query", query);
-    }
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-
-    const body = await this.requestJSON(
-      searchQuery.toString()
-        ? apiPath`/organizations/${organizationSlug}/monitors/` +
-            `?${searchQuery.toString()}`
-        : apiPath`/organizations/${organizationSlug}/monitors/`,
-      undefined,
-      opts,
+    return await listMonitors(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug, environment, owner, query, limit },
+      MonitorListSchema,
     );
-    return MonitorListSchema.parse(body);
   }
 
   async getMonitorDetails(
@@ -2715,20 +2583,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Monitor> {
-    const searchQuery = new URLSearchParams();
-    if (environment) {
-      searchQuery.append("environment", environment);
-    }
-
-    const path = projectSlug
-      ? apiPath`/projects/${organizationSlug}/${projectSlug}/monitors/${monitorSlug}/`
-      : apiPath`/organizations/${organizationSlug}/monitors/${monitorSlug}/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    return await getMonitor(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug, monitorSlug, environment },
+      MonitorSchema,
     );
-    return MonitorSchema.parse(body);
   }
 
   /**
@@ -2749,11 +2608,12 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<void> {
-    await this.request(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/monitors/${monitorSlug}/environments/${environment}/`,
-      { method: "DELETE" },
-      { ...opts, allowStatuses: [404] },
-    );
+    await deleteMonitorEnvironment(this.target(opts?.host), {
+      organizationSlug,
+      projectSlug,
+      monitorSlug,
+      environment,
+    });
   }
 
   async listMonitorCheckIns(
@@ -2778,30 +2638,20 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<MonitorCheckInList> {
-    const searchQuery = new URLSearchParams();
-    if (environment) {
-      searchQuery.append("environment", environment);
-    }
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-    const normalizedStatsPeriod = normalizeStatsPeriod(statsPeriod);
-    const effectiveStatsPeriod =
-      start || end ? normalizedStatsPeriod : (normalizedStatsPeriod ?? "24h");
-    if (effectiveStatsPeriod) {
-      parseStatsPeriod(effectiveStatsPeriod);
-    }
-    this.applyTimeParams(searchQuery, effectiveStatsPeriod, start, end);
-
-    const path = projectSlug
-      ? apiPath`/projects/${organizationSlug}/${projectSlug}/monitors/${monitorSlug}/checkins/`
-      : apiPath`/organizations/${organizationSlug}/monitors/${monitorSlug}/checkins/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    return await listMonitorCheckIns(
+      this.target(opts?.host),
+      {
+        organizationSlug,
+        projectSlug,
+        monitorSlug,
+        environment,
+        statsPeriod,
+        start,
+        end,
+        limit,
+      },
+      MonitorCheckInListSchema,
     );
-    return MonitorCheckInListSchema.parse(body);
   }
 
   async getMonitorStats(
@@ -2826,30 +2676,20 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<MonitorStats> {
-    const searchQuery = new URLSearchParams();
-    if (environment) {
-      searchQuery.append("environment", environment);
-    }
-    const normalizedStatsPeriod = normalizeStatsPeriod(statsPeriod);
-    const effectiveStatsPeriod =
-      start || end ? normalizedStatsPeriod : (normalizedStatsPeriod ?? "24h");
-    this.applyStatsMixinTimeParams(
-      searchQuery,
-      effectiveStatsPeriod,
-      start,
-      end,
-      rollup,
+    return await getMonitorStats(
+      this.target(opts?.host),
+      {
+        organizationSlug,
+        projectSlug,
+        monitorSlug,
+        environment,
+        statsPeriod,
+        start,
+        end,
+        rollup,
+      },
+      MonitorStatsSchema,
     );
-
-    const path = projectSlug
-      ? apiPath`/projects/${organizationSlug}/${projectSlug}/monitors/${monitorSlug}/stats/`
-      : apiPath`/organizations/${organizationSlug}/monitors/${monitorSlug}/stats/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
-    );
-    return MonitorStatsSchema.parse(body);
   }
 
   /**
@@ -2972,7 +2812,7 @@ export class SentryApiService {
     if (effectiveStatsPeriod) {
       parseStatsPeriod(effectiveStatsPeriod);
     }
-    this.applyTimeParams(searchQuery, effectiveStatsPeriod, start, end);
+    applyTimeParams(searchQuery, effectiveStatsPeriod, start, end);
 
     const path = apiPath`/projects/${organizationSlug}/${projectSlug}/uptime/${uptimeMonitorId}/checks/`;
     const body = await this.requestJSON(
@@ -3233,7 +3073,7 @@ export class SentryApiService {
     if (project) {
       searchQuery.set("project", project);
     }
-    this.applyTimeParams(searchQuery, statsPeriod, start, end);
+    applyTimeParams(searchQuery, statsPeriod, start, end);
     if (useCache !== undefined) {
       searchQuery.set("useCache", useCache ? "1" : "0");
     }
@@ -3305,7 +3145,7 @@ export class SentryApiService {
         searchQuery.append("field", field);
       }
     }
-    this.applyTimeParams(searchQuery, statsPeriod, start, end);
+    applyTimeParams(searchQuery, statsPeriod, start, end);
 
     const body = await this.requestJSON(
       searchQuery.toString()
@@ -3423,7 +3263,7 @@ export class SentryApiService {
         queryParams.append("environment", value);
       }
     }
-    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    applyTimeParams(queryParams, statsPeriod, start, end);
     for (const field of fields ?? []) {
       queryParams.append("field", field);
     }
@@ -3523,7 +3363,7 @@ export class SentryApiService {
     if (context) {
       queryParams.set("expand", "context");
     }
-    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    applyTimeParams(queryParams, statsPeriod, start, end);
 
     const url =
       apiPath`/organizations/${organizationSlug}/trace-items/attributes/` +
@@ -4750,12 +4590,7 @@ export class SentryApiService {
     queryParams.set("query", params.query);
     queryParams.set("dataset", params.dataset ?? "errors");
 
-    this.applyTimeParams(
-      queryParams,
-      params.statsPeriod,
-      params.start,
-      params.end,
-    );
+    applyTimeParams(queryParams, params.statsPeriod, params.start, params.end);
 
     if (params.projectId) {
       queryParams.set("project", params.projectId);
@@ -4797,12 +4632,7 @@ export class SentryApiService {
     queryParams.set("query", params.query);
     queryParams.set("dataset", params.dataset);
 
-    this.applyTimeParams(
-      queryParams,
-      params.statsPeriod,
-      params.start,
-      params.end,
-    );
+    applyTimeParams(queryParams, params.statsPeriod, params.start, params.end);
 
     if (params.projectId) {
       queryParams.set("project", params.projectId);
@@ -4949,7 +4779,7 @@ export class SentryApiService {
     if (interval) {
       queryParams.set("interval", interval);
     }
-    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    applyTimeParams(queryParams, statsPeriod, start, end);
     if (projectId) {
       queryParams.set("project", projectId);
     }
@@ -4991,7 +4821,7 @@ export class SentryApiService {
     if (interval) {
       queryParams.set("interval", interval);
     }
-    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    applyTimeParams(queryParams, statsPeriod, start, end);
     if (projectId) {
       queryParams.set("project", projectId);
     }
@@ -5242,7 +5072,7 @@ export class SentryApiService {
     for (let page = 0; page < maxPages; page++) {
       const queryParams = new URLSearchParams();
       queryParams.set("per_page", String(perPage));
-      this.applyTimeParams(
+      applyTimeParams(
         queryParams,
         start || end ? undefined : statsPeriod,
         start,
@@ -5330,7 +5160,7 @@ export class SentryApiService {
         queryParams.append("environment", environmentName);
       }
     }
-    this.applyTimeParams(queryParams, statsPeriod, start, end);
+    applyTimeParams(queryParams, statsPeriod, start, end);
     if (limit !== undefined) {
       queryParams.set("per_page", String(limit));
     }
