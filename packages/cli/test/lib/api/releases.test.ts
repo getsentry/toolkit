@@ -46,7 +46,9 @@ const {
 } = await import("../../../src/lib/api/releases.js");
 
 import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { CONFIG_DIR_ENV_VAR } from "../../../src/lib/db/index.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { withEnv } from "../../../src/lib/env.js";
 import { classifySilenced } from "../../../src/lib/error-reporting.js";
 import { EXIT, isUserError } from "../../../src/lib/errors.js";
 import type { SentryDeploy, SentryRelease } from "../../../src/types/index.js";
@@ -550,20 +552,64 @@ describe("setCommitsAuto", () => {
     // precondition, not a crash. It must surface as a CliError (exit 21,
     // rendered via format() — no stack trace) with actionable guidance, and
     // keep field "repository" so default mode can fall back to local git.
-    await expect(
+    // An empty env keeps the CI runner's own variables out of the lookup.
+    const error = await withEnv({}, () =>
       setCommitsAuto("test-org", "1.0.0", "/tmp"),
-    ).rejects.toMatchObject({
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
       name: "ValidationError",
       field: "repository",
       exitCode: 21,
     });
+    expect((error as Error).message).toMatch(
+      /Could not determine the repository from the local git remote or CI variables/,
+    );
+    expect((error as Error).message).toMatch(/--local/);
+  });
 
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /Could not determine the repository from the local git remote/,
+  test("uses the CI repository and commit when there is no git remote", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+    const ciSha = "1234567890abcdef1234567890abcdef12345678";
+    const repoQueries: (string | null)[] = [];
+    let sentRefs: unknown;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.url.includes("/repos/")) {
+        repoQueries.push(new URL(req.url).searchParams.get("query"));
+        return new Response(JSON.stringify([SAMPLE_REPO]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url.includes("/previous-with-commits/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      sentRefs = ((await req.json()) as { refs: unknown }).refs;
+      return new Response(JSON.stringify(SAMPLE_RELEASE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    // A Docker build without .git still gets the CI variables.
+    await withEnv(
+      {
+        // Keep the test database; leave out the runner's own CI variables.
+        [CONFIG_DIR_ENV_VAR]: process.env[CONFIG_DIR_ENV_VAR],
+        SENTRY_CLI_NO_TELEMETRY: "1",
+        GITHUB_REPOSITORY: "getsentry/cli",
+        GITHUB_SHA: ciSha,
+      },
+      () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
     );
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /--local/,
-    );
+
+    expect(repoQueries).toEqual(["getsentry/cli"]);
+    expect(sentRefs).toEqual([{ repository: "getsentry/cli", commit: ciSha }]);
   });
 });
 
