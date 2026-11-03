@@ -25,13 +25,16 @@ const smoke = readFileSync(
 test("production deploy requires a successful Test run on this repository's main branch", () => {
   for (const candidate of [workflow, docsWorkflow]) {
     assert.doesNotMatch(candidate, /if:\s*\$\{\{\s*false\s*\}\}/);
-    assert.match(candidate, /workflow_run\.conclusion == 'success'/);
-    assert.match(candidate, /workflow_run\.event == 'push'/);
+    // The trigger conditions gate the check job, which gates the deploy job.
+    const check = candidate.split("\n  check:\n")[1]?.split("\n  deploy:\n")[0];
+    assert.ok(check, "Missing check job before deploy job");
+    assert.match(check, /workflow_run\.conclusion == 'success'/);
+    assert.match(check, /workflow_run\.event == 'push'/);
     assert.match(
-      candidate,
+      check,
       /workflow_run\.head_repository\.id == github\.event\.repository\.id/,
     );
-    assert.match(candidate, /workflow_run\.head_branch == 'main'/);
+    assert.match(check, /workflow_run\.head_branch == 'main'/);
     assert.match(
       candidate,
       /ref:\s*\$\{\{ github\.event\.workflow_run\.head_sha \}\}/,

@@ -190,7 +190,7 @@ not deploy it. The production candidate uses the production bindings:
 The workflow never deploys an untested revision or a stale `main` commit.
 When `main` has advanced past the tested commit before the deploy starts, the
 deploy job is skipped, not failed; the newer commit's `Test` run deploys it.
-If `main` advances after the upload, the later revision checks fail the job.
+If `main` advances after that check, the deploy job's own revision checks fail it.
 Failure to identify the prior active version, verify deployment ownership, or
 confirm the restored version fails the job rather than guessing a recovery.
 

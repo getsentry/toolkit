@@ -174,8 +174,21 @@ test("rejects missing or partial job results and a different run attempt", () =>
       conclusion: "success",
     })),
   };
+  const checkJob = {
+    name: "Check tested revision is current",
+    run_attempt: 1,
+    status: "completed",
+    conclusion: "success",
+    steps: [],
+  };
   for (const jobs of [
     { total_count: 0, jobs: [] },
+    { total_count: 1, jobs: [checkJob] },
+    {
+      total_count: 2,
+      jobs: [checkJob, { ...successfulJob, conclusion: "skipped", steps: [] }],
+    },
+    { total_count: 2, jobs: [successfulJob, successfulJob] },
     { total_count: 2, jobs: [successfulJob] },
     { total_count: 1, jobs: [{ ...successfulJob, run_attempt: 2 }] },
     {
