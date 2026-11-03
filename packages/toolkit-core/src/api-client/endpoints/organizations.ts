@@ -76,3 +76,23 @@ export async function getOrganization<T>(
   );
   return validateResponse(schema, body);
 }
+
+export type UpdateAgenticOnboardingStatusParams = {
+  organizationSlug: string;
+  /** The status report, sent as the JSON body. */
+  update: object;
+};
+
+/** Report progress of an agent-driven onboarding run. */
+export async function updateAgenticOnboardingStatus<T>(
+  { core, origin }: ApiTarget,
+  { organizationSlug, update }: UpdateAgenticOnboardingStatusParams,
+  schema: ResponseSchema<T>,
+): Promise<T> {
+  const body = await core.requestJson(
+    origin,
+    apiPath`/organizations/${organizationSlug}/onboarding/agent/status/`,
+    { method: "POST", body: JSON.stringify(update) },
+  );
+  return validateResponse(schema, body);
+}

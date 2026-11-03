@@ -30,7 +30,18 @@ import {
   getAuthenticatedUser,
   getOrganization,
   listOrganizations,
+  updateAgenticOnboardingStatus,
 } from "@sentry/toolkit-core/api-client/endpoints/organizations";
+import {
+  createClientKey,
+  listClientKeys,
+  type UpdateClientKeyParams,
+  updateClientKey,
+} from "@sentry/toolkit-core/api-client/endpoints/client-keys";
+import {
+  linkProjectRepository,
+  listRepositories,
+} from "@sentry/toolkit-core/api-client/endpoints/repositories";
 import {
   addProjectTeam,
   createProject,
@@ -362,26 +373,6 @@ export const DEFAULT_MAX_INLINE_ATTACHMENT_BYTES = 30 * 1024 * 1024;
 
 export type TraceItemType = "spans" | "logs" | "tracemetrics";
 
-type ClientKeyRateLimit = {
-  window: number;
-  count: number;
-};
-
-type ClientKeyDynamicSdkLoaderOptions = {
-  hasReplay?: boolean;
-  hasPerformance?: boolean;
-  hasDebug?: boolean;
-  hasFeedback?: boolean;
-  hasLogsAndMetrics?: boolean;
-};
-
-type UpdateClientKeyRequest = {
-  name?: string;
-  isActive?: boolean;
-  rateLimit?: ClientKeyRateLimit | null;
-  browserSdkVersion?: string;
-  dynamicSdkLoaderOptions?: ClientKeyDynamicSdkLoaderOptions;
-};
 export type TraceItemAttributeType = "string" | "number" | "boolean" | "array";
 export type TraceItemAttributeSourceType = "sentry" | "user";
 
@@ -1768,16 +1759,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<AgenticOnboardingRun> {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/onboarding/agent/status/`,
-      {
-        method: "POST",
-        body: JSON.stringify(update),
-      },
-      opts,
+    return await updateAgenticOnboardingStatus(
+      this.target(opts?.host),
+      { organizationSlug, update },
+      AgenticOnboardingRunSchema,
     );
-
-    return AgenticOnboardingRunSchema.parse(body);
   }
 
   async updateProject(
@@ -1813,31 +1799,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ) {
-    let cursor: string | null = null;
-    const repos: z.infer<typeof RepositoryListSchema> = [];
-
-    do {
-      const params = new URLSearchParams();
-      params.set("per_page", "100");
-      if (query) {
-        params.set("query", query);
-      }
-      if (cursor) {
-        params.set("cursor", cursor);
-      }
-
-      const response = await this.request(
-        apiPath`/organizations/${organizationSlug}/repos/` +
-          `?${params.toString()}`,
-        { method: "GET" },
-        opts,
-      );
-      const body = await readJsonResponse(response);
-      repos.push(...RepositoryListSchema.parse(body));
-      cursor = getNextCursor(response.headers.get("link"));
-    } while (cursor);
-
-    return repos;
+    return await listRepositories(
+      this.target(opts?.host),
+      { organizationSlug, query },
+      RepositoryListSchema,
+    );
   }
 
   async linkProjectRepository(
@@ -1854,25 +1820,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ) {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/code-mappings/bulk/`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          project: projectSlug,
-          repository,
-          provider,
-          mappings: [
-            {
-              stackRoot: "",
-              sourceRoot: "",
-            },
-          ],
-        }),
-      },
-      opts,
+    return await linkProjectRepository(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug, repository, provider },
+      ProjectRepositoryMappingSchema,
     );
-    return ProjectRepositoryMappingSchema.parse(body);
   }
 
   async listIssueAlertRules(
@@ -2516,17 +2468,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ClientKey> {
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/keys/`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-        }),
-      },
-      opts,
+    return await createClientKey(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug, name },
+      ClientKeySchema,
     );
-    return ClientKeySchema.parse(body);
   }
 
   /**
@@ -2545,48 +2491,14 @@ export class SentryApiService {
    * @returns Updated client key with DSN information
    */
   async updateClientKey(
-    {
-      organizationSlug,
-      projectSlug,
-      keyId,
-      name,
-      isActive,
-      rateLimit,
-      browserSdkVersion,
-      dynamicSdkLoaderOptions,
-    }: {
-      organizationSlug: string;
-      projectSlug: string;
-      keyId: string | number;
-    } & UpdateClientKeyRequest,
+    params: UpdateClientKeyParams,
     opts?: RequestOptions,
   ): Promise<ClientKey> {
-    const updateData: UpdateClientKeyRequest = {};
-    if (name !== undefined) {
-      updateData.name = name;
-    }
-    if (isActive !== undefined) {
-      updateData.isActive = isActive;
-    }
-    if (rateLimit !== undefined) {
-      updateData.rateLimit = rateLimit;
-    }
-    if (browserSdkVersion !== undefined) {
-      updateData.browserSdkVersion = browserSdkVersion;
-    }
-    if (dynamicSdkLoaderOptions !== undefined) {
-      updateData.dynamicSdkLoaderOptions = dynamicSdkLoaderOptions;
-    }
-
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/keys/${keyId}/`,
-      {
-        method: "PUT",
-        body: JSON.stringify(updateData),
-      },
-      opts,
+    return await updateClientKey(
+      this.target(opts?.host),
+      params,
+      ClientKeySchema,
     );
-    return ClientKeySchema.parse(body);
   }
 
   /**
@@ -2608,12 +2520,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ClientKeyList> {
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/keys/`,
-      undefined,
-      opts,
+    return await listClientKeys(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug },
+      ClientKeyListSchema,
     );
-    return ClientKeyListSchema.parse(body);
   }
 
   /**

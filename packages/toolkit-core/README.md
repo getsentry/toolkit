@@ -54,11 +54,15 @@ the one exception.
   Writes, and reads not yet on a `@sentry/api` operation, call the core
   directly. Wrappers by domain:
   - `endpoints/organizations`: `getAuthenticatedUser`, `listOrganizations`,
-    and `getOrganization`.
+    `getOrganization`, and `updateAgenticOnboardingStatus`.
   - `endpoints/teams`: `listTeams` and `createTeam`.
   - `endpoints/projects`: `listProjects`, `getProject`, `createProject`,
     `updateProject`, and the project's teams (`listProjectTeams`,
     `addProjectTeam`, `removeProjectTeam`).
+  - `endpoints/client-keys`: `listClientKeys`, `createClientKey`, and
+    `updateClientKey`.
+  - `endpoints/repositories`: `listRepositories` and
+    `linkProjectRepository`.
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.

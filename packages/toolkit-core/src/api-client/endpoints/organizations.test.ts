@@ -12,6 +12,7 @@ import {
   getAuthenticatedUser,
   getOrganization,
   listOrganizations,
+  updateAgenticOnboardingStatus,
 } from "./organizations.js";
 
 const OrganizationZod = z.object({ slug: z.string() });
@@ -135,5 +136,24 @@ describe("listOrganizations", () => {
     expect(
       new URL(request.mock.calls[0]?.[0] ?? "").searchParams.get("cursor"),
     ).toBe("0:25:0");
+  });
+});
+
+describe("updateAgenticOnboardingStatus", () => {
+  it("posts the update as the body", async () => {
+    const { apiTarget, request } = scriptedTarget(jsonResponse({ id: "1" }));
+
+    await updateAgenticOnboardingStatus(
+      apiTarget,
+      { organizationSlug: "acme", update: { step: "done" } },
+      z.object({ id: z.string() }),
+    );
+
+    const [url, init] = request.mock.calls[0] ?? [];
+    expect(url).toBe(
+      `${ORIGIN}/api/0/organizations/acme/onboarding/agent/status/`,
+    );
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ step: "done" }));
   });
 });
