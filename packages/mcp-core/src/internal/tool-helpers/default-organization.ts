@@ -31,6 +31,8 @@ const ORGANIZATION_LIST_TTL_MS = 5 * 60 * 1000;
 type ReachableOrganizations = {
   organizations: Array<{ slug: string; regionUrl: string | null }>;
   hasMore: boolean;
+  /** A login's listing failed, so the list may miss organizations. */
+  isPartial: boolean;
 };
 
 type CachedOrganizations = {
@@ -64,6 +66,8 @@ async function fetchReachableOrganizations(
         )
       ).map(({ value }) => value)
     : [await listPage(context)];
+  // mapCredentialContexts skips a login whose listing fails.
+  const isPartial = accounts !== null && pages.length < accounts.length;
 
   const organizations = new Map<string, string | null>();
   for (const page of pages) {
@@ -82,13 +86,14 @@ async function fetchReachableOrganizations(
       regionUrl,
     })),
     hasMore: pages.some(({ nextCursor }) => nextCursor !== null),
+    isPartial,
   };
 }
 
 /**
  * The organizations the context's login reaches, listed once per context,
- * credential, and host for {@link ORGANIZATION_LIST_TTL_MS}. A failed
- * listing is not kept.
+ * credential, and host for {@link ORGANIZATION_LIST_TTL_MS}. A failed or
+ * partial listing is not kept.
  */
 function getReachableOrganizations(
   context: ServerContext,
@@ -112,11 +117,12 @@ function getReachableOrganizations(
     pending,
   };
   organizationsCache.set(context, entry);
-  pending.catch(() => {
+  const forget = () => {
     if (organizationsCache.get(context) === entry) {
       organizationsCache.delete(context);
     }
-  });
+  };
+  pending.then(({ isPartial }) => isPartial && forget(), forget);
   return pending;
 }
 
@@ -181,14 +187,20 @@ function formatMultipleOrganizationsError(
     ({ slug }) => slug,
   );
   const lines = [
-    "`organizationSlug` is required: you can access more than one organization, so none was picked.",
+    reachable.isPartial
+      ? "`organizationSlug` is required: some logins could not list their organizations, so none was picked."
+      : "`organizationSlug` is required: you can access more than one organization, so none was picked.",
     "",
     `Retry example: ${formatRetry(tool, rawParams, first, context)}`,
   ];
   if (others.length > 0) {
     lines.push(`Other available organizations: ${others.join(", ")}`);
   }
-  if (reachable.hasMore) {
+  if (reachable.isPartial) {
+    lines.push(
+      "Call `find_organizations()` to check which organizations each login can access.",
+    );
+  } else if (reachable.hasMore) {
     lines.push(
       "More organizations exist. Use `find_organizations(query='...')` to search them.",
     );
@@ -247,7 +259,14 @@ export async function applyDefaultOrganization({
   }
 
   const [only] = reachable.organizations;
-  if (only && reachable.organizations.length === 1) {
+  // Default only from a complete list, so a login that failed to answer
+  // cannot hide a second organization.
+  if (
+    only &&
+    reachable.organizations.length === 1 &&
+    !reachable.hasMore &&
+    !reachable.isPartial
+  ) {
     const defaulted: Record<string, unknown> = {
       ...params,
       organizationSlug: only.slug,
@@ -264,6 +283,11 @@ export async function applyDefaultOrganization({
 
   if (!isRequired) {
     return params;
+  }
+  if (!only && reachable.isPartial) {
+    throw new UserInputError(
+      `Invalid arguments for ${tool.name}: organizationSlug: ${MISSING_ORGANIZATION_SLUG_HINT}`,
+    );
   }
   if (!only) {
     throw new UserInputError(

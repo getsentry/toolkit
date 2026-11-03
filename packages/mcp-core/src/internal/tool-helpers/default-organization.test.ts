@@ -244,6 +244,44 @@ describe("applyDefaultOrganization", () => {
     ).resolves.toEqual({ issueId: "PROJ-1" });
   });
 
+  it("does not default when another login cannot list its organizations", async () => {
+    const requests: string[] = [];
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/", ({ request }) => {
+        const authorization = request.headers.get("authorization") ?? "";
+        requests.push(authorization);
+        return authorization === "Bearer work-token"
+          ? HttpResponse.json([organization("work-org")])
+          : HttpResponse.json({ detail: "Internal error" }, { status: 500 });
+      }),
+    );
+    const credentials = [
+      { id: "work", accessToken: "work-token" },
+      { id: "personal", accessToken: "personal-token" },
+    ];
+    const context = getServerContext({
+      sentryHost: "sentry.io",
+      credentialRouter: {
+        resolve: async () => credentials[0]!,
+        list: async () => credentials,
+      },
+    });
+
+    await expect(prepare(requiredOrgTool, {}, context)).rejects
+      .toThrowErrorMatchingInlineSnapshot(`
+      [UserInputError: \`organizationSlug\` is required: some logins could not list their organizations, so none was picked.
+
+      Retry example: \`required_org_tool(organizationSlug='work-org')\`
+      Call \`find_organizations()\` to check which organizations each login can access.]
+    `);
+    await expect(
+      prepare(optionalOrgTool, { issueId: "PROJ-1" }, context),
+    ).resolves.toEqual({ issueId: "PROJ-1" });
+    // A partial list is not kept, so the next call asks every login again.
+    const workRequests = requests.filter((r) => r === "Bearer work-token");
+    expect(workRequests).toHaveLength(2);
+  });
+
   it("counts every login's organizations once", async () => {
     mswServer.use(
       http.get("https://sentry.io/api/0/organizations/", ({ request }) =>
