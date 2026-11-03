@@ -7,6 +7,7 @@ Step-by-step guide for adding new tools to the Sentry MCP server.
 Not every tool is exposed to every consumer. We rely on several mechanisms to keep the active tool set manageable:
 
 - **Every tool is direct by default** — `EXPOSE_ALL_TOOLS` in `packages/mcp-core/src/tools/exposure.ts` is on, so every catalog tool that passes the filters below is listed in MCP `tools/list`, and `search_sentry_tools` + `execute_sentry_tool` are not registered. Tier 1 harnesses defer MCP tool schemas behind their own tool search, which indexes each tool's name and description, so write both with search in mind. The flag is a code constant, not a runtime option; turning it off restores the gateway surface described in the next bullets.
+- **Deprecated tools** — Old names kept for backward compatibility go in `DEPRECATED_TOOL_NAMES` in `surfaces.ts`. With `EXPOSE_ALL_TOOLS` on they are not listed, so harness search does not return them next to the tools that replaced them. With the flag off they stay reachable through `execute_sentry_tool`.
 - **Catalog gateway (flag off)** — Tools are searchable/executable through `search_sentry_tools` + `execute_sentry_tool`. Search uses the tool's existing name and description.
 - **Catalog registry** — `packages/mcp-core/src/tools/catalog/index.ts` lists ordinary Sentry operation tools. The catalog directory is intentionally flat: one tool entry per file.
 - **Central direct exposure policy (flag off)** — `packages/mcp-core/src/tools/surfaces.ts` lists the catalog tools that are also exposed directly through MCP `tools/list`. The direct surface intentionally keeps long-tail tools catalog-only because `search_sentry_tools` + `execute_sentry_tool` are available as primary primitives.
@@ -154,6 +155,8 @@ transport skips cached reads, and the handler never sees the input.
 
 Critical for LLM success:
 
+- Make the first line say what the tool does to which Sentry object, in the words a user would type ("List or search projects", "stack trace", "client key"). Harness tool search ranks tools by name and description (Codex uses BM25 and returns 8 matches; see docs/mcp/harnesses.md), and some harnesses cut descriptions to about 120 characters.
+- When tools have similar names, say which sibling to use instead (for example cron vs. uptime vs. metric monitors).
 - Start with "Use this tool when you need to:"
 - Include concrete examples
 - Reference related tools

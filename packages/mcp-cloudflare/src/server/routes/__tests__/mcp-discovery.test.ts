@@ -61,7 +61,18 @@ describe("/.mcp discovery routes", () => {
       }),
     );
     // EXPOSE_ALL_TOOLS lists every tool directly and drops the gateway.
-    expect(json.every((tool) => tool.surface === "direct")).toBe(true);
+    // Deprecated names stay catalog-only so harness search skips them.
+    const deprecated = new Set([
+      "get_ai_conversation_details",
+      "search_ai_conversations",
+      "search_events",
+    ]);
+    for (const tool of json) {
+      expect([tool.name, tool.surface]).toEqual([
+        tool.name,
+        deprecated.has(tool.name) ? "catalog" : "direct",
+      ]);
+    }
     expect(toolsByName.has("search_sentry_tools")).toBe(false);
     expect(toolsByName.has("execute_sentry_tool")).toBe(false);
   });

@@ -17,6 +17,16 @@ export const CATALOG_INFRASTRUCTURE_TOOL_NAMES = [
 
 export const WRAPPER_TOOL_NAMES = [] as const;
 
+// Deprecated catalog entries kept so existing
+// execute_sentry_tool(name: <old name>) calls keep working on the gateway
+// surface. With EXPOSE_ALL_TOOLS on they are not listed: harness tool search
+// would return them next to the tools that replaced them.
+export const DEPRECATED_TOOL_NAMES = [
+  "get_ai_conversation_details",
+  "search_ai_conversations",
+  "search_events",
+] as const;
+
 // The gateway surface used when EXPOSE_ALL_TOOLS is false. Kept only as a
 // temporary fallback during the EXPOSE_ALL_TOOLS rollout (see exposure.ts);
 // it may be removed along with the gateway tools later. Locked by
@@ -45,6 +55,7 @@ export const EXPERIMENTAL_TOP_LEVEL_TOOL_NAMES = TOP_LEVEL_TOOL_NAMES;
 
 const topLevelToolNames = new Set<string>(TOP_LEVEL_TOOL_NAMES);
 const wrapperToolNames = new Set<string>(WRAPPER_TOOL_NAMES);
+const deprecatedToolNames = new Set<string>(DEPRECATED_TOOL_NAMES);
 const catalogInfrastructureToolNames = new Set<string>(
   CATALOG_INFRASTRUCTURE_TOOL_NAMES,
 );
@@ -58,7 +69,9 @@ export function isOutsideCatalogToolName(toolName: string): boolean {
 
 export function isDefaultTopLevelToolName(toolName: string): boolean {
   if (EXPOSE_ALL_TOOLS) {
-    return !isOutsideCatalogToolName(toolName);
+    return (
+      !isOutsideCatalogToolName(toolName) && !deprecatedToolNames.has(toolName)
+    );
   }
   return topLevelToolNames.has(toolName);
 }
