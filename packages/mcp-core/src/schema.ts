@@ -63,6 +63,13 @@ export const ParamCursor = z
     "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page.",
   );
 
+// Shared by every read tool that calls the Sentry API, so keep it short: it
+// ships in the schema of each one.
+export const ParamFresh = z
+  .boolean()
+  .optional()
+  .describe("Bypass cached reads.");
+
 export const ParamIssueShortId = z
   .string()
   .toUpperCase()

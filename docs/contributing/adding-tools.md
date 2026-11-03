@@ -141,6 +141,12 @@ annotations: {
 }
 ```
 
+The catalog gives every tool with `readOnlyHint: true` and
+`openWorldHint: true` a shared `fresh` input (`ParamFresh`), except the docs
+tools, which do not call the Sentry API. Do not declare `fresh` yourself. A
+call with `fresh: true` runs the handler in a request scope where the shared
+transport skips cached reads, and the handler never sees the input.
+
 ### Writing LLM-Friendly Descriptions
 
 Critical for LLM success:
