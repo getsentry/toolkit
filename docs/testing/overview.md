@@ -86,10 +86,11 @@ Fast, focused tests of actual functionality:
   formatted handler response with `toMatchInlineSnapshot()`. Supplemental
   `toContain()` assertions are fine, but they do not replace a full-response
   snapshot.
-- For catalog-only tools, include server-level coverage that executes the tool
-  through `execute_sentry_tool` when the change affects discovery, generated
-  schemas, constraint injection, or dispatch. Prefer this MSW-backed route for
-  mutating tools when live QA would change real Sentry data.
+- Include server-level coverage that calls the tool through `buildServer` when
+  the change affects discovery, generated schemas, constraint injection, or
+  dispatch. Prefer this MSW-backed route for mutating tools when live QA would
+  change real Sentry data. `server.test.ts` covers the
+  `execute_sentry_tool` gateway used when `EXPOSE_ALL_TOOLS` is off.
 - Review tool output snapshots against
   [../contributing/tool-responses.md](../contributing/tool-responses.md) so
   formatted output stays user-facing and avoids raw internals.

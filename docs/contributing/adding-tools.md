@@ -6,9 +6,10 @@ Step-by-step guide for adding new tools to the Sentry MCP server.
 
 Not every tool is exposed to every consumer. We rely on several mechanisms to keep the active tool set manageable:
 
-- **Catalog by default** — Most tools are searchable/executable through `search_sentry_tools` + `execute_sentry_tool` automatically. Search uses the tool's existing name and description.
+- **Every tool is direct by default** — `EXPOSE_ALL_TOOLS` in `packages/mcp-core/src/tools/exposure.ts` is on, so every catalog tool that passes the filters below is listed in MCP `tools/list`, and `search_sentry_tools` + `execute_sentry_tool` are not registered. Tier 1 harnesses defer MCP tool schemas behind their own tool search, which indexes each tool's name and description, so write both with search in mind. The flag is a code constant, not a runtime option; turning it off restores the gateway surface described in the next bullets.
+- **Catalog gateway (flag off)** — Tools are searchable/executable through `search_sentry_tools` + `execute_sentry_tool`. Search uses the tool's existing name and description.
 - **Catalog registry** — `packages/mcp-core/src/tools/catalog/index.ts` lists ordinary Sentry operation tools. The catalog directory is intentionally flat: one tool entry per file.
-- **Central direct exposure policy** — `packages/mcp-core/src/tools/surfaces.ts` lists the catalog tools that are also exposed directly through MCP `tools/list`. The direct surface intentionally keeps long-tail tools catalog-only because `search_sentry_tools` + `execute_sentry_tool` are available as primary primitives.
+- **Central direct exposure policy (flag off)** — `packages/mcp-core/src/tools/surfaces.ts` lists the catalog tools that are also exposed directly through MCP `tools/list`. The direct surface intentionally keeps long-tail tools catalog-only because `search_sentry_tools` + `execute_sentry_tool` are available as primary primitives.
 - **`requiredCapabilities`** — Tools declare which project capabilities they need (e.g. `profiles`, `replays`, `traces`). If the upstream project doesn't have a capability enabled, the tool is automatically hidden.
 - **`experimental` / `hideInExperimentalMode`** — Feature flags for tools that are being tested or replaced.
 - **Skills & constraints** — The server filters tools based on granted skills and org/project constraints.
@@ -17,7 +18,9 @@ We also expect upstream consumers (Claude Code plugins, Cursor, etc.) to use **t
 
 ## Tool Count Limits
 
-Target ~20 publicly visible tools. Never exceed 25. AI agents have limited tool slots (Cursor caps at 45 total across all providers), so Sentry MCP cannot consume all available slots.
+With `EXPOSE_ALL_TOOLS` on, harness tool search keeps the full tool list out of the context window, so the limit below applies to the gateway surface (`TOP_LEVEL_TOOL_NAMES`) that the flag falls back to.
+
+Target ~20 tools on the gateway surface. Never exceed 25. AI agents have limited tool slots (Cursor caps at 45 total across all providers), so Sentry MCP cannot consume all available slots.
 
 Before adding a new tool, consider if it could be:
 

@@ -265,9 +265,17 @@ async function generateSkillDefinitions() {
         return [toolKey, t.name];
       }),
     );
+    // Direct tools gated by other skills are not available to this skill.
     const availableToolNames = new Set([
       ...skillToolNames,
-      ...defaultDirectToolNames,
+      ...toolNamesFromEntries(
+        defaultVisibleEntries.filter(
+          ([, tool]) =>
+            defaultDirectToolNames.has(tool.name) &&
+            (tool.skills.includes(skill.id) ||
+              surfacesModule.isCatalogInfrastructureToolName(tool.name)),
+        ),
+      ),
     ]);
 
     for (const [, tool] of skillToolEntries) {

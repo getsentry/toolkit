@@ -4,8 +4,11 @@
  * Tool modules define behavior: name, description, schema, annotations, and
  * handler. Ordinary tools are catalog-eligible by default. This file only lists
  * wrapper/infrastructure tools outside the catalog and the explicit subset also
- * exposed through tools/list.
+ * exposed through tools/list. With EXPOSE_ALL_TOOLS on, every catalog tool is
+ * exposed through tools/list and the infrastructure tools are not registered.
  */
+
+import { EXPOSE_ALL_TOOLS } from "./exposure";
 
 export const CATALOG_INFRASTRUCTURE_TOOL_NAMES = [
   "search_sentry_tools",
@@ -14,11 +17,10 @@ export const CATALOG_INFRASTRUCTURE_TOOL_NAMES = [
 
 export const WRAPPER_TOOL_NAMES = [] as const;
 
-// Locked by ast-grep-rules/no-expand-top-level-tools.yml. Every name here ships
-// in the default tools/list payload, and many harnesses still load every listed
-// tool into the context window up front. New tools stay deferred behind
-// search_sentry_tools/execute_sentry_tool. Restricted until tool search is
-// standard in every mainstream harness, which likely happens by 2027.
+// The gateway surface used when EXPOSE_ALL_TOOLS is false. Locked by
+// ast-grep-rules/no-expand-top-level-tools.yml. Every name here ships in that
+// tools/list payload; the rest stay deferred behind
+// search_sentry_tools/execute_sentry_tool.
 export const TOP_LEVEL_TOOL_NAMES = [
   "find_organizations",
   "find_projects",
@@ -45,8 +47,6 @@ const catalogInfrastructureToolNames = new Set<string>(
   CATALOG_INFRASTRUCTURE_TOOL_NAMES,
 );
 
-export type TopLevelToolName = (typeof TOP_LEVEL_TOOL_NAMES)[number];
-
 export function isOutsideCatalogToolName(toolName: string): boolean {
   return (
     wrapperToolNames.has(toolName) ||
@@ -55,6 +55,9 @@ export function isOutsideCatalogToolName(toolName: string): boolean {
 }
 
 export function isDefaultTopLevelToolName(toolName: string): boolean {
+  if (EXPOSE_ALL_TOOLS) {
+    return !isOutsideCatalogToolName(toolName);
+  }
   return topLevelToolNames.has(toolName);
 }
 
@@ -62,15 +65,7 @@ export function isTopLevelToolName(
   toolName: string,
   _experimentalMode: boolean,
 ): boolean {
-  return topLevelToolNames.has(toolName);
-}
-
-export function getTopLevelToolNames({
-  experimentalMode: _experimentalMode,
-}: {
-  experimentalMode: boolean;
-}): readonly TopLevelToolName[] {
-  return TOP_LEVEL_TOOL_NAMES;
+  return isDefaultTopLevelToolName(toolName);
 }
 
 export function isWrapperToolName(toolName: string): boolean {
