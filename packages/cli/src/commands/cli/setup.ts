@@ -34,7 +34,7 @@ import {
   warmCachesAfterLogin,
 } from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
-import { getAuthConfig } from "../../lib/db/auth.js";
+import { getAuthConfig, hasStoredAuthCredentials } from "../../lib/db/auth.js";
 import {
   getOnOffPreference,
   setOnOffPreference,
@@ -55,6 +55,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { interactivePromptsAllowed } from "../../lib/interactive-prompts.js";
 import { logger } from "../../lib/logger.js";
+import { bootstrapAuthentication } from "../../lib/setup-code.js";
 import {
   addToFpath,
   addToGitHubPath,
@@ -789,6 +790,14 @@ export const setupCommand = buildCommand({
       warn,
     });
 
+    if (getEnv().SENTRY_SETUP_CODE && !hasStoredAuthCredentials()) {
+      await bootstrapAuthentication();
+      emit("Authenticated with Sentry using the setup code.");
+      if (!flags["no-completions"]) {
+        await warmCachesAfterLogin();
+      }
+    }
+
     if (flags["ensure-auth-scopes"]) {
       await bestEffort(
         "Authorization",
@@ -830,6 +839,7 @@ export const setupCommand = buildCommand({
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
       getEnv().SENTRY_INIT === "1" ||
+      Boolean(getEnv().SENTRY_SETUP_CODE) ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {
       return;
