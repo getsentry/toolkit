@@ -25,7 +25,7 @@ const ORGANIZATION_URL_PARAMS = [
  * constraint injection), else the organization of a Sentry URL parameter.
  * The tool handlers resolve the organization from the same values.
  */
-function getTargetOrganizationSlug(
+export function getTargetOrganizationSlug(
   params: Record<string, unknown>,
 ): string | null {
   const slug = params.organizationSlug;

@@ -29,6 +29,13 @@ export const ParamRegionUrl = z
 
 See: `packages/mcp-core/src/schema.ts`
 
+Keep `organizationSlug` required when the tool needs it. Tool registration
+makes it optional in the published schema, and `applyDefaultOrganization`
+(`packages/mcp-core/src/internal/tool-helpers/default-organization.ts`) fills
+it in when the caller can access exactly one organization, or fails with the
+list and a ready-to-run retry. Handlers never default the organization
+themselves.
+
 ### Flexible Schema Patterns
 
 ```typescript

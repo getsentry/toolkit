@@ -502,7 +502,32 @@ describe("buildServer", () => {
     });
   });
 
-  it("explains how to recover a missing organizationSlug", async () => {
+  it("defaults a missing organizationSlug to the only organization", async () => {
+    const server = buildServer({ context: baseContext });
+
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain(
+      "https://sentry-mcp-evals.sentry.io/issues/",
+    );
+  });
+
+  it("lists the organizations when a missing organizationSlug is ambiguous", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/",
+        () =>
+          HttpResponse.json([
+            { id: "1", slug: "org-a", name: "A" },
+            { id: "2", slug: "org-b", name: "B" },
+          ]),
+        { once: true },
+      ),
+    );
     const server = buildServer({ context: baseContext });
 
     const result = await callRegisteredTool(server, "search_issues", {
@@ -512,8 +537,10 @@ describe("buildServer", () => {
 
     expect(result).toMatchObject({ isError: true });
     const text = getTextContent(result);
-    expect(text).toContain("Required. Call `find_organizations()`");
-    expect(text).not.toContain("period");
+    expect(text).toContain(
+      "`search_issues(organizationSlug='org-a', period='1h')`",
+    );
+    expect(text).toContain("Other available organizations: org-b");
   });
 
   it("caps tool input elements", async () => {
