@@ -37,6 +37,11 @@ test("production deploy requires a successful Test run on this repository's main
       /ref:\s*\$\{\{ github\.event\.workflow_run\.head_sha \}\}/,
     );
     assert.match(candidate, /environment:\s*production/);
+    // A superseded revision skips the deploy job instead of failing it.
+    assert.match(
+      candidate,
+      /needs: check\n\s*if: \$\{\{ needs\.check\.outputs\.current == 'true' \}\}/,
+    );
     assert.doesNotMatch(candidate, /^\s*workflow_dispatch:/m);
     assert.match(candidate, /pnpm install --frozen-lockfile/);
   }
