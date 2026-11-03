@@ -133,7 +133,8 @@
     {
       "files": [
         "packages/cli/src/lib/command.ts",
-        "packages/cli/src/lib/route-map.ts"
+        "packages/cli/src/lib/route-map.ts",
+        "packages/cli/src/root-help-routes.ts"
       ],
       "rules": {
         "no-restricted-imports": "off"

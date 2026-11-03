@@ -113,16 +113,22 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
+- **`src/command-manifest.ts`** — every top-level route: how to load it,
+  whether help hides it, and what the top-level help shows for it (brief,
+  visible subcommands, or a command's usage line and placeholder). A new
+  top-level route goes in both `app.ts` and the manifest, in the same place;
+  `test/lib/command-manifest.test.ts` fails when they disagree and prints the
+  entry to copy.
 - **`src/app-for-args.ts`** — picks the application for a run. When the first
   argument after any global flags (`GLOBAL_FLAGS` in `src/lib/global-flags.ts`)
-  names a top-level route, it loads only that route through
-  `src/generated/route-loaders.ts`, which `script/generate-route-loaders.ts`
-  writes from the route map and imports in `app.ts` (`generate:routes`, part of
-  `generate:docs`). A bare `--version` loads only `help`. Anything else, and
-  `help`, `schema`, and `cli`, which read the whole tree with `getRoutes()`,
-  loads `app.ts`. Add commands to `app.ts`
-  only; a new top-level command that reads the whole tree goes in
-  `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
+  names a top-level route, it loads only that route through the manifest. A
+  bare `--version` loads only `help`. The text top-level help (`sentry`,
+  `sentry help`, `sentry --help`) loads only `help` and builds the other
+  routes as help-only stand-ins from the manifest (`src/root-help-routes.ts`).
+  Anything else, and `help <command>`, `schema`, and `cli`, which read the
+  whole tree with `getRoutes()`, loads `app.ts`. A new top-level command that
+  reads the whole tree goes in `FULL_TREE_ROUTES`. Root route map settings
+  live in `src/app-root.ts`.
 - **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
   and the standalone binary. `script/lib/split-bundle.ts` builds the CLI
   (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
