@@ -124,6 +124,34 @@ test("central direct exposure policy references existing tools", () => {
   }
 });
 
+test("deprecated tools point to existing replacements", () => {
+  const toolsByName = new Map(
+    Object.values(tools.default).map((tool) => [tool.name, tool]),
+  );
+
+  for (const tool of toolsByName.values()) {
+    if (!tool.deprecated) {
+      continue;
+    }
+
+    assert(
+      tool.deprecated.replacedBy.length > 0,
+      `deprecated tool '${tool.name}' must name at least one replacement`,
+    );
+    for (const replacement of tool.deprecated.replacedBy) {
+      const replacementTool = toolsByName.get(replacement);
+      assert(
+        replacementTool,
+        `deprecated tool '${tool.name}' points to missing tool '${replacement}'`,
+      );
+      assert(
+        !replacementTool.deprecated,
+        `deprecated tool '${tool.name}' points to deprecated tool '${replacement}'`,
+      );
+    }
+  }
+});
+
 test("tool registry keys match tool names", () => {
   for (const [toolName, tool] of Object.entries(tools.default)) {
     assert.equal(

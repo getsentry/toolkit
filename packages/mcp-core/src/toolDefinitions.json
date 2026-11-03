@@ -4043,7 +4043,10 @@
     },
     "requiredScopes": ["event:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "catalog",
+    "deprecated": {
+      "replacedBy": ["get_agent_conversation_details"]
+    }
   },
   {
     "name": "get_alert_options",
@@ -6752,7 +6755,10 @@
     },
     "requiredScopes": ["event:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "catalog",
+    "deprecated": {
+      "replacedBy": ["search_agent_conversations"]
+    }
   },
   {
     "name": "search_docs",
@@ -7100,7 +7106,17 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "catalog",
+    "deprecated": {
+      "replacedBy": [
+        "search_errors",
+        "search_logs",
+        "search_traces",
+        "search_metrics",
+        "search_profiles",
+        "search_replays"
+      ]
+    }
   },
   {
     "name": "search_issue_events",
