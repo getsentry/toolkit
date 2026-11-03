@@ -5,6 +5,7 @@
  */
 
 import type { RouteMapBuilderArguments } from "@stricli/core";
+import { COMMAND_MANIFEST } from "./command-manifest.js";
 import type { SentryContext } from "./context.js";
 import { buildCliApplication, type CliApplication } from "./lib/application.js";
 import { buildRouteMap } from "./lib/route-map.js";
@@ -37,34 +38,6 @@ export const PLURAL_TO_SINGULAR: Readonly<Record<string, string>> = {
   trials: "trial",
 };
 
-/** Top-level routes left out of `sentry help`: plural aliases and shortcuts. */
-const HIDDEN_ROUTES: ReadonlySet<string> = new Set([
-  "dsns",
-  "agent-conversations",
-  "attributes",
-  "dashboards",
-  "events",
-  "integrations",
-  "issues",
-  "orgs",
-  "platforms",
-  "projects",
-  "replays",
-  "releases",
-  "repos",
-  "teams",
-  "logs",
-  "monitors",
-  "spans",
-  "traces",
-  "trials",
-  "sourcemaps",
-  "whoami",
-  "send-event",
-  "send-envelope",
-  "bash-hook",
-]);
-
 /** The top-level routes of a `sentry` route map, by name. */
 export type SentryRoutes = RouteMapBuilderArguments<
   string,
@@ -83,7 +56,7 @@ export function buildSentryRoutes(routes: SentryRoutes): CliRoutes {
         "It provides commands for authentication, viewing issues, and making API calls.",
       hideRoute: Object.fromEntries(
         Object.keys(routes)
-          .filter((name) => HIDDEN_ROUTES.has(name))
+          .filter((name) => COMMAND_MANIFEST[name]?.hidden)
           .map((name) => [name, true]),
       ),
     },
