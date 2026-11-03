@@ -20,6 +20,12 @@ import type { SentryContext } from "../../../src/context.js";
 import * as chunkUpload from "../../../src/lib/api/chunk-upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as debugFilesApi from "../../../src/lib/api/debug-files.js";
+import { parseDebugFile } from "../../../src/lib/dif/index.js";
+import {
+  WATCH_ARM64_32_DEBUG_ID,
+  WATCH_ARM64_DEBUG_ID,
+  watchFatMachO,
+} from "../../fixtures/dif/macho.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 useTestConfigDir("debug-files-upload-");
@@ -706,6 +712,45 @@ describe("sentry debug-files upload", () => {
     expect(difs[0]?.name).toBe("App.pdb");
     expect(difs[0]?.debugId).toBe(EMBEDDED_PE_DEBUG_ID);
     expect(difs[0]?.content).toBeInstanceOf(Buffer);
+  });
+
+  // ── Fat Mach-O ───────────────────────────────────────────────────
+
+  test("uploads each slice of a fat Mach-O dSYM as its own DIF", async () => {
+    process.env.SENTRY_ORG = "test-org";
+    process.env.SENTRY_PROJECT = "test-project";
+    await writeFile(join(tempDir, "FooWatch"), watchFatMachO());
+    const spy = vi
+      .spyOn(debugFilesApi, "uploadDebugFiles")
+      .mockResolvedValue([]);
+
+    await runUpload([tempDir]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const difs = spy.mock.calls[0]?.[0]?.difs ?? [];
+    expect(difs.map((d) => [d.name, d.debugId])).toEqual([
+      ["FooWatch", WATCH_ARM64_DEBUG_ID],
+      ["FooWatch", WATCH_ARM64_32_DEBUG_ID],
+    ]);
+    // Sentry's assemble step accepts one object per file.
+    for (const dif of difs) {
+      const { objects } = parseDebugFile(new Uint8Array(dif.content));
+      expect(objects.map((o) => o.debugId)).toEqual([dif.debugId]);
+    }
+  });
+
+  test("--id uploads only the matching slice of a fat Mach-O", async () => {
+    process.env.SENTRY_ORG = "test-org";
+    process.env.SENTRY_PROJECT = "test-project";
+    await writeFile(join(tempDir, "FooWatch"), watchFatMachO());
+    const spy = vi
+      .spyOn(debugFilesApi, "uploadDebugFiles")
+      .mockResolvedValue([]);
+
+    await runUpload(["--id", WATCH_ARM64_32_DEBUG_ID, tempDir]);
+    const difs = spy.mock.calls[0]?.[0]?.difs ?? [];
+    expect(difs).toHaveLength(1);
+    const { objects } = parseDebugFile(new Uint8Array(difs[0]?.content ?? []));
+    expect(objects.map((o) => o.debugId)).toEqual([WATCH_ARM64_32_DEBUG_ID]);
   });
 
   // ── IL2CPP line mappings ─────────────────────────────────────────

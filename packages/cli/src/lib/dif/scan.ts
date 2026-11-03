@@ -31,6 +31,7 @@ import {
   peekFormat,
   selectBundledObject,
 } from "./index.js";
+import { splitFatMachO } from "./macho.js";
 import { DEFAULT_MAX_ZIP_TOTAL_SIZE, readZipDifEntries } from "./zip.js";
 
 const log = logger.withTag("dif.scan");
@@ -96,7 +97,10 @@ export type DifFilterOptions = {
 export type PreparedDif = {
   /** Filesystem path the file was read from. */
   path: string;
-  /** Raw file content. */
+  /**
+   * Bytes to upload: the raw file content, or one architecture slice when the
+   * file is a fat Mach-O (each slice becomes its own `PreparedDif`).
+   */
   content: Buffer;
   /**
    * Advisory debug id of the primary (first debug-info) object among the
@@ -645,11 +649,7 @@ function embeddedPpdbDif(
   // Only PE images can embed a Portable PDB. Cheap-gate on the header so the
   // vast majority of scanned files (ELF/Mach-O/Breakpad/...) skip the full
   // second parse that extraction would otherwise perform on every buffer.
-  const header =
-    content.length > PEEK_HEADER_BYTES
-      ? new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES))
-      : new Uint8Array(content);
-  if (peekFormat(header) !== "pe") {
+  if (peekBufferFormat(content) !== "pe") {
     return { dif: null, oversized: false };
   }
   let extracted: ReturnType<typeof extractEmbeddedPpdb>;
@@ -685,11 +685,34 @@ function embeddedPpdbDif(
   };
 }
 
+/** Detect the format of an in-memory buffer from its leading header bytes. */
+function peekBufferFormat(content: Buffer): string {
+  return peekFormat(new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES)));
+}
+
 /**
- * Parse an in-memory object buffer into uploadable debug files: the main DIF
- * (when it matches) plus, for managed PE assemblies, a separate Portable PDB
- * DIF extracted from the PE. Shared by the on-disk path ({@link readMatchedDif})
- * and in-memory ZIP entries ({@link difFromCandidateBuffer}).
+ * Split a buffer into the pieces to upload: one per architecture slice for a
+ * fat Mach-O with more than one slice, otherwise the buffer itself.
+ *
+ * Sentry's assemble step rejects a file that holds more than one object, so
+ * each slice of a fat dSYM must go up as its own file under its own debug id,
+ * as the legacy `sentry-cli` does. A malformed fat header falls back to the
+ * whole buffer.
+ */
+function uploadSlices(content: Buffer): Buffer[] {
+  if (peekBufferFormat(content) !== "macho") {
+    return [content];
+  }
+  const slices = splitFatMachO(content);
+  return slices && slices.length > 1 ? slices : [content];
+}
+
+/**
+ * Parse an in-memory object buffer into uploadable debug files: one main DIF
+ * per matching object slice (see {@link uploadSlices}) plus, for managed PE
+ * assemblies, a separate Portable PDB DIF extracted from the PE. Shared by the
+ * on-disk path ({@link readMatchedDif}) and in-memory ZIP entries
+ * ({@link difFromCandidateBuffer}).
  *
  * @param displayPath - Path used for naming and logs (an on-disk path or a
  *   synthetic `"<zip>/<entry>"` path).
@@ -706,9 +729,11 @@ function difFromBuffer(
   maxFileSize: number,
 ): { difs: PreparedDif[]; oversized: boolean } {
   const difs: PreparedDif[] = [];
-  const main = matchedDif(displayPath, content, filters);
-  if (main) {
-    difs.push(main);
+  for (const slice of uploadSlices(content)) {
+    const main = matchedDif(displayPath, slice, filters);
+    if (main) {
+      difs.push(main);
+    }
   }
   const ppdb = embeddedPpdbDif(displayPath, content, filters, maxFileSize);
   if (ppdb.dif) {
@@ -768,11 +793,7 @@ function difFromCandidateBuffer(
   if (content.length === 0) {
     return [];
   }
-  const header =
-    content.length > PEEK_HEADER_BYTES
-      ? new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES))
-      : new Uint8Array(content);
-  const format = peekFormat(header);
+  const format = peekBufferFormat(content);
   if (format === "unknown") {
     return [];
   }
