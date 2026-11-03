@@ -1061,6 +1061,7 @@
           "description": "Owner actor in `user:ID` or `team:ID` format."
         },
         "workflowIds": {
+          "maxItems": 50,
           "type": "array",
           "items": {
             "type": "string",

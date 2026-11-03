@@ -355,6 +355,17 @@ describe("create_monitor", () => {
     },
   );
 
+  it("caps the number of workflow IDs in the input schema", () => {
+    const ids = (count: number) =>
+      Array.from({ length: count }, (_, i) => String(i + 1));
+    expect(
+      createMonitor.inputSchema.workflowIds.safeParse(ids(50)).success,
+    ).toBe(true);
+    expect(
+      createMonitor.inputSchema.workflowIds.safeParse(ids(51)).success,
+    ).toBe(false);
+  });
+
   it("surfaces Sentry validation errors", async () => {
     mswServer.use(
       http.post(endpoint, () =>

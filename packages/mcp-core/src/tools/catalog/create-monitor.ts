@@ -16,6 +16,8 @@ import { assertProjectRefWithinConstraint } from "./support/project-constraints"
 const MAX_CHECKIN_MARGIN_MINUTES = 40_320;
 const MAX_RUNTIME_MINUTES = 10_080;
 const MAX_THRESHOLD = 720;
+// Bounds untrusted input; far above any realistic number of Alerts per monitor.
+const MAX_WORKFLOW_IDS = 50;
 
 const INTERVAL_UNITS = [
   "minute",
@@ -216,6 +218,7 @@ export default defineTool({
       .optional(),
     workflowIds: z
       .array(z.string().regex(/^\d+$/))
+      .max(MAX_WORKFLOW_IDS)
       .describe("Existing notification Alert IDs to connect.")
       .optional(),
   },
