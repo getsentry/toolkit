@@ -121,12 +121,22 @@ Top-level layout:
   the whole tree with `getRoutes()`, loads `app.ts`. Add commands to `app.ts`
   only; a new top-level command that reads the whole tree goes in
   `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
-- **`src/sea-main.ts`** — main script of the standalone binary. `script/build.ts`
-  embeds the CLI (`src/bin.ts`) and the completion engine (`src/complete-bin.ts`)
-  as separate SEA assets, and this bootstrap runs one of them through
-  `src/lib/sea-chunk.ts`, which keeps a V8 code cache for each under
-  `<config dir>/cache/code/`. It must import only `node:` builtins and pure
-  helpers (`test/script/cli-startup.test.ts` lists its modules).
+- **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
+  and the standalone binary. `script/lib/split-bundle.ts` builds the CLI
+  (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
+  every lazy `_require()` (telemetry, syntax highlighting, the field-list
+  parser) starts a chunk, so a command loads only its own code. The
+  completion engine (`src/complete-bin.ts`) is one file of its own. The main
+  script runs one of them through `src/lib/chunk-loader.ts`, which reads the
+  chunks from files next to it (npm) or from SEA assets (binary) and keeps a V8
+  code cache for each under `<config dir>/cache/code/`. It must import only
+  `node:` builtins and pure helpers (`test/script/cli-startup.test.ts` lists
+  its modules). `script/lib/chunk-build.ts` holds the build steps both
+  packages share: debug IDs, sourcemap upload, and the main script.
+- **`src/index.ts`** — the library (`createSentrySDK`). It imports no command
+  and no CLI runner: each SDK call loads only the top-level routes it runs
+  (`src/sdk-app.ts`, the SDK's `app-for-args.ts`), from the same split chunks
+  in `dist/index.cjs` and `dist/index.mjs`.
 - **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
   bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
@@ -506,11 +516,11 @@ search grammar) import it when called, so the fast path only loads it for
 the arguments that need it.
 
 The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
-and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
-for `__complete` first and call `runCompletion` without loading `cli.ts`;
-the npm package ships it as the separate `dist/complete.cjs` bundle, and the
-standalone binary as a separate SEA asset (`src/complete-bin.ts`), so a TAB
-press never compiles the CLI bundle. That
+and what that module imports. `src/bin.ts` and the main script of both
+packages (`src/chunk-main.ts`) check for `__complete` first and run
+`runCompletion` without loading `cli.ts`: both ship it as a separate bundle
+(`src/complete-bin.ts`, `complete.cjs`) that shares no chunk with the CLI, so a
+TAB press never loads a CLI chunk. That
 graph must stay free of `@sentry/node`, telemetry, the API client, and the
 command tree: the database modules get spans and cache metrics through
 `withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
