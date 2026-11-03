@@ -1,8 +1,8 @@
 /**
  * Banner Formatting
  *
- * Standalone module for the Sentry ASCII banner.
- * Extracted to avoid circular imports (wizard-runner → help → app → init → wizard-runner).
+ * Standalone module for the Sentry ASCII banner, kept apart from `help.ts`
+ * to avoid circular imports.
  *
  * The banner is responsive: it renders the widest variant that fits the terminal
  * so it never wraps (which looks broken on narrow/split-pane terminals).
@@ -79,38 +79,6 @@ function colorize(rows: readonly string[]): BannerLine[] {
 }
 
 /**
- * The full (widest) banner variant with gradient colors applied. Consumers that
- * re-fit on resize (the Ink wizard) should seed with this so they can grow back
- * to the full banner as the terminal widens, not just shrink.
- */
-export const FULL_BANNER_LINES: BannerLine[] = colorize(BANNER_ROWS_FULL);
-
-/**
- * Widest display width (in code points) among a set of banner lines.
- * Used to decide whether a pre-built banner fits the current terminal.
- *
- * Known limitation: width is counted in code points, which assumes each Block
- * Elements glyph (U+2580–U+259F) occupies one terminal cell. Those glyphs have
- * East Asian *Ambiguous* width, so a terminal configured to render ambiguous
- * characters as wide (some CJK setups) draws them double-width and the banner
- * can wrap. This is not portably detectable — and width libraries such as
- * `string-width` also treat ambiguous characters as narrow by default, so they
- * would report the same value — so it is an accepted limitation of the block-art
- * banner. The plain ASCII text mark is unaffected.
- */
-export function bannerLinesWidth(lines: readonly BannerLine[]): number {
-  let max = 0;
-  for (const { content } of lines) {
-    // oxlint-disable-next-line typescript/no-misused-spread -- width is measured in code points
-    const width = [...content].length;
-    if (width > max) {
-      max = width;
-    }
-  }
-  return max;
-}
-
-/**
  * Select the widest banner variant that fits within `columns`:
  * - `>= 66` cols → full arch mark + wordmark
  * - `>= 52` cols → wordmark only
@@ -118,8 +86,13 @@ export function bannerLinesWidth(lines: readonly BannerLine[]): number {
  * - otherwise → no banner (empty)
  *
  * This guarantees the banner never exceeds the terminal width, so it never wraps
- * into a broken layout on narrow or split-pane terminals (assuming single-width
- * block glyphs — see the note on {@link bannerLinesWidth}).
+ * into a broken layout on narrow or split-pane terminals.
+ *
+ * Known limitation: widths assume each Block Elements glyph (U+2580–U+259F)
+ * occupies one terminal cell. Those glyphs have East Asian *Ambiguous* width, so
+ * a terminal that renders ambiguous characters as wide (some CJK setups) draws
+ * them double-width and the banner can wrap. This is not portably detectable,
+ * and the plain ASCII text mark is unaffected.
  */
 export function bannerLinesForWidth(columns: number): BannerLine[] {
   if (columns >= FULL_WIDTH) {

@@ -30,7 +30,6 @@ import {
   buildTraceUrl,
   getOrgBaseUrl,
   isSentrySaasUrl,
-  parseOrgProjectFromSettingsUrl,
 } from "../../src/lib/sentry-urls.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
@@ -339,39 +338,6 @@ describe("buildProjectIssuesUrl properties", () => {
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
-  });
-});
-
-describe("parseOrgProjectFromSettingsUrl properties", () => {
-  test("round-trips org and project through a settings URL (SaaS)", async () => {
-    fcAssert(
-      property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
-        const url = buildProjectUrl(orgSlug, projectSlug);
-        expect(parseOrgProjectFromSettingsUrl(url)).toEqual({
-          orgSlug,
-          projectSlug,
-        });
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("round-trips org and project through a settings URL (self-hosted)", async () => {
-    process.env.SENTRY_URL = "https://sentry.example.com";
-    fcAssert(
-      property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
-        const url = buildProjectUrl(orgSlug, projectSlug);
-        expect(parseOrgProjectFromSettingsUrl(url)).toEqual({
-          orgSlug,
-          projectSlug,
-        });
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("returns empty for unparseable input", () => {
-    expect(parseOrgProjectFromSettingsUrl("not a url")).toEqual({});
   });
 });
 

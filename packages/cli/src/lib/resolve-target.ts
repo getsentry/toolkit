@@ -431,7 +431,7 @@ async function normalizeNumericOrg(orgId: string): Promise<string> {
  * @param dsn - Detected DSN (must have publicKey)
  * @returns Resolved target or null if resolution failed
  */
-export async function resolveDsnByPublicKey(
+async function resolveDsnByPublicKey(
   dsn: DetectedDsn,
 ): Promise<ResolvedTarget | null> {
   const detectedFrom = getDsnSourceDescription(dsn);

@@ -1,10 +1,9 @@
 /**
  * Minimal regex translation for user-supplied grep patterns.
  *
- * The init wizard's Mastra server sends regex sources written for
- * ripgrep (Rust regex syntax). JS `RegExp` covers almost everything
- * rg's default mode supports, with one real gap: **inline flag groups**
- * like `(?i)foo`. JS requires flags at RegExp construction time; it
+ * Grep patterns may be written for ripgrep (Rust regex syntax). JS
+ * `RegExp` covers almost everything rg's default mode supports, with
+ * one real gap: **inline flag groups** like `(?i)foo`. JS requires flags at RegExp construction time; it
  * can't flip them mid-pattern.
  *
  * This module bridges that gap by recognizing a leading `(?[imsU]+)`

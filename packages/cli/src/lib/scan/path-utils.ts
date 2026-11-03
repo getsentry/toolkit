@@ -14,8 +14,7 @@ import picomatch from "picomatch";
  * `*.ts`) so the per-file call skips the `pattern.includes("/")` check
  * every time.
  *
- * Matches the init-wizard's fs-fallback heuristic and ripgrep's
- * `--glob` semantics: patterns with `/` anchor to the relative path
+ * Matches ripgrep's `--glob` semantics: patterns with `/` anchor to the relative path
  * from cwd, patterns without `/` match the basename anywhere.
  */
 export type CompiledMatcher = {

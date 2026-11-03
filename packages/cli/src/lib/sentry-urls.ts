@@ -8,7 +8,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import {
-  DEFAULT_SENTRY_HOST,
   DEFAULT_SENTRY_URL,
   getConfiguredSentryUrl,
   normalizeUrl,
@@ -256,43 +255,6 @@ export function buildProjectIssuesUrl(
     return `${getOrgBaseUrl(orgSlug)}/issues/${filter}`;
   }
   return `${getSentryBaseUrl()}/organizations/${orgSlug}/issues/${filter}`;
-}
-
-/**
- * Recover the org and project slugs from a project settings URL as built by
- * {@link buildProjectUrl}. Used as a fallback when the server didn't hand the
- * slugs back directly, so the CLI can still build Issues / MCP URLs. Returns
- * `{}` for anything that doesn't parse.
- *
- * SaaS shape:        `https://{org}.sentry.io/settings/projects/{project}/`
- * Self-hosted shape: `{base}/settings/{org}/projects/{project}/`
- */
-export function parseOrgProjectFromSettingsUrl(url: string): {
-  orgSlug?: string;
-  projectSlug?: string;
-} {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const parsed = new URL(url);
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    const projectsIndex = segments.indexOf("projects");
-    const projectSlug =
-      projectsIndex >= 0 ? segments[projectsIndex + 1] : undefined;
-    if (isSentrySaasUrl(url)) {
-      // Org is the subdomain; guard against the bare apex (no org subdomain).
-      const [subdomain] = parsed.hostname.split(".");
-      const orgSlug =
-        parsed.hostname === DEFAULT_SENTRY_HOST ? undefined : subdomain;
-      return { orgSlug, projectSlug };
-    }
-    // Self-hosted: org is the path segment right after `settings`.
-    const settingsIndex = segments.indexOf("settings");
-    const orgSlug =
-      settingsIndex >= 0 ? segments[settingsIndex + 1] : undefined;
-    return { orgSlug, projectSlug };
-  } catch {
-    return {};
-  }
 }
 
 // Settings URLs

@@ -96,15 +96,6 @@ async function inspectOAuthScopes(
   }
 }
 
-/** Whether the active stored OAuth token is invalid or lacks a current CLI scope. */
-async function currentOAuthGrantNeedsRefresh(
-  runtime: ScopeRecoveryRuntime,
-  startedWithOAuth: boolean,
-): Promise<boolean> {
-  const state = await inspectOAuthScopes(runtime, startedWithOAuth);
-  return Boolean(state && state.kind !== "current");
-}
-
 function hasActiveOAuthGrant(
   runtime: ScopeRecoveryRuntime = defaultRuntime,
 ): boolean {
@@ -114,34 +105,6 @@ function hasActiveOAuthGrant(
     logger.debug("Failed to read auth source for OAuth grant check", error);
     return false;
   }
-}
-
-export type OAuthScopeRecoveryGate = {
-  readonly shouldDelegate: (
-    error: unknown,
-    options: { unattended: boolean },
-  ) => Promise<boolean>;
-};
-
-/** Preserve command-specific fallbacks unless central OAuth recovery can own the error. */
-export function captureOAuthScopeRecoveryGate(
-  runtime: ScopeRecoveryRuntime = defaultRuntime,
-): OAuthScopeRecoveryGate {
-  const startedWithOAuth = hasActiveOAuthGrant(runtime);
-  return {
-    shouldDelegate: async (error, options) => {
-      if (
-        !(error instanceof ApiError) ||
-        (error.status !== 401 && error.status !== 403) ||
-        options.unattended ||
-        !runtime.inputIsTty() ||
-        !runtime.promptsAllowed()
-      ) {
-        return false;
-      }
-      return await currentOAuthGrantNeedsRefresh(runtime, startedWithOAuth);
-    },
-  };
 }
 
 async function refreshOAuthScopes(

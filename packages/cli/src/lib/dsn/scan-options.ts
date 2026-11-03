@@ -6,8 +6,7 @@
  * depth reset, and the `TEXT_EXTENSIONS` allowlist.
  *
  * Lives in `dsn/` rather than `scan/` so the core scanner module
- * stays policy-free. Other callers (the init wizard, future features)
- * bring their own presets.
+ * stays policy-free. Other callers bring their own presets.
  */
 
 import type { WalkOptions } from "../scan/index.js";

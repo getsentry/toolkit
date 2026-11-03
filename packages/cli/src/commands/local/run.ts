@@ -83,9 +83,6 @@ type RunFlags = {
   readonly "max-envelopes"?: number;
 };
 
-/** Buffer size for the auto-started background server. */
-export const BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
-
 /**
  * Client-side env var prefixes that frameworks inline into browser bundles
  * at build time. We inject `<PREFIX>SENTRY_SPOTLIGHT` for every variant so the

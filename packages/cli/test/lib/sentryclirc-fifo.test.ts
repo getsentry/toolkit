@@ -1,16 +1,13 @@
 /**
- * FIFO-safety tests for the `safeReadFile` helper and the migrated
- * call sites. Parallels `test/lib/dsn/fifo-safety.test.ts` (added by
- * PR #806) — extends coverage to the non-DSN read paths addressed by
- * Group D unification.
+ * FIFO-safety tests for `.sentryclirc` loading. Parallels
+ * `test/lib/dsn/fifo-safety.test.ts` (added by PR #806).
  */
 
 import { execSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { safeReadFile } from "../../src/lib/safe-read.js";
 import {
   clearSentryCliRcCache,
   loadSentryCliRc,
@@ -20,55 +17,6 @@ import {
 function createFifo(path: string): void {
   execSync(`mkfifo ${JSON.stringify(path)}`);
 }
-
-describe("safeReadFile", () => {
-  let dir: string;
-
-  beforeEach(() => {
-    dir = join(
-      tmpdir(),
-      `safe-read-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
-    mkdirSync(dir, { recursive: true });
-  });
-
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("reads regular file content", async () => {
-    const path = join(dir, "config.ini");
-    writeFileSync(path, "[defaults]\norg=acme\n");
-    expect(await safeReadFile(path, "test")).toBe("[defaults]\norg=acme\n");
-  });
-
-  test("returns null for missing files", async () => {
-    expect(await safeReadFile(join(dir, "missing"), "test")).toBeNull();
-  });
-
-  test("returns null for FIFOs instead of blocking", async () => {
-    const fifo = join(dir, "pipe.ini");
-    createFifo(fifo);
-    // If the guard weren't in place this would hang indefinitely.
-    // Bun's test timeout would eventually fail the test, but we
-    // should get a clean `null` return almost immediately.
-    expect(await safeReadFile(fifo, "test")).toBeNull();
-  });
-
-  test("returns null for symlinks to FIFOs (1Password pattern)", async () => {
-    const fifo = join(dir, "pipe");
-    const link = join(dir, "linked.env");
-    createFifo(fifo);
-    execSync(`ln -s ${JSON.stringify(fifo)} ${JSON.stringify(link)}`);
-    expect(await safeReadFile(link, "test")).toBeNull();
-  });
-
-  test("returns null for directories", async () => {
-    const subdir = join(dir, "sub");
-    mkdirSync(subdir);
-    expect(await safeReadFile(subdir, "test")).toBeNull();
-  });
-});
 
 describe("sentryclirc FIFO safety", () => {
   let dir: string;

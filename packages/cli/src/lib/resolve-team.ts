@@ -199,7 +199,7 @@ export async function resolveOrCreateTeam(
 }
 
 /** Whether the user is Team Admin on a team and can create projects in it. */
-export function canCreateProjectInTeam(team: SentryTeam): boolean {
+function canCreateProjectInTeam(team: SentryTeam): boolean {
   return Array.isArray(team.access) && team.access.includes("team:admin");
 }
 
@@ -215,9 +215,7 @@ function teamCreatedAt(team: SentryTeam): number {
  * team (matching Sentry's own default-team rule), with slug order as a
  * tie-breaker so the choice is stable across runs.
  */
-export function pickDefaultTeam(
-  teams: readonly SentryTeam[],
-): SentryTeam | undefined {
+function pickDefaultTeam(teams: readonly SentryTeam[]): SentryTeam | undefined {
   const adminTeams = teams.filter(canCreateProjectInTeam);
   const pool = adminTeams.length > 0 ? adminTeams : teams;
   return [...pool].sort(
