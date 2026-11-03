@@ -41,7 +41,7 @@ import {
 } from "../../lib/db/auth.js";
 import { fetchEnvAccountUser } from "../../lib/env-account.js";
 import { getAllOrgRegions } from "../../lib/db/regions.js";
-import { ApiError, AuthError } from "../../lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
 import { getNestedValue } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -319,7 +319,13 @@ async function fetchOrgsAcrossAccounts(
       continue;
     }
     const error = result.reason;
-    if (!(error instanceof AuthError || error instanceof ApiError)) {
+    if (
+      !(
+        error instanceof AuthError ||
+        error instanceof ApiError ||
+        error instanceof TimeoutError
+      )
+    ) {
       throw error;
     }
     firstError ??= error;

@@ -44,7 +44,7 @@ import {
   getSdkConfig,
 } from "../sentry-client.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
-import { getSentryBaseUrl, isSaaS } from "../sentry-urls.js";
+import { isSentrySaasUrl } from "../sentry-urls.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -272,7 +272,8 @@ function findNetworkCause(
  * "fetch failed"), and a next step that matches it.
  */
 function buildNetworkErrorDetail(error: unknown): string {
-  const baseUrl = getSentryBaseUrl();
+  // Same resolution as request routing: env, then the stored login's host.
+  const baseUrl = getApiBaseUrl();
   const outer =
     error instanceof Error ? error.message : stringifyUnknown(error);
   const networkCause = findNetworkCause(error);
@@ -283,9 +284,9 @@ function buildNetworkErrorDetail(error: unknown): string {
   const steps = [
     (networkCause && NETWORK_CAUSE_HINTS[networkCause.code]) ??
       "Check your network connection and try again.",
-    isSaaS()
+    isSentrySaasUrl(baseUrl)
       ? "If your network is fine, check https://status.sentry.io for an ongoing incident."
-      : `Check that ${baseUrl} (from SENTRY_URL or SENTRY_HOST) is your Sentry server and that it is reachable from this machine.`,
+      : `Check that ${baseUrl} is your Sentry server and that it is reachable from this machine (set SENTRY_URL to override it).`,
   ];
   return `Unable to reach Sentry at ${baseUrl}. Cause: ${cause}\n\n${steps.map((step) => `  ${step}`).join("\n")}`;
 }

@@ -174,7 +174,14 @@ describe("throwApiError", () => {
   });
 
   describe("network failure guidance", () => {
-    useEnvSandbox(["SENTRY_URL", "SENTRY_HOST"]);
+    useTestConfigDir("api-network-guidance-");
+    useEnvSandbox([
+      "SENTRY_URL",
+      "SENTRY_HOST",
+      "SENTRY_AUTH_TOKEN",
+      "SENTRY_TOKEN",
+      "SENTRY_FORCE_ENV_TOKEN",
+    ]);
 
     function fetchFailed(code: string, message: string): TypeError {
       const cause = Object.assign(new Error(message), { code });
@@ -201,6 +208,20 @@ describe("throwApiError", () => {
       expect(detail).toContain("connect ECONNREFUSED 10.0.0.1:443");
       expect(detail).toContain("The server refused the connection");
       expect(detail).toContain("SENTRY_URL");
+      expect(detail).not.toContain("status.sentry.io");
+    });
+
+    test("a self-hosted login without SENTRY_URL names its own server", () => {
+      setAuthToken("self-hosted-token", undefined, undefined, {
+        host: "https://sentry.example.com",
+        newAccount: true,
+      });
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
       expect(detail).not.toContain("status.sentry.io");
     });
 
