@@ -24,6 +24,9 @@ vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
   normalizeSha: (
     await importOriginal<typeof import("../../../src/lib/git.js")>()
   ).normalizeSha,
+  isSameRepository: (
+    await importOriginal<typeof import("../../../src/lib/git.js")>()
+  ).isSameRepository,
   parseRemoteUrl: (
     await importOriginal<typeof import("../../../src/lib/git.js")>()
   ).parseRemoteUrl,
