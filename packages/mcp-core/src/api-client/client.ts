@@ -2616,6 +2616,77 @@ export class SentryApiService {
   }
 
   /**
+   * Create a cron monitor through the detectors API, as the Sentry UI does.
+   * Unlike the legacy `POST /organizations/{org}/monitors/`, this path records
+   * the acting user as the detector's creator and can connect Alerts.
+   *
+   * POST /organizations/{org}/projects/{project}/detectors/
+   * Source: src/sentry/monitors/validators.py (MonitorIncidentDetectorValidator,
+   * MonitorDataSourceValidator, ConfigValidator)
+   *
+   * Returns the created Monitor, which Sentry serializes as the detector's
+   * `dataSources[0].queryObj`.
+   */
+  async createMonitor(
+    {
+      organizationSlug,
+      projectSlug,
+      name,
+      slug,
+      status,
+      owner,
+      workflowIds,
+      config,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      name: string;
+      slug?: string;
+      status?: "active" | "disabled";
+      owner?: string;
+      workflowIds?: string[];
+      config: {
+        schedule_type: "crontab" | "interval";
+        schedule: string | [number, string];
+        checkin_margin?: number;
+        max_runtime?: number;
+        timezone?: string;
+        failure_issue_threshold?: number;
+        recovery_threshold?: number;
+      };
+    },
+    opts?: RequestOptions,
+  ): Promise<{ detector: Detector; monitor: Monitor }> {
+    const response = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/projects/${projectSlug}/detectors/`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "monitor_check_in_failure",
+          name,
+          ...(owner !== undefined && { owner }),
+          ...(workflowIds !== undefined && { workflowIds }),
+          dataSources: [
+            {
+              name,
+              config,
+              ...(slug !== undefined && { slug }),
+              ...(status !== undefined && { status }),
+              ...(owner !== undefined && { owner }),
+            },
+          ],
+        }),
+      },
+      opts,
+    );
+    const detector = DetectorSchema.parse(response);
+    return {
+      detector,
+      monitor: MonitorSchema.parse(detector.dataSources?.[0]?.queryObj),
+    };
+  }
+
+  /**
    * Schedule deletion of a cron monitor environment. Returns 202 with no body.
    * Source: src/sentry/monitors/endpoints/project_monitor_environment_details.py
    */

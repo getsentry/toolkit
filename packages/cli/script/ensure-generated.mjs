@@ -37,7 +37,6 @@ const DOCS_OUTPUTS = [
   "src/generated/command-api-access.json",
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",
-  "src/generated/route-loaders.ts",
 ];
 
 function run(script) {
