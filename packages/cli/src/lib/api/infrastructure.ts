@@ -274,6 +274,8 @@ function findNetworkCause(
 function buildNetworkErrorDetail(error: unknown): string {
   // Same resolution as request routing: env, then the stored login's host.
   const baseUrl = getApiBaseUrl();
+  // SENTRY_HOST wins over SENTRY_URL (getConfiguredSentryUrl), so name it when set.
+  const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
   const outer =
     error instanceof Error ? error.message : stringifyUnknown(error);
   const networkCause = findNetworkCause(error);
@@ -286,7 +288,7 @@ function buildNetworkErrorDetail(error: unknown): string {
       "Check your network connection and try again.",
     isSentrySaasUrl(baseUrl)
       ? "If your network is fine, check https://status.sentry.io for an ongoing incident."
-      : `Check that ${baseUrl} is your Sentry server and that it is reachable from this machine (set SENTRY_URL to override it).`,
+      : `Check that ${baseUrl} is your Sentry server and that it is reachable from this machine (set ${urlVar} to override it).`,
   ];
   return `Unable to reach Sentry at ${baseUrl}. Cause: ${cause}\n\n${steps.map((step) => `  ${step}`).join("\n")}`;
 }

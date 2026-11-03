@@ -211,6 +211,18 @@ describe("throwApiError", () => {
       expect(detail).not.toContain("status.sentry.io");
     });
 
+    test("names SENTRY_HOST as the override when it is the one set", () => {
+      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env.SENTRY_URL = "https://other.example.com";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("set SENTRY_HOST to override it");
+    });
+
     test("a self-hosted login without SENTRY_URL names its own server", () => {
       setAuthToken("self-hosted-token", undefined, undefined, {
         host: "https://sentry.example.com",
