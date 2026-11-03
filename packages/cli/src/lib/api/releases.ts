@@ -24,7 +24,12 @@ import type {
 import { getCiCheckout } from "../ci.js";
 import { getEnv } from "../env.js";
 import { ApiError, ValidationError, validationError } from "../errors.js";
-import { getHeadCommit, getRepositoryName, isSameRepository } from "../git.js";
+import {
+  getHeadCommit,
+  getRepositoryName,
+  isInsideGitWorkTree,
+  isSameRepository,
+} from "../git.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import { buildOrgSettingsUrl } from "../sentry-web-urls.js";
@@ -453,7 +458,11 @@ type AutoCheckout = {
  *
  * @throws {ValidationError} When neither source names a repository
  */
-function resolveAutoCheckout(cwd?: string): AutoCheckout {
+function resolveAutoCheckout(
+  orgSlug: string,
+  version: string,
+  cwd?: string,
+): AutoCheckout {
   const remoteRepo = getRepositoryName(cwd);
   if (remoteRepo) {
     return { repository: remoteRepo, source: "the 'origin' git remote" };
@@ -468,17 +477,31 @@ function resolveAutoCheckout(cwd?: string): AutoCheckout {
     return { repository: ci.repository, commit: ci.commit, source: ci.source };
   }
 
+  // Adding a remote or reading local history only helps in a git checkout;
+  // builds without .git (Vercel, Docker) can only pass the commit in.
+  const inGitCheckout = isInsideGitWorkTree(cwd);
+  const target = `${orgSlug}/${version}`;
+  let note: string | undefined;
+  if (env.VERCEL) {
+    note =
+      "Vercel builds have no .git directory, and --auto only reads VERCEL_GIT_* in production builds. Use --commit to associate commits from preview builds.";
+  } else if (!inGitCheckout) {
+    note =
+      "Docker builds often exclude .git (.dockerignore). Pass the commit in, for example with --commit owner/repo@$GIT_SHA.";
+  }
   throw validationError(
     "Could not determine the repository: there is no 'origin' git remote and no CI repository variables (GITHUB_REPOSITORY, CI_PROJECT_PATH, VERCEL_GIT_REPO_SLUG, ...). --auto needs one of them to match a Sentry repository.",
     [
-      "sentry release set-commits <version> --commit owner/repo@<commit-sha>",
-      "git remote add origin <url>",
-      "sentry release set-commits <version> --local",
+      `sentry release set-commits ${target} --commit owner/repo@<commit-sha>`,
+      ...(inGitCheckout
+        ? [
+            "git remote add origin <url>",
+            `sentry release set-commits ${target} --local`,
+          ]
+        : []),
     ],
     "repository",
-    env.VERCEL
-      ? "Vercel builds have no .git directory, and --auto only reads VERCEL_GIT_* in production builds. Use --commit to associate commits from preview builds."
-      : "Docker builds often exclude .git (.dockerignore). Pass the commit in, for example with --commit owner/repo@$GIT_SHA.",
+    note,
   );
 }
 
@@ -539,6 +562,16 @@ async function findSentryRepository(
   return { foundAnyRepos, candidates };
 }
 
+/** HEAD of the local checkout, or `undefined` when there is none. */
+function readHeadCommit(cwd?: string): string | undefined {
+  try {
+    return getHeadCommit(cwd);
+  } catch (error) {
+    log.debug("Could not read HEAD for the --commit suggestion", error);
+    return;
+  }
+}
+
 /** How many similar repository names to suggest when nothing matches. */
 const MAX_REPO_SUGGESTIONS = 3;
 
@@ -551,18 +584,22 @@ function noMatchingRepositoryError(
   version: string,
   checkout: AutoCheckout,
   candidates: SentryRepository[],
+  cwd?: string,
 ): ValidationError {
   const suggestions = [...new Set(candidates.map((r) => r.name))].slice(
     0,
     MAX_REPO_SUGGESTIONS,
   );
-  const commit = checkout.commit ?? "<commit-sha>";
+  const commit = checkout.commit ?? readHeadCommit(cwd) ?? "<commit-sha>";
+  const target = `${orgSlug}/${version}`;
   const examples = [
     ...suggestions.map(
       (name) =>
-        `sentry release set-commits ${version} --commit '${name}@${commit}'`,
+        `sentry release set-commits ${target} --commit '${name}@${commit}'`,
     ),
-    `sentry release set-commits ${version} --local`,
+    ...(isInsideGitWorkTree(cwd)
+      ? [`sentry release set-commits ${target} --local`]
+      : []),
   ];
   const didYouMean =
     suggestions.length > 0
@@ -598,7 +635,7 @@ export async function setCommitsAuto(
   version: string,
   cwd?: string,
 ): Promise<SentryRelease> {
-  const checkout = resolveAutoCheckout(cwd);
+  const checkout = resolveAutoCheckout(orgSlug, version, cwd);
 
   // The previous release's commit only depends on the org and version, not
   // on which repository matches, so fetch it concurrently with the repository
@@ -639,7 +676,7 @@ export async function setCommitsAuto(
     }
   }
 
-  throw noMatchingRepositoryError(orgSlug, version, checkout, candidates);
+  throw noMatchingRepositoryError(orgSlug, version, checkout, candidates, cwd);
 }
 
 /**

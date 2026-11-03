@@ -16,8 +16,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // Controllable git-helper mocks. `setCommitsAuto` calls these at runtime to
 // build the `refs` array sent to Sentry.
-const { mockGetRepositoryName } = vi.hoisted(() => ({
+const { mockGetRepositoryName, mockIsInsideGitWorkTree } = vi.hoisted(() => ({
   mockGetRepositoryName: vi.fn((): string | null => "getsentry/cli"),
+  mockIsInsideGitWorkTree: vi.fn(() => true),
 }));
 
 vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
@@ -32,7 +33,7 @@ vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
   ).parseRemoteUrl,
   getRepositoryName: mockGetRepositoryName,
   getHeadCommit: () => "abc123def456789012345678901234567890abcd",
-  isInsideGitWorkTree: () => true,
+  isInsideGitWorkTree: mockIsInsideGitWorkTree,
   isShallowRepository: () => false,
   getCommitLog: () => [],
   getUncommittedFiles: () => [],
@@ -287,6 +288,7 @@ describe("setCommitsAuto", () => {
     // can override via mockGetRepositoryName.mockReturnValueOnce(null) or
     // mockReturnValue("...").
     mockGetRepositoryName.mockReturnValue("getsentry/cli");
+    mockIsInsideGitWorkTree.mockReturnValue(true);
   });
 
   test("lists repos, discovers HEAD, fetches previous commit, and sends refs", async () => {
@@ -570,6 +572,7 @@ describe("setCommitsAuto", () => {
 
   test("throws an actionable ValidationError when no git remote is configured", async () => {
     mockGetRepositoryName.mockReturnValue(null);
+    mockIsInsideGitWorkTree.mockReturnValueOnce(false);
 
     // A missing 'origin' remote (e.g. a fresh `git init`) is an expected
     // precondition, not a crash. It must surface as a CliError (exit 21,
@@ -588,11 +591,28 @@ describe("setCommitsAuto", () => {
     expect((error as Error).message).toMatch(
       /no 'origin' git remote and no CI repository variables/,
     );
-    expect((error as Error).message).toMatch(/--commit owner\/repo@/);
-    expect((error as Error).message).toMatch(/--local/);
-    expect((error as Error).message).toMatch(
-      /Docker builds often exclude .git/,
+    const message = (error as Error).message;
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --commit owner/repo@<commit-sha>",
     );
+    // Without .git, adding a remote or reading local history cannot help.
+    expect(message).not.toMatch(/--local|git remote add/);
+    expect(message).toMatch(/Docker builds often exclude .git/);
+  });
+
+  test("suggests adding a remote in a git checkout without one", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+
+    const error = await withEnv({}, () =>
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).catch((caught: unknown) => caught);
+
+    const message = (error as Error).message;
+    expect(message).toContain("git remote add origin <url>");
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --local",
+    );
+    expect(message).not.toMatch(/Docker/);
   });
 
   test("skips Vercel preview builds and says why", async () => {
@@ -765,7 +785,7 @@ describe("setCommitsAuto", () => {
       /similarly named repositories: getsentry\/cli-legacy/,
     );
     expect(message).toContain(
-      "sentry release set-commits 1.0.0 --commit 'getsentry/cli-legacy@<commit-sha>'",
+      "sentry release set-commits test-org/1.0.0 --commit 'getsentry/cli-legacy@abc123def456789012345678901234567890abcd'",
     );
     expect(message).toMatch(/settings\/repos\//);
   });
