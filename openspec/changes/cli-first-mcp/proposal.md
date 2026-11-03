@@ -41,9 +41,10 @@ introspection and run through the CLI SDK.
    queries in `search_sentry` and suggests values when a parameter fails
    validation: organization and project slugs, issue IDs, dataset fields
    and aggregates, and search query terms.
-6. **The CLI SDK runs on the hosted MCP.** The SDK's storage (SQLite, the
-   filesystem, the config directory) becomes pluggable, with Workers
-   backends, and its per-process state becomes per-request. The hosted MCP
+6. **The CLI SDK runs on the hosted MCP.** Hosted creates one SDK instance
+   per request with the OAuth grant's token and runs it with persistence
+   off: no SQLite, no config directory, no caches. Module-level state on
+   the exposed commands' import graph becomes per-request. The hosted MCP
    then runs commands through the same SDK as `sentry mcp`.
 7. **The catalog goes away after an eval gate.** The command surface ships
    next to the catalog. When the MCP eval suite shows it matching the
@@ -70,14 +71,14 @@ commands.
 ## Impact
 
 - `packages/cli`: new commands for the parity gaps; agent metadata on
-  commands (permission class, hosted availability); pluggable storage
-  backends; per-request SDK state; a Workers build of the SDK.
+  commands (permission class, hosted availability); a no-persistence
+  mode; per-request SDK state; a Workers build of the SDK.
 - `packages/mcp-core`: keeps MCP plumbing (registration, transports,
   constraints, the two tool definitions). Loses the catalog tools, the
   `SentryApiService` endpoint wrappers they use, the search agents, and the
   agent provider configuration.
-- `packages/mcp-cloudflare`: runs commands through the CLI SDK with Workers
-  storage backends. OAuth consent maps to command permission classes.
+- `packages/mcp-cloudflare`: runs commands through the CLI SDK, one
+  instance per request, with persistence off. OAuth consent maps to command permission classes.
 - `packages/mcp-server`: the slim bundle needs the command handlers it
   exposes; its module guard and size budget change.
 - `packages/mcp-server-evals`: command-surface and catalog runs of the full

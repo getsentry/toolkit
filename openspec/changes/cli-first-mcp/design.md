@@ -162,42 +162,51 @@ command has no declaration:
   `cli uninstall`), `local`, and `monitor run`, which runs an arbitrary
   child process.
 
-### The CLI SDK on Workers, with pluggable backends
+### The CLI SDK on Workers, without persistence
 
 The hosted MCP runs commands through `createSentrySDK()` too, rather than
-through a second, portable copy of each command. Three things stand in the
-way, and none is the API code itself:
+through a second, portable copy of each command. The hosted MCP's Hono app
+creates one SDK instance per request, with the token from the OAuth grant
+and the org and project from the session constraints.
 
-**Storage.** The CLI's state is all in one synchronous SQLite database.
-D1 would be a poor fit: it is asynchronous, so every `getDatabase()` caller
-would have to become async, and it is a shared remote database where the
-CLI expects a private one. What the database holds is better split by
-purpose behind small interfaces, each with a Workers backend:
+**No persistence.** Everything the CLI persists is for a long-lived,
+single-user install: stored accounts and tokens, defaults, release channel
+and version checks, pagination cursor stacks, and caches (projects, DSNs,
+aliases, regions, repos, issue orgs, completion values, project roots, the
+response cache). A server needs none of it. The SDK already takes a token
+(`createSentrySDK({ token })` sets `SENTRY_AUTH_TOKEN` and
+`SENTRY_FORCE_ENV_TOKEN` for that invocation), and with an env token the
+auth code never reads the `accounts` table. So hosted runs the SDK with
+persistence off:
 
-| State                        | stdio                   | hosted                                                                       |
-| ---------------------------- | ----------------------- | ---------------------------------------------------------------------------- |
-| credentials, accounts        | SQLite                  | the OAuth grant's token, per request                                         |
-| defaults (org, project, URL) | SQLite, config          | session constraints, per request                                             |
-| response cache               | filesystem `CacheStore` | memory `CacheStore`, later the R2 tier from `unify-sentry-api-layer` group 7 |
-| region and completion caches | SQLite                  | memory per isolate; KV if hit rates warrant                                  |
-| DSN cache, telemetry state   | SQLite                  | not used                                                                     |
+- `getDatabase()` callers (23 files, 20 of them in `lib/db/`) get a null
+  store: reads miss and writes do nothing. An in-memory SQLite database is
+  not an option, since workerd has no SQLite driver for the CLI's adapter.
+- The response cache, `.sentryclirc` and config-directory reads, custom CA
+  and header files, version checks, and telemetry state are off.
+- Pagination is stateless. List commands already return `nextCursor` in
+  their JSON envelope and accept a raw cursor, so hosted rejects the
+  `next`/`prev` keywords, which need the stored cursor stack, and the
+  agent passes the cursor it got back.
+- Org-to-region lookups happen on every call that needs them. If that
+  latency matters, an in-memory cache keyed by token fingerprint comes
+  later, measured first.
 
-If splitting the database by purpose turns out larger than expected, a
-shorter path is a third adapter behind `lib/db/sqlite.ts` over Durable
-Object SQLite storage, which is synchronous and private to the object. One
-object per OAuth grant keeps the CLI's single-user model. Neither D1 nor
-Durable Objects are used by the hosted MCP today.
+D1, R2, and Durable Object storage are not needed. Commands that read or
+write local files are stdio-only.
 
-The filesystem needs no Workers backend. Commands that read or write local
-files are stdio-only, and the cache directory is replaced by `CacheStore`.
-R2 backs the response cache, not a filesystem.
-
-**Per-request state.** The CLI assumes one user per process: the database
-handle, the env-token snapshots, and the caches are module-level. A Workers
-isolate serves many users at once, so per-user state moves into the
-invocation context, using `AsyncLocalStorage` as `withEnv()` already does.
-A test runs two identities concurrently in one isolate and checks that
-neither sees the other's credentials, constraints, or cache entries.
+**Per-request state.** One SDK instance per request isolates what lives in
+the instance and in `withEnv()`'s `AsyncLocalStorage`, but not module
+scope: a Workers isolate reuses its modules across concurrent requests. The
+auth path is already per invocation (token memos are keyed by the
+invocation's env, and env tokens skip stored accounts). Some module-level
+state is not, for example `regionCache` in `lib/region.ts` (keyed by org
+slug only), `loginTrustAnchor` in `lib/token-host.ts`, and the cached
+headers in `lib/custom-headers.ts`. With persistence off, the work is to
+audit module-level state on the exposed commands' import graph and either
+scope each item to the invocation or turn it off on hosted. A test runs
+two identities concurrently in one isolate and checks that neither sees
+the other's credentials, constraints, or results.
 
 **Node built-ins.** `nodejs_compat` provides `path`, `crypto`, `util`,
 `zlib`, `async_hooks`, and timers. It does not provide `child_process`,
@@ -238,7 +247,7 @@ Completers in `lib/complete.ts` read the SQLite completion cache. They are
 split into completers over a data source:
 
 - **stdio:** the SQLite cache, as for the shell, with a live API fallback.
-- **hosted:** the live API, with the memory cache.
+- **hosted:** the live API, uncached.
 
 `search_sentry`'s `complete` mode and `execute_sentry_command`'s validation
 errors return candidates with descriptions for the parameter in question:
@@ -277,9 +286,8 @@ The slim bundle (#1731) bans command handlers and has a 3.75 MB budget.
 Under this plan it must carry the exposed command handlers, since that is
 what its tools run. It bundles them with the SDK and keeps banning the
 stdio-only and hidden commands, Ink, the terminal markdown renderer, and
-SQLite WASM. The budget is re-measured. Whether the package is still worth
-keeping, rather than pointing installs at `npx sentry mcp`, is an open
-question.
+SQLite WASM. The budget is re-measured. The package stays; whether installs
+move to `npx sentry mcp` later is out of scope here.
 
 ### Eval-gated cutover
 
@@ -302,9 +310,12 @@ The command surface ships next to the catalog:
 - **Output quality.** Catalog tools format stack traces, traces, and issue
   summaries for agents. `format: "markdown"` reuses the CLI's renderers; the
   evals check the gap.
-- **Cross-user leaks on hosted.** Per-request state is the riskiest part of
-  running the SDK on Workers. The concurrent two-identity test is required
-  before hosted serves any command.
+- **Cross-user leaks on hosted.** With persistence off, the remaining risk
+  is module-level state shared by concurrent requests in one isolate. The
+  concurrent two-identity test is required before hosted serves any
+  command.
+- **Extra round trips on hosted.** Without caches, region and slug
+  resolution hit the API on every call. Measure before adding a cache.
 - **Workers compatibility.** Unknown until the spike. Commands that fail
   stay stdio-only, so hosted coverage can lag stdio.
 - **Tool descriptions come from CLI help text.** Weak help text makes weak
@@ -318,8 +329,8 @@ The command surface ships next to the catalog:
    parity commands, by domain.
 2. The two tools on stdio over `createSentrySDK()`, behind a flag, with
    completion.
-3. The Workers spike, then pluggable backends and per-request state, then
-   hosted on the SDK.
+3. The Workers spike, then a no-persistence mode and the module-state
+   audit, then hosted on the SDK.
 4. Eval gate, default flip, catalog deletion.
 
 **Rollback:** until the catalog is deleted, the flag switches back. After
@@ -329,9 +340,6 @@ that, a revert of the deletion PR restores it.
 
 - Which mode each client should default to: two tools, or every command as
   a tool for harnesses that search tools themselves.
-- Whether to keep `@sentry/mcp-server` or point installs at `sentry mcp`.
-- Memory per isolate versus Durable Object SQLite for hosted caches, decided
-  by hit rates after launch.
 - Whether `get_sentry_mcp_info` and `onboarding_status_update` survive.
 - When to simplify hosted consent from skill checkboxes to API Read, API
   Write, and destructive.

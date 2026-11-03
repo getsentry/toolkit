@@ -40,7 +40,7 @@
 
 ## 7. Hosted cache
 
-Off the critical path since `cli-first-mcp`. The memory store (7.1, #1833) can land on its own. The R2 tier (7.3, 7.4, #1842) is parked until traffic on the command surface shows whether cross-isolate reuse pays; the cache policy itself moves into `@sentry/api` with the rest of the client.
+Off the critical path since `cli-first-mcp`. The memory store (7.1, #1833) can land on its own for the catalog tools; the hosted SDK path runs uncached (`cli-first-mcp` 6.2). The R2 tier (7.3, 7.4, #1842) is parked until traffic on the command surface shows whether cross-isolate reuse pays; the cache policy itself moves into `@sentry/api` with the rest of the client.
 
 - [ ] 7.1 Wire the memory store into `mcp-cloudflare` behind `MCP_RESPONSE_CACHE` (`off`/`memory`/`tiered`), with identity taken from the wrapper token's user and grant IDs. Verify the Workers tests pass, and a two-identity isolation test.
 - [ ] 7.2 Confirm `node:zlib` zstd on a deployed preview Worker. If it is unavailable, keep brotli as the hosted codec and record that in `docs/cloudflare/architecture.md`.

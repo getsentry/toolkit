@@ -38,16 +38,16 @@ One PR per domain. Each adds the commands from the parity table in design.md, on
 
 ## 5. Completion for agents
 
-- [ ] 5.1 Split the completers in `lib/complete.ts` into completers over a data source: the SQLite cache with a live API fallback on stdio, the live API with the memory cache on hosted. Verify the shell completion tests pass unchanged.
+- [ ] 5.1 Split the completers in `lib/complete.ts` into completers over a data source: the SQLite cache with a live API fallback on stdio, the live API, uncached, on hosted. Verify the shell completion tests pass unchanged.
 - [ ] 5.2 Wire them into `search_sentry`'s `complete` mode and `execute_sentry_command`'s validation errors, returning candidates with descriptions. Verify tests for slugs, issue IDs, dataset fields and aggregates, and query keys and values.
 - [ ] 5.3 Document the query syntax in the `search_sentry` entries for the search commands, replacing the embedded search agents' prompts.
 
 ## 6. The CLI SDK on the hosted MCP
 
 - [ ] 6.1 Spike: bundle `createSentrySDK()` with the exposed commands for workerd under `nodejs_compat` and a current compatibility date. Record what fails to bundle or run, by module and command, and the bundle size against the Workers script limit, in design.md. Mark blocked commands stdio-only.
-- [ ] 6.2 Split the CLI's SQLite state by purpose behind interfaces (credentials, defaults, region cache, completion cache, DSN cache, telemetry state), with the SQLite implementations unchanged. Verify the CLI unit tests pass. If the spike shows this is too large, add a Durable Object SQLite adapter behind `lib/db/sqlite.ts` instead, with one object per OAuth grant.
-- [ ] 6.3 Move per-user module state (the database handle, env-token snapshots, caches) into the invocation context with `AsyncLocalStorage`. Verify a test that runs two identities concurrently in one isolate and checks that neither sees the other's credentials, constraints, or cache entries.
-- [ ] 6.4 Add the Workers backends: credentials and defaults from the OAuth grant and session constraints, `CacheStore` in memory, region and completion caches in memory. Verify Workers tests for an exposed read command, a write command, and constraint pinning.
+- [ ] 6.2 Add a no-persistence mode to the SDK: `getDatabase()` callers get a null store (reads miss, writes do nothing), and the response cache, `.sentryclirc` and config-directory reads, custom CA and header files, version checks, and telemetry state are off. Hosted rejects the `next`/`prev` cursor keywords; agents pass the raw `nextCursor`. Verify tests that run an exposed read command, a write command, and a paginated list with persistence off and no config directory.
+- [ ] 6.3 Audit module-level state on the exposed commands' import graph (for example `regionCache` in `lib/region.ts`, `loginTrustAnchor` in `lib/token-host.ts`, cached headers in `lib/custom-headers.ts`), and scope each item to the invocation or turn it off with persistence. Verify a test that runs two identities concurrently in one isolate and checks that neither sees the other's credentials, constraints, or results.
+- [ ] 6.4 In `mcp-cloudflare`'s Hono app, create one SDK instance per request with the OAuth grant's token and the session constraints, persistence off. Verify Workers tests for an exposed read command, a write command, and constraint pinning.
 - [ ] 6.5 Serve `search_sentry` and `execute_sentry_command` from `mcp-cloudflare` on the SDK, next to the catalog, listing only commands the hosted build can run. Verify the Workers tests and the #1675 harness against the command surface.
 - [ ] 6.6 Map hosted consent to permission classes: API Read, API Write, and the existing skills as command groups. Verify a test per grant.
 - [ ] 6.7 For any domain the spike blocks entirely, split its commands into input resolution and a portable operation (formerly `unify-sentry-api-layer` 11.1), for that domain only.
@@ -55,7 +55,7 @@ One PR per domain. Each adds the commands from the parity table in design.md, on
 
 ## 7. Slim stdio bundle
 
-- [ ] 7.1 Bundle the exposed command handlers and the SDK into `@sentry/mcp-server`, keeping the guard against stdio-only and hidden commands, Ink, the terminal renderer, and SQLite WASM. Re-measure the size budget, and decide whether the package stays or installs point at `sentry mcp`. Verify the bundle test (`initialize`, `tools/list`, an `execute_sentry_command` call against mocks).
+- [ ] 7.1 Bundle the exposed command handlers and the SDK into `@sentry/mcp-server`, keeping the guard against stdio-only and hidden commands, Ink, the terminal renderer, and SQLite WASM. Re-measure the size budget. The package stays. Verify the bundle test (`initialize`, `tools/list`, an `execute_sentry_command` call against mocks).
 
 ## 8. Eval gate and cutover
 

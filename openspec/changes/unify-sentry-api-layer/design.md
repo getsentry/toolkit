@@ -65,7 +65,7 @@ See proposal.md for motivation. Current state that shapes the approach:
 - Client-side caching in the Sentry frontend. Browser HTTP caching driven
   by server headers covers that (getsentry/sentry#128818).
 - Calling `createSentrySDK()` from the hosted MCP. `cli-first-mcp` takes
-  that on, with Workers storage backends for the SDK.
+  that on, running the SDK with persistence off.
 - Moving the hosted MCP off Cloudflare Workers, or making the CLI serve
   more than one user.
 - Replacing every hand-written response schema with a generated one, or
@@ -454,7 +454,7 @@ This section planned to move each MCP tool into the CLI as a portable
 `sentry/mcp` tool definition. `cli-first-mcp` replaces it: the
 MCP exposes the CLI's commands through search and execute tools,
 discovered through CLI introspection, and the hosted MCP runs the CLI SDK
-with Workers storage backends. The resolve/operate/render split survives
+with persistence off. The resolve/operate/render split survives
 there only as a fallback for domains Workers cannot run.
 
 ### `@sentry/mcp-server` is a slim bundle of `sentry mcp`
