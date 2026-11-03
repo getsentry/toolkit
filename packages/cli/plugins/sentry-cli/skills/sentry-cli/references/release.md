@@ -513,7 +513,7 @@ Set commits for a release
 | `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
 
 **Flags:**
-- `--auto - Auto-discover commits via repository integration (needs local git checkout)`
+- `--auto - Auto-discover commits via repository integration (needs a git checkout or CI repository variables)`
 - `--local - Read commits from local git history`
 - `--clear - Clear all commits from the release`
 - `--commit <value> - Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)`

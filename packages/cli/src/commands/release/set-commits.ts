@@ -349,7 +349,8 @@ export const setCommitsCommand = buildCommand({
     fullDescription:
       "Associate commits with a release.\n\n" +
       "Use --auto to let Sentry discover commits via your repository integration\n" +
-      "(requires a local git checkout — matches the origin remote against Sentry repos),\n" +
+      "(matches the origin remote against Sentry repos; without a git checkout it\n" +
+      "uses the repository and commit from CI variables such as GITHUB_REPOSITORY),\n" +
       "or --local to read commits from the local git history.\n" +
       "With no flag, tries --auto first and falls back to --local on failure.\n\n" +
       "For monorepos, --path restricts commits to one or more subtrees\n" +
@@ -409,7 +410,7 @@ export const setCommitsCommand = buildCommand({
       auto: {
         kind: "boolean",
         brief:
-          "Auto-discover commits via repository integration (needs local git checkout)",
+          "Auto-discover commits via repository integration (needs a git checkout or CI repository variables)",
         default: false,
       },
       local: {
