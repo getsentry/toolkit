@@ -10,13 +10,16 @@ uses `@sentry/api` for only three operations, and caches nothing. Fixes and
 features land in one product and not the other, and the two pin different
 `@sentry/api` versions (`0.337.0` and `^0.400.0`).
 
-`createSentrySDK()` cannot be the shared layer:
+`createSentrySDK()` cannot be the shared API layer:
 
 - The CLI depends on `@sentry/mcp-server` for `sentry mcp`.
 - The SDK needs SQLite and a filesystem, which Cloudflare Workers lack.
 - SDK errors flatten HTTP status into exit codes.
 
-The shared layer must therefore sit below both products, on `@sentry/api`.
+The shared API layer must therefore sit below both products, on
+`@sentry/api`. (`cli-first-mcp` separately makes the SDK's storage
+pluggable so the hosted MCP can run commands; the SDK still calls the API
+through this client.)
 Its end state is inside `@sentry/api` itself, so every consumer, including
 the Sentry frontend in the browser, gets one Sentry API client.
 
@@ -26,8 +29,8 @@ transport, retry, cache policy, pagination, request core, and organizations
 domain landed in `toolkit-core` that way (#1719, #1722, #1732, #1736, #1737,
 #1741, #1820).
 
-**Updated 2026-11-03.** The MCP is becoming Code Mode over the CLI's
-commands (`cli-first-code-mode-mcp`), so its catalog tools and their
+**Updated 2026-11-03.** The MCP is becoming a search-and-execute surface
+over the CLI's commands (`cli-first-mcp`), so its catalog tools and their
 endpoint wrappers will be deleted rather than shared. The remaining plan
 therefore goes straight to `@sentry/api`:
 
@@ -97,8 +100,8 @@ Out of scope, tracked separately:
 
 - Server-side `Cache-Control` for event and trace-item detail responses
   (getsentry/sentry#128818, prototype in getsentry/sentry#128828).
-- The MCP tool surface: replaced by `cli-first-code-mode-mcp`, which makes
-  the MCP Code Mode over the CLI's commands. `@sentry/mcp-server` stays a
+- The MCP tool surface: replaced by `cli-first-mcp`, which exposes the
+  CLI's commands through search and execute tools. `@sentry/mcp-server` stays a
   dependency-free bundle built from CLI source (#1731).
 
 ## Capabilities

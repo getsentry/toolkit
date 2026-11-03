@@ -64,9 +64,8 @@ See proposal.md for motivation. Current state that shapes the approach:
 
 - Client-side caching in the Sentry frontend. Browser HTTP caching driven
   by server headers covers that (getsentry/sentry#128818).
-- Calling `createSentrySDK()` from the hosted MCP. It is Node-only. The
-  hosted MCP reaches the CLI's operations through the portable `sentry/mcp`
-  entry instead, under `cli-first-code-mode-mcp`.
+- Calling `createSentrySDK()` from the hosted MCP. `cli-first-mcp` takes
+  that on, with Workers storage backends for the SDK.
 - Moving the hosted MCP off Cloudflare Workers, or making the CLI serve
   more than one user.
 - Replacing every hand-written response schema with a generated one, or
@@ -367,8 +366,8 @@ sentry-api-schema already has (`lib/sentry-errors.ts`,
 `lib/sentry-pagination.ts`, `lib/browser-client.ts`).
 
 The rest no longer stages in `toolkit-core`. Under
-`cli-first-code-mode-mcp`, the MCP's catalog tools and their endpoint
-wrappers are deleted at the Code Mode cutover, so the only long-term caller
+`cli-first-mcp`, the MCP's catalog tools and their endpoint
+wrappers are deleted at the cutover to the command surface, so the only long-term caller
 of endpoint wrappers is the CLI, and the MCP reaches the API through CLI
 operations. Building shared MCP wrappers first would be thrown away. The
 order is:
@@ -379,7 +378,7 @@ order is:
    by domain (8.7). A wrapper that only reshapes one generated operation is
    replaced by the operation.
 3. Get every endpoint still called by raw path into the published schema
-   (8.8). `sentry api`, `sentry schema`, and Code Mode only reach published
+   (8.8). `sentry api`, `sentry schema`, and so the MCP only reach published
    operations, so this also widens what agents can call.
 
 The cost is a publish round trip for client fixes. Develop against a local
@@ -449,13 +448,14 @@ The cache codec uses `node:zlib`, which Node and Workers have and browsers do
 not. It is storage, so it stays a host-side module outside the guarded set
 and does not move in step 2.
 
-### MCP tools: replaced by Code Mode over the CLI
+### MCP tools: replaced by the CLI's commands
 
 This section planned to move each MCP tool into the CLI as a portable
-`sentry/mcp` tool definition. `cli-first-code-mode-mcp` replaces it: the
-MCP becomes Code Mode over the CLI's commands, discovered through CLI
-introspection. The portable resolve/operate/render split and the
-`sentry/mcp` entry survive there as what the hosted Code Mode host runs.
+`sentry/mcp` tool definition. `cli-first-mcp` replaces it: the
+MCP exposes the CLI's commands through search and execute tools,
+discovered through CLI introspection, and the hosted MCP runs the CLI SDK
+with Workers storage backends. The resolve/operate/render split survives
+there only as a fallback for domains Workers cannot run.
 
 ### `@sentry/mcp-server` is a slim bundle of `sentry mcp`
 
@@ -475,8 +475,8 @@ from CLI source into one file with no runtime dependencies (#1731):
 - `sentry-mcp auth login` runs the CLI's device flow with plain-text
   output. Other account management stays in `sentry auth`, which reads the
   same session.
-- Under Code Mode the bundle carries the portable operations and the Code
-  Mode host instead of catalog tools (`cli-first-code-mode-mcp`).
+- Under `cli-first-mcp` the bundle carries the exposed command handlers
+  instead of catalog tools (`cli-first-mcp`).
 - `@sentry/mcp-server` stays the recommended stdio install and keeps the
   MCP registry entry (`server.json`). `sentry mcp` runs the same server for
   people who already use the CLI.
@@ -584,7 +584,7 @@ bumps move both products together.
    `@sentry/api`, switch toolkit to it, and delete the toolkit-core copies.
 8. Move the shared client into `@sentry/api`, then the CLI's wrappers, then
    the endpoints missing from the published schema. The MCP side continues
-   in `cli-first-code-mode-mcp`.
+   in `cli-first-mcp`.
 
 **Rollback:** the hosted cache is gated by an env flag, and setting it to
 `off` restores today's uncached behavior. Each CLI step is a refactor that

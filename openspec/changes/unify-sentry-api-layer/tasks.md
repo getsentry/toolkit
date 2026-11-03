@@ -35,12 +35,12 @@
 ## 6. MCP on the shared transport
 
 - [x] 6.1 Route every `SentryApiService` request, including `@sentry/api` operations, through `createApiTransport`, and drop `SentryApiService`'s own retry loop so retries do not stack. No host-supplied fetch: hosts share the client from group 8 instead. Verify a test where a rate-limited GET reaches the API at most `maxRetries + 1` times, and one where an in-flight abort keeps the caller's reason. Done in #1722.
-- 6.2 Moved to `cli-first-code-mode-mcp`: the stdio Code Mode host runs commands through the CLI, so it uses the CLI's fetch and cache.
+- 6.2 Moved to `cli-first-mcp`: the MCP runs commands through the CLI SDK, so it uses the CLI's fetch and cache.
 - [x] 6.3 Add the `fresh` input to read tools through the shared schema helpers. The request-scoped flag lives in the MCP host (`AsyncLocalStorage` in `mcp-core`'s tool handler), and the shared client reads it only through the transport's `fresh()` callback. Regenerate definitions, then verify `pnpm run measure-tokens` and the tool tests pass. Shipped in #1832: catalog tools with `readOnlyHint` and `openWorldHint` (not the docs tools) get the input, costing 130 tokens across the 10 direct read tools.
 
 ## 7. Hosted cache
 
-Off the critical path since the Code Mode plan (`cli-first-code-mode-mcp`). The memory store (7.1, #1833) can land on its own. The R2 tier (7.3, 7.4, #1842) is parked until Code Mode traffic shows whether cross-isolate reuse pays; the cache policy itself moves into `@sentry/api` with the rest of the client.
+Off the critical path since `cli-first-mcp`. The memory store (7.1, #1833) can land on its own. The R2 tier (7.3, 7.4, #1842) is parked until traffic on the command surface shows whether cross-isolate reuse pays; the cache policy itself moves into `@sentry/api` with the rest of the client.
 
 - [ ] 7.1 Wire the memory store into `mcp-cloudflare` behind `MCP_RESPONSE_CACHE` (`off`/`memory`/`tiered`), with identity taken from the wrapper token's user and grant IDs. Verify the Workers tests pass, and a two-identity isolation test.
 - [ ] 7.2 Confirm `node:zlib` zstd on a deployed preview Worker. If it is unavailable, keep brotli as the hosted codec and record that in `docs/cloudflare/architecture.md`.
@@ -50,7 +50,7 @@ Off the critical path since the Code Mode plan (`cli-first-code-mode-mcp`). The 
 
 ## 8. The shared client in `@sentry/api`
 
-The plan used to finish the whole client in `toolkit-core` and copy it into `@sentry/api` at the end. It now moves what exists into `@sentry/api` first and builds the rest there, since the CLI is the only long-term caller of endpoint wrappers: the MCP's catalog wrappers are deleted when Code Mode replaces the catalog (`cli-first-code-mode-mcp`), so porting them is wasted work.
+The plan used to finish the whole client in `toolkit-core` and copy it into `@sentry/api` at the end. It now moves what exists into `@sentry/api` first and builds the rest there, since the CLI is the only long-term caller of endpoint wrappers: the MCP's catalog wrappers are deleted when the CLI's commands replace the catalog (`cli-first-mcp`), so porting them is wasted work.
 
 - [x] 8.1 Audit the existing `toolkit-core` modules for anything that will not run in a browser, fix it, and add a guard: a lint rule that bans `node:*` imports and Node globals (`Buffer`, `process`, `AsyncLocalStorage`, and the like) in the shared modules, and a typecheck of them against the DOM library with no Node types. Modules that are host storage, such as the `node:zlib` cache codec, stay outside the guarded set and do not move in step 2. Verify the guard fails on a planted `node:` import. Done in #1732.
 - [x] 8.2 Foundation: create `toolkit-core/src/api-client/` with errors (`ApiError`, rate limits with `retryAfterMs`), `apiPath`, response validation through the Standard Schema interface with host-supplied schemas (Zod in the MCP, valibot in the CLI; no Zod or valibot runtime dependency in shared code), and response reading. The MCP and the CLI use them. Verify the toolkit-core unit tests and both products' suites pass. Done in #1732.
@@ -73,13 +73,13 @@ Moving the client into `@sentry/api` (old 9.1, 9.2) is now 8.5 and 8.6.
 
 ## 11. MCP tools as a portable face of the CLI
 
-**Replaced by `cli-first-code-mode-mcp`.** The MCP becomes Code Mode over the CLI's commands instead of one ported tool per command.
+**Replaced by `cli-first-mcp`.** The MCP exposes the CLI's commands through search and execute tools instead of one ported tool per command.
 
-- [x] 11.6 `@sentry/mcp-server` as a dependency-free bundle of the server built from CLI source. Done in #1731. Under Code Mode it carries portable operations instead of catalog tools (`cli-first-code-mode-mcp` 7.1).
-- 11.1, 11.2, 11.4: moved to `cli-first-code-mode-mcp` group 6 (portable operations and the `sentry/mcp` entry for the hosted Code Mode host). 11.4's optional host capabilities become what the stdio host has and the hosted host lacks.
-- 11.3 **Dropped:** moving each MCP tool into `sentry/mcp`. Code Mode exposes commands generically.
-- 11.5 moved to `cli-first-code-mode-mcp` 6.7 (OAuth scope comparison).
-- 11.7 moved to `cli-first-code-mode-mcp` 6.6. Partly done in #1731: an oxlint rule bans `sentry` in `mcp-core` and `toolkit-core`, and `lint:deps` fails on workspace cycles.
+- [x] 11.6 `@sentry/mcp-server` as a dependency-free bundle of the server built from CLI source. Done in #1731. Under `cli-first-mcp` it carries the exposed command handlers instead of catalog tools (7.1 there).
+- 11.1, 11.2, 11.4: replaced by `cli-first-mcp` group 6, which runs the CLI SDK itself on Workers with pluggable storage backends. The per-domain split into portable operations (11.1) survives only as a fallback for domains Workers cannot run (6.7 there).
+- 11.3 **Dropped:** moving each MCP tool into `sentry/mcp`. The command surface exposes commands generically.
+- 11.5 moved to `cli-first-mcp` 6.8 (OAuth scope comparison).
+- 11.7 Partly done in #1731: an oxlint rule bans `sentry` in `mcp-core` and `toolkit-core`, and `lint:deps` fails on workspace cycles. `mcp-cloudflare` now imports the CLI SDK, so the remaining rule is set when `cli-first-mcp` 6.5 lands.
 
 ## 12. Integration
 
