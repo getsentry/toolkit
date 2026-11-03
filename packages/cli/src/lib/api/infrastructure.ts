@@ -230,7 +230,7 @@ export type ApiRequestOptions<T = unknown> = {
 };
 
 const CONNECT_TIMEOUT_HINT =
-  "The connection timed out. Check network access, proxy settings (HTTPS_PROXY), and firewall rules.";
+  "The connection timed out. Check network access and firewall rules on this machine.";
 
 /** Next steps for Node (undici) connection error codes, keyed by `code`. */
 const NETWORK_CAUSE_HINTS: Record<string, string> = {
@@ -287,25 +287,6 @@ function describeUrlSource(): string {
   return "This URL comes from your login. To use another server, run: sentry auth login --url <url>";
 }
 
-/** Proxy variables fetch honors for each URL scheme, in precedence order. */
-const PROXY_ENV_VARS: Record<string, string[]> = {
-  "https:": ["HTTPS_PROXY", "https_proxy"],
-  "http:": ["HTTP_PROXY", "http_proxy"],
-};
-
-/** The proxy variable requests to `url` go through, if any (never its value). */
-function findProxyEnvVar(url: string): string | undefined {
-  const env = getEnv();
-  let protocol: string;
-  try {
-    protocol = new URL(url).protocol;
-  } catch (error) {
-    logger.debug("Could not parse the Sentry URL for proxy detection", error);
-    return;
-  }
-  return PROXY_ENV_VARS[protocol]?.find((name) => env[name]?.trim());
-}
-
 /**
  * Build the user-facing detail for a request that got no HTTP response.
  *
@@ -322,14 +303,7 @@ function buildNetworkErrorDetail(error: unknown): string {
   const causeHint = networkCause?.code
     ? NETWORK_CAUSE_HINTS[networkCause.code]
     : undefined;
-  // With a proxy set, the connection that failed (and its errno) is most
-  // likely the proxy's, so point there instead of at the Sentry server.
-  const proxyVar = findProxyEnvVar(baseUrl);
-  const steps = [
-    proxyVar
-      ? `Requests go through the proxy in ${proxyVar}. Check that it is running and can reach ${baseUrl}.`
-      : (causeHint ?? "Check your network connection and try again."),
-  ];
+  const steps = [causeHint ?? "Check your network connection and try again."];
   if (isSentrySaasUrl(baseUrl)) {
     steps.push(
       "If your network is fine, check https://status.sentry.io for an ongoing incident.",

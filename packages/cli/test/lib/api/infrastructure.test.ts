@@ -242,15 +242,14 @@ describe("throwApiError", () => {
       expect(detail).not.toContain("status.sentry.io");
     });
 
-    test("a proxy in the environment is named instead of the server, without its value", () => {
+    test("a proxy variable does not replace the errno hint (fetch ignores it)", () => {
       process.env.SENTRY_URL = "https://sentry.example.com";
       process.env.HTTPS_PROXY = "http://user:secret@proxy.internal:3128";
       const detail = detailFor(
-        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.2:3128"),
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
       );
-      const steps = detail.split("\n").map((line) => line.trim());
-      expect(steps[2]).toContain("proxy in HTTPS_PROXY");
-      expect(detail).not.toContain("The server refused the connection");
+      expect(detail).toContain("The server refused the connection");
+      expect(detail).not.toContain("proxy");
       expect(detail).not.toContain("secret");
     });
 
