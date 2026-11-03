@@ -23,7 +23,7 @@ By default (no `--skills` flag), the MCP server grants active, non-deprecated sk
 - **`triage`** - Resolve, assign, and update issues
 - **`project-management`** - Create and modify projects, teams, and DSNs
 
-Documentation tools are available through the `inspect` skill via the catalog: use `search_sentry_tools` to find documentation tools, then call `search_docs` or `get_doc` through `execute_sentry_tool`. The legacy `docs` skill can still be requested explicitly for docs-only catalog access, but it is not granted by default.
+Documentation tools (`search_docs`, `get_doc`) are available through the `inspect` skill. The legacy `docs` skill can still be requested explicitly for docs-only catalog access, but it is not granted by default.
 
 ### Customizing Skills
 

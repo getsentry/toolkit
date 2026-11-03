@@ -405,7 +405,7 @@ describe("get_issue_details", () => {
       "- Agent conversation found in this trace: `conv-123`. Matching span: `span-123`.",
     );
     expect(text).toContain(
-      '- Use the Sentry tool `execute_sentry_tool(name=\'get_agent_conversation_details\', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-123"})` to fetch the full transcript.',
+      "- Use the Sentry tool `get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-123')` to fetch the full transcript.",
     );
     expect(
       (result as { structuredContent?: unknown }).structuredContent,
@@ -460,7 +460,7 @@ describe("get_issue_details", () => {
       - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
       - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
       - Agent conversation found in this trace: \`conv-123\`. Matching span: \`span-123\`.
-      - Use the Sentry tool \`execute_sentry_tool(name='get_agent_conversation_details', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-123"})\` to fetch the full transcript.
+      - Use the Sentry tool \`get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-123')\` to fetch the full transcript.
       - Issue event search: Use the Sentry tool \`search_issue_events\`
       - Full distributed trace and span tree: Use the Sentry tool \`get_sentry_resource\`
       - Related span search: Use the Sentry tool \`search_traces\`
@@ -2100,7 +2100,7 @@ describe("get_issue_details", () => {
       ## Response Notes
 
       - Agent conversation found in this trace: \`conv-unsupported\`. Matching span: \`span-unsupported\`.
-      - Use the Sentry tool \`execute_sentry_tool(name='get_agent_conversation_details', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-unsupported"})\` to fetch the full transcript.
+      - Use the Sentry tool \`get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-unsupported')\` to fetch the full transcript.
       "
     `);
 

@@ -41,7 +41,7 @@
     },
     "requiredScopes": ["event:write"],
     "skills": ["triage"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "add_team_to_project",
@@ -107,7 +107,7 @@
     },
     "requiredScopes": ["project:write", "team:read", "org:read"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "analyze_issue_with_seer",
@@ -497,7 +497,7 @@
     },
     "requiredScopes": ["org:read", "project:read", "alerts:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "create_dsn",
@@ -557,7 +557,7 @@
     },
     "requiredScopes": ["project:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "create_metric_monitor",
@@ -701,20 +701,8 @@
                         "type": "number"
                       },
                       "conditionResult": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "const": 75
-                          },
-                          {
-                            "type": "number",
-                            "const": 50
-                          },
-                          {
-                            "type": "number",
-                            "const": 0
-                          }
-                        ]
+                        "type": "number",
+                        "enum": [75, 50, 0]
                       }
                     },
                     "required": ["type", "comparison", "conditionResult"]
@@ -738,20 +726,8 @@
                             "const": "auto"
                           },
                           "thresholdType": {
-                            "anyOf": [
-                              {
-                                "type": "number",
-                                "const": 0
-                              },
-                              {
-                                "type": "number",
-                                "const": 1
-                              },
-                              {
-                                "type": "number",
-                                "const": 2
-                              }
-                            ]
+                            "type": "number",
+                            "enum": [0, 1, 2]
                           }
                         },
                         "required": [
@@ -761,16 +737,8 @@
                         ]
                       },
                       "conditionResult": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "const": 75
-                          },
-                          {
-                            "type": "number",
-                            "const": 50
-                          }
-                        ]
+                        "type": "number",
+                        "enum": [75, 50]
                       }
                     },
                     "required": ["type", "comparison", "conditionResult"]
@@ -973,7 +941,7 @@
     },
     "requiredScopes": ["org:read", "project:read", "alerts:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "create_project",
@@ -1039,7 +1007,7 @@
     },
     "requiredScopes": ["project:write", "team:read", "org:read"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "create_team",
@@ -1095,7 +1063,7 @@
     },
     "requiredScopes": ["team:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "create_uptime_monitor",
@@ -1296,7 +1264,7 @@
     },
     "requiredScopes": ["project:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "delete_alert_rule",
@@ -1355,7 +1323,7 @@
     },
     "requiredScopes": ["org:read", "project:read", "alerts:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "delete_metric_monitor",
@@ -1407,7 +1375,7 @@
     },
     "requiredScopes": ["org:read", "project:read", "alerts:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "delete_monitor_environment",
@@ -1475,7 +1443,7 @@
     },
     "requiredScopes": ["project:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "delete_uptime_monitor",
@@ -1530,57 +1498,6 @@
     },
     "requiredScopes": ["project:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
-  },
-  {
-    "name": "execute_sentry_tool",
-    "description": "Execute an available Sentry MCP tool discovered through search_sentry_tools.\n\nUse this tool when you need to:\n- Call a Sentry operation returned by search_sentry_tools\n- Execute a tool by name using arguments that match its returned schema\n\n<examples>\nexecute_sentry_tool(name='find_projects', arguments={ organizationSlug: 'my-org' })\nexecute_sentry_tool(name='whoami', arguments={})\n</examples>\n\n<hints>\n- Use search_sentry_tools first if you are not sure which name or arguments to pass.\n- Arguments are validated against the target tool's schema before execution.\n- Active organization, project, and region constraints are injected automatically.\n</hints>",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "description": "The name of the available tool to execute.",
-          "type": "string",
-          "minLength": 1
-        },
-        "arguments": {
-          "description": "Arguments for the target tool, matching the schema returned by search_sentry_tools.",
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {}
-        },
-        "toolName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "tool": {
-          "type": "string",
-          "minLength": 1
-        },
-        "tool_name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "params": {
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {}
-        },
-        "args": {
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {}
-        }
-      }
-    },
-    "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
     "surface": "direct"
   },
   {
@@ -1842,7 +1759,7 @@
     },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_dashboards",
@@ -1993,7 +1910,7 @@
     },
     "requiredScopes": ["org:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_dropped_events",
@@ -2223,7 +2140,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_dsns",
@@ -2286,7 +2203,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_metric_monitors",
@@ -2390,7 +2307,7 @@
     },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_monitors",
@@ -2619,7 +2536,7 @@
     },
     "requiredScopes": ["org:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_organizations",
@@ -3007,7 +2924,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_teams",
@@ -3093,7 +3010,7 @@
     },
     "requiredScopes": ["team:read"],
     "skills": ["inspect", "triage", "project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "find_uptime_monitors",
@@ -3216,7 +3133,7 @@
     },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_agent_conversation_details",
@@ -3671,7 +3588,7 @@
     },
     "requiredScopes": ["event:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_ai_conversation_details",
@@ -4126,7 +4043,7 @@
     },
     "requiredScopes": ["event:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_alert_options",
@@ -4480,7 +4397,7 @@
     },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_alert_rule",
@@ -4536,7 +4453,7 @@
     },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_dashboard_details",
@@ -4574,7 +4491,7 @@
     },
     "requiredScopes": ["org:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_doc",
@@ -4591,7 +4508,7 @@
     },
     "requiredScopes": [],
     "skills": ["inspect", "docs"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_event_attachment",
@@ -4645,7 +4562,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_event_stacktrace",
@@ -4711,7 +4628,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_issue_activity",
@@ -4762,7 +4679,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_issue_breadcrumbs",
@@ -4818,7 +4735,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_issue_details",
@@ -4864,7 +4781,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_issue_tag_values",
@@ -4956,7 +4873,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_issue_user_reports",
@@ -5016,7 +4933,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_latest_base_snapshot",
@@ -5077,7 +4994,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_metric_monitor_details",
@@ -5286,7 +5203,7 @@
     },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_monitor_details",
@@ -5408,7 +5325,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_profile",
@@ -5476,7 +5393,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_profile_details",
@@ -5538,7 +5455,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_release_details",
@@ -5610,7 +5527,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_replay_details",
@@ -5707,7 +5624,7 @@
     },
     "requiredScopes": ["org:read", "project:read", "event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_sentry_mcp_info",
@@ -5726,7 +5643,7 @@
     },
     "requiredScopes": [],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_sentry_resource",
@@ -5824,7 +5741,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_snapshot_image",
@@ -5873,7 +5790,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_span_details",
@@ -5916,7 +5833,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_trace_details",
@@ -5959,7 +5876,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "get_uptime_monitor_details",
@@ -6025,7 +5942,7 @@
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "link_issue",
@@ -6130,7 +6047,7 @@
     },
     "requiredScopes": ["event:write", "org:read"],
     "skills": ["triage"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "onboarding_status_update",
@@ -6315,7 +6232,7 @@
     },
     "requiredScopes": ["org:read"],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "remove_team_from_project",
@@ -6381,7 +6298,7 @@
     },
     "requiredScopes": ["project:write", "team:read", "org:read"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "search_agent_conversations",
@@ -6608,7 +6525,7 @@
     },
     "requiredScopes": ["event:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "search_ai_conversations",
@@ -6835,7 +6752,7 @@
     },
     "requiredScopes": ["event:read", "project:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "search_docs",
@@ -6993,7 +6910,7 @@
     },
     "requiredScopes": [],
     "skills": ["inspect", "docs"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "search_errors",
@@ -7183,7 +7100,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "search_issue_events",
@@ -7272,7 +7189,7 @@
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "search_issues",
@@ -7681,90 +7598,6 @@
     "surface": "direct"
   },
   {
-    "name": "search_sentry_tools",
-    "description": "Search the available Sentry MCP tool catalog by name and description.\n\nMany Sentry operations are intentionally not exposed as top-level tools. Use this for any Sentry-related task when you do not see an obvious direct tool, including long-tail inspection, project management, documentation lookup, preprod snapshots, attachments, DSNs, releases, teams, and issue-specific pivots.\n\nUse this tool when you need to:\n- Find the right Sentry operation for a task\n- Discover catalog tools and their schemas for a task\n- Inspect the executable JSON input schema for an available tool\n\n<examples>\nsearch_sentry_tools(query='list projects')\nsearch_sentry_tools(query='issue details')\nsearch_sentry_tools(query='find dsn', limit=5)\nsearch_sentry_tools(query='snapshot image')\n</examples>\n\n<hints>\n- Results only include tools available in the current session.\n- If a Sentry operation is not listed as a direct tool, search here before deciding it is unavailable.\n- Returned schemas already account for active organization, project, and region constraints.\n- Use the returned name and schema when executing a catalog result.\n- This tool returns structured JSON. Do not parse markdown from its text content.\n</hints>",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Natural language keywords describing the Sentry operation, resource, or workflow to find."
-        },
-        "limit": {
-          "default": 8,
-          "description": "Maximum number of matching tools to return, up to 20.",
-          "anyOf": [
-            {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 20
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": ["query"]
-    },
-    "outputSchema": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string"
-        },
-        "results": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "description": {
-                "type": "string"
-              },
-              "inputSchema": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {},
-                "description": "JSON Schema for the matching tool's arguments. Session-constrained parameters are omitted."
-              },
-              "annotations": {
-                "type": "object",
-                "properties": {
-                  "readOnlyHint": {
-                    "type": "boolean"
-                  },
-                  "destructiveHint": {
-                    "type": "boolean"
-                  },
-                  "idempotentHint": {
-                    "type": "boolean"
-                  },
-                  "openWorldHint": {
-                    "type": "boolean"
-                  }
-                },
-                "additionalProperties": false
-              }
-            },
-            "required": ["name", "description", "inputSchema", "annotations"],
-            "additionalProperties": false
-          }
-        }
-      },
-      "required": ["query", "results"],
-      "additionalProperties": false
-    },
-    "requiredScopes": [],
-    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
-    "surface": "direct"
-  },
-  {
     "name": "search_traces",
     "description": "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nAlso use for spans whose trace contains a matching log, metric, or other span, e.g. 'slow checkout requests that also logged an error'.\n\nSupports aggregations ('p95 duration by span.op'), individual spans ('slowest API calls today'), and time series ('requests per minute last hour').\n\nNOT for exceptions/crashes (use search_errors), standalone log lines (use search_logs), or a single trace's span tree (use get_sentry_resource with the trace).\n\n<examples>\nsearch_traces(organizationSlug='my-org', query='slowest API calls in the last 24 hours')\nsearch_traces(organizationSlug='my-org', query='p95 duration of db spans grouped by span.op over 7 days')\nsearch_traces(organizationSlug='my-org', query='checkout requests that also have an error log')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
     "inputSchema": {
@@ -7897,7 +7730,7 @@
     },
     "requiredScopes": [],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "unlink_issue",
@@ -7992,7 +7825,7 @@
     },
     "requiredScopes": ["event:write", "org:read"],
     "skills": ["triage"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "update_alert_rule",
@@ -8380,7 +8213,7 @@
     },
     "requiredScopes": ["org:read", "project:read", "alerts:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "update_dsn",
@@ -8466,11 +8299,11 @@
     },
     "requiredScopes": ["project:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "update_issue",
-    "description": "Update a Sentry issue's status or assignment.\n\nUse this to resolve, reopen, assign, unassign, or ignore an issue.\n\n<examples>\n```\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo=null)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='untilOccurrenceCount', ignoreCount=100, ignoreWindowMinutes=60)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', reason='Ignoring because this is expected noise from the staging deploy')\n```\n</examples>\n\n<hints>\n- Provide `issueUrl` or `organizationSlug` + `issueId`.\n- At least one of `status` or `assignedTo` is required.\n- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.\n- Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID for self-assignment.\n- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.\n- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.\n- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.\n- Matching ignore inputs are `ignoreDurationMinutes`, `ignoreCount` + optional `ignoreWindowMinutes`, or `ignoreUserCount` + optional `ignoreUserWindowMinutes`.\n- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again with the new rule.\n- `reason` is optional. When provided, it will be posted as a comment on the issue's activity feed explaining why the action was taken.\n</hints>",
+    "description": "Update a Sentry issue's status or assignment.\n\nUse this to resolve, reopen, assign, unassign, or ignore an issue.\n\n<examples>\n```\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo=null)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='untilOccurrenceCount', ignoreCount=100, ignoreWindowMinutes=60)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', reason='Ignoring because this is expected noise from the staging deploy')\n```\n</examples>\n\n<hints>\n- Provide `issueUrl` or `organizationSlug` + `issueId`.\n- At least one of `status` or `assignedTo` is required.\n- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.\n- Use the `whoami` tool to find your user ID for self-assignment.\n- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.\n- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.\n- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.\n- Matching ignore inputs are `ignoreDurationMinutes`, `ignoreCount` + optional `ignoreWindowMinutes`, or `ignoreUserCount` + optional `ignoreUserWindowMinutes`.\n- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again with the new rule.\n- `reason` is optional. When provided, it will be posted as a comment on the issue's activity feed explaining why the action was taken.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -8519,7 +8352,7 @@
               "type": "null"
             }
           ],
-          "description": "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID."
+          "description": "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use the `whoami` tool to find your user ID."
         },
         "ignoreMode": {
           "type": "string",
@@ -8720,20 +8553,8 @@
                         "type": "number"
                       },
                       "conditionResult": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "const": 75
-                          },
-                          {
-                            "type": "number",
-                            "const": 50
-                          },
-                          {
-                            "type": "number",
-                            "const": 0
-                          }
-                        ]
+                        "type": "number",
+                        "enum": [75, 50, 0]
                       }
                     },
                     "required": ["type", "comparison", "conditionResult"]
@@ -8760,20 +8581,8 @@
                             "const": "auto"
                           },
                           "thresholdType": {
-                            "anyOf": [
-                              {
-                                "type": "number",
-                                "const": 0
-                              },
-                              {
-                                "type": "number",
-                                "const": 1
-                              },
-                              {
-                                "type": "number",
-                                "const": 2
-                              }
-                            ]
+                            "type": "number",
+                            "enum": [0, 1, 2]
                           }
                         },
                         "required": [
@@ -8783,16 +8592,8 @@
                         ]
                       },
                       "conditionResult": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "const": 75
-                          },
-                          {
-                            "type": "number",
-                            "const": 50
-                          }
-                        ]
+                        "type": "number",
+                        "enum": [75, 50]
                       }
                     },
                     "required": ["type", "comparison", "conditionResult"]
@@ -8983,7 +8784,7 @@
     },
     "requiredScopes": ["org:read", "project:read", "alerts:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "update_project",
@@ -9078,7 +8879,7 @@
     },
     "requiredScopes": ["project:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "update_uptime_monitor",
@@ -9286,7 +9087,7 @@
     },
     "requiredScopes": ["project:write"],
     "skills": ["project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   },
   {
     "name": "whoami",
@@ -9366,6 +9167,6 @@
     },
     "requiredScopes": [],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
-    "surface": "catalog"
+    "surface": "direct"
   }
 ]

@@ -158,14 +158,14 @@ This opens the MCP Inspector at `http://localhost:6274`
 **Basic workflow:**
 
 1. **List Tools** - Verify expected tools appear
-2. **Call a tool** - Start with `execute_sentry_tool` using `name="whoami"` and `arguments={}`
+2. **Call a tool** - Start with `whoami`
 3. **Test with parameters** - Try `find_organizations()`
 4. **Test complex operations** - Try `search_errors(query="errors in the last hour")`
 
 **Example test sequence:**
 
 ```
-1. execute_sentry_tool(name="whoami", arguments={})
+1. whoami()
 2. find_organizations()
 3. find_projects(organizationSlug="your-org")
 4. search_errors(
@@ -222,7 +222,7 @@ $ pnpm -w run cli --access-token=YOUR_TOKEN "list all available tools"
   ⎿  Tools available
 
 ● Here are the available tools:
-  1. execute_sentry_tool
+  1. whoami
   2. find_organizations
   3. find_projects
   [...]
@@ -233,7 +233,7 @@ $ pnpm -w run cli --access-token=YOUR_TOKEN "who am I?"
 ● Connected to MCP server (stdio)
   ⎿  Tools available
 
-● execute_sentry_tool(name="whoami", arguments={})
+● whoami()
   ⎿  You are authenticated as: user@example.com
 ```
 
@@ -257,7 +257,7 @@ pnpm -w run cli --transport stdio --access-token=test-fake-token-12345 "who am I
 ● Connected to MCP server (stdio)
   ⎿  Tools available
 
-● execute_sentry_tool(name="whoami", arguments={})
+● whoami()
   ⎿  **Input Error**
       API error (400): Bad Request
 ```

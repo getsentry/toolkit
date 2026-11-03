@@ -17,20 +17,16 @@ const { critical, warning, resolved } = METRIC_MONITOR_PRIORITY;
 const thresholdCondition = metricConditionSchema.extend({
   type: z.enum(METRIC_MONITOR_THRESHOLD_TYPES),
   comparison: z.number(),
-  conditionResult: z.union([
-    z.literal(critical),
-    z.literal(warning),
-    z.literal(resolved),
-  ]),
+  conditionResult: z.literal([critical, warning, resolved]),
 });
 const anomalyCondition = metricConditionSchema.extend({
   type: z.literal("anomaly_detection"),
   comparison: z.object({
     sensitivity: z.enum(["low", "medium", "high"]),
     seasonality: z.literal("auto"),
-    thresholdType: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    thresholdType: z.literal([0, 1, 2]),
   }),
-  conditionResult: z.union([z.literal(critical), z.literal(warning)]),
+  conditionResult: z.literal([critical, warning]),
 });
 
 const metricMonitorQuerySchema = metricQueryDetailsSchema.extend({

@@ -86,17 +86,17 @@ test("all tools declare complete MCP safety annotations", () => {
   }
 });
 
-test("public tool count stays within the hard limit in all modes", () => {
+// EXPOSE_ALL_TOOLS lists every tool and relies on harness tool search, so the
+// limit applies to the gateway surface that the flag falls back to.
+test("gateway tool count stays within the hard limit in all modes", () => {
   for (const experimentalMode of [false, true]) {
-    const visibleTools = Object.entries(tools.default).filter(
-      ([toolName, tool]) =>
-        isTopLevelToolName(toolName, experimentalMode) &&
-        isToolVisibleInMode(tool, experimentalMode),
+    const visibleTools = TOP_LEVEL_TOOL_NAMES.filter((toolName) =>
+      isToolVisibleInMode(tools.default[toolName], experimentalMode),
     );
 
     assert(
       visibleTools.length <= PUBLIC_TOOL_HARD_LIMIT,
-      `public non-agent tool count must stay at or below ${PUBLIC_TOOL_HARD_LIMIT} in ${experimentalMode ? "experimental" : "stable"} mode (was ${visibleTools.length})`,
+      `gateway tool count must stay at or below ${PUBLIC_TOOL_HARD_LIMIT} in ${experimentalMode ? "experimental" : "stable"} mode (was ${visibleTools.length})`,
     );
   }
 });

@@ -29,6 +29,10 @@ import type { ToolConfig } from "./tools/types";
 import type { CredentialRouter, ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
 
+// These tests cover the search_sentry_tools/execute_sentry_tool gateway
+// surface. server.all-tools.test.ts covers the default EXPOSE_ALL_TOOLS surface.
+vi.mock("./tools/exposure", () => ({ EXPOSE_ALL_TOOLS: false }));
+
 // Mock the Sentry core module
 vi.mock("@sentry/core", () => ({
   setTag: vi.fn(),
