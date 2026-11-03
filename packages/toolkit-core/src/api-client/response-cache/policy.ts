@@ -29,8 +29,11 @@ const POLICY_OPTIONS: CachePolicy.Options = {
   cacheHeuristic: 0.1,
 };
 
-/** Response headers kept for callers, such as `Link` for pagination. */
-const PRESERVED_HEADERS = ["link"];
+/**
+ * Response headers kept on the entry: `Link` for pagination, and
+ * `Cache-Control` for stores whose persistence depends on it.
+ */
+const PRESERVED_HEADERS = ["link", "cache-control"];
 
 const encoder = new TextEncoder();
 

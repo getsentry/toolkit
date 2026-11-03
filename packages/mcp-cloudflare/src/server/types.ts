@@ -90,4 +90,6 @@ export interface Env {
    * docs/cloudflare/architecture.md before enabling it in production.
    */
   MCP_RESPONSE_CACHE?: string;
+  /** R2 tier for `MCP_RESPONSE_CACHE=tiered`; without it, `tiered` is memory only. */
+  MCP_RESPONSE_CACHE_BUCKET?: R2Bucket;
 }

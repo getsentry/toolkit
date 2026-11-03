@@ -3,10 +3,11 @@
  * `off` (the default, and any unknown value), `memory`, or `tiered`.
  *
  * Entries live in one byte-budgeted memory store per isolate, shared by every
- * request it serves. Each entry is keyed by an identity hashed from the MCP
- * grant (the wrapper token's user and grant IDs), so one grant never reads
- * another's responses. Requests without a grant, such as Sentry-Bearer
- * direct tokens, are not cached.
+ * request it serves. `tiered` also shares a few allowlisted detail responses
+ * across isolates through R2 (see `r2-cache-store.ts`). Each entry is keyed
+ * by an identity hashed from the MCP grant (the wrapper token's user and
+ * grant IDs), so one grant never reads another's responses. Requests
+ * without a grant, such as Sentry-Bearer direct tokens, are not cached.
  */
 
 import * as Sentry from "@sentry/cloudflare";
@@ -23,6 +24,7 @@ import {
   storeResponse,
 } from "@sentry/toolkit-core/api-client/response-cache";
 import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
+import { createTieredStore, isR2Allowlisted } from "./r2-cache-store";
 
 export type ResponseCacheMode = "off" | "memory" | "tiered";
 
@@ -41,10 +43,11 @@ const codec = createBodyCodec();
 
 /** The isolate's store, shared by every request it serves. */
 let memoryStore: MemoryStore | undefined;
+let missingBucketLogged = false;
 
 /**
  * The cache mode for `MCP_RESPONSE_CACHE`. Anything other than `memory` or
- * `tiered` is `off`. `tiered` caches in memory only until the R2 tier lands.
+ * `tiered` is `off`.
  */
 export function resolveResponseCacheMode(
   value: string | undefined,
@@ -62,13 +65,28 @@ export async function getGrantCacheIdentity(
   userId: string,
   grantId: string,
 ): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    encoder.encode(JSON.stringify(["mcp-grant", userId, grantId])),
-  );
+  return await sha256Hex(JSON.stringify(["mcp-grant", userId, grantId]));
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+/**
+ * Request headers for `Vary` matching with the Authorization value hashed.
+ * A response that varies on Authorization makes the cache policy keep the
+ * request's headers, and an entry must never hold a raw token.
+ */
+async function hashAuthorization(
+  requestHeaders: Record<string, string>,
+): Promise<Record<string, string>> {
+  const { authorization, ...rest } = requestHeaders;
+  return authorization
+    ? { ...rest, authorization: `sha256:${await sha256Hex(authorization)}` }
+    : rest;
 }
 
 function recordLookup(result: "hit" | "miss" | "stale"): void {
@@ -119,6 +137,8 @@ function isJson(response: Response): boolean {
 
 export type ResponseCacheOptions = {
   store: CacheStore;
+  /** Used instead of `store` for R2-allowlisted URLs. */
+  allowlistedStore?: CacheStore;
   identity: string;
   /** The Sentry host's base URL, for cross-endpoint invalidation rules. */
   apiBaseUrl: string;
@@ -132,10 +152,14 @@ export type ResponseCacheOptions = {
  */
 export function createResponseCache({
   store,
+  allowlistedStore,
   identity,
   apiBaseUrl,
   waitUntil,
 }: ResponseCacheOptions): ResponseCache {
+  const storeFor = (url: string) =>
+    allowlistedStore && isR2Allowlisted(url) ? allowlistedStore : store;
+
   async function write(
     url: string,
     requestHeaders: Record<string, string>,
@@ -148,12 +172,12 @@ export function createResponseCache({
       }
       const key = await buildCacheKey("GET", url, identity);
       await storeResponse({
-        store,
+        store: storeFor(url),
         codec,
         key,
         identity,
         url,
-        requestHeaders,
+        requestHeaders: await hashAuthorization(requestHeaders),
         response,
       });
     } finally {
@@ -174,11 +198,11 @@ export function createResponseCache({
         try {
           const key = await buildCacheKey("GET", url, identity);
           const lookup = await lookupResponse({
-            store,
+            store: storeFor(url),
             codec,
             key,
             url,
-            requestHeaders,
+            requestHeaders: await hashAuthorization(requestHeaders),
           });
           recordLookup(lookup?.kind ?? "miss");
           return lookup;
@@ -217,16 +241,18 @@ export function createResponseCache({
 
 /**
  * The response cache for one MCP request under `mode`, or `undefined` when
- * caching is off.
+ * caching is off. `tiered` without a `bucket` caches in memory only.
  */
 export async function getResponseCache({
   mode,
+  bucket,
   userId,
   grantId,
   sentryHost,
   waitUntil,
 }: {
   mode: ResponseCacheMode;
+  bucket: R2Bucket | undefined;
   userId: string;
   grantId: string;
   sentryHost: string;
@@ -235,9 +261,21 @@ export async function getResponseCache({
   if (mode === "off") {
     return;
   }
+  if (mode === "tiered" && !bucket && !missingBucketLogged) {
+    missingBucketLogged = true;
+    logWarn("MCP_RESPONSE_CACHE=tiered without an R2 bucket; using memory", {
+      loggerScope: LOGGER_SCOPE,
+    });
+  }
+  const memory = (memoryStore ??= createMeteredMemoryStore());
+  const identity = await getGrantCacheIdentity(userId, grantId);
   return createResponseCache({
-    store: (memoryStore ??= createMeteredMemoryStore()),
-    identity: await getGrantCacheIdentity(userId, grantId),
+    store: memory,
+    allowlistedStore:
+      mode === "tiered" && bucket
+        ? createTieredStore({ memory, bucket, identity, waitUntil })
+        : undefined,
+    identity,
     apiBaseUrl: `https://${sentryHost}`,
     waitUntil,
   });

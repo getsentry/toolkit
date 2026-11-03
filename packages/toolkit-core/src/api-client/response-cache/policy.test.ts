@@ -134,6 +134,14 @@ describe("storeResponse", () => {
     });
   });
 
+  it("keeps Cache-Control on the entry for the store", async () => {
+    const cache = createMemoryStore();
+    await store(cache, json(BODY, { "cache-control": "private, max-age=300" }));
+
+    const entry = (await cache.get(KEY)) as CacheEntry;
+    expect(entry.headers).toEqual({ "cache-control": "private, max-age=300" });
+  });
+
   it.each([
     ["Cache-Control: no-store", json(BODY, { "cache-control": "no-store" })],
     ["a non-2xx status", json({ detail: "Not found" }, {}, 404)],
