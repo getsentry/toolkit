@@ -34,7 +34,6 @@ import {
   ResolutionError,
   SeerError,
   ValidationError,
-  WizardError,
 } from "../../src/lib/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -746,14 +745,6 @@ describe("reportCliError integration", () => {
     );
     expect(tags["cli_error.class"]).toBe("HostScopeError");
     expect(tags["cli_error.kind"]).toBe("host_scope");
-  });
-
-  test("WizardError gets kind=wizard", () => {
-    const { tags } = capturedScopeTags(
-      new WizardError("Workflow returned an error"),
-    );
-    expect(tags["cli_error.class"]).toBe("WizardError");
-    expect(tags["cli_error.kind"]).toBe("wizard");
   });
 
   test("bare CliError gets kind from message prefix", () => {

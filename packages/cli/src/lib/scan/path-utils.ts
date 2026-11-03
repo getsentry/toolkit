@@ -103,9 +103,8 @@ export function joinPosix(a: string, b: string): string {
  *
  * `path.resolve` happily resolves an absolute path OR a relative one,
  * so a malicious `../../etc` would escape the sandbox. Callers that
- * accept user input (init-wizard tool adapters) MUST pre-validate
- * via `src/lib/init/tools/shared.ts::safePath` before forwarding to
- * grep/glob. The engine explicitly trusts the passed value.
+ * accept untrusted input MUST confine it to `cwd` themselves before
+ * forwarding to grep/glob. The engine explicitly trusts the passed value.
  */
 export function walkerRoot(cwd: string, sub: string | undefined): string {
   if (!sub) {

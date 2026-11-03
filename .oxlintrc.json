@@ -12,8 +12,7 @@
     "apps/cli-docs/**",
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
-    "packages/mcp-server-mocks/src/fixtures/**",
-    "packages/cli/test/init-eval/templates/sveltekit-app/**"
+    "packages/mcp-server-mocks/src/fixtures/**"
   ],
   "rules": {
     "no-unused-vars": "off",

@@ -93,13 +93,13 @@ export const EXIT = {
   // 60–69: Command-specific
   /** Command produced output but should exit non-zero */
   OUTPUT_ERROR: 60,
-  /** Init wizard error (generic) */
+  /** Reserved: the removed `sentry init` wizard's generic error */
   WIZARD: 61,
-  /** Init wizard: dependency installation failed */
+  /** Reserved: the removed `sentry init` wizard's dependency install failure */
   WIZARD_DEPS: 62,
-  /** Init wizard: codemod plan or apply failed */
+  /** Reserved: the removed `sentry init` wizard's codemod failure */
   WIZARD_CODEMOD: 63,
-  /** Init wizard: user stopped after verification */
+  /** `sentry local run --verify` received no events from the SDK */
   WIZARD_VERIFY: 64,
 } as const;
 
@@ -763,24 +763,6 @@ export class TimeoutError extends CliError {
   }
 }
 
-/**
- * Error thrown by the init wizard when it has already displayed
- * the error via clack UI. The `rendered` flag tells the framework
- * error handler to skip its own formatting.
- */
-export class WizardError extends CliError {
-  readonly rendered: boolean;
-
-  constructor(
-    message: string,
-    options?: { rendered?: boolean; exitCode?: number },
-  ) {
-    super(message, options?.exitCode ?? EXIT.WIZARD);
-    this.name = "WizardError";
-    this.rendered = options?.rendered ?? true;
-  }
-}
-
 // Error Utilities
 
 /**
@@ -1019,8 +1001,7 @@ export function isUserError(error: unknown): boolean {
     error instanceof ValidationError ||
     error instanceof DeviceFlowError ||
     error instanceof SeerError ||
-    error instanceof OutputError ||
-    error instanceof WizardError
+    error instanceof OutputError
   ) {
     return true;
   }

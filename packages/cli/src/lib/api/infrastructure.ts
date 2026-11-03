@@ -140,7 +140,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
       "Your account is disabled in this organization because it is over its member limit.",
       "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
       "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry init my-other-org/",
+      "Or target a different org, e.g.:  sentry issue list my-other-org/",
     ].join("\n  ");
   }
 

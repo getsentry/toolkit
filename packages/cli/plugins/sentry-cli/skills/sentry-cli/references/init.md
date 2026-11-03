@@ -1,7 +1,7 @@
 ---
 name: sentry-cli-init
 version: 0.48.0-dev.0
-description: Initialize Sentry in your project (experimental)
+description: Print instructions for a coding agent to set up Sentry
 requires:
   bins: ["sentry"]
   auth: true
@@ -9,58 +9,20 @@ requires:
 
 # Init Commands
 
-Initialize Sentry in your project (experimental)
+Print instructions for a coding agent to set up Sentry
 
-### `sentry init [<target>] [<directory>]`
+### `sentry init`
 
-Initialize Sentry in your project (experimental)
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `[<target>] [<directory>]` | Optional target (&lt;org&gt;/&lt;project&gt;, &lt;org&gt;/, or &lt;project&gt;) and directory (default: current directory) |
-
-**Flags:**
-- `-y, --yes - Accept non-interactive defaults (requires --features outside a TTY)`
-- `-n, --dry-run - Show what would happen without making changes`
-- `--features <value>... - Features to enable: errors,tracing,logs,replay,profiling,crons,agent-tracing,mcp-observability`
-- `-t, --team <value> - Team slug to create the project under`
-- `--app <value> - App to initialize in a monorepo (required with --yes when multiple apps are detected)`
-- `--tui - Use the Ink-based interactive UI (default). Pass --no-tui to fall back to plain log output.`
+Print instructions for a coding agent to set up Sentry
 
 **Examples:**
 
 ```bash
-# Interactive setup
+# Print the setup guide
 sentry init
 
-# Non-interactive agent/CI setup
-sentry init --yes --features errors,tracing,replay
-
-# Dry run to preview changes
-sentry init --dry-run
-
-# Target a subdirectory
-sentry init ./my-app
-
-# Use a specific organization (auto-detect project)
-sentry init acme/
-
-# Use a specific organization and project
-sentry init acme/my-app
-
-# Search for a project across organizations
-sentry init my-app
-
-# Use a specific project in a subdirectory
-sentry init acme/my-app ./my-project
-
-# Assign a team when creating a new project
-sentry init acme/ --team backend
-
-# Enable specific features
-sentry init --features profiling,replay
+# Print the guide as JSON
+sentry init --json
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

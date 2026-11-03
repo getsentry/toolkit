@@ -2,18 +2,13 @@
  * esbuild plugin that replaces `zod/v3` with a small stub.
  *
  * Everything we bundle builds schemas with Zod 4, so Zod 3 code never runs.
- * Two dependencies still import `zod/v3`, and only for Zod 3 inputs:
+ * `@ai-sdk/provider-utils` still imports `zod/v3`, but only for Zod 3 inputs:
+ * `zodSchema()` sends Zod 4 schemas (`_zod`) to `zod4Schema()`, and only
+ * `zod3Schema()` and its bundled zod-to-json-schema read
+ * `ZodFirstPartyTypeKind`.
  *
- * - `@ai-sdk/provider-utils`: `zodSchema()` sends Zod 4 schemas (`_zod`) to
- *   `zod4Schema()`. Only `zod3Schema()` and its bundled zod-to-json-schema
- *   read `ZodFirstPartyTypeKind`.
- * - `@mastra/schema-compat` (via `@mastra/client-js`, used by `sentry init`):
- *   its Zod 3 to JSON Schema converter reads `ZodFirstPartyTypeKind`, and
- *   `isZodV3()` ends with `schema instanceof z3.ZodType`. `sentry init` only
- *   uses the workflow API, which converts no schemas.
- *
- * The stub keeps `ZodType` a class, so that `instanceof` check is `false`
- * instead of a `TypeError`. `ZodFirstPartyTypeKind` throws on access, so a
+ * The stub keeps `ZodType` a class, so an `instanceof z3.ZodType` check is
+ * `false` instead of a `TypeError`. `ZodFirstPartyTypeKind` throws on access, so a
  * Zod 3 schema that does reach a converter fails with a clear error rather
  * than producing a wrong JSON Schema.
  *

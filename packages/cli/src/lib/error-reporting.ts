@@ -54,7 +54,6 @@ import {
   TimeoutError,
   UpgradeError,
   ValidationError,
-  WizardError,
 } from "./errors.js";
 import { isSaaS } from "./sentry-web-urls.js";
 
@@ -356,9 +355,6 @@ function deriveErrorKind(error: Error): string | undefined {
   }
   if (error instanceof HostScopeError) {
     return "host_scope";
-  }
-  if (error instanceof WizardError) {
-    return "wizard";
   }
   // Catch-all for bare CliError — must be checked AFTER all subclasses
   // because instanceof matches the entire prototype chain.

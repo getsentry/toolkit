@@ -1,10 +1,9 @@
 /**
  * Preview the real entity pickers with local fixtures, without authentication
- * or project changes. Run `pnpm tsx script/preview-selectors.ts`; add `--compact`
- * for the Org/Project picker used outside the init wizard.
+ * or project changes. Run `pnpm tsx script/preview-selectors.ts`.
  */
-import { createInkUI, selectWithFilter } from "../src/lib/init/ui/ink-ui.js";
-import { isCancelled, type SelectOptions } from "../src/lib/init/ui/types.js";
+import { selectWithFilter } from "../src/lib/select-ui/ink-ui.js";
+import type { SelectOptions } from "../src/lib/select-ui/types.js";
 
 const organization: SelectOptions<string> = {
   message: "Which organization should the project be created in?",
@@ -44,29 +43,12 @@ async function preview(): Promise<void> {
     throw new Error("Run this preview in an interactive terminal.");
   }
   const chosen: string[] = [];
-  if (process.argv.includes("--compact")) {
-    for (const prompt of [organization, project]) {
-      const value = await selectWithFilter(prompt);
-      if (value === null) {
-        return;
-      }
-      chosen.push(value);
+  for (const prompt of [organization, team, project]) {
+    const value = await selectWithFilter(prompt);
+    if (value === null) {
+      return;
     }
-  } else {
-    await using ui = await createInkUI();
-    ui.setIntroMode(true);
-    for (const prompt of [
-      organization,
-      team,
-      { ...project, message: "Which app would you like to configure?" },
-    ]) {
-      const value = await ui.select(prompt);
-      if (isCancelled(value)) {
-        return;
-      }
-      chosen.push(value);
-    }
-    ui.outro("Selector preview complete");
+    chosen.push(value);
   }
   process.stdout.write(`Selected: ${chosen.join(" / ")}\n`);
 }

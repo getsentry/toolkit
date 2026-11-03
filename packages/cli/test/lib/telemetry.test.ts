@@ -26,7 +26,6 @@ import {
 } from "../../src/lib/errors.js";
 import {
   createTracedDatabase,
-  createWizardPromptTelemetry,
   getSentryTracePropagationTargets,
   initSentry,
   isEbadfError,
@@ -1007,59 +1006,6 @@ describe("withTracingSpan", () => {
       "init.attr": "initial",
     });
     expect(result).toBe("success");
-  });
-});
-
-describe("createWizardPromptTelemetry", () => {
-  test("records individual prompt waits and accumulates root wait time", async () => {
-    const setMeasurementSpy = vi.spyOn(Sentry, "setMeasurement");
-    const metricSpy = vi.spyOn(Sentry.metrics, "distribution");
-    let now = 100;
-    const performanceSpy = vi
-      .spyOn(globalThis.performance, "now")
-      .mockImplementation(() => now);
-    const telemetry = createWizardPromptTelemetry();
-
-    telemetry.setActiveStep("select-features", true);
-    const firstResult = await telemetry.tracePrompt("multiselect", async () => {
-      now = 125;
-      return ["errorMonitoring"];
-    });
-    telemetry.setActiveStep("select-features", false);
-    const secondResult = await telemetry.tracePrompt("confirm", async () => {
-      now = 140;
-      return true;
-    });
-
-    expect(firstResult).toEqual(["errorMonitoring"]);
-    expect(secondResult).toBe(true);
-    expect(setMeasurementSpy).toHaveBeenNthCalledWith(
-      1,
-      "wizard.user_wait_ms",
-      25,
-      "millisecond",
-      expect.anything(),
-    );
-    expect(setMeasurementSpy).toHaveBeenNthCalledWith(
-      2,
-      "wizard.user_wait_ms",
-      40,
-      "millisecond",
-      expect.anything(),
-    );
-    expect(metricSpy).toHaveBeenCalledWith("wizard.user_wait_ms", 25, {
-      attributes: {
-        prompt_kind: "multiselect",
-        workflow_step: "select-features",
-      },
-    });
-    expect(metricSpy).toHaveBeenCalledWith("wizard.user_wait_ms", 15, {
-      attributes: { prompt_kind: "confirm" },
-    });
-
-    performanceSpy.mockRestore();
-    metricSpy.mockRestore();
-    setMeasurementSpy.mockRestore();
   });
 });
 

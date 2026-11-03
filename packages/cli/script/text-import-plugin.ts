@@ -39,7 +39,7 @@
  * `script/bundle.ts` (CJS library bundle). The `text` branch
  * handles `with { type: "text" }` imports (e.g. worker source).
  * The `file` branch handles the Ink app component embedded via
- * `with { type: "file" }` in `src/lib/init/ui/ink-ui.ts`.
+ * `with { type: "file" }` in `src/lib/select-ui/ink-ui.ts`.
  */
 
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";

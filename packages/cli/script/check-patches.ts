@@ -106,13 +106,8 @@ function parsePatchedDependencies(source: string): Record<string, string> {
  * @returns Absolute path to the resolved file, or null if unresolvable.
  */
 const require_ = createRequire(import.meta.url);
-const mastraRequire = createRequire(require_.resolve("@mastra/client-js"));
-const uiUtilsRequire = createRequire(mastraRequire.resolve("@ai-sdk/ui-utils"));
 
-function resolvePackageFile(
-  subpath: string,
-  resolver: NodeJS.Require = require_,
-): string | null {
+function resolvePackageFile(subpath: string): string | null {
   const parts = subpath.split("/");
   const pkgName = subpath.startsWith("@")
     ? `${parts[0]}/${parts[1]}`
@@ -120,7 +115,7 @@ function resolvePackageFile(
   const inner = subpath.slice(pkgName.length + 1);
   try {
     // Resolve the package's main entry to locate the exact installed copy.
-    const mainEntry = resolver.resolve(pkgName);
+    const mainEntry = require_.resolve(pkgName);
     // The install dir is "<...>/node_modules/<pkgName>". Anchor on the last
     // "node_modules/" boundary, then take the first "<pkgName>/" after it so a
     // self-vendored nested copy can't shift the truncation point.
@@ -180,9 +175,7 @@ for (const [key, patchPath] of Object.entries(patches)) {
   const patchVersion = versionMatch[1];
 
   // Resolve installed version
-  const resolver =
-    key === "@ai-sdk/provider-utils@2.2.8" ? uiUtilsRequire : require_;
-  const pkgJsonPath = resolvePackageFile(`${name}/package.json`, resolver);
+  const pkgJsonPath = resolvePackageFile(`${name}/package.json`);
   try {
     if (!pkgJsonPath) {
       throw new Error("unresolved");
@@ -326,53 +319,6 @@ for (const assertion of CONTENT_ASSERTIONS) {
       `  ${assertion.description} — could not read ${assertion.file} (run pnpm install)`,
     );
   }
-}
-
-try {
-  const { createStatusCodeErrorResponseHandler } = uiUtilsRequire(
-    "@ai-sdk/provider-utils",
-  ) as {
-    createStatusCodeErrorResponseHandler: () => (options: {
-      response: Response;
-      url: string;
-      requestBodyValues: unknown;
-    }) => Promise<unknown>;
-  };
-  let cancelled = false;
-  const response = new Response(
-    new ReadableStream<Uint8Array>({
-      cancel() {
-        cancelled = true;
-      },
-    }),
-    {
-      status: 500,
-      headers: { "content-length": String(2 * 1024 * 1024 * 1024 + 1) },
-    },
-  );
-
-  await createStatusCodeErrorResponseHandler()({
-    response,
-    url: "https://example.invalid/oversized-response",
-    requestBodyValues: {},
-  }).then(
-    () => {
-      errors.push(
-        "  @ai-sdk/provider-utils: oversized response was accepted (resource-limit patch not applied)",
-      );
-    },
-    () => {
-      if (!cancelled) {
-        errors.push(
-          "  @ai-sdk/provider-utils: oversized response body was not cancelled",
-        );
-      }
-    },
-  );
-} catch (error) {
-  errors.push(
-    `  @ai-sdk/provider-utils: could not verify response-size limit (${String(error)})`,
-  );
 }
 
 // Emit GitHub Actions annotations for CI visibility

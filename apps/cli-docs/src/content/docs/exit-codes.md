@@ -42,10 +42,10 @@ react to failure categories without parsing stderr.
 | 50 | Upgrade Error | CLI upgrade operation failed |
 | 51 | Device Flow Error | OAuth device authorization flow failed |
 | 60 | Output Error | Command produced output but the operation failed |
-| 61 | Wizard Error | Interactive setup wizard encountered an error |
-| 62 | Wizard Deps | Wizard dependency installation failed |
-| 63 | Wizard Codemod | Wizard codemod plan or apply failed |
-| 64 | Wizard Verify | User stopped wizard after verification step |
+| 61 | Reserved | Not used; was the removed `sentry init` setup wizard |
+| 62 | Reserved | Not used; was the removed `sentry init` setup wizard |
+| 63 | Reserved | Not used; was the removed `sentry init` setup wizard |
+| 64 | Verify Failed | `sentry local run --verify` received no events from the SDK |
 | 252 | Invalid Argument | An argument could not be parsed — see [Argument errors](#argument-errors) |
 
 ## Scripting Examples
@@ -105,10 +105,6 @@ Run the command with `--help` to see the arguments it accepts.
   convention — the error response body is useful output. Parse the HTTP status
   from `--verbose` output or the JSON error body if you need to distinguish
   API error categories.
-- The `sentry init` wizard maps its internal workflow exit codes to CLI
-  exit codes: platform not detected → 20 (Config), dependency install
-  failed → 62 (Wizard Deps), codemod failed → 63 (Wizard Codemod),
-  verification stopped → 64 (Wizard Verify), other → 61 (Wizard).
 - [Stricli](https://bloomberg.github.io/stricli/) (the CLI framework) uses
   negative exit codes (-5 to -1) for framework-level errors like unknown
   commands (251) or [invalid arguments](#argument-errors) (252). These

@@ -34,7 +34,6 @@ import { resolveCommand as feedbackResolveCommand } from "../../src/commands/fee
 import { spamCommand as feedbackSpamCommand } from "../../src/commands/feedback/spam.js";
 import { unresolveCommand as feedbackUnresolveCommand } from "../../src/commands/feedback/unresolve.js";
 import { viewCommand as feedbackViewCommand } from "../../src/commands/feedback/view.js";
-import { initCommand } from "../../src/commands/init.js";
 import { deleteCommand as integrationDeleteCommand } from "../../src/commands/integration/delete.js";
 import { archiveCommand } from "../../src/commands/issue/archive.js";
 import { eventsCommand as issueEventsCommand } from "../../src/commands/issue/events.js";
@@ -1011,15 +1010,6 @@ const TARGET_THEN_POSITIONALS: readonly {
   readonly url: boolean;
 }[] = [
   {
-    name: "init",
-    command: initCommand,
-    args: ["acme/", "./app"],
-    org: (parsed) => (parsed as { target: ParsedTarget }).target.org,
-    // Two targets, and no directory
-    invalid: ["acme/", "other/"],
-    url: true,
-  },
-  {
     name: "dashboard create",
     command: dashboardCreateCommand,
     args: ["acme/", "My", "Dashboard"],
@@ -1069,26 +1059,6 @@ describe.each(TARGET_THEN_POSITIONALS)("$name", (entry) => {
       expect(applyUrl).toHaveBeenCalledWith(SERVER);
     },
   );
-});
-
-describe("init target and directory", () => {
-  test.each([
-    [["./app"], { directory: "./app", target: { type: "auto-detect" } }],
-    [
-      ["acme/web"],
-      { target: { type: "explicit", org: "acme", project: "web" } },
-    ],
-    [["acme/", "./app"], { directory: "./app" }],
-    [
-      ["./app", "acme/"],
-      { directory: "./app", warning: expect.stringMatching(REVERSED) },
-    ],
-  ])("tells the target from the directory in %j", (args, expected) => {
-    const [bound] = bind(initCommand, args);
-    expect((bound as BoundPositional<unknown, unknown>).parsed).toMatchObject(
-      expected,
-    );
-  });
 });
 
 /** Commands that take an `<org>/<project>/<rule-id-or-name>` issue alert. */

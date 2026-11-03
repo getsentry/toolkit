@@ -1,7 +1,7 @@
 /**
  * Shared LLM provider resolution and chat for the eval frameworks.
  *
- * Both the skill-eval and init-eval suites send single-shot chat completions to
+ * The skill-eval suite sends single-shot chat completions to
  * Claude models. Provider selection is credential-driven:
  * - `OPENROUTER_API_KEY` set  → OpenRouter (OpenAI-shaped `/chat/completions`)
  * - else `ANTHROPIC_API_KEY`  → Anthropic direct (`@anthropic-ai/sdk`)

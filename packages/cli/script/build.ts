@@ -144,7 +144,6 @@ const BUNDLE_OPTIONS = {
   // external avoids pulling CJS React wrappers into the bundle.
   external: [
     "ink",
-    "ink-spinner",
     "react",
     "react/*",
     "react-reconciler",

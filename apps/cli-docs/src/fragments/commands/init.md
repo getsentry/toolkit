@@ -1,44 +1,32 @@
 
 
-> **Experimental:** `sentry init` is experimental and may modify your source files. Always review changes before committing.
+## Setting up Sentry with an agent
 
-**Authentication:** Interactive runs start the OAuth login flow automatically when credentials are missing or the stored session has expired. Non-interactive and CI runs must authenticate before running `sentry init`.
+`sentry init` prints a guide for a coding agent to follow; it changes nothing
+itself. Ask your agent to run it:
 
-In organization, team, and monorepo app selectors, type to filter the loaded choices by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos, including in unfinished prefixes such as `frone` for `frontend-web`. Queries with one or two characters match literal text only. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears an active filter; with no filter, Esc cancels. Ctrl+C always cancels.
+> Set up Sentry for me. Run `sentry init` and follow the steps.
 
-## Target Syntax
+If the CLI isn't installed yet, point the agent at the published copy, which
+starts by installing it:
 
-| Syntax | Meaning |
-|--------|---------|
-| _(omitted)_ | Auto-detect org and project |
-| `acme/` | Use org `acme`, auto-detect or create project |
-| `acme/my-app` | Use org `acme` and project `my-app` |
-| `my-app` | Use the existing project `my-app` from any accessible org. If there is none, use org `my-app` when one exists; otherwise create a new project named `my-app` |
+> Set up Sentry for me. Fetch https://cli.sentry.dev/init.md and follow it.
 
-Path-like arguments (starting with `.`, `/`, or `~`) are always treated as the directory. The order of target and directory can be swapped — the CLI will auto-correct with a warning.
+When the output is piped, as it is for agents, the command prints the guide's
+Markdown source. In a terminal it renders the guide.
 
-## Available Features
+## What the guide covers
 
-| Feature | Description |
-|---------|-------------|
-| `errors` | Error monitoring |
-| `tracing` | Performance tracing |
-| `logs` | Log integration |
-| `replay` | Session replay |
-| `profiling` | Profiling |
-| `crons` | Cron job monitoring |
-| `agent-tracing` | Agent tracing for AI/LLM apps |
-| `mcp-observability` | MCP (Model Context Protocol) observability |
-
-## What the Wizard Does
-
-1. **Detects your framework** — scans your project files to identify the platform and framework
-2. **Installs the SDK** — adds the appropriate Sentry SDK package to your project
-3. **Instruments your code** — configures error monitoring, tracing, and any selected features
-
-### Supported Platforms
-
-- **JavaScript / TypeScript** — Next.js, Express, SvelteKit, React
-- **Python** — Flask, FastAPI
-
-More platforms and frameworks are coming soon.
+1. Install the CLI and log in with `sentry auth login`
+2. Map the project: which apps to set up, which SDKs each one needs (a
+   framework on a specific runtime, such as TanStack Start on Cloudflare,
+   needs both SDKs), and whether Sentry is already there. If it is, upgrade
+   the SDKs or turn on more features instead
+3. Pick or create a Sentry project and read its DSN
+4. Choose features: errors, tracing, logs, metrics, Session Replay, profiling,
+   crons, User Feedback, AI agent monitoring, and MCP monitoring
+5. Install and configure the SDKs from the current docs (`sentry docs`), never
+   from remembered versions or APIs
+6. Verify that a test error reaches Sentry with `sentry local run --verify`
+   and `sentry issue list`
+7. Report what changed and what is left for you to do

@@ -299,7 +299,7 @@ function extractPublicKeyFromDsn(dsn: string): string | null {
 /**
  * Create a project, fetch its DSN, and build its dashboard URL.
  *
- * Shared core used by both `sentry project create` and `sentry init`.
+ * Shared core of `sentry project create`.
  * Callers handle their own error wrapping and team resolution.
  *
  * After creation, seeds the project cache and DSN-based project cache

@@ -145,7 +145,6 @@ const commonBuildOptions = {
     // The DIF loader resolves this .wasm at runtime (dev only); never bundle it.
     "@sentry/symbolic/symbolic_bg.wasm",
     "ink",
-    "ink-spinner",
     "react",
     "react/*",
     "react-reconciler",

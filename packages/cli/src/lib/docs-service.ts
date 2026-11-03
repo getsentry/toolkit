@@ -1,12 +1,42 @@
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { formatAuthHeader } from "./auth-header.js";
 import { customFetch } from "./custom-ca.js";
 import { refreshToken } from "./db/auth.js";
 import type { DocsProjectContext } from "./docs-context.js";
-import { ApiError, CliError, EXIT } from "./errors.js";
-import { MASTRA_API_URL } from "./init/constants.js";
-import { assertHostedInitServiceAcceptsTokenHost } from "./init/init-service-auth.js";
+import { ApiError, CliError, EXIT, HostScopeError } from "./errors.js";
+import { normalizeOrigin } from "./sentry-urls.js";
+import { getActiveTokenHost } from "./token-host.js";
+
+/** The hosted docs service, which only accepts sentry.io credentials. */
+const DEFAULT_DOCS_SERVICE_URL =
+  "https://sentry-init-agent.getsentry.workers.dev";
+
+/** `MASTRA_API_URL` points the docs commands at a local or staging service. */
+const DOCS_SERVICE_URL = process.env.MASTRA_API_URL ?? DEFAULT_DOCS_SERVICE_URL;
 
 const DOCS_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * Refuse to send a self-hosted token to the hosted docs service, which
+ * validates bearers against sentry.io.
+ *
+ * @throws {HostScopeError} When the active token belongs to a non-SaaS host
+ *   and requests would go to the hosted service.
+ */
+function assertDocsServiceAcceptsTokenHost(): void {
+  const tokenHost = getActiveTokenHost();
+  const usesHostedService =
+    normalizeOrigin(DOCS_SERVICE_URL) ===
+    normalizeOrigin(DEFAULT_DOCS_SERVICE_URL);
+
+  if (tokenHost && usesHostedService && !isSaaSTrustOrigin(tokenHost)) {
+    throw new HostScopeError(
+      "Hosted Sentry docs service",
+      "https://sentry.io",
+      tokenHost,
+    );
+  }
+}
 
 export type DocsQueryResponse = {
   answer: string;
@@ -21,9 +51,9 @@ async function postDocs<T>(
   path: "/api/docs/query" | "/api/docs/list",
   body: unknown,
 ): Promise<T> {
-  assertHostedInitServiceAcceptsTokenHost();
+  assertDocsServiceAcceptsTokenHost();
   const { token } = await refreshToken();
-  const response = await customFetch(`${MASTRA_API_URL}${path}`, {
+  const response = await customFetch(`${DOCS_SERVICE_URL}${path}`, {
     body: JSON.stringify(body),
     headers: {
       Authorization: formatAuthHeader(token),

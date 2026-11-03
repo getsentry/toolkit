@@ -93,7 +93,7 @@ toolkit/
 │       │   │   ├── explore.ts   # Query aggregate event data (Explore)
 │       │   │   ├── help.ts      # Help command
 │       │   │   ├── info.ts      # Print configuration and verify authentication
-│       │   │   ├── init.ts      # Initialize Sentry in your project (experimental)
+│       │   │   ├── init.ts      # Print instructions for a coding agent to set up Sentry
 │       │   │   ├── mcp.ts       # Start a local Sentry MCP server
 │       │   │   ├── schema.ts    # Browse the Sentry API schema
 │       │   │   └── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data

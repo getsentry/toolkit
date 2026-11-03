@@ -34,7 +34,6 @@ import {
   formatError,
   getExitCode,
   OutputError,
-  WizardError,
 } from "./errors.js";
 import { error as errorColor, warning } from "./formatters/colors.js";
 import { stripAnsi } from "./formatters/plain-detect.js";
@@ -289,11 +288,6 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
       reportCliError(exc);
 
       if (exc instanceof CliError) {
-        // WizardError with rendered=true: clack already displayed the error.
-        // Return empty string to avoid double output, exit code flows through.
-        if (exc instanceof WizardError && exc.rendered) {
-          return "";
-        }
         const prefix = ansiColor ? errorColor("Error:") : "Error:";
         return `${prefix} ${formatError(exc)}`;
       }

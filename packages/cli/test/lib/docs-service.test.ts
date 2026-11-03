@@ -1,22 +1,35 @@
 import { describe, expect, test, vi } from "vitest";
 
-const { assertHostedInitServiceAcceptsTokenHost, customFetch, refreshToken } =
-  vi.hoisted(() => ({
-    assertHostedInitServiceAcceptsTokenHost: vi.fn(),
-    customFetch: vi.fn(),
-    refreshToken: vi.fn(),
-  }));
+const { customFetch, getActiveTokenHost, refreshToken } = vi.hoisted(() => ({
+  customFetch: vi.fn(),
+  getActiveTokenHost: vi.fn<() => string | undefined>(),
+  refreshToken: vi.fn(),
+}));
 
 vi.mock("../../src/lib/custom-ca.js", () => ({ customFetch }));
 vi.mock("../../src/lib/db/auth.js", () => ({ refreshToken }));
-vi.mock("../../src/lib/init/init-service-auth.js", () => ({
-  assertHostedInitServiceAcceptsTokenHost,
-}));
+vi.mock("../../src/lib/token-host.js", () => ({ getActiveTokenHost }));
 
 import { queryDocs } from "../../src/lib/docs-service.js";
-import { EXIT, isUserError } from "../../src/lib/errors.js";
+import { EXIT, HostScopeError, isUserError } from "../../src/lib/errors.js";
 
 describe("queryDocs", () => {
+  test("refuses a self-hosted token before calling the hosted docs service", async () => {
+    customFetch.mockClear();
+    refreshToken.mockClear();
+    getActiveTokenHost.mockReturnValueOnce("https://sentry.example.com");
+
+    await expect(
+      queryDocs("How do I configure tracing?", {
+        frameworks: [],
+        languages: [],
+        sentryConfigured: false,
+      }),
+    ).rejects.toBeInstanceOf(HostScopeError);
+    expect(refreshToken).not.toHaveBeenCalled();
+    expect(customFetch).not.toHaveBeenCalled();
+  });
+
   test("rejects a malformed bearer before calling the docs service", async () => {
     customFetch.mockClear();
     refreshToken.mockResolvedValue({

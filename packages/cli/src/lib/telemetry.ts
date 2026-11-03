@@ -333,9 +333,9 @@ export function isEpipeError(event: Sentry.ErrorEvent): boolean {
 /**
  * Detect EBADF (bad file descriptor) errors in Sentry events.
  *
- * These occur when the init wizard's stdin reopen (`stdin-reopen.ts`) queues
- * reads on a destroyed file descriptor. Same class of OS-level noise as EPIPE
- * — not actionable, just different fd numbers producing duplicate issues.
+ * These occur when a read is queued on a terminal file descriptor that was
+ * already closed. Same class of OS-level noise as EPIPE — not actionable,
+ * just different fd numbers producing duplicate issues.
  *
  * @internal Exported for testing
  */
@@ -703,9 +703,9 @@ export function initSentry(
         return null;
       }
 
-      // EBADF errors come from the init wizard's stdin reopen queuing reads
-      // on a destroyed fd. Same class of OS-level noise as EPIPE — different
-      // fd numbers just produce duplicate issues. Not actionable — drop them.
+      // EBADF errors come from reads queued on a closed terminal fd. Same
+      // class of OS-level noise as EPIPE — different fd numbers just produce
+      // duplicate issues. Not actionable — drop them.
       if (isEbadfError(event)) {
         return null;
       }
@@ -973,73 +973,6 @@ export function recordCacheHit(cacheName: string, hit: boolean): void {
   Sentry.metrics.distribution("cache.hit_rate", hit ? 100 : 0, {
     attributes: { cache_name: cacheName },
   });
-}
-
-export type WizardPromptKind = "select" | "multiselect" | "confirm" | "welcome";
-
-type WizardPromptTelemetry = {
-  setActiveStep(stepId: string, active: boolean): void;
-  tracePrompt<T>(kind: WizardPromptKind, prompt: () => Promise<T>): Promise<T>;
-};
-
-/**
- * Track time spent waiting for human input during `sentry init`.
- *
- * Prompt spans make user think-time visible in the trace instead of folding it
- * into the top-level `sentry.init` duration. The measurement is accumulated on
- * the root span so a run can be compared both with and without user wait time.
- */
-export function createWizardPromptTelemetry(): WizardPromptTelemetry {
-  let activeStepId: string | undefined;
-  let totalWaitMs = 0;
-
-  return {
-    setActiveStep(stepId, active) {
-      if (active) {
-        activeStepId = stepId;
-      } else if (activeStepId === stepId) {
-        activeStepId = undefined;
-      }
-    },
-    tracePrompt(kind, prompt) {
-      const stepId = activeStepId;
-      return withTracingSpan(
-        `wizard.prompt.${kind}`,
-        "ui.prompt",
-        async (span) => {
-          const startedAt = performance.now();
-          try {
-            return await prompt();
-          } finally {
-            const waitMs = Math.max(0, performance.now() - startedAt);
-            totalWaitMs += waitMs;
-
-            span.setAttributes({
-              "wizard.user_wait_ms": waitMs,
-              "wizard.user_wait_total_ms": totalWaitMs,
-            });
-            Sentry.setMeasurement(
-              "wizard.user_wait_ms",
-              totalWaitMs,
-              "millisecond",
-              Sentry.getRootSpan(span),
-            );
-            Sentry.metrics.distribution("wizard.user_wait_ms", waitMs, {
-              attributes: {
-                prompt_kind: kind,
-                ...(stepId ? { workflow_step: stepId } : {}),
-              },
-            });
-          }
-        },
-        {
-          "wizard.prompt.kind": kind,
-          "wizard.prompt.phase": stepId ? "workflow" : "preflight",
-          ...(stepId ? { "wizard.step.id": stepId } : {}),
-        },
-      );
-    },
-  };
 }
 
 /**

@@ -25,7 +25,6 @@ import {
   UpgradeError,
   ValidationError,
   validationError,
-  WizardError,
   withAuthGuard,
 } from "../../src/lib/errors.js";
 
@@ -530,7 +529,6 @@ describe("isUserError", () => {
     ["ValidationError", new ValidationError("bad input"), true],
     ["DeviceFlowError", new DeviceFlowError("slow_down"), true],
     ["SeerError", new SeerError("not_enabled"), true],
-    ["WizardError", new WizardError("wizard failed"), true],
     ["ApiError 0 (network)", new ApiError("network error", 0), true],
     [
       "raw fetch failed TypeError (network)",
@@ -768,24 +766,6 @@ describe("exit codes", () => {
 
   test("OutputError has exit code OUTPUT_ERROR", () => {
     expect(new OutputError({ items: [] }).exitCode).toBe(EXIT.OUTPUT_ERROR);
-  });
-
-  test("WizardError defaults to exit code WIZARD", () => {
-    expect(new WizardError("wizard failed").exitCode).toBe(EXIT.WIZARD);
-  });
-
-  test("WizardError accepts custom exit code for workflow sub-codes", () => {
-    expect(
-      new WizardError("deps failed", { exitCode: EXIT.WIZARD_DEPS }).exitCode,
-    ).toBe(EXIT.WIZARD_DEPS);
-    expect(
-      new WizardError("codemod failed", { exitCode: EXIT.WIZARD_CODEMOD })
-        .exitCode,
-    ).toBe(EXIT.WIZARD_CODEMOD);
-    expect(
-      new WizardError("verify stopped", { exitCode: EXIT.WIZARD_VERIFY })
-        .exitCode,
-    ).toBe(EXIT.WIZARD_VERIFY);
   });
 
   test("EXIT values are all unique", () => {
