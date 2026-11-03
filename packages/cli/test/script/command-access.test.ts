@@ -106,6 +106,9 @@ describe("command access check", () => {
       'sends POST requests outside the Sentry API; declare `permission: "read"` or `"write"`',
     ]);
     expect(problems("send", { permission: "write" })).toEqual([]);
+    expect(problems("send", { permission: "method" })).toEqual([
+      'declares `permission: "method"`, but it sends POST requests outside the Sentry API; declare `permission: "read"` or `"write"`',
+    ]);
     expect(problems("unanalyzed")).toEqual([
       "has no source export the API analysis can follow; declare `permission`",
     ]);
