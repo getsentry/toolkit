@@ -720,6 +720,61 @@ describe("setCommitsAuto", () => {
       ]);
     },
   );
+  test.each([
+    {
+      case: "skips a display name whose URL points to another project",
+      hits: [
+        {
+          name: "Acme / Web",
+          url: "https://gitlab.com/acme-archive/acme/web",
+        },
+        { name: "Acme Corp / Web", url: "https://gitlab.com/acme/web" },
+      ],
+      expected: "Acme Corp / Web",
+    },
+    {
+      case: "matches a display name when the repository has no URL",
+      hits: [{ name: "Acme / Web", url: null }],
+      expected: "Acme / Web",
+    },
+  ])("$case", async ({ hits, expected }) => {
+    mockGetRepositoryName.mockReturnValue("acme/web");
+    let sentRefs: unknown;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.url.includes("/repos/")) {
+        const query = new URL(req.url).searchParams.get("query") ?? "";
+        const repos = hits
+          .filter((hit) => hit.name.toLowerCase().includes(query))
+          .map((hit) => ({ ...SAMPLE_REPO, ...hit }));
+        return new Response(JSON.stringify(repos), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url.includes("/previous-with-commits/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      sentRefs = ((await req.json()) as { refs: unknown }).refs;
+      return new Response(JSON.stringify(SAMPLE_RELEASE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await setCommitsAuto("test-org", "1.0.0", "/tmp");
+
+    expect(sentRefs).toEqual([
+      {
+        repository: expected,
+        commit: "abc123def456789012345678901234567890abcd",
+      },
+    ]);
+  });
 });
 
 describe("setCommitsWithRefs", () => {

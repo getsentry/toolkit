@@ -492,16 +492,22 @@ function normalizeRepoPath(path: string): string {
 }
 
 /**
- * Whether a Sentry repository is the local repository. Matches the name
- * (GitHub, Bitbucket) or the path of the repository URL (GitLab and other
- * providers whose name is a display name), like the reference sentry-cli.
+ * Whether a Sentry repository is the local repository. Matches the exact
+ * name (GitHub, Bitbucket) or the path of the repository URL (GitLab and
+ * other providers whose name is a display name), like the reference
+ * sentry-cli. A display name such as `Acme / Web` only counts when the
+ * repository has no URL to check, since another group can have a project
+ * with the same display path.
  */
 function isSameRepository(repo: SentryRepository, localPath: string): boolean {
-  if (normalizeRepoPath(repo.name) === localPath) {
+  if (repo.name.toLowerCase() === localPath) {
     return true;
   }
   const urlPath = repo.url ? parseRemoteUrl(repo.url) : undefined;
-  return urlPath !== undefined && urlPath.toLowerCase() === localPath;
+  if (urlPath !== undefined) {
+    return urlPath.toLowerCase() === localPath;
+  }
+  return normalizeRepoPath(repo.name) === localPath;
 }
 
 /** Characters that GitLab slugs use where the display name has spaces. */
@@ -514,8 +520,9 @@ const SLUG_SEPARATOR_RE = /[-_.]+/g;
  * repositories). The full path is tried first; GitLab names do not contain
  * it (`Group / Project`), so the last path segment is tried next, then that
  * segment with `-`, `_`, and `.` read as spaces, since GitLab derives the
- * slug `my-project` from the display name `My Project`. Hits are matched by
- * URL, so a loose query cannot pick the wrong repository.
+ * slug `my-project` from the display name `My Project`. Hits must match the
+ * exact name or the URL path, so a loose query cannot pick the wrong
+ * repository.
  *
  * @returns The match, and whether any search returned repositories
  */
