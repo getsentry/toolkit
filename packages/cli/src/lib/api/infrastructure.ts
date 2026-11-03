@@ -35,7 +35,7 @@ import {
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getEnv } from "../env.js";
-import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
+import { ApiError, CliError, stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -44,6 +44,7 @@ import {
   getSdkConfig,
 } from "../sentry-client.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
+import { getSentryBaseUrl, isSaaS } from "../sentry-urls.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -222,6 +223,73 @@ export type ApiRequestOptions<T = unknown> = {
   idempotent?: boolean;
 };
 
+const CONNECT_TIMEOUT_HINT =
+  "The connection timed out. Check network access, proxy settings (HTTPS_PROXY), and firewall rules.";
+
+/** Next steps for Node (undici) connection error codes, keyed by `code`. */
+const NETWORK_CAUSE_HINTS: Record<string, string> = {
+  ENOTFOUND:
+    "The hostname could not be resolved. Check that the Sentry URL is correct and that DNS works from this machine.",
+  EAI_AGAIN:
+    "DNS lookup failed temporarily. Check DNS on this machine and try again.",
+  ECONNREFUSED:
+    "The server refused the connection. Check that the Sentry URL and port are correct and that the server is running.",
+  ECONNRESET:
+    "The connection was reset. A proxy or firewall may be interrupting the request; try again.",
+  ETIMEDOUT: CONNECT_TIMEOUT_HINT,
+  UND_ERR_CONNECT_TIMEOUT: CONNECT_TIMEOUT_HINT,
+};
+
+/** Max `cause` links to follow; undici nests at most a couple. */
+const MAX_CAUSE_DEPTH = 5;
+
+/**
+ * Find the innermost system error behind a fetch failure.
+ *
+ * undici rejects with `TypeError: fetch failed` for every connection failure
+ * and puts the real errno (`ENOTFOUND`, `ECONNREFUSED`, ...) on `cause`.
+ */
+function findNetworkCause(
+  error: unknown,
+): { message: string; code: string } | undefined {
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth++) {
+    if (!(current instanceof Error)) {
+      return;
+    }
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return { message: current.message, code };
+    }
+    current = current.cause;
+  }
+}
+
+/**
+ * Build the user-facing detail for a request that got no HTTP response.
+ *
+ * Names the Sentry URL that was contacted, the underlying cause (not just
+ * "fetch failed"), and a next step that matches it.
+ */
+function buildNetworkErrorDetail(error: unknown): string {
+  const baseUrl = getSentryBaseUrl();
+  const outer =
+    error instanceof Error ? error.message : stringifyUnknown(error);
+  const networkCause = findNetworkCause(error);
+  const cause =
+    networkCause && networkCause.message !== outer
+      ? `${outer} (${networkCause.message})`
+      : outer;
+  const steps = [
+    (networkCause && NETWORK_CAUSE_HINTS[networkCause.code]) ??
+      "Check your network connection and try again.",
+    isSaaS()
+      ? "If your network is fine, check https://status.sentry.io for an ongoing incident."
+      : `Check that ${baseUrl} (from SENTRY_URL or SENTRY_HOST) is your Sentry server and that it is reachable from this machine.`,
+  ];
+  return `Unable to reach Sentry at ${baseUrl}. Cause: ${cause}\n\n${steps.map((step) => `  ${step}`).join("\n")}`;
+}
+
 /**
  * Throw an ApiError from a failed @sentry/api SDK response.
  *
@@ -236,13 +304,15 @@ export function throwApiError(
 ): never {
   // Network-level failure: no HTTP response received (DNS, timeout, ECONNREFUSED, etc.)
   if (!response) {
-    const cause =
-      error instanceof Error ? error.message : stringifyUnknown(error);
-    throw new ApiError(
+    const apiError = new ApiError(
       `${context}: Network error`,
       0,
-      `Unable to reach Sentry API. Cause: ${cause}\n\n  Check your internet connection and try again.`,
+      buildNetworkErrorDetail(error),
     );
+    // Keep the original error so error reporting can recognize a raw
+    // `fetch failed` (user environment) behind this wrapper.
+    apiError.cause = error;
+    throw apiError;
   }
 
   if (error instanceof SentryApiError) {
@@ -277,8 +347,9 @@ export function throwApiError(
  *
  * When `throwOnError` is false (our default), the SDK catches errors from
  * the fetch function and returns them in `{ error }`. This includes our
- * AuthError from refreshToken(). We must re-throw known error types (AuthError,
- * ApiError) directly so callers can distinguish auth failures from API errors.
+ * AuthError from refreshToken(). We must re-throw CLI errors (AuthError,
+ * ApiError, TimeoutError, ...) directly so callers can distinguish auth
+ * failures from API errors and users see the error's own guidance.
  *
  * @param result - The result from an SDK function call
  * @param context - Human-readable context for error messages
@@ -290,8 +361,10 @@ export function unwrapResult<T>(
 ): T {
   if ("error" in result) {
     const { error } = result;
-    // Preserve known error types that were caught by the SDK from our fetch function
-    if (error instanceof AuthError || error instanceof ApiError) {
+    // Preserve CLI errors thrown by our fetch function (AuthError, ApiError,
+    // TimeoutError, HostScopeError, ...). They already carry the right message
+    // and next step; wrapping them as "Network error" would hide both.
+    if (error instanceof CliError) {
       throw error;
     }
     throwApiError(error, result.response, context);

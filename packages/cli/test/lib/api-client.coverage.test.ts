@@ -50,7 +50,7 @@ import {
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
-import { ApiError, AuthError } from "../../src/lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 // --- Shared test setup ---
@@ -1398,6 +1398,19 @@ describe("infrastructure.ts", () => {
           "context",
         ),
       ).toThrow(authError);
+    });
+
+    test("re-throws TimeoutError instead of wrapping it as a network error", () => {
+      const timeout = new TimeoutError(
+        "Request timed out after 30s.",
+        "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io.",
+      );
+      expect(() =>
+        unwrapResult(
+          { data: undefined, error: timeout, response: undefined },
+          "Failed to create release",
+        ),
+      ).toThrow(timeout);
     });
 
     test("returns data on success", () => {

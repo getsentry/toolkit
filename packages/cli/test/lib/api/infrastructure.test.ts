@@ -165,11 +165,54 @@ describe("throwApiError", () => {
       expect(error).toBeInstanceOf(ApiError);
       const apiError = error as ApiError;
       expect(apiError.detail).toContain("fetch failed");
-      expect(apiError.detail).toContain("Unable to reach Sentry API");
+      expect(apiError.detail).toContain("Unable to reach Sentry at");
       expect(apiError.detail).toContain(
-        "Check your internet connection and try again",
+        "Check your network connection and try again",
       );
+      expect(apiError.cause).toBeInstanceOf(TypeError);
     }
+  });
+
+  describe("network failure guidance", () => {
+    useEnvSandbox(["SENTRY_URL", "SENTRY_HOST"]);
+
+    function fetchFailed(code: string, message: string): TypeError {
+      const cause = Object.assign(new Error(message), { code });
+      return new TypeError("fetch failed", { cause });
+    }
+
+    function detailFor(error: unknown): string {
+      try {
+        throwApiError(error, undefined, "Failed to create release");
+      } catch (thrown) {
+        return (thrown as ApiError).detail ?? "";
+      }
+      throw new Error("expected throwApiError to throw");
+    }
+
+    test("self-hosted ECONNREFUSED names the URL, errno, and next step", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("connect ECONNREFUSED 10.0.0.1:443");
+      expect(detail).toContain("The server refused the connection");
+      expect(detail).toContain("SENTRY_URL");
+      expect(detail).not.toContain("status.sentry.io");
+    });
+
+    test("SaaS DNS failure points at DNS and the status page", () => {
+      const detail = detailFor(
+        fetchFailed("ENOTFOUND", "getaddrinfo ENOTFOUND us.sentry.io"),
+      );
+      expect(detail).toContain("getaddrinfo ENOTFOUND us.sentry.io");
+      expect(detail).toContain("hostname could not be resolved");
+      expect(detail).toContain("https://status.sentry.io");
+      expect(detail).not.toContain("Check your network connection");
+    });
   });
 
   test("network failure with non-Error produces readable message", () => {
