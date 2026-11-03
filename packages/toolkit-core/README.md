@@ -67,6 +67,11 @@ the one exception.
   - `endpoints/dashboards`: `listDashboards` and `getDashboard`.
   - `endpoints/releases`: `listReleases`, `getRelease`,
     `listReleaseDeploys`, `listReleaseCommits`, and `getEventCommitters`.
+  - `endpoints/monitors`: cron monitors (`listMonitors`, `getMonitor`,
+    `deleteMonitorEnvironment`, `listMonitorCheckIns`, `getMonitorStats`).
+- `time-params` applies a time range to a query: `statsPeriod` or a
+  `start`/`end` pair, or the `since`/`until` seconds `StatsMixin` endpoints
+  read. It rejects a range that sets both or only one end.
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.
