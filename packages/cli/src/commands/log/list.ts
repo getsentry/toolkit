@@ -51,6 +51,7 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type BoundArguments,
@@ -737,7 +738,10 @@ function createLogRenderer(): HumanRenderer<LogOutput> {
  * {@link LogLike} items (follow mode). Single-fetch yields a JSON envelope
  * with `data` and `hasMore`; follow mode yields one JSON object per line (JSONL).
  */
-function jsonTransformLogOutput(data: LogOutput, fields?: string[]): unknown {
+function jsonTransformLogOutput(
+  data: LogOutput,
+  fields?: string[],
+): ListEnvelope<LogLike> | Partial<LogLike> {
   if (isLogListResult(data)) {
     // Batch (single-fetch): return envelope with data + hasMore
     const logList = data;

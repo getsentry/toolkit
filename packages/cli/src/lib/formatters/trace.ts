@@ -6,7 +6,9 @@
  */
 
 import { tableCell, text } from "@sentry/toolkit-core/markdown";
+import type { InferOutput } from "valibot";
 import type {
+  FlatSpanSchema,
   SpanListItem,
   TraceSpan,
   TransactionListItem,
@@ -385,19 +387,7 @@ export function formatTraceSummary(summary: TraceSummary): string {
 // ---------------------------------------------------------------------------
 
 /** Flat span for list output — no nested children */
-export type FlatSpan = {
-  span_id: string;
-  trace_id?: string;
-  parent_span_id?: string | null;
-  op?: string;
-  description?: string | null;
-  duration_ms?: number;
-  start_timestamp: number;
-  project_slug?: string;
-  transaction?: string;
-  /** Custom attributes from --fields (index signature) */
-  [key: string]: unknown;
-};
+export type FlatSpan = InferOutput<typeof FlatSpanSchema>;
 
 /** Result of finding a span by ID in the tree */
 export type FoundSpan = {

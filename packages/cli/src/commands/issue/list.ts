@@ -53,10 +53,7 @@ import {
   shouldAutoCompact,
   writeIssueTable,
 } from "../../lib/formatters/index.js";
-import {
-  CommandOutput,
-  type OutputConfig,
-} from "../../lib/formatters/output.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   appendQueryHint,
   buildListCommand,
@@ -74,6 +71,7 @@ import {
   type FetchResult as FetchResultOf,
   jsonTransformListResult,
   type ListCommandMeta,
+  type ListJson,
   type ListResult,
   type ModeHandler,
   trimWithGroupGuarantee,
@@ -1604,7 +1602,7 @@ function formatIssueListHuman(result: IssueListResult): string {
 function jsonTransformIssueList(
   result: IssueListResult,
   fields?: string[],
-): unknown {
+): ListJson<SentryIssue> {
   const transformed = jsonTransformListResult(result, fields);
   // Only inject into empty paginated envelopes — helps agents discover
   // query syntax when their search returned nothing.
@@ -1623,7 +1621,7 @@ function jsonTransformIssueList(
 }
 
 /** Output configuration for the issue list command. */
-const issueListOutput: OutputConfig<IssueListResult> = {
+const issueListOutput = {
   human: formatIssueListHuman,
   jsonTransform: jsonTransformIssueList,
   schema: SentryIssueSchema,

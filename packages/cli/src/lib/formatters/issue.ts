@@ -6,7 +6,7 @@ import type { InferOutput } from "valibot";
 import type { IssueViewOutputFields, SentryIssue } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails, formatIssueDetails } from "./human.js";
-import { filterFields } from "./json.js";
+import { filterFieldsIfSet } from "./json.js";
 import { renderMarkdown } from "./markdown.js";
 
 /**
@@ -97,20 +97,17 @@ export function formatIssueView(data: IssueViewData): string {
   return data.issues.map(formatSingleIssueView).join("\n\n---\n\n");
 }
 
-function flattenIssueView(
-  entry: SingleIssueViewData,
-  fields?: string[],
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {
-    ...entry.issue,
-    event: entry.event,
-    org: entry.org,
-    replayIds: entry.replayIds,
-    trace: entry.trace,
-  };
-  return fields && fields.length > 0
-    ? (filterFields(result, fields) as Record<string, unknown>)
-    : result;
+function flattenIssueView(entry: SingleIssueViewData, fields?: string[]) {
+  return filterFieldsIfSet(
+    {
+      ...entry.issue,
+      event: entry.event,
+      org: entry.org,
+      replayIds: entry.replayIds,
+      trace: entry.trace,
+    },
+    fields,
+  );
 }
 
 /**
@@ -124,10 +121,7 @@ function flattenIssueView(
  * @param fields - Optional issue fields to retain
  * @returns A flat issue object for one request, otherwise an array
  */
-export function jsonTransformIssueView(
-  data: IssueViewData,
-  fields?: string[],
-): unknown {
+export function jsonTransformIssueView(data: IssueViewData, fields?: string[]) {
   if (data.requestedCount <= 1) {
     const [first] = data.issues;
     if (first) {

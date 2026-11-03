@@ -112,11 +112,73 @@ type JsonItem<T> = T extends readonly (infer Item)[] ? Item : T;
  * documents exists on the data with a matching type. Otherwise it requires
  * a property no schema has, and the error shows the schema's output type.
  */
-type SchemaMatches<T, S extends GenericSchema> = [JsonItem<T>] extends [
+export type SchemaMatches<T, S extends GenericSchema> = [JsonItem<T>] extends [
   InferOutput<S>,
 ]
   ? unknown
   : { "~outputMismatch": InferOutput<S> };
+
+/**
+ * The value `--fields` operates on in a `jsonTransform` result: each item of
+ * a `{ data: [...] }` envelope or an array, otherwise the result itself.
+ * Distributes over unions, so every shape the transform returns counts.
+ * `filterFields` on an array types its items as possibly `undefined`, so
+ * `null` and `undefined` items are dropped.
+ */
+type TransformItem<R> = NonNullable<
+  R extends { readonly data: readonly (infer Item)[] }
+    ? Item
+    : R extends readonly (infer Item)[]
+      ? Item
+      : R
+>;
+
+/**
+ * Every key of `T` as a required, defined field. A transform's items are
+ * `Partial` when `--fields` filters them, so the transform check compares
+ * which fields exist and their types, not whether they are optional.
+ */
+type PresentFields<T> = { [K in keyof T]-?: Exclude<T[K], undefined> };
+
+/** Flattens `T` so errors print its fields instead of the alias. */
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+
+/**
+ * The fields of `Schema` that `Data` lacks or types differently, with the
+ * type the schema documents. Index signatures (loose objects) are skipped.
+ */
+type MismatchedFields<Data, Schema> = {
+  [
+    K in keyof Schema as string extends K
+      ? never
+      : number extends K
+        ? never
+        : K extends keyof Data
+          ? [Data[K]] extends [Schema[K]]
+            ? never
+            : K
+          : K
+  ]: Schema[K];
+};
+
+/**
+ * Holds when every field `S` documents exists on the transform's item with
+ * a matching type. Otherwise it requires a property no schema has, and the
+ * error lists the mismatched fields. A transform that returns `unknown`
+ * never matches, so a transform with a schema must return a typed result.
+ */
+type TransformSchemaMatches<R, S extends GenericSchema> = [
+  PresentFields<TransformItem<R>>,
+] extends [PresentFields<InferOutput<S>>]
+  ? unknown
+  : {
+      "~outputMismatch": Simplify<
+        MismatchedFields<
+          PresentFields<TransformItem<R>>,
+          PresentFields<InferOutput<S>>
+        >
+      >;
+    };
 
 /** Fields shared by both forms of {@link OutputConfig}. */
 type OutputConfigBase<T> = {
@@ -155,16 +217,18 @@ type OutputConfigBase<T> = {
  * Without `jsonTransform`, the data (each item for array data) must satisfy
  * `schema`, so a documented field the command doesn't produce is a compile
  * error. With `jsonTransform`, `schema` describes the transform's **item**
- * (what `--fields` operates on), which the types can't see, so it isn't
- * checked.
+ * (what `--fields` operates on), and every field it documents must exist on
+ * that item with a matching type (see {@link TransformItem}).
  *
  * @typeParam T - Type of data the command yields (used by `human` formatter
  *   and serialized as-is to JSON)
  * @typeParam S - Type of `schema`, inferred by the command builders
+ * @typeParam R - Type `jsonTransform` returns, inferred by the builders
  */
 export type OutputConfig<
   T,
   S extends GenericSchema = GenericSchema,
+  R = unknown,
 > = OutputConfigBase<T> &
   (
     | { jsonTransform?: undefined; schema?: S & SchemaMatches<T, S> }
@@ -182,8 +246,8 @@ export type OutputConfig<
          *
          * When `jsonTransform` is set, `jsonExclude` is ignored.
          */
-        jsonTransform: (data: T, fields?: string[]) => unknown;
-        schema?: GenericSchema;
+        jsonTransform: (data: T, fields?: string[]) => R;
+        schema?: S & TransformSchemaMatches<R, S>;
       }
   );
 

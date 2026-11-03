@@ -165,6 +165,7 @@ type LocalCommandBuilderArguments<
   CONTEXT extends CommandContext,
   OUTPUT,
   SCHEMA extends GenericSchema,
+  TRANSFORMED,
 > = {
   readonly parameters?: Record<string, unknown>;
   readonly docs: CommandDocumentation;
@@ -188,7 +189,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  readonly output?: OutputConfig<OUTPUT, SCHEMA>;
+  readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
   /**
    * Whether the command requires authentication. Defaults to `true`.
    *
@@ -577,13 +578,15 @@ export function buildCommand<
   const CONTEXT extends CommandContext = CommandContext,
   OUTPUT = never,
   SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
   builderArgs: LocalCommandBuilderArguments<
     FLAGS,
     ARGS,
     CONTEXT,
     OUTPUT,
-    SCHEMA
+    SCHEMA,
+    TRANSFORMED
   >,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;

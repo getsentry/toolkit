@@ -316,12 +316,13 @@ export function buildDeleteCommand<
   const CONTEXT extends CommandContext = CommandContext,
   OUTPUT = never,
   SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
     readonly docs: CommandDocumentation;
     readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
-    readonly output?: OutputConfig<OUTPUT, SCHEMA>;
+    readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
     readonly auth?: boolean;
     readonly exposure: CommandExposure;
   },
@@ -389,7 +390,7 @@ export function buildDeleteCommand<
     return originalFunc.call(this, flags, ...(args as unknown as ARGS));
   } as typeof originalFunc;
 
-  return buildCommand({
+  return buildCommand<FLAGS, ARGS, CONTEXT, OUTPUT, SCHEMA, TRANSFORMED>({
     ...builderArgs,
     parameters: mergedParams,
     func: wrappedFunc,

@@ -25,6 +25,7 @@ import {
   LIST_CURSOR_FLAG,
   paginationHint,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import {
@@ -91,13 +92,13 @@ function formatRevisionsHuman(result: RevisionsResult): string {
 function jsonTransformRevisions(
   result: RevisionsResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<DashboardRevision> {
   const items =
     fields && fields.length > 0
       ? result.revisions.map((r) => filterFields(r, fields))
       : result.revisions;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<DashboardRevision> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,

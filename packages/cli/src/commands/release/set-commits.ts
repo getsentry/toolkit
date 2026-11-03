@@ -30,6 +30,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   getCommitLog,
   getRepositoryName,
+  isInsideGitWorkTree,
   isShallowRepository,
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
@@ -62,6 +63,17 @@ function setCommitsFromLocal(
   options: { depth?: number; paths?: string[]; from?: string },
 ): Promise<SentryRelease> {
   const { depth, paths, from } = options;
+  if (!isInsideGitWorkTree(cwd)) {
+    throw validationError(
+      `Cannot read local commits: ${cwd} is not a git checkout.`,
+      [
+        `sentry release set-commits ${org}/${version} --commit owner/repo@<commit-sha>`,
+        `sentry release set-commits ${org}/${version} --auto`,
+      ],
+      "local",
+      "--local reads git history, so it needs the .git directory. Builds that exclude it (Docker, Vercel) can pass the commit with --commit.",
+    );
+  }
   const shallow = isShallowRepository(cwd);
   if (shallow) {
     log.warn(
@@ -195,8 +207,13 @@ async function setCommitsDefault(
       return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     if (error instanceof ValidationError && error.field === "repository") {
+      // Without a git checkout there is no local history to fall back to,
+      // and the auto-discovery error says how to recover.
+      if (!isInsideGitWorkTree(cwd)) {
+        throw error;
+      }
       log.warn(
-        `Auto-discovery failed: ${error.message}. ` +
+        `Auto-discovery failed: ${error.message}\n\n` +
           "Falling back to local git history.",
       );
       return await setCommitsFromLocal(org, version, cwd, { depth });

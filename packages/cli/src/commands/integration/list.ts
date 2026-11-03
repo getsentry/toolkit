@@ -40,7 +40,8 @@ const INTEGRATION_COLUMNS: Column<IntegrationWithOrg>[] = [
 /** Shared config that plugs into the org-list framework. */
 const integrationListConfig: OrgListConfig<
   SentryIntegration,
-  IntegrationWithOrg
+  IntegrationWithOrg,
+  typeof SentryIntegrationSchema
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "integrations",

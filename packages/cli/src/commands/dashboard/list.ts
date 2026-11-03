@@ -30,6 +30,7 @@ import {
   buildListLimitFlag,
   paginationHint,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   buildDashboardsListUrl,
@@ -186,13 +187,13 @@ function formatDashboardListHuman(result: DashboardListResult): string {
 function jsonTransformDashboardList(
   result: DashboardListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<DashboardListItem> {
   const items =
     fields && fields.length > 0
       ? result.dashboards.map((d) => filterFields(d, fields))
       : result.dashboards;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<DashboardListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,

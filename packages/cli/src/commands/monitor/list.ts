@@ -59,7 +59,11 @@ const MONITOR_COLUMNS: Column<MonitorWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
+const monitorListConfig: OrgListConfig<
+  SentryMonitor,
+  MonitorWithOrg,
+  typeof SentryMonitorSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "monitors",
   commandPrefix: "sentry monitor list",
