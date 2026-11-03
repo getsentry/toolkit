@@ -325,6 +325,20 @@ export function buildSeerSettingsUrl(orgSlug: string): string {
 }
 
 /**
+ * Build URL to the organization's repository settings page, where
+ * repositories from source code integrations are added.
+ *
+ * @param orgSlug - Organization slug
+ * @returns Full URL to the repository settings page
+ */
+export function buildRepositorySettingsUrl(orgSlug: string): string {
+  if (isSaaS()) {
+    return `${getOrgBaseUrl(orgSlug)}/settings/repos/`;
+  }
+  return `${getSentryBaseUrl()}/settings/${orgSlug}/repos/`;
+}
+
+/**
  * Build URL to billing page with optional product filter.
  *
  * @param orgSlug - Organization slug

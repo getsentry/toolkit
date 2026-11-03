@@ -16,8 +16,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // Controllable git-helper mocks. `setCommitsAuto` calls these at runtime to
 // build the `refs` array sent to Sentry.
-const { mockGetRepositoryName } = vi.hoisted(() => ({
+const { mockGetRepositoryName, mockIsInsideGitWorkTree } = vi.hoisted(() => ({
   mockGetRepositoryName: vi.fn((): string | null => "getsentry/cli"),
+  mockIsInsideGitWorkTree: vi.fn(() => true),
 }));
 
 vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
@@ -32,7 +33,7 @@ vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
   ).parseRemoteUrl,
   getRepositoryName: mockGetRepositoryName,
   getHeadCommit: () => "abc123def456789012345678901234567890abcd",
-  isInsideGitWorkTree: () => true,
+  isInsideGitWorkTree: mockIsInsideGitWorkTree,
   isShallowRepository: () => false,
   getCommitLog: () => [],
   getUncommittedFiles: () => [],
@@ -287,6 +288,7 @@ describe("setCommitsAuto", () => {
     // can override via mockGetRepositoryName.mockReturnValueOnce(null) or
     // mockReturnValue("...").
     mockGetRepositoryName.mockReturnValue("getsentry/cli");
+    mockIsInsideGitWorkTree.mockReturnValue(true);
   });
 
   test("lists repos, discovers HEAD, fetches previous commit, and sends refs", async () => {
@@ -570,6 +572,7 @@ describe("setCommitsAuto", () => {
 
   test("throws an actionable ValidationError when no git remote is configured", async () => {
     mockGetRepositoryName.mockReturnValue(null);
+    mockIsInsideGitWorkTree.mockReturnValueOnce(false);
 
     // A missing 'origin' remote (e.g. a fresh `git init`) is an expected
     // precondition, not a crash. It must surface as a CliError (exit 21,
@@ -586,9 +589,30 @@ describe("setCommitsAuto", () => {
       exitCode: 21,
     });
     expect((error as Error).message).toMatch(
-      /Could not determine the repository from the local git remote or CI variables/,
+      /no 'origin' git remote and no CI repository variables/,
     );
-    expect((error as Error).message).toMatch(/--local/);
+    const message = (error as Error).message;
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --commit owner/repo@<commit-sha>",
+    );
+    // Without .git, adding a remote or reading local history cannot help.
+    expect(message).not.toMatch(/--local|git remote add/);
+    expect(message).toMatch(/Docker builds often exclude .git/);
+  });
+
+  test("suggests adding a remote in a git checkout without one", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+
+    const error = await withEnv({}, () =>
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).catch((caught: unknown) => caught);
+
+    const message = (error as Error).message;
+    expect(message).toContain("git remote add origin <url>");
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --local",
+    );
+    expect(message).not.toMatch(/Docker/);
   });
 
   test("skips Vercel preview builds and says why", async () => {
@@ -724,6 +748,47 @@ describe("setCommitsAuto", () => {
     },
   );
 
+  test("suggests similar repositories and the settings page when nothing matches", async () => {
+    const renamed = {
+      ...SAMPLE_REPO,
+      name: "getsentry/cli-legacy",
+      url: "https://github.com/getsentry/cli-legacy",
+    };
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input!, init).url);
+      if (!url.pathname.endsWith("/repos/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const repos = url.searchParams.get("query") === "cli" ? [renamed] : [];
+      return new Response(JSON.stringify(repos), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "repository",
+    });
+    const message = (error as Error).message;
+    expect(message).toMatch(
+      /No Sentry repository matching 'getsentry\/cli' \(from the 'origin' git remote\)/,
+    );
+    expect(message).toMatch(
+      /similarly named repositories: getsentry\/cli-legacy/,
+    );
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --commit 'getsentry/cli-legacy@abc123def456789012345678901234567890abcd'",
+    );
+    expect(message).toMatch(/settings\/repos\//);
+  });
   // Sentry names Azure DevOps repositories by the bare repository name; the
   // Azure Pipelines URL has `org/project/_git/repo`.
   test("matches an Azure Repos repository from Azure Pipelines by its URL path", async () => {
