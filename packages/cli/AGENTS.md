@@ -113,6 +113,34 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
+- **`src/app-for-args.ts`** — picks the application for a run. When the first
+  argument names a top-level route, it loads only that route through
+  `src/generated/route-loaders.ts`, which `script/generate-route-loaders.ts`
+  writes from the route map and imports in `app.ts` (`generate:routes`, part of
+  `generate:docs`). Anything else, and `help`, `schema`, and `cli`, which read
+  the whole tree with `getRoutes()`, loads `app.ts`. Add commands to `app.ts`
+  only; a new top-level command that reads the whole tree goes in
+  `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
+- **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
+  and the standalone binary. `script/lib/split-bundle.ts` builds the CLI
+  (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
+  every lazy `_require()` (telemetry, syntax highlighting, the field-list
+  parser) starts a chunk, so a command loads only its own code. The
+  completion engine (`src/complete-bin.ts`) is one file of its own. The main
+  script runs one of them through `src/lib/chunk-loader.ts`, which reads the
+  chunks from files next to it (npm) or from SEA assets (binary) and keeps a V8
+  code cache for each under `<config dir>/cache/code/`. It must import only
+  `node:` builtins and pure helpers (`test/script/cli-startup.test.ts` lists
+  its modules). `script/lib/chunk-build.ts` holds the build steps both
+  packages share: debug IDs, sourcemap upload, and the main script.
+- **`src/index.ts`** — the library (`createSentrySDK`). It imports no command
+  and no CLI runner: each SDK call loads only the top-level routes it runs
+  (`src/sdk-app.ts`, the SDK's `app-for-args.ts`), from the same split chunks
+  in `dist/index.cjs` and `dist/index.mjs`.
+- **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
+  bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
+  only the CLI needs; the bundle script fails on commands, markdown rendering,
+  agent skills, completions, terminal images, and the SQLite WASM fallback.
 - **`src/commands/`** — one directory per command group (`agent-conversation`,
   `alert`, `auth`, `build`, `cli`, `code-mappings`, `dart-symbol-map`,
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
@@ -156,7 +184,7 @@ export const myCommand = buildCommand({
   },
   output: {
     human: formatMyData,                // (data: T) => string
-    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => unknown
+    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => typed JSON
     jsonExclude: ["humanOnlyField"],    // optional: strip keys from JSON
   },
   parameters: {
@@ -176,6 +204,7 @@ export const myCommand = buildCommand({
 - Functions are `async *func()` generators — yield `new CommandOutput(data)`, return `{ hint }`.
 - `output.human` receives the same data object that gets serialized to JSON — no divergent-data paths.
 - The wrapper auto-injects `--json` and `--fields` flags. Do NOT add your own `json` flag.
+- A `jsonTransform` replaces the default `--fields` filtering, so it must apply its `fields` argument (`filterFieldsIfSet` from `lib/formatters/json.ts`, or per item for list envelopes). The `sentry-cli/json-transform-uses-fields` lint rule rejects one that never reads it ([#1808](https://github.com/getsentry/toolkit/issues/1808)). Drop a transform that only returns its input; the default path already filters.
 - Do NOT use `stdout.write()` or `if (flags.json)` branching — the wrapper handles it.
 
 ### Command File Structure
@@ -190,6 +219,34 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
 Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+
+### Declaring Command Output
+
+`output.schema` drives `--fields` completion, the JSON field table in `--help`, and the skill references. Nothing validates output against it, so declare each field once and derive the TypeScript type from the schema; the compiler then keeps the two in sync ([#1824](https://github.com/getsentry/toolkit/issues/1824)).
+
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
+- **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/types/output.ts`) when the fields sit on (or override) an API object.
+- Type the `human` formatter's parameter (and `jsonTransform`'s, when set) with the derived type. `buildCommand`, `buildListCommand`, and `buildDeleteCommand` infer the output type from `output` and check every `CommandOutput` that `func` yields against it. Annotate a yield (`new CommandOutput<Output>(…)`) only when it builds a discriminated-union literal (`kind: "endpoints"`) that would otherwise widen to `string`.
+- Without `jsonTransform`, the data (each item, for array data) must also satisfy `output.schema`: a field the schema documents but the command doesn't produce, or documents with another type, is a compile error. Keep the data typed: an API response typed `Record<string, unknown>` can't satisfy a schema built from `@sentry/api/valibot`, so type it with its `@sentry/api` response type.
+- With `jsonTransform`, the schema describes the transform's item: each item of a `{ data: [...] }` envelope or an array, otherwise the result itself. Every field the schema documents must exist on that item with a matching type; optionality isn't compared, since `--fields` makes items `Partial`. So the transform must return a typed result, not `unknown` or `Record<string, unknown>`: return `ListJson<Item>` from `jsonTransformListResult`, type a hand-built envelope as `ListEnvelope<Item>` (`lib/org-list.ts`), and let a single object's type come from its spread with `filterFieldsIfSet`. The error names the mismatched fields under `~outputMismatch`.
+- An `OrgListConfig` checks its entity against `schema` when you pass the schema's type: `OrgListConfig<SentryTeam, TeamWithOrg, typeof SentryTeamSchema>`. Don't annotate an output config as `OutputConfig<T>` or check it with `satisfies OutputConfig<T>`: that erases the schema's type, and the check passes without comparing anything.
+- Reuse the shared fields: `DryRunOutputField`, `orgListItemSchema`/`WithOrg` (`lib/org-list.ts`) for org-scoped lists, `opaque<T>()` for a field the docs leave opaque but the code types (a full event payload).
+- Data only the human formatter needs (pre-rendered lines, a resolved target) stays out of the schema; keep it outside the derived type or strip it with `jsonExclude`.
+
+```typescript
+const DeployOutputFields = object({
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+
+output: {
+  human: (deploy: DeployOutput) => …,
+  schema: looseObject({ ...SentryDeploySchema.entries, ...DeployOutputFields.entries }),
+},
+```
+
+Reference: `src/commands/release/deploy.ts`, `src/commands/alert/output-schemas.ts`, `ReplayViewOutputFields` in `src/types/replay.ts`.
 
 ### Route Maps (Stricli)
 
@@ -230,7 +287,10 @@ with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
 `app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
 import would pull every command into any bundle built from one of them.
 `app.ts` registers its map with `setRoutes()`; a test that needs the real tree
-imports `src/app.js`. `test/lib/route-registry.test.ts` fails when a module in
+imports `src/app.js`. A run whose first argument names a top-level route
+registers a map with only that route (see `src/app-for-args.ts`), so code that
+needs routes other than the running one's must run under a `FULL_TREE_ROUTES`
+command. `test/lib/route-registry.test.ts` fails when a module in
 `src/lib/` reaches `app.ts`; the only exception is `sdk-invoke.ts`, the
 library-mode runner that executes the whole application.
 
@@ -484,9 +544,11 @@ search grammar) import it when called, so the fast path only loads it for
 the arguments that need it.
 
 The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
-and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
-for `__complete` first and call `runCompletion` without loading `cli.ts`;
-the npm package ships it as the separate `dist/complete.cjs` bundle. That
+and what that module imports. `src/bin.ts` and the main script of both
+packages (`src/chunk-main.ts`) check for `__complete` first and run
+`runCompletion` without loading `cli.ts`: both ship it as a separate bundle
+(`src/complete-bin.ts`, `complete.cjs`) that shares no chunk with the CLI, so a
+TAB press never loads a CLI chunk. That
 graph must stay free of `@sentry/node`, telemetry, the API client, and the
 command tree: the database modules get spans and cache metrics through
 `withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
@@ -527,7 +589,7 @@ Reference: `project/create.ts`, `release/set-commits.ts` (`--path`), `auth/login
 
 All non-trivial human output must use the markdown rendering pipeline:
 
-- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `escapeMarkdownCell()`, `renderMarkdown()`
+- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `renderMarkdown()`, and `text()`, `tableCell()`, `inlineCode()` from `@sentry/toolkit-core/markdown`
 - **NEVER** use raw `muted()` / chalk in output strings — use `colorTag("muted", text)` inside markdown
 - Tree-structured output (box-drawing characters) that can't go through `renderMarkdown()` should use the `plainSafeMuted` pattern: `isPlainOutput() ? text : muted(text)`
 - `isPlainOutput()` precedence: `SENTRY_PLAIN_OUTPUT` > `NO_COLOR` > `FORCE_COLOR` (TTY only) > `!isTTY`

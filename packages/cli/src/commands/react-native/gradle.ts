@@ -241,7 +241,7 @@ export const gradleCommand = buildCommand({
       uploads = 1;
     }
 
-    yield new CommandOutput<GradleResult>({
+    yield new CommandOutput({
       bundle: bundlePath,
       sourcemap: sourcemapPath,
       debugId,

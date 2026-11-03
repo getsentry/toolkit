@@ -72,12 +72,14 @@ import addIssueNote from "./add-issue-note";
 import onboardingStatusUpdate from "./onboarding-status-update";
 import searchAttributes from "./search-attributes";
 import submitFeedbackToSentryTeam from "./submit-feedback-to-sentry-team";
+import { withFreshReadInput } from "../../internal/fresh-reads";
 import type { ToolConfig } from "../types";
 
 const legacyGetAIConversationDetails = {
   ...getAgentConversationDetails,
   name: "get_ai_conversation_details",
   includeInSkillDefinitions: false,
+  deprecated: { replacedBy: ["get_agent_conversation_details"] },
   description: [
     "Deprecated alias for get_agent_conversation_details.",
     "",
@@ -89,12 +91,33 @@ const legacySearchAIConversations = {
   ...searchAgentConversations,
   name: "search_ai_conversations",
   includeInSkillDefinitions: false,
+  deprecated: { replacedBy: ["search_agent_conversations"] },
   description: [
     "Deprecated alias for search_agent_conversations.",
     "",
     "Use search_agent_conversations for new integrations. This alias is kept for backward compatibility.",
   ].join("\n"),
 } satisfies ToolConfig<any>;
+
+// The docs tools read docs.sentry.io, not the Sentry API, so they have no
+// cached reads to bypass.
+const DOCS_TOOL_NAMES = new Set(["search_docs", "get_doc"]);
+
+/** Give every read tool that calls the Sentry API the shared `fresh` input. */
+function withFreshReadInputs<T extends Record<string, ToolConfig<any>>>(
+  tools: T,
+): T {
+  return Object.fromEntries(
+    Object.entries(tools).map(([key, tool]) => [
+      key,
+      tool.annotations.readOnlyHint &&
+      tool.annotations.openWorldHint &&
+      !DOCS_TOOL_NAMES.has(tool.name)
+        ? withFreshReadInput(tool)
+        : tool,
+    ]),
+  ) as T;
+}
 
 /**
  * Catalog of ordinary Sentry MCP operations.
@@ -105,7 +128,7 @@ const legacySearchAIConversations = {
  * Wrapper tools such as search_sentry_tools and execute_sentry_tool intentionally
  * live outside this catalog.
  */
-const catalogTools = {
+const catalogTools = withFreshReadInputs({
   whoami,
   find_organizations: findOrganizations,
   find_teams: findTeams,
@@ -182,7 +205,7 @@ const catalogTools = {
   add_issue_note: addIssueNote,
   onboarding_status_update: onboardingStatusUpdate,
   submit_feedback_to_sentry_team: submitFeedbackToSentryTeam,
-} as const satisfies Record<string, ToolConfig<any>>;
+} as const satisfies Record<string, ToolConfig<any>>);
 
 export default catalogTools;
 export type CatalogToolName = keyof typeof catalogTools;

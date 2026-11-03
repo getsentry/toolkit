@@ -18,10 +18,15 @@
 
 import { isatty } from "node:tty";
 import type { Command, CommandContext } from "@stricli/core";
+import type { GenericSchema } from "valibot";
 import type { ParsedOrgProject } from "./arg-parsing.js";
-import { buildCommand, type CommandDocumentation } from "./command.js";
+import {
+  buildCommand,
+  type CommandDocumentation,
+  type SentryCommandFunction,
+} from "./command.js";
 import { CliError, ContextError } from "./errors.js";
-import type { CommandReturn } from "./formatters/output.js";
+import type { OutputConfig } from "./formatters/output.js";
 import { prompt } from "./prompt.js";
 
 // ---------------------------------------------------------------------------
@@ -243,25 +248,6 @@ export function requireExplicitTarget(
 /** Base flags type (mirrors command.ts) */
 type BaseFlags = Readonly<Partial<Record<string, unknown>>>;
 
-/** Base args type (mirrors command.ts) */
-type BaseArgs = readonly unknown[];
-
-/**
- * Command function type that returns an async generator.
- *
- * Mirrors `SentryCommandFunction` from `command.ts`.
- */
-type DeleteCommandFunction<
-  FLAGS extends BaseFlags,
-  ARGS extends BaseArgs,
-  CONTEXT extends CommandContext,
-> = (
-  this: CONTEXT,
-  flags: FLAGS,
-  ...args: ARGS
-  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
-) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
-
 /**
  * Options for controlling which flags {@link buildDeleteCommand} auto-injects.
  *
@@ -327,13 +313,15 @@ export function buildDeleteCommand<
   const FLAGS extends BaseFlags = NonNullable<unknown>,
   const ARGS extends readonly unknown[] = [],
   const CONTEXT extends CommandContext = CommandContext,
+  OUTPUT = never,
+  SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
     readonly docs: CommandDocumentation;
-    readonly func: DeleteCommandFunction<FLAGS, ARGS, CONTEXT>;
-    // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
-    readonly output?: import("./formatters/output.js").OutputConfig<any>;
+    readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
+    readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
     readonly auth?: boolean;
   },
   options?: DeleteCommandOptions,
@@ -400,7 +388,7 @@ export function buildDeleteCommand<
     return originalFunc.call(this, flags, ...(args as unknown as ARGS));
   } as typeof originalFunc;
 
-  return buildCommand({
+  return buildCommand<FLAGS, ARGS, CONTEXT, OUTPUT, SCHEMA, TRANSFORMED>({
     ...builderArgs,
     parameters: mergedParams,
     func: wrappedFunc,

@@ -203,6 +203,21 @@ export function filterFields<T>(data: T, fields: string[]): Partial<T> {
 }
 
 /**
+ * Apply `--fields` the way the default JSON output does: filter when fields
+ * were given, return the data unchanged otherwise.
+ *
+ * A command's `jsonTransform` replaces that default, so it must call this
+ * (or {@link filterFields}) on what it returns. The
+ * `sentry-cli/json-transform-uses-fields` lint rule enforces it.
+ */
+export function filterFieldsIfSet<T>(
+  data: T,
+  fields: string[] | undefined,
+): T | Partial<T> {
+  return fields?.length ? filterFields(data, fields) : data;
+}
+
+/**
  * Parse a comma-separated fields string into a trimmed, deduplicated array.
  *
  * Handles whitespace around commas and filters out empty segments:

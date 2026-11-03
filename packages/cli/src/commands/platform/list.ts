@@ -69,7 +69,7 @@ export const listCommand = buildCommand({
   // Stricli requires AsyncGenerator but this is synchronous (in-memory data)
   async *func(this: SentryContext, flags: PlatformsFlags) {
     if (!flags.search) {
-      return yield new CommandOutput<readonly string[]>(VALID_PLATFORMS);
+      return yield new CommandOutput(VALID_PLATFORMS);
     }
 
     const term = flags.search.toLowerCase();
@@ -82,6 +82,6 @@ export const listCommand = buildCommand({
       throw new OutputError([] satisfies readonly string[]);
     }
 
-    return yield new CommandOutput<readonly string[]>(matches);
+    return yield new CommandOutput(matches);
   },
 });

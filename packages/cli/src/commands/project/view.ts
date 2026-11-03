@@ -5,6 +5,14 @@
  * Supports monorepos with multiple detected projects.
  */
 
+import {
+  description,
+  looseObject,
+  nullable,
+  object,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
@@ -39,7 +47,11 @@ import {
   orgProjectTarget,
   type TargetContext,
 } from "../../lib/target-positional.js";
-import type { SentryProject } from "../../types/index.js";
+import {
+  type SentryProject,
+  SentryProjectSchema,
+  type WithOutputFields,
+} from "../../types/index.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -85,14 +97,20 @@ async function handleWebView(resolvedTargets: ResolvedTarget[]): Promise<void> {
   );
 }
 
+/** The field the command adds to each project in its JSON output. */
+const ProjectViewOutputFields = object({
+  dsn: pipe(nullable(string()), description("Primary DSN")),
+});
+
 /**
  * A project entry enriched with its DSN and optional detection source.
  * This is the data shape returned by the command for both JSON and human output.
  */
-type ProjectViewEntry = SentryProject & {
-  /** Primary DSN for the project, or null if unavailable */
-  dsn: string | null;
-  /** Where the project was auto-detected from (e.g. ".env", "source code") */
+type ProjectViewEntry = WithOutputFields<
+  SentryProject,
+  typeof ProjectViewOutputFields
+> & {
+  /** Where the project was auto-detected from (human output only) */
   detectedFrom?: string;
 };
 
@@ -222,7 +240,7 @@ function hydrateOrganizationName(entry: ProjectViewEntry): ProjectViewEntry {
 function jsonTransformProjectView(
   entries: ProjectViewEntry[],
   fields?: string[],
-): unknown {
+) {
   const hydrated = entries.map((entry) => {
     const { detectedFrom: _detectedFrom, ...rest } =
       hydrateOrganizationName(entry);
@@ -357,6 +375,10 @@ export const viewCommand = buildCommand({
   output: {
     human: formatProjectViewHuman,
     jsonTransform: jsonTransformProjectView,
+    schema: looseObject({
+      ...SentryProjectSchema.entries,
+      ...ProjectViewOutputFields.entries,
+    }),
   },
   parameters: {
     positional: {

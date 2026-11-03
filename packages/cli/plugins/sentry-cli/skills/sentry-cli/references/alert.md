@@ -85,7 +85,7 @@ Create an issue alert rule
 
 **Flags:**
 - `--name <value> - Rule name`
-- `-c, --condition <value>... - Condition object JSON (repeatable, or pass one JSON array)`
+- `-c, --condition <value>... - Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)`
 - `-a, --action <value>... - Action object JSON (repeatable, or pass one JSON array)`
 - `--frequency <value> - Frequency in minutes - (default: 30)`
 - `--environment <value> - Environment filter`
@@ -93,6 +93,18 @@ Create an issue alert rule
 - `-m, --filter-match <value> - Filter match mode: all or any`
 - `--owner <value> - Owner (team:user style value accepted by Sentry API)`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+| `project` | string | Project slug |
 
 **Examples:**
 
@@ -102,6 +114,12 @@ sentry alert issues create my-org/my-project --name 'New Issues' --condition '{"
 
 # Preview a high-priority alert that emails a user at most every 30 minutes
 sentry alert issues create my-org/my-project --name 'High Priority' --condition '{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}' --frequency 30 --dry-run
+
+# Alert on new issues and regressions, using trigger names
+sentry alert issues create my-org/my-project --name 'New or Regressed' --condition first-seen,regression --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
+
+# Alert when an issue sees more than 50 events in a day (filters only, checked on every event)
+sentry alert issues create my-org/my-project --name 'Busy Issues' --filter '{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}' --frequency 1440
 ```
 
 ### `sentry alert issues delete <org/project/rule-id-or-name>`
@@ -120,6 +138,17 @@ Delete an issue alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `project` | string | Project slug |
 
 **Examples:**
 
@@ -147,13 +176,35 @@ Edit an issue alert rule
 **Flags:**
 - `--name <value> - New rule name`
 - `--status <value> - Rule status: active or disabled`
-- `-c, --condition <value>... - Condition object JSON (repeatable, or pass one JSON array)`
+- `-c, --condition <value>... - Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)`
 - `-a, --action <value>... - Action object JSON (repeatable, or pass one JSON array)`
 - `--frequency <value> - Frequency in minutes`
 - `--environment <value> - Environment value (pass empty string to clear)`
 - `--filter <value>... - Filter object JSON (repeatable, or pass one JSON array)`
 - `-m, --filter-match <value> - Filter match mode: all or any`
 - `--owner <value> - Owner value (pass empty string to clear)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `organizationId` | string |  |
+| `createdBy` | string \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `triggers` | object \| null |  |
+| `actionFilters` | array \| null |  |
+| `environment` | string \| null |  |
+| `config` | object |  |
+| `detectorIds` | array \| null |  |
+| `enabled` | boolean |  |
+| `lastTriggered` | string \| null |  |
+| `owner` | string \| null |  |
+| `org` | string | Organization slug |
+| `project` | string | Project slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 
@@ -253,6 +304,17 @@ Create a metric alert rule
 - `--workflow <value>... - Alert (workflow) id to notify (repeatable or comma-separated)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -279,6 +341,16 @@ Delete a metric alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
 
 **Examples:**
 
@@ -312,6 +384,28 @@ Edit a metric alert rule
 - `--environment <value> - Environment value (pass empty string to clear)`
 - `--owner <value> - Owner value (pass empty string to clear)`
 - `--workflow <value>... - Replace connected alert (workflow) ids (repeatable or comma-separated; empty string disconnects all)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `owner` | object \| null |  |
+| `createdBy` | string \| null |  |
+| `latestGroup` | object \| null |  |
+| `description` | string \| null |  |
+| `id` | string | Alert rule ID |
+| `projectId` | string \| null |  |
+| `name` | string | Alert rule name |
+| `type` | string |  |
+| `workflowIds` | array \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `dataSources` | array \| null |  |
+| `conditionGroup` | object \| null |  |
+| `config` | object |  |
+| `enabled` | boolean |  |
+| `org` | string | Organization slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 

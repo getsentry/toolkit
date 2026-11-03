@@ -51,7 +51,7 @@ catalog:
   "@modelcontextprotocol/server": 2.4.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
-  "@sentry/api": 0.428.0
+  "@sentry/api": 0.437.0
   "@sentry/cloudflare": 11.6.0
   "@sentry/core": 11.6.0
   "@sentry/node": 11.6.0
@@ -77,6 +77,10 @@ catalog:
   hono: ^4.13.11
   lint-staged: ^15.5.2
   lucide-react: ^0.503.0
+  marked: ^15.0.12
+  mdast-util-from-markdown: ^2.0.2
+  mdast-util-gfm: ^3.1.0
+  micromark-extension-gfm: ^3.0.0
   # Keep Dynamic Worker tests on the same Miniflare/workerd runtime as Wrangler.
   miniflare: 5.20261019.1-beta
   msw: ^2.10.2
@@ -163,6 +167,7 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.87.0"
   - oxfmt@0.72.0
   - oxlint@1.87.0
-  - "@sentry/api@0.428.0"
+  - "@sentry/api@0.437.0"
   - miniflare@5.20261019.1-beta
   - wrangler@4.151.3
+  - "@sentry/symbolic@14.0.0-alpha.5"

@@ -17,6 +17,8 @@ import {
   listOrganizationDetectors,
   updateOrganizationDetector,
   updateOrganizationWorkflow,
+  type UpdateOrganizationDetectorResponse,
+  type UpdateOrganizationWorkflowResponse,
 } from "@sentry/api";
 import {
   METRIC_MONITOR_PRIORITY,
@@ -529,7 +531,7 @@ export async function updateIssueAlertRule(
   orgSlug: string,
   workflowId: string,
   body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+): Promise<UpdateOrganizationWorkflowResponse> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationWorkflow({
     ...config,
@@ -543,7 +545,7 @@ export async function updateIssueAlertRule(
       typeof updateOrganizationWorkflow
     >[0]["body"],
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<UpdateOrganizationWorkflowResponse>(
     result,
     "Failed to update issue alert rule",
   );
@@ -825,7 +827,7 @@ export async function putMetricAlertRule(
   orgSlug: string,
   ruleId: string,
   body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+): Promise<UpdateOrganizationDetectorResponse> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationDetector({
     ...config,
@@ -843,7 +845,7 @@ export async function putMetricAlertRule(
       typeof updateOrganizationDetector
     >[0]["body"],
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<UpdateOrganizationDetectorResponse>(
     result,
     `Failed to update metric alert rule '${ruleId}'`,
   );

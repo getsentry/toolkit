@@ -370,7 +370,7 @@ built entirely from the file contents.
           dsnComponents,
         );
         await sendEnvelopeRequest(dsn, body);
-        yield new CommandOutput<SendEventResult>({ eventId, file });
+        yield new CommandOutput({ eventId, file });
       }
     } else {
       if (flags.raw) {
@@ -397,7 +397,7 @@ built entirely from the file contents.
         );
       }
       await sendEnvelopeRequest(dsn, body);
-      yield new CommandOutput<SendEventResult>({
+      yield new CommandOutput({
         eventId: event.event_id ?? "",
       });
     }

@@ -37,6 +37,7 @@ List installed integrations
 | `status` | string | Integration status |
 | `organizationIntegrationStatus` | string | Status of the install in this organization |
 | `externalId` | string | Provider-side installation ID |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 

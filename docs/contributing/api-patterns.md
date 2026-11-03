@@ -43,9 +43,28 @@ const api = new SentryApiService({
 });
 ```
 
-See `packages/mcp-server/src/api-utils.ts` and
+See `packages/mcp-core/src/api-utils.ts` and
 [adding-tools.md](adding-tools.md#step-2-implement-the-handler) for usage in
 tools.
+
+### Where Endpoint Code Lives
+
+Endpoint wrappers live in the shared client,
+`packages/toolkit-core/src/api-client/endpoints/<domain>.ts`, so the CLI and
+the MCP can call the same one. A wrapper takes an `ApiTarget` (the request
+core and the region origin), its parameters, and a response schema from the
+host, and returns what the schema parses:
+
+- A read with a `@sentry/api` operation builds its path and query through the
+  operation, on `core.sdkClient`. Lists page through `listPage`.
+- Anything else, including writes and routes `@sentry/api` lacks, builds its
+  path with `apiPath` and sends with `core.request` or `core.requestJson`.
+
+`SentryApiService` methods pass `this.target(opts?.host)` and their Zod schema
+to the wrapper. Shaping only the MCP needs, such as unwrapping a `{ data }`
+envelope or picking one entry of a keyed result, stays in the method.
+The host builds the core from its own transport (credentials, timeouts,
+retries), request headers, and logger, so wrappers never import host code.
 
 ### Common Operations
 
@@ -285,6 +304,11 @@ them here:
   [`retry.ts`](../../packages/toolkit-core/src/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
+- Which writes count as idempotent: the ones the installed `@sentry/api`
+  catalog marks `idempotent`, from Sentry's `x-sentry-idempotent` extension.
+  The matcher is in
+  [`idempotent-operations.ts`](../../packages/toolkit-core/src/api-client/idempotent-operations.ts);
+  bumping `@sentry/api` is enough to pick up newly marked writes.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
   [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
 
@@ -299,7 +323,8 @@ Retries are:
 - **Abortable** — aborting the request's `signal` ends the wait.
 - **Network failures retry for idempotent requests** — when `fetch` itself
   fails (DNS, connection refused or reset, socket timeout), only GET, HEAD,
-  and OPTIONS retry, since a write may already have reached Sentry.
+  OPTIONS, and writes Sentry marks idempotent retry, since any other write
+  may already have reached Sentry.
 - **Fail-fast otherwise** — configuration errors (such as a malformed token)
   are not retried.
   A rate-limited tool call returns a **Rate Limited** message with the retry
@@ -327,7 +352,7 @@ applies its own per-request timeout, which counts as a network failure.
 
 ## References
 
-- API Client: `packages/mcp-server/src/api-client/`
+- API Client: `packages/mcp-core/src/api-client/`
 - Mock handlers: `packages/mcp-server-mocks/src/handlers/`
 - Fixtures: `packages/mcp-server-mocks/src/fixtures/`
-- API Utils: `packages/mcp-server/src/api-utils.ts`
+- API Utils: `packages/mcp-core/src/api-utils.ts`

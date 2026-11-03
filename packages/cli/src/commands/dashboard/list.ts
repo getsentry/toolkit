@@ -5,6 +5,7 @@
  * and optional client-side glob filtering by title.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import picomatch from "picomatch";
 import type { SentryContext } from "../../context.js";
 import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
@@ -20,7 +21,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { filterFields } from "../../lib/formatters/json.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { fuzzyMatch } from "../../lib/fuzzy.js";
@@ -29,12 +30,16 @@ import {
   buildListLimitFlag,
   paginationHint,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   buildDashboardsListUrl,
   buildDashboardUrl,
 } from "../../lib/sentry-web-urls.js";
-import type { DashboardListItem } from "../../types/dashboard.js";
+import {
+  type DashboardListItem,
+  DashboardListItemSchema,
+} from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
   type DashboardListArguments,
@@ -153,7 +158,7 @@ function formatDashboardListHuman(result: DashboardListResult): string {
     const url = buildDashboardUrl(result.orgSlug, d.id);
     return {
       id: d.id,
-      title: `${escapeMarkdownCell(d.title ?? "(untitled)")}\n${colorTag("muted", url)}`,
+      title: `${tableCell(d.title ?? "(untitled)")}\n${colorTag("muted", url)}`,
       widgets: String(d.widgetDisplay?.length ?? 0),
     };
   });
@@ -182,13 +187,13 @@ function formatDashboardListHuman(result: DashboardListResult): string {
 function jsonTransformDashboardList(
   result: DashboardListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<DashboardListItem> {
   const items =
     fields && fields.length > 0
       ? result.dashboards.map((d) => filterFields(d, fields))
       : result.dashboards;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<DashboardListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
@@ -414,6 +419,7 @@ export const listCommand = buildListCommand("dashboard", {
   output: {
     human: formatDashboardListHuman,
     jsonTransform: jsonTransformDashboardList,
+    schema: DashboardListItemSchema,
   },
   parameters: {
     positional: dashboardListArguments("sentry dashboard list <org>/"),

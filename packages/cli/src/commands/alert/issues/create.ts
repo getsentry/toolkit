@@ -12,6 +12,7 @@ import {
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
+  choiceListParser,
   choiceParser,
   parseEnvironment,
   parseOwner,
@@ -34,12 +35,20 @@ import {
 } from "../../../lib/target-positional.js";
 import {
   ISSUE_MATCH_MODES,
+  ISSUE_TRIGGER_NAMES,
   matchToLogicType,
+  parseIssueConditions,
   parseJsonObjectList,
   parseMatchMode,
   triggerLogicType,
-  validateIssueRuleArrays,
+  validateIssueActions,
+  validateIssueTriggers,
 } from "../mutation-utils.js";
+import {
+  type IssueAlertCreateBody,
+  type IssueAlertCreateOutput,
+  IssueAlertCreateOutputSchema,
+} from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues create <target> --name <name> --condition <json> --action <json>";
@@ -58,17 +67,7 @@ type CreateFlags = {
   readonly fields?: string[];
 };
 
-type CreateResult = {
-  org: string;
-  project: string;
-  id?: string;
-  name: string;
-  status?: string;
-  dryRun?: boolean;
-  body?: Record<string, unknown>;
-};
-
-function formatCreated(result: CreateResult): string {
+function formatCreated(result: IssueAlertCreateOutput): string {
   if (result.dryRun) {
     return `Would create issue alert rule '${result.name}' in ${result.org}/${result.project}.`;
   }
@@ -110,14 +109,16 @@ export const createCommand = buildCommand({
       "<org>/<project>, an auto-detected project, or a bare project search when " +
       "it resolves to exactly one project.\n\n" +
       "Required fields:\n" +
-      "  --name, --condition (>=1), --action (>=1)\n\n" +
+      "  --name, --action (>=1), and --condition (>=1) or --filter (>=1)\n\n" +
       "Optional fields:\n" +
       "  --frequency, --environment, --filter, --filter-match, --owner\n\n" +
       "Conditions and actions are workflow-native JSON (this targets the\n" +
       "org-scoped workflows endpoint):\n" +
-      "  --condition  a trigger data-condition: {type, comparison, conditionResult}\n" +
+      "  --condition  a trigger data-condition: {type, comparison, conditionResult},\n" +
+      `               or a trigger name: ${ISSUE_TRIGGER_NAMES.join(", ")}\n` +
       "  --action     an action: {type, data, config}\n" +
       "  --filter     an action-filter condition (same shape as --condition)\n\n" +
+      "Without --condition, the alert checks its --filter conditions on every event.\n\n" +
       "Match mode: --filter-match all|any controls how the action-filter\n" +
       "conditions combine. Issue-alert triggers always evaluate as 'any-short'\n" +
       "(they fire on a single error detector), so there is no trigger match flag.",
@@ -133,11 +134,22 @@ export const createCommand = buildCommand({
         command:
           'sentry alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
       },
+      {
+        description: "Alert on new issues and regressions, using trigger names",
+        command:
+          'sentry alert issues create my-org/my-project --name \'New or Regressed\' --condition first-seen,regression --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+      },
+      {
+        description:
+          "Alert when an issue sees more than 50 events in a day (filters only, checked on every event)",
+        command:
+          'sentry alert issues create my-org/my-project --name \'Busy Issues\' --filter \'{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\' --frequency 1440',
+      },
     ],
   },
   output: {
     human: formatCreated,
-    jsonTransform: (result: CreateResult) => result,
+    schema: IssueAlertCreateOutputSchema,
   },
   parameters: {
     positional: {
@@ -162,10 +174,11 @@ export const createCommand = buildCommand({
       },
       condition: {
         kind: "parsed",
-        parse: parseText,
+        parse: choiceListParser(ISSUE_TRIGGER_NAMES),
         variadic: true,
         optional: true,
-        brief: "Condition object JSON (repeatable, or pass one JSON array)",
+        brief:
+          "Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
@@ -231,11 +244,11 @@ export const createCommand = buildCommand({
       );
     }
 
-    const conditions = parseJsonObjectList(flags.condition, "condition");
+    const conditions = parseIssueConditions(flags.condition);
     const actions = parseJsonObjectList(flags.action, "action");
     const filters = parseJsonObjectList(flags.filter, "filter");
-    validateIssueRuleArrays(conditions, actions, "conditions");
-    validateIssueRuleArrays(conditions, actions, "actions");
+    validateIssueTriggers(conditions, filters);
+    validateIssueActions(actions);
 
     const { org, project } = await target.resolved;
 
@@ -245,13 +258,13 @@ export const createCommand = buildCommand({
     // Assemble the workflow-shaped body. The user supplies workflow-native
     // conditions/actions; the CLI only builds the envelope (triggers +
     // action_filters + logic types), mirroring the backend dual-write mapping.
-    const body: Record<string, unknown> = {
+    const body: IssueAlertCreateBody = {
       name: flags.name,
       detectorIds: [detectorId],
       config: { frequency: flags.frequency },
       triggers: {
         logicType: triggerLogicType(),
-        conditions,
+        conditions: conditions ?? [],
       },
       actionFilters: [
         {
@@ -275,7 +288,7 @@ export const createCommand = buildCommand({
         name: flags.name,
         dryRun: true,
         body,
-      } satisfies CreateResult);
+      } satisfies IssueAlertCreateOutput);
       return { hint: "Dry run - no issue alert rule was created." };
     }
 
@@ -288,6 +301,6 @@ export const createCommand = buildCommand({
       status: stringifyUnknown(
         created.status ?? (created.enabled === false ? "disabled" : "active"),
       ),
-    } satisfies CreateResult);
+    } satisfies IssueAlertCreateOutput);
   },
 });

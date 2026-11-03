@@ -1,3 +1,4 @@
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { isTopLevelToolName } from "../../tools/surfaces";
 import { formatInlineCode } from "../inline-code";
 import {
@@ -122,7 +123,7 @@ export function formatAIConversationActionInstructions({
 
   return actions.map(
     (action) =>
-      `Use the Sentry tool ${formatInlineCode(
+      `Use the Sentry tool ${inlineCode(
         formatToolCall({
           toolName: action.toolName,
           arguments: action.arguments,

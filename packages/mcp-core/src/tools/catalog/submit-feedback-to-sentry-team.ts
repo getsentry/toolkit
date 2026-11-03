@@ -9,6 +9,22 @@ import { scrubSensitiveText } from "../../telem/sentry";
 // UTF-16 units keeps us at or under that.
 const MAX_FEEDBACK_MESSAGE_LENGTH = 4096;
 
+/**
+ * Name shown on the feedback instead of "Anonymous User". Our telemetry
+ * identifies people only by Sentry user ID, so name the agent and that ID
+ * rather than the person's name or email.
+ */
+function getFeedbackName({
+  clientFamily,
+  userId,
+}: {
+  clientFamily?: string | null;
+  userId?: string | null;
+}): string {
+  const agent = clientFamily ? `MCP agent (${clientFamily})` : "MCP agent";
+  return userId ? `${agent} for user ${userId}` : agent;
+}
+
 export const submitFeedbackToSentryTeamOutputSchema = z.object({
   feedbackId: z
     .string()
@@ -75,7 +91,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  async handler(params) {
+  async handler(params, context) {
     const message = scrubSensitiveText(
       [
         `Task: ${params.task}`,
@@ -89,6 +105,7 @@ export default defineTool({
 
     const feedbackId = captureFeedback({
       source: "mcp_agent",
+      name: getFeedbackName(context),
       message: message.slice(0, MAX_FEEDBACK_MESSAGE_LENGTH),
       tags: {
         "feedback.kind": params.kind,

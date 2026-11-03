@@ -162,7 +162,7 @@ export const downloadCommand = buildCommand({
     await mkdir(dirname(output), { recursive: true });
     await writeFile(output, JSON.stringify(events));
 
-    yield new CommandOutput<ReplayDownloadData>({
+    yield new CommandOutput({
       org: resolved.org,
       replayId: replay.id,
       output,

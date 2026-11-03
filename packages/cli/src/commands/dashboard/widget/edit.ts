@@ -18,8 +18,8 @@ import { formatWidgetEdited } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
-  type DashboardDetail,
   type DashboardWidget,
+  DashboardWidgetChangeOutputSchema,
   type DashboardWidgetQuery,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
@@ -34,6 +34,7 @@ import {
   validateWidgetLayout,
   WIDGET_TYPES,
   type WidgetLayoutFlags,
+  type DashboardWidgetChangeOutput,
 } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import {
@@ -55,12 +56,6 @@ type EditFlags = WidgetQueryFlags &
     readonly json: boolean;
     readonly fields?: string[];
   };
-
-type EditResult = {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-};
 
 /** Merge query-level flags over existing widget query */
 function mergeQueries(
@@ -231,6 +226,7 @@ export const editCommand = buildCommand({
   },
   output: {
     human: formatWidgetEdited,
+    schema: DashboardWidgetChangeOutputSchema,
   },
   parameters: {
     positional: dashboardArguments({
@@ -421,7 +417,7 @@ export const editCommand = buildCommand({
       dashboard: updated,
       widget: replacement,
       url,
-    } as EditResult);
+    } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };
   },
 });

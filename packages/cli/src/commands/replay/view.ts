@@ -354,13 +354,8 @@ export const viewCommand = buildCommand({
   output: {
     human: formatReplayDetails,
     jsonTransform: (data: ReplayViewData, fields?: string[]) => {
-      const result: Record<string, unknown> = {
-        ...data.replay,
-        org: data.org,
-        activity: data.activity,
-        relatedIssues: data.relatedIssues,
-        relatedTraces: data.relatedTraces,
-      };
+      const { replay, ...outputFields } = data;
+      const result = { ...replay, ...outputFields };
       return fields && fields.length > 0
         ? filterFields(result, fields)
         : result;

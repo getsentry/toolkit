@@ -113,6 +113,12 @@ Translate upstream API shapes into user-facing terms:
   surrogate-aware slicing.
 - Prefer shared helpers for dates, actors, IDs, and unknown values. If a helper
   emits noisy placeholders for a domain-specific field, filter before calling it.
+- Render untrusted values with `@sentry/toolkit-core/markdown`, chosen by what
+  the value is: `inlineCode` for identifiers, slugs, queries, and short values,
+  `codeBlock` for multi-line data such as messages and stack traces, and `text`
+  for values that should read as prose. Each keeps the value inside its line or
+  block, so upstream data cannot add headings, list items, or links. Prefer
+  `inlineCode`: it needs no escaping, so the model reads the value unchanged.
 
 When changing Sentry API endpoint usage, validate the upstream behavior in
 `~/src/sentry` as required by [../../AGENTS.md](../../AGENTS.md). API schemas
@@ -128,6 +134,14 @@ the same data. Without a commit, the structured field is `null` and Markdown
 omits the section. Commit lookup is optional: failures do not prevent issue
 details from loading, but unexpected server or response-validation failures
 are reported to Sentry.
+
+For metric issues, `Metric Alert Details` comes from the occurrence's
+`evidenceData`, which the event API returns camelCased
+(`dataSources[].queryObj.snubaQuery`, `detectorId`). It shows the Metric
+Monitor ID, dataset, aggregate, query, interval, environment, evaluated window,
+value, and threshold. Response Notes replace the stacktrace and trace hints with
+`get_metric_monitor_details` and a pre-filled `search_errors`, `search_logs`,
+`search_traces`, or `search_metrics` call for the monitor's query.
 
 The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while

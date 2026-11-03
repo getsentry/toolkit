@@ -74,8 +74,8 @@ type Completion = {
 /**
  * Run `sentry __complete`.
  *
- * `src/bin.ts` and the npm package's `dist/bin.cjs` (`dist/complete.cjs`)
- * call this before anything else of the CLI loads, so a TAB press loads only
+ * `src/bin.ts` and the packages' main script (`src/chunk-main.ts`, which
+ * runs `complete.cjs`) call this before anything else of the CLI loads, so a TAB press loads only
  * this module's imports. `test/script/cli-startup.test.ts` keeps them free of
  * `@sentry/node`, the API client, and the command tree.
  *
@@ -291,6 +291,33 @@ type Completer = (
   slot: CompleterContext,
 ) => Completion[] | Promise<Completion[]>;
 
+/** What `org/project` does plus cached issue short IDs. */
+const completeCachedIssues = entityCompleter("issue", completeOrgSlashProject);
+
+/**
+ * Issue arguments: magic selectors for a partial that starts one, bare or
+ * after `org/`, which is no target to extend; otherwise
+ * {@link completeCachedIssues}.
+ */
+async function completeIssues(partial: string): Promise<Completion[]> {
+  const slash = partial.indexOf("/");
+  const prefix = partial.slice(0, slash + 1);
+  const rest = partial.slice(slash + 1);
+  if (!rest.startsWith("@")) {
+    return await completeCachedIssues(partial);
+  }
+  if (rest.includes("/")) {
+    return [];
+  }
+  const { ISSUE_SELECTORS } = await import("./arg-parsing.js");
+  return Object.entries(ISSUE_SELECTORS)
+    .filter(([selector]) => selector.startsWith(rest.toLowerCase()))
+    .map(([selector, picks]) => ({
+      value: `${prefix}${selector}`,
+      description: picks,
+    }));
+}
+
 /**
  * `org/` prefixes and `org/<id>` dashboards. Always qualified: dashboard IDs
  * are sequential integers, so a bare ID would be read in whichever org is
@@ -311,8 +338,11 @@ const COMPLETERS = Object.freeze({
   org: (partial) => completeOrgSlugs(partial),
   /** `org/` prefixes, `org/project` pairs, and project aliases. */
   "org/project": (partial) => completeOrgSlashProject(partial),
-  /** What `org/project` does plus cached issue short IDs. */
-  issue: entityCompleter("issue", completeOrgSlashProject),
+  /**
+   * What `org/project` does plus cached issue short IDs, or magic selectors
+   * (`@latest`, `org/@latest`) for a partial that starts one.
+   */
+  issue: (partial) => completeIssues(partial),
   /**
    * `org/` prefixes and cached dashboards (`org/<id>`), in the first word
    * only: in `<org/project> <id-or-title>`, the org of the second word is

@@ -54,6 +54,10 @@ function callHandler(params: {
     | "dashboard";
   resourceId?: string;
   organizationSlug?: string;
+  issueUrl?: string;
+  resourceUrl?: string;
+  issueId?: string;
+  id?: string;
 }) {
   return getSentryResource.handler(params, baseContext);
 }
@@ -150,6 +154,24 @@ describe("get_sentry_resource", () => {
 
   // ─── URL mode: issue URLs ──────────────────────────────────────────────────
   describe("URL mode — issue URLs", () => {
+    it.each([
+      {
+        issueUrl: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+      },
+      {
+        resourceUrl:
+          "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+      },
+      { organizationSlug: "sentry-mcp-evals", issueId: "cloudflare-mcp-41" },
+      { organizationSlug: "sentry-mcp-evals", id: "CLOUDFLARE-MCP-41" },
+      { organizationSlug: "sentry-mcp-evals", resourceId: "CLOUDFLARE-MCP-41" },
+    ])("resolves issue from alias params %o", async (params) => {
+      const result = await callHandler(params);
+      expect(result).toContain(
+        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+      );
+    });
+
     it("resolves issue from subdomain URL (my-org.sentry.io)", async () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
@@ -365,7 +387,9 @@ describe("get_sentry_resource", () => {
       expect(result).toContain(
         `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
       );
-      expect(result).toContain("Clicked submit order");
+      expect(result).toContain(
+        "**dead click** · `div.modal > button.place-order`",
+      );
     });
 
     it("dispatches monitor URL with a simple slug to get_monitor_details", async () => {
@@ -771,7 +795,9 @@ describe("get_sentry_resource", () => {
       expect(result).toContain(
         `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
       );
-      expect(result).toContain("Clicked submit order");
+      expect(result).toContain(
+        "**dead click** · `div.modal > button.place-order`",
+      );
     });
 
     it("fetches snapshot by snapshot ID", async () => {
@@ -925,7 +951,7 @@ describe("get_sentry_resource", () => {
   describe("Validation errors", () => {
     it("throws when neither url nor resourceType provided", async () => {
       await expect(
-        callHandler({ organizationSlug: "my-org", resourceId: "X-1" }),
+        callHandler({ organizationSlug: "my-org", resourceId: "my-cron-job" }),
       ).rejects.toThrow("Either `url` or `resourceType` must be provided");
     });
 
@@ -1060,6 +1086,10 @@ describe("get_sentry_resource", () => {
         "resourceId",
         "organizationSlug",
         "packageNames",
+        "issueUrl",
+        "resourceUrl",
+        "issueId",
+        "id",
       ]);
     });
 
@@ -1173,8 +1203,8 @@ describe("event package selection", () => {
 
         ### Tags
 
-        **level**: error
-        **environment**: production
+        **level**: \`error\`
+        **environment**: \`production\`
 
 
         ### Selected Package Versions

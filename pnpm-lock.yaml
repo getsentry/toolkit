@@ -40,8 +40,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 0.428.0
-      version: 0.428.0
+      specifier: 0.437.0
+      version: 0.437.0
     '@sentry/cloudflare':
       specifier: 11.6.0
       version: 11.6.0
@@ -117,6 +117,18 @@ catalogs:
     lucide-react:
       specifier: ^0.503.0
       version: 0.503.0
+    marked:
+      specifier: ^15.0.12
+      version: 15.0.12
+    mdast-util-from-markdown:
+      specifier: ^2.0.2
+      version: 2.0.2
+    mdast-util-gfm:
+      specifier: ^3.1.0
+      version: 3.1.0
+    micromark-extension-gfm:
+      specifier: ^3.0.0
+      version: 3.0.0
     miniflare:
       specifier: 5.20261019.1-beta
       version: 5.20261019.1-beta
@@ -473,16 +485,16 @@ importers:
         version: 1.46.0(ai@6.0.230(zod@4.6.7))(express@5.3.0)(zod@4.6.7)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 0.428.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
       '@sentry/logger':
         specifier: workspace:*
         version: link:../logger
-      '@sentry/mcp-server':
+      '@sentry/mcp-core':
         specifier: workspace:*
-        version: link:../mcp-server
+        version: link:../mcp-core
       '@sentry/node':
         specifier: 'catalog:'
         version: 11.6.0(@babel/core@7.28.0)(rollup@4.62.4)
@@ -493,8 +505,8 @@ importers:
         specifier: ^1.0.1
         version: 1.0.1(react@19.2.8)
       '@sentry/symbolic':
-        specifier: 13.7.0
-        version: 13.7.0
+        specifier: 14.0.0-alpha.5
+        version: 14.0.0-alpha.5
       '@sentry/toolkit-core':
         specifier: workspace:*
         version: link:../toolkit-core
@@ -574,7 +586,7 @@ importers:
         specifier: ^0.4.4
         version: 0.4.4
       marked:
-        specifier: ^15.0.12
+        specifier: 'catalog:'
         version: 15.0.12
       node-sqlite3-wasm:
         specifier: 0.8.59
@@ -820,15 +832,12 @@ importers:
       '@logtape/sentry':
         specifier: ^1.1.1
         version: 1.1.1(@logtape/logtape@1.1.1)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.2
-        version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 0.428.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
@@ -860,6 +869,9 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: ^4.0.11
         version: 4.0.11(zod@4.6.7)
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.2
+        version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
@@ -877,50 +889,13 @@ importers:
         version: 2.8.3
 
   packages/mcp-server:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.2
-        version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      '@sentry/core':
-        specifier: 'catalog:'
-        version: 11.6.0
-      '@sentry/node':
-        specifier: 'catalog:'
-        version: 11.6.0(@babel/core@7.28.0)(rollup@4.62.4)
-      dotenv:
-        specifier: 'catalog:'
-        version: 16.6.1
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
     devDependencies:
-      '@sentry/mcp-core':
-        specifier: workspace:*
-        version: link:../mcp-core
-      '@sentry/mcp-server-mocks':
-        specifier: workspace:*
-        version: link:../mcp-server-mocks
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
-      '@sentry/toolkit-core':
-        specifier: workspace:*
-        version: link:../toolkit-core
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.16.0
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.12.9(typescript@5.9.3)
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
       tsx:
         specifier: 'catalog:'
         version: 4.20.3
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.16.0)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@22.16.0)(typescript@5.9.3))(vite@8.3.3(@types/node@22.16.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
 
   packages/mcp-server-evals:
     dependencies:
@@ -930,15 +905,9 @@ importers:
       '@ai-sdk/openai':
         specifier: 'catalog:'
         version: 3.0.23(zod@4.6.7)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.2
-        version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/mcp-core':
         specifier: workspace:*
         version: link:../mcp-core
-      '@sentry/mcp-server':
-        specifier: workspace:*
-        version: link:../mcp-server
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
@@ -1047,7 +1016,7 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 0.428.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -1064,6 +1033,18 @@ importers:
       fast-check:
         specifier: ^4.8.0
         version: 4.10.1
+      marked:
+        specifier: 'catalog:'
+        version: 15.0.12
+      mdast-util-from-markdown:
+        specifier: 'catalog:'
+        version: 2.0.2
+      mdast-util-gfm:
+        specifier: 'catalog:'
+        version: 3.1.0
+      micromark-extension-gfm:
+        specifier: 'catalog:'
+        version: 3.0.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -4356,8 +4337,8 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
-  '@sentry/api@0.428.0':
-    resolution: {integrity: sha512-vtxuZYROc+fKemDNnxL0LawbZZ9UgsN0+UwLJxEtsqxK54L4nBnx/cDItiZvLnafUTvON5bMYhtthALMCddd8A==}
+  '@sentry/api@0.437.0':
+    resolution: {integrity: sha512-asQE1+QuzdurQ6wIOsR1Xwd6hciF7buneQy74i7HcxWjy9Shz0Pyixm/Xs39mS2AK4GSQKRUgODn7vVddh1TqQ==}
     engines: {node: '>=22'}
     peerDependencies:
       typescript: '*'
@@ -4769,8 +4750,8 @@ packages:
     peerDependencies:
       '@astrojs/starlight': '>=0.39.0'
 
-  '@sentry/symbolic@13.7.0':
-    resolution: {integrity: sha512-FR8CESwUVeMlJgiCHQrV8hWj1bPA/d9Sq2dYHtDDpGakBq7C0BNE1jAtyD41lleVvrKlrAY89NiZJ+JnCftFpA==}
+  '@sentry/symbolic@14.0.0-alpha.5':
+    resolution: {integrity: sha512-plcN9eGpvJeQFPFH/YCwyT59BeD03f1JcBMQlxLhDXdID41PPpyUPniPUqU2Bt3ACkvgBM+B+ZayTVgpDyQscQ==}
 
   '@sentry/vite-plugin@4.6.1':
     resolution: {integrity: sha512-Qvys1y3o8/bfL3ikrHnJS9zxdjt0z3POshdBl3967UcflrTqBmnGNkcVk53SlmtJWIfh85fgmrLvGYwZ2YiqNg==}
@@ -10961,8 +10942,8 @@ snapshots:
       hastscript: 9.0.1
       postcss: 8.5.28
       postcss-nested: 6.2.0(postcss@8.5.28)
-      unist-util-visit: 5.0.0
-      unist-util-visit-parents: 6.0.1
+      unist-util-visit: 5.1.0
+      unist-util-visit-parents: 6.0.2
 
   '@expressive-code/plugin-frames@0.44.2':
     dependencies:
@@ -11457,7 +11438,7 @@ snapshots:
       unified: 11.0.5
       unist-util-position-from-estree: 2.0.0
       unist-util-stringify-position: 4.0.0
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
       vfile: 6.0.3
     transitivePeerDependencies:
       - supports-color
@@ -12526,7 +12507,7 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
-  '@sentry/api@0.428.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
+  '@sentry/api@0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
     optionalDependencies:
       typescript: 5.9.3
       valibot: 1.4.2(typescript@5.9.3)
@@ -12973,7 +12954,7 @@ snapshots:
       marked: 18.0.13
       ultrahtml: 1.7.0
 
-  '@sentry/symbolic@13.7.0': {}
+  '@sentry/symbolic@14.0.0-alpha.5': {}
 
   '@sentry/vite-plugin@4.6.1':
     dependencies:
@@ -13350,7 +13331,7 @@ snapshots:
 
   '@types/node-fetch@2.6.13':
     dependencies:
-      '@types/node': 24.13.5
+      '@types/node': 22.20.3
       form-data: 4.0.6
 
   '@types/node@18.19.130':
@@ -13405,7 +13386,7 @@ snapshots:
 
   '@types/sax@1.2.7':
     dependencies:
-      '@types/node': 24.13.5
+      '@types/node': 22.20.3
 
   '@types/semver@7.8.0': {}
 
@@ -15095,7 +15076,7 @@ snapshots:
       mdast-util-to-hast: 13.2.0
       parse5: 7.3.0
       unist-util-position: 5.0.0
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
       vfile: 6.0.3
       web-namespaces: 2.0.1
       zwitch: 2.0.4
@@ -15115,7 +15096,7 @@ snapshots:
       nth-check: 2.1.1
       property-information: 7.1.0
       space-separated-tokens: 2.0.2
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
       zwitch: 2.0.4
 
   hast-util-to-estree@3.1.3:
@@ -15810,7 +15791,7 @@ snapshots:
     dependencies:
       '@types/mdast': 4.0.4
       '@types/unist': 3.0.3
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
 
   mdast-util-directive@3.1.0:
     dependencies:
@@ -15831,7 +15812,7 @@ snapshots:
       '@types/mdast': 4.0.4
       escape-string-regexp: 5.0.0
       unist-util-is: 6.0.0
-      unist-util-visit-parents: 6.0.1
+      unist-util-visit-parents: 6.0.2
 
   mdast-util-from-markdown@2.0.2:
     dependencies:
@@ -15970,7 +15951,7 @@ snapshots:
       micromark-util-sanitize-uri: 2.0.1
       trim-lines: 3.0.1
       unist-util-position: 5.0.0
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
       vfile: 6.0.3
 
   mdast-util-to-markdown@2.1.2:
@@ -15982,7 +15963,7 @@ snapshots:
       mdast-util-to-string: 4.0.0
       micromark-util-classify-character: 2.0.1
       micromark-util-decode-string: 2.0.1
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
       zwitch: 2.0.4
 
   mdast-util-to-string@4.0.0:
@@ -17241,7 +17222,7 @@ snapshots:
       retext: 9.0.0
       retext-smartypants: 6.2.0
       unified: 11.0.5
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
 
   remark-stringify@11.0.0:
     dependencies:
@@ -17300,7 +17281,7 @@ snapshots:
     dependencies:
       '@types/nlcst': 2.0.3
       nlcst-to-string: 4.0.0
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
 
   retext-stringify@4.0.0:
     dependencies:
@@ -18113,7 +18094,7 @@ snapshots:
   unist-util-remove-position@5.0.0:
     dependencies:
       '@types/unist': 3.0.3
-      unist-util-visit: 5.0.0
+      unist-util-visit: 5.1.0
 
   unist-util-stringify-position@4.0.0:
     dependencies:

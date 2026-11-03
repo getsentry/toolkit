@@ -36,11 +36,14 @@ const DOCS_OUTPUTS = [
   "src/generated/command-api.json",
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",
+  "src/generated/route-loaders.ts",
 ];
 
 function run(script) {
   console.error(`Missing generated files; running \`pnpm run ${script}\`...`);
-  execSync(`pnpm run ${script}`, { stdio: "inherit" });
+  // Send generator output to stderr: `pnpm run cli mcp` serves JSON-RPC on
+  // stdout, so nothing else may write there.
+  execSync(`pnpm run ${script}`, { stdio: ["inherit", 2, "inherit"] });
 }
 
 /** The groups named on the command line, or every group when none are. */

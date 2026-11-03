@@ -1,3 +1,4 @@
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryApiService } from "../../../api-client";
 import type {
   EventsTimeSeriesResponse,
@@ -59,20 +60,20 @@ export function formatExecutedSearch(executedSearch?: ExecutedSearch): string {
     executedSearch.fields === undefined
       ? undefined
       : executedSearch.fields.length > 0
-        ? executedSearch.fields.map(formatInlineCode).join(", ")
+        ? executedSearch.fields.map(inlineCode).join(", ")
         : "(none)";
 
   const lines = [
     "## Executed Search",
-    `- Dataset: ${formatInlineCode(executedSearch.dataset)}`,
-    `- Query: ${formatInlineCode(executedSearch.query || "(empty)")}`,
+    `- Dataset: ${inlineCode(executedSearch.dataset)}`,
+    `- Query: ${inlineCode(executedSearch.query || "(empty)")}`,
   ];
 
   if (fields !== undefined) {
     lines.push(`- Fields: ${fields}`);
   }
   if (executedSearch.sort) {
-    lines.push(`- Sort: ${formatInlineCode(executedSearch.sort)}`);
+    lines.push(`- Sort: ${inlineCode(executedSearch.sort)}`);
   }
   lines.push(
     `- Time range: ${formatExecutedTimeRange(executedSearch.timeRange)}`,

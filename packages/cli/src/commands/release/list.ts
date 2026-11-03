@@ -5,6 +5,15 @@
  * project scoping, environment filtering, and rich terminal styling.
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
+import {
+  description,
+  looseObject,
+  object,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   type ListReleasesOptions,
@@ -19,10 +28,7 @@ import {
   parseEnvironmentList,
   parseRelativePeriod,
 } from "../../lib/completion-target.js";
-import {
-  colorTag,
-  escapeMarkdownInline,
-} from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { sparkline } from "../../lib/formatters/sparkline.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
@@ -40,6 +46,7 @@ import {
   jsonTransformListResult,
   type ListResult,
   type OrgListConfig,
+  OrgListItemOutputFields,
 } from "../../lib/org-list.js";
 import {
   type ResolvedTarget,
@@ -48,18 +55,29 @@ import {
 } from "../../lib/resolve-target.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import type { ListCommandTarget } from "../../lib/target-positional.js";
-import type { SentryRelease } from "../../types/index.js";
+import {
+  type SentryRelease,
+  SentryReleaseSchema,
+  type WithOutputFields,
+} from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
 
 const log = logger.withTag("release.list");
 
 export const PAGINATION_KEY = "release-list";
 
-type ReleaseWithOrg = SentryRelease & {
-  orgSlug?: string;
-  /** Project slug when from multi-project auto-detect (for labeling). */
-  targetProject?: string;
-};
+/** Fields the list adds to each release: its org and, when listing several projects, its project. */
+const ReleaseListItemOutputFields = object({
+  ...OrgListItemOutputFields.entries,
+  targetProject: optional(
+    pipe(string(), description("Project slug, when listing several")),
+  ),
+});
+
+type ReleaseWithOrg = WithOutputFields<
+  SentryRelease,
+  typeof ReleaseListItemOutputFields
+>;
 
 // ---------------------------------------------------------------------------
 // Sort
@@ -135,7 +153,7 @@ function extractSessionPoints(stats?: Record<string, unknown>): number[] {
  * Second line: muted "age | last-deploy-env".
  */
 function formatVersionCell(r: ReleaseWithOrg): string {
-  const version = escapeMarkdownInline(r.shortVersion || r.version);
+  const version = text(r.shortVersion || r.version);
   const org = r.orgSlug || "";
   const linked = org
     ? `[**${version}**](${buildReleaseUrl(org, r.version)})`
@@ -683,6 +701,10 @@ export const listCommand = buildListCommand("release", {
     human: formatListHuman,
     jsonTransform: (result: ListResult<ReleaseWithOrg>, fields?: string[]) =>
       jsonTransformListResult(result, fields),
+    schema: looseObject({
+      ...SentryReleaseSchema.entries,
+      ...ReleaseListItemOutputFields.entries,
+    }),
   },
   parameters: {
     positional: LIST_ORG_TARGET_POSITIONAL,

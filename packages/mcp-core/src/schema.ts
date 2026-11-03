@@ -9,16 +9,19 @@ import { z } from "zod";
 import { SENTRY_GUIDES } from "./constants";
 import { validateResourceId, validateSlug } from "./utils/slug-validation";
 
+/** Recovery hint for a missing organization the server could not default. */
+export const MISSING_ORGANIZATION_SLUG_HINT =
+  "Required. Call `find_organizations()` to list your organizations, then retry with `organizationSlug` set to one of their slugs.";
+
 // Sentry slug lookups can be exact and case-sensitive on legacy instances.
 // Preserve caller casing for resource slugs; only trim and validate shape.
 export const ParamOrganizationSlug = z
   .string({
-    // The MCP SDK rejects a missing slug before the handler runs, so this
-    // message is the only recovery hint the caller gets.
+    // Tool registration makes a required slug optional and defaults it
+    // (see applyDefaultOrganization), but a null slug, or one inside a nested
+    // schema, still fails here, and this is the recovery hint it gets.
     error: (issue) =>
-      issue.input == null
-        ? "Required. Call `find_organizations()` to list your organizations, then retry with `organizationSlug` set to one of their slugs."
-        : undefined,
+      issue.input == null ? MISSING_ORGANIZATION_SLUG_HINT : undefined,
   })
   .trim()
   .superRefine(validateSlug)
@@ -62,6 +65,13 @@ export const ParamCursor = z
   .describe(
     "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page.",
   );
+
+// Shared by every read tool that calls the Sentry API, so keep it short: it
+// ships in the schema of each one.
+export const ParamFresh = z
+  .boolean()
+  .optional()
+  .describe("Bypass cached reads.");
 
 export const ParamIssueShortId = z
   .string()
@@ -209,7 +219,7 @@ export const ParamAssignedTo = z
   .min(1)
   .nullable()
   .describe(
-    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID.",
+    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use the `whoami` tool to find your user ID.",
   );
 
 export const ParamIgnoreDurationMinutes = z

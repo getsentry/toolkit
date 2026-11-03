@@ -8,8 +8,9 @@
  * ways:
  *
  * - `cli-highlight` is required on the first code block, not at import. The
- *   CLI bundle still contains it (script/bundle.ts and script/build.ts list
- *   this file in `REQUIRE_ALIAS_FILTER`), but only runs it when needed.
+ *   CLI bundle still contains it (script/lib/require-alias-plugin.ts and
+ *   script/build.ts list this file in `REQUIRE_ALIAS_FILTER`), but only runs
+ *   it when needed.
  * - A bundle that doesn't need colored code blocks, such as the MCP server,
  *   sets `define: { __SENTRY_CLI_SYNTAX_HIGHLIGHT__: "false" }`. esbuild then
  *   drops the `require()` with its dead branch, so highlight.js and parse5

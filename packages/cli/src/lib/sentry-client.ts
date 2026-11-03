@@ -19,7 +19,7 @@ import {
   type TransportCache,
 } from "@sentry/toolkit-core/api-client/transport";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
-import { formatAuthHeader, normalizeAuthToken } from "./auth-header.js";
+import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
 import {
@@ -57,11 +57,9 @@ import {
   lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
-import { normalizeOrigin } from "./sentry-urls.js";
 import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
-import { parseSntrysClaim } from "./token-claims.js";
 import {
-  isHostTrustedForClaim,
+  assertCredentialScope,
   isRequestOriginTrustedForContext,
 } from "./token-host.js";
 
@@ -157,29 +155,7 @@ function prepareHeaders(
   // Host-scoping guard (defense in depth). Primary rejection happens at the
   // URL-arg / rc-shim entry points; this catches any code path that mutated
   // SENTRY_HOST/SENTRY_URL without going through those guards.
-  if (!isRequestOriginTrustedForContext(input, credential)) {
-    throw new HostScopeError(
-      "Credentials",
-      normalizeOrigin(input) ?? "<unknown host>",
-      credential.host,
-    );
-  }
-
-  // sntrys_ claim check — defense-in-depth for users with access to
-  // multiple Sentry instances. The claim is unsigned (see token-claims.ts);
-  // fail-open on parse errors. Uses isHostTrustedForClaim so multi-region
-  // fan-out via the control silo's region URLs still works.
-  const claimUrl = parseSntrysClaim(normalizeAuthToken(credential.token))?.url;
-  if (
-    claimUrl &&
-    !isHostTrustedForClaim(input, claimUrl, credential.identity)
-  ) {
-    throw new HostScopeError(
-      "Credentials",
-      normalizeOrigin(input) ?? "<unknown host>",
-      claimUrl,
-    );
-  }
+  assertCredentialScope(input, credential);
 
   if (isManualHttpTracing()) {
     const traceData = getTraceData();

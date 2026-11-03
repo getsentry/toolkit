@@ -2,24 +2,22 @@
  * Issue view output types and formatters.
  */
 
-import type { SentryEvent, SentryIssue } from "../../types/index.js";
+import type { InferOutput } from "valibot";
+import type { IssueViewOutputFields, SentryIssue } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails, formatIssueDetails } from "./human.js";
-import { filterFields } from "./json.js";
+import { filterFieldsIfSet } from "./json.js";
 import { renderMarkdown } from "./markdown.js";
 
-/** Data rendered for one issue. */
-export type SingleIssueViewData = {
-  /** Resolved organization slug, or null when resolution was unscoped. */
-  org: string | null;
+/**
+ * Data rendered for one issue: the issue, and the fields JSON output adds to
+ * it ({@link IssueViewOutputFields}: the resolved org, or null when
+ * resolution was unscoped; the latest event, or null when it could not be
+ * loaded; related replays; the trace, or null when unavailable).
+ */
+export type SingleIssueViewData = InferOutput<typeof IssueViewOutputFields> & {
   /** Full issue details. */
   issue: SentryIssue;
-  /** Latest event, or null when it could not be loaded. */
-  event: SentryEvent | null;
-  /** Related Session Replay identifiers. */
-  replayIds: string[];
-  /** Trace context from the latest event, or null when unavailable. */
-  trace: { traceId: string; spans: unknown[] } | null;
   /** Pre-formatted span tree lines for human output only. */
   spanTreeLines?: string[];
 };
@@ -99,20 +97,17 @@ export function formatIssueView(data: IssueViewData): string {
   return data.issues.map(formatSingleIssueView).join("\n\n---\n\n");
 }
 
-function flattenIssueView(
-  entry: SingleIssueViewData,
-  fields?: string[],
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {
-    ...entry.issue,
-    event: entry.event,
-    org: entry.org,
-    replayIds: entry.replayIds,
-    trace: entry.trace,
-  };
-  return fields && fields.length > 0
-    ? (filterFields(result, fields) as Record<string, unknown>)
-    : result;
+function flattenIssueView(entry: SingleIssueViewData, fields?: string[]) {
+  return filterFieldsIfSet(
+    {
+      ...entry.issue,
+      event: entry.event,
+      org: entry.org,
+      replayIds: entry.replayIds,
+      trace: entry.trace,
+    },
+    fields,
+  );
 }
 
 /**
@@ -126,10 +121,7 @@ function flattenIssueView(
  * @param fields - Optional issue fields to retain
  * @returns A flat issue object for one request, otherwise an array
  */
-export function jsonTransformIssueView(
-  data: IssueViewData,
-  fields?: string[],
-): unknown {
+export function jsonTransformIssueView(data: IssueViewData, fields?: string[]) {
   if (data.requestedCount <= 1) {
     const [first] = data.issues;
     if (first) {

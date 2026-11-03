@@ -5,8 +5,6 @@
  * with named methods for every CLI command, plus a `run()` escape hatch for
  * arbitrary command strings.
  *
- * CLI runner is re-exported as `_cli` for the npm bin wrapper (`dist/bin.cjs`).
- *
  * @example
  * ```typescript
  * import createSentrySDK from "sentry";
@@ -62,6 +60,3 @@ export function createSentrySDK(
 }
 
 export default createSentrySDK;
-
-// CLI runner — internal, used by dist/bin.cjs wrapper
-export { startCli as _cli } from "./cli.js";

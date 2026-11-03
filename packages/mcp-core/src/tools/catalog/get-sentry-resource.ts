@@ -85,6 +85,46 @@ export interface ResolvedResourceParams {
   dashboardIdOrTitle?: string;
 }
 
+// Issue short IDs (PROJECT-123) and numeric issue IDs. Only used to infer a
+// missing resourceType, so other resource IDs keep requiring an explicit type.
+const ISSUE_ID_PATTERN = /^(?:\d+|[A-Z0-9_.]+(?:-[A-Z0-9_.]+)*-[A-Z0-9]+)$/;
+
+// Sentry pages that are lists or searches rather than one resource.
+const UNSUPPORTED_URL_GUIDANCE: Array<[RegExp, string]> = [
+  [
+    /(^|\/)api\/0\//,
+    "This is a Sentry API URL. Pass the Sentry web URL for the resource instead, or use `resourceType` with `resourceId`.",
+  ],
+  [
+    /(^|\/)issues\/?$/,
+    "This is an issue list URL, not a single issue. Use `search_issues` to list issues, or pass a URL for one issue such as https://my-org.sentry.io/issues/PROJECT-123/.",
+  ],
+  [
+    /(^|\/)alerts\//,
+    "Alert URLs are not supported here. Use `find_alert_rules` to list alert rules, or `get_alert_rule` for one rule.",
+  ],
+  [
+    /(^|\/)explore\/logs\/?$/,
+    "This is a logs search URL. Use `search_logs` to query logs.",
+  ],
+  [
+    /(^|\/)(explore\/traces|performance|traces)\/?$/,
+    "This is a trace search URL. Use `search_traces` to query traces, or pass a URL for one trace.",
+  ],
+];
+
+function getUnsupportedUrlGuidance(url: string): string | undefined {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname.replace(/^\/+|\/+$/g, "");
+  } catch {
+    return undefined;
+  }
+  return UNSUPPORTED_URL_GUIDANCE.find(([pattern]) =>
+    pattern.test(pathname),
+  )?.[1];
+}
+
 export function resolveResourceParams(params: {
   url?: string | null;
   resourceType?: string | null;
@@ -94,10 +134,13 @@ export function resolveResourceParams(params: {
 }): ResolvedResourceParams {
   if (params.url) {
     const parsed = parseSentryUrl(params.url);
-    return resolveFromParsedUrl(parsed, params);
+    return resolveFromParsedUrl(parsed, { ...params, url: params.url });
   }
 
   if (!params.resourceType) {
+    if (params.resourceId && ISSUE_ID_PATTERN.test(params.resourceId)) {
+      return resolveResourceParams({ ...params, resourceType: "issue" });
+    }
     throw new UserInputError(
       "Either `url` or `resourceType` must be provided. " +
         "Pass a `url` to auto-detect the resource type, or specify `resourceType` with `resourceId`.",
@@ -195,6 +238,7 @@ export function resolveResourceParams(params: {
 function resolveFromParsedUrl(
   parsed: ParsedSentryUrl,
   params: {
+    url: string;
     resourceType?: string | null;
     organizationSlug?: string | null;
     projectSlug?: string | null;
@@ -213,6 +257,10 @@ function resolveFromParsedUrl(
       throw new UserInputError(
         `Detected a performance summary URL for transaction "${parsed.transaction}". Use \`search_traces\` to find traces and performance data for this transaction.`,
       );
+    }
+    const guidance = getUnsupportedUrlGuidance(params.url);
+    if (guidance) {
+      throw new UserInputError(guidance);
     }
     throw new UserInputError(
       "Could not determine resource type from URL. " +
@@ -248,10 +296,8 @@ function resolveFromParsedUrl(
       };
 
     case "event":
-      if (!parsed.issueId || !parsed.eventId) {
-        throw new UserInputError(
-          "Could not extract issue ID and event ID from URL.",
-        );
+      if (!parsed.eventId) {
+        throw new UserInputError("Could not extract event ID from URL.");
       }
       return {
         type: "event",
@@ -494,7 +540,7 @@ export default defineTool({
 
     return [
       "Fetch a Sentry resource by URL, or by resourceType plus resourceId.",
-      "Pass a Sentry URL directly when possible; the resource type is auto-detected.",
+      "Use it when the user shares a Sentry link. Pass the URL directly when possible; the resource type is auto-detected.",
       "",
       `Supports ${supportedResources}`,
       "Trace lookups return a condensed overview by default.",
@@ -559,6 +605,13 @@ export default defineTool({
 
     organizationSlug: ParamOrganizationSlug.optional(),
     packageNames: ParamPackageNames.optional(),
+
+    // Undocumented aliases for keys models often send instead of
+    // url/resourceId. Kept without descriptions to keep the schema small.
+    issueUrl: z.string().trim().optional(),
+    resourceUrl: z.string().trim().optional(),
+    issueId: z.string().trim().optional(),
+    id: z.string().trim().optional(),
   },
 
   annotations: {
@@ -568,10 +621,12 @@ export default defineTool({
   },
 
   async handler(params, context: ServerContext) {
+    const url = params.url ?? params.issueUrl ?? params.resourceUrl;
     const resolved = resolveResourceParams({
-      url: params.url,
-      resourceType: params.resourceType,
-      resourceId: params.resourceId,
+      url,
+      resourceType:
+        params.resourceType ?? (!url && params.issueId ? "issue" : undefined),
+      resourceId: params.resourceId ?? params.issueId ?? params.id,
       organizationSlug:
         params.organizationSlug ?? context.constraints.organizationSlug,
       projectSlug: context.constraints.projectSlug,
@@ -671,7 +726,7 @@ export default defineTool({
       case "replay":
         return await getReplayDetails.handler(
           {
-            replayUrl: params.url,
+            replayUrl: url,
             organizationSlug: resolved.organizationSlug,
             replayId: resolved.replayId,
             regionUrl: context.constraints.regionUrl ?? undefined,
@@ -701,7 +756,7 @@ export default defineTool({
       case "profile":
         return await getProfileDetails.handler(
           {
-            profileUrl: params.url,
+            profileUrl: url,
             organizationSlug: resolved.organizationSlug,
             projectSlugOrId: resolved.projectSlugOrId,
             profileId: resolved.profileId,

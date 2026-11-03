@@ -181,7 +181,8 @@ export default defineTool({
   hideInExperimentalMode: true,
 
   description: [
-    "Inspect a specific Sentry profile in detail.",
+    "Inspect one specific Sentry profile in detail, by profile ID, profiler ID or URL.",
+    "For aggregated hot paths across a transaction, use get_profile.",
     "",
     "USE THIS TOOL WHEN:",
     "- User shares a transaction profile URL and wants the details",

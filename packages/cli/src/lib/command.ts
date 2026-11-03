@@ -37,7 +37,9 @@ import {
   buildCommand as stricliCommand,
   numberParser as stricliNumberParser,
 } from "@stricli/core";
+import type { GenericSchema } from "valibot";
 import type { Writer } from "../types/index.js";
+import { asRunningAppCommand } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
@@ -56,6 +58,7 @@ import {
   ClearScreen,
   CommandOutput,
   type CommandReturn,
+  type CommandYield,
   extractSchemaFieldPaths,
   extractSchemaFields,
   formatSchemaForHelp,
@@ -135,17 +138,21 @@ export type CommandDocumentation =
  * The return value (`CommandReturn`) is captured by the wrapper and
  * rendered after all yields are consumed. Hints live exclusively on
  * the return value — never on individual yields.
+ *
+ * `OUTPUT` is the data type of the command's {@link OutputConfig}; each
+ * yielded {@link CommandOutput} must carry it.
  */
-type SentryCommandFunction<
+export type SentryCommandFunction<
   FLAGS extends BaseFlags,
   ARGS extends BaseArgs,
   CONTEXT extends CommandContext,
+  OUTPUT,
 > = (
   this: CONTEXT,
   flags: FLAGS,
   ...args: ARGS
   // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
-) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
+) => AsyncGenerator<CommandYield<OUTPUT>, CommandReturn | void, undefined>;
 
 /**
  * Arguments for building a command with a local function.
@@ -155,10 +162,17 @@ type LocalCommandBuilderArguments<
   FLAGS extends BaseFlags,
   ARGS extends BaseArgs,
   CONTEXT extends CommandContext,
+  OUTPUT,
+  SCHEMA extends GenericSchema,
+  TRANSFORMED,
 > = {
   readonly parameters?: Record<string, unknown>;
   readonly docs: CommandDocumentation;
-  readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT>;
+  /**
+   * `NoInfer` makes `OUTPUT` come from `output` alone, so a yield that
+   * doesn't match the output config is an error instead of widening it.
+   */
+  readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
   /**
    * Output configuration — controls flag injection and auto-rendering.
    *
@@ -174,8 +188,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  // oxlint-disable-next-line typescript/no-explicit-any -- Variance erasure — OutputConfig<T>.human is contravariant in T, but the builder erases T because it doesn't know the output type. Using `any` allows commands to declare OutputConfig<SpecificType> while the wrapper handles it generically.
-  readonly output?: OutputConfig<any>;
+  readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
   /**
    * Whether the command requires authentication. Defaults to `true`.
    *
@@ -467,7 +480,7 @@ function prepareNativeDocs(
   }
   const rendered = examples
     .map((example) => {
-      const steps = exampleSteps(example);
+      const steps = exampleSteps(example).map(asRunningAppCommand);
       return steps.length === 1
         ? `  ${steps[0]} # ${example.description}`
         : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(
@@ -549,11 +562,24 @@ export function buildCommand<
   const FLAGS extends BaseFlags = NonNullable<unknown>,
   const ARGS extends BaseArgs = [],
   const CONTEXT extends CommandContext = CommandContext,
+  OUTPUT = never,
+  SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
-  builderArgs: LocalCommandBuilderArguments<FLAGS, ARGS, CONTEXT>,
+  builderArgs: LocalCommandBuilderArguments<
+    FLAGS,
+    ARGS,
+    CONTEXT,
+    OUTPUT,
+    SCHEMA,
+    TRANSFORMED
+  >,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
-  const outputConfig = builderArgs.output;
+  // The wrapper renders whatever the generator yields; the builder
+  // signature already tied the yields to this config.
+  // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig<T>.human is contravariant in T, so the erased config can't be OutputConfig<unknown>
+  const outputConfig: OutputConfig<any> | undefined = builderArgs.output;
   const requiresAuth = builderArgs.auth !== false && builderArgs.auth !== "dsn";
   const skipRcUrlCheck =
     builderArgs.skipRcUrlCheck === true || builderArgs.auth === "dsn";

@@ -5,14 +5,11 @@
  * absolute authenticated API URL. JSON output never carries file bytes.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { EventAttachmentDetailsResponse } from "@sentry/api";
-import type { SentryEvent } from "../types/index.js";
+import type { EventViewAttachment, SentryEvent } from "../types/index.js";
 import { listEventAttachments } from "./api-client.js";
-import {
-  escapeMarkdownInline,
-  renderMarkdown,
-  safeCodeSpan,
-} from "./formatters/markdown.js";
+import { renderMarkdown } from "./formatters/markdown.js";
 import { formatBytes } from "./formatters/numbers.js";
 import { logger } from "./logger.js";
 import { resolveOrgRegion } from "./region.js";
@@ -24,10 +21,6 @@ const log = logger.withTag("event.view");
 type EventWithOptionalProject = SentryEvent & {
   project?: string | { slug?: string | null } | null;
   projectSlug?: string | null;
-};
-
-export type EventViewAttachment = EventAttachmentDetailsResponse & {
-  download: string;
 };
 
 type AttachmentTarget = {
@@ -144,8 +137,8 @@ function formatAttachment(attachment: EventAttachmentDetailsResponse): string {
   const details = [attachment.mimetype, formatBytes(attachment.size)]
     .filter(Boolean)
     .join(", ");
-  const name = escapeMarkdownInline(attachment.name);
-  return `- ${name}${details ? ` (${escapeMarkdownInline(details)})` : ""} — ${safeCodeSpan(attachment.id)}`;
+  const name = text(attachment.name);
+  return `- ${name}${details ? ` (${text(details)})` : ""} — ${inlineCode(attachment.id)}`;
 }
 
 /**

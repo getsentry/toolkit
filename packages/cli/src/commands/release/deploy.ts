@@ -5,6 +5,15 @@
  * Environment is the first positional arg (required), deploy name is optional second.
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
+import {
+  description,
+  looseObject,
+  object,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -14,33 +23,46 @@ import {
   parseUrl,
 } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
-import {
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryDeploy } from "../../types/index.js";
+import {
+  DryRunOutputField,
+  type SentryDeploy,
+  SentryDeploySchema,
+  type WithOutputFields,
+} from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT =
   "sentry release deploy [<org>/]<version> <environment> [name]";
 
-function formatDeployCreated(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+/**
+ * Fields `--dry-run` changes: it prints the deploy that would be created,
+ * which has no `id` yet, with its release `version`.
+ */
+const DeployOutputFields = object({
+  id: optional(SentryDeploySchema.entries.id),
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+
+/** JSON output: the created deploy, or the `--dry-run` preview. */
+type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+
+function formatDeployCreated(deploy: DeployOutput): string {
+  if (deploy.dryRun) {
     return renderMarkdown(
-      `Would create deploy for ${safeCodeSpan(String(data.environment))} environment (dry run)`,
+      `Would create deploy for ${inlineCode(deploy.environment)} environment (dry run)`,
     );
   }
-  const deploy = data as unknown as SentryDeploy;
   const lines: string[] = [];
   lines.push("## Deploy Created");
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["ID", deploy.id]);
-  kvRows.push(["Environment", safeCodeSpan(deploy.environment)]);
+  kvRows.push(["ID", deploy.id ?? "—"]);
+  kvRows.push(["Environment", inlineCode(deploy.environment)]);
   kvRows.push(["Name", deploy.name || "—"]);
   kvRows.push(["URL", deploy.url || "—"]);
   kvRows.push([
@@ -107,6 +129,10 @@ export const deployCommand = buildCommand({
   },
   output: {
     human: formatDeployCreated,
+    schema: looseObject({
+      ...SentryDeploySchema.entries,
+      ...DeployOutputFields.entries,
+    }),
   },
   parameters: {
     positional: {

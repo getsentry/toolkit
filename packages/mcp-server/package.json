@@ -1,75 +1,50 @@
 {
   "name": "@sentry/mcp-server",
   "mcpName": "io.github.getsentry/sentry-mcp",
-  "version": "0.42.0",
+  "version": "0.48.0-dev.0",
+  "description": "Sentry MCP server over stdio: the CLI's `sentry mcp` server, bundled without the rest of the CLI",
+  "sentryCi": {
+    "build": "bundle",
+    "test": "test:bundle",
+    "dependencies": [
+      "sentry"
+    ]
+  },
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.15"
   },
   "publishConfig": {
     "access": "public"
   },
-  "sentryCi": {
-    "e2e": "test:package"
-  },
   "license": "FSL-1.1-ALv2",
   "author": "Sentry",
-  "homepage": "https://github.com/getsentry/sentry-mcp",
+  "homepage": "https://github.com/getsentry/toolkit",
   "keywords": [
     "sentry",
     "mcp",
     "model-context-protocol"
   ],
   "bugs": {
-    "url": "https://github.com/getsentry/sentry-mcp/issues"
+    "url": "https://github.com/getsentry/toolkit/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:getsentry/sentry-mcp.git"
+    "url": "git+https://github.com/getsentry/toolkit.git"
   },
   "bin": {
-    "sentry-mcp": "./dist/index.js"
+    "sentry-mcp": "./dist/sentry-mcp.cjs"
   },
   "files": [
-    "./dist/*"
+    "dist/sentry-mcp.cjs"
   ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./transports/stdio": {
-      "types": "./dist/transports/stdio.d.ts",
-      "default": "./dist/transports/stdio.js"
-    }
-  },
   "scripts": {
-    "build": "tsdown",
-    "dev": "tsdown --watch",
-    "start": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
-    "test:package": "bash test/package/check.sh",
-    "test:watch": "vitest",
-    "tsc": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "catalog:",
-    "@sentry/node": "catalog:",
-    "@sentry/core": "catalog:",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
+    "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter sentry run generate:schema && pnpm --filter sentry run generate:docs && pnpm --filter sentry run generate:sdk && tsx script/bundle.ts",
+    "test:bundle": "node --test test/bundle.test.mjs"
   },
   "devDependencies": {
-    "@sentry/mcp-core": "workspace:*",
-    "@sentry/mcp-server-mocks": "workspace:*",
-    "@sentry/mcp-server-tsconfig": "workspace:*",
-    "@sentry/toolkit-core": "workspace:*",
-    "@types/node": "catalog:",
-    "tsdown": "catalog:",
-    "tsx": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+    "esbuild": "^0.28.1",
+    "tsx": "catalog:"
   }
 }

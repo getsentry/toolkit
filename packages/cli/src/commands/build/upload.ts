@@ -392,7 +392,7 @@ export const uploadCommand = buildCommand({
     }
 
     const uploadedCount = builds.filter((b) => b.error === null).length;
-    yield new CommandOutput<BuildUploadResult>({ builds, uploadedCount });
+    yield new CommandOutput({ builds, uploadedCount });
 
     // Deliberate deviation from the legacy CLI, which only exits non-zero when
     // *every* build fails: we fail loud on *any* failure so CI/agents never

@@ -807,7 +807,7 @@ export const setupCommand = buildCommand({
       printWelcomeMessage(emit, CLI_VERSION, binaryPath);
     }
 
-    yield new CommandOutput<SetupResult>({
+    yield new CommandOutput({
       messages,
       warnings,
       freshInstall,

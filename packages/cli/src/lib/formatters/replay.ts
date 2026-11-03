@@ -4,34 +4,31 @@
  * Human-readable formatting for Session Replay data in the CLI.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { ListProjectReplayRecordingSegmentsResponse } from "@sentry/api";
 
+import type { InferOutput } from "valibot";
 import type {
   ReplayActivityEvent,
   ReplayDetails,
   ReplayRelatedIssue,
   ReplayRelatedTrace,
+  ReplayViewOutputFields,
 } from "../../types/index.js";
 import { getReplayUserLabel } from "../replay-search.js";
 import { buildReplayUrl } from "../sentry-web-urls.js";
-import {
-  escapeMarkdownCell,
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-} from "./markdown.js";
+import { mdKvTable, renderMarkdown } from "./markdown.js";
 import {
   formatDurationCompactMs,
   formatDurationVerbose,
 } from "./time-utils.js";
 
-/** Data bag assembled by replay view before rendering. */
-export type ReplayViewData = {
-  org: string;
+/**
+ * Data bag assembled by replay view before rendering: the replay plus the
+ * fields JSON output adds to it ({@link ReplayViewOutputFields}).
+ */
+export type ReplayViewData = InferOutput<typeof ReplayViewOutputFields> & {
   replay: ReplayDetails;
-  activity: ReplayActivityEvent[];
-  relatedIssues: ReplayRelatedIssue[];
-  relatedTraces: ReplayRelatedTrace[];
 };
 
 type MarkdownRow = [string, string];
@@ -293,7 +290,7 @@ function formatJoinedMarkdown(
   values: Array<string | null | undefined>,
 ): string | undefined {
   const joined = values.filter(Boolean).join(" ");
-  return joined ? escapeMarkdownCell(joined) : undefined;
+  return joined ? tableCell(joined) : undefined;
 }
 
 function formatReplayLocation(replay: ReplayDetails): string | undefined {
@@ -305,7 +302,7 @@ function formatReplayLocation(replay: ReplayDetails): string | undefined {
   const location = [geo.city, geo.region, geo.country_code]
     .filter(Boolean)
     .join(", ");
-  return location ? escapeMarkdownCell(location) : undefined;
+  return location ? tableCell(location) : undefined;
 }
 
 function buildReplayOverviewRows(
@@ -339,12 +336,12 @@ function buildReplayOverviewRows(
   pushMarkdownRow(
     rows,
     "Environment",
-    replay.environment ? escapeMarkdownCell(replay.environment) : undefined,
+    replay.environment ? tableCell(replay.environment) : undefined,
   );
   pushMarkdownRow(
     rows,
     "Platform",
-    replay.platform ? escapeMarkdownCell(replay.platform) : undefined,
+    replay.platform ? tableCell(replay.platform) : undefined,
   );
   pushMarkdownRow(
     rows,
@@ -356,7 +353,7 @@ function buildReplayOverviewRows(
   pushMarkdownRow(
     rows,
     "Replay Type",
-    replay.replay_type ? escapeMarkdownCell(replay.replay_type) : undefined,
+    replay.replay_type ? tableCell(replay.replay_type) : undefined,
   );
   pushMarkdownRow(rows, "Archived", formatYesNo(replay.is_archived));
   pushMarkdownRow(rows, "Viewed", formatYesNo(replay.has_viewed));
@@ -379,20 +376,16 @@ function buildReplayOverviewRows(
 function buildReplayUserRows(replay: ReplayDetails): MarkdownRow[] {
   const rows: MarkdownRow[] = [];
   const userLabel = getReplayUserLabel(replay);
-  pushMarkdownRow(
-    rows,
-    "User",
-    userLabel ? escapeMarkdownCell(userLabel) : undefined,
-  );
+  pushMarkdownRow(rows, "User", userLabel ? tableCell(userLabel) : undefined);
   pushMarkdownRow(
     rows,
     "Email",
-    replay.user?.email ? escapeMarkdownCell(replay.user.email) : undefined,
+    replay.user?.email ? tableCell(replay.user.email) : undefined,
   );
   pushMarkdownRow(
     rows,
     "IP",
-    replay.user?.ip ? escapeMarkdownCell(replay.user.ip) : undefined,
+    replay.user?.ip ? tableCell(replay.user.ip) : undefined,
   );
   pushMarkdownRow(rows, "Location", formatReplayLocation(replay));
   return rows;
@@ -428,7 +421,7 @@ function buildReplayClientRows(replay: ReplayDetails): MarkdownRow[] {
   pushMarkdownRow(
     rows,
     "Dist",
-    replay.dist ? escapeMarkdownCell(replay.dist) : undefined,
+    replay.dist ? tableCell(replay.dist) : undefined,
   );
   return rows;
 }
@@ -472,7 +465,7 @@ function pushTagsSection(lines: string[], replay: ReplayDetails): void {
     a.localeCompare(b),
   )) {
     lines.push(
-      `- \`${escapeMarkdownInline(key)}\`: ${values.map((value) => `\`${escapeMarkdownInline(value)}\``).join(", ")}`,
+      `- ${inlineCode(key)}: ${values.map((value) => inlineCode(value)).join(", ")}`,
     );
   }
 }
@@ -507,9 +500,9 @@ function pushActivitySection(
         : "";
     const details =
       event.details.length > 0
-        ? ` · ${event.details.map((detail) => escapeMarkdownInline(detail)).join(" · ")}`
+        ? ` · ${event.details.map((detail) => text(detail)).join(" · ")}`
         : "";
-    lines.push(`- ${prefix}\`${escapeMarkdownInline(event.label)}\`${details}`);
+    lines.push(`- ${prefix}${inlineCode(event.label)}${details}`);
   }
 }
 
@@ -521,7 +514,7 @@ function formatRelatedIssueLine(
     return `- Event \`${issue.eventId}\``;
   }
 
-  return `- \`${issue.shortId}\`: ${escapeMarkdownInline(issue.title)} (view: \`sentry issue view ${org}/${issue.shortId}\`)`;
+  return `- \`${issue.shortId}\`: ${text(issue.title)} (view: \`sentry issue view ${org}/${issue.shortId}\`)`;
 }
 
 function buildRelatedTraceStats(trace: ReplayRelatedTrace): string[] {

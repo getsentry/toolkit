@@ -14,8 +14,10 @@ import {
 import {
   array,
   boolean,
+  description,
   getDotPath,
   type InferOutput,
+  literal,
   looseObject,
   nullable,
   nullish,
@@ -23,16 +25,19 @@ import {
   object,
   optional,
   picklist,
+  pipe,
   record,
   safeParse,
   string,
   tuple,
   union,
   unknown,
+  variant,
 } from "valibot";
 
 import { ValidationError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
+import { DryRunOutputField } from "./output.js";
 
 // ---------------------------------------------------------------------------
 // Widget type and display type enums
@@ -945,48 +950,71 @@ export type EventsTableResponse = InferOutput<typeof EventsTableResponseSchema>;
 // Widget data result types — discriminated union for all widget outputs
 // ---------------------------------------------------------------------------
 
+/** The `type` of a widget data result, with its description. */
+function resultKind<const T extends string>(kind: T) {
+  return pipe(literal(kind), description(`Result kind: ${kind}`));
+}
+
+const resultUnit = optional(pipe(nullable(string()), description("Unit")));
+
 /** Time-series data for chart widgets (line, area, bar) */
-export type TimeseriesResult = {
-  type: "timeseries";
-  series: {
-    label: string;
-    values: { timestamp: number; value: number }[];
-    unit?: string | null;
-  }[];
-};
+export const TimeseriesResultSchema = object({
+  type: resultKind("timeseries"),
+  series: pipe(
+    array(
+      object({
+        label: pipe(string(), description("Series label")),
+        values: array(object({ timestamp: number(), value: number() })),
+        unit: resultUnit,
+      }),
+    ),
+    description("Series, one per aggregate or group"),
+  ),
+});
 
 /** Tabular data for table and top_n widgets */
-export type TableResult = {
-  type: "table";
-  columns: { name: string; type?: string; unit?: string | null }[];
-  rows: Record<string, unknown>[];
-};
+export const TableResultSchema = object({
+  type: resultKind("table"),
+  columns: pipe(
+    array(
+      object({
+        name: string(),
+        type: optional(string()),
+        unit: resultUnit,
+      }),
+    ),
+    description("Table columns"),
+  ),
+  rows: pipe(array(record(string(), unknown())), description("Table rows")),
+});
 
 /** Single scalar value for big_number widgets */
-export type ScalarResult = {
-  type: "scalar";
-  value: number;
-  previousValue?: number;
-  unit?: string | null;
-};
+export const ScalarResultSchema = object({
+  type: resultKind("scalar"),
+  value: pipe(number(), description("Current value")),
+  previousValue: optional(
+    pipe(number(), description("Value of the previous period")),
+  ),
+  unit: resultUnit,
+});
 
 /** Markdown text content for text widgets (no API query — content from widget.description) */
-export type TextResult = {
-  type: "text";
-  content: string;
-};
+export const TextResultSchema = object({
+  type: resultKind("text"),
+  content: pipe(string(), description("Markdown content")),
+});
 
 /** Widget type not supported for data fetching */
-export type UnsupportedResult = {
-  type: "unsupported";
-  reason: string;
-};
+export const UnsupportedResultSchema = object({
+  type: resultKind("unsupported"),
+  reason: pipe(string(), description("Why the widget has no data")),
+});
 
 /** Widget query failed */
-export type ErrorResult = {
-  type: "error";
-  message: string;
-};
+export const ErrorResultSchema = object({
+  type: resultKind("error"),
+  message: pipe(string(), description("Query error")),
+});
 
 /**
  * Result of querying a widget's data.
@@ -999,13 +1027,63 @@ export type ErrorResult = {
  * - `unsupported` → placeholder message
  * - `error` → error message
  */
-export type WidgetDataResult =
-  | TimeseriesResult
-  | TableResult
-  | ScalarResult
-  | TextResult
-  | UnsupportedResult
-  | ErrorResult;
+export const WidgetDataResultSchema = pipe(
+  variant("type", [
+    TimeseriesResultSchema,
+    TableResultSchema,
+    ScalarResultSchema,
+    TextResultSchema,
+    UnsupportedResultSchema,
+    ErrorResultSchema,
+  ]),
+  description("Widget query result"),
+);
+
+export type TimeseriesResult = InferOutput<typeof TimeseriesResultSchema>;
+export type TableResult = InferOutput<typeof TableResultSchema>;
+export type ScalarResult = InferOutput<typeof ScalarResultSchema>;
+export type TextResult = InferOutput<typeof TextResultSchema>;
+export type UnsupportedResult = InferOutput<typeof UnsupportedResultSchema>;
+export type ErrorResult = InferOutput<typeof ErrorResultSchema>;
+export type WidgetDataResult = InferOutput<typeof WidgetDataResultSchema>;
+
+/**
+ * JSON output of `dashboard view`: the dashboard with each widget's query
+ * result. The type the command yields is derived from it
+ * (`DashboardViewData` in `lib/formatters/dashboard.ts`).
+ */
+export const DashboardViewOutputSchema = object({
+  id: pipe(string(), description("Dashboard ID")),
+  title: pipe(string(), description("Dashboard title")),
+  period: pipe(string(), description("Time range of the widget data")),
+  fetchedAt: pipe(
+    string(),
+    description("When the data was fetched (ISO 8601)"),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+  dateCreated: optional(
+    pipe(string(), description("Creation date (ISO 8601)")),
+  ),
+  environment: optional(
+    pipe(array(string()), description("Environment filter")),
+  ),
+  widgets: pipe(
+    array(
+      object({
+        title: pipe(string(), description("Widget title")),
+        displayType: pipe(string(), description("Display type")),
+        widgetType: optional(pipe(string(), description("Dataset"))),
+        description: optional(
+          pipe(string(), description("Markdown content of a text widget")),
+        ),
+        layout: optional(DashboardWidgetLayoutSchema),
+        queries: optional(array(DashboardWidgetQuerySchema)),
+        data: WidgetDataResultSchema,
+      }),
+    ),
+    description("Widgets with their query results"),
+  ),
+});
 
 // ---------------------------------------------------------------------------
 // Dataset mapping
@@ -1075,3 +1153,45 @@ export const DashboardRevisionSchema = looseObject({
 });
 
 export type DashboardRevision = InferOutput<typeof DashboardRevisionSchema>;
+
+/**
+ * JSON output of `dashboard widget add` and `dashboard widget edit`, for
+ * `--fields`: the saved dashboard, the added or edited widget, and its URL.
+ */
+export const DashboardWidgetChangeOutputSchema = object({
+  dashboard: pipe(DashboardDetailSchema, description("The saved dashboard")),
+  widget: pipe(
+    DashboardWidgetSchema,
+    description("The added or edited widget"),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+});
+
+/** JSON output of `dashboard widget add` and `dashboard widget edit`. */
+export type DashboardWidgetChangeOutput = InferOutput<
+  typeof DashboardWidgetChangeOutputSchema
+>;
+
+/**
+ * JSON output of `dashboard widget delete`: the deleted (or, with
+ * `--dry-run`, matched) widget and the dashboard's widget count.
+ */
+export const DashboardWidgetDeleteOutputSchema = object({
+  dryRun: DryRunOutputField,
+  deleted: optional(
+    pipe(boolean(), description("True when the widget was deleted")),
+  ),
+  widgetTitle: pipe(string(), description("Title of the deleted widget")),
+  widgetCount: pipe(
+    number(),
+    description(
+      "Dashboard widget count after the delete (before it, with --dry-run)",
+    ),
+  ),
+  url: pipe(string(), description("Dashboard URL")),
+});
+
+/** JSON output of `dashboard widget delete`. */
+export type DashboardWidgetDeleteOutput = InferOutput<
+  typeof DashboardWidgetDeleteOutputSchema
+>;

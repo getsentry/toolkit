@@ -18,6 +18,8 @@ docs depend on `sentry`). Root-level changes and non-PR events check every
 enabled project. Each project has its own build, lint, typecheck, test, policy,
 and E2E steps when those scripts exist. The always-present `test` job checks
 discovery, installation, repository quality, and every selected project.
+It is the required status check for `main` and `release/**`, so no other
+job may use the check name `test`: GitHub would accept that check in its place.
 Package-specific checks and exceptions live in `package.json#sentryCi`; see
 [Package CI checks](#package-ci-checks). The standalone smoke-test suite remains
 in its own workflow.
@@ -130,8 +132,8 @@ other fields are:
 - `roles`: names that `node scripts/ci-projects.mjs --roles NAME` resolves to
   the package name and path, so a specialized workflow need not hard-code them.
 
-For example, `@sentry/logger` and `@sentry/mcp-server` check their packed
-tarballs from a clean consumer project:
+For example, `@sentry/logger` checks its packed tarball from a clean consumer
+project:
 
 ```json
 {

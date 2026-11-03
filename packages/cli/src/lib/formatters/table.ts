@@ -9,9 +9,9 @@
  * treats them as zero-width for column sizing.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { Writer } from "../../types/index.js";
 import {
-  escapeMarkdownCell,
   isPlainOutput,
   renderInlineMarkdown,
   stripColorTags,
@@ -41,7 +41,7 @@ export type Column<T> = {
 /**
  * Build a raw CommonMark table string from items and column definitions.
  *
- * Column value functions should call {@link escapeMarkdownCell} on user data so pipe and
+ * Column value functions should call {@link tableCell} on user data so pipe and
  * backslash characters in API-supplied strings don't break the table.
  *
  * Used for plain/non-TTY output mode.

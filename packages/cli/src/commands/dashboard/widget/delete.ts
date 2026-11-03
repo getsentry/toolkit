@@ -20,7 +20,8 @@ import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDeleteCommand } from "../../../lib/mutate-command.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
-  type DashboardDetail,
+  type DashboardWidgetDeleteOutput,
+  DashboardWidgetDeleteOutputSchema,
   prepareDashboardForUpdate,
 } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
@@ -34,13 +35,6 @@ type DeleteFlags = {
   readonly "dry-run": boolean;
   readonly json: boolean;
   readonly fields?: string[];
-};
-
-type DeleteResult = {
-  dashboard: DashboardDetail;
-  widgetTitle: string;
-  url: string;
-  dryRun?: boolean;
 };
 
 export const deleteCommand = buildDeleteCommand(
@@ -69,22 +63,7 @@ export const deleteCommand = buildDeleteCommand(
     },
     output: {
       human: formatWidgetDeleted,
-      jsonTransform: (result: DeleteResult) => {
-        if (result.dryRun) {
-          return {
-            dryRun: true,
-            widgetTitle: result.widgetTitle,
-            widgetCount: result.dashboard.widgets?.length ?? 0,
-            url: result.url,
-          };
-        }
-        return {
-          deleted: true,
-          widgetTitle: result.widgetTitle,
-          widgetCount: result.dashboard.widgets?.length ?? 0,
-          url: result.url,
-        };
-      },
+      schema: DashboardWidgetDeleteOutputSchema,
     },
     parameters: {
       positional: dashboardArguments({
@@ -134,17 +113,17 @@ export const deleteCommand = buildDeleteCommand(
       const widgets = current.widgets ?? [];
 
       const widgetIndex = resolveWidgetIndex(widgets, flags.index, flags.title);
-      const widgetTitle = widgets[widgetIndex]?.title;
+      const widgetTitle = widgets[widgetIndex]?.title ?? "";
       const url = buildDashboardUrl(orgSlug, dashboardId);
 
       // Dry-run mode: show what would be removed without removing it
       if (flags["dry-run"]) {
         yield new CommandOutput({
-          dashboard: current,
-          widgetTitle,
-          url,
           dryRun: true,
-        } as DeleteResult);
+          widgetTitle,
+          widgetCount: widgets.length,
+          url,
+        });
         return { hint: `Dashboard: ${url}` };
       }
 
@@ -162,10 +141,11 @@ export const deleteCommand = buildDeleteCommand(
       );
 
       yield new CommandOutput({
-        dashboard: updated,
+        deleted: true,
         widgetTitle,
+        widgetCount: updated.widgets?.length ?? 0,
         url,
-      } as DeleteResult);
+      });
       return { hint: `Dashboard: ${url}` };
     },
   },

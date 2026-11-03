@@ -16,8 +16,9 @@
  *   - commands/index.md fragment, CONTRIBUTING.md: target syntax (from the
  *     `@form` lines in grammar/org-project-target.pegjs)
  *   - plugins/README.md: skill file layout (paths checked on disk)
- *   - features.md: DSN-scanned extensions (from TEXT_EXTENSIONS) and project
- *     alias examples (computed by buildOrgAwareAliases)
+ *   - features.md: DSN-scanned extensions (from TEXT_EXTENSIONS), project
+ *     alias examples (computed by buildOrgAwareAliases), and issue ID formats
+ *     (from the `@form` lines in grammar/issue-argument.pegjs)
  *   - library-usage.md: `sdk.run()` sample (translated from command
  *     `docs.examples`)
  *
@@ -60,9 +61,15 @@ const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
 const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
 const { TEXT_EXTENSIONS } = await import("../src/lib/scan/constants.js");
 const { buildOrgAwareAliases } = await import("../src/lib/alias.js");
+const { parseIssueArgument } = await import("../src/lib/issue-arguments.js");
+const { parseSelector } = await import("../src/lib/arg-parsing.js");
+const { parse: parseIssueSyntax } =
+  await import("../src/generated/issue-argument-grammar.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 const TARGET_GRAMMAR = "grammar/org-project-target.pegjs";
 const targetGrammar = await readFile(TARGET_GRAMMAR, "utf-8");
+const ISSUE_GRAMMAR = "grammar/issue-argument.pegjs";
+const issueGrammar = await readFile(ISSUE_GRAMMAR, "utf-8");
 const workspace = JSON.parse(await readFile("../../package.json", "utf-8"));
 
 const isCheck = process.argv.includes("--check");
@@ -462,7 +469,7 @@ function generateDevEnvVarsTable(): string {
     const desc = entry.devGuide ?? "";
     let defaultCol = "—";
     if (entry.name === "SENTRY_CLIENT_ID") {
-      defaultCol = "(required for build)";
+      defaultCol = "Public sentry.io client ID";
     } else if (entry.defaultValue) {
       defaultCol = `\`${entry.defaultValue}\``;
     }
@@ -613,14 +620,14 @@ function generateDetectedAgents(): string {
 // Section: Target Syntax (commands/index.md fragment, CONTRIBUTING.md)
 // ---------------------------------------------------------------------------
 
-/** `// @form <syntax> — <meaning>` or `// @invalid`. */
-const TARGET_ANNOTATION_RE = /^\s*\/\/ @(form|invalid)\b ?(.*)$/;
+/** `// @form <text>` or `// @invalid`, in a grammar the docs are generated from. */
+const GRAMMAR_ANNOTATION_RE = /^\s*\/\/ @(form|invalid)\b ?(.*)$/;
 /** An indented `//` line continuing the annotation above it. */
-const TARGET_CONTINUATION_RE = /^\s*\/\/ {3}(\S.*)$/;
+const GRAMMAR_CONTINUATION_RE = /^\s*\/\/ {3}(\S.*)$/;
 const COMMENT_LINE_RE = /^\s*\/\//;
 
 /** One annotation; `start` and `end` are 1-based line numbers. */
-type TargetAnnotation = {
+type GrammarAnnotation = {
   start: number;
   end: number;
   kind: string;
@@ -628,11 +635,11 @@ type TargetAnnotation = {
 };
 
 /** Collect the `@form` and `@invalid` annotations of a grammar. */
-function readTargetAnnotations(lines: string[]): TargetAnnotation[] {
-  const annotations: TargetAnnotation[] = [];
+function readGrammarAnnotations(lines: string[]): GrammarAnnotation[] {
+  const annotations: GrammarAnnotation[] = [];
   for (const [index, line] of lines.entries()) {
-    const annotation = TARGET_ANNOTATION_RE.exec(line);
-    const continuation = TARGET_CONTINUATION_RE.exec(line);
+    const annotation = GRAMMAR_ANNOTATION_RE.exec(line);
+    const continuation = GRAMMAR_CONTINUATION_RE.exec(line);
     const previous = annotations.at(-1);
     if (annotation) {
       annotations.push({
@@ -658,7 +665,7 @@ function readTargetAnnotations(lines: string[]): TargetAnnotation[] {
 function generateTargetSyntax(): string {
   // Checkouts with CRLF line endings (Windows) must parse the same.
   const lines = targetGrammar.split(/\r?\n/);
-  const annotations = readTargetAnnotations(lines);
+  const annotations = readGrammarAnnotations(lines);
 
   const target = peggy.parser
     .parse(targetGrammar, { grammarSource: TARGET_GRAMMAR })
@@ -693,6 +700,83 @@ function generateTargetSyntax(): string {
       );
     }
     rows.push(`| ${syntax} | ${meaning} |`);
+  }
+  return rows.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Section: Issue ID Formats (features.md)
+// ---------------------------------------------------------------------------
+
+/** `<form> <syntax> <example> — <meaning>`, the text of an issue `@form`. */
+const ISSUE_FORM_RE = /^([a-z-]+) (`[^`]+`) (`[^`]+`) — (.+)$/;
+/** A `form` the issue grammar returns. */
+const ISSUE_GRAMMAR_FORM_RE = /\bform: "([a-z-]+)"/g;
+
+/**
+ * The `form` of an issue argument: the grammar's, or `url` or `search` for
+ * the arguments taken apart before the grammar.
+ *
+ * @throws {ValidationError} When the argument is malformed
+ */
+function issueFormOf(argument: string): string {
+  const { parsed, baseUrl } = parseIssueArgument(argument);
+  if (baseUrl) {
+    return "url";
+  }
+  if (parsed.type === "search") {
+    return "search";
+  }
+  return parseIssueSyntax(argument, {
+    isSelector: (value) => parseSelector(value) !== undefined,
+  }).form;
+}
+
+/**
+ * Generate the issue ID formats table from the `@form` lines in the issue
+ * grammar. Generation fails when an example does not parse to the form its
+ * line names, or a form the grammar returns has no `@form` line, so the
+ * table cannot drift from the parser.
+ */
+function generateIssueIdFormats(): string {
+  const rows = [
+    "| Format | Example | Meaning |",
+    "|--------|---------|---------|",
+  ];
+  const documented = new Set<string>();
+  for (const { start, kind, text } of readGrammarAnnotations(
+    issueGrammar.split(/\r?\n/),
+  )) {
+    if (kind !== "form") {
+      continue;
+    }
+    const [, form = "", syntax, example = "", meaning] =
+      ISSUE_FORM_RE.exec(text) ?? [];
+    if (!(syntax && meaning)) {
+      throw new Error(
+        `${ISSUE_GRAMMAR}:${start}: expected "@form <form> \`<syntax>\` \`<example>\` — <meaning>"`,
+      );
+    }
+    let parsedForm: string;
+    try {
+      parsedForm = issueFormOf(example.slice(1, -1));
+    } catch (error) {
+      throw new Error(`${ISSUE_GRAMMAR}:${start}: ${example} does not parse`, {
+        cause: error,
+      });
+    }
+    if (parsedForm !== form) {
+      throw new Error(
+        `${ISSUE_GRAMMAR}:${start}: ${example} parses as "${parsedForm}", not "${form}"`,
+      );
+    }
+    documented.add(form);
+    rows.push(`| ${syntax} | ${example} | ${meaning} |`);
+  }
+  for (const [, form = ""] of issueGrammar.matchAll(ISSUE_GRAMMAR_FORM_RE)) {
+    if (form !== "invalid" && !documented.has(form)) {
+      throw new Error(`${ISSUE_GRAMMAR}: form "${form}" has no @form line`);
+    }
   }
   return rows.join("\n");
 }
@@ -1036,6 +1120,11 @@ const sections: SectionDef[] = [
         ],
         orgProject,
       ),
+  },
+  {
+    filePath: `${DOCS_CONTENT}/features.md`,
+    sectionName: "issue-id-formats",
+    generate: generateIssueIdFormats,
   },
   {
     filePath: `${DOCS_CONTENT}/library-usage.md`,

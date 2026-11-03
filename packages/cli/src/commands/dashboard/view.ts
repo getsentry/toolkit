@@ -31,9 +31,10 @@ import {
   type TimeRange,
   timeRangeToSeconds,
 } from "../../lib/time-range.js";
-import type {
-  DashboardWidget,
-  WidgetDataResult,
+import {
+  DashboardViewOutputSchema,
+  type DashboardWidget,
+  type WidgetDataResult,
 } from "../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
@@ -211,6 +212,7 @@ export const viewCommand = buildCommand({
   output: {
     human: createDashboardViewRenderer,
     jsonExclude: ["rendererPreference", "graphicsCap"],
+    schema: DashboardViewOutputSchema,
   },
   parameters: {
     positional: dashboardArguments({

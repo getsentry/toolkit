@@ -6,6 +6,16 @@
  * plan-level upgrade trials.
  */
 
+import {
+  description,
+  type InferOutput,
+  nullable,
+  number,
+  object,
+  picklist,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -33,29 +43,37 @@ type ListFlags = {
   readonly fields?: string[];
 };
 
+const { category, isStarted, lengthDays, startDate, endDate } =
+  ProductTrialSchema.pipe[0].entries;
+
 /**
- * Enriched trial entry for display.
- * Adds derived fields (name, displayName, status, daysRemaining) to the raw API data.
+ * JSON output of one trial: the API trial's fields plus the ones the CLI
+ * derives (name, status, daysRemaining).
  */
-type TrialListEntry = {
-  /** CLI-friendly name (e.g., "seer") or "plan" for plan-level trials */
-  name: string;
+const TrialListEntrySchema = object({
+  name: pipe(
+    string(),
+    description('CLI trial name (e.g. seer), or "plan" for the plan trial'),
+  ),
+  category,
+  status: pipe(
+    picklist(["available", "active", "expired"]),
+    description("Trial status"),
+  ),
+  daysRemaining: pipe(
+    nullable(number()),
+    description("Days left on an active trial"),
+  ),
+  isStarted,
+  lengthDays,
+  startDate,
+  endDate,
+});
+
+/** A trial for display: the JSON fields plus its human-only display name. */
+type TrialListEntry = InferOutput<typeof TrialListEntrySchema> & {
   /** Human-readable product name (e.g., "Seer") or plan upgrade name */
   displayName: string;
-  /** API category name (e.g., "seerUsers"), or "plan" for plan-level trials */
-  category: string;
-  /** Derived status */
-  status: TrialStatus;
-  /** Days remaining for active trials, null otherwise */
-  daysRemaining: number | null;
-  /** Raw isStarted flag from API */
-  isStarted: boolean;
-  /** Trial length in days, null if not set */
-  lengthDays: number | null;
-  /** ISO date string when trial started, null if not started */
-  startDate: string | null;
-  /** ISO date string when trial ends, null if not started */
-  endDate: string | null;
 };
 
 /** Status display labels with color indicators */
@@ -217,7 +235,7 @@ export const listCommand = buildCommand({
   output: {
     human: formatTrialListHuman,
     jsonExclude: ["displayName"],
-    schema: ProductTrialSchema,
+    schema: TrialListEntrySchema,
   },
   parameters: {
     positional: {

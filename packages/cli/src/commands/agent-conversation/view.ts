@@ -177,6 +177,6 @@ export const viewCommand = buildCommand({
       title,
     });
     result.truncated = truncated;
-    yield new CommandOutput<TranscriptResult>(result);
+    yield new CommandOutput(result);
   },
 });
