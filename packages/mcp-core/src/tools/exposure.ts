@@ -3,7 +3,7 @@
  * execute_sentry_tool.
  *
  * Tier 1 harnesses now defer MCP tool schemas behind their own tool search
- * (docs/mcp/harnesses.md, from #1862), so our gateway is redundant there.
+ * (docs/mcp/harnesses.md), so our gateway is redundant there.
  * This is a code constant on purpose, not a runtime option: set it to false
  * to restore the gateway surface in surfaces.ts if a harness regresses.
  *
