@@ -126,9 +126,7 @@ function parametersSchema(command: Command): JsonSchema {
 }
 
 /** Completion kinds of a command's positionals and visible flags. */
-function completions(
-  command: Command,
-): CommandCatalogEntry["completions"] | undefined {
+function completions(command: Command): CommandCatalogEntry["completions"] {
   const { positional, flags = {} } = command.parameters;
   const params =
     positional?.kind === "tuple"
@@ -157,32 +155,6 @@ function completions(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-/** The catalog entry of one command, or undefined when it is hidden. */
-function catalogEntry(
-  command: Command,
-  path: string,
-  apiByCommand: Readonly<Record<string, readonly ApiReference[]>>,
-): CommandCatalogEntry | undefined {
-  const info = buildCommandInfo(command, path);
-  if (info.exposure === "hidden") return;
-  const localPathFlags = info.flags
-    .filter((flag) => flag.localPath && !flag.hidden)
-    .map((flag) => flag.name);
-  const completion = completions(command);
-  return {
-    path,
-    brief: info.brief,
-    permission: info.permission,
-    exposure: info.exposure,
-    parameters: parametersSchema(command),
-    ...(completion ? { completions: completion } : {}),
-    ...(localPathFlags.length > 0 ? { localPathFlags } : {}),
-    examples: info.examples,
-    ...(info.jsonFields ? { outputFields: info.jsonFields } : {}),
-    apiOperations: [...(apiByCommand[path] ?? [])],
-  };
-}
-
 /**
  * Build the catalog of every command an MCP server may list: each public
  * command whose exposure is not `hidden`, sorted by path.
@@ -197,14 +169,27 @@ export function extractCommandCatalog(
   > = generatedCommandApi,
 ): CommandCatalog {
   const commands: CommandCatalogEntry[] = [];
-  for (const [target, segments] of publicTargetPaths(routeMap)) {
-    if (!isCommand(target)) continue;
-    const entry = catalogEntry(
-      target,
-      `sentry ${segments.join(" ")}`,
-      apiByCommand,
-    );
-    if (entry) commands.push(entry);
+  for (const [command, segments] of publicTargetPaths(routeMap)) {
+    if (!isCommand(command)) continue;
+    const info = buildCommandInfo(command, `sentry ${segments.join(" ")}`);
+    const { exposure } = info;
+    if (exposure === "hidden") continue;
+    const localPathFlags = info.flags
+      .filter((flag) => flag.localPath && !flag.hidden)
+      .map((flag) => flag.name);
+    const completion = completions(command);
+    commands.push({
+      path: info.path,
+      brief: info.brief,
+      permission: info.permission,
+      exposure,
+      parameters: parametersSchema(command),
+      ...(completion ? { completions: completion } : {}),
+      ...(localPathFlags.length > 0 ? { localPathFlags } : {}),
+      examples: info.examples,
+      ...(info.jsonFields ? { outputFields: info.jsonFields } : {}),
+      apiOperations: [...(apiByCommand[info.path] ?? [])],
+    });
   }
   commands.sort((a, b) => a.path.localeCompare(b.path));
   return { commands };

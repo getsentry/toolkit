@@ -44,8 +44,9 @@ describe("command catalog", () => {
       .flatMap((route) => route.commands)
       .filter((info) => info.exposure !== "hidden");
 
-    expect([...catalog.keys()].sort()).toEqual(
-      listed.map((info) => info.path).sort(),
+    const byPath = (a: string, b: string) => a.localeCompare(b);
+    expect([...catalog.keys()].sort(byPath)).toEqual(
+      listed.map((info) => info.path).sort(byPath),
     );
     for (const info of listed) {
       const entry = catalog.get(info.path);
