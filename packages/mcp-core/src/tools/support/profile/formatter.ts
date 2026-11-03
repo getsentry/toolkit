@@ -9,6 +9,7 @@
 
 import type {
   Flamegraph,
+  LegacySpeedscopeProfile,
   ProfileChunk,
   TransactionProfile,
 } from "../../../api-client/types";
@@ -488,6 +489,69 @@ export function formatProfileChunkAnalysis(
       },
       options,
     ),
+  );
+
+  return sections.join("\n");
+}
+
+/**
+ * Formats a legacy transaction profile returned in speedscope format.
+ *
+ * Legacy profiles (e.g. Android) do not expose sample-format data through the
+ * profile details API, so only summary metadata can be reported here.
+ */
+export function formatLegacyProfileSummary(
+  profile: LegacySpeedscopeProfile,
+  options: Omit<TransactionProfileAnalysisOptions, "focusOnUserCode">,
+): string {
+  const metadata: NonNullable<LegacySpeedscopeProfile["metadata"]> =
+    profile.metadata ?? {};
+  const profileId = profile.profileID ?? "Unknown";
+  const transactionName =
+    profile.transactionName ?? metadata.transactionName ?? "Unknown";
+  const device = [metadata.deviceManufacturer, metadata.deviceModel]
+    .filter(Boolean)
+    .join(" ");
+  const os = [metadata.deviceOSName, metadata.deviceOSVersion]
+    .filter(Boolean)
+    .join(" ");
+
+  const sections: string[] = [
+    `# Profile ${profileId}`,
+    "",
+    "## Summary",
+    `- **Profile URL**: ${options.profileUrl}`,
+    `- **Project**: ${options.projectSlug}`,
+    `- **Profile ID**: ${profileId}`,
+    `- **Transaction**: ${transactionName}`,
+  ];
+  if (metadata.traceID) {
+    sections.push(`- **Trace ID**: ${metadata.traceID}`);
+  }
+  if (options.traceUrl) {
+    sections.push(`- **Trace URL**: ${options.traceUrl}`);
+  }
+  if (profile.durationNS != null && Number.isFinite(profile.durationNS)) {
+    sections.push(`- **Duration**: ${formatDuration(profile.durationNS)}`);
+  }
+  sections.push(`- **Platform**: ${profile.platform}`);
+  sections.push("- **Format**: legacy (speedscope)");
+  if (metadata.environment) {
+    sections.push(`- **Environment**: ${metadata.environment}`);
+  }
+  if (device) {
+    sections.push(`- **Device**: ${device}`);
+  }
+  if (os) {
+    sections.push(`- **OS**: ${os}`);
+  }
+  sections.push("");
+  sections.push("## Sample Analysis Unavailable");
+  sections.push(
+    "This is a legacy transaction profile (for example from an Android or React Native app). Sentry returns it in speedscope format, which does not include the sample-level frames, stacks, and samples this tool analyzes.",
+  );
+  sections.push(
+    "Open the Profile URL above to inspect the flamegraph in Sentry, or use `get_profile` to analyze aggregated flamegraph data for this transaction.",
   );
 
   return sections.join("\n");

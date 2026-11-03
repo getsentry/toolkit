@@ -155,6 +155,8 @@ import {
   TraceMetaSchema,
   TraceSchema,
   TransactionProfileSchema,
+  LegacySpeedscopeProfileSchema,
+  isSpeedscopeProfilePayload,
   UptimeCheckListSchema,
   UptimeMonitorListSchema,
   UptimeMonitorSchema,
@@ -227,6 +229,7 @@ import type {
   Trace,
   TraceMeta,
   TransactionProfile,
+  LegacySpeedscopeProfile,
   UptimeCheckList,
   UptimeMonitor,
   UptimeMonitorList,
@@ -5564,9 +5567,14 @@ export class SentryApiService {
       profileId: string;
     },
     opts?: RequestOptions,
-  ): Promise<TransactionProfile> {
+  ): Promise<TransactionProfile | LegacySpeedscopeProfile> {
     const path = apiPath`/projects/${organizationSlug}/${projectSlugOrId}/profiling/profiles/${profileId}/`;
     const body = await this.requestJSON(path, undefined, opts);
+    // Legacy (e.g. Android) profiles are returned as speedscope output even
+    // when `format=sample` is requested, so they have no `profile` key.
+    if (isSpeedscopeProfilePayload(body)) {
+      return LegacySpeedscopeProfileSchema.parse(body);
+    }
     return TransactionProfileSchema.parse(body);
   }
 

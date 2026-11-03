@@ -120,6 +120,58 @@ describe("get_profile_details", () => {
       expect(result).toContain("| `unknown` | main.py:42 | 3 | User Code |");
     });
 
+    it("summarizes legacy speedscope transaction profiles", async () => {
+      const legacyProfileId = "ae9108da5e274c6684f9c4e727cd18a3";
+      const speedscopeBody = {
+        activeProfileIndex: 0,
+        durationNS: 1500000000,
+        metadata: {
+          deviceManufacturer: "samsung",
+          deviceModel: "SM-S918N",
+          deviceOSName: "android",
+          deviceOSVersion: "14",
+          environment: "production",
+          traceID: "18cd3a3d8eae46e5be7337e1e1845d62",
+          transactionName: "MainActivity",
+          version: "1",
+        },
+        platform: "android",
+        profileID: legacyProfileId,
+        profiles: [{ type: "evented", events: [] }],
+        projectID: 1,
+        shared: { frames: [] },
+        transactionName: "MainActivity",
+        metrics: null,
+      };
+      for (const host of ["sentry.io", "us.sentry.io"]) {
+        mswServer.use(
+          http.get(
+            `https://${host}/api/0/projects/sentry-mcp-evals/backend/profiling/profiles/${legacyProfileId}/`,
+            () => HttpResponse.json(speedscopeBody),
+            { once: true },
+          ),
+        );
+      }
+
+      const result = await getProfileDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          projectSlugOrId: "backend",
+          profileId: legacyProfileId,
+          regionUrl: null,
+          focusOnUserCode: true,
+        },
+        baseContext,
+      );
+
+      expect(result).toContain(`# Profile ${legacyProfileId}`);
+      expect(result).toContain("**Transaction**: MainActivity");
+      expect(result).toContain("**Platform**: android");
+      expect(result).toContain("**Format**: legacy (speedscope)");
+      expect(result).toContain("**Device**: samsung SM-S918N");
+      expect(result).toContain("## Sample Analysis Unavailable");
+    });
+
     it("fetches a transaction profile from a numeric project ID", async () => {
       mswServer.use(
         http.get(
