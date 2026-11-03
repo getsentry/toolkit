@@ -8,7 +8,7 @@ note: |
   window up front, so each addition is noise for every session. Keep new tools
   deferred: they stay reachable through search_sentry_tools and
   execute_sentry_tool. Restricted until tool search is standard in every
-  mainstream harness, which likely happens by 2027. If the list truly must
+  mainstream harness; docs/mcp/harnesses.md tracks that. If the list truly must
   change, update the allowed list in this rule in the same PR so the change is
   reviewed explicitly.
 rule:

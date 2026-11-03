@@ -40,6 +40,7 @@ toolkit/
 - docs/README.md — Toolkit documentation index
 - docs/cli/README.md — CLI guides and the published CLI site
 - docs/mcp/README.md — MCP guides across its packages
+- docs/mcp/harnesses.md — First-class agent harnesses and native tool search support
 - packages/cli/AGENTS.md — CLI-specific rules
 
 **Read before MCP tool changes:**
