@@ -19,9 +19,9 @@ import {
   type DisplayType,
   ERROR_AGGREGATE_FUNCTIONS,
   ErrorAggregateFunctionSchema,
-  EventsStatsDataPointSchema,
-  EventsStatsSeriesSchema,
   EventsTableResponseSchema,
+  EventsTimeseriesResponseSchema,
+  EventsTimeseriesRowSchema,
   GRID_COLUMNS,
   IS_FILTER_VALUES,
   IsFilterValueSchema,
@@ -945,46 +945,77 @@ describe("stripWidgetServerFields", () => {
 // Widget data query types
 // ---------------------------------------------------------------------------
 
-describe("EventsStatsDataPointSchema", () => {
-  test("parses valid data point", () => {
-    const result = safeParse(EventsStatsDataPointSchema, [
-      1_700_000_000,
-      [{ count: 42 }],
-    ]);
+describe("EventsTimeseriesRowSchema", () => {
+  test("parses a bucket with a value", () => {
+    const result = safeParse(EventsTimeseriesRowSchema, {
+      timestamp: 1_700_000_000_000,
+      value: 42,
+      incomplete: false,
+    });
     expect(result.success).toBe(true);
   });
 
-  test("rejects invalid data point", () => {
-    const result = safeParse(EventsStatsDataPointSchema, [
-      "not-a-number",
-      [{ count: 42 }],
-    ]);
+  test("parses a null bucket", () => {
+    const result = safeParse(EventsTimeseriesRowSchema, {
+      timestamp: 1_700_000_000_000,
+      value: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects a non-numeric timestamp", () => {
+    const result = safeParse(EventsTimeseriesRowSchema, {
+      timestamp: "soon",
+      value: 1,
+    });
     expect(result.success).toBe(false);
   });
 });
 
-describe("EventsStatsSeriesSchema", () => {
-  test("parses simple series", () => {
-    const result = safeParse(EventsStatsSeriesSchema, {
-      data: [
-        [1_700_000_000, [{ count: 10 }]],
-        [1_700_003_600, [{ count: 20 }]],
+describe("EventsTimeseriesResponseSchema", () => {
+  test("parses an ungrouped response", () => {
+    const result = safeParse(EventsTimeseriesResponseSchema, {
+      meta: { dataset: "errors", start: 1, end: 2 },
+      timeSeries: [
+        {
+          yAxis: "count()",
+          values: [
+            { timestamp: 1_700_000_000_000, value: 10, incomplete: false },
+            { timestamp: 1_700_003_600_000, value: 20, incomplete: true },
+          ],
+          meta: { valueType: "integer", valueUnit: null, interval: 3_600_000 },
+        },
       ],
-      start: "2024-01-01T00:00:00Z",
-      end: "2024-01-02T00:00:00Z",
-      meta: {
-        fields: { "count()": "integer" },
-        units: { "count()": null },
-      },
     });
     expect(result.success).toBe(true);
   });
 
-  test("parses series with optional fields missing", () => {
-    const result = safeParse(EventsStatsSeriesSchema, {
-      data: [[1_700_000_000, [{ count: 5 }]]],
+  test("parses a grouped response with Other", () => {
+    const result = safeParse(EventsTimeseriesResponseSchema, {
+      timeSeries: [
+        {
+          yAxis: "p50(span.duration)",
+          groupBy: [{ key: "span.op", value: "db" }],
+          values: [{ timestamp: 1_700_000_000_000, value: 1.5 }],
+          meta: { valueType: "duration", valueUnit: "millisecond", order: 0 },
+        },
+        {
+          yAxis: "p50(span.duration)",
+          values: [{ timestamp: 1_700_000_000_000, value: null }],
+          meta: {
+            valueType: "duration",
+            valueUnit: "millisecond",
+            isOther: true,
+          },
+        },
+      ],
     });
     expect(result.success).toBe(true);
+  });
+
+  test("rejects a response without timeSeries", () => {
+    const result = safeParse(EventsTimeseriesResponseSchema, { data: [] });
+    expect(result.success).toBe(false);
   });
 });
 

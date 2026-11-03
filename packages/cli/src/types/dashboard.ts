@@ -29,8 +29,6 @@ import {
   record,
   safeParse,
   string,
-  tuple,
-  union,
   unknown,
   variant,
 } from "valibot";
@@ -891,43 +889,68 @@ export function prepareDashboardForUpdate(dashboard: DashboardDetail): {
 // ---------------------------------------------------------------------------
 // Widget data query types
 //
-// Types for responses from the events-stats and events API endpoints
+// Types for responses from the events-timeseries and events API endpoints
 // used to fetch actual widget data for dashboard rendering.
 // ---------------------------------------------------------------------------
 
 /**
- * Single data point from the events-stats API.
- * Format: [timestamp_epoch_seconds, [{count: value}]]
+ * Single bucket from the events-timeseries API.
+ *
+ * `timestamp` is epoch milliseconds. `value` is null for empty buckets.
  */
-export const EventsStatsDataPointSchema = tuple([
-  number(),
-  array(object({ count: number() })),
-]);
+export const EventsTimeseriesRowSchema = looseObject({
+  timestamp: number(),
+  value: nullable(number()),
+  incomplete: optional(boolean()),
+});
 
-export type EventsStatsDataPoint = InferOutput<
-  typeof EventsStatsDataPointSchema
->;
+export type EventsTimeseriesRow = InferOutput<typeof EventsTimeseriesRowSchema>;
+
+/** One group-by key/value pair attached to a grouped (topEvents) series. */
+export const EventsTimeseriesGroupBySchema = looseObject({
+  key: string(),
+  value: unknown(),
+});
 
 /**
- * A single time-series from events-stats.
+ * A single series from `GET /organizations/{org}/events-timeseries/`.
  *
- * In simple queries this is the top-level response.
- * In grouped queries (`topEvents > 0`) each group key maps to one of these.
+ * Ungrouped queries return one series per `yAxis`. Grouped queries
+ * (`topEvents > 0`) return one series per group per `yAxis`, with the
+ * group identified by `groupBy` and the catch-all group by `meta.isOther`.
  */
-export const EventsStatsSeriesSchema = looseObject({
-  data: array(EventsStatsDataPointSchema),
-  order: optional(number()),
-  start: optional(union([string(), number()])),
-  end: optional(union([string(), number()])),
+export const EventsTimeseriesSeriesSchema = looseObject({
+  yAxis: string(),
+  values: array(EventsTimeseriesRowSchema),
+  groupBy: optional(array(EventsTimeseriesGroupBySchema)),
+  meta: looseObject({
+    valueType: optional(string()),
+    valueUnit: optional(nullable(string())),
+    interval: optional(number()),
+    order: optional(number()),
+    isOther: optional(boolean()),
+  }),
+});
+
+export type EventsTimeseriesSeries = InferOutput<
+  typeof EventsTimeseriesSeriesSchema
+>;
+
+/** Top-level response from the events-timeseries API. */
+export const EventsTimeseriesResponseSchema = looseObject({
+  timeSeries: array(EventsTimeseriesSeriesSchema),
   meta: optional(
     looseObject({
-      fields: optional(record(string(), string())),
-      units: optional(record(string(), nullable(string()))),
+      dataset: optional(string()),
+      start: optional(number()),
+      end: optional(number()),
     }),
   ),
 });
 
-export type EventsStatsSeries = InferOutput<typeof EventsStatsSeriesSchema>;
+export type EventsTimeseriesResponse = InferOutput<
+  typeof EventsTimeseriesResponseSchema
+>;
 
 /**
  * Response from `GET /organizations/{org}/events/` (table format).
@@ -1079,7 +1102,7 @@ export function mapWidgetTypeToDataset(
   return WIDGET_TYPE_TO_DATASET[widgetType] ?? null;
 }
 
-/** Display types that use time-series data (events-stats endpoint) */
+/** Display types that use time-series data (events-timeseries endpoint) */
 export const TIMESERIES_DISPLAY_TYPES = new Set([
   "line",
   "area",

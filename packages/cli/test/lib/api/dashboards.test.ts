@@ -5,7 +5,7 @@
  * from src/lib/api/dashboards.ts.
  */
 
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   computeOptimalInterval,
   periodToSeconds,
@@ -319,7 +319,7 @@ describe("widget sort resolution", () => {
 
   test("selects the aggregate for grouped error timeseries so the sort is accepted", async () => {
     apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockResolvedValue({ data: {} });
+    apiRequestToRegionMock.mockResolvedValue({ data: { timeSeries: [] } });
     const dashboard = makeDashboard([
       {
         title: "Errors by node",
@@ -342,11 +342,11 @@ describe("widget sort resolution", () => {
 
     expect(apiRequestToRegionMock).toHaveBeenCalledWith(
       REGION,
-      "/organizations/test-org/events-stats/",
+      "/organizations/test-org/events-timeseries/",
       expect.objectContaining({
         params: expect.objectContaining({
           dataset: "errors",
-          field: ["failure.node", "count()"],
+          groupBy: ["failure.node", "count()"],
           sort: "-count()",
           topEvents: 5,
         }),
@@ -407,5 +407,229 @@ describe("widget query failures", () => {
       type: "error",
       message: "API request failed: 404 Not Found",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// queryAllWidgets — timeseries widgets (events-timeseries)
+// ---------------------------------------------------------------------------
+
+describe("queryAllWidgets timeseries", () => {
+  const REGION = "https://us.sentry.io";
+  const ORG = "my-org";
+
+  beforeEach(() => {
+    apiRequestToRegionMock.mockReset();
+  });
+
+  /** Extract the single call's endpoint and params. */
+  function lastRequest(): {
+    endpoint: string;
+    params: Record<string, unknown>;
+  } {
+    const call = apiRequestToRegionMock.mock.calls[0] as [
+      string,
+      string,
+      { params: Record<string, unknown> },
+    ];
+    return { endpoint: call[1], params: call[2].params };
+  }
+
+  test("queries events-timeseries and normalizes an ungrouped series", async () => {
+    apiRequestToRegionMock.mockResolvedValue({
+      data: {
+        meta: { dataset: "errors" },
+        timeSeries: [
+          {
+            yAxis: "count()",
+            values: [
+              { timestamp: 1_700_000_000_000, value: 10, incomplete: false },
+              { timestamp: 1_700_003_600_000, value: null, incomplete: true },
+            ],
+            meta: {
+              valueType: "integer",
+              valueUnit: null,
+              interval: 3_600_000,
+            },
+          },
+        ],
+      },
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Errors",
+        displayType: "line",
+        widgetType: "error-events",
+        queries: [{ aggregates: ["count()"], columns: [], conditions: "" }],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "24h",
+    });
+
+    const { endpoint, params } = lastRequest();
+    expect(endpoint).toBe(`/organizations/${ORG}/events-timeseries/`);
+    expect(params.dataset).toBe("errors");
+    expect(params.yAxis).toEqual(["count()"]);
+    expect(params.statsPeriod).toBe("24h");
+    expect(params.groupBy).toBeUndefined();
+    expect(params.topEvents).toBeUndefined();
+    expect(results.get(0)).toEqual({
+      type: "timeseries",
+      series: [
+        {
+          label: "count()",
+          unit: null,
+          values: [
+            { timestamp: 1_700_000_000, value: 10 },
+            { timestamp: 1_700_003_600, value: 0 },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("sends groupBy, sort and topEvents for grouped widgets", async () => {
+    apiRequestToRegionMock.mockResolvedValue({ data: { timeSeries: [] } });
+    const dashboard = makeDashboard([
+      {
+        title: "Slow ops",
+        displayType: "bar",
+        widgetType: "spans",
+        limit: 3,
+        queries: [
+          {
+            aggregates: ["p50(span.duration)"],
+            columns: ["span.op"],
+            conditions: "is_transaction:false",
+            orderby: "-p50(span.duration)",
+          },
+        ],
+      },
+    ]);
+
+    await queryAllWidgets(REGION, ORG, dashboard, { period: "1h" });
+
+    const { params } = lastRequest();
+    expect(params.dataset).toBe("spans");
+    expect(params.query).toBe("is_transaction:false");
+    expect(params.groupBy).toEqual(["span.op", "p50(span.duration)"]);
+    expect(params.sort).toBe("-p50(span.duration)");
+    expect(params.topEvents).toBe(3);
+    expect(params.excludeOther).toBeUndefined();
+  });
+
+  test("adds the sort field to groupBy and excludes Other for multi-axis", async () => {
+    apiRequestToRegionMock.mockResolvedValue({ data: { timeSeries: [] } });
+    const dashboard = makeDashboard([
+      {
+        title: "Logs",
+        displayType: "area",
+        widgetType: "logs",
+        queries: [
+          {
+            aggregates: ["count()", "count_unique(user)"],
+            columns: ["severity"],
+            conditions: "",
+            orderby: "-max(timestamp)",
+          },
+        ],
+      },
+    ]);
+
+    await queryAllWidgets(REGION, ORG, dashboard, { period: "1h" });
+
+    const { params } = lastRequest();
+    expect(params.groupBy).toEqual([
+      "severity",
+      "count()",
+      "count_unique(user)",
+      "max(timestamp)",
+    ]);
+    expect(params.sort).toBe("-max(timestamp)");
+    expect(params.topEvents).toBe(5);
+    expect(params.excludeOther).toBe("1");
+  });
+
+  test("labels grouped series by group values and marks Other", async () => {
+    apiRequestToRegionMock.mockResolvedValue({
+      data: {
+        timeSeries: [
+          {
+            yAxis: "count()",
+            values: [{ timestamp: 1_700_000_000_000, value: 1 }],
+            meta: { valueType: "integer", valueUnit: null, isOther: true },
+          },
+          {
+            yAxis: "count()",
+            groupBy: [
+              { key: "span.op", value: "db" },
+              { key: "release", value: null },
+            ],
+            values: [{ timestamp: 1_700_000_000_000, value: 7 }],
+            meta: { valueType: "integer", valueUnit: null, order: 0 },
+          },
+          {
+            yAxis: "count()",
+            groupBy: [
+              { key: "span.op", value: "http" },
+              { key: "release", value: "1.0" },
+            ],
+            values: [{ timestamp: 1_700_000_000_000, value: 3 }],
+            meta: { valueType: "integer", valueUnit: null, order: 1 },
+          },
+        ],
+      },
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Ops",
+        displayType: "line",
+        widgetType: "spans",
+        queries: [
+          {
+            aggregates: ["count()"],
+            columns: ["span.op", "release"],
+            conditions: "",
+          },
+        ],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "1h",
+    });
+
+    const result = results.get(0);
+    expect(result?.type).toBe("timeseries");
+    if (result?.type !== "timeseries") {
+      return;
+    }
+    expect(result.series.map((s) => s.label)).toEqual([
+      "db,(no value)",
+      "http,1.0",
+      "Other",
+    ]);
+  });
+
+  test("returns an error result for a malformed response", async () => {
+    apiRequestToRegionMock.mockResolvedValue({
+      data: { data: [[1_700_000_000, [{ count: 1 }]]] },
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Legacy",
+        displayType: "line",
+        widgetType: "error-events",
+        queries: [{ aggregates: ["count()"], columns: [], conditions: "" }],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "1h",
+    });
+
+    expect(results.get(0)).toMatchObject({ type: "error" });
   });
 });
