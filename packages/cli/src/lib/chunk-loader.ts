@@ -10,10 +10,14 @@
  *
  * Each chunk keeps a code cache: the first run compiles it from source and,
  * on exit, writes the V8 code cache for every function that ran. Later runs
- * read it back. Node's SEA code cache covers only the main script, and its
- * compile cache only the files Node loads itself, so the loader keeps its
- * own. Because the program that reads a cache also writes it, it works on
- * every platform, including the binaries cross-compiled in CI.
+ * read it back. Node has no cache for these chunks: its SEA `useCodeCache`
+ * compiles only the `main` script when it builds the binary, and SEA assets
+ * are bytes that `sea.getAsset()` returns, which Node never compiles. Its
+ * compile cache (`module.enableCompileCache()`) covers only the files its
+ * module loader reads, not source run through `vm.Script`. So the loader
+ * keeps its own. Because the program that reads a cache also writes it, it
+ * works on every platform, including the binaries cross-compiled in CI,
+ * where a build-time code cache would come from the wrong platform.
  *
  * Imports only `node:` builtins: it runs before every command.
  */

@@ -41,6 +41,9 @@ export async function loadSdkApp(args: readonly string[]): Promise<SdkApp> {
     return await fullApp;
   }
   const missing = names.filter((name) => !Object.hasOwn(loaded, name));
+  // At most three imports (`help`, the route, its singular), so no limit is
+  // needed. Calls that load the same route at once share the module, which
+  // `import()` evaluates once.
   await Promise.all(
     missing.map(async (name) => {
       const load = ROUTE_LOADERS[name];
