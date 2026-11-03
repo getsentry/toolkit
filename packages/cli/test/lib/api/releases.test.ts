@@ -20,7 +20,10 @@ const { mockGetRepositoryName } = vi.hoisted(() => ({
   mockGetRepositoryName: vi.fn((): string | null => "getsentry/cli"),
 }));
 
-vi.mock("../../../src/lib/git.js", () => ({
+vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
+  normalizeSha: (
+    await importOriginal<typeof import("../../../src/lib/git.js")>()
+  ).normalizeSha,
   getRepositoryName: mockGetRepositoryName,
   getHeadCommit: () => "abc123def456789012345678901234567890abcd",
   isInsideGitWorkTree: () => true,

@@ -1,6 +1,6 @@
 /** Shared CI detection for command telemetry and VCS metadata collection. */
 
-import { parseRemoteUrl } from "./git.js";
+import { normalizeSha, parseRemoteUrl } from "./git.js";
 
 /** Environment variables commonly set by CI providers. */
 const CI_ENV_VARS = [
@@ -43,9 +43,6 @@ export type CiCheckout = {
   /** Environment variables the values came from, for log output. */
   source: string;
 };
-
-/** A commit SHA: 7 to 40 hex characters. */
-const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/i;
 
 /** Join two path parts, or `undefined` when either is missing. */
 function joinRepo(owner?: string, name?: string): string | undefined {
@@ -124,8 +121,8 @@ const CI_CHECKOUT_PROVIDERS: ReadonlyArray<{
  *
  * Builds often run without a git checkout: Docker builds usually exclude
  * `.git`. `set-commits --auto` uses this when there is no
- * `origin` remote to read. Values that do not look like a commit SHA are
- * skipped.
+ * `origin` remote to read. Commits that are not a full 40-character SHA
+ * are skipped.
  *
  * @param env - The active environment: `getEnv()` in library code, or
  *   `this.env` in a command. In library mode this is the SDK's isolated
@@ -135,8 +132,8 @@ const CI_CHECKOUT_PROVIDERS: ReadonlyArray<{
 export function getCiCheckout(env: NodeJS.ProcessEnv): CiCheckout | undefined {
   for (const provider of CI_CHECKOUT_PROVIDERS) {
     const repository = provider.repository(env)?.trim();
-    const commit = provider.commit(env)?.trim();
-    if (repository?.includes("/") && commit && COMMIT_SHA_RE.test(commit)) {
+    const commit = normalizeSha(provider.commit(env));
+    if (repository?.includes("/") && commit) {
       return { repository, commit, source: provider.source };
     }
   }
