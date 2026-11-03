@@ -5,8 +5,10 @@
  * everything those import. When the first argument names a top-level route,
  * this builds the application with only that route, which
  * `generated/route-loaders.ts` loads on its own (see
- * `script/generate-route-loaders.ts`). Everything else gets the full
- * application: no arguments, a flag or an unknown name first (for the
+ * `script/generate-route-loaders.ts`). Global flags before the route name
+ * (`sentry --verbose issue list`) are skipped, and a bare `sentry --version`
+ * loads only `help`. Everything else gets the full application: no
+ * arguments, `--help` or another flag first, an unknown name (for the
  * suggestions), and the commands that read the whole command tree.
  */
 
@@ -16,6 +18,7 @@ import {
   PLURAL_TO_SINGULAR,
 } from "./app-root.js";
 import type { CliApplication } from "./lib/application.js";
+import { buildTopLevelFlags } from "./lib/global-flags.js";
 import type { CliRoutes } from "./lib/route-registry.js";
 import { ROUTE_LOADERS } from "./generated/route-loaders.js";
 
@@ -36,6 +39,49 @@ function isRoute(name: string): boolean {
 }
 
 /**
+ * Global flag tokens the route scanner accepts before the route name. Same
+ * allow-list as the application's `scanner.topLevelFlags`.
+ */
+const TOP_LEVEL_FLAGS = buildTopLevelFlags();
+
+/**
+ * Read the tokens before the route name the way the route scanner does:
+ * skip global flags and their values, and note `--version`.
+ *
+ * Returns `undefined` when a token the scanner handles differently comes
+ * first (`--help`, `--`, any other flag), so the caller loads the full app.
+ */
+function scanLeadingTokens(
+  args: readonly string[],
+): { name: string | undefined; version: boolean } | undefined {
+  let version = false;
+  let expectValue = false;
+  for (const token of args) {
+    if (!token.startsWith("-")) {
+      if (expectValue) {
+        expectValue = false;
+        continue;
+      }
+      return { name: token, version };
+    }
+    // The scanner takes the token after a value flag as its value unless it
+    // is a flag itself.
+    expectValue = false;
+    if (token === "--version") {
+      version = true;
+    } else if (TOP_LEVEL_FLAGS.valueFlags.has(token)) {
+      expectValue = true;
+    } else if (
+      !TOP_LEVEL_FLAGS.booleanFlags.has(token) &&
+      !TOP_LEVEL_FLAGS.valueFlags.has(token.split("=", 1)[0] ?? "")
+    ) {
+      return;
+    }
+  }
+  return { name: undefined, version };
+}
+
+/**
  * The top-level routes to load for `args`, or `undefined` for the full
  * application.
  *
@@ -46,8 +92,16 @@ function isRoute(name: string): boolean {
 export function routesForArgs(
   args: readonly string[],
 ): readonly string[] | undefined {
-  const [name] = args;
-  if (name === undefined || FULL_TREE_ROUTES.has(name) || !isRoute(name)) {
+  const scanned = scanLeadingTokens(args);
+  if (!scanned) {
+    return;
+  }
+  const { name, version } = scanned;
+  if (name === undefined) {
+    // `sentry --version` prints the version before it would run any command.
+    return version ? ["help"] : undefined;
+  }
+  if (FULL_TREE_ROUTES.has(name) || !isRoute(name)) {
     return;
   }
   const singular = PLURAL_TO_SINGULAR[name];
