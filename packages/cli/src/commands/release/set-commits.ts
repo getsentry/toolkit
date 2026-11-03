@@ -7,6 +7,7 @@
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
+  explainSetCommitsError,
   NO_REPO_INTEGRATIONS_MESSAGE,
   setCommitsAuto,
   setCommitsLocal,
@@ -521,7 +522,12 @@ export const setCommitsCommand = buildCommand({
     // Explicit --commit mode: parse REPO@SHA or REPO@PREV..SHA pairs as refs
     if (flags.commit) {
       const refs = parseCommitRefs(flags.commit);
-      const release = await setCommitsWithRefs(org, version, refs);
+      let release: SentryRelease;
+      try {
+        release = await setCommitsWithRefs(org, version, refs);
+      } catch (error) {
+        throw await explainSetCommitsError(org, version, refs, error);
+      }
       yield new CommandOutput(release);
       return;
     }

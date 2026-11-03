@@ -115,6 +115,45 @@ describe("release set-commits --commit", () => {
     ]);
   });
 
+  test("explains a repository the org does not have", async () => {
+    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+    const serverError = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({ refs: ["Invalid repository names: owner/repo"] }),
+      "organizations/my-org/releases/1.0.0/",
+    );
+    setCommitsWithRefsSpy.mockRejectedValue(serverError);
+    const explainSpy = vi
+      .spyOn(apiClient, "explainSetCommitsError")
+      .mockResolvedValue(new ValidationError("explained", "commit.repository"));
+
+    const { context } = createMockContext();
+    const func = await setCommitsCommand.loader();
+    await expect(
+      func.call(
+        context,
+        {
+          auto: false,
+          local: false,
+          clear: false,
+          commit: "owner/repo@abc123",
+          "initial-depth": 20,
+          json: true,
+        },
+        "1.0.0",
+      ),
+    ).rejects.toThrow("explained");
+
+    expect(explainSpy).toHaveBeenCalledWith(
+      "my-org",
+      "1.0.0",
+      [{ repository: "owner/repo", commit: "abc123" }],
+      serverError,
+    );
+    explainSpy.mockRestore();
+  });
+
   test("parses REPO@PREV..SHA range", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
     setCommitsWithRefsSpy.mockResolvedValue(sampleRelease);

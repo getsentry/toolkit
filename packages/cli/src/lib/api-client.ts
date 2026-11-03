@@ -167,6 +167,7 @@ export {
   createRelease,
   createReleaseDeploy,
   deleteRelease,
+  explainSetCommitsError,
   getRelease,
   type ListReleasesOptions,
   listProjectEnvironments,
