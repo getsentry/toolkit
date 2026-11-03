@@ -3073,6 +3073,15 @@ describe("selected event package versions", () => {
     expect(result).not.toContain("\n# heading");
   });
 
+  it("preserves surrounding spaces in selected package names and versions", async () => {
+    mockPackages({ " example ": " 1.2.3 " });
+    const result = await getIssueDetails.handler(
+      { ...params, packageNames: [" example "] },
+      baseContext,
+    );
+    expect(result).toContain("- `  example  `: `  1.2.3  `");
+  });
+
   it.each([true, false])(
     "preserves ordinary output when selection is omitted (supplied=%s)",
     async (supplied) => {

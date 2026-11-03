@@ -1,6 +1,5 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { isTopLevelToolName } from "../../tools/surfaces";
-import { formatInlineCode } from "../inline-code";
 import {
   formatToolCall,
   isToolAvailableInSession,

@@ -33,7 +33,6 @@ import type {
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
 import { selectEventPackages } from "./event-packages";
-import { formatInlineCode } from "./inline-code";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -2223,7 +2222,7 @@ function formatEventPackages(event: Event, packageNames: string[]): string {
     let value: string;
     switch (entry.status) {
       case "recorded":
-        value = formatInlineCode(entry.version);
+        value = inlineCode(entry.version);
         if (entry.truncated) {
           value += " (truncated)";
         }
@@ -2235,7 +2234,7 @@ function formatEventPackages(event: Event, packageNames: string[]): string {
         value = "Version not recorded";
         break;
     }
-    output += `- ${formatInlineCode(entry.name)}: ${value}\n`;
+    output += `- ${inlineCode(entry.name)}: ${value}\n`;
   }
   return `${output}\n`;
 }

@@ -168,8 +168,8 @@ the same selection with an explicit `eventId`.
   distinguish a name not listed from a null or blank version. Neither proves a
   dependency was absent from the application.
 - Truncate versions after 256 characters with an explicit marker. In Markdown,
-  render package names and versions as code spans with `formatInlineCode`
-  (`packages/mcp-core/src/internal/inline-code.ts`), which keeps them inside
+  render package names and versions as code spans with `inlineCode` from
+  `@sentry/toolkit-core/markdown`, which keeps them inside
   their list entries; structured strings stay raw. Do not render unrelated
   packages.
 - Package selection requires an exact event; issue/latest-event and other resource

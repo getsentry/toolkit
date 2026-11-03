@@ -4,7 +4,6 @@ import type {
   EventsTimeSeriesResponse,
   IngestionMeta,
 } from "../../../api-client/schema";
-import { formatInlineCode } from "../../../internal/inline-code";
 import { formatToolCallInstruction } from "../../../internal/tool-helpers/tool-call-formatting";
 import { formatUserGeoSummary } from "../../../internal/user-formatting";
 import { logInfo } from "../../../telem/logging";
