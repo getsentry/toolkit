@@ -42,7 +42,6 @@ export type {
 } from "./dashboard.js";
 export {
   DashboardDetailSchema,
-  DashboardListItemSchema,
   DashboardWidgetLayoutSchema,
   DashboardWidgetQuerySchema,
   DashboardWidgetSchema,
@@ -53,11 +52,6 @@ export type {
   FeedbackMetadata,
   FeedbackViewResult,
   SentryFeedback,
-} from "./feedback.js";
-export {
-  FeedbackMetadataSchema,
-  FeedbackViewOutputSchema,
-  SentryFeedbackSchema,
 } from "./feedback.js";
 // OAuth types and schemas
 export type {
@@ -91,25 +85,18 @@ export type {
 } from "./replay.js";
 export {
   REPLAY_LIST_FIELDS,
-  ReplayActivityEventSchema,
   ReplayBrowserSchema,
-  ReplayDetailsOutputSchema,
   ReplayDetailsResponseSchema,
   ReplayDetailsSchema,
   ReplayDeviceSchema,
   ReplayGeoSchema,
   ReplayIdsByResourceSchema,
-  ReplayListItemOutputSchema,
   ReplayListItemSchema,
   ReplayListResponseSchema,
   ReplayOsSchema,
   ReplayOtaUpdatesSchema,
-  ReplayRelatedIssueSchema,
-  ReplayRelatedTraceSchema,
   ReplaySdkSchema,
   ReplayUserSchema,
-  ReplayViewOutputFields,
-  ReplayViewOutputSchema,
 } from "./replay.js";
 export type {
   AutofixResponse,
@@ -182,31 +169,12 @@ export {
   DetailedLogsResponseSchema,
   DetailedSentryLogSchema,
   type EventViewAttachment,
-  EventViewOutputFields,
-  EventViewOutputSchema,
-  FlatSpanSchema,
   ISSUE_LEVELS,
   ISSUE_STATUSES,
-  IssueEventSchema,
-  IssueViewOutputFields,
-  IssueViewOutputSchema,
   LogsResponseSchema,
-  MonitorConfigSchema,
   ProductTrialSchema,
   RegionSchema,
-  ReleaseUpdateOutputFields,
-  ReleaseUpdateOutputSchema,
-  RepositoryProviderSchema,
-  SentryDeploySchema,
-  SentryIntegrationSchema,
-  SentryIssueSchema,
   SentryLogSchema,
-  SentryMonitorSchema,
-  SentryOrganizationSchema,
-  SentryProjectSchema,
-  SentryReleaseSchema,
-  SentryRepositorySchema,
-  SentryTeamSchema,
   SentryUserSchema,
   SpansResponseSchema,
   TraceItemAttributeSchema,
@@ -219,7 +187,7 @@ export {
   UserRegionsResponseSchema,
 } from "./sentry.js";
 
-export { DryRunOutputField, opaque, type WithOutputFields } from "./output.js";
+export type { WithOutputFields } from "../output-schemas/output.js";
 
 // I/O types
 

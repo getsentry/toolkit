@@ -24,7 +24,6 @@ import {
   serializeTimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import { IssueEventSchema } from "../../types/index.js";
 import { type IssueTarget, issuePositional } from "../issue/positional.js";
 import { buildCommandHint } from "../issue/utils.js";
 import {
@@ -35,6 +34,7 @@ import {
   formatEventsHuman,
   jsonTransformEvents,
 } from "./shared-events.js";
+import { IssueEventSchema } from "../../generated/output-schemas/event.js";
 
 // ---------------------------------------------------------------------------
 // Constants

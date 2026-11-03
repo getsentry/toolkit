@@ -17,10 +17,8 @@ import {
 import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
-import {
-  type MetricAlertDeleteOutput,
-  MetricAlertDeleteOutputSchema,
-} from "../output-schemas.js";
+import type { MetricAlertDeleteOutput } from "../../../output-schemas/alert.js";
+import { MetricAlertDeleteOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
 

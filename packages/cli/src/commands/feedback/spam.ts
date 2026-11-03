@@ -7,9 +7,9 @@ import { buildCommand } from "../../lib/command.js";
 import { formatSpamFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
-import { SentryFeedbackSchema } from "../../types/index.js";
 import { type FeedbackTarget, feedbackPositional } from "./positional.js";
 import { updateFeedbackStatus } from "./utils.js";
+import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 export const spamCommand = buildCommand({
   docs: {

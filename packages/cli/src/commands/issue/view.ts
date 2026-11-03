@@ -30,9 +30,9 @@ import {
 } from "../../lib/replay-search.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import type { SentryEvent } from "../../types/index.js";
-import { IssueViewOutputSchema } from "../../types/index.js";
 import { type IssuesArguments, issuesPositional } from "./positional.js";
 import { mapIssueArgsConcurrently, resolveIssue } from "./utils.js";
+import { IssueViewOutputSchema } from "../../generated/output-schemas/issue.js";
 
 const log = logger.withTag("issue.view");
 

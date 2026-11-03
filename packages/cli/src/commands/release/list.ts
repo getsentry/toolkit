@@ -6,14 +6,6 @@
  */
 
 import { text } from "@sentry/toolkit-core/markdown";
-import {
-  description,
-  looseObject,
-  object,
-  optional,
-  pipe,
-  string,
-} from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   type ListReleasesOptions,
@@ -46,7 +38,6 @@ import {
   jsonTransformListResult,
   type ListResult,
   type OrgListConfig,
-  OrgListItemOutputFields,
 } from "../../lib/org-list.js";
 import {
   type ResolvedTarget,
@@ -55,24 +46,14 @@ import {
 } from "../../lib/resolve-target.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import type { ListCommandTarget } from "../../lib/target-positional.js";
-import {
-  type SentryRelease,
-  SentryReleaseSchema,
-  type WithOutputFields,
-} from "../../types/index.js";
+import type { SentryRelease, WithOutputFields } from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
+import { ReleaseListItemSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseListItemOutputFields } from "../../output-schemas/release.js";
 
 const log = logger.withTag("release.list");
 
 export const PAGINATION_KEY = "release-list";
-
-/** Fields the list adds to each release: its org and, when listing several projects, its project. */
-const ReleaseListItemOutputFields = object({
-  ...OrgListItemOutputFields.entries,
-  targetProject: optional(
-    pipe(string(), description("Project slug, when listing several")),
-  ),
-});
 
 type ReleaseWithOrg = WithOutputFields<
   SentryRelease,
@@ -701,10 +682,7 @@ export const listCommand = buildListCommand("release", {
     human: formatListHuman,
     jsonTransform: (result: ListResult<ReleaseWithOrg>, fields?: string[]) =>
       jsonTransformListResult(result, fields),
-    schema: looseObject({
-      ...SentryReleaseSchema.entries,
-      ...ReleaseListItemOutputFields.entries,
-    }),
+    schema: ReleaseListItemSchema,
   },
   parameters: {
     positional: LIST_ORG_TARGET_POSITIONAL,

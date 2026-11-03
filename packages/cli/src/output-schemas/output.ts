@@ -1,8 +1,9 @@
 /**
  * Building blocks for command output schemas.
  *
- * A command declares its JSON output once, as a valibot schema
- * (`OutputConfig.schema`), and derives the TypeScript type its `func`
+ * A command declares its JSON output once, as a valibot schema in
+ * `src/output-schemas/` (build-only: the command's `OutputConfig.schema` is
+ * the field data generated from it), and derives the TypeScript type its `func`
  * yields and its `human` formatter takes from that schema, so the
  * compiler keeps the two in sync. Fields that come from the API keep the
  * `@sentry/api` SDK type; fields the CLI adds are written once as a valibot
