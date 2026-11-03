@@ -11,7 +11,7 @@ import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
 import {
   getSearchableTools,
-  prepareToolParams,
+  prepareToolCallParams,
   type ToolRegistry,
 } from "../catalog-runtime/availability";
 import type { ToolConfig } from "../types";
@@ -52,7 +52,7 @@ async function executeCatalogToolWithSpan({
     },
     async (span) => {
       try {
-        const paramsWithConstraints = prepareToolParams({
+        const paramsWithConstraints = await prepareToolCallParams({
           tool,
           params,
           context,
