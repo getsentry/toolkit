@@ -10,10 +10,23 @@ description: Sentry error tracking and performance monitoring agent. Use when
 mcpServers:
   - sentry
 allowedTools:
+  - add_issue_note
+  - add_team_to_project
   - analyze_issue_with_seer
+  - create_alert_rule
+  - create_dsn
+  - create_metric_monitor
+  - create_project
+  - create_team
+  - create_uptime_monitor
+  - delete_alert_rule
+  - delete_metric_monitor
+  - delete_monitor_environment
+  - delete_uptime_monitor
   - find_alert_rules
   - find_dashboards
   - find_dropped_events
+  - find_dsns
   - find_metric_monitors
   - find_monitors
   - find_organizations
@@ -46,7 +59,9 @@ allowedTools:
   - get_span_details
   - get_trace_details
   - get_uptime_monitor_details
+  - link_issue
   - onboarding_status_update
+  - remove_team_from_project
   - search_agent_conversations
   - search_ai_conversations
   - search_attributes
@@ -61,6 +76,13 @@ allowedTools:
   - search_replays
   - search_traces
   - submit_feedback_to_sentry_team
+  - unlink_issue
+  - update_alert_rule
+  - update_dsn
+  - update_issue
+  - update_metric_monitor
+  - update_project
+  - update_uptime_monitor
   - whoami
 ---
 
