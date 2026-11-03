@@ -30,7 +30,6 @@
  *   dist-build/           (chunks and sourcemaps, embedded and uploaded)
  */
 
-import { execSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -39,6 +38,7 @@ import { buildCarExtract } from "./build-car-extract.js";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { type BuildOptions, build as esbuild } from "esbuild";
+import { fossilize } from "fossilize";
 import {
   buildMainScript,
   chunkBuild,
@@ -97,6 +97,16 @@ function getPackageName(target: BuildTarget): string {
 function getFossilizePlatform(target: BuildTarget): string {
   const os = target.os === "win32" ? "win" : target.os;
   return `${os}-${target.arch}`;
+}
+
+/**
+ * Read a boolean env var the way the fossilize CLI does: unset, empty, or
+ * "false"/"f"/"n"/"no"/"off"/"0" is false, and any other value is true.
+ */
+function envFlag(value: string | undefined): boolean {
+  return !["", "false", "f", "n", "no", "off", "0"].includes(
+    (value ?? "").toLowerCase(),
+  );
 }
 
 /** Intermediate build directory for esbuild output (separate from fossilize's output). */
@@ -298,7 +308,7 @@ async function compileAllTargets(
 
   // The SEA main script (SEA_MAIN_JS) reads the chunks back with
   // node:sea.getAsset() under the same keys.
-  const assetArgs = bundle.files.flatMap((file) => ["--assets", file]);
+  const assets = [...bundle.files];
 
   // Add ink sidecar as asset if it exists (pre-bundled by text-import-plugin)
   // The text-import-plugin pre-bundles the Ink sidecar into BUILD_DIR.
@@ -306,7 +316,7 @@ async function compileAllTargets(
   // via node:sea.getAsset(INK_SIDECAR_ASSET_KEY).
   const INK_SIDECAR = `${BUILD_DIR}/ink-app.js`;
   if (existsSync(INK_SIDECAR)) {
-    assetArgs.push("--assets", INK_SIDECAR);
+    assets.push(INK_SIDECAR);
   }
 
   // Embed the DIF parser WASM (from @sentry/symbolic) as a SEA asset. The
@@ -334,7 +344,7 @@ async function compileAllTargets(
   }
   const DIF_WASM = `${BUILD_DIR}/symbolic_bg.wasm`;
   copyFileSync(DIF_WASM_SRC, DIF_WASM);
-  assetArgs.push("--assets", DIF_WASM);
+  assets.push(DIF_WASM);
 
   // Embed the Spleen dashboard glyph subset. The asset key matches the path
   // requested through node:sea in src/lib/formatters/spleen-font.ts.
@@ -346,7 +356,7 @@ async function compileAllTargets(
   }
   const SPLEEN_FONT = `${BUILD_DIR}/spleen-8x16.bin`;
   copyFileSync(SPLEEN_FONT_SRC, SPLEEN_FONT);
-  assetArgs.push("--assets", SPLEEN_FONT);
+  assets.push(SPLEEN_FONT);
 
   if (
     targets.some((target) => target.os === "darwin" && target.arch === "arm64")
@@ -355,43 +365,41 @@ async function compileAllTargets(
     // match CAR_EXTRACT_ASSET_KEY in src/lib/build/asset-catalog-extract.ts.
     const CAR_EXTRACT = `${BUILD_DIR}/car-extract`;
     copyFileSync(buildCarExtract(), CAR_EXTRACT);
-    assetArgs.push("--assets", CAR_EXTRACT);
+    assets.push(CAR_EXTRACT);
   }
 
   console.log(
     `  Step 2: Compiling ${platforms.length} target(s) (Node SEA via fossilize)...`,
   );
 
-  // Invoke fossilize via `pnpm exec` so it resolves from the workspace bin
-  // regardless of where pnpm places it (isolated store vs. root), rather than
-  // assuming a fixed node_modules/.bin location.
-  const fossilizeBin = "pnpm exec fossilize";
-
+  // Call fossilize's API rather than its CLI: the build embeds hundreds of
+  // chunks, and one `--assets` argument per chunk overflows the Windows
+  // command line ("The command line is too long."). The env-backed options
+  // keep the defaults that the fossilize CLI reads from FOSSILIZE_*.
   try {
-    execSync(
-      [
-        fossilizeBin,
-        "--no-bundle",
-        "--hole-punch",
+    await fossilize(
+      {
+        nodeVersion: NODE_VERSION,
+        platforms,
+        assets,
+        outDir: "dist-bin",
+        outputName: "sentry",
+        cacheDir: process.env.FOSSILIZE_CACHE_DIR ?? ".node-cache",
+        concurrencyLimit: Number(
+          process.env.FOSSILIZE_CONCURRENCY_LIMIT ?? "3",
+        ),
+        noBundle: true,
+        holePunch: true,
         // Make the binary ignore NODE_OPTIONS so user V8 flags (e.g.
         // `NODE_OPTIONS=--max-old-space-size=8192`) don't change V8's
         // flag-hash and reject the code caches ("Code cache data
         // rejected"), the embedded one and the ones `src/lib/chunk-loader.ts`
         // writes. process.env is untouched, so child processes still
         // inherit the user's NODE_OPTIONS.
-        "--ignore-node-options",
-        "--output-name",
-        "sentry",
-        "--platforms",
-        platforms.join(","),
-        "--out-dir",
-        "dist-bin",
-        "--node-version",
-        NODE_VERSION,
-        ...assetArgs,
-        SEA_MAIN_JS,
-      ].join(" "),
-      { stdio: "inherit" },
+        ignoreNodeOptions: true,
+        sign: envFlag(process.env.FOSSILIZE_SIGN),
+      },
+      SEA_MAIN_JS,
     );
   } catch (error) {
     console.error("  Fossilize compilation failed:");
@@ -425,7 +433,7 @@ async function compileAllTargets(
  * Fossilize outputs `sentry-{os}-{arch}[.exe]` where os is "win" for Windows.
  * We rename "win" → "windows" to match our release naming convention.
  *
- * Note: ICU hole-punch now runs inside fossilize (--hole-punch flag) before
+ * Note: ICU hole-punch now runs inside fossilize (`holePunch`) before
  * code signing, so it's no longer done here.
  */
 async function postProcessTarget(target: BuildTarget): Promise<void> {
