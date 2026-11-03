@@ -2946,6 +2946,61 @@ export class SentryApiService {
   }
 
   /**
+   * Create a cron monitor.
+   *
+   * POST /organizations/{org}/monitors/
+   * Source: src/sentry/monitors/endpoints/organization_monitor_index.py
+   * Body fields: src/sentry/monitors/validators.py (MonitorValidator, ConfigValidator)
+   */
+  async createMonitor(
+    {
+      organizationSlug,
+      projectSlug,
+      name,
+      slug,
+      status,
+      owner,
+      config,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      name: string;
+      slug?: string;
+      status?: "active" | "disabled";
+      owner?: string;
+      config: {
+        schedule_type: "crontab" | "interval";
+        schedule: string | [number, string];
+        checkin_margin?: number;
+        max_runtime?: number;
+        timezone?: string;
+        failure_issue_threshold?: number;
+        recovery_threshold?: number;
+      };
+    },
+    opts?: RequestOptions,
+  ): Promise<Monitor> {
+    const payload: Record<string, unknown> = {
+      project: projectSlug,
+      name,
+      config,
+    };
+    if (slug !== undefined) payload.slug = slug;
+    if (status !== undefined) payload.status = status;
+    if (owner !== undefined) payload.owner = owner;
+
+    const body = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/monitors/`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      opts,
+    );
+    return MonitorSchema.parse(body);
+  }
+
+  /**
    * Schedule deletion of a cron monitor environment. Returns 202 with no body.
    * Source: src/sentry/monitors/endpoints/project_monitor_environment_details.py
    */

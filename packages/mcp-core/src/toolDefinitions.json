@@ -976,6 +976,178 @@
     "surface": "catalog"
   },
   {
+    "name": "create_monitor",
+    "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nProvide exactly one of `crontab` or `interval`. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', crontab='0 3 * * *', timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', interval={ value: 15, unit: 'minute' })\n</examples>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "type": "string",
+          "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Monitor display name."
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional monitor slug used by check-ins. Derived from the name when omitted."
+        },
+        "crontab": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Five-field crontab schedule or `@` alias, e.g. `0 3 * * *` or `@daily`. Seconds fields are not supported."
+        },
+        "interval": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["minute", "hour", "day", "week", "month", "year"]
+            }
+          },
+          "required": ["value", "unit"],
+          "description": "Interval schedule, e.g. `{ value: 15, unit: 'minute' }`."
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "tz database timezone for the schedule, e.g. `UTC`."
+        },
+        "checkInMargin": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40320,
+          "description": "Minutes after the expected time before a check-in counts as missed."
+        },
+        "maxRuntime": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10080,
+          "description": "Minutes a check-in may stay in progress before it fails."
+        },
+        "failureIssueThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 720,
+          "description": "Consecutive failed or missed check-ins before an issue opens."
+        },
+        "recoveryThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 720,
+          "description": "Consecutive successful check-ins before the issue resolves."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "disabled"],
+          "description": "Monitor status. Disabled monitors ignore check-ins."
+        },
+        "owner": {
+          "type": "string",
+          "pattern": "^(user|team):\\d+$",
+          "description": "Owner actor in `user:ID` or `team:ID` format."
+        }
+      },
+      "required": ["organizationSlug", "projectSlug", "name"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "monitor": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": ["string", "null"]
+            },
+            "slug": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "projectSlug": {
+              "type": ["string", "null"]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "scheduleType": {
+              "type": ["string", "null"]
+            },
+            "schedule": {
+              "type": ["string", "null"]
+            },
+            "timezone": {
+              "type": ["string", "null"]
+            },
+            "checkInMargin": {
+              "type": ["number", "null"]
+            },
+            "maxRuntime": {
+              "type": ["number", "null"]
+            },
+            "failureIssueThreshold": {
+              "type": ["number", "null"]
+            },
+            "recoveryThreshold": {
+              "type": ["number", "null"]
+            },
+            "webUrl": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "id",
+            "slug",
+            "name",
+            "projectSlug",
+            "status",
+            "scheduleType",
+            "schedule",
+            "timezone",
+            "checkInMargin",
+            "maxRuntime",
+            "failureIssueThreshold",
+            "recoveryThreshold",
+            "webUrl"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["monitor"],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["org:read", "project:read", "alerts:write"],
+    "skills": ["project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "create_project",
     "description": "Create a new project in Sentry (provisions DSN automatically).\n\nUSE THIS TOOL WHEN USERS WANT TO:\n- 'Create a new project'\n- 'Set up a project for [app/service] with team [X]'\n- 'I need a new Sentry project'\n- Create project AND need DSN in one step\n- Create project and link an existing repository\n\nReturns the created project slug and a usable SENTRY_DSN when key setup succeeds.\n\nBe careful when using this tool!\n\n<examples>\n### Create new project with team\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='my-project', platform='javascript')\n```\n### Create project with an explicit slug\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='My Project', slug='my-project', platform='javascript')\n```\n### Create project and link to a repository\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='my-project', platform='javascript', repository='getsentry/sentry')\n```\n</examples>",
     "inputSchema": {
@@ -2350,7 +2522,7 @@
   },
   {
     "name": "find_monitors",
-    "description": "Find Sentry cron monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
+    "description": "Find Sentry cron monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\nTo create a cron monitor, use create_monitor.\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {

@@ -9,6 +9,7 @@ import findDashboards from "./find-dashboards";
 import getDashboardDetails from "./get-dashboard-details";
 import findMonitors from "./find-monitors";
 import getMonitorDetails from "./get-monitor-details";
+import createMonitor from "./create-monitor";
 import deleteMonitorEnvironment from "./delete-monitor-environment";
 import findUptimeMonitors from "./find-uptime-monitors";
 import getUptimeMonitorDetails from "./get-uptime-monitor-details";
@@ -116,6 +117,7 @@ const catalogTools = {
   get_dashboard_details: getDashboardDetails,
   find_monitors: findMonitors,
   get_monitor_details: getMonitorDetails,
+  create_monitor: createMonitor,
   delete_monitor_environment: deleteMonitorEnvironment,
   find_uptime_monitors: findUptimeMonitors,
   get_uptime_monitor_details: getUptimeMonitorDetails,
