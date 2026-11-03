@@ -170,3 +170,4 @@ minimumReleaseAgeExclude:
   - "@sentry/api@0.437.0"
   - miniflare@5.20261019.1-beta
   - wrangler@4.151.3
+  - "@sentry/symbolic@14.0.0-alpha.5"

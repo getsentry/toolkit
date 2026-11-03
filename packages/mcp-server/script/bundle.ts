@@ -95,7 +95,7 @@ const cliPkg = JSON.parse(
 ) as { version: string };
 
 // Each CLI release publishes this package at the CLI's version, set by
-// `packages/cli/script/bump-version.ts`.
+// `versioning.files` in `.craft.yml`.
 if (pkg.version !== cliPkg.version) {
   console.error(
     `\nError: @sentry/mcp-server is at ${pkg.version} but the CLI is at ${cliPkg.version}. Both must share one version.\n`,

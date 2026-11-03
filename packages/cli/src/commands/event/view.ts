@@ -39,7 +39,6 @@ import {
 } from "../../lib/errors.js";
 import {
   attachmentDownloadHint,
-  type EventViewAttachment,
   eventProjectSlug,
   formatEventAttachments,
   loadEventAttachments,
@@ -79,7 +78,12 @@ import {
 import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import { EventViewOutputSchema, type SentryEvent } from "../../types/index.js";
+import type { InferOutput } from "valibot";
+import {
+  type EventViewOutputFields,
+  EventViewOutputSchema,
+  type SentryEvent,
+} from "../../types/index.js";
 import { findSelectorIssue } from "../issue/utils.js";
 
 type ViewFlags = {
@@ -90,17 +94,21 @@ type ViewFlags = {
   readonly fields?: string[];
 };
 
-/** Return type for a single event — includes all data both renderers need */
-type SingleEventViewData = {
-  event: SentryEvent;
-  trace: { traceId: string; spans: unknown[] } | null;
-  /** Pre-formatted span tree lines for human output (not serialized) */
-  spanTreeLines?: string[];
-  /** Attachment metadata; omitted from human output when empty */
-  attachments?: EventViewAttachment[];
-  /** Resolved organization, including cross-org fallback results */
-  org?: string;
-};
+type EventViewFields = InferOutput<typeof EventViewOutputFields>;
+
+/**
+ * Return type for a single event — includes all data both renderers need.
+ * `trace` and `attachments` come from {@link EventViewOutputFields}, the
+ * fields JSON output adds to the event.
+ */
+type SingleEventViewData = Pick<EventViewFields, "trace"> &
+  Partial<Pick<EventViewFields, "attachments">> & {
+    event: SentryEvent;
+    /** Pre-formatted span tree lines for human output (not serialized) */
+    spanTreeLines?: string[];
+    /** Resolved organization, including cross-org fallback results */
+    org?: string;
+  };
 
 /**
  * Output type for event view — supports both single and multi-event.
@@ -159,11 +167,11 @@ export function jsonTransformEventView(
   fields?: string[],
 ): unknown {
   const transform = (entry: SingleEventViewData): Record<string, unknown> => {
-    const result: Record<string, unknown> = {
-      ...entry.event,
+    const fieldsOut: EventViewFields = {
       trace: entry.trace,
       attachments: entry.attachments ?? [],
     };
+    const result: Record<string, unknown> = { ...entry.event, ...fieldsOut };
     if (fields && fields.length > 0) {
       return filterFields(result, fields) as Record<string, unknown>;
     }

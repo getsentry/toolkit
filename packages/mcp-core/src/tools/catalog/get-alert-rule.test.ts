@@ -2,6 +2,7 @@ import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getStructuredContent } from "../../test-utils/structured-content";
+import { prepareToolParams } from "../catalog-runtime/availability";
 import getAlertRule from "./get-alert-rule.js";
 
 const context = {
@@ -463,6 +464,33 @@ describe("get_alert_rule", () => {
     ).toMatchObject({
       metricMonitor: { id: "789", name: "123" },
     });
+  });
+
+  it.each([{}, { ruleIdOrName: "" }])(
+    "points list requests to find_alert_rules when ruleIdOrName is %o",
+    (args) => {
+      expect(() =>
+        prepareToolParams({
+          tool: getAlertRule,
+          params: { organizationSlug: "sentry-mcp-evals", ...args },
+          context,
+        }),
+      ).toThrow(
+        "ruleIdOrName: Required: one Alert ID or exact name. To list alert rules, use find_alert_rules.",
+      );
+    },
+  );
+
+  it("points to find_alert_rules when no rule matches", async () => {
+    mswServer.use(
+      http.get(`${organizationApi}/workflows/`, () => HttpResponse.json([])),
+      http.get(`${organizationApi}/detectors/`, () => HttpResponse.json([])),
+    );
+    await expect(
+      getRule({ kind: "all", projectSlug: project.slug, ruleIdOrName: "Nope" }),
+    ).rejects.toThrow(
+      'Alert rule "Nope" was not found. To list alert rules, use find_alert_rules.',
+    );
   });
 
   it.each(["all", "metric"] as const)(

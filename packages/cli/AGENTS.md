@@ -220,6 +220,31 @@ Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `sr
 
 Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
 
+### Declaring Command Output
+
+`output.schema` drives `--fields` completion, the JSON field table in `--help`, and the skill references. Nothing validates output against it, so declare each field once and derive the TypeScript type from the schema; the compiler then keeps the two in sync ([#1824](https://github.com/getsentry/toolkit/issues/1824)).
+
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
+- **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/types/output.ts`) when the fields sit on (or override) an API object.
+- Type the command's data with the derived type: the `human` formatter's parameter, and `yield new CommandOutput<Output>(…)` where the yielded value is not already typed. A field added to the schema without the code that sets it, or removed while code still sets it, is then a compile error.
+- Reuse the shared fields: `DryRunOutputField`, `orgListItemSchema`/`WithOrg` (`lib/org-list.ts`) for org-scoped lists, `opaque<T>()` for a field the docs leave opaque but the code types (a full event payload).
+- Data only the human formatter needs (pre-rendered lines, a resolved target) stays out of the schema; keep it outside the derived type or strip it with `jsonExclude`.
+
+```typescript
+const DeployOutputFields = object({
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+
+output: {
+  human: (deploy: DeployOutput) => …,
+  schema: looseObject({ ...SentryDeploySchema.entries, ...DeployOutputFields.entries }),
+},
+```
+
+Reference: `src/commands/release/deploy.ts`, `src/commands/alert/output-schemas.ts`, `ReplayViewOutputFields` in `src/types/replay.ts`.
+
 ### Route Maps (Stricli)
 
 Route groups use Stricli's `buildRouteMap` wrapped by `src/lib/route-map.ts`.

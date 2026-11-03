@@ -27,7 +27,8 @@ the one exception.
 - `errors` holds `ApiError` and its status subclasses, `createApiError`, and
   the `UserInputError` and `ConfigurationError` the client throws. The MCP
   re-exports them from `packages/mcp-core/src/errors.ts`.
-- `api-path` builds API paths with every identifier segment encoded.
+- `api-path` builds API paths with every identifier segment encoded, and
+  `withQuery` appends a query string when it is not empty.
 - `validate` checks a response with any
   [Standard Schema](https://standardschema.dev) validator the host passes in:
   Zod in the MCP, valibot in the CLI. Shared code depends only on the
@@ -54,11 +55,34 @@ the one exception.
   Writes, and reads not yet on a `@sentry/api` operation, call the core
   directly. Wrappers by domain:
   - `endpoints/organizations`: `getAuthenticatedUser`, `listOrganizations`,
-    and `getOrganization`.
+    `getOrganization`, and `updateAgenticOnboardingStatus`.
   - `endpoints/teams`: `listTeams` and `createTeam`.
   - `endpoints/projects`: `listProjects`, `getProject`, `createProject`,
     `updateProject`, and the project's teams (`listProjectTeams`,
     `addProjectTeam`, `removeProjectTeam`).
+  - `endpoints/client-keys`: `listClientKeys`, `createClientKey`, and
+    `updateClientKey`.
+  - `endpoints/repositories`: `listRepositories` and
+    `linkProjectRepository`.
+  - `endpoints/dashboards`: `listDashboards` and `getDashboard`.
+  - `endpoints/releases`: `listReleases`, `getRelease`,
+    `listReleaseDeploys`, `listReleaseCommits`, and `getEventCommitters`.
+  - `endpoints/monitors`: cron monitors (`listMonitors`, `getMonitor`,
+    `deleteMonitorEnvironment`, `listMonitorCheckIns`, `getMonitorStats`).
+  - `endpoints/uptime-monitors`: `listUptimeMonitors`, `getUptimeMonitor`,
+    `listUptimeMonitorChecks`, `createUptimeMonitor`, `updateUptimeMonitor`,
+    and `deleteUptimeMonitor`.
+  - `endpoints/traces`: `getTraceMeta` and `getTrace`.
+  - `endpoints/profiling`: `getFlamegraph`, `getTransactionProfile`, and
+    `getProfileChunks`.
+  - `endpoints/snapshots`: preprod snapshots (`getSnapshot`,
+    `getSnapshotImage`, `getLatestBaseSnapshot`), returned unvalidated.
+  - `endpoints/replays`: `searchReplays`, `getReplay`, `listIssueReplayIds`,
+    and `visitReplayRecordingSegments`, which follows the cursor up to a
+    segment limit.
+- `time-params` applies a time range to a query: `statsPeriod` or a
+  `start`/`end` pair, or the `since`/`until` seconds `StatsMixin` endpoints
+  read. It rejects a range that sets both or only one end.
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.

@@ -5,7 +5,14 @@
  */
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
-import { description, looseObject, optional, pipe, string } from "valibot";
+import {
+  description,
+  looseObject,
+  object,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -18,20 +25,35 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import {
-  ReleaseUpdateOutputSchema,
+  ReleaseUpdateOutputFields,
   type SentryRelease,
+  SentryReleaseSchema,
+  type WithOutputFields,
 } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release finalize [<org>/]<version>";
 
-function formatReleaseFinalized(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+/** Fields `--dry-run` prints instead of the finalized release. */
+const FinalizeOutputFields = object({
+  ...ReleaseUpdateOutputFields.entries,
+  released: optional(
+    pipe(string(), description("Release date to set (--dry-run)")),
+  ),
+});
+
+/** JSON output: the finalized release, or the `--dry-run` preview. */
+type FinalizeOutput = WithOutputFields<
+  SentryRelease,
+  typeof FinalizeOutputFields
+>;
+
+function formatReleaseFinalized(release: FinalizeOutput): string {
+  if (release.dryRun) {
     return renderMarkdown(
-      `Would finalize release ${inlineCode(String(data.version))} (dry run)`,
+      `Would finalize release ${inlineCode(release.version)} (dry run)`,
     );
   }
-  const release = data as unknown as SentryRelease;
   const lines: string[] = [];
   lines.push(`## Release Finalized: ${text(release.version)}`);
   lines.push("");
@@ -70,10 +92,8 @@ export const finalizeCommand = buildCommand({
   output: {
     human: formatReleaseFinalized,
     schema: looseObject({
-      ...ReleaseUpdateOutputSchema.entries,
-      released: optional(
-        pipe(string(), description("Release date to set (--dry-run)")),
-      ),
+      ...SentryReleaseSchema.entries,
+      ...FinalizeOutputFields.entries,
     }),
   },
   parameters: {
@@ -117,7 +137,7 @@ export const finalizeCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput({
+      yield new CommandOutput<FinalizeOutput>({
         dryRun: true,
         version,
         org,
@@ -133,7 +153,7 @@ export const finalizeCommand = buildCommand({
       body.url = flags.url;
     }
     const release = await updateRelease(org, version, body);
-    yield new CommandOutput(release);
+    yield new CommandOutput<FinalizeOutput>(release);
     const hint = detectedFrom ? `Detected from ${detectedFrom}` : undefined;
     return { hint };
   },

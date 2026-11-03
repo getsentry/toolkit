@@ -172,6 +172,36 @@ describe("get_profile_details", () => {
       expect(result).toContain("## Sample Analysis Unavailable");
     });
 
+    it("still rejects sample-format profiles without profile data", async () => {
+      const malformedProfileId = "be9108da5e274c6684f9c4e727cd18a3";
+      for (const host of ["sentry.io", "us.sentry.io"]) {
+        mswServer.use(
+          http.get(
+            `https://${host}/api/0/projects/sentry-mcp-evals/backend/profiling/profiles/${malformedProfileId}/`,
+            () =>
+              HttpResponse.json({
+                profile_id: malformedProfileId,
+                platform: "python",
+              }),
+            { once: true },
+          ),
+        );
+      }
+
+      await expect(
+        getProfileDetails.handler(
+          {
+            organizationSlug: "sentry-mcp-evals",
+            projectSlugOrId: "backend",
+            profileId: malformedProfileId,
+            regionUrl: null,
+            focusOnUserCode: true,
+          },
+          baseContext,
+        ),
+      ).rejects.toThrow("profile:");
+    });
+
     it("fetches a transaction profile from a numeric project ID", async () => {
       mswServer.use(
         http.get(

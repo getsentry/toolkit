@@ -505,8 +505,8 @@ importers:
         specifier: ^1.0.1
         version: 1.0.1(react@19.2.8)
       '@sentry/symbolic':
-        specifier: 13.7.0
-        version: 13.7.0
+        specifier: 14.0.0-alpha.5
+        version: 14.0.0-alpha.5
       '@sentry/toolkit-core':
         specifier: workspace:*
         version: link:../toolkit-core
@@ -4750,8 +4750,8 @@ packages:
     peerDependencies:
       '@astrojs/starlight': '>=0.39.0'
 
-  '@sentry/symbolic@13.7.0':
-    resolution: {integrity: sha512-FR8CESwUVeMlJgiCHQrV8hWj1bPA/d9Sq2dYHtDDpGakBq7C0BNE1jAtyD41lleVvrKlrAY89NiZJ+JnCftFpA==}
+  '@sentry/symbolic@14.0.0-alpha.5':
+    resolution: {integrity: sha512-plcN9eGpvJeQFPFH/YCwyT59BeD03f1JcBMQlxLhDXdID41PPpyUPniPUqU2Bt3ACkvgBM+B+ZayTVgpDyQscQ==}
 
   '@sentry/vite-plugin@4.6.1':
     resolution: {integrity: sha512-Qvys1y3o8/bfL3ikrHnJS9zxdjt0z3POshdBl3967UcflrTqBmnGNkcVk53SlmtJWIfh85fgmrLvGYwZ2YiqNg==}
@@ -12954,7 +12954,7 @@ snapshots:
       marked: 18.0.13
       ultrahtml: 1.7.0
 
-  '@sentry/symbolic@13.7.0': {}
+  '@sentry/symbolic@14.0.0-alpha.5': {}
 
   '@sentry/vite-plugin@4.6.1':
     dependencies:

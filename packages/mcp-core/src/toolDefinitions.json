@@ -1539,21 +1539,45 @@
       "type": "object",
       "properties": {
         "name": {
+          "description": "The name of the available tool to execute.",
           "type": "string",
-          "minLength": 1,
-          "description": "The name of the available tool to execute."
+          "minLength": 1
         },
         "arguments": {
-          "default": {},
           "description": "Arguments for the target tool, matching the schema returned by search_sentry_tools.",
           "type": "object",
           "propertyNames": {
             "type": "string"
           },
           "additionalProperties": {}
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "args": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
         }
-      },
-      "required": ["name"]
+      }
     },
     "requiredScopes": [],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
@@ -1629,6 +1653,10 @@
           "exclusiveMinimum": 0,
           "maximum": 100,
           "description": "Maximum number of alert rules to return per alert family."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -1874,6 +1902,10 @@
           "exclusiveMinimum": 0,
           "maximum": 100,
           "description": "Maximum number of dashboards to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2082,6 +2114,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2214,6 +2250,10 @@
         "projectSlug": {
           "type": "string",
           "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "projectSlug"]
@@ -2288,6 +2328,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 100
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2424,6 +2468,10 @@
           "exclusiveMinimum": 0,
           "maximum": 99,
           "description": "Maximum number of monitors to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2602,6 +2650,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -2702,6 +2754,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2781,6 +2837,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -2994,6 +3054,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -3078,6 +3142,10 @@
           "exclusiveMinimum": 0,
           "maximum": 99,
           "description": "Maximum number of monitors to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -3179,6 +3247,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "conversationId"]
@@ -3630,6 +3702,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "conversationId"]
@@ -4162,6 +4238,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 100
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "section"]
@@ -4404,7 +4484,7 @@
   },
   {
     "name": "get_alert_rule",
-    "description": "Get details for a Sentry alert rule.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
+    "description": "Get details for one Sentry alert rule by ID or exact name.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\nTo list or search alert rules, use find_alert_rules instead.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4446,6 +4526,10 @@
           "type": "string",
           "minLength": 1,
           "description": "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "ruleIdOrName"]
@@ -4480,6 +4564,10 @@
           "type": "string",
           "minLength": 1,
           "description": "The dashboard's numeric ID or exact title."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "dashboardIdOrTitle"]
@@ -4547,6 +4635,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "projectSlug", "eventId"]
@@ -4609,6 +4701,10 @@
               "minLength": 1
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "issueId"]
@@ -4657,6 +4753,10 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 100
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -4709,6 +4809,10 @@
               "description": "The ID of the event. e.g. `c49541c747cb4d8aa3efb70ca5aba243`"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -4751,6 +4855,10 @@
           "type": "string",
           "format": "uri",
           "description": "The URL of the issue. e.g. https://my-organization.sentry.io/issues/PROJECT-1Z43"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -4793,6 +4901,10 @@
           "type": "string",
           "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
           "description": "The tag key to get values for (e.g., 'url', 'browser', 'environment', 'release')."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["tagKey"]
@@ -4895,6 +5007,10 @@
           "exclusiveMinimum": 0,
           "maximum": 100,
           "description": "Maximum number of user reports to return."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -4951,6 +5067,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "appId"]
@@ -4989,6 +5109,10 @@
           "type": "string",
           "pattern": "^\\d+$",
           "description": "Native Metric Monitor ID from find_metric_monitors."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "monitorId"]
@@ -5274,6 +5398,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "monitorSlug"]
@@ -5339,6 +5467,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 20
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5396,6 +5528,10 @@
         "focusOnUserCode": {
           "default": true,
           "description": "Show only user code frames in the hotspot table. Set to false to include library frames.",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       }
@@ -5464,6 +5600,10 @@
           "exclusiveMinimum": 0,
           "maximum": 50,
           "description": "Maximum number of deploys and commits to return, up to 50."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "releaseVersion"]
@@ -5558,6 +5698,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5616,6 +5760,22 @@
         "organizationSlug": {
           "type": "string",
           "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "resourceUrl": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -5654,6 +5814,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "snapshotId"]
@@ -5699,6 +5863,10 @@
               "type": "null"
             }
           ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "snapshotId", "imageIdentifier"]
@@ -5738,6 +5906,10 @@
           "type": "string",
           "minLength": 1,
           "description": "The span ID within a trace. Use this with a trace resource to focus on a specific span."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "traceId", "spanId"]
@@ -5777,6 +5949,10 @@
           "type": "string",
           "minLength": 1,
           "description": "The span ID within a trace. Use this with a trace resource to focus on a specific span."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "traceId"]
@@ -5839,6 +6015,10 @@
           "exclusiveMinimum": 0,
           "maximum": 50,
           "description": "Maximum number of recent checks to include."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug", "projectSlug", "uptimeMonitorId"]
@@ -6278,6 +6458,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -6501,6 +6685,10 @@
         "regionUrl": {
           "type": "string",
           "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -6879,6 +7067,10 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -6981,6 +7173,10 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -7067,6 +7263,10 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       }
     },
@@ -7128,6 +7328,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7209,6 +7413,10 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -7289,6 +7497,10 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
         }
       },
       "required": ["organizationSlug"]
@@ -7368,6 +7580,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7451,6 +7667,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -7615,6 +7835,10 @@
         "includeExplanation": {
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
+          "type": "boolean"
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
           "type": "boolean"
         }
       },
@@ -9067,7 +9291,15 @@
   {
     "name": "whoami",
     "description": "Identify the authenticated user in Sentry.\n\nUse this tool when you need to:\n- Get the user's name and email address.",
-    "inputSchema": {},
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      }
+    },
     "outputSchema": {
       "type": "object",
       "properties": {

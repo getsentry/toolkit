@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteMetricAlertRule } from "../../../lib/api-client.js";
-import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
 import {
@@ -18,7 +17,10 @@ import {
 import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
-import { MetricAlertDeleteOutputSchema } from "../output-schemas.js";
+import {
+  type MetricAlertDeleteOutput,
+  MetricAlertDeleteOutputSchema,
+} from "../output-schemas.js";
 
 const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
 
@@ -30,18 +32,11 @@ type DeleteFlags = {
   readonly fields?: string[];
 };
 
-type DeleteResult = {
-  org: string;
-  ruleId: string;
-  name: string;
-  dryRun?: boolean;
-};
-
-function formatDeleted(r: DeleteResult): string {
+function formatDeleted(r: MetricAlertDeleteOutput): string {
   if (r.dryRun) {
-    return `Would delete metric alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}.`;
+    return `Would delete metric alert rule '${r.name}' (id ${r.id}) in ${r.org}.`;
   }
-  return `Deleted metric alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}.`;
+  return `Deleted metric alert rule '${r.name}' (id ${r.id}) in ${r.org}.`;
 }
 
 export const deleteCommand = buildDeleteCommand({
@@ -64,16 +59,6 @@ export const deleteCommand = buildDeleteCommand({
   output: {
     human: formatDeleted,
     schema: MetricAlertDeleteOutputSchema,
-    jsonTransform: (r: DeleteResult, fields?: string[]) =>
-      filterFieldsIfSet(
-        {
-          ...(r.dryRun ? { dryRun: true } : { deleted: true }),
-          org: r.org,
-          id: r.ruleId,
-          name: r.name,
-        },
-        fields,
-      ),
   },
   parameters: {
     positional: {
@@ -103,11 +88,11 @@ export const deleteCommand = buildDeleteCommand({
     const name = rule.name;
     if (flags["dry-run"]) {
       yield new CommandOutput({
-        org: orgSlug,
-        ruleId: rule.id,
-        name,
         dryRun: true,
-      } satisfies DeleteResult);
+        org: orgSlug,
+        id: rule.id,
+        name,
+      } satisfies MetricAlertDeleteOutput);
       return;
     }
     if (!isConfirmationBypassed(flags)) {
@@ -122,6 +107,11 @@ export const deleteCommand = buildDeleteCommand({
     }
 
     await deleteMetricAlertRule(orgSlug, rule.id);
-    yield new CommandOutput({ org: orgSlug, ruleId: rule.id, name });
+    yield new CommandOutput({
+      deleted: true,
+      org: orgSlug,
+      id: rule.id,
+      name,
+    } satisfies MetricAlertDeleteOutput);
   },
 });

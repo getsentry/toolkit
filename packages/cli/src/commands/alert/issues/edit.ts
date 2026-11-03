@@ -40,7 +40,10 @@ import {
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
-import { IssueAlertEditOutputSchema } from "../output-schemas.js";
+import {
+  type IssueAlertEditOutput,
+  IssueAlertEditOutputSchema,
+} from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled";
@@ -57,12 +60,6 @@ type EditFlags = {
   readonly owner?: string;
   readonly json: boolean;
   readonly fields?: string[];
-};
-
-type EditResult = Record<string, unknown> & {
-  org: string;
-  project: string;
-  id: string;
 };
 
 function hasIssueMutations(flags: EditFlags): boolean {
@@ -192,7 +189,7 @@ function applyIssueEdits(
   return body;
 }
 
-function formatEdited(r: EditResult): string {
+function formatEdited(r: IssueAlertEditOutput): string {
   return `Updated issue alert rule ${r.id} in ${r.org}/${r.project}: ${String(r.name)} (${String(r.status)}).`;
 }
 
@@ -345,6 +342,6 @@ export const editCommand = buildCommand({
       status: stringifyUnknown(
         updated.status ?? (updated.enabled === false ? "disabled" : "active"),
       ),
-    } satisfies EditResult);
+    } satisfies IssueAlertEditOutput);
   },
 });

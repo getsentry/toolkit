@@ -18,8 +18,8 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import {
+  type ReleaseUpdateOutput,
   ReleaseUpdateOutputSchema,
-  type SentryRelease,
 } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
@@ -28,15 +28,14 @@ const USAGE_HINT = "sentry release archive [<org>/]<version>";
 /**
  * Render the human-readable result of archiving a release.
  *
- * @param data - Either the dry-run preview object or the updated release.
+ * @param release - Either the dry-run preview or the updated release.
  */
-function formatReleaseArchived(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+function formatReleaseArchived(release: ReleaseUpdateOutput): string {
+  if (release.dryRun) {
     return renderMarkdown(
-      `Would archive release ${inlineCode(String(data.version))} (dry run)`,
+      `Would archive release ${inlineCode(release.version)} (dry run)`,
     );
   }
-  const release = data as unknown as SentryRelease;
   const lines: string[] = [];
   lines.push(`## Release Archived: ${text(release.version)}`);
   lines.push("");
@@ -101,14 +100,18 @@ export const archiveCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput({ dryRun: true, version, org });
+      yield new CommandOutput<ReleaseUpdateOutput>({
+        dryRun: true,
+        version,
+        org,
+      });
       return { hint: "Dry run — release was not archived." };
     }
 
     const release = await updateRelease(org, version, {
       status: "archived",
     });
-    yield new CommandOutput(release);
+    yield new CommandOutput<ReleaseUpdateOutput>(release);
     const hint = detectedFrom ? `Detected from ${detectedFrom}` : undefined;
     return { hint };
   },

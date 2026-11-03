@@ -45,7 +45,10 @@ import {
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 import { metricAlertStatusLabel } from "./status.js";
-import { MetricAlertEditOutputSchema } from "../output-schemas.js";
+import {
+  type MetricAlertEditOutput,
+  MetricAlertEditOutputSchema,
+} from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled";
@@ -64,11 +67,6 @@ type EditFlags = {
   readonly workflow?: string[];
   readonly json: boolean;
   readonly fields?: string[];
-};
-
-type EditResult = Record<string, unknown> & {
-  org: string;
-  id: string;
 };
 
 function hasMetricMutations(flags: EditFlags): boolean {
@@ -183,7 +181,7 @@ function validateMetricBody(
   }
 }
 
-function formatEdited(r: EditResult): string {
+function formatEdited(r: MetricAlertEditOutput): string {
   return `Updated metric alert rule ${r.id} in ${r.org}: ${String(r.name)} (${String(r.status)}).`;
 }
 
@@ -332,6 +330,6 @@ export const editCommand = buildCommand({
       org: orgSlug,
       id: stringifyUnknown(updated.id ?? rule.id),
       status: metricAlertStatusLabel(updated.status),
-    } satisfies EditResult);
+    } satisfies MetricAlertEditOutput);
   },
 });

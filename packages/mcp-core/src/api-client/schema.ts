@@ -2219,7 +2219,7 @@ export const LegacySpeedscopeProfileSchema = z
  * Returns true when a raw profile response body is speedscope output, which
  * has `profiles` instead of a sample-format `profile` object.
  */
-export function isSpeedscopeProfilePayload(body: unknown): boolean {
+function isSpeedscopeProfilePayload(body: unknown): boolean {
   return (
     typeof body === "object" &&
     body !== null &&
@@ -2312,6 +2312,32 @@ export const TransactionProfileSchema = z
       .optional(),
   })
   .passthrough();
+
+/**
+ * Schema for a transaction profile details response.
+ *
+ * Validates speedscope bodies against `LegacySpeedscopeProfileSchema` and every
+ * other body against the strict `TransactionProfileSchema`, so a malformed
+ * sample-format profile still reports the sample-format issues.
+ */
+export const TransactionProfileResponseSchema = z
+  .unknown()
+  .transform((body, ctx) => {
+    const result = isSpeedscopeProfilePayload(body)
+      ? LegacySpeedscopeProfileSchema.safeParse(body)
+      : TransactionProfileSchema.safeParse(body);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        ctx.addIssue({
+          code: "custom",
+          message: issue.message,
+          path: issue.path,
+        });
+      }
+      return z.NEVER;
+    }
+    return result.data;
+  });
 
 export const AgenticOnboardingStageSchema = z.enum([
   "connect_mcp",
