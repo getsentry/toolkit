@@ -620,6 +620,11 @@ describe("queryAllWidgets timeseries", () => {
         dataset: "errors",
         start: 1_700_000_000_000,
         end: 1_700_003_600_000,
+        ingestion: {
+          status: "delayed",
+          delaySeconds: 90,
+          completeThrough: 1_700_003_510_000,
+        },
       },
       timeSeries: [
         {
@@ -664,10 +669,88 @@ describe("queryAllWidgets timeseries", () => {
           unit: null,
           values: [
             { timestamp: 1_700_000_000, value: 10 },
-            { timestamp: 1_700_003_600, value: null },
+            { timestamp: 1_700_003_600, value: null, incomplete: true },
           ],
         },
       ],
+      ingestion: {
+        status: "delayed",
+        delaySeconds: 90,
+        completeThrough: 1_700_003_510,
+      },
+    });
+  });
+
+  test("omits ingestion and incomplete flags when the API reports none", async () => {
+    apiRequestToRegionMock.mockResolvedValue({
+      data: {
+        timeSeries: [
+          {
+            yAxis: "count()",
+            values: [{ timestamp: 1_700_000_000_000, value: 1 }],
+            meta: { valueType: "integer", valueUnit: null },
+          },
+        ],
+      },
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Errors",
+        displayType: "line",
+        widgetType: "error-events",
+        queries: [{ aggregates: ["count()"], columns: [], conditions: "" }],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "1h",
+    });
+
+    const result = results.get(0);
+    expect(result).toStrictEqual({
+      type: "timeseries",
+      series: [
+        {
+          label: "count()",
+          unit: null,
+          values: [{ timestamp: 1_700_000_000, value: 1 }],
+        },
+      ],
+    });
+  });
+
+  test("keeps the slowest ingestion status across widget queries", async () => {
+    apiRequestToRegionMock
+      .mockResolvedValueOnce({
+        data: {
+          meta: { ingestion: { status: "delayed", delaySeconds: 30 } },
+          timeSeries: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          meta: { ingestion: { status: "delayed", delaySeconds: 120 } },
+          timeSeries: [],
+        },
+      });
+    const dashboard = makeDashboard([
+      {
+        title: "Two queries",
+        displayType: "line",
+        widgetType: "error-events",
+        queries: [
+          { aggregates: ["count()"], columns: [], conditions: "level:error" },
+          { aggregates: ["count()"], columns: [], conditions: "level:warning" },
+        ],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "1h",
+    });
+
+    expect(results.get(0)).toMatchObject({
+      ingestion: { status: "delayed", delaySeconds: 120 },
     });
   });
 

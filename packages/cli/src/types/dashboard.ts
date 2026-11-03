@@ -940,6 +940,17 @@ export type EventsTimeseriesSeries = InferOutput<
   typeof EventsTimeseriesSeriesSchema
 >;
 
+/**
+ * Ingestion status attached to an events-timeseries response.
+ *
+ * `completeThrough` is epoch milliseconds, like the bucket timestamps.
+ */
+export const EventsTimeseriesIngestionSchema = looseObject({
+  status: string(),
+  delaySeconds: optional(number()),
+  completeThrough: optional(number()),
+});
+
 /** Top-level response from the events-timeseries API. */
 export const EventsTimeseriesResponseSchema = object({
   ...sdkTimeseriesResponse,
@@ -978,6 +989,27 @@ function resultKind<const T extends string>(kind: T) {
 
 const resultUnit = optional(pipe(nullable(string()), description("Unit")));
 
+/**
+ * Ingestion status for the data behind a timeseries result.
+ *
+ * Sentry reports how far behind ingestion is running; buckets newer than
+ * `completeThrough` are flagged `incomplete` and may still gain events.
+ */
+export const TimeseriesIngestionSchema = object({
+  status: pipe(string(), description("Ingestion status reported by Sentry")),
+  delaySeconds: optional(
+    pipe(number(), description("Current ingestion delay in seconds")),
+  ),
+  completeThrough: optional(
+    pipe(
+      number(),
+      description("Epoch seconds up to which the data is complete"),
+    ),
+  ),
+});
+
+export type TimeseriesIngestion = InferOutput<typeof TimeseriesIngestionSchema>;
+
 /** Time-series data for chart widgets (line, area, bar) */
 export const TimeseriesResultSchema = object({
   type: resultKind("timeseries"),
@@ -992,6 +1024,14 @@ export const TimeseriesResultSchema = object({
               nullable(number()),
               description("Bucket value, or null when nothing was measured"),
             ),
+            incomplete: optional(
+              pipe(
+                boolean(),
+                description(
+                  "Bucket may still receive events because of ingestion delay",
+                ),
+              ),
+            ),
           }),
         ),
         unit: resultUnit,
@@ -999,6 +1039,7 @@ export const TimeseriesResultSchema = object({
     ),
     description("Series, one per aggregate or group"),
   ),
+  ingestion: optional(TimeseriesIngestionSchema),
 });
 
 /** Tabular data for table and top_n widgets */
