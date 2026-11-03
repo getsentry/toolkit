@@ -127,12 +127,12 @@ const CI_CHECKOUT_PROVIDERS: ReadonlyArray<{
  * `origin` remote to read. Values that do not look like a commit SHA are
  * skipped.
  *
- * @param env - Environment variables (defaults to `process.env`).
+ * @param env - The active environment: `getEnv()` in library code, or
+ *   `this.env` in a command. In library mode this is the SDK's isolated
+ *   environment, not the host's `process.env`.
  * @returns The first provider with both a repository and a commit SHA.
  */
-export function getCiCheckout(
-  env: NodeJS.ProcessEnv = process.env,
-): CiCheckout | undefined {
+export function getCiCheckout(env: NodeJS.ProcessEnv): CiCheckout | undefined {
   for (const provider of CI_CHECKOUT_PROVIDERS) {
     const repository = provider.repository(env)?.trim();
     const commit = provider.commit(env)?.trim();
