@@ -50,6 +50,15 @@ import {
   listMonitors,
 } from "@sentry/toolkit-core/api-client/endpoints/monitors";
 import {
+  createUptimeMonitor,
+  deleteUptimeMonitor,
+  getUptimeMonitor,
+  listUptimeMonitorChecks,
+  listUptimeMonitors,
+  updateUptimeMonitor,
+  type UptimeMonitorFields,
+} from "@sentry/toolkit-core/api-client/endpoints/uptime-monitors";
+import {
   getEventCommitters,
   getRelease,
   listReleaseCommits,
@@ -76,7 +85,6 @@ import {
 import {
   applyStatsMixinTimeParams,
   applyTimeParams,
-  normalizeStatsPeriod,
   parseStatsPeriod,
 } from "@sentry/toolkit-core/api-client/time-params";
 import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
@@ -2693,10 +2701,8 @@ export class SentryApiService {
   }
 
   /**
-   * List uptime monitors for an organization.
-   *
-   * GET /organizations/{org}/uptime/
-   * Source: src/sentry/uptime/endpoints/organiation_uptime_alert_index.py
+   * List uptime monitors for an organization. The endpoint filters by
+   * numeric project ID, so a project slug is looked up first.
    */
   async listUptimeMonitors(
     {
@@ -2716,82 +2722,41 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<UptimeMonitorList> {
-    const searchQuery = new URLSearchParams();
-    if (projectSlug) {
-      // OrganizationEndpoint filter params accept project IDs via `project`.
-      const project = await this.getProject(
-        {
-          organizationSlug,
-          projectSlugOrId: projectSlug,
-        },
-        opts,
-      );
-      searchQuery.append("project", String(project.id));
-    }
-    if (environment) {
-      searchQuery.append("environment", environment);
-    }
-    if (owner) {
-      searchQuery.append("owner", owner);
-    }
-    if (query) {
-      searchQuery.set("query", query);
-    }
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-
-    const path = apiPath`/organizations/${organizationSlug}/uptime/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    const projectId = projectSlug
+      ? String(
+          (
+            await this.getProject(
+              { organizationSlug, projectSlugOrId: projectSlug },
+              opts,
+            )
+          ).id,
+        )
+      : undefined;
+    return await listUptimeMonitors(
+      this.target(opts?.host),
+      { organizationSlug, projectId, environment, owner, query, limit },
+      UptimeMonitorListSchema,
     );
-    return UptimeMonitorListSchema.parse(body);
   }
 
-  /**
-   * Get a single uptime monitor.
-   *
-   * GET /projects/{org}/{project}/uptime/{id}/
-   * Source: src/sentry/uptime/endpoints/project_uptime_alert_details.py
-   */
   async getUptimeMonitorDetails(
-    {
-      organizationSlug,
-      projectSlug,
-      uptimeMonitorId,
-    }: {
+    params: {
       organizationSlug: string;
       projectSlug: string;
       uptimeMonitorId: string;
     },
     opts?: RequestOptions,
   ): Promise<UptimeMonitor> {
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/uptime/${uptimeMonitorId}/`,
-      undefined,
-      opts,
+    return await getUptimeMonitor(
+      this.target(opts?.host),
+      params,
+      UptimeMonitorSchema,
     );
-    return UptimeMonitorSchema.parse(body);
   }
 
-  /**
-   * List recent uptime checks for a monitor.
-   *
-   * GET /projects/{org}/{project}/uptime/{id}/checks/
-   * Source: src/sentry/uptime/endpoints/project_uptime_alert_checks_index.py
-   */
+  /** List a monitor's checks in a time range, 24 hours by default. */
   async listUptimeMonitorChecks(
-    {
-      organizationSlug,
-      projectSlug,
-      uptimeMonitorId,
-      statsPeriod,
-      start,
-      end,
-      limit,
-    }: {
+    params: {
       organizationSlug: string;
       projectSlug: string;
       uptimeMonitorId: string;
@@ -2802,219 +2767,60 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<UptimeCheckList> {
-    const searchQuery = new URLSearchParams();
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-    const normalizedStatsPeriod = normalizeStatsPeriod(statsPeriod);
-    const effectiveStatsPeriod =
-      start || end ? normalizedStatsPeriod : (normalizedStatsPeriod ?? "24h");
-    if (effectiveStatsPeriod) {
-      parseStatsPeriod(effectiveStatsPeriod);
-    }
-    applyTimeParams(searchQuery, effectiveStatsPeriod, start, end);
-
-    const path = apiPath`/projects/${organizationSlug}/${projectSlug}/uptime/${uptimeMonitorId}/checks/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    return await listUptimeMonitorChecks(
+      this.target(opts?.host),
+      params,
+      UptimeCheckListSchema,
     );
-    return UptimeCheckListSchema.parse(body);
   }
 
   /**
-   * Create an uptime monitor.
-   *
-   * POST /projects/{org}/{project}/uptime/
-   * Source: src/sentry/uptime/endpoints/project_uptime_alert_index.py
-   * Body fields verified from UptimeMonitorValidator (camelCase via CamelSnakeSerializer).
+   * Body fields verified from UptimeMonitorValidator (camelCase via
+   * CamelSnakeSerializer).
    */
   async createUptimeMonitor(
-    {
-      organizationSlug,
-      projectSlug,
-      name,
-      url,
-      intervalSeconds,
-      timeoutMs,
-      method,
-      headers,
-      body,
-      assertion,
-      status,
-      owner,
-      environment,
-      traceSampling,
-      responseCaptureEnabled,
-      recoveryThreshold,
-      downtimeThreshold,
-    }: {
+    params: {
       organizationSlug: string;
       projectSlug: string;
       name: string;
       url: string;
       intervalSeconds: number;
       timeoutMs: number;
-      method?: string;
-      headers?: Array<[string, string]>;
-      body?: string | null;
-      assertion?: unknown;
-      status?: "active" | "disabled";
-      owner?: string | null;
-      environment?: string | null;
-      traceSampling?: boolean;
-      responseCaptureEnabled?: boolean;
-      recoveryThreshold?: number;
-      downtimeThreshold?: number;
-    },
+    } & UptimeMonitorFields,
     opts?: RequestOptions,
   ): Promise<UptimeMonitor> {
-    const payload: Record<string, unknown> = {
-      name,
-      url,
-      intervalSeconds,
-      timeoutMs,
-    };
-    if (method !== undefined) payload.method = method;
-    if (headers !== undefined) payload.headers = headers;
-    if (body !== undefined) payload.body = body;
-    if (assertion !== undefined) payload.assertion = assertion;
-    if (status !== undefined) payload.status = status;
-    if (owner !== undefined) payload.owner = owner;
-    if (environment !== undefined) payload.environment = environment;
-    if (traceSampling !== undefined) payload.traceSampling = traceSampling;
-    if (responseCaptureEnabled !== undefined) {
-      payload.responseCaptureEnabled = responseCaptureEnabled;
-    }
-    if (recoveryThreshold !== undefined) {
-      payload.recoveryThreshold = recoveryThreshold;
-    }
-    if (downtimeThreshold !== undefined) {
-      payload.downtimeThreshold = downtimeThreshold;
-    }
-
-    const responseBody = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/uptime/`,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-      },
-      opts,
+    return await createUptimeMonitor(
+      this.target(opts?.host),
+      params,
+      UptimeMonitorSchema,
     );
-    return UptimeMonitorSchema.parse(responseBody);
   }
 
-  /**
-   * Update an uptime monitor.
-   *
-   * PUT /projects/{org}/{project}/uptime/{id}/
-   * Source: src/sentry/uptime/endpoints/project_uptime_alert_details.py
-   */
   async updateUptimeMonitor(
-    {
-      organizationSlug,
-      projectSlug,
-      uptimeMonitorId,
-      name,
-      url,
-      intervalSeconds,
-      timeoutMs,
-      method,
-      headers,
-      body,
-      assertion,
-      status,
-      owner,
-      environment,
-      traceSampling,
-      responseCaptureEnabled,
-      recoveryThreshold,
-      downtimeThreshold,
-    }: {
+    params: {
       organizationSlug: string;
       projectSlug: string;
       uptimeMonitorId: string;
-      name?: string;
-      url?: string;
-      intervalSeconds?: number;
-      timeoutMs?: number;
-      method?: string;
-      headers?: Array<[string, string]>;
-      body?: string | null;
-      assertion?: unknown;
-      status?: "active" | "disabled";
-      owner?: string | null;
-      environment?: string | null;
-      traceSampling?: boolean;
-      responseCaptureEnabled?: boolean;
-      recoveryThreshold?: number;
-      downtimeThreshold?: number;
-    },
+    } & UptimeMonitorFields,
     opts?: RequestOptions,
   ): Promise<UptimeMonitor> {
-    const payload: Record<string, unknown> = {};
-    if (name !== undefined) payload.name = name;
-    if (url !== undefined) payload.url = url;
-    if (intervalSeconds !== undefined)
-      payload.intervalSeconds = intervalSeconds;
-    if (timeoutMs !== undefined) payload.timeoutMs = timeoutMs;
-    if (method !== undefined) payload.method = method;
-    if (headers !== undefined) payload.headers = headers;
-    if (body !== undefined) payload.body = body;
-    if (assertion !== undefined) payload.assertion = assertion;
-    if (status !== undefined) payload.status = status;
-    if (owner !== undefined) payload.owner = owner;
-    if (environment !== undefined) payload.environment = environment;
-    if (traceSampling !== undefined) payload.traceSampling = traceSampling;
-    if (responseCaptureEnabled !== undefined) {
-      payload.responseCaptureEnabled = responseCaptureEnabled;
-    }
-    if (recoveryThreshold !== undefined) {
-      payload.recoveryThreshold = recoveryThreshold;
-    }
-    if (downtimeThreshold !== undefined) {
-      payload.downtimeThreshold = downtimeThreshold;
-    }
-
-    const responseBody = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/uptime/${uptimeMonitorId}/`,
-      {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      },
-      opts,
+    return await updateUptimeMonitor(
+      this.target(opts?.host),
+      params,
+      UptimeMonitorSchema,
     );
-    return UptimeMonitorSchema.parse(responseBody);
   }
 
-  /**
-   * Delete an uptime monitor.
-   *
-   * DELETE /projects/{org}/{project}/uptime/{id}/
-   * Source: src/sentry/uptime/endpoints/project_uptime_alert_details.py
-   * Returns 202 with empty body.
-   */
+  /** Returns 202 with no body; a 404 counts as already deleted. */
   async deleteUptimeMonitor(
-    {
-      organizationSlug,
-      projectSlug,
-      uptimeMonitorId,
-    }: {
+    params: {
       organizationSlug: string;
       projectSlug: string;
       uptimeMonitorId: string;
     },
     opts?: RequestOptions,
   ): Promise<void> {
-    // Treat 404 as success so repeated deletes are idempotent.
-    await this.request(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/uptime/${uptimeMonitorId}/`,
-      {
-        method: "DELETE",
-      },
-      { ...opts, allowStatuses: [404] },
-    );
+    await deleteUptimeMonitor(this.target(opts?.host), params);
   }
 
   /**

@@ -69,6 +69,9 @@ the one exception.
     `listReleaseDeploys`, `listReleaseCommits`, and `getEventCommitters`.
   - `endpoints/monitors`: cron monitors (`listMonitors`, `getMonitor`,
     `deleteMonitorEnvironment`, `listMonitorCheckIns`, `getMonitorStats`).
+  - `endpoints/uptime-monitors`: `listUptimeMonitors`, `getUptimeMonitor`,
+    `listUptimeMonitorChecks`, `createUptimeMonitor`, `updateUptimeMonitor`,
+    and `deleteUptimeMonitor`.
 - `time-params` applies a time range to a query: `statsPeriod` or a
   `start`/`end` pair, or the `since`/`until` seconds `StatsMixin` endpoints
   read. It rejects a range that sets both or only one end.
