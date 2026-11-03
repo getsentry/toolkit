@@ -43,7 +43,11 @@ const TEAM_COLUMNS: Column<TeamWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const teamListConfig: OrgListConfig<SentryTeam, TeamWithOrg> = {
+const teamListConfig: OrgListConfig<
+  SentryTeam,
+  TeamWithOrg,
+  typeof SentryTeamSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "teams",
   commandPrefix: "sentry team list",

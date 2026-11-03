@@ -444,8 +444,15 @@ export type ReplayOs = InferOutput<typeof ReplayOsSchema>;
 export type ReplaySdk = InferOutput<typeof ReplaySdkSchema>;
 export type ReplayDevice = InferOutput<typeof ReplayDeviceSchema>;
 export type ReplayOtaUpdates = InferOutput<typeof ReplayOtaUpdatesSchema>;
-export type ReplayListItem = InferOutput<typeof ReplayListItemSchema>;
-export type ReplayDetails = InferOutput<typeof ReplayDetailsSchema>;
+/**
+ * `project_id` as the API layer returns it: the replay API sends a number,
+ * which `lib/api/replays.ts` normalizes to a string.
+ */
+export type ReplayStringProjectId = { project_id?: string | null };
+export type ReplayListItem = InferOutput<typeof ReplayListItemSchema> &
+  ReplayStringProjectId;
+export type ReplayDetails = InferOutput<typeof ReplayDetailsSchema> &
+  ReplayStringProjectId;
 export type ReplayListResponse = InferOutput<typeof ReplayListResponseSchema>;
 export type ReplayDetailsResponse = InferOutput<
   typeof ReplayDetailsResponseSchema

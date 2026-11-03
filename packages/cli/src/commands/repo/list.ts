@@ -42,7 +42,11 @@ const REPO_COLUMNS: Column<RepositoryWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
+const repoListConfig: OrgListConfig<
+  SentryRepository,
+  RepositoryWithOrg,
+  typeof SentryRepositorySchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "repositories",
   commandPrefix: "sentry repo list",
