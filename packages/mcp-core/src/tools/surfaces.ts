@@ -17,7 +17,9 @@ export const CATALOG_INFRASTRUCTURE_TOOL_NAMES = [
 
 export const WRAPPER_TOOL_NAMES = [] as const;
 
-// The gateway surface used when EXPOSE_ALL_TOOLS is false. Locked by
+// The gateway surface used when EXPOSE_ALL_TOOLS is false. Kept only as a
+// temporary fallback during the EXPOSE_ALL_TOOLS rollout (see exposure.ts);
+// it may be removed along with the gateway tools later. Locked by
 // ast-grep-rules/no-expand-top-level-tools.yml. Every name here ships in that
 // tools/list payload; the rest stay deferred behind
 // search_sentry_tools/execute_sentry_tool.
