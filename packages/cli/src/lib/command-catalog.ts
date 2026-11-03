@@ -1,8 +1,8 @@
 /**
  * The command catalog: what agents need to find and run each command, from
- * the route tree's introspection. `generate:command-catalog` writes it to
- * `@sentry/mcp-core/command-catalog` for the hosted MCP, which cannot load
- * the route tree.
+ * the route tree's introspection. Build-time only: `generate:command-catalog`
+ * writes it to `@sentry/mcp-core/command-catalog`, and MCP servers read that
+ * generated JSON instead of building schemas at runtime.
  *
  * Commands with exposure `hidden` are left out: no MCP server lists them.
  */

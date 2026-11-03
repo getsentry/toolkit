@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 /**
- * Generate `command-catalog.json` (`src/lib/command-catalog.ts`) for the
- * hosted MCP, which cannot load the route tree. It is written to mcp-core,
- * where mcp-cloudflare can import it, and committed, so `--check` fails when
- * it is stale.
+ * Generate `command-catalog.json` (`src/lib/command-catalog.ts`) for the MCP
+ * servers, which read it instead of building schemas at runtime. It is
+ * written to mcp-core, where mcp-cloudflare can import it, and committed, so
+ * `--check` fails when it is stale.
  *
  * Usage:
  *   tsx script/generate-command-catalog.ts           # Write the catalog

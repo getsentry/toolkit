@@ -133,8 +133,8 @@ a command declares no exposure.
 (`src/lib/command-catalog.ts`): for each command whose exposure is not
 `hidden`, its permission class, exposure, parameters as JSON Schema,
 completion kinds, local-path flags, examples, output fields, and API
-operations. The hosted MCP, which cannot load the route tree, imports it from
-`@sentry/mcp-core/command-catalog`. The file is committed;
+operations. MCP servers import it from `@sentry/mcp-core/command-catalog`
+and read it instead of building schemas at runtime. The file is committed;
 `check:command-catalog` (in `ci:policy`) fails when it is stale.
 
 Introspection derives canonical command paths, registered aliases, and group
