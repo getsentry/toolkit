@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as v from "valibot";
 import { z } from "zod";
-import { type ApiTarget, createApiClientCore } from "../core.js";
+import {
+  jsonResponse,
+  nextLink,
+  ORIGIN,
+  scriptedTarget,
+} from "../../test-utils/api-target.js";
 import { ApiResponseValidationError } from "../validate.js";
 import {
   getAuthenticatedUser,
@@ -9,44 +14,12 @@ import {
   listOrganizations,
 } from "./organizations.js";
 
-const ORIGIN = "https://us.sentry.io";
-
-function jsonResponse(body: unknown, headers: Record<string, string> = {}) {
-  return new Response(JSON.stringify(body), {
-    headers: { "content-type": "application/json", ...headers },
-  });
-}
-
-function nextLink(cursor: string) {
-  return {
-    link: `<${ORIGIN}/api/0/organizations/?cursor=${cursor}>; rel="next"; results="true"; cursor="${cursor}"`,
-  };
-}
-
-/** A target whose transport answers each request with the next response. */
-function target(...responses: Response[]) {
-  const request = vi.fn(async (_url: string, _init: RequestInit) => {
-    const response = responses.shift();
-    if (!response) {
-      throw new Error("unexpected request");
-    }
-    return response;
-  });
-  const core = createApiClientCore({
-    transport: { request },
-    headers: () => ({}),
-    logger: { warn: vi.fn() },
-  });
-  const apiTarget: ApiTarget = { core, origin: ORIGIN };
-  return { apiTarget, request };
-}
-
 const OrganizationZod = z.object({ slug: z.string() });
 const OrganizationValibot = v.object({ slug: v.string() });
 
 describe("getAuthenticatedUser", () => {
   it("reads /auth/ and returns the host schema's output", async () => {
-    const { apiTarget, request } = target(
+    const { apiTarget, request } = scriptedTarget(
       jsonResponse({ id: "1", email: "jane@example.com", extra: true }),
     );
 
@@ -60,7 +33,7 @@ describe("getAuthenticatedUser", () => {
   });
 
   it("throws the shared validation error for a mismatched body", async () => {
-    const { apiTarget } = target(jsonResponse({ id: 1 }));
+    const { apiTarget } = scriptedTarget(jsonResponse({ id: 1 }));
 
     await expect(
       getAuthenticatedUser(apiTarget, z.object({ id: z.string() })),
@@ -75,7 +48,9 @@ describe("getOrganization", () => {
     [{ detailed: false }, "?detailed=0"],
     [{ detailed: true }, ""],
   ])("sends %o as %s", async (params, query) => {
-    const { apiTarget, request } = target(jsonResponse({ slug: "acme" }));
+    const { apiTarget, request } = scriptedTarget(
+      jsonResponse({ slug: "acme" }),
+    );
 
     await getOrganization(
       apiTarget,
@@ -89,7 +64,9 @@ describe("getOrganization", () => {
   });
 
   it("encodes the slug as a path segment", async () => {
-    const { apiTarget, request } = target(jsonResponse({ slug: "a/b" }));
+    const { apiTarget, request } = scriptedTarget(
+      jsonResponse({ slug: "a/b" }),
+    );
 
     await getOrganization(
       apiTarget,
@@ -105,9 +82,12 @@ describe("getOrganization", () => {
 
 describe("listOrganizations", () => {
   it("follows next cursors until it has the limit", async () => {
-    const { apiTarget, request } = target(
-      jsonResponse([{ slug: "a" }, { slug: "b" }], nextLink("0:2:0")),
-      jsonResponse([{ slug: "c" }], nextLink("0:3:0")),
+    const { apiTarget, request } = scriptedTarget(
+      jsonResponse(
+        [{ slug: "a" }, { slug: "b" }],
+        nextLink("/organizations/", "0:2:0"),
+      ),
+      jsonResponse([{ slug: "c" }], nextLink("/organizations/", "0:3:0")),
     );
 
     const page = await listOrganizations(
@@ -132,7 +112,7 @@ describe("listOrganizations", () => {
   });
 
   it("returns no cursor once the server has no next page", async () => {
-    const { apiTarget } = target(jsonResponse([{ slug: "a" }]));
+    const { apiTarget } = scriptedTarget(jsonResponse([{ slug: "a" }]));
 
     const page = await listOrganizations(
       apiTarget,
@@ -144,7 +124,7 @@ describe("listOrganizations", () => {
   });
 
   it("starts from the given cursor", async () => {
-    const { apiTarget, request } = target(jsonResponse([]));
+    const { apiTarget, request } = scriptedTarget(jsonResponse([]));
 
     await listOrganizations(
       apiTarget,
