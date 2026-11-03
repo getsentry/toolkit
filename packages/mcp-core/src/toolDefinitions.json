@@ -1078,10 +1078,12 @@
           "type": "object",
           "properties": {
             "id": {
+              "description": "Cron monitor ID.",
               "type": ["string", "null"]
             },
             "slug": {
-              "type": "string"
+              "type": "string",
+              "description": "Monitor slug that check-ins must use."
             },
             "name": {
               "type": "string"
@@ -1090,38 +1092,48 @@
               "type": ["string", "null"]
             },
             "status": {
+              "description": "`active` or `disabled`; unrequested `disabled` means no seat was available.",
               "type": ["string", "null"]
             },
             "scheduleType": {
+              "description": "`crontab` or `interval`.",
               "type": ["string", "null"]
             },
             "schedule": {
+              "description": "Crontab expression, or interval as `<value> <unit>`.",
               "type": ["string", "null"]
             },
             "timezone": {
+              "description": "tz database timezone.",
               "type": ["string", "null"]
             },
             "checkInMargin": {
+              "description": "Minutes before a late check-in counts as missed.",
               "type": ["number", "null"]
             },
             "maxRuntime": {
+              "description": "Minutes a check-in may stay in progress.",
               "type": ["number", "null"]
             },
             "failureIssueThreshold": {
+              "description": "Consecutive failures before an issue opens.",
               "type": ["number", "null"]
             },
             "recoveryThreshold": {
+              "description": "Consecutive successes before the issue resolves.",
               "type": ["number", "null"]
             },
             "workflowIds": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Connected notification Alert IDs."
             },
             "webUrl": {
               "type": "string",
-              "format": "uri"
+              "format": "uri",
+              "description": "Monitor page in Sentry."
             }
           },
           "required": [

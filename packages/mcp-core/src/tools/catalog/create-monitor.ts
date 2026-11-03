@@ -28,20 +28,42 @@ const INTERVAL_UNITS = [
 
 export const createMonitorOutputSchema = z.object({
   monitor: z.object({
-    id: z.string().nullable(),
-    slug: z.string(),
+    id: z.string().nullable().describe("Cron monitor ID."),
+    slug: z.string().describe("Monitor slug that check-ins must use."),
     name: z.string(),
     projectSlug: z.string().nullable(),
-    status: z.string().nullable(),
-    scheduleType: z.string().nullable(),
-    schedule: z.string().nullable(),
-    timezone: z.string().nullable(),
-    checkInMargin: z.number().nullable(),
-    maxRuntime: z.number().nullable(),
-    failureIssueThreshold: z.number().nullable(),
-    recoveryThreshold: z.number().nullable(),
-    workflowIds: z.array(z.string()),
-    webUrl: z.string().url(),
+    status: z
+      .string()
+      .nullable()
+      .describe(
+        "`active` or `disabled`; unrequested `disabled` means no seat was available.",
+      ),
+    scheduleType: z.string().nullable().describe("`crontab` or `interval`."),
+    schedule: z
+      .string()
+      .nullable()
+      .describe("Crontab expression, or interval as `<value> <unit>`."),
+    timezone: z.string().nullable().describe("tz database timezone."),
+    checkInMargin: z
+      .number()
+      .nullable()
+      .describe("Minutes before a late check-in counts as missed."),
+    maxRuntime: z
+      .number()
+      .nullable()
+      .describe("Minutes a check-in may stay in progress."),
+    failureIssueThreshold: z
+      .number()
+      .nullable()
+      .describe("Consecutive failures before an issue opens."),
+    recoveryThreshold: z
+      .number()
+      .nullable()
+      .describe("Consecutive successes before the issue resolves."),
+    workflowIds: z
+      .array(z.string())
+      .describe("Connected notification Alert IDs."),
+    webUrl: z.string().url().describe("Monitor page in Sentry."),
   }),
 });
 
