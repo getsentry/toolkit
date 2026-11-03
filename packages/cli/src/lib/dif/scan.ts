@@ -605,9 +605,12 @@ function matchedDifs(
     return [];
   }
 
-  return files
-    .filter(({ object }) => objectPassesFilters(object, filters))
-    .map(({ object, data }) => ({
+  const difs: PreparedDif[] = [];
+  for (const { object, data } of files) {
+    if (!objectPassesFilters(object, filters)) {
+      continue;
+    }
+    difs.push({
       path: displayPath,
       content:
         files.length === 1
@@ -615,7 +618,9 @@ function matchedDifs(
           : Buffer.from(data.buffer, data.byteOffset, data.byteLength),
       debugId: object.debugId,
       objects: [object],
-    }));
+    });
+  }
+  return difs;
 }
 
 /**
