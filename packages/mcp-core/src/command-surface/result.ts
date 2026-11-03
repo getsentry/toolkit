@@ -19,7 +19,6 @@ type Payload = {
   command: string;
   result: unknown;
   nextCursor?: string;
-  truncated?: { returned: number; total: number; hint: string };
 };
 
 function isEnvelope(value: unknown): value is Envelope {
@@ -92,9 +91,40 @@ function truncateList(payload: Payload, maxChars: number): string | undefined {
 }
 
 /**
+ * A result that is not a list, cut to fit in `maxChars`: `result` holds the
+ * start of its JSON text as a string, so the tool still returns valid JSON.
+ */
+function truncateText(
+  payload: Payload,
+  text: string,
+  maxChars: number,
+): string {
+  const render = (length: number) =>
+    JSON.stringify({
+      ...payload,
+      result: text.slice(0, length),
+      truncated: {
+        characters: text.length,
+        hint: "The result was too large, so result holds only the start of its JSON text. Select fewer fields with the fields flag.",
+      },
+    });
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (render(middle).length <= maxChars) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return render(low);
+}
+
+/**
  * The text an execute tool returns for `output`: JSON with the command, the
  * result, and `nextCursor` for paginated commands. A result over `maxChars`
- * keeps as many list items as fit, or is cut off with a note.
+ * keeps as many list items as fit, or keeps the start of its JSON text.
  */
 export function formatCommandResult(
   command: string,
@@ -115,6 +145,6 @@ export function formatCommandResult(
   }
   return (
     truncateList(payload, maxChars) ??
-    `${text.slice(0, maxChars)}\n[Truncated: the result is ${text.length} characters, over the ${maxChars} limit. Select fewer fields with the fields flag.]`
+    truncateText(payload, JSON.stringify(payload.result), maxChars)
   );
 }

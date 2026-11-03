@@ -443,7 +443,7 @@ describe("execute tools: results", () => {
     expect(result.result.data).toHaveLength(result.truncated.returned);
   });
 
-  it("cuts off a large single value with a note", async () => {
+  it("cuts a large single value to valid JSON within the cap", async () => {
     const { tools } = setup(
       { maxResultChars: 500 },
       { body: "x".repeat(2_000) },
@@ -452,7 +452,11 @@ describe("execute tools: results", () => {
       { command: "org list" } as never,
       createTestContext(),
     )) as string;
-    expect(text).toContain("[Truncated: the result is");
+    const parsed = JSON.parse(text);
+
+    expect(text.length).toBeLessThanOrEqual(500);
+    expect(parsed.truncated.characters).toBe(2_011);
+    expect(parsed.result).toMatch(/^\{"body":"x+$/);
   });
 });
 
