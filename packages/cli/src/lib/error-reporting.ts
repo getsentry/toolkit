@@ -74,6 +74,7 @@ type SilenceReason =
   | "process_exit"
   | "user_validation"
   | "user_input_error"
+  | "user_config"
   | "seer_unavailable_self_hosted";
 
 /**
@@ -143,6 +144,13 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // the user sees a clear "File not found" message (CLI-1JY).
   if (error instanceof ValidationError && error.field === "input") {
     return "user_input_error";
+  }
+  // A ValidationError with field "commit.repository" means `release
+  // set-commits --commit` named a repository the org has not connected to
+  // Sentry. The fix is in the org's integration settings, which the error
+  // links to; nothing in the CLI is broken (CLI-2SK).
+  if (error instanceof ValidationError && error.field === "commit.repository") {
+    return "user_config";
   }
   // A ValidationError with field "directory" means the sourcemap directory
   // the user passed is missing, not a directory, or unreadable. Pure

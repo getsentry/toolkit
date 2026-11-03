@@ -763,7 +763,7 @@ export async function setCommitsWithRefs(
 
 /**
  * Field of the {@link ValidationError} for a `--commit` repository the org
- * doesn't have, so this user configuration error can be told apart (CLI-2SK).
+ * doesn't have. Error reporting treats it as user configuration (CLI-2SK).
  */
 const COMMIT_REPOSITORY_FIELD = "commit.repository";
 

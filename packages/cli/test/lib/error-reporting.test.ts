@@ -355,6 +355,18 @@ describe("classifySilenced", () => {
     ).toBe("user_input_error");
   });
 
+  test("silences ValidationError with field 'commit.repository' (repository not in Sentry)", () => {
+    // set-commits --commit named a repository the org never connected (CLI-2SK).
+    expect(
+      classifySilenced(
+        new ValidationError(
+          "Sentry organization 'acme' has no repository named 'acme/web'.",
+          "commit.repository",
+        ),
+      ),
+    ).toBe("user_config");
+  });
+
   test("silences ValidationError with field 'directory' (bad sourcemap directory)", () => {
     // A missing sourcemap upload/inject directory is user-input noise (CLI-1FN).
     expect(

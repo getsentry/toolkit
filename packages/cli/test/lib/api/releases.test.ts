@@ -1055,6 +1055,7 @@ describe("explainSetCommitsError", () => {
     expect(message).toMatch(
       /\/settings\/integrations\/\?category=source%20code%20management/,
     );
+    expect(classifySilenced(error)).toBe("user_config");
   });
 
   test("suggests similar repositories and links the repository settings", async () => {
