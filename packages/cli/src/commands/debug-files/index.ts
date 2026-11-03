@@ -4,8 +4,8 @@
  * Route map for debug file commands.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { bundleJvmCommand } from "./bundle-jvm.js";
 import { bundleSourcesCommand } from "./bundle-sources.js";
 import { checkCommand } from "./check.js";

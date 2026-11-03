@@ -5,8 +5,9 @@
  * `sentry` and `sentry help` print the branded help (`lib/help.ts`), and
  * `sentry --help` prints Stricli's own route map help. Both read only each
  * route's name and brief, a route group's visible subcommand names, and a
- * command's usage line and placeholder. Names, hidden flags and briefs come
- * from `COMMAND_MANIFEST`; the rest from `generated/top-level-routes.json`,
+ * command's usage line and placeholder. Names and hidden flags come from
+ * `COMMAND_MANIFEST`, briefs from `TOP_LEVEL_BRIEFS`, and the rest from
+ * `generated/top-level-routes.json`,
  * which `script/generate-top-level-routes.ts` reads from the route tree. So
  * these runs don't need to load every command module.
  *
@@ -21,6 +22,7 @@ import type { SentryContext } from "./context.js";
 import generatedTopLevelRoutes from "./generated/top-level-routes.json";
 import type { CliRoutes } from "./lib/route-registry.js";
 import { buildRouteMap } from "./lib/route-map.js";
+import { TOP_LEVEL_BRIEFS } from "./top-level-briefs.js";
 
 /** What the top-level help shows for a visible top-level route. */
 export type TopLevelRoute =
@@ -49,8 +51,14 @@ function buildStandInCommand(brief: string): Command<SentryContext> {
   });
 }
 
+const BRIEFS: Readonly<Record<string, string | undefined>> = TOP_LEVEL_BRIEFS;
+
 /** A stand-in for the visible top-level route `name`. */
-function buildStandIn(name: string, brief: string): SentryRoutes[string] {
+function buildStandIn(name: string): SentryRoutes[string] {
+  const brief = BRIEFS[name];
+  if (brief === undefined) {
+    throw new Error(`No brief for "${name}" in TOP_LEVEL_BRIEFS`);
+  }
   const route = TOP_LEVEL_ROUTES[name];
   if (!route) {
     throw new Error(
@@ -85,9 +93,7 @@ export function buildRootHelpRoutes(help: SentryRoutes[string]): CliRoutes {
     if (name === "help") {
       return [[name, help] as const];
     }
-    return entry.hidden
-      ? []
-      : [[name, buildStandIn(name, entry.brief)] as const];
+    return entry.hidden ? [] : [[name, buildStandIn(name)] as const];
   });
   return buildSentryRoutes(Object.fromEntries(routes));
 }

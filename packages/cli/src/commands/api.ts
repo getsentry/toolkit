@@ -8,7 +8,6 @@
 import { access, readFile } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   appendSearchParams,
@@ -56,6 +55,7 @@ import {
 } from "../lib/sixel.js";
 import { imageBytesToSixel } from "../lib/sixel-image.js";
 import { setOrgProjectContext } from "../lib/telemetry.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("api");
 

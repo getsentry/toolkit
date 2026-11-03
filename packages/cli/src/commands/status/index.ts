@@ -4,8 +4,8 @@
  * Check the status of Sentry's services.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { showCommand } from "./show.js";
 
 export const statusRoute = buildRouteMap({

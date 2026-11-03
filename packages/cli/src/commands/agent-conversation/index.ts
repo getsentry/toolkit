@@ -4,8 +4,8 @@
  * List and view agent conversations from Sentry Explore.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 import { viewCommand } from "./view.js";
 

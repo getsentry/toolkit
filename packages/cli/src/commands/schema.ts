@@ -5,7 +5,6 @@
  * operations, and endpoint details from the generated API index.
  */
 
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   type ApiEndpoint,
@@ -36,6 +35,7 @@ import { fuzzyMatch } from "../lib/fuzzy.js";
 import { getCommandApiReferences, type RouteMap } from "../lib/introspect.js";
 import { filterByName, isGlobFilter } from "../lib/list-filter.js";
 import { getRoutes } from "../lib/route-registry.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 // ---------------------------------------------------------------------------
 // Output data types

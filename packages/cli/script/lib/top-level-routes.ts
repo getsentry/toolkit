@@ -1,7 +1,7 @@
 /**
  * What the top-level help shows for each visible top-level route, besides its
- * name and brief (which `COMMAND_MANIFEST` holds): a route group's visible
- * subcommands, or a command's usage line and placeholder.
+ * name (`COMMAND_MANIFEST`) and brief (`TOP_LEVEL_BRIEFS`): a route group's
+ * visible subcommands, or a command's usage line and placeholder.
  *
  * These come from each command's flags and positionals and each route map's
  * routes, so `script/generate-top-level-routes.ts` reads them from the loaded

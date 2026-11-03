@@ -17,7 +17,6 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import {
@@ -29,6 +28,7 @@ import { ValidationError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { formatBuildId, uuidToBytes } from "../lib/wasm/build-id.js";
 import { splitWasm } from "../lib/wasm/split.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 /** Flags accepted by `sentry wasm-split`. */
 type WasmSplitFlags = {

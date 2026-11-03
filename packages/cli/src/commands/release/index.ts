@@ -4,8 +4,8 @@
  * Route map for release management commands.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { archiveCommand } from "./archive.js";
 import { createCommand } from "./create.js";
 import { deleteCommand } from "./delete.js";

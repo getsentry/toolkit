@@ -4,8 +4,8 @@
  * Exposes `upload`, `download`, and `diff`.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { diffCommand } from "./diff.js";
 import { downloadCommand } from "./download.js";
 import { uploadCommand } from "./upload.js";

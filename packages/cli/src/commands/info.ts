@@ -6,7 +6,6 @@
  * `--config-status-json` machine-readable contract used by external tooling.
  */
 
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { getCurrentUser } from "../lib/api/users.js";
 import { buildCommand } from "../lib/command.js";
@@ -20,6 +19,7 @@ import {
 import { colorTag, renderMarkdown } from "../lib/formatters/markdown.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { logger } from "../lib/logger.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("info");
 

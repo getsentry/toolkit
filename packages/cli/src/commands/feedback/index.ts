@@ -4,8 +4,8 @@
  * Search, inspect, and manage modern Sentry User Feedback.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 import { resolveCommand } from "./resolve.js";
 import { spamCommand } from "./spam.js";

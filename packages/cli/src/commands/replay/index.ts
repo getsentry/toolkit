@@ -4,8 +4,8 @@
  * Search, inspect, and download Session Replays.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { downloadCommand } from "./download.js";
 import { listCommand } from "./list.js";
 import { viewCommand } from "./view.js";

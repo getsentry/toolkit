@@ -10,7 +10,6 @@
  * - `sentry help --json <command>`: Emits specific command/group metadata as JSON
  */
 
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import { parseCommandPath } from "../lib/completion-target.js";
@@ -21,6 +20,7 @@ import {
   introspectAllCommands,
   introspectCommand,
 } from "../lib/help.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 export const helpCommand = buildCommand({
   auth: false,

@@ -1,7 +1,7 @@
 /** Project client key commands. */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 
 export const dsnRoute = buildRouteMap({

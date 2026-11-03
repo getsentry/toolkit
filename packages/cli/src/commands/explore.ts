@@ -12,7 +12,6 @@ import {
   isTracemetricsAggregate,
 } from "@sentry/toolkit-core/events-fields";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
@@ -89,6 +88,7 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../lib/time-range.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("explore");
 

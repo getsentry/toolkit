@@ -9,6 +9,7 @@ import type { CliApplication } from "../../src/lib/application.js";
 import { withEnv } from "../../src/lib/env.js";
 import { printCustomHelp } from "../../src/lib/help.js";
 import { setRoutes } from "../../src/lib/route-registry.js";
+import { TOP_LEVEL_BRIEFS } from "../../src/top-level-briefs.js";
 import { describeTopLevelRoutes } from "../../script/lib/top-level-routes.js";
 import { envWithoutAgent, useTestConfigDir } from "../helpers.js";
 
@@ -19,12 +20,20 @@ describe("COMMAND_MANIFEST", () => {
     );
   });
 
+  test("has a brief in TOP_LEVEL_BRIEFS for each visible route, in order", () => {
+    expect(
+      Object.entries(COMMAND_MANIFEST)
+        .filter(([, entry]) => !entry.hidden)
+        .map(([name]) => name),
+    ).toEqual(Object.keys(TOP_LEVEL_BRIEFS));
+  });
+
   test("gives each visible route of app.ts its brief", () => {
     // A top-level route sets `brief: topLevelBrief(name)` instead of its own
+    const briefs: Record<string, string | undefined> = TOP_LEVEL_BRIEFS;
     for (const entry of routes.getAllEntries()) {
-      const manifest = COMMAND_MANIFEST[entry.name.original];
-      if (manifest && !manifest.hidden) {
-        expect(entry.target.brief).toBe(manifest.brief);
+      if (!COMMAND_MANIFEST[entry.name.original]?.hidden) {
+        expect(entry.target.brief).toBe(briefs[entry.name.original]);
       }
     }
   });

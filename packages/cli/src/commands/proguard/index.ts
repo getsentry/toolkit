@@ -4,8 +4,8 @@
  * Route map for ProGuard/R8 mapping commands.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { uploadCommand } from "./upload.js";
 import { uuidCommand } from "./uuid.js";
 

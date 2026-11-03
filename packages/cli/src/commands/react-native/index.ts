@@ -4,8 +4,8 @@
  * Route map for React Native build-tool integration commands.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { gradleCommand } from "./gradle.js";
 import { xcodeCommand } from "./xcode.js";
 

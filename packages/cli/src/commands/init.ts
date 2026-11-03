@@ -19,7 +19,6 @@
 
 import path from "node:path";
 import { setTag } from "@sentry/node";
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import {
   looksLikePath,
@@ -51,6 +50,7 @@ import {
 } from "../lib/positional-parse.js";
 import { classifyProjectSearchTarget } from "../lib/resolve-target.js";
 import { applySentryUrlContext } from "../lib/sentry-url-parser.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("init");
 

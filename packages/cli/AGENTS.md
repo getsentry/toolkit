@@ -113,11 +113,15 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
-- **`src/command-manifest.ts`** — every top-level route: how to load it,
-  whether help hides it, and its brief. A visible top-level route map or
-  command sets `brief: topLevelBrief("<name>")` instead of writing its own.
-  A new top-level route goes in both `app.ts` and the manifest, in the same
-  place; `test/lib/command-manifest.test.ts` fails when they disagree. What
+- **`src/command-manifest.ts`** — every top-level route: how to load it and
+  whether help hides it. **`src/top-level-briefs.ts`** holds the brief of each
+  visible one; its route map or command sets `brief: topLevelBrief("<name>")`
+  instead of writing its own. The briefs stay out of the manifest so that
+  importing them does not pull every command's `import()` into the
+  `@sentry/mcp-server` bundle, which cannot split chunks. A new top-level
+  route goes in `app.ts` and the manifest, in the same place, and in
+  `top-level-briefs.ts` if visible; `test/lib/command-manifest.test.ts` fails
+  when they disagree. What
   else the top-level help shows (visible subcommands, a command's usage line
   and placeholder) derives from code, so `generate:top-level-routes` writes it
   to `src/generated/top-level-routes.json` (part of `generate:docs`).

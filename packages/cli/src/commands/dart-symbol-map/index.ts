@@ -4,8 +4,8 @@
  * Route map for Dart/Flutter symbol map commands.
  */
 
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { uploadCommand } from "./upload.js";
 
 export const dartSymbolMapRoute = buildRouteMap({

@@ -1,5 +1,5 @@
-import { topLevelBrief } from "../../command-manifest.js";
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { createCommand } from "./create.js";
 import { deleteCommand } from "./delete.js";
 import { listCommand } from "./list.js";

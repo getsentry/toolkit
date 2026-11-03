@@ -7,7 +7,6 @@
  * when the server starts, not for `--help`.
  */
 
-import { topLevelBrief } from "../command-manifest.js";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import {
@@ -22,6 +21,7 @@ import {
   type McpScope,
   parseMcpTarget,
 } from "../lib/mcp/args.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 /**
  * mcp-core's `ALL_SKILLS`, copied so the command tree does not import
