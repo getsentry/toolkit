@@ -17,6 +17,7 @@ vi.mock("@sentry/cloudflare", async (importOriginal) => ({
   getActiveSpan: vi.fn(() => undefined),
   metrics: {
     count: sentryMetricsCount,
+    gauge: vi.fn(),
   },
   setUser: sentrySetUser,
 }));
@@ -922,6 +923,131 @@ describe("MCP Handler", () => {
 
       expect(catalogToolNames).toContain("search_docs");
       expect(catalogToolNames).toContain("get_doc");
+    });
+  });
+
+  describe("response cache", () => {
+    const whoamiCall = {
+      name: "execute_sentry_tool",
+      arguments: { name: "whoami", arguments: {} },
+    };
+    let grantSequence = 0;
+
+    /** A wrapper token for a grant no other test has used. */
+    function newGrantToken(userId = DEFAULT_OAUTH_PROPS.id): string {
+      grantSequence += 1;
+      return `${userId}:cache-grant-${grantSequence}:secret`;
+    }
+
+    function spyOnAuthRequests() {
+      const spy = vi.spyOn(globalThis, "fetch");
+      return {
+        count: () =>
+          spy.mock.calls.filter(([input]) =>
+            String(input instanceof Request ? input.url : input).endsWith(
+              "/api/0/auth/",
+            ),
+          ).length,
+        restore: () => spy.mockRestore(),
+      };
+    }
+
+    async function callWhoami(
+      env: Env,
+      bearerToken: string,
+      props: Partial<OAuthProps> = {},
+    ): Promise<void> {
+      const ctx = Object.assign(createExecutionContext(), {
+        props: { ...DEFAULT_OAUTH_PROPS, ...props },
+      });
+      const response = await mcpHandler.fetch!(
+        createMcpRequest("tools/call", whoamiCall, { bearerToken }),
+        env,
+        ctx,
+      );
+      expect(response.status).toBe(200);
+      const body = await parseSSEResponse<{ result: { isError?: boolean } }>(
+        response,
+      );
+      expect(body.result.isError).toBeFalsy();
+      await waitOnExecutionContext(ctx);
+    }
+
+    it("is off by default", async () => {
+      const auth = spyOnAuthRequests();
+      try {
+        const token = newGrantToken();
+        await callWhoami(createTestEnv(), token);
+        await callWhoami(createTestEnv(), token);
+        expect(auth.count()).toBe(2);
+      } finally {
+        auth.restore();
+      }
+    });
+
+    it("serves a grant's repeated reads from memory, but never another grant's", async () => {
+      const env = { ...createTestEnv(), MCP_RESPONSE_CACHE: "memory" };
+      const auth = spyOnAuthRequests();
+      try {
+        const grantA = newGrantToken();
+        await callWhoami(env, grantA);
+        await callWhoami(env, grantA);
+        expect(auth.count()).toBe(1);
+
+        // Same user and URL, another grant: a separate identity.
+        const grantB = newGrantToken();
+        await callWhoami(env, grantB);
+        expect(auth.count()).toBe(2);
+
+        // Another user on the same isolate.
+        await callWhoami(env, newGrantToken("other-user"), {
+          id: "other-user",
+          accessToken: "other-access-token",
+        });
+        expect(auth.count()).toBe(3);
+      } finally {
+        auth.restore();
+      }
+    });
+
+    it("does not cache requests without a wrapper grant", async () => {
+      const env = { ...createTestEnv(), MCP_RESPONSE_CACHE: "memory" };
+      const auth = spyOnAuthRequests();
+      try {
+        await callWhoami(env, "not-a-wrapper-token");
+        await callWhoami(env, "not-a-wrapper-token");
+        expect(auth.count()).toBe(2);
+      } finally {
+        auth.restore();
+      }
+    });
+
+    it("does not cache Sentry-Bearer direct tokens", async () => {
+      const env = {
+        ...createTestEnv(),
+        MCP_RESPONSE_CACHE: "memory",
+        SENTRY_HOST: "direct-token.test",
+      };
+      const auth = spyOnAuthRequests();
+      try {
+        for (let i = 0; i < 2; i++) {
+          const ctx = createExecutionContext();
+          const response = await handleSentryBearerMcpRequest(
+            createMcpRequest("tools/call", whoamiCall, {
+              headers: { "X-Sentry-Utm-Source": "plugin" },
+            }),
+            env,
+            ctx,
+            DIRECT_AUTH_ASSERTION_TOKEN,
+          );
+          expect(response.status).toBe(200);
+          await response.text();
+          await waitOnExecutionContext(ctx);
+        }
+        expect(auth.count()).toBe(2);
+      } finally {
+        auth.restore();
+      }
     });
   });
 
