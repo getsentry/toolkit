@@ -33,6 +33,7 @@ import {
   type TableResult,
   type TextResult,
   TIMESERIES_DISPLAY_TYPES,
+  type TimeseriesIngestion,
   type TimeseriesResult,
   type WidgetDataResult,
 } from "../../types/dashboard.js";
@@ -416,12 +417,47 @@ function seriesSortKey(series: EventsTimeseriesSeries): number {
 }
 
 /**
+ * Normalize the ingestion status attached to an events-timeseries response.
+ *
+ * `completeThrough` arrives in epoch milliseconds and is converted to seconds
+ * to match the bucket timestamps in the result.
+ */
+function parseIngestion(
+  ingestion: NonNullable<EventsTimeseriesResponse["meta"]>["ingestion"],
+): TimeseriesIngestion | undefined {
+  if (!ingestion) {
+    return;
+  }
+  const result: TimeseriesIngestion = { status: ingestion.status };
+  if (ingestion.delaySeconds !== undefined) {
+    result.delaySeconds = ingestion.delaySeconds;
+  }
+  if (ingestion.completeThrough !== undefined) {
+    result.completeThrough = Math.floor(ingestion.completeThrough / 1000);
+  }
+  return result;
+}
+
+/** Keep whichever ingestion status reports the larger delay. */
+function slowerIngestion(
+  a: TimeseriesIngestion | undefined,
+  b: TimeseriesIngestion | undefined,
+): TimeseriesIngestion | undefined {
+  if (!a || !b) {
+    return a ?? b;
+  }
+  return (b.delaySeconds ?? 0) > (a.delaySeconds ?? 0) ? b : a;
+}
+
+/**
  * Parse an events-timeseries response into a normalized timeseries result.
  *
  * The response is `{ timeSeries: [...] }` with one entry per y-axis (and per
  * group when `topEvents` is set). Timestamps are converted from epoch
  * milliseconds to seconds and null or string buckets become numbers so the
- * renderers see the same shape they always have.
+ * renderers see the same shape they always have. Buckets Sentry marks
+ * `incomplete` keep that flag, and the response's ingestion status is
+ * carried along.
  *
  * @param response - Validated events-timeseries response
  * @param yAxis - The aggregate function name(s) that were requested
@@ -436,17 +472,23 @@ function parseEventsTimeseriesResponse(
     (a, b) => seriesSortKey(a) - seriesSortKey(b),
   );
 
-  return {
+  const result: TimeseriesResult = {
     type: "timeseries",
     series: ordered.map((s) => ({
       label: timeseriesLabel(s, multipleAxes),
-      values: s.values.map(({ timestamp, value }) => ({
+      values: s.values.map(({ timestamp, value, incomplete }) => ({
         timestamp: Math.floor(timestamp / 1000),
         value: bucketValue(value),
+        ...(incomplete ? { incomplete: true } : {}),
       })),
       unit: s.meta.valueUnit ?? null,
     })),
   };
+  const ingestion = parseIngestion(parsed.output.meta?.ingestion);
+  if (ingestion) {
+    result.ingestion = ingestion;
+  }
+  return result;
 }
 
 /**
@@ -520,6 +562,7 @@ async function queryWidgetTimeseries(
     options = {},
   } = params;
   const allSeries: TimeseriesResult["series"] = [];
+  let ingestion: TimeseriesIngestion | undefined;
 
   for (const query of widget.queries ?? []) {
     const aggregates = query.aggregates ?? [];
@@ -554,9 +597,14 @@ async function queryWidgetTimeseries(
 
     const parsed = parseEventsTimeseriesResponse(data, aggregates);
     allSeries.push(...parsed.series);
+    ingestion = slowerIngestion(ingestion, parsed.ingestion);
   }
 
-  return { type: "timeseries", series: allSeries };
+  const result: TimeseriesResult = { type: "timeseries", series: allSeries };
+  if (ingestion) {
+    result.ingestion = ingestion;
+  }
+  return result;
 }
 
 /**

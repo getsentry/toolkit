@@ -62,6 +62,32 @@ export function downsample(values: number[], targetLen: number): number[] {
 }
 
 /**
+ * Downsample boolean flags with the same bucketing as {@link downsample}.
+ *
+ * A target bucket is flagged when any source point inside it is flagged, so
+ * an incomplete trailing bucket stays visible after averaging.
+ */
+export function downsampleFlags(
+  flags: boolean[],
+  targetLen: number,
+): boolean[] {
+  if (flags.length <= targetLen) {
+    return flags;
+  }
+
+  const bucketSize = flags.length / targetLen;
+  const result: boolean[] = [];
+
+  for (let i = 0; i < targetLen; i++) {
+    const start = Math.floor(i * bucketSize);
+    const end = Math.floor((i + 1) * bucketSize);
+    result.push(flags.slice(start, end).some(Boolean));
+  }
+
+  return result;
+}
+
+/**
  * Render a sparkline string from numeric values using Unicode block characters.
  *
  * Zero maps to `⎽` (scan line). Non-zero values map to `▁`–`█` (8 levels)

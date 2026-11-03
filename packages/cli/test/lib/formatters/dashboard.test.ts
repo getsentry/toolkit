@@ -723,6 +723,179 @@ describe("formatDashboardWithData", () => {
     });
   });
 
+  describe("incomplete buckets (plain mode)", () => {
+    const values = Array.from({ length: 20 }, (_, i) => ({
+      timestamp: 1_700_000_000 + i * 3600,
+      value: 10 + (i % 5) * 10,
+      ...(i >= 18 ? { incomplete: true } : {}),
+    }));
+
+    test("marks the latest sparkline value as incomplete", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("(incomplete)");
+    });
+
+    test("does not mark complete sparkline values", () => {
+      const output = formatDashboardWithData(makeDashboardData());
+      expect(output).not.toContain("(incomplete)");
+      expect(output).not.toContain("Ingestion delay");
+    });
+
+    test("dashes the time axis under incomplete bar columns", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      const axisLine = output.split("\n").find((line) => line.includes("└"));
+      expect(axisLine).toBeDefined();
+      expect(axisLine).toContain("┄");
+      // Incomplete columns sit at the right end of the axis, after every
+      // solid segment.
+      expect(axisLine?.indexOf("┄")).toBeGreaterThan(
+        axisLine?.lastIndexOf("─") ?? -1,
+      );
+    });
+
+    test("dashes the axis under incomplete stacked bar columns", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [
+                { label: "series-a", values },
+                {
+                  label: "series-b",
+                  values: values.map((v) => ({ ...v, value: 1 })),
+                },
+              ],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("┄");
+    });
+
+    test("reports the ingestion delay in the header", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+              ingestion: { status: "delayed", delaySeconds: 90 },
+            }),
+          }),
+        ],
+      });
+      const lines = formatDashboardWithData(data).split("\n");
+      expect(lines[1]).toContain("Ingestion delay: ~90s");
+      expect(lines[1]).toContain("┄ buckets may still be filling");
+    });
+
+    test("formats longer ingestion delays in minutes", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              ingestion: { status: "delayed", delaySeconds: 600 },
+            }),
+          }),
+        ],
+      });
+      const lines = formatDashboardWithData(data).split("\n");
+      expect(lines[1]).toContain("Ingestion delay: ~10m");
+    });
+
+    test("notes incomplete buckets even without a delay figure", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const lines = formatDashboardWithData(data).split("\n");
+      expect(lines[1]).toContain(
+        "Ingestion delay (┄ buckets may still be filling)",
+      );
+    });
+  });
+
+  describe("incomplete buckets (rendered mode)", () => {
+    useRenderedMode();
+
+    test("dims the incomplete sparkline tail and latest value", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [
+                {
+                  label: "count()",
+                  values: [
+                    { timestamp: 1, value: 1 },
+                    { timestamp: 2, value: 5 },
+                    { timestamp: 3, value: 3, incomplete: true },
+                  ],
+                },
+              ],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      const plain = stripAnsi(output);
+      // The muted hex color (#898294) wraps the incomplete tail.
+      expect(output).toContain("\u001b[38;2;137;130;148m");
+      expect(plain).not.toContain("(incomplete)");
+      expect(plain).toMatch(/[▁▂▃▄▅▆▇█⎽]{3}/);
+    });
+
+    test("dims incomplete bar columns", () => {
+      const values = Array.from({ length: 10 }, (_, i) => ({
+        timestamp: 1_700_000_000 + i * 3600,
+        value: 10 + i,
+        ...(i === 9 ? { incomplete: true } : {}),
+      }));
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      // chalk.dim emits SGR 2 around the dimmed columns.
+      expect(output).toContain("\u001b[2m");
+      expect(stripAnsi(output)).toContain("┄");
+    });
+  });
+
   describe("bar widget (rendered mode colors)", () => {
     useRenderedMode();
 
