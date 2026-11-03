@@ -16,6 +16,7 @@ allowedTools:
   - create_alert_rule
   - create_dsn
   - create_metric_monitor
+  - create_monitor
   - create_project
   - create_team
   - create_uptime_monitor

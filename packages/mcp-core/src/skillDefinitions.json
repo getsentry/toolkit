@@ -29,7 +29,7 @@
       },
       {
         "name": "find_monitors",
-        "description": "List or search Sentry cron monitors, which track scheduled jobs through check-ins.\nFor HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
+        "description": "List or search Sentry cron monitors, which track scheduled jobs through check-ins.\nFor HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\nTo create a cron monitor, use create_monitor.\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
         "requiredScopes": ["org:read"]
       },
       {
@@ -538,10 +538,10 @@
   {
     "id": "project-management",
     "name": "Manage Projects & Teams",
-    "description": "Create and modify projects, teams, DSNs, cron monitor environments, uptime monitors, metric monitors, and alert rules",
+    "description": "Create and modify projects, teams, DSNs, cron monitors and their environments, uptime monitors, metric monitors, and alert rules",
     "defaultEnabled": false,
     "order": 5,
-    "toolCount": 24,
+    "toolCount": 25,
     "tools": [
       {
         "name": "add_team_to_project",
@@ -561,6 +561,11 @@
       {
         "name": "create_metric_monitor",
         "description": "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a threshold. Supports Static, Percent or Dynamic detection.\nProvide the complete query, detection config and conditions. Time windows and comparison deltas use seconds. Percent comparisons are absolute: 110 means 10% higher.\nTo copy a monitor, use the query, config and conditionGroup from get_metric_monitor_details. Component IDs are discarded; new condition groups use logicType='any'.\nNew monitors start ACTIVE and immediately evaluate data. Initially disabled creation is not supported. Use update_metric_monitor to disable an existing monitor.\nworkflowIds optionally connect existing notification Alerts, including shared Alerts, without modifying their configuration. Create an Alert separately with create_alert_rule if needed.\nDataset access, quota, aggregate, window and historical-data requirements are enforced by Sentry. Dynamic detection requires sufficient history and Seer availability.\nCreation can fail after persisting a monitor, especially during Dynamic setup. After an error or timeout, use find_metric_monitors with the name and project before retrying; do not assume rollback or blindly repeat creation.\ncreate_metric_monitor(organizationSlug='my-org', projectSlug='backend', name='High error count', query={dataset:'events', query:'level:error', aggregate:'count()', eventTypes:['error'], timeWindowSeconds:300}, config={detectionType:'static'}, conditionGroup={conditions:[{type:'gt', comparison:100, conditionResult:75}, {type:'lte', comparison:50, conditionResult:0}]})",
+        "requiredScopes": ["org:read", "project:read", "alerts:write"]
+      },
+      {
+        "name": "create_monitor",
+        "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nProvide exactly one of `crontab` or `interval`. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', crontab='0 3 * * *', timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', interval={ value: 15, unit: 'minute' })\n</examples>",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
