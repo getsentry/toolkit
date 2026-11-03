@@ -32,7 +32,7 @@ import {
 } from "../git.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
-import { buildOrgSettingsUrl } from "../sentry-web-urls.js";
+import { buildRepositorySettingsUrl } from "../sentry-web-urls.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
@@ -609,7 +609,7 @@ function noMatchingRepositoryError(
     `No Sentry repository matching '${checkout.repository}' (from ${checkout.source}).${didYouMean}`,
     examples,
     "repository",
-    `Add the repository to Sentry through your source code integration: ${buildOrgSettingsUrl(orgSlug)}repos/`,
+    `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
   );
 }
 
