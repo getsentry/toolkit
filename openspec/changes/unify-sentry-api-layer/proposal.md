@@ -20,15 +20,23 @@ The shared layer must therefore sit below both products, on `@sentry/api`.
 Its end state is inside `@sentry/api` itself, so every consumer, including
 the Sentry frontend in the browser, gets one Sentry API client.
 
-The plan has two steps:
+The plan had two steps: build the shared client in `@sentry/toolkit-core`,
+structured the way it will live in `@sentry/api`, then copy it there. The
+transport, retry, cache policy, pagination, request core, and organizations
+domain landed in `toolkit-core` that way (#1719, #1722, #1732, #1736, #1737,
+#1741, #1820).
 
-1. Consolidate every `SentryApiService`-like layer, the MCP's
-   `SentryApiService` and the CLI's API modules, into one shared client in
-   `@sentry/toolkit-core`, structured the way it will live in
-   `@sentry/api`.
-2. Copy that client into getsentry/sentry-api-schema, publish a new
-   `@sentry/api`, switch toolkit's imports to it, and delete the
-   toolkit-core copies.
+**Updated 2026-11-03.** The MCP is becoming Code Mode over the CLI's
+commands (`cli-first-code-mode-mcp`), so its catalog tools and their
+endpoint wrappers will be deleted rather than shared. The remaining plan
+therefore goes straight to `@sentry/api`:
+
+1. Move what `toolkit-core/src/api-client/` holds into
+   getsentry/sentry-api-schema now, reconciled with the errors and
+   pagination that package already ships, and switch toolkit to it.
+2. Move the CLI's endpoint wrappers onto that client.
+3. Get the endpoints the CLI and MCP still call by raw path into the
+   published schema, so they generate as `@sentry/api` operations.
 
 ## What Changes
 
@@ -55,9 +63,9 @@ The plan has two steps:
   routing.
 - The MCP's `SentryApiService` sends every request through the shared
   transport and drops its own retry loop.
-- **Step 1:** add a shared API client to `@sentry/toolkit-core`, in stacked
-  PRs by layer that also switch both products and delete the code they
-  replace. It
+- **Step 1 (stopped early, see Why):** add a shared API client to
+  `@sentry/toolkit-core`, in stacked PRs by layer that also switch both
+  products and delete the code they replace. It
   covers endpoint wrappers by domain on top of `@sentry/api` operations,
   the error types (`ApiError`, rate limits, `retryAfterMs`), response
   validation through the Standard Schema interface (the MCP keeps Zod and
@@ -69,8 +77,9 @@ The plan has two steps:
   `fs`, `process`, or `AsyncLocalStorage`. Credentials, storage, the
   fresh-read scope, and telemetry are interfaces each host provides. A lint
   rule and a browser-target typecheck enforce it.
-- **Step 2:** move the shared client into `@sentry/api`, publish it, and
-  switch toolkit over.
+- **Step 2, now next:** move the shared client into `@sentry/api`, publish
+  it, and switch toolkit over. The CLI's endpoint wrappers then move onto
+  it, and endpoints missing from the published schema are added there.
 - The hosted MCP on Cloudflare uses a tiered cache:
   - an in-memory LRU, limited by bytes, for every tier
   - R2 for an allowlist of organization event details and project
@@ -88,14 +97,9 @@ Out of scope, tracked separately:
 
 - Server-side `Cache-Control` for event and trace-item detail responses
   (getsentry/sentry#128818, prototype in getsentry/sentry#128828).
-- A later phase, after step 2: CLI commands split into host-specific input
-  resolution, portable operations, and renderers. The MCP tools move into
-  the CLI as a portable `sentry/mcp` entry that `sentry mcp` serves over
-  stdio and the hosted MCP bundles on Workers. `sentry mcp` passes the
-  CLI's authenticated fetch so local MCP sessions reuse the CLI login and
-  on-disk cache, and the CLI's OAuth scopes are widened to cover MCP tools.
-  `@sentry/mcp-server` becomes a dependency-free bundle of `sentry mcp`
-  built from CLI source (#1731).
+- The MCP tool surface: replaced by `cli-first-code-mode-mcp`, which makes
+  the MCP Code Mode over the CLI's commands. `@sentry/mcp-server` stays a
+  dependency-free bundle built from CLI source (#1731).
 
 ## Capabilities
 
