@@ -408,6 +408,40 @@ export function parseRemoteUrl(url: string): string | undefined {
   return;
 }
 
+/** Spaces around `/` in GitLab display names (`Group / Project`). */
+const REPO_SEPARATOR_RE = /\s*\/\s*/g;
+
+/** Lowercase a repository path and drop the spaces of GitLab display names. */
+function normalizeRepoPath(path: string): string {
+  return path.replace(REPO_SEPARATOR_RE, "/").toLowerCase();
+}
+
+/**
+ * Whether a Sentry repository is the repository at `path` (`owner/repo`, as
+ * {@link parseRemoteUrl} returns it).
+ *
+ * GitHub and Bitbucket repositories are named `owner/repo`, so the name
+ * matches. GitLab names are display names (`Group / Project`) and Azure
+ * DevOps names leave out `org/project/_git/`, so for those the path of the
+ * repository URL has to match, like the reference sentry-cli. A normalized
+ * display name only counts when there is no URL to check, since another
+ * group can have a project with the same display path.
+ */
+export function isSameRepository(
+  repo: { name: string; url: string | null },
+  path: string,
+): boolean {
+  const localPath = normalizeRepoPath(path);
+  if (repo.name.toLowerCase() === localPath) {
+    return true;
+  }
+  const urlPath = repo.url ? parseRemoteUrl(repo.url) : undefined;
+  if (urlPath !== undefined) {
+    return urlPath.toLowerCase() === localPath;
+  }
+  return normalizeRepoPath(repo.name) === localPath;
+}
+
 /**
  * Infer the repository name from local git remotes.
  *

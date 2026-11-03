@@ -16,11 +16,15 @@ import {
   updateOrganizationRelease,
 } from "@sentry/api";
 import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
-import type { SentryDeploy, SentryRelease } from "../../types/index.js";
+import type {
+  SentryDeploy,
+  SentryRelease,
+  SentryRepository,
+} from "../../types/index.js";
 import { getCiCheckout } from "../ci.js";
 import { getEnv } from "../env.js";
 import { ApiError, ValidationError, validationError } from "../errors.js";
-import { getHeadCommit, getRepositoryName } from "../git.js";
+import { getHeadCommit, getRepositoryName, isSameRepository } from "../git.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -475,6 +479,56 @@ function resolveAutoCheckout(cwd?: string): AutoCheckout {
   );
 }
 
+/** Characters that GitLab slugs use where the display name has spaces. */
+const SLUG_SEPARATOR_RE = /[-_.]+/g;
+
+/**
+ * Search the org's repositories for the local repository.
+ *
+ * Asks the server to filter by name (orgs can have tens of thousands of
+ * repositories). The full path is tried first; GitLab names do not contain
+ * it (`Group / Project`), so the last path segment is tried next, then that
+ * segment with `-`, `_`, and `.` read as spaces, since GitLab derives the
+ * slug `my-project` from the display name `My Project`. Hits must match the
+ * exact name or the URL path, so a loose query cannot pick the wrong
+ * repository.
+ *
+ * @returns The match, and whether any search returned repositories
+ */
+async function findSentryRepository(
+  orgSlug: string,
+  localRepo: string,
+): Promise<{ match?: SentryRepository; foundAnyRepos: boolean }> {
+  const lastSegment = localRepo.split("/").at(-1) ?? localRepo;
+  const spacedSegment = lastSegment.replace(SLUG_SEPARATOR_RE, " ");
+  const queries = [...new Set([localRepo, lastSegment, spacedSegment])];
+  let foundAnyRepos = false;
+
+  for (const query of queries) {
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
+      const result = await listRepositoriesPaginated(orgSlug, {
+        cursor,
+        perPage: API_MAX_PER_PAGE,
+        query,
+      });
+      if (result.data.length > 0) {
+        foundAnyRepos = true;
+      }
+      const match = result.data.find((r) => isSameRepository(r, localRepo));
+      if (match) {
+        return { match, foundAnyRepos };
+      }
+      if (!result.nextCursor) {
+        break;
+      }
+      cursor = result.nextCursor;
+    }
+  }
+
+  return { foundAnyRepos };
+}
+
 /**
  * Set commits on a release using auto-discovery mode.
  *
@@ -504,49 +558,29 @@ export async function setCommitsAuto(
   cwd?: string,
 ): Promise<SentryRelease> {
   const checkout = resolveAutoCheckout(cwd);
-  const localRepo = checkout.repository;
 
   // The previous release's commit only depends on the org and version, not
   // on which repository matches, so fetch it concurrently with the repository
   // lookup instead of after it. getPreviousReleaseCommit never rejects.
   const previousCommitPromise = getPreviousReleaseCommit(orgSlug, version);
 
-  const localRepoLower = localRepo.toLowerCase();
-  let cursor: string | undefined;
-  let foundAnyRepos = false;
+  const { match, foundAnyRepos } = await findSentryRepository(
+    orgSlug,
+    checkout.repository,
+  );
 
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const result = await listRepositoriesPaginated(orgSlug, {
-      cursor,
-      perPage: API_MAX_PER_PAGE,
-      query: localRepo,
-    });
-
-    if (result.data.length > 0) {
-      foundAnyRepos = true;
+  if (match) {
+    const headCommit = checkout.commit ?? getHeadCommit(cwd);
+    const previousCommit = await previousCommitPromise;
+    const ref: {
+      repository: string;
+      commit: string;
+      previousCommit?: string;
+    } = { repository: match.name, commit: headCommit };
+    if (previousCommit) {
+      ref.previousCommit = previousCommit;
     }
-
-    const match = result.data.find(
-      (r) => r.name.toLowerCase() === localRepoLower,
-    );
-    if (match) {
-      const headCommit = checkout.commit ?? getHeadCommit(cwd);
-      const previousCommit = await previousCommitPromise;
-      const ref: {
-        repository: string;
-        commit: string;
-        previousCommit?: string;
-      } = { repository: match.name, commit: headCommit };
-      if (previousCommit) {
-        ref.previousCommit = previousCommit;
-      }
-      return await setCommitsWithRefs(orgSlug, version, [ref]);
-    }
-
-    if (!result.nextCursor) {
-      break;
-    }
-    cursor = result.nextCursor;
+    return await setCommitsWithRefs(orgSlug, version, [ref]);
   }
 
   // The name filter returns nothing for an org whose repositories all have
@@ -565,7 +599,7 @@ export async function setCommitsAuto(
   }
 
   throw new ValidationError(
-    `No Sentry repository matching '${localRepo}'.`,
+    `No Sentry repository matching '${checkout.repository}'.`,
     "repository",
   );
 }
