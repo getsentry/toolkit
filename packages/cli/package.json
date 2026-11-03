@@ -53,7 +53,6 @@
   "sentryCi": {
     "build": false,
     "e2e": false,
-    "npmRuntime": "bundle",
     "test": false,
     "typecheck": "ci:typecheck"
   },

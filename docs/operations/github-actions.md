@@ -48,7 +48,9 @@ requires them to be skipped otherwise. The CLI E2E tests run in
 Runs on pull requests, pushes to `main` and `release/cli/**`, and manual
 dispatch. It builds the CLI artifacts that ship: `Build Binary` builds every
 target on `main` and release branches, and only `linux-x64` on pull requests.
-`Build npm Package` packs the npm package. `E2E Tests (Node 24)` downloads the
+`Build npm Package` packs the npm package, and `Test npm Package` validates that
+package on Node 20, 22, and 24 with `scripts/validate-npm-runtime.sh`.
+`E2E Tests (Node 24)` downloads the
 Linux binary, the npm package, and the generated sources from those jobs and
 runs `test/e2e` against them without building anything. `Build status` fails
 unless the builds, the npm package tests, and the E2E tests passed.
@@ -177,9 +179,10 @@ project:
 
 A new workflow fits only when the matrix job cannot run the check: another
 operating system, a deployment, secrets, or pull request comments and labels.
-The CLI's E2E tests are the exception: they must run against the binaries and
-npm package that `cli-build.yml` builds for nightlies and releases, so
-`packages/cli` sets `sentryCi.e2e` to `false` and that workflow runs them.
+The CLI's E2E tests and npm package checks are the exception: they must run
+against the binaries and npm package that `cli-build.yml` builds for nightlies
+and releases, so `packages/cli` sets `sentryCi.e2e` to `false`, leaves
+`sentryCi.npmRuntime` unset, and that workflow runs them.
 `scripts/workflow-policy.test.mjs` fails for a workflow that runs on pull
 requests unless its list names that workflow and the reason.
 

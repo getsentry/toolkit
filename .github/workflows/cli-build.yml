@@ -275,12 +275,6 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: pnpm --filter sentry run bundle
-      - name: Smoke test
-        env:
-          SENTRY_AUTH_TOKEN: ""
-          SENTRY_TOKEN: ""
-          SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
-        run: node packages/cli/dist/bin.cjs --help
       - name: Pack
         working-directory: packages/cli
         run: npm pack
@@ -321,17 +315,15 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: npm-package
-          path: packages/cli
+          path: ${{ runner.temp }}/npm-package
       - name: Test packaged CLI
         env:
-          SENTRY_AUTH_TOKEN: ""
-          SENTRY_TOKEN: ""
-          SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
+          RUNTIME_BIN: sentry
+          RUNTIME_PACKAGE: sentry
         run: |
-          package_file=$(find packages/cli -maxdepth 1 -name 'sentry-*.tgz' -print -quit)
-          test -n "$package_file"
-          npm install --ignore-scripts --prefix "$RUNNER_TEMP/npm-smoke" "$GITHUB_WORKSPACE/$package_file"
-          node "$RUNNER_TEMP/npm-smoke/node_modules/sentry/dist/bin.cjs" --help
+          packages=("$RUNNER_TEMP"/npm-package/sentry-*.tgz)
+          [[ "${#packages[@]}" == 1 ]]
+          RUNTIME_ARCHIVE="${packages[0]}" bash scripts/validate-npm-runtime.sh
 
   test-e2e:
     name: E2E Tests (Node 24)
