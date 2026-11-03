@@ -5,7 +5,7 @@
  */
 
 import { tableCell } from "@sentry/toolkit-core/markdown";
-import { description, object, pipe, string } from "valibot";
+import { description, type InferOutput, object, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -16,10 +16,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
-import {
-  type DashboardDetail,
-  DashboardDetailSchema,
-} from "../../types/dashboard.js";
+import { DashboardDetailSchema } from "../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
 
@@ -29,11 +26,14 @@ type RestoreFlags = {
   readonly fields?: string[];
 };
 
-type RestoreResult = {
-  dashboard: DashboardDetail;
-  orgSlug: string;
-  revisionId: string;
-};
+/** JSON output: the restored dashboard and the revision it was restored to. */
+const RestoreOutputSchema = object({
+  dashboard: pipe(DashboardDetailSchema, description("Restored dashboard")),
+  orgSlug: pipe(string(), description("Organization slug")),
+  revisionId: pipe(string(), description("Restored revision ID")),
+});
+
+type RestoreResult = InferOutput<typeof RestoreOutputSchema>;
 
 function formatRestoreHuman(result: RestoreResult): string {
   const d = result.dashboard;
@@ -80,11 +80,7 @@ export const restoreCommand = buildCommand({
   },
   output: {
     human: formatRestoreHuman,
-    schema: object({
-      dashboard: pipe(DashboardDetailSchema, description("Restored dashboard")),
-      orgSlug: pipe(string(), description("Organization slug")),
-      revisionId: pipe(string(), description("Restored revision ID")),
-    }),
+    schema: RestoreOutputSchema,
   },
   parameters: {
     positional: dashboardArguments({

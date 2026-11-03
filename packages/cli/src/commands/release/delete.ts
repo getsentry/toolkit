@@ -8,7 +8,14 @@
  */
 
 import { inlineCode } from "@sentry/toolkit-core/markdown";
-import { boolean, description, object, pipe, string } from "valibot";
+import {
+  boolean,
+  description,
+  type InferOutput,
+  object,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { deleteRelease, getRelease } from "../../lib/api-client.js";
 import { ApiError } from "../../lib/errors.js";
@@ -25,12 +32,15 @@ import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release delete [<org>/]<version>";
 
-type DeleteResult = {
-  deleted: boolean;
-  org: string;
-  version: string;
-  dryRun?: boolean;
-};
+/** JSON output: the release that was (or, with `--dry-run`, would be) deleted. */
+const DeleteOutputSchema = object({
+  deleted: pipe(boolean(), description("Whether the release was deleted")),
+  org: pipe(string(), description("Organization slug")),
+  version: pipe(string(), description("Release version")),
+  dryRun: DryRunOutputField,
+});
+
+type DeleteResult = InferOutput<typeof DeleteOutputSchema>;
 
 function formatReleaseDeleted(result: DeleteResult): string {
   if (result.dryRun) {
@@ -102,12 +112,7 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatReleaseDeleted,
-    schema: object({
-      deleted: pipe(boolean(), description("Whether the release was deleted")),
-      org: pipe(string(), description("Organization slug")),
-      version: pipe(string(), description("Release version")),
-      dryRun: DryRunOutputField,
-    }),
+    schema: DeleteOutputSchema,
   },
   parameters: {
     positional: {
@@ -128,7 +133,7 @@ export const deleteCommand = buildDeleteCommand({
 
     // Dry-run mode: show what would be deleted
     if (flags["dry-run"]) {
-      yield new CommandOutput({
+      yield new CommandOutput<DeleteResult>({
         deleted: false,
         org,
         version,
@@ -148,7 +153,7 @@ export const deleteCommand = buildDeleteCommand({
         `Type '${version}' to permanently delete this release${deployInfo}:`,
       );
       if (!confirmed) {
-        yield new CommandOutput({
+        yield new CommandOutput<DeleteResult>({
           deleted: false,
           org,
           version,
@@ -162,6 +167,6 @@ export const deleteCommand = buildDeleteCommand({
     } catch (error) {
       throw enrichDeleteError(error, org, version);
     }
-    yield new CommandOutput({ deleted: true, org, version });
+    yield new CommandOutput<DeleteResult>({ deleted: true, org, version });
   },
 });

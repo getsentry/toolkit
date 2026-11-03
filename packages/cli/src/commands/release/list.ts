@@ -6,7 +6,14 @@
  */
 
 import { text } from "@sentry/toolkit-core/markdown";
-import { description, looseObject, optional, pipe, string } from "valibot";
+import {
+  description,
+  looseObject,
+  object,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   type ListReleasesOptions,
@@ -39,6 +46,7 @@ import {
   jsonTransformListResult,
   type ListResult,
   type OrgListConfig,
+  OrgListItemOutputFields,
 } from "../../lib/org-list.js";
 import {
   type ResolvedTarget,
@@ -47,18 +55,29 @@ import {
 } from "../../lib/resolve-target.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import type { ListCommandTarget } from "../../lib/target-positional.js";
-import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
+import {
+  type SentryRelease,
+  SentryReleaseSchema,
+  type WithOutputFields,
+} from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
 
 const log = logger.withTag("release.list");
 
 export const PAGINATION_KEY = "release-list";
 
-type ReleaseWithOrg = SentryRelease & {
-  orgSlug?: string;
-  /** Project slug when from multi-project auto-detect (for labeling). */
-  targetProject?: string;
-};
+/** Fields the list adds to each release: its org and, when listing several projects, its project. */
+const ReleaseListItemOutputFields = object({
+  ...OrgListItemOutputFields.entries,
+  targetProject: optional(
+    pipe(string(), description("Project slug, when listing several")),
+  ),
+});
+
+type ReleaseWithOrg = WithOutputFields<
+  SentryRelease,
+  typeof ReleaseListItemOutputFields
+>;
 
 // ---------------------------------------------------------------------------
 // Sort
@@ -684,10 +703,7 @@ export const listCommand = buildListCommand("release", {
       jsonTransformListResult(result, fields),
     schema: looseObject({
       ...SentryReleaseSchema.entries,
-      orgSlug: optional(pipe(string(), description("Organization slug"))),
-      targetProject: optional(
-        pipe(string(), description("Project slug, when listing several")),
-      ),
+      ...ReleaseListItemOutputFields.entries,
     }),
   },
   parameters: {

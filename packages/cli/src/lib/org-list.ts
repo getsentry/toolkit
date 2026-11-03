@@ -31,6 +31,17 @@
  */
 
 import {
+  description,
+  type GenericSchema,
+  looseObject,
+  type ObjectEntries,
+  object,
+  optional,
+  pipe,
+  string,
+} from "valibot";
+import type { WithOutputFields } from "../types/index.js";
+import {
   API_MAX_PER_PAGE,
   autoPaginate,
   MAX_PAGINATION_PAGES,
@@ -148,6 +159,32 @@ export function jsonTransformListResult<T>(
 
   // Non-paginated: flat array
   return items;
+}
+
+/** An object schema (possibly piped) whose entries can be spread. */
+export type OrgListEntitySchema = GenericSchema & {
+  readonly entries: ObjectEntries;
+};
+
+/** The field `withOrg` adds to each item of an org-scoped list. */
+export const OrgListItemOutputFields = object({
+  orgSlug: optional(pipe(string(), description("Organization slug"))),
+});
+
+/** An item of an org-scoped list: the entity with the org it came from. */
+export type WithOrg<TEntity> = WithOutputFields<
+  TEntity,
+  typeof OrgListItemOutputFields
+>;
+
+/** Output schema of an org-scoped list item: the entity's, plus `orgSlug`. */
+export function orgListItemSchema<TEntries extends ObjectEntries>(entity: {
+  readonly entries: TEntries;
+}) {
+  return looseObject({
+    ...entity.entries,
+    ...OrgListItemOutputFields.entries,
+  });
 }
 
 /**
@@ -442,11 +479,11 @@ export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
   listForProject?: (orgSlug: string, projectSlug: string) => Promise<TEntity[]>;
 
   /**
-   * Valibot schema describing the JSON output shape of each list item.
-   * Forwarded to `OutputConfig.schema` by `buildOrgListCommand` so
-   * `--help`, `sentry help`, and SKILL.md can document available fields.
+   * Valibot object schema of the entity. `buildOrgListCommand` adds
+   * {@link OrgListItemOutputFields} and forwards it to `OutputConfig.schema`
+   * so `--help`, `sentry help`, and SKILL.md can document available fields.
    */
-  schema?: import("valibot").GenericSchema;
+  schema?: OrgListEntitySchema;
 
   /**
    * The names a name filter matches against (e.g. slug and display name).

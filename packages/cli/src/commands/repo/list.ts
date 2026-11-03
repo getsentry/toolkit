@@ -20,7 +20,7 @@ import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import {
   type SentryRepository,
   SentryRepositorySchema,
@@ -30,7 +30,7 @@ import {
 export const PAGINATION_KEY = "repo-list";
 
 /** Repository with its organization context for display */
-type RepositoryWithOrg = SentryRepository & { orgSlug?: string };
+type RepositoryWithOrg = WithOrg<SentryRepository>;
 
 /** Column definitions for the repository table. */
 const REPO_COLUMNS: Column<RepositoryWithOrg>[] = [

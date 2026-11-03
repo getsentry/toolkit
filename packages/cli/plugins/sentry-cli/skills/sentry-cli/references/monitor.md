@@ -71,6 +71,7 @@ List cron monitors
 | `config` | object | Schedule configuration |
 | `dateCreated` | string | Creation date (ISO 8601) |
 | `project` | object | Owning project |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 

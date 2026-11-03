@@ -107,6 +107,7 @@ export {
   ReplayRelatedTraceSchema,
   ReplaySdkSchema,
   ReplayUserSchema,
+  ReplayViewOutputFields,
   ReplayViewOutputSchema,
 } from "./replay.js";
 export type {
@@ -155,6 +156,7 @@ export type {
   SentryMonitor,
   SentryOrganization,
   SentryProject,
+  ReleaseUpdateOutput,
   SentryRelease,
   SentryRepository,
   SentryTeam,
@@ -178,16 +180,19 @@ export {
   CustomerTrialInfoSchema,
   DetailedLogsResponseSchema,
   DetailedSentryLogSchema,
-  DryRunOutputField,
+  type EventViewAttachment,
+  EventViewOutputFields,
   EventViewOutputSchema,
   ISSUE_LEVELS,
   ISSUE_STATUSES,
   IssueEventSchema,
+  IssueViewOutputFields,
   IssueViewOutputSchema,
   LogsResponseSchema,
   MonitorConfigSchema,
   ProductTrialSchema,
   RegionSchema,
+  ReleaseUpdateOutputFields,
   ReleaseUpdateOutputSchema,
   RepositoryProviderSchema,
   SentryDeploySchema,
@@ -212,6 +217,8 @@ export {
   TransactionsResponseSchema,
   UserRegionsResponseSchema,
 } from "./sentry.js";
+
+export { DryRunOutputField, opaque, type WithOutputFields } from "./output.js";
 
 // I/O types
 
