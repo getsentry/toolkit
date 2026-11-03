@@ -59,6 +59,7 @@ type ToolDefinition = {
   inputSchema: Record<string, ZodTypeAny>;
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
+  deprecated?: { replacedBy: readonly string[] };
   annotations?: {
     readOnlyHint?: boolean;
     destructiveHint?: boolean;
@@ -162,7 +163,7 @@ async function main() {
     const toolsToMeasure = Object.fromEntries(
       Object.entries(toolsDefault).filter(
         ([, tool]) =>
-          surfacesModule.isTopLevelToolName(tool.name, false) &&
+          surfacesModule.isTopLevelTool(tool, false) &&
           toolTypesModule.isToolVisibleInMode(tool, false),
       ),
     );

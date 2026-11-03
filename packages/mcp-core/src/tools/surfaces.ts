@@ -70,6 +70,19 @@ export function isTopLevelToolName(
   return isDefaultTopLevelToolName(toolName);
 }
 
+/**
+ * Like {@link isTopLevelToolName}, but also keeps tools marked `deprecated`
+ * out of tools/list. Harness tool search would otherwise return them next to
+ * the tools that replaced them. On the gateway surface they stay reachable
+ * through execute_sentry_tool.
+ */
+export function isTopLevelTool(
+  tool: { name: string; deprecated?: unknown },
+  experimentalMode: boolean,
+): boolean {
+  return !tool.deprecated && isTopLevelToolName(tool.name, experimentalMode);
+}
+
 export function isWrapperToolName(toolName: string): boolean {
   return wrapperToolNames.has(toolName);
 }

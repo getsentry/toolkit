@@ -536,7 +536,7 @@ export default defineTool({
 
     return [
       "Fetch a Sentry resource by URL, or by resourceType plus resourceId.",
-      "Pass a Sentry URL directly when possible; the resource type is auto-detected.",
+      "Use it when the user shares a Sentry link. Pass the URL directly when possible; the resource type is auto-detected.",
       "",
       `Supports ${supportedResources}`,
       "Trace lookups return a condensed overview by default.",

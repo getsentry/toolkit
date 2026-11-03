@@ -66,6 +66,7 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
           tool.skills.some((skill) => ALL_SKILLS.has(skill)) &&
           tool.name !== "search_sentry_tools" &&
           tool.name !== "execute_sentry_tool" &&
+          !tool.deprecated &&
           // Hidden without a telemetry DSN, which tests do not configure.
           tool.name !== "submit_feedback_to_sentry_team",
       )
@@ -76,6 +77,25 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
     expect(toolNames).toContain("whoami");
     expect(toolNames).toContain("get_issue_details");
     expect(toolNames).toContain("create_project");
+  });
+
+  it("lists the replacements of deprecated tools instead of the tools", async () => {
+    const toolNames = await listToolNames(getContext());
+    const deprecatedTools = Object.values(tools).filter(
+      (tool) => tool.deprecated,
+    );
+
+    expect(deprecatedTools.map((tool) => tool.name).sort()).toEqual([
+      "get_ai_conversation_details",
+      "search_ai_conversations",
+      "search_events",
+    ]);
+    for (const tool of deprecatedTools) {
+      expect(toolNames).not.toContain(tool.name);
+      for (const replacement of tool.deprecated?.replacedBy ?? []) {
+        expect(toolNames).toContain(replacement);
+      }
+    }
   });
 
   it("still gates tools by granted skills", async () => {

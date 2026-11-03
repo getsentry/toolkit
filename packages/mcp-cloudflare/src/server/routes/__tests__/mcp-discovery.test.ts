@@ -42,6 +42,7 @@ describe("/.mcp discovery routes", () => {
       inputSchema: unknown;
       skills: string[];
       surface: "direct" | "catalog";
+      deprecated?: { replacedBy: string[] };
     }>;
     expect(Array.isArray(json)).toBe(true);
     expect(json.length).toBeGreaterThan(0);
@@ -61,7 +62,16 @@ describe("/.mcp discovery routes", () => {
       }),
     );
     // EXPOSE_ALL_TOOLS lists every tool directly and drops the gateway.
-    expect(json.every((tool) => tool.surface === "direct")).toBe(true);
+    // Deprecated tools stay catalog-only so harness search skips them.
+    for (const tool of json) {
+      expect([tool.name, tool.surface]).toEqual([
+        tool.name,
+        tool.deprecated ? "catalog" : "direct",
+      ]);
+    }
+    expect(toolsByName.get("search_events")?.deprecated).toEqual({
+      replacedBy: expect.arrayContaining(["search_errors", "search_logs"]),
+    });
     expect(toolsByName.has("search_sentry_tools")).toBe(false);
     expect(toolsByName.has("execute_sentry_tool")).toBe(false);
   });

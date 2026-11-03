@@ -79,6 +79,7 @@ const legacyGetAIConversationDetails = {
   ...getAgentConversationDetails,
   name: "get_ai_conversation_details",
   includeInSkillDefinitions: false,
+  deprecated: { replacedBy: ["get_agent_conversation_details"] },
   description: [
     "Deprecated alias for get_agent_conversation_details.",
     "",
@@ -90,6 +91,7 @@ const legacySearchAIConversations = {
   ...searchAgentConversations,
   name: "search_ai_conversations",
   includeInSkillDefinitions: false,
+  deprecated: { replacedBy: ["search_agent_conversations"] },
   description: [
     "Deprecated alias for search_agent_conversations.",
     "",

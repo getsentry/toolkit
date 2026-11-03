@@ -83,6 +83,7 @@ type DefinitionTool = {
   requiredScopes: string[];
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
+  deprecated?: { replacedBy: readonly string[] };
 };
 
 type ToolSurface = "direct" | "catalog";
@@ -137,7 +138,7 @@ function generateToolDefinitions({
     },
   );
   const directEntries = visibleEntries.filter(([, tool]) =>
-    surfacesModule.isTopLevelToolName(tool.name, experimentalMode),
+    surfacesModule.isTopLevelTool(tool, experimentalMode),
   );
   const availableToolNames = toolNamesFromEntries(visibleEntries);
   const directToolNames = toolNamesFromEntries(directEntries);
@@ -179,6 +180,7 @@ function generateToolDefinitions({
       // Preserve skill catalog membership and call surface for UIs/docs.
       skills: t.skills,
       surface,
+      deprecated: t.deprecated,
     };
   });
   return defs.filter(isNonNull).sort(byName);
@@ -234,7 +236,7 @@ async function generateSkillDefinitions() {
   );
   const defaultDirectToolNames = toolNamesFromEntries(
     defaultVisibleEntries.filter(([, tool]) =>
-      surfacesModule.isTopLevelToolName(tool.name, false),
+      surfacesModule.isTopLevelTool(tool, false),
     ),
   );
 

@@ -35,7 +35,6 @@ allowedTools:
   - find_teams
   - find_uptime_monitors
   - get_agent_conversation_details
-  - get_ai_conversation_details
   - get_alert_options
   - get_alert_rule
   - get_dashboard_details
@@ -63,11 +62,9 @@ allowedTools:
   - onboarding_status_update
   - remove_team_from_project
   - search_agent_conversations
-  - search_ai_conversations
   - search_attributes
   - search_docs
   - search_errors
-  - search_events
   - search_issue_events
   - search_issues
   - search_logs

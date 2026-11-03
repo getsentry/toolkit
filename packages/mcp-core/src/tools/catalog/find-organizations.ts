@@ -138,7 +138,7 @@ export default defineTool({
   skills: ALL_SKILLS, // Foundational tool - available to all skills
   requiredScopes: ["org:read"],
   description: [
-    "Find organizations that the user has access to in Sentry.",
+    "List or search the Sentry organizations the user has access to.",
     "",
     "Use this tool when you need to:",
     "- View organizations in Sentry",
