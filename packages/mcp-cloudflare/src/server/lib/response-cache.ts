@@ -141,21 +141,27 @@ export function createResponseCache({
     requestHeaders: Record<string, string>,
     response: Response,
   ): Promise<void> {
-    // Skip non-JSON bodies, such as attachments, before reading them.
-    if (classifyUrl(url) === "no-cache" || !isJson(response)) {
-      response.body?.cancel().catch(() => {});
-      return;
+    try {
+      // Skip non-JSON bodies, such as attachments, before reading them.
+      if (classifyUrl(url) === "no-cache" || !isJson(response)) {
+        return;
+      }
+      const key = await buildCacheKey("GET", url, identity);
+      await storeResponse({
+        store,
+        codec,
+        key,
+        identity,
+        url,
+        requestHeaders,
+        response,
+      });
+    } finally {
+      // Release the transport's copy of the body when nothing read it.
+      if (!response.bodyUsed) {
+        response.body?.cancel().catch(() => {});
+      }
     }
-    const key = await buildCacheKey("GET", url, identity);
-    await storeResponse({
-      store,
-      codec,
-      key,
-      identity,
-      url,
-      requestHeaders,
-      response,
-    });
   }
 
   return {
@@ -225,7 +231,7 @@ export async function getResponseCache({
   grantId: string;
   sentryHost: string;
   waitUntil: (promise: Promise<unknown>) => void;
-}): Promise<ResponseCache | undefined> {
+}) {
   if (mode === "off") {
     return;
   }

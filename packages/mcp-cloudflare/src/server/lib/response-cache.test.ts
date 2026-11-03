@@ -177,7 +177,10 @@ describe("createResponseCache", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("does not read or keep a non-JSON body", async () => {
+  it.each([
+    ["a non-JSON body", "text/plain", "max-age=60"],
+    ["a non-storable JSON body", "application/json", "no-store"],
+  ])("releases %s it does not keep", async (_, contentType, cacheControl) => {
     const store = createMemoryStore();
     const { cache } = createResponseCache({
       store,
@@ -185,10 +188,15 @@ describe("createResponseCache", () => {
       apiBaseUrl: "https://sentry.io",
       waitUntil,
     });
+    const cancel = vi.fn();
+    const body = new ReadableStream({ cancel });
     await cache.store(
       { url: "https://sentry.io/api/0/x/", requestHeaders: {}, identity: "" },
-      new Response("plain text", { headers: { "Content-Type": "text/plain" } }),
+      new Response(body, {
+        headers: { "Content-Type": contentType, "Cache-Control": cacheControl },
+      }),
     );
+    expect(cancel).toHaveBeenCalled();
     expect(store.stats().entries).toBe(0);
   });
 });
