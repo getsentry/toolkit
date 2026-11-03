@@ -194,7 +194,6 @@ jobs:
         env:
           PROJECT_NAME: ${{ matrix.name }}
           CHECK_SCRIPT: ${{ matrix.e2e }}
-          SENTRY_CLI_BINARY: ${{ github.workspace }}/packages/cli/dist-bin/sentry-linux-x64
         run: pnpm --filter "$PROJECT_NAME" run "$CHECK_SCRIPT"
       - name: Verify coverage
         if: matrix.coverage != ''
