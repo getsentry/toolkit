@@ -380,7 +380,7 @@ export const uploadCommand = buildCommand({
       // --allow-empty: nothing to upload, so don't require Sentry
       // credentials. This makes the flag actually usable in the
       // library-only / conditional-release-skip cases the docs name.
-      yield new CommandOutput<UploadCommandResult>({
+      yield new CommandOutput({
         release: flags.release,
         dist: flags.dist,
         filesUploaded: 0,
@@ -468,7 +468,7 @@ export const uploadCommand = buildCommand({
       (f) => f.type === "minified_source",
     ).length;
 
-    yield new CommandOutput<UploadCommandResult>({
+    yield new CommandOutput({
       org,
       project,
       release: flags.release,

@@ -230,7 +230,7 @@ export const createCommand = buildCommand({
     );
     const url = buildDashboardUrl(orgSlug, dashboard.id);
 
-    yield new CommandOutput<CreateResult>({ ...dashboard, url });
+    yield new CommandOutput({ ...dashboard, url });
     return { hint: `Dashboard: ${url}` };
   },
 });

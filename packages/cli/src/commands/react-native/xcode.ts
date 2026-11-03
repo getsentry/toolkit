@@ -538,7 +538,7 @@ export const xcodeCommand = buildCommand({
       if (prep.exitCode !== undefined) {
         this.process.exitCode = prep.exitCode;
       }
-      yield new CommandOutput<XcodeResult>(prep.result);
+      yield new CommandOutput(prep.result);
       return { hint: prep.hint };
     }
 
@@ -550,7 +550,7 @@ export const xcodeCommand = buildCommand({
       flags,
     );
 
-    yield new CommandOutput<XcodeResult>({
+    yield new CommandOutput({
       mode,
       bundle: pair.bundle,
       sourcemap: pair.sourcemap,

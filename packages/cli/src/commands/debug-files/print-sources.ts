@@ -189,7 +189,7 @@ export const printSourcesCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<PrintSourcesResult>({ path, objects });
+    yield new CommandOutput({ path, objects });
 
     if (objects.length === 0) {
       return { hint: `No objects found in '${path}'. Try: ${USAGE_HINT}` };

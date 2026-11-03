@@ -36,10 +36,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { ResolutionError, withAuthGuard } from "../../lib/errors.js";
-import {
-  CommandOutput,
-  type OutputConfig,
-} from "../../lib/formatters/output.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildListCommand,
@@ -922,9 +919,10 @@ export const listCommand = buildListCommand("project", {
       }
       return parts.join("");
     },
-    jsonTransform: jsonTransformListResult,
+    jsonTransform: (result: ListResult<ProjectWithOrg>, fields?: string[]) =>
+      jsonTransformListResult(result, fields),
     schema: orgListItemSchema(SentryProjectSchema),
-  } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
+  },
   parameters: {
     positional: listTargetPositional({ names: true, multi: true }),
     flags: {

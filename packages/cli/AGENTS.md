@@ -184,7 +184,7 @@ export const myCommand = buildCommand({
   },
   output: {
     human: formatMyData,                // (data: T) => string
-    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => unknown
+    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => typed JSON
     jsonExclude: ["humanOnlyField"],    // optional: strip keys from JSON
   },
   parameters: {
@@ -226,7 +226,10 @@ Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use
 
 - **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
 - **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/types/output.ts`) when the fields sit on (or override) an API object.
-- Type the command's data with the derived type: the `human` formatter's parameter, and `yield new CommandOutput<Output>(…)` where the yielded value is not already typed. A field added to the schema without the code that sets it, or removed while code still sets it, is then a compile error.
+- Type the `human` formatter's parameter (and `jsonTransform`'s, when set) with the derived type. `buildCommand`, `buildListCommand`, and `buildDeleteCommand` infer the output type from `output` and check every `CommandOutput` that `func` yields against it. Annotate a yield (`new CommandOutput<Output>(…)`) only when it builds a discriminated-union literal (`kind: "endpoints"`) that would otherwise widen to `string`.
+- Without `jsonTransform`, the data (each item, for array data) must also satisfy `output.schema`: a field the schema documents but the command doesn't produce, or documents with another type, is a compile error. Keep the data typed: an API response typed `Record<string, unknown>` can't satisfy a schema built from `@sentry/api/valibot`, so type it with its `@sentry/api` response type.
+- With `jsonTransform`, the schema describes the transform's item: each item of a `{ data: [...] }` envelope or an array, otherwise the result itself. Every field the schema documents must exist on that item with a matching type; optionality isn't compared, since `--fields` makes items `Partial`. So the transform must return a typed result, not `unknown` or `Record<string, unknown>`: return `ListJson<Item>` from `jsonTransformListResult`, type a hand-built envelope as `ListEnvelope<Item>` (`lib/org-list.ts`), and let a single object's type come from its spread with `filterFieldsIfSet`. The error names the mismatched fields under `~outputMismatch`.
+- An `OrgListConfig` checks its entity against `schema` when you pass the schema's type: `OrgListConfig<SentryTeam, TeamWithOrg, typeof SentryTeamSchema>`. Don't annotate an output config as `OutputConfig<T>` or check it with `satisfies OutputConfig<T>`: that erases the schema's type, and the check passes without comparing anything.
 - Reuse the shared fields: `DryRunOutputField`, `orgListItemSchema`/`WithOrg` (`lib/org-list.ts`) for org-scoped lists, `opaque<T>()` for a field the docs leave opaque but the code types (a full event payload).
 - Data only the human formatter needs (pre-rendered lines, a resolved target) stays out of the schema; keep it outside the derived type or strip it with `jsonExclude`.
 

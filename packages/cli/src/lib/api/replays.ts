@@ -19,6 +19,7 @@ import {
   type ReplayListItem,
   type ReplayListResponse,
   ReplayListResponseSchema,
+  type ReplayStringProjectId,
 } from "../../types/index.js";
 
 import { ApiError } from "../errors.js";
@@ -165,13 +166,14 @@ export type GetReplayRecordingSegmentsOptions = {
  */
 function normalizeReplayProjectId<
   T extends { project_id?: string | number | null },
->(replay: T): T {
+>(replay: T): T & ReplayStringProjectId {
   if (
     replay.project_id === null ||
     replay.project_id === undefined ||
     typeof replay.project_id === "string"
   ) {
-    return replay;
+    // Narrowing `project_id` doesn't narrow `T`.
+    return replay as T & ReplayStringProjectId;
   }
 
   return {

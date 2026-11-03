@@ -51,6 +51,7 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type BoundArguments,
@@ -493,7 +494,7 @@ async function* yieldFollowItems<T extends LogLike>(
   let contextSent = !extraFields?.length;
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         hasMore: false,
         extraFields,
@@ -501,7 +502,7 @@ async function* yieldFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }
@@ -522,7 +523,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
       // First non-empty batch: yield as LogListResult to set trace context
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         traceId,
         hasMore: false,
@@ -530,7 +531,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }
@@ -737,7 +738,10 @@ function createLogRenderer(): HumanRenderer<LogOutput> {
  * {@link LogLike} items (follow mode). Single-fetch yields a JSON envelope
  * with `data` and `hasMore`; follow mode yields one JSON object per line (JSONL).
  */
-function jsonTransformLogOutput(data: LogOutput, fields?: string[]): unknown {
+function jsonTransformLogOutput(
+  data: LogOutput,
+  fields?: string[],
+): ListEnvelope<LogLike> | Partial<LogLike> {
   if (isLogListResult(data)) {
     // Batch (single-fetch): return envelope with data + hasMore
     const logList = data;

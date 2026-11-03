@@ -15,6 +15,7 @@ import {
   buildProjectUrl as buildProjectUrlPure,
   buildReleaseUrl as buildReleaseUrlPure,
   buildReplayUrl as buildReplayUrlPure,
+  buildRepositorySettingsUrl as buildRepositorySettingsUrlPure,
   buildSeerSettingsUrl as buildSeerSettingsUrlPure,
   buildTraceUrl as buildTraceUrlPure,
   getOrgBaseUrl as getOrgBaseUrlPure,
@@ -68,6 +69,10 @@ export function buildOrgSettingsUrl(orgSlug: string, hash?: string): string {
 
 export function buildSeerSettingsUrl(orgSlug: string): string {
   return render(() => buildSeerSettingsUrlPure(orgSlug));
+}
+
+export function buildRepositorySettingsUrl(orgSlug: string): string {
+  return render(() => buildRepositorySettingsUrlPure(orgSlug));
 }
 
 export function buildBillingUrl(orgSlug: string, product?: string): string {

@@ -86,6 +86,7 @@ export type {
   ReplayRelatedIssue,
   ReplayRelatedTrace,
   ReplaySdk,
+  ReplayStringProjectId,
   ReplayUser,
 } from "./replay.js";
 export {
@@ -183,6 +184,7 @@ export {
   type EventViewAttachment,
   EventViewOutputFields,
   EventViewOutputSchema,
+  FlatSpanSchema,
   ISSUE_LEVELS,
   ISSUE_STATUSES,
   IssueEventSchema,
@@ -206,7 +208,6 @@ export {
   SentryRepositorySchema,
   SentryTeamSchema,
   SentryUserSchema,
-  SpanListItemSchema,
   SpansResponseSchema,
   TraceItemAttributeSchema,
   TraceItemDetailSchema,

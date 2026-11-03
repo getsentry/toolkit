@@ -118,7 +118,7 @@ export const deleteCommand = buildDeleteCommand(
 
       // Dry-run mode: show what would be removed without removing it
       if (flags["dry-run"]) {
-        yield new CommandOutput<DashboardWidgetDeleteOutput>({
+        yield new CommandOutput({
           dryRun: true,
           widgetTitle,
           widgetCount: widgets.length,
@@ -140,7 +140,7 @@ export const deleteCommand = buildDeleteCommand(
         () => updateDashboard(orgSlug, dashboardId, updateBody),
       );
 
-      yield new CommandOutput<DashboardWidgetDeleteOutput>({
+      yield new CommandOutput({
         deleted: true,
         widgetTitle,
         widgetCount: updated.widgets?.length ?? 0,

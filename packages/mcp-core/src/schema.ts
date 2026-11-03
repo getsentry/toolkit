@@ -211,7 +211,7 @@ export const ParamAssignedTo = z
   .min(1)
   .nullable()
   .describe(
-    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID.",
+    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use the `whoami` tool to find your user ID.",
   );
 
 export const ParamIgnoreDurationMinutes = z

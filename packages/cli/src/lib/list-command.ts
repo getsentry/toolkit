@@ -14,22 +14,20 @@
  */
 
 import type { Aliases, Command, CommandContext } from "@stricli/core";
+import type { GenericSchema } from "valibot";
 import type { SentryContext } from "../context.js";
 import { type ListTargetOptions, parseCursorFlag } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
   numberParser,
+  type SentryCommandFunction,
 } from "./command.js";
 import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
 import { disableDsnCache } from "./dsn/index.js";
 import { warning } from "./formatters/colors.js";
-import {
-  CommandOutput,
-  type CommandReturn,
-  type OutputConfig,
-} from "./formatters/output.js";
+import { CommandOutput, type OutputConfig } from "./formatters/output.js";
 import {
   dispatchOrgScopedList,
   jsonTransformListResult,
@@ -496,26 +494,6 @@ function isSubcommandName(arg: string, routeName: string): boolean {
 /** Base flags type (mirrors command.ts) */
 type BaseFlags = Readonly<Partial<Record<string, unknown>>>;
 
-/** Base args type (mirrors command.ts) */
-type BaseArgs = readonly unknown[];
-
-/**
- * Command function type that returns an async generator.
- *
- * Mirrors `SentryCommandFunction` from `command.ts`. All command functions
- * are async generators — non-streaming commands yield once and return.
- */
-type ListCommandFunction<
-  FLAGS extends BaseFlags,
-  ARGS extends BaseArgs,
-  CONTEXT extends CommandContext,
-> = (
-  this: CONTEXT,
-  flags: FLAGS,
-  ...args: ARGS
-  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
-) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
-
 /**
  * Options for controlling which flags {@link buildListCommand} auto-injects.
  *
@@ -551,14 +529,16 @@ export function buildListCommand<
   const FLAGS extends BaseFlags = NonNullable<unknown>,
   const ARGS extends readonly unknown[] = [],
   const CONTEXT extends CommandContext = CommandContext,
+  OUTPUT = never,
+  SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
   routeName: string,
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
     readonly docs: CommandDocumentation;
-    readonly func: ListCommandFunction<FLAGS, ARGS, CONTEXT>;
-    // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
-    readonly output?: OutputConfig<any>;
+    readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
+    readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
     readonly auth?: boolean;
   },
   options?: ListCommandOptions,
@@ -632,7 +612,7 @@ export function buildListCommand<
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
-  return buildCommand({
+  return buildCommand<FLAGS, ARGS, CONTEXT, OUTPUT, SCHEMA, TRANSFORMED>({
     ...builderArgs,
     parameters: mergedParams,
     func: wrappedFunc,
@@ -705,14 +685,17 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
   docs: OrgListCommandDocs,
   routeName: string,
 ): Command<SentryContext> {
+  // `OrgListConfig.schema` checks the entity against the schema; the generic
+  // `TWithOrg` can't be checked here, so the schema's type is erased.
+  const output: OutputConfig<ListResult<TWithOrg>> = {
+    human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
+    jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>
+      jsonTransformListResult(result, fields),
+    schema: config.schema && orgListItemSchema(config.schema),
+  };
   return buildListCommand(routeName, {
     docs,
-    output: {
-      human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
-      jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>
-        jsonTransformListResult(result, fields),
-      schema: config.schema && orgListItemSchema(config.schema),
-    } satisfies OutputConfig<ListResult<TWithOrg>>,
+    output,
     parameters: {
       positional: config.namesOf
         ? NAMED_LIST_ORG_TARGET_POSITIONAL

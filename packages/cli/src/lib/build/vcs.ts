@@ -20,6 +20,8 @@ import {
   getRemoteDefaultBranch,
   getRemoteUrl,
   getRepositoryName,
+  normalizeSha,
+  SHA1_RE,
 } from "../git.js";
 import { logger } from "../logger.js";
 
@@ -58,18 +60,6 @@ export type VcsFlags = {
   "force-git-metadata"?: boolean;
   "no-git-metadata"?: boolean;
 };
-
-/** A 40-character lowercase hex SHA-1. */
-const SHA1_RE = /^[0-9a-f]{40}$/;
-
-/**
- * Normalize an already-trusted SHA (from git/event payload): lowercase and
- * accept only a valid 40-char hex SHA-1, else undefined.
- */
-function normalizeSha(sha: string | undefined): string | undefined {
-  const trimmed = sha?.trim().toLowerCase();
-  return trimmed && SHA1_RE.test(trimmed) ? trimmed : undefined;
-}
 
 /**
  * Validate a user-supplied `--head-sha`/`--base-sha` value. An empty string is

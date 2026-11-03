@@ -15,6 +15,7 @@
 
 import type {
   EventAttachmentDetailsResponse,
+  GroupEventsResponseDict as SdkGroupEventsList,
   IssueEventDetailsResponse,
   DeployResponse as SdkDeployResponse,
   GetOrganizationIssueResponse as SdkIssueDetail,
@@ -595,44 +596,7 @@ export const EventViewOutputSchema = pipe(
  * minimal event metadata without stacktraces, breadcrumbs, or contexts.
  * Use {@link SentryEvent} for full event details from the detail endpoint.
  */
-export type IssueEvent = {
-  /** Internal event ID (numeric string) */
-  id: string;
-  /** Event type (e.g., "error", "default", "transaction") */
-  "event.type": string;
-  /** The group (issue) ID this event belongs to */
-  groupID: string | null;
-  /** UUID-format event ID */
-  eventID: string;
-  /** Project ID (numeric string) */
-  projectID: string;
-  /** Event message */
-  message: string;
-  /** Event title (typically the error type + message) */
-  title: string;
-  /** Source location (file:line) where the event originated */
-  location: string | null;
-  /** The culprit (function/module that caused the error) */
-  culprit: string | null;
-  /** User context if available */
-  user: {
-    id?: string | null;
-    email?: string | null;
-    username?: string | null;
-    ip_address?: string | null;
-    name?: string | null;
-  } | null;
-  /** Event tags */
-  tags: Array<{ key: string; value: string }>;
-  /** Platform (e.g., "python", "javascript") */
-  platform: string | null;
-  /** ISO 8601 timestamp when the event was created */
-  dateCreated: string;
-  /** Crash file URL if available */
-  crashFile: string | null;
-  /** Event metadata */
-  metadata: Record<string, unknown> | null;
-};
+export type IssueEvent = SdkGroupEventsList[number];
 
 /**
  * Valibot schema for {@link IssueEvent} — used for `--fields` documentation in `--help`.
@@ -1444,6 +1408,32 @@ export const SpanListItemSchema = pipe(
 );
 
 export type SpanListItem = InferOutput<typeof SpanListItemSchema>;
+
+/**
+ * A span as `span list` outputs it: a {@link SpanListItem} with the fields
+ * `spanListItemToFlatSpan` renames, plus any custom attributes `--fields`
+ * requested.
+ */
+export const FlatSpanSchema = pipe(
+  looseObject({
+    span_id: pipe(string(), description("Span ID")),
+    trace_id: optional(pipe(string(), description("Trace ID"))),
+    parent_span_id: optional(
+      nullable(pipe(string(), description("Parent span ID"))),
+    ),
+    op: optional(
+      pipe(string(), description("Span operation (e.g. http.client, db)")),
+    ),
+    description: optional(
+      nullable(pipe(string(), description("Span description"))),
+    ),
+    duration_ms: optional(pipe(number(), description("Duration (ms)"))),
+    start_timestamp: pipe(number(), description("Start time (Unix seconds)")),
+    project_slug: optional(pipe(string(), description("Project slug"))),
+    transaction: optional(pipe(string(), description("Transaction name"))),
+  }),
+  description("Span list item"),
+);
 
 /** Response from the spans events endpoint */
 export const SpansResponseSchema = object({

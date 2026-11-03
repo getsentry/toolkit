@@ -372,7 +372,7 @@ export const mergeCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<MergeCommandResult>({
+    yield new CommandOutput({
       org,
       parentShortId,
       childShortIds,

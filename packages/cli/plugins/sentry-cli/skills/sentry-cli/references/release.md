@@ -178,7 +178,7 @@ Create a release
 | `lastDeploy` | object \| null | Most recent deploy |
 | `authors` | array | Commit authors |
 | `owner` | object \| null | Release owner |
-| `projects` | array | Projects in the release |
+| `projects` | array | Projects in the release (only slug with --dry-run) |
 | `adoptionStages` | object \| null | Adoption stage per project |
 | `dryRun` | boolean | True when --dry-run made no change |
 
@@ -513,7 +513,7 @@ Set commits for a release
 | `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
 
 **Flags:**
-- `--auto - Auto-discover commits via repository integration (needs local git checkout)`
+- `--auto - Auto-discover commits via repository integration (needs a git checkout or CI repository variables)`
 - `--local - Read commits from local git history`
 - `--clear - Clear all commits from the release`
 - `--commit <value> - Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)`

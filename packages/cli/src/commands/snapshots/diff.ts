@@ -347,7 +347,7 @@ export const diffCommand = buildCommand({
     }
 
     const summary = summarize(images);
-    yield new CommandOutput<DiffReport>({
+    yield new CommandOutput({
       baseDir,
       headDir,
       outputDir,

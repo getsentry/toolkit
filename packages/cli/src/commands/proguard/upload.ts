@@ -264,7 +264,7 @@ export const uploadCommand = buildCommand({
 
     // 6. --no-upload: just print UUIDs and return (no auth needed)
     if (flags["no-upload"]) {
-      yield new CommandOutput<ProguardUploadResult>({
+      yield new CommandOutput({
         mappings: uniqueMappings.map((m) => ({ path: m.path, uuid: m.uuid })),
         filesUploaded: 0,
       });
@@ -294,7 +294,7 @@ export const uploadCommand = buildCommand({
     });
 
     // 9. Yield result
-    yield new CommandOutput<ProguardUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       mappings: uniqueMappings.map((m) => ({ path: m.path, uuid: m.uuid })),

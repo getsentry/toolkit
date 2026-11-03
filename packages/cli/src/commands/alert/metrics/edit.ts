@@ -44,7 +44,6 @@ import {
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
-import { metricAlertStatusLabel } from "./status.js";
 import {
   type MetricAlertEditOutput,
   MetricAlertEditOutputSchema,
@@ -329,7 +328,8 @@ export const editCommand = buildCommand({
       ...updated,
       org: orgSlug,
       id: stringifyUnknown(updated.id ?? rule.id),
-      status: metricAlertStatusLabel(updated.status),
+      // The detectors endpoint returns `enabled` rather than `status`.
+      status: updated.enabled === false ? "disabled" : "active",
     } satisfies MetricAlertEditOutput);
   },
 });

@@ -240,7 +240,7 @@ function hydrateOrganizationName(entry: ProjectViewEntry): ProjectViewEntry {
 function jsonTransformProjectView(
   entries: ProjectViewEntry[],
   fields?: string[],
-): unknown {
+) {
   const hydrated = entries.map((entry) => {
     const { detectedFrom: _detectedFrom, ...rest } =
       hydrateOrganizationName(entry);
