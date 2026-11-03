@@ -507,12 +507,18 @@ function isSameRepository(repo: SentryRepository, localPath: string): boolean {
   return urlPath !== undefined && urlPath.toLowerCase() === localPath;
 }
 
+/** Characters that GitLab slugs use where the display name has spaces. */
+const SLUG_SEPARATOR_RE = /[-_.]+/g;
+
 /**
  * Search the org's repositories for the local repository.
  *
  * Asks the server to filter by name (orgs can have tens of thousands of
  * repositories). The full path is tried first; GitLab names do not contain
- * it (`Group / Project`), so the last path segment is tried next.
+ * it (`Group / Project`), so the last path segment is tried next, then that
+ * segment with `-`, `_`, and `.` read as spaces, since GitLab derives the
+ * slug `my-project` from the display name `My Project`. Hits are matched by
+ * URL, so a loose query cannot pick the wrong repository.
  *
  * @returns The match, whether any search returned repositories, and the
  *   repositories that were returned (for "did you mean" hints)
@@ -527,7 +533,8 @@ async function findSentryRepository(
 }> {
   const localPath = normalizeRepoPath(localRepo);
   const lastSegment = localRepo.split("/").at(-1) ?? localRepo;
-  const queries = [...new Set([localRepo, lastSegment])];
+  const spacedSegment = lastSegment.replace(SLUG_SEPARATOR_RE, " ");
+  const queries = [...new Set([localRepo, lastSegment, spacedSegment])];
   const candidates: SentryRepository[] = [];
   let foundAnyRepos = false;
 

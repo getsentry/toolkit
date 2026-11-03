@@ -635,54 +635,70 @@ describe("setCommitsAuto", () => {
     ]);
   });
 
-  test("matches a GitLab repository by its URL path", async () => {
-    mockGetRepositoryName.mockReturnValue("acme/web/storefront");
-    // Sentry names GitLab repositories by their display path.
-    const gitlabRepo = {
-      ...SAMPLE_REPO,
+  // Sentry names GitLab repositories by their display path; the remote has
+  // the slugs, which GitLab derives from the display names.
+  test.each([
+    {
+      remote: "acme/web/storefront",
       name: "Acme Corp / Web / Storefront",
-      url: "https://gitlab.com/acme/web/storefront",
-      provider: { id: "integrations:gitlab", name: "GitLab" },
-    };
-    const repoQueries: (string | null)[] = [];
-    let sentRefs: unknown;
+      queries: ["acme/web/storefront", "storefront"],
+    },
+    {
+      remote: "acme/web/my-store_front",
+      name: "Acme Corp / Web / My Store Front",
+      queries: ["acme/web/my-store_front", "my-store_front", "my store front"],
+    },
+  ])(
+    "matches GitLab repository '$name' by its URL path",
+    async ({ remote, name, queries }) => {
+      mockGetRepositoryName.mockReturnValue(remote);
+      const gitlabRepo = {
+        ...SAMPLE_REPO,
+        name,
+        url: `https://gitlab.com/${remote}`,
+        provider: { id: "integrations:gitlab", name: "GitLab" },
+      };
+      const repoQueries: (string | null)[] = [];
+      let sentRefs: unknown;
 
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
-      if (req.url.includes("/repos/")) {
-        const query = new URL(req.url).searchParams.get("query");
-        repoQueries.push(query);
-        // The server filters with a case-insensitive "name contains".
-        const matches =
-          query && gitlabRepo.name.toLowerCase().includes(query.toLowerCase());
-        return new Response(JSON.stringify(matches ? [gitlabRepo] : []), {
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input!, init);
+        if (req.url.includes("/repos/")) {
+          const query = new URL(req.url).searchParams.get("query");
+          repoQueries.push(query);
+          // The server filters with a case-insensitive "name contains".
+          const matches =
+            query &&
+            gitlabRepo.name.toLowerCase().includes(query.toLowerCase());
+          return new Response(JSON.stringify(matches ? [gitlabRepo] : []), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (req.url.includes("/previous-with-commits/")) {
+          return new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        sentRefs = ((await req.json()) as { refs: unknown }).refs;
+        return new Response(JSON.stringify(SAMPLE_RELEASE), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }
-      if (req.url.includes("/previous-with-commits/")) {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      sentRefs = ((await req.json()) as { refs: unknown }).refs;
-      return new Response(JSON.stringify(SAMPLE_RELEASE), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
       });
-    });
 
-    await setCommitsAuto("test-org", "1.0.0", "/tmp");
+      await setCommitsAuto("test-org", "1.0.0", "/tmp");
 
-    expect(repoQueries).toEqual(["acme/web/storefront", "storefront"]);
-    expect(sentRefs).toEqual([
-      {
-        repository: "Acme Corp / Web / Storefront",
-        commit: "abc123def456789012345678901234567890abcd",
-      },
-    ]);
-  });
+      expect(repoQueries).toEqual(queries);
+      expect(sentRefs).toEqual([
+        {
+          repository: name,
+          commit: "abc123def456789012345678901234567890abcd",
+        },
+      ]);
+    },
+  );
 
   test("suggests similar repositories and the settings page when nothing matches", async () => {
     const renamed = {
