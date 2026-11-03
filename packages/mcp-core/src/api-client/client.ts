@@ -64,6 +64,12 @@ import {
   getTransactionProfile,
 } from "@sentry/toolkit-core/api-client/endpoints/profiling";
 import {
+  getReplay,
+  listIssueReplayIds,
+  searchReplays,
+  visitReplayRecordingSegments,
+} from "@sentry/toolkit-core/api-client/endpoints/replays";
+import {
   getLatestBaseSnapshot,
   getSnapshot,
   getSnapshotImage,
@@ -298,9 +304,6 @@ import { readJsonResponse } from "@sentry/toolkit-core/api-client/response";
 // import { logger } from "@sentry/node";
 
 const SENTRY_MCP_SEARCH_EVENTS_REFERRER = "api.mcp.search-events";
-
-// The recording-segments endpoint caps per_page at 100.
-const REPLAY_SEGMENTS_PER_PAGE = 100;
 
 /**
  * Filters on other events in the same trace, e.g. spans whose trace also has a
@@ -2913,18 +2916,7 @@ export class SentryApiService {
   }
 
   async searchReplays(
-    {
-      organizationSlug,
-      query,
-      limit,
-      projectId,
-      sort,
-      environment,
-      statsPeriod,
-      start,
-      end,
-      fields,
-    }: {
+    params: {
       organizationSlug: string;
       query?: string;
       limit?: number;
@@ -2938,45 +2930,12 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ReplayList> {
-    const searchQuery = new URLSearchParams();
-
-    if (query) {
-      searchQuery.set("query", query);
-    }
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-    if (projectId) {
-      searchQuery.append("project", projectId);
-    }
-    if (sort) {
-      searchQuery.set("sort", sort);
-    }
-    if (environment) {
-      const environments = Array.isArray(environment)
-        ? environment
-        : [environment];
-      for (const value of environments) {
-        searchQuery.append("environment", value);
-      }
-    }
-    if (fields && fields.length > 0) {
-      for (const field of fields) {
-        searchQuery.append("field", field);
-      }
-    }
-    applyTimeParams(searchQuery, statsPeriod, start, end);
-
-    const body = await this.requestJSON(
-      searchQuery.toString()
-        ? apiPath`/organizations/${organizationSlug}/replays/` +
-            `?${searchQuery.toString()}`
-        : apiPath`/organizations/${organizationSlug}/replays/`,
-      undefined,
-      opts,
+    const response = await searchReplays(
+      this.target(opts?.host),
+      params,
+      ReplayListResponseSchema,
     );
-
-    return ReplayListResponseSchema.parse(body).data;
+    return response.data;
   }
 
   /**
@@ -4018,52 +3977,34 @@ export class SentryApiService {
   }
 
   async getReplayDetails(
-    {
-      organizationSlug,
-      replayId,
-    }: {
+    params: {
       organizationSlug: string;
       replayId: string;
     },
     opts?: RequestOptions,
   ): Promise<ReplayDetails> {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/replays/${replayId}/`,
-      undefined,
-      opts,
+    const response = await getReplay(
+      this.target(opts?.host),
+      params,
+      z.object({ data: ReplayDetailsSchema }),
     );
-    return z.object({ data: ReplayDetailsSchema }).parse(body).data;
+    return response.data;
   }
 
   async listReplayIdsForIssue(
-    {
-      organizationSlug,
-      issueId,
-      dataSource,
-    }: {
+    params: {
       organizationSlug: string;
       issueId: string | number;
       dataSource: "discover" | "search_issues";
     },
     opts?: RequestOptions,
   ): Promise<string[]> {
-    const normalizedIssueId = String(issueId);
-    const queryParams = new URLSearchParams();
-    queryParams.set("returnIds", "true");
-    queryParams.set("query", `issue.id:[${normalizedIssueId}]`);
-    queryParams.set("data_source", dataSource);
-    queryParams.set("statsPeriod", "90d");
-    queryParams.append("project", "-1");
-
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/replay-count/` +
-        `?${queryParams.toString()}`,
-      undefined,
-      opts,
+    const replayIdsByResource = await listIssueReplayIds(
+      this.target(opts?.host),
+      params,
+      ReplayIdsByResourceSchema,
     );
-
-    const replayIdsByResource = ReplayIdsByResourceSchema.parse(body);
-    return replayIdsByResource[normalizedIssueId] ?? [];
+    return replayIdsByResource[String(params.issueId)] ?? [];
   }
 
   /**
@@ -4076,12 +4017,7 @@ export class SentryApiService {
    * only keep a small projection of each one.
    */
   async visitReplayRecordingSegments(
-    {
-      organizationSlug,
-      projectSlugOrId,
-      replayId,
-      maxSegments,
-    }: {
+    params: {
       organizationSlug: string;
       projectSlugOrId: string;
       replayId: string;
@@ -4090,39 +4026,12 @@ export class SentryApiService {
     onSegment: (events: unknown[]) => void,
     opts?: RequestOptions,
   ): Promise<{ segmentsRead: number; truncated: boolean }> {
-    let cursor: string | null = null;
-    let segmentsRead = 0;
-
-    do {
-      const params = new URLSearchParams();
-      params.set("per_page", String(REPLAY_SEGMENTS_PER_PAGE));
-      if (cursor) {
-        params.set("cursor", cursor);
-      }
-
-      const response = await this.request(
-        apiPath`/projects/${organizationSlug}/${projectSlugOrId}/replays/${replayId}/recording-segments/` +
-          `?${params.toString()}`,
-        { method: "GET" },
-        opts,
-      );
-      const page = ReplayRecordingSegmentPageSchema.parse(
-        await readJsonResponse(response),
-      );
-      for (const segment of page) {
-        if (segmentsRead >= maxSegments) {
-          return { segmentsRead, truncated: true };
-        }
-        onSegment(segment);
-        segmentsRead += 1;
-      }
-      cursor = getNextCursor(response.headers.get("link"));
-      if (cursor && segmentsRead >= maxSegments) {
-        return { segmentsRead, truncated: true };
-      }
-    } while (cursor);
-
-    return { segmentsRead, truncated: false };
+    return await visitReplayRecordingSegments(
+      this.target(opts?.host),
+      params,
+      ReplayRecordingSegmentPageSchema,
+      onSegment,
+    );
   }
 
   async updateIssue(

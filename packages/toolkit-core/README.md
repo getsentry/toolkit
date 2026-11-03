@@ -77,6 +77,9 @@ the one exception.
     `getProfileChunks`.
   - `endpoints/snapshots`: preprod snapshots (`getSnapshot`,
     `getSnapshotImage`, `getLatestBaseSnapshot`), returned unvalidated.
+  - `endpoints/replays`: `searchReplays`, `getReplay`, `listIssueReplayIds`,
+    and `visitReplayRecordingSegments`, which follows the cursor up to a
+    segment limit.
 - `time-params` applies a time range to a query: `statsPeriod` or a
   `start`/`end` pair, or the `since`/`until` seconds `StatsMixin` endpoints
   read. It rejects a range that sets both or only one end.

@@ -47,6 +47,25 @@ See `packages/mcp-core/src/api-utils.ts` and
 [adding-tools.md](adding-tools.md#step-2-implement-the-handler) for usage in
 tools.
 
+### Where Endpoint Code Lives
+
+Endpoint wrappers live in the shared client,
+`packages/toolkit-core/src/api-client/endpoints/<domain>.ts`, so the CLI and
+the MCP can call the same one. A wrapper takes an `ApiTarget` (the request
+core and the region origin), its parameters, and a response schema from the
+host, and returns what the schema parses:
+
+- A read with a `@sentry/api` operation builds its path and query through the
+  operation, on `core.sdkClient`. Lists page through `listPage`.
+- Anything else, including writes and routes `@sentry/api` lacks, builds its
+  path with `apiPath` and sends with `core.request` or `core.requestJson`.
+
+`SentryApiService` methods pass `this.target(opts?.host)` and their Zod schema
+to the wrapper. Shaping only the MCP needs, such as unwrapping a `{ data }`
+envelope or picking one entry of a keyed result, stays in the method.
+The host builds the core from its own transport (credentials, timeouts,
+retries), request headers, and logger, so wrappers never import host code.
+
 ### Common Operations
 
 ```typescript
