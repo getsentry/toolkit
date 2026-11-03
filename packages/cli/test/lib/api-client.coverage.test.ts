@@ -1400,17 +1400,25 @@ describe("infrastructure.ts", () => {
       ).toThrow(authError);
     });
 
-    test("re-throws TimeoutError instead of wrapping it as a network error", () => {
+    test("keeps a TimeoutError and its hint, prefixed with the operation", () => {
       const timeout = new TimeoutError(
         "Request timed out after 30s.",
-        "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io.",
+        "If the problem persists, check https://status.sentry.io.",
       );
-      expect(() =>
+      let thrown: unknown;
+      try {
         unwrapResult(
           { data: undefined, error: timeout, response: undefined },
           "Failed to create release",
-        ),
-      ).toThrow(timeout);
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(TimeoutError);
+      expect((thrown as TimeoutError).message).toBe(
+        "Failed to create release: Request timed out after 30s.",
+      );
+      expect((thrown as TimeoutError).hint).toBe(timeout.hint);
     });
 
     test("returns data on success", () => {

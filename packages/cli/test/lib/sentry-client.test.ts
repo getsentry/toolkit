@@ -19,7 +19,7 @@ import {
   resetAuthenticatedFetch,
 } from "../../src/lib/sentry-client.js";
 import { initSentry } from "../../src/lib/telemetry.js";
-import { mockFetch, useTestConfigDir } from "../helpers.js";
+import { mockFetch, useEnvSandbox, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sentry-client-");
 
@@ -617,10 +617,55 @@ describe("fetchWithTimeout internal timeout classification", () => {
       expect((error as TimeoutError).hint).toContain(
         "may still have been applied",
       );
+      expect((error as TimeoutError).hint).toContain(
+        "check https://status.sentry.io",
+      );
       expect(calls).toBe(1);
     } finally {
       restore();
     }
+  });
+
+  describe("on a self-hosted server", () => {
+    useEnvSandbox(["SENTRY_URL", "SENTRY_HOST"]);
+
+    test("points at that server instead of the sentry.io status page", async () => {
+      setAuthToken("self-hosted-token", undefined, undefined, {
+        host: "https://sentry.example.com",
+        newAccount: true,
+      });
+      const marker = "___self-hosted-timeout-test___";
+      const restore = __injectTimeoutOverrideForTests({
+        pattern: new RegExp(`/${marker}/`),
+        timeoutMs: 50,
+      });
+
+      try {
+        globalThis.fetch = mockFetch(async (_input, init) => {
+          return await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        });
+
+        const error = await getAuthenticatedFetch()(
+          `https://sentry.example.com/${marker}/`,
+          { method: "POST", body: "{}" },
+        ).catch((err: unknown) => err);
+
+        expect(error).toBeInstanceOf(TimeoutError);
+        const hint = (error as TimeoutError).hint ?? "";
+        expect(hint).toContain(
+          "check that https://sentry.example.com is healthy",
+        );
+        expect(hint).not.toContain("status.sentry.io");
+      } finally {
+        restore();
+      }
+    });
   });
 });
 

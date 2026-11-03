@@ -181,6 +181,10 @@ describe("throwApiError", () => {
       "SENTRY_AUTH_TOKEN",
       "SENTRY_TOKEN",
       "SENTRY_FORCE_ENV_TOKEN",
+      "HTTPS_PROXY",
+      "https_proxy",
+      "HTTP_PROXY",
+      "http_proxy",
     ]);
 
     function fetchFailed(code: string, message: string): TypeError {
@@ -220,7 +224,7 @@ describe("throwApiError", () => {
       expect(detail).toContain(
         "Unable to reach Sentry at https://sentry.example.com",
       );
-      expect(detail).toContain("set SENTRY_HOST to override it");
+      expect(detail).toContain("This URL comes from SENTRY_HOST");
     });
 
     test("a self-hosted login without SENTRY_URL names its own server", () => {
@@ -234,7 +238,29 @@ describe("throwApiError", () => {
       expect(detail).toContain(
         "Unable to reach Sentry at https://sentry.example.com",
       );
+      expect(detail).toContain("sentry auth login --url");
       expect(detail).not.toContain("status.sentry.io");
+    });
+
+    test("a proxy in the environment is named instead of the server, without its value", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      process.env.HTTPS_PROXY = "http://user:secret@proxy.internal:3128";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.2:3128"),
+      );
+      const steps = detail.split("\n").map((line) => line.trim());
+      expect(steps[2]).toContain("proxy in HTTPS_PROXY");
+      expect(detail).not.toContain("The server refused the connection");
+      expect(detail).not.toContain("secret");
+    });
+
+    test("a cause without an errno still replaces 'fetch failed'", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com:9";
+      const detail = detailFor(
+        new TypeError("fetch failed", { cause: new Error("bad port") }),
+      );
+      expect(detail).toContain(": bad port");
+      expect(detail).toContain("Check your network connection");
     });
 
     test("SaaS DNS failure points at DNS and the status page", () => {

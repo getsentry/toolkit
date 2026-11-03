@@ -51,6 +51,7 @@ import {
 import { extractInputUrl } from "./fetch-input.js";
 import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
+import { isSentrySaasUrl } from "./sentry-urls.js";
 import {
   clearLastCacheHitAge,
   invalidateCachedResponsesMatching,
@@ -237,6 +238,25 @@ function resolveTimeoutMs(fullUrl: string): number {
   return REQUEST_TIMEOUT_MS;
 }
 
+/**
+ * Next steps for a request that got no response in time. sentry.io users can
+ * check the status page; self-hosted users need to check their own server.
+ */
+function buildTimeoutHint(idempotent: boolean): string {
+  const baseUrl = getApiBaseUrl();
+  const retry = idempotent
+    ? "Try again."
+    : "The change may still have been applied; check before trying again.";
+  const persists = isSentrySaasUrl(baseUrl)
+    ? "If the problem persists, check https://status.sentry.io."
+    : `If the problem persists, check that ${baseUrl} is healthy and not overloaded.`;
+  return [
+    `The Sentry API at ${baseUrl} did not respond in time.`,
+    retry,
+    persists,
+  ].join("\n");
+}
+
 /** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */
 async function fetchWithCustomTls(
   input: Request | string | URL,
@@ -342,9 +362,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
       timeout: ({ timeoutMs, idempotent }) =>
         new TimeoutError(
           `Request timed out after ${Math.round(timeoutMs / 1000)}s.`,
-          idempotent
-            ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
-            : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
+          buildTimeoutHint(idempotent),
         ),
       // TLS certificate errors are deterministic — don't retry
       fatal: (error) =>

@@ -34,8 +34,14 @@ import {
   getActiveEnvVarName,
   isEnvTokenActive,
 } from "../db/auth.js";
+import { getConfiguredSentryUrl } from "../constants.js";
 import { getEnv } from "../env.js";
-import { ApiError, CliError, stringifyUnknown } from "../errors.js";
+import {
+  ApiError,
+  CliError,
+  stringifyUnknown,
+  TimeoutError,
+} from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -229,11 +235,11 @@ const CONNECT_TIMEOUT_HINT =
 /** Next steps for Node (undici) connection error codes, keyed by `code`. */
 const NETWORK_CAUSE_HINTS: Record<string, string> = {
   ENOTFOUND:
-    "The hostname could not be resolved. Check that the Sentry URL is correct and that DNS works from this machine.",
+    "The hostname could not be resolved. Check that the URL is right and that DNS works on this machine.",
   EAI_AGAIN:
     "DNS lookup failed temporarily. Check DNS on this machine and try again.",
   ECONNREFUSED:
-    "The server refused the connection. Check that the Sentry URL and port are correct and that the server is running.",
+    "The server refused the connection. Check that the URL and port are right and that Sentry is running.",
   ECONNRESET:
     "The connection was reset. A proxy or firewall may be interrupting the request; try again.",
   ETIMEDOUT: CONNECT_TIMEOUT_HINT,
@@ -244,53 +250,99 @@ const NETWORK_CAUSE_HINTS: Record<string, string> = {
 const MAX_CAUSE_DEPTH = 5;
 
 /**
- * Find the innermost system error behind a fetch failure.
+ * Find the innermost error behind a fetch failure.
  *
  * undici rejects with `TypeError: fetch failed` for every connection failure
- * and puts the real errno (`ENOTFOUND`, `ECONNREFUSED`, ...) on `cause`.
+ * and puts the real cause on `cause`: a system error with an errno `code`
+ * (`ENOTFOUND`, `ECONNREFUSED`, ...) or a plain Error (`bad port`).
  */
 function findNetworkCause(
   error: unknown,
-): { message: string; code: string } | undefined {
+): { message: string; code?: string } | undefined {
+  let found: { message: string; code?: string } | undefined;
   let current: unknown = error;
   for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth++) {
     if (!(current instanceof Error)) {
-      return;
+      break;
     }
     const code = (current as { code?: unknown }).code;
     if (typeof code === "string") {
       return { message: current.message, code };
     }
+    found = { message: current.message };
     current = current.cause;
   }
+  return found;
+}
+
+/**
+ * Say where a self-hosted URL comes from, and how to point at another server.
+ * SENTRY_HOST wins over SENTRY_URL (getConfiguredSentryUrl), then the login.
+ */
+function describeUrlSource(): string {
+  if (getConfiguredSentryUrl()) {
+    const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
+    return `This URL comes from ${urlVar}. If it is not your Sentry server, set ${urlVar} to the right URL.`;
+  }
+  return "This URL comes from your login. To use another server, run: sentry auth login --url <url>";
+}
+
+/** Proxy variables fetch honors for each URL scheme, in precedence order. */
+const PROXY_ENV_VARS: Record<string, string[]> = {
+  "https:": ["HTTPS_PROXY", "https_proxy"],
+  "http:": ["HTTP_PROXY", "http_proxy"],
+};
+
+/** The proxy variable requests to `url` go through, if any (never its value). */
+function findProxyEnvVar(url: string): string | undefined {
+  const env = getEnv();
+  let protocol: string;
+  try {
+    protocol = new URL(url).protocol;
+  } catch (error) {
+    logger.debug("Could not parse the Sentry URL for proxy detection", error);
+    return;
+  }
+  return PROXY_ENV_VARS[protocol]?.find((name) => env[name]?.trim());
 }
 
 /**
  * Build the user-facing detail for a request that got no HTTP response.
  *
  * Names the Sentry URL that was contacted, the underlying cause (not just
- * "fetch failed"), and a next step that matches it.
+ * "fetch failed"), and next steps that match it.
  */
 function buildNetworkErrorDetail(error: unknown): string {
   // Same resolution as request routing: env, then the stored login's host.
   const baseUrl = getApiBaseUrl();
-  // SENTRY_HOST wins over SENTRY_URL (getConfiguredSentryUrl), so name it when set.
-  const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
-  const outer =
-    error instanceof Error ? error.message : stringifyUnknown(error);
   const networkCause = findNetworkCause(error);
   const cause =
-    networkCause && networkCause.message !== outer
-      ? `${outer} (${networkCause.message})`
-      : outer;
+    networkCause?.message ??
+    (error instanceof Error ? error.message : stringifyUnknown(error));
+  const causeHint = networkCause?.code
+    ? NETWORK_CAUSE_HINTS[networkCause.code]
+    : undefined;
+  // With a proxy set, the connection that failed (and its errno) is most
+  // likely the proxy's, so point there instead of at the Sentry server.
+  const proxyVar = findProxyEnvVar(baseUrl);
   const steps = [
-    (networkCause && NETWORK_CAUSE_HINTS[networkCause.code]) ??
-      "Check your network connection and try again.",
-    isSentrySaasUrl(baseUrl)
-      ? "If your network is fine, check https://status.sentry.io for an ongoing incident."
-      : `Check that ${baseUrl} is your Sentry server and that it is reachable from this machine (set ${urlVar} to override it).`,
+    proxyVar
+      ? `Requests go through the proxy in ${proxyVar}. Check that it is running and can reach ${baseUrl}.`
+      : (causeHint ?? "Check your network connection and try again."),
   ];
-  return `Unable to reach Sentry at ${baseUrl}. Cause: ${cause}\n\n${steps.map((step) => `  ${step}`).join("\n")}`;
+  if (isSentrySaasUrl(baseUrl)) {
+    steps.push(
+      "If your network is fine, check https://status.sentry.io for an ongoing incident.",
+    );
+  } else {
+    steps.push(
+      describeUrlSource(),
+      `Test the connection with: curl -I ${baseUrl}/api/0/`,
+    );
+  }
+  return [`Unable to reach Sentry at ${baseUrl}: ${cause}`, "", ...steps].join(
+    "\n  ",
+  );
 }
 
 /**
@@ -364,8 +416,12 @@ export function unwrapResult<T>(
 ): T {
   if ("error" in result) {
     const { error } = result;
-    // Preserve CLI errors thrown by our fetch function (AuthError, ApiError,
-    // TimeoutError, HostScopeError, ...). They already carry the right message
+    // Name the failed operation, like ApiError does, and keep the hint.
+    if (error instanceof TimeoutError) {
+      throw new TimeoutError(`${context}: ${error.message}`, error.hint);
+    }
+    // Preserve other CLI errors thrown by our fetch function (AuthError,
+    // ApiError, HostScopeError, ...). They already carry the right message
     // and next step; wrapping them as "Network error" would hide both.
     if (error instanceof CliError) {
       throw error;
