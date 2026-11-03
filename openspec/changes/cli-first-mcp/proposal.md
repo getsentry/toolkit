@@ -24,9 +24,11 @@ introspection and run through the CLI SDK.
    capabilities are added as CLI commands only; no new hand-written MCP
    tools. Commands call the API through `@sentry/api`
    (`unify-sentry-api-layer`).
-2. **The MCP exposes the CLI's commands.** By default it lists two tools:
-   `search_sentry` finds commands, and `execute_sentry_command` runs one
-   command by name with JSON parameters through `createSentrySDK()`. No
+2. **The MCP exposes the CLI's commands.** By default it lists three tools:
+   `search_sentry` finds commands, and `execute_sentry_read` and
+   `execute_sentry_write` run one command by name with JSON parameters
+   through `createSentrySDK()`. Execute is split by permission class so MCP
+   hosts can allowlist reads and ask before writes (#1254). No
    sandbox is involved: the agent can only run commands that exist, with
    parameters their schema accepts. Harnesses that search large tool lists
    themselves can instead list every command as its own tool.
@@ -34,7 +36,7 @@ introspection and run through the CLI SDK.
    come from the CLI's route tree (`lib/introspect.ts`) on stdio and from
    metadata generated from it at build time on hosted.
 4. **Every published API route.** `sentry api` and `sentry schema` are
-   commands like any other, so `search_sentry` and `execute_sentry_command`
+   commands like any other, so search and execute
    reach every published `@sentry/api` operation with no extra tool.
 5. **Completion for agents.** The shell completion system
    (`lib/complete.ts`, `lib/completion-target.ts`) answers completion

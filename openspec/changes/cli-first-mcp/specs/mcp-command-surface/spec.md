@@ -35,19 +35,38 @@ generated catalog, and SHALL list only commands its build can run.
 
 ### Requirement: Execution runs only exposed commands
 
-`execute_sentry_command` SHALL run only commands marked exposed, with
+The execute tools SHALL run only commands marked exposed, with
 parameters that validate against the command's schema, through the CLI SDK.
 It SHALL NOT run arbitrary code.
 
 #### Scenario: Hidden command
 
-- **WHEN** an agent calls `execute_sentry_command` with `monitor run`
+- **WHEN** an agent calls `execute_sentry_write` with `monitor run`
 - **THEN** the call fails without running anything
 
 #### Scenario: Invalid parameter value
 
 - **WHEN** an agent passes an organization slug that does not exist
 - **THEN** the call fails with completion candidates for that parameter
+
+### Requirement: Execute tools split by permission class
+
+Search mode SHALL offer one execute tool for read commands, annotated
+read-only, and one for write and destructive commands, annotated
+destructive. Each SHALL take the command path as a top-level argument. A
+read-only connection SHALL NOT list the write tool.
+
+#### Scenario: A host allowlists reads
+
+- **WHEN** a host allowlists `execute_sentry_read`
+- **THEN** read commands run without approval
+- **WHEN** the agent calls `execute_sentry_read` with `issue resolve`
+- **THEN** the call is refused and names `execute_sentry_write`
+
+#### Scenario: Read-only connection lists tools
+
+- **WHEN** a read-only connection lists tools
+- **THEN** the list has `search_sentry` and `execute_sentry_read` and no write tool
 
 ### Requirement: Permission classes
 
