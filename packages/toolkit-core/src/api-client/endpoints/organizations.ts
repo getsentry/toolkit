@@ -6,7 +6,7 @@
  */
 
 import { listOrganizations as listOrganizationsOperation } from "@sentry/api";
-import { apiPath } from "../api-path.js";
+import { apiPath, withQuery } from "../api-path.js";
 import { type ApiTarget, type ListPage, listPage } from "../core.js";
 import { type ResponseSchema, validateResponse } from "../validate.js";
 
@@ -68,11 +68,9 @@ export async function getOrganization<T>(
   if (params.detailed === false) {
     query.set("detailed", "0");
   }
-  const queryString = query.toString();
-  const path = apiPath`/organizations/${params.organizationSlug}/`;
   const body = await core.requestJson(
     origin,
-    `${path}${queryString ? `?${queryString}` : ""}`,
+    withQuery(apiPath`/organizations/${params.organizationSlug}/`, query),
   );
   return validateResponse(schema, body);
 }
