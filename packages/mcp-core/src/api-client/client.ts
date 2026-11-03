@@ -12,8 +12,6 @@ import {
   listOrganizationIssueExternalIssues,
   listOrganizationIssueIntegrations,
   listOrganizationIssues,
-  listOrganizationProjects,
-  listOrganizationTeams,
   listProjectEventAttachments,
   parseSentryLinkHeader,
 } from "@sentry/api";
@@ -27,13 +25,25 @@ import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
   type ApiTarget,
   createApiClientCore,
-  listPage,
 } from "@sentry/toolkit-core/api-client/core";
 import {
   getAuthenticatedUser,
   getOrganization,
   listOrganizations,
 } from "@sentry/toolkit-core/api-client/endpoints/organizations";
+import {
+  addProjectTeam,
+  createProject,
+  getProject,
+  listProjects,
+  listProjectTeams,
+  removeProjectTeam,
+  updateProject,
+} from "@sentry/toolkit-core/api-client/endpoints/projects";
+import {
+  createTeam,
+  listTeams,
+} from "@sentry/toolkit-core/api-client/endpoints/teams";
 import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
@@ -363,18 +373,6 @@ type ClientKeyDynamicSdkLoaderOptions = {
   hasDebug?: boolean;
   hasFeedback?: boolean;
   hasLogsAndMetrics?: boolean;
-};
-
-type CreateProjectRequest = {
-  name: string;
-  slug?: string;
-  platform?: string;
-};
-
-type UpdateProjectRequest = {
-  name?: string;
-  slug?: string;
-  platform?: string;
 };
 
 type UpdateClientKeyRequest = {
@@ -1559,19 +1557,10 @@ export class SentryApiService {
     params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
   ): Promise<{ teams: TeamList; nextCursor: string | null }> {
-    const teamsPath = apiPath`/organizations/${organizationSlug}/teams/`;
-    const client = this.sdkClient(teamsPath, opts?.host);
-    const { items, nextCursor } = await listPage(
-      (perPage, cursor) =>
-        listOrganizationTeams({
-          client,
-          path: { organization_id_or_slug: organizationSlug },
-          query: { per_page: perPage, query: params?.query, cursor },
-          throwOnError: true,
-        }),
+    const { items, nextCursor } = await listTeams(
+      this.target(opts?.host),
+      { organizationSlug, ...params },
       TeamListSchema,
-      params?.limit ?? 25,
-      params?.cursor,
     );
     return {
       teams: items,
@@ -1599,15 +1588,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Team> {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/teams/`,
-      {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      },
-      opts,
+    return await createTeam(
+      this.target(opts?.host),
+      { organizationSlug, name },
+      TeamSchema,
     );
-    return TeamSchema.parse(body);
   }
 
   /**
@@ -1626,19 +1611,10 @@ export class SentryApiService {
     params?: { query?: string; limit?: number; cursor?: string | null },
     opts?: RequestOptions,
   ): Promise<{ projects: ProjectList; nextCursor: string | null }> {
-    const projectsPath = apiPath`/organizations/${organizationSlug}/projects/`;
-    const client = this.sdkClient(projectsPath, opts?.host);
-    const { items, nextCursor } = await listPage(
-      (perPage, cursor) =>
-        listOrganizationProjects({
-          client,
-          path: { organization_id_or_slug: organizationSlug },
-          query: { per_page: perPage, query: params?.query, cursor },
-          throwOnError: true,
-        }),
+    const { items, nextCursor } = await listProjects(
+      this.target(opts?.host),
+      { organizationSlug, ...params },
       ProjectListSchema,
-      params?.limit ?? 25,
-      params?.cursor,
     );
     return {
       projects: items,
@@ -1728,18 +1704,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Project> {
-    const queryParams = new URLSearchParams();
-    if (collapse) {
-      queryParams.set("collapse", collapse);
-    }
-    const queryString = queryParams.toString();
-    const projectPath = apiPath`/projects/${organizationSlug}/${projectSlugOrId}/`;
-    const body = await this.requestJSON(
-      `${projectPath}${queryString ? `?${queryString}` : ""}`,
-      undefined,
-      opts,
+    return await getProject(
+      this.target(opts?.host),
+      { organizationSlug, projectSlugOrId, collapse },
+      ProjectSchema,
     );
-    return ProjectSchema.parse(body);
   }
 
   /**
@@ -1770,24 +1739,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Project> {
-    const createData: CreateProjectRequest = { name };
-    // Only include optional fields when they have meaningful values.
-    if (slug) {
-      createData.slug = slug;
-    }
-    if (platform) {
-      createData.platform = platform;
-    }
-
-    const body = await this.requestJSON(
-      apiPath`/teams/${organizationSlug}/${teamSlug}/projects/`,
-      {
-        method: "POST",
-        body: JSON.stringify(createData),
-      },
-      opts,
+    return await createProject(
+      this.target(opts?.host),
+      { organizationSlug, teamSlug, name, slug, platform },
+      ProjectSchema,
     );
-    return ProjectSchema.parse(body);
   }
 
   /**
@@ -1840,21 +1796,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Project> {
-    const updateData: UpdateProjectRequest = {};
-    // Only include fields that have meaningful values (truthy strings)
-    if (name) updateData.name = name;
-    if (slug) updateData.slug = slug;
-    if (platform) updateData.platform = platform;
-
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/`,
-      {
-        method: "PUT",
-        body: JSON.stringify(updateData),
-      },
-      opts,
+    return await updateProject(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug, name, slug, platform },
+      ProjectSchema,
     );
-    return ProjectSchema.parse(body);
   }
 
   async listRepos(
@@ -2473,28 +2419,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<TeamList> {
-    const teams: TeamList = [];
-    let cursor: string | null = null;
-
-    do {
-      const queryParams = new URLSearchParams();
-      queryParams.set("per_page", "100");
-      if (cursor) {
-        queryParams.set("cursor", cursor);
-      }
-
-      const response = await this.request(
-        apiPath`/projects/${organizationSlug}/${projectSlug}/teams/` +
-          `?${queryParams.toString()}`,
-        undefined,
-        opts,
-      );
-      const body = await readJsonResponse(response);
-      teams.push(...TeamListSchema.parse(body));
-      cursor = getNextCursor(response.headers.get("link"));
-    } while (cursor);
-
-    return teams;
+    return await listProjectTeams(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug },
+      TeamListSchema,
+    );
   }
 
   /**
@@ -2518,14 +2447,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<void> {
-    await this.request(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/teams/${teamSlug}/`,
-      {
-        method: "POST",
-        body: JSON.stringify({}),
-      },
-      opts,
-    );
+    await addProjectTeam(this.target(opts?.host), {
+      organizationSlug,
+      projectSlug,
+      teamSlug,
+    });
   }
 
   /**
@@ -2549,13 +2475,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<void> {
-    await this.request(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/teams/${teamSlug}/`,
-      {
-        method: "DELETE",
-      },
-      opts,
-    );
+    await removeProjectTeam(this.target(opts?.host), {
+      organizationSlug,
+      projectSlug,
+      teamSlug,
+    });
   }
 
   /**

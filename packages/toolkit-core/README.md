@@ -51,8 +51,14 @@ the one exception.
   operations where they exist. Each takes an `ApiTarget` (the core and an
   origin) and the host's schema, and returns that schema's output. The host
   picks the origin, such as the control host for the current user.
-  `endpoints/organizations` has `getAuthenticatedUser`, `listOrganizations`,
-  and `getOrganization`.
+  Writes, and reads not yet on a `@sentry/api` operation, call the core
+  directly. Wrappers by domain:
+  - `endpoints/organizations`: `getAuthenticatedUser`, `listOrganizations`,
+    and `getOrganization`.
+  - `endpoints/teams`: `listTeams` and `createTeam`.
+  - `endpoints/projects`: `listProjects`, `getProject`, `createProject`,
+    `updateProject`, and the project's teams (`listProjectTeams`,
+    `addProjectTeam`, `removeProjectTeam`).
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.
