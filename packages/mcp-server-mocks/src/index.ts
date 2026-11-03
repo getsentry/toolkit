@@ -975,29 +975,37 @@ export const restHandlers = buildHandlers([
   },
   {
     method: "post",
-    path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/uptime/",
+    path: "/api/0/organizations/sentry-mcp-evals/projects/cloudflare-mcp/detectors/",
     fetch: async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json(
         {
-          ...uptimeMonitorFixture,
-          ...body,
           id: "4509100000001002",
-          projectSlug: "cloudflare-mcp",
-          status: body.status ?? "active",
-          uptimeStatus: 1,
-          method: body.method ?? "GET",
-          headers: body.headers ?? [],
-          body: body.body ?? null,
-          assertion: body.assertion ?? null,
-          recoveryThreshold: body.recoveryThreshold ?? 1,
-          downtimeThreshold: body.downtimeThreshold ?? 3,
-          traceSampling: body.traceSampling ?? false,
-          responseCaptureEnabled: body.responseCaptureEnabled ?? true,
+          projectId: "4509062593708032",
+          name: body.name,
+          type: body.type,
+          enabled: true,
+          config: { mode: 1, ...(body.config as Record<string, unknown>) },
+          conditionGroup: null,
+          dataSources: null,
+          workflowIds: [],
+          owner: body.owner ?? null,
+          createdBy: "1",
+          dateCreated: "2026-11-02T00:00:00.000000Z",
+          dateUpdated: "2026-11-02T00:00:00.000000Z",
         },
         { status: 201 },
       );
     },
+  },
+  {
+    method: "get",
+    path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/uptime/4509100000001002/",
+    fetch: () =>
+      HttpResponse.json({
+        ...uptimeMonitorFixture,
+        id: "4509100000001002",
+      }),
   },
   {
     method: "put",
