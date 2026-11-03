@@ -51,6 +51,10 @@ function callHandler(params: {
     | "dashboard";
   resourceId?: string;
   organizationSlug?: string;
+  issueUrl?: string;
+  resourceUrl?: string;
+  issueId?: string;
+  id?: string;
 }) {
   return getSentryResource.handler(params, baseContext);
 }
@@ -147,6 +151,24 @@ describe("get_sentry_resource", () => {
 
   // ─── URL mode: issue URLs ──────────────────────────────────────────────────
   describe("URL mode — issue URLs", () => {
+    it.each([
+      {
+        issueUrl: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+      },
+      {
+        resourceUrl:
+          "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+      },
+      { organizationSlug: "sentry-mcp-evals", issueId: "cloudflare-mcp-41" },
+      { organizationSlug: "sentry-mcp-evals", id: "CLOUDFLARE-MCP-41" },
+      { organizationSlug: "sentry-mcp-evals", resourceId: "CLOUDFLARE-MCP-41" },
+    ])("resolves issue from alias params %o", async (params) => {
+      const result = await callHandler(params);
+      expect(result).toContain(
+        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+      );
+    });
+
     it("resolves issue from subdomain URL (my-org.sentry.io)", async () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
@@ -926,7 +948,7 @@ describe("get_sentry_resource", () => {
   describe("Validation errors", () => {
     it("throws when neither url nor resourceType provided", async () => {
       await expect(
-        callHandler({ organizationSlug: "my-org", resourceId: "X-1" }),
+        callHandler({ organizationSlug: "my-org", resourceId: "my-cron-job" }),
       ).rejects.toThrow("Either `url` or `resourceType` must be provided");
     });
 
@@ -1060,6 +1082,10 @@ describe("get_sentry_resource", () => {
         "resourceType",
         "resourceId",
         "organizationSlug",
+        "issueUrl",
+        "resourceUrl",
+        "issueId",
+        "id",
       ]);
     });
 

@@ -5616,6 +5616,18 @@
         "organizationSlug": {
           "type": "string",
           "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "resourceUrl": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
         }
       }
     },
