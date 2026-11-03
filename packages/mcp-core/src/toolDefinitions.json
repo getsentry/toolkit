@@ -945,7 +945,7 @@
   },
   {
     "name": "create_monitor",
-    "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nProvide exactly one of `crontab` or `interval`. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', crontab='0 3 * * *', timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', interval={ value: 15, unit: 'minute' })\n</examples>",
+    "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nSet `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', schedule={ type: 'crontab', crontab: '0 3 * * *' }, timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', schedule={ type: 'interval', value: 15, unit: 'minute' })\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -980,26 +980,46 @@
           "minLength": 1,
           "description": "Optional monitor slug used by check-ins. Derived from the name when omitted."
         },
-        "crontab": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Five-field crontab schedule or `@` alias, e.g. `0 3 * * *` or `@daily`. Seconds fields are not supported."
-        },
-        "interval": {
-          "type": "object",
-          "properties": {
-            "value": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
+        "schedule": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "crontab"
+                },
+                "crontab": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Five-field crontab schedule or `@` alias, e.g. `0 3 * * *` or `@daily`. Seconds fields are not supported."
+                }
+              },
+              "required": ["type", "crontab"],
+              "additionalProperties": false
             },
-            "unit": {
-              "type": "string",
-              "enum": ["minute", "hour", "day", "week", "month", "year"]
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "interval"
+                },
+                "value": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "unit": {
+                  "type": "string",
+                  "enum": ["minute", "hour", "day", "week", "month", "year"]
+                }
+              },
+              "required": ["type", "value", "unit"],
+              "additionalProperties": false
             }
-          },
-          "required": ["value", "unit"],
-          "description": "Interval schedule, e.g. `{ value: 15, unit: 'minute' }`."
+          ],
+          "description": "Monitor schedule: exactly one of `{ type: 'crontab', crontab: '0 3 * * *' }` or `{ type: 'interval', value: 15, unit: 'minute' }`."
         },
         "timezone": {
           "type": "string",
@@ -1008,9 +1028,9 @@
         },
         "checkInMargin": {
           "type": "integer",
-          "minimum": 1,
+          "minimum": 0,
           "maximum": 40320,
-          "description": "Minutes after the expected time before a check-in counts as missed."
+          "description": "Minutes after the expected time before a check-in counts as missed. Sentry treats 0 as 1."
         },
         "maxRuntime": {
           "type": "integer",
@@ -1041,7 +1061,7 @@
           "description": "Owner actor in `user:ID` or `team:ID` format."
         }
       },
-      "required": ["organizationSlug", "projectSlug", "name"]
+      "required": ["organizationSlug", "projectSlug", "name", "schedule"]
     },
     "outputSchema": {
       "type": "object",

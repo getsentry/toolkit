@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { Monitor } from "../../api-client/types";
-import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -90,12 +89,12 @@ export default defineTool({
     "- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs",
     "- Set up a cron monitor before instrumenting check-ins",
     "",
-    "Provide exactly one of `crontab` or `interval`. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.",
+    "Set `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.",
     "After an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.",
     "",
     "<examples>",
-    "create_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', crontab='0 3 * * *', timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)",
-    "create_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', interval={ value: 15, unit: 'minute' })",
+    "create_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', schedule={ type: 'crontab', crontab: '0 3 * * *' }, timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)",
+    "create_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', schedule={ type: 'interval', value: 15, unit: 'minute' })",
     "</examples>",
   ].join("\n"),
   inputSchema: {
@@ -111,21 +110,31 @@ export default defineTool({
         "Optional monitor slug used by check-ins. Derived from the name when omitted.",
       )
       .optional(),
-    crontab: z
-      .string()
-      .trim()
-      .min(1)
+    schedule: z
+      .discriminatedUnion("type", [
+        z
+          .object({
+            type: z.literal("crontab"),
+            crontab: z
+              .string()
+              .trim()
+              .min(1)
+              .describe(
+                "Five-field crontab schedule or `@` alias, e.g. `0 3 * * *` or `@daily`. Seconds fields are not supported.",
+              ),
+          })
+          .strict(),
+        z
+          .object({
+            type: z.literal("interval"),
+            value: z.number().int().positive(),
+            unit: z.enum(INTERVAL_UNITS),
+          })
+          .strict(),
+      ])
       .describe(
-        "Five-field crontab schedule or `@` alias, e.g. `0 3 * * *` or `@daily`. Seconds fields are not supported.",
-      )
-      .optional(),
-    interval: z
-      .object({
-        value: z.number().int().positive(),
-        unit: z.enum(INTERVAL_UNITS),
-      })
-      .describe("Interval schedule, e.g. `{ value: 15, unit: 'minute' }`.")
-      .optional(),
+        "Monitor schedule: exactly one of `{ type: 'crontab', crontab: '0 3 * * *' }` or `{ type: 'interval', value: 15, unit: 'minute' }`.",
+      ),
     timezone: z
       .string()
       .trim()
@@ -135,10 +144,10 @@ export default defineTool({
     checkInMargin: z
       .number()
       .int()
-      .min(1)
+      .min(0)
       .max(MAX_CHECKIN_MARGIN_MINUTES)
       .describe(
-        "Minutes after the expected time before a check-in counts as missed.",
+        "Minutes after the expected time before a check-in counts as missed. Sentry treats 0 as 1.",
       )
       .optional(),
     maxRuntime: z
@@ -183,16 +192,7 @@ export default defineTool({
   },
   outputSchema: createMonitorOutputSchema,
   async handler(params, context: ServerContext) {
-    const schedule = params.crontab ?? params.interval;
-    if (
-      schedule === undefined ||
-      (params.crontab !== undefined && params.interval !== undefined)
-    ) {
-      throw new UserInputError(
-        "Provide exactly one of `crontab` or `interval` for the monitor schedule.",
-      );
-    }
-
+    const { schedule } = params;
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
@@ -213,8 +213,8 @@ export default defineTool({
       status: params.status,
       owner: params.owner,
       config: {
-        ...(typeof schedule === "string"
-          ? { schedule_type: "crontab" as const, schedule }
+        ...(schedule.type === "crontab"
+          ? { schedule_type: "crontab" as const, schedule: schedule.crontab }
           : {
               schedule_type: "interval" as const,
               schedule: [schedule.value, schedule.unit] as [number, string],
