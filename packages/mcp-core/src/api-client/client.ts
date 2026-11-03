@@ -25,6 +25,7 @@ import {
 } from "@sentry/toolkit-core/api-client/idempotent-operations";
 import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
+  type ApiClientCore,
   type ApiTarget,
   createApiClientCore,
   listPage,
@@ -39,7 +40,7 @@ import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { logIssue, logWarn } from "../telem/logging";
-import type { SentryProtocol } from "../types";
+import type { ResponseCache, SentryProtocol } from "../types";
 import {
   type EventsDataset,
   isMetricsDataset,
@@ -330,6 +331,10 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
   maxTotalDelayMs: 3000,
 };
 
+const isIdempotent = createIdempotentOperationMatcher(() =>
+  selectIdempotentWrites(operations),
+);
+
 /**
  * Every request goes through the shared transport. `SentryApiService` sets its
  * own headers, including Authorization, so the transport only retries; as
@@ -337,10 +342,26 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
  */
 const transport = createApiTransport({
   retry: REQUEST_RETRY_POLICY,
-  isIdempotent: createIdempotentOperationMatcher(() =>
-    selectIdempotentWrites(operations),
-  ),
+  isIdempotent,
 });
+
+/**
+ * A transport that also serves and invalidates GETs through `responseCache`.
+ * The transport caches only for a credential, so it gets `accessToken` under
+ * the cache's identity; the Authorization it sets matches the one
+ * `SentryApiService` already sends.
+ */
+function createCachingTransport(
+  accessToken: string,
+  { identity, cache }: ResponseCache,
+) {
+  return createApiTransport({
+    retry: REQUEST_RETRY_POLICY,
+    isIdempotent,
+    credentials: { current: () => ({ token: accessToken, identity }) },
+    cache,
+  });
+}
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.
@@ -623,14 +644,7 @@ export class SentryApiService {
   protected host: string;
   protected protocol: SentryProtocol;
   protected apiPrefix: string;
-  private readonly core = createApiClientCore({
-    transport,
-    headers: () => this.requestHeaders(),
-    logger: {
-      warn: (message, extra) =>
-        logWarn(message, { loggerScope: ["api", "client"], extra }),
-    },
-  });
+  private readonly core: ApiClientCore;
 
   /**
    * Creates a new Sentry API service instance.
@@ -644,6 +658,7 @@ export class SentryApiService {
    * @param config.clientName DCR-registered OAuth client name
    * @param config.clientFamily Bucketed client family (e.g. "claude-code", "cursor")
    * @param config.utmSource Sanitized MCP request attribution source
+   * @param config.responseCache Caches GETs for `accessToken`'s identity; needs an `accessToken`
    */
   constructor({
     accessToken = null,
@@ -653,6 +668,7 @@ export class SentryApiService {
     clientName = null,
     clientFamily = null,
     utmSource = null,
+    responseCache = null,
   }: {
     accessToken?: string | null;
     host?: string;
@@ -661,6 +677,7 @@ export class SentryApiService {
     clientName?: string | null;
     clientFamily?: string | null;
     utmSource?: string | null;
+    responseCache?: ResponseCache | null;
   }) {
     this.accessToken = accessToken;
     this.clientId = clientId;
@@ -670,6 +687,17 @@ export class SentryApiService {
     this.host = host;
     this.protocol = protocol;
     this.apiPrefix = `${protocol}://${host}/api/0`;
+    this.core = createApiClientCore({
+      transport:
+        accessToken !== null && responseCache
+          ? createCachingTransport(accessToken, responseCache)
+          : transport,
+      headers: () => this.requestHeaders(),
+      logger: {
+        warn: (message, extra) =>
+          logWarn(message, { loggerScope: ["api", "client"], extra }),
+      },
+    });
   }
 
   /**

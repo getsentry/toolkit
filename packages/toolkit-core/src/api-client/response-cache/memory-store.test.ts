@@ -114,6 +114,23 @@ describe("createMemoryStore", () => {
     expect(store.stats()).toEqual({ entries: 3, bytes: size * 3 });
   });
 
+  it("reports each budget eviction, but not replacements or expiry", async () => {
+    const size = 100 + ENTRY_OVERHEAD_BYTES;
+    const onEvict = vi.fn();
+    const store = createMemoryStore({ maxBytes: size * 2, onEvict });
+    await store.set("a", entry(`${API}/a/`, bodyOfSize(100)), MINUTE);
+    await store.set("a", entry(`${API}/a/`, bodyOfSize(100)), MINUTE);
+    await store.set("b", entry(`${API}/b/`, bodyOfSize(100)), 1);
+    vi.setSystemTime(Date.now() + 2);
+    await store.get("b");
+    expect(onEvict).not.toHaveBeenCalled();
+
+    await store.set("c", entry(`${API}/c/`, bodyOfSize(100)), MINUTE);
+    await store.set("d", entry(`${API}/d/`, bodyOfSize(100)), MINUTE);
+
+    expect(onEvict).toHaveBeenCalledTimes(1);
+  });
+
   it("evicts as many entries as a large one needs", async () => {
     const store = createMemoryStore({ maxBytes: 4 * ENTRY_OVERHEAD_BYTES });
     for (const key of ["a", "b", "c", "d"]) {

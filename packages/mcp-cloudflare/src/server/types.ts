@@ -85,4 +85,9 @@ export interface Env {
   // Backward-compatible fallback while deployments roll out dedicated MCP limiters.
   MCP_RATE_LIMITER?: RateLimit;
   AUTORAG_INDEX_NAME?: string;
+  /**
+   * Sentry API response cache: `off` (default), `memory`, or `tiered`. See
+   * docs/cloudflare/architecture.md before enabling it in production.
+   */
+  MCP_RESPONSE_CACHE?: string;
 }

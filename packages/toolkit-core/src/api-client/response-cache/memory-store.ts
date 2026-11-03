@@ -25,6 +25,11 @@ export type MemoryStoreOptions = {
    * Defaults to 32 MiB.
    */
   maxRawBytes?: number;
+  /**
+   * Called for each entry evicted to stay within `maxBytes`. Not called for
+   * expired, replaced, or deleted entries.
+   */
+  onEvict?: () => void;
 };
 
 export type MemoryStore = CacheStore & {
@@ -72,12 +77,13 @@ export function createMemoryStore(
   const slots = new Map<string, Slot>();
   let bytes = 0;
 
-  function remove(key: string): void {
+  function remove(key: string): boolean {
     const slot = slots.get(key);
     if (slot) {
       slots.delete(key);
       bytes -= slot.size;
     }
+    return slot !== undefined;
   }
 
   return {
@@ -119,7 +125,9 @@ export function createMemoryStore(
         if (bytes <= maxBytes) {
           break;
         }
-        remove(oldest);
+        if (remove(oldest)) {
+          options.onEvict?.();
+        }
       }
     },
 
