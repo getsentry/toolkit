@@ -1,18 +1,7 @@
 /** Read the issuing Sentry instance from a private setup code. */
 
-import {
-  boolean,
-  description,
-  type InferOutput,
-  literal,
-  looseObject,
-  number,
-  object,
-  optional,
-  pipe,
-  safeParse,
-  string,
-} from "valibot";
+import { looseObject, safeParse, string } from "valibot";
+import type { BootstrapResult } from "../output-schemas/auth.js";
 import { pointDefaultUrlAtAccount } from "./account-selection.js";
 import { normalizeAuthToken } from "./auth-header.js";
 import {
@@ -32,6 +21,8 @@ import { exchangeSetupCode } from "./oauth.js";
 import { registerLoginTrustAnchor } from "./token-host.js";
 import { ValidationError } from "./errors.js";
 import { normalizeHttpOrigin } from "./sentry-urls.js";
+
+export type { BootstrapResult } from "../output-schemas/auth.js";
 
 const setupCodePattern = /^sntryc_([A-Za-z0-9+/=]+)_([A-Za-z0-9+/]{43})$/;
 const claimSchema = looseObject({ url: string() });
@@ -63,25 +54,6 @@ export function getSetupCodeHost(code: string): string {
 
   return host;
 }
-
-/** Safe authentication result exposed to command output and field discovery. */
-export const BootstrapResultSchema = object({
-  method: literal("oauth"),
-  configPath: pipe(string(), description("Path to the stored CLI credentials")),
-  user: optional(
-    object({
-      id: optional(string()),
-      name: optional(string()),
-      email: optional(string()),
-      username: optional(string()),
-    }),
-  ),
-  expiresIn: optional(number()),
-  refreshEnabled: boolean(),
-});
-
-/** Public result of successful setup-code authentication. */
-export type BootstrapResult = InferOutput<typeof BootstrapResultSchema>;
 
 /** Redeem a private setup code, replacing only the issuing server's selected login. */
 export async function bootstrapAuthentication(

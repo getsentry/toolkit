@@ -397,6 +397,7 @@ Authenticate with Sentry
 
 - `sentry auth list` — List stored accounts
 - `sentry auth login [<email>]` — Authenticate with Sentry
+- `sentry auth bootstrap` — Authenticate using a one-time setup code
 - `sentry auth logout <account...>` — Log out of Sentry
 - `sentry auth refresh` — Refresh your OAuth access token
 - `sentry auth status` — View authentication status
