@@ -17,7 +17,7 @@ const context = {
   userId: "1",
 };
 const endpoint =
-  "https://sentry.io/api/0/organizations/sentry-mcp-evals/monitors/";
+  "https://sentry.io/api/0/organizations/sentry-mcp-evals/projects/cloudflare-mcp/detectors/";
 const baseParams = {
   organizationSlug: "sentry-mcp-evals",
   regionUrl: null,
@@ -25,21 +25,51 @@ const baseParams = {
   name: "Nightly Import",
 };
 
-function monitorResponse(config: Record<string, unknown>) {
+// Sentry answers with the created detector and serializes the Monitor as
+// `dataSources[0].queryObj` (MonitorIncidentDetectorValidator).
+function monitorResponse(
+  config: Record<string, unknown>,
+  {
+    status = "active",
+    workflowIds = [],
+  }: { status?: string; workflowIds?: string[] } = {},
+) {
   return {
-    id: "c5f2a1b0-0000-4000-8000-000000000001",
-    slug: "nightly-import",
+    id: "8812",
+    projectId: "4509062593708032",
     name: "Nightly Import",
-    status: "active",
-    isMuted: false,
-    project: {
-      id: "4509062593708032",
-      slug: "cloudflare-mcp",
-      name: "cloudflare-mcp",
-    },
+    type: "monitor_check_in_failure",
+    enabled: status === "active",
+    config: {},
+    conditionGroup: null,
+    workflowIds,
     owner: null,
-    config,
-    environments: [],
+    createdBy: "1",
+    dateCreated: "2026-11-03T12:00:00Z",
+    dateUpdated: "2026-11-03T12:00:00Z",
+    dataSources: [
+      {
+        id: "991",
+        organizationId: "1",
+        type: "cron_monitor",
+        sourceId: "77",
+        queryObj: {
+          id: "c5f2a1b0-0000-4000-8000-000000000001",
+          slug: "nightly-import",
+          name: "Nightly Import",
+          status,
+          isMuted: false,
+          project: {
+            id: "4509062593708032",
+            slug: "cloudflare-mcp",
+            name: "cloudflare-mcp",
+          },
+          owner: null,
+          config,
+          environments: [],
+        },
+      },
+    ],
   };
 }
 
@@ -78,17 +108,22 @@ describe("create_monitor", () => {
     );
 
     expect(requestBody).toEqual({
-      project: "cloudflare-mcp",
+      type: "monitor_check_in_failure",
       name: "Nightly Import",
-      config: {
-        schedule_type: "crontab",
-        schedule: "0 3 * * *",
-        timezone: "America/Los_Angeles",
-        checkin_margin: 5,
-        max_runtime: 30,
-        failure_issue_threshold: 2,
-        recovery_threshold: 1,
-      },
+      dataSources: [
+        {
+          name: "Nightly Import",
+          config: {
+            schedule_type: "crontab",
+            schedule: "0 3 * * *",
+            timezone: "America/Los_Angeles",
+            checkin_margin: 5,
+            max_runtime: 30,
+            failure_issue_threshold: 2,
+            recovery_threshold: 1,
+          },
+        },
+      ],
     });
 
     assertStructuredOnlyResult(result);
@@ -112,6 +147,7 @@ describe("create_monitor", () => {
           "status": "active",
           "timezone": "America/Los_Angeles",
           "webUrl": "https://sentry-mcp-evals.sentry.io/crons/cloudflare-mcp/nightly-import/",
+          "workflowIds": [],
         },
       }
     `);
@@ -141,7 +177,9 @@ describe("create_monitor", () => {
     );
 
     expect(requestBody).toMatchObject({
-      config: { schedule_type: "interval", schedule: [15, "minute"] },
+      dataSources: [
+        { config: { schedule_type: "interval", schedule: [15, "minute"] } },
+      ],
     });
     expect(getStructuredContent(result)).toMatchObject({
       monitor: { scheduleType: "interval", schedule: "15 minute" },
@@ -211,7 +249,9 @@ describe("create_monitor", () => {
       context,
     );
 
-    expect(requestBody).toMatchObject({ config: { checkin_margin: 0 } });
+    expect(requestBody).toMatchObject({
+      dataSources: [{ config: { checkin_margin: 0 } }],
+    });
   });
 
   it.each(["alice", "team:backend", "user:", "user:1:2"])(
@@ -234,42 +274,97 @@ describe("create_monitor", () => {
     );
   });
 
-  it("forwards slug, status, and owner", async () => {
+  it("forwards slug, status, owner, and workflowIds", async () => {
     let requestBody: Record<string, unknown> | null = null;
     mswServer.use(
       http.post(endpoint, async ({ request }) => {
         requestBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
-          monitorResponse({ schedule_type: "crontab", schedule: "@daily" }),
+          monitorResponse(
+            { schedule_type: "crontab", schedule: "@daily" },
+            { status: "disabled", workflowIds: ["12"] },
+          ),
           { status: 201 },
         );
       }),
     );
 
-    await createMonitor.handler(
+    const result = await createMonitor.handler(
       {
         ...baseParams,
         schedule: { type: "crontab", crontab: "@daily" },
         slug: "nightly-import",
         status: "disabled",
         owner: "team:456",
+        workflowIds: ["12"],
       },
       context,
     );
 
-    expect(requestBody).toMatchObject({
-      slug: "nightly-import",
-      status: "disabled",
+    // The detector and its Monitor both carry the owner, matching what the
+    // legacy monitor endpoint copied onto the detector.
+    expect(requestBody).toEqual({
+      type: "monitor_check_in_failure",
+      name: "Nightly Import",
       owner: "team:456",
+      workflowIds: ["12"],
+      dataSources: [
+        {
+          name: "Nightly Import",
+          config: { schedule_type: "crontab", schedule: "@daily" },
+          slug: "nightly-import",
+          status: "disabled",
+          owner: "team:456",
+        },
+      ],
+    });
+    expect(getStructuredContent(result)).toMatchObject({
+      monitor: { status: "disabled", workflowIds: ["12"] },
     });
   });
+
+  it("reports a monitor Sentry disabled for lack of a seat", async () => {
+    mswServer.use(
+      http.post(endpoint, () =>
+        HttpResponse.json(
+          monitorResponse(
+            { schedule_type: "crontab", schedule: "@daily" },
+            { status: "disabled" },
+          ),
+          { status: 201 },
+        ),
+      ),
+    );
+
+    const result = await createMonitor.handler(
+      { ...baseParams, schedule: { type: "crontab", crontab: "@daily" } },
+      context,
+    );
+
+    expect(getStructuredContent(result)).toMatchObject({
+      monitor: { status: "disabled" },
+    });
+  });
+
+  it.each([["abc"], ["12a"]])(
+    "rejects non-numeric workflow ID %s in the input schema",
+    (id) => {
+      expect(
+        createMonitor.inputSchema.workflowIds.safeParse([id]).success,
+      ).toBe(false);
+    },
+  );
 
   it("surfaces Sentry validation errors", async () => {
     mswServer.use(
       http.post(endpoint, () =>
         HttpResponse.json(
           {
-            config: { schedule: ["Only 5 field crontab syntax is supported"] },
+            dataSources: {
+              config: {
+                schedule: ["Only 5 field crontab syntax is supported"],
+              },
+            },
           },
           { status: 400 },
         ),

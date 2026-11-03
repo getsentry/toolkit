@@ -945,7 +945,7 @@
   },
   {
     "name": "create_monitor",
-    "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nSet `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', schedule={ type: 'crontab', crontab: '0 3 * * *' }, timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', schedule={ type: 'interval', value: 15, unit: 'minute' })\n</examples>",
+    "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nSet `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nworkflowIds optionally connect existing notification Alerts without modifying them. Use find_alert_rules(kind='issue') to find workflow IDs.\nIf the returned status is `disabled` but you did not request that, the organization has no cron monitor seat available. Tell the user; the monitor ignores check-ins until a seat frees up and it is enabled.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', schedule={ type: 'crontab', crontab: '0 3 * * *' }, timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', schedule={ type: 'interval', value: 15, unit: 'minute' })\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1059,6 +1059,14 @@
           "type": "string",
           "pattern": "^(user|team):\\d+$",
           "description": "Owner actor in `user:ID` or `team:ID` format."
+        },
+        "workflowIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          },
+          "description": "Existing notification Alert IDs to connect."
         }
       },
       "required": ["organizationSlug", "projectSlug", "name", "schedule"]
@@ -1105,6 +1113,12 @@
             "recoveryThreshold": {
               "type": ["number", "null"]
             },
+            "workflowIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "webUrl": {
               "type": "string",
               "format": "uri"
@@ -1123,6 +1137,7 @@
             "maxRuntime",
             "failureIssueThreshold",
             "recoveryThreshold",
+            "workflowIds",
             "webUrl"
           ],
           "additionalProperties": false

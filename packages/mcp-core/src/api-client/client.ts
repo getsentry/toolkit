@@ -2616,11 +2616,16 @@ export class SentryApiService {
   }
 
   /**
-   * Create a cron monitor.
+   * Create a cron monitor through the detectors API, as the Sentry UI does.
+   * Unlike the legacy `POST /organizations/{org}/monitors/`, this path records
+   * the acting user as the detector's creator and can connect Alerts.
    *
-   * POST /organizations/{org}/monitors/
-   * Source: src/sentry/monitors/endpoints/organization_monitor_index.py
-   * Body fields: src/sentry/monitors/validators.py (MonitorValidator, ConfigValidator)
+   * POST /organizations/{org}/projects/{project}/detectors/
+   * Source: src/sentry/monitors/validators.py (MonitorIncidentDetectorValidator,
+   * MonitorDataSourceValidator, ConfigValidator)
+   *
+   * Returns the created Monitor, which Sentry serializes as the detector's
+   * `dataSources[0].queryObj`.
    */
   async createMonitor(
     {
@@ -2630,6 +2635,7 @@ export class SentryApiService {
       slug,
       status,
       owner,
+      workflowIds,
       config,
     }: {
       organizationSlug: string;
@@ -2638,6 +2644,7 @@ export class SentryApiService {
       slug?: string;
       status?: "active" | "disabled";
       owner?: string;
+      workflowIds?: string[];
       config: {
         schedule_type: "crontab" | "interval";
         schedule: string | [number, string];
@@ -2649,25 +2656,34 @@ export class SentryApiService {
       };
     },
     opts?: RequestOptions,
-  ): Promise<Monitor> {
-    const payload: Record<string, unknown> = {
-      project: projectSlug,
-      name,
-      config,
-    };
-    if (slug !== undefined) payload.slug = slug;
-    if (status !== undefined) payload.status = status;
-    if (owner !== undefined) payload.owner = owner;
-
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/monitors/`,
+  ): Promise<{ detector: Detector; monitor: Monitor }> {
+    const response = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/projects/${projectSlug}/detectors/`,
       {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          type: "monitor_check_in_failure",
+          name,
+          ...(owner !== undefined && { owner }),
+          ...(workflowIds !== undefined && { workflowIds }),
+          dataSources: [
+            {
+              name,
+              config,
+              ...(slug !== undefined && { slug }),
+              ...(status !== undefined && { status }),
+              ...(owner !== undefined && { owner }),
+            },
+          ],
+        }),
       },
       opts,
     );
-    return MonitorSchema.parse(body);
+    const detector = DetectorSchema.parse(response);
+    return {
+      detector,
+      monitor: MonitorSchema.parse(detector.dataSources?.[0]?.queryObj),
+    };
   }
 
   /**

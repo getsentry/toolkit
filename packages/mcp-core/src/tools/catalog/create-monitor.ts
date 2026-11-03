@@ -40,6 +40,7 @@ export const createMonitorOutputSchema = z.object({
     maxRuntime: z.number().nullable(),
     failureIssueThreshold: z.number().nullable(),
     recoveryThreshold: z.number().nullable(),
+    workflowIds: z.array(z.string()),
     webUrl: z.string().url(),
   }),
 });
@@ -58,7 +59,11 @@ function formatSchedule(value: unknown): string | null {
   return null;
 }
 
-function toMonitorSummary(monitor: Monitor, webUrl: string) {
+function toMonitorSummary(
+  monitor: Monitor,
+  workflowIds: string[],
+  webUrl: string,
+) {
   const config = monitor.config ?? {};
   return {
     id: monitor.id == null ? null : String(monitor.id),
@@ -74,6 +79,7 @@ function toMonitorSummary(monitor: Monitor, webUrl: string) {
     maxRuntime: numberOrNull(config.max_runtime),
     failureIssueThreshold: numberOrNull(config.failure_issue_threshold),
     recoveryThreshold: numberOrNull(config.recovery_threshold),
+    workflowIds,
     webUrl,
   };
 }
@@ -90,6 +96,8 @@ export default defineTool({
     "- Set up a cron monitor before instrumenting check-ins",
     "",
     "Set `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.",
+    "workflowIds optionally connect existing notification Alerts without modifying them. Use find_alert_rules(kind='issue') to find workflow IDs.",
+    "If the returned status is `disabled` but you did not request that, the organization has no cron monitor seat available. Tell the user; the monitor ignores check-ins until a seat frees up and it is enabled.",
     "After an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.",
     "",
     "<examples>",
@@ -184,6 +192,10 @@ export default defineTool({
       )
       .describe("Owner actor in `user:ID` or `team:ID` format.")
       .optional(),
+    workflowIds: z
+      .array(z.string().regex(/^\d+$/))
+      .describe("Existing notification Alert IDs to connect.")
+      .optional(),
   },
   annotations: {
     readOnlyHint: false,
@@ -205,13 +217,14 @@ export default defineTool({
       project: { slug: params.projectSlug },
     });
 
-    const monitor = await apiService.createMonitor({
+    const { detector, monitor } = await apiService.createMonitor({
       organizationSlug,
       projectSlug: params.projectSlug,
       name: params.name,
       slug: params.slug,
       status: params.status,
       owner: params.owner,
+      workflowIds: params.workflowIds,
       config: {
         ...(schedule.type === "crontab"
           ? { schedule_type: "crontab" as const, schedule: schedule.crontab }
@@ -239,6 +252,7 @@ export default defineTool({
     return structuredResult({
       monitor: toMonitorSummary(
         monitor,
+        detector.workflowIds ?? [],
         apiService.getMonitorUrl(organizationSlug, monitor.slug, projectSlug),
       ),
     });
