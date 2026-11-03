@@ -1,7 +1,12 @@
-import type { TraceItemType } from "../../../api-client";
+import type { Tag, TraceItemAttribute } from "../../../api-client";
+import { UserInputError } from "../../../errors";
+import { hasAgentProvider } from "../../../internal/agents/provider-factory";
+import { withProviderFallback } from "../../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import type { ServerContext } from "../../../types";
+import { fetchCustomAttributes } from "../search-events/utils";
+import { formatListResult } from "./format";
 
 export const SEARCH_ATTRIBUTES_DATASETS = ["spans", "logs", "metrics"] as const;
 
@@ -14,9 +19,12 @@ export interface SearchAttributesParams {
   query?: string;
   period?: string;
   regionUrl: string | null;
-  limit: number;
+  limit?: number;
   dataset?: SearchAttributesDataset;
 }
+
+const DEFAULT_PERIOD = "14d";
+const LIST_LIMIT = 50;
 
 /**
  * Handler for search_attributes.
@@ -32,6 +40,12 @@ export async function runSearchAttributes(
 
   setTargetTagsAndAttributes(params);
 
+  if (!params.dataset) {
+    throw new UserInputError(
+      "Choose a dataset: `spans` (requests, latency, database and AI calls), `logs` (log lines), or `metrics` (counters, gauges, distributions).",
+    );
+  }
+
   // The attributes API filters by numeric project ID, not slug.
   let projectId: string | undefined;
   if (params.projectSlug) {
@@ -42,19 +56,48 @@ export async function runSearchAttributes(
     projectId = String(project.id);
   }
 
-  // The attributes API still calls the metrics dataset "tracemetrics".
-  const itemType =
-    params.dataset === "metrics" ? "tracemetrics" : params.dataset;
   const query = params.query || undefined;
+  const period = params.period ?? DEFAULT_PERIOD;
 
-  // TODO: search attributes with these inputs and format the results.
-  let output = `# Attribute Search in **${organizationSlug}**\n\n`;
-  output += "Not implemented yet. Parsed inputs:\n\n";
-  output += `- Dataset: ${params.dataset} (API item type: ${itemType})\n`;
-  output += `- Project: ${projectId ? `${params.projectSlug} (ID ${projectId})` : "all projects"}\n`;
-  output += `- Query: ${query ?? "none (list all attributes)"}\n`;
-  output += `- Period: ${params.period ?? "not set"}\n`;
-  output += `- Limit: ${params.limit}\n`;
+  const { attributes } = await fetchCustomAttributes(
+    apiService,
+    organizationSlug,
+    params.dataset,
+    projectId,
+    { statsPeriod: period },
+    { context: true },
+  );
+  const rows = Object.values(attributes) as TraceItemAttribute[];
 
-  return output;
+  const dataset = params.dataset;
+  const listAttributes = (importantInfo?: string[], notes?: string[]) =>
+    formatListResult({
+      organizationSlug,
+      dataset,
+      period,
+      attributes: rows,
+      limit: params.limit ?? LIST_LIMIT,
+      notes,
+      importantInfo,
+    });
+
+  if (!hasAgentProvider()) {
+    return listAttributes(
+      [
+        "Matching by `query` needs an AI provider, so these are the dataset's attributes instead.",
+      ],
+      [],
+    );
+  }
+
+  if (query) {
+    return listAttributes(
+      [
+        "Matching by `query` is not available yet. Here are all of the dataset's attributes instead.",
+      ],
+      [],
+    );
+  }
+
+  return listAttributes();
 }

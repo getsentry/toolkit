@@ -20,30 +20,25 @@ export default defineTool({
   name: "search_attributes",
   // TODO: Edit this description, figure out what we want it to do
   description: [
-    "Find span, log, or metric attribute keys in Sentry: which attributes exist, their types, short descriptions, and whether they're deprecated or follow semantic conventions.",
+    "Find span, log, or metric attribute keys in Sentry: which attributes exist, their types, short descriptions, and whether they're deprecated.",
     "",
-    // TODO: put this in after "Use before search_traces, search_logs, or search_metrics"
-    "Use when you don't know the exact attribute key, or to check whether an attribute is being sent at all.",
+    "Use before search_traces, search_logs, or search_metrics when you don't know the exact attribute key, or to check whether an attribute is still being sent.",
     "",
-    "`query` is natural language (preferred) or part of an attribute name; a configured agent turns it into an attribute-name search.",
+    "`query` is plain English or part of a key. Omit it to list the dataset's attributes.",
     "",
     "NOT for attribute values or event data (use search_traces, search_logs, or search_metrics), or issue tag values (use get_issue_tag_values).",
     "",
     "<examples>",
-    "search_attributes(organizationSlug='my-org', query='which attribute holds the HTTP status code, so I can group failed requests by it', dataset='spans')",
-    "search_attributes(organizationSlug='my-org', query='database query text', dataset='spans')",
-    "search_attributes(organizationSlug='my-org', query='gen_ai.usage', dataset='spans', limit=50)",
-    "search_attributes(organizationSlug='my-org', query='are we still sending the deprecated HTTP method attribute, and what replaced it', dataset='spans')",
-    "search_attributes(organizationSlug='my-org', query='user.id', dataset='spans', period='24h')",
-    "search_attributes(organizationSlug='my-org', projectSlug='backend', query='which attribute carries the request ID that ties log lines back to a trace', dataset='logs')",
-    "search_attributes(organizationSlug='my-org', query='log level', dataset='logs')",
-    "search_attributes(organizationSlug='my-org', projectSlug='frontend', query='which attributes identify payment provider and region, to break down revenue by them', dataset='metrics', period='7d')",
+    "search_attributes(organizationSlug='my-org', query='HTTP status code', dataset='spans')",
+    "search_attributes(organizationSlug='my-org', query='are we still sending the deprecated HTTP method attribute', dataset='spans')",
+    "search_attributes(organizationSlug='my-org', projectSlug='backend', query='request ID that ties log lines to a trace', dataset='logs')",
+    "search_attributes(organizationSlug='my-org', query='payment provider', dataset='metrics', period='7d')",
+    "search_attributes(organizationSlug='my-org', dataset='spans')",
     "</examples>",
     "",
     "<hints>",
     "- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.",
     "- Infer dataset from the question: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
-    "- Omit `query` to list all attributes in the dataset.",
     "- Pass a returned key to the matching search tool to query its values.",
     "</hints>",
   ].join("\n"),
@@ -55,7 +50,7 @@ export default defineTool({
       .trim()
       .optional()
       .describe(
-        "What attribute to find, in natural language or as part of an attribute name. Omit to list attributes in the dataset.",
+        "What attribute to find, in plain English or as part of a key. Omit to list the dataset's attributes.",
       ),
     period: ParamPeriod.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -63,8 +58,10 @@ export default defineTool({
       .number()
       .min(1)
       .max(100)
-      .default(10)
-      .describe("Maximum number of attributes to return (1-100)"),
+      .optional()
+      .describe(
+        "Maximum number of attributes to return (1-100). Defaults to 10 with a `query` and 50 when listing.",
+      ),
     dataset: z
       .enum(SEARCH_ATTRIBUTES_DATASETS)
       .optional()
