@@ -1,19 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { loadAppForArgs, routesForArgs } from "../../src/app-for-args.js";
+import {
+  isRootHelpRequest,
+  loadAppForArgs,
+  routesForArgs,
+} from "../../src/app-for-args.js";
 import { routes } from "../../src/app.js";
-import { ROUTE_LOADERS } from "../../src/generated/route-loaders.js";
-
-describe("ROUTE_LOADERS", () => {
-  test("loads every top-level route of app.ts, in its order", async () => {
-    const entries = routes.getAllEntries();
-    expect(Object.keys(ROUTE_LOADERS)).toEqual(
-      entries.map((entry) => entry.name.original),
-    );
-    for (const entry of entries) {
-      expect(await ROUTE_LOADERS[entry.name.original]!()).toBe(entry.target);
-    }
-  });
-});
 
 describe("routesForArgs", () => {
   test.each([
@@ -51,6 +42,7 @@ describe("routesForArgs", () => {
     // `--version` prints the version before any command runs
     [["--version"], ["help"]],
     [["--verbose", "--version"], ["help"]],
+    [["--version", "--help"], ["help"]],
   ])("%j loads %j", (args, expected) => {
     expect(routesForArgs(args)).toEqual(expected);
   });
@@ -58,7 +50,7 @@ describe("routesForArgs", () => {
   test.each([
     [[]],
     [["--help"]],
-    [["--version", "--help"]],
+    [["--help", "issue"]],
     [["--verbose"]],
     [["--json"]],
     // Flags the route scanner doesn't accept before the route name
@@ -73,6 +65,47 @@ describe("routesForArgs", () => {
     [["cli", "setup"]],
   ])("%j loads the full application", (args) => {
     expect(routesForArgs(args)).toBeUndefined();
+  });
+});
+
+describe("isRootHelpRequest", () => {
+  const env = {};
+
+  test.each([
+    [[]],
+    [["--verbose"]],
+    [["--help"]],
+    [["-h"]],
+    [["--log-level", "debug", "--help"]],
+    [["help"]],
+    [["help", "--verbose"]],
+    // The help command's own help
+    [["help", "--help"]],
+  ])("%j prints the top-level help", (args) => {
+    expect(isRootHelpRequest(args, env)).toBe(true);
+  });
+
+  test.each([
+    [["--version"]],
+    [["--json"]],
+    [["--help", "--json"]],
+    [["--fields", "name"]],
+    [["help", "--json"]],
+    [["help", "--fields=name"]],
+    [["--help", "issue"]],
+    [["--helpAll"]],
+    [["--", "issue"]],
+    [["help", "issue"]],
+    [["help", "--log-level", "debug"]],
+    [["issue", "list"]],
+  ])("%j does not", (args) => {
+    expect(isRootHelpRequest(args, env)).toBe(false);
+  });
+
+  test("JSON output from the environment does not", () => {
+    const json = { SENTRY_OUTPUT_FORMAT: "json" };
+    expect(isRootHelpRequest([], json)).toBe(false);
+    expect(isRootHelpRequest(["help"], json)).toBe(false);
   });
 });
 
@@ -103,6 +136,6 @@ describe("loadAppForArgs", () => {
   });
 
   test("loads app.ts for the full application", async () => {
-    expect((await loadAppForArgs(["--help"])).routes).toBe(routes);
+    expect((await loadAppForArgs(["--help", "--json"])).routes).toBe(routes);
   });
 });

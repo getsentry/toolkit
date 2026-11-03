@@ -9,7 +9,7 @@
  * the SDK uses from then on.
  */
 
-import { routesForArgs } from "./app-for-args.js";
+import { loadRoute, routesForArgs } from "./app-for-args.js";
 import {
   buildSentryApp,
   buildSentryRoutes,
@@ -17,7 +17,6 @@ import {
 } from "./app-root.js";
 import type { CliApplication } from "./lib/application.js";
 import type { CliRoutes } from "./lib/route-registry.js";
-import { ROUTE_LOADERS } from "./generated/route-loaders.js";
 
 type SdkApp = { app: CliApplication; routes: CliRoutes };
 
@@ -46,11 +45,7 @@ export async function loadSdkApp(args: readonly string[]): Promise<SdkApp> {
   // `import()` evaluates once.
   await Promise.all(
     missing.map(async (name) => {
-      const load = ROUTE_LOADERS[name];
-      if (!load) {
-        throw new Error(`No loader for the top-level route "${name}"`);
-      }
-      loaded[name] = await load();
+      loaded[name] = await loadRoute(name);
     }),
   );
   // Another call may have registered the full tree in the meantime
