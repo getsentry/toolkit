@@ -8,10 +8,12 @@
  * Binaries are uploaded to GitHub Releases.
  *
  * Uses a two-step build to produce external sourcemaps for Sentry:
- * 1. Bundle TS → minified JS (esbuild): the CLI with an external .map, the
- *    shell-completion engine, and the SEA bootstrap that runs one of them
- * 2. Compile JS → native SEA binary per platform (fossilize)
- * 3. Upload .map to Sentry for server-side stack trace resolution
+ * 1. Bundle TS → minified JS (esbuild): the CLI as code-split chunks, the
+ *    shell-completion engine, and the main script that runs them
+ *    (`src/chunk-main.ts`), the same as the npm package's `dist/bin.cjs`
+ * 2. Compile JS → native SEA binary per platform (fossilize), with every
+ *    chunk embedded as a SEA asset
+ * 3. Upload the .map files to Sentry for server-side stack trace resolution
  *
  * Usage:
  *   pnpm run script/build.ts                        # Build for all platforms
@@ -25,20 +27,30 @@
  *     sentry-linux-arm64
  *     sentry-linux-x64
  *     sentry-windows-x64.exe
- *     bin.js.map          (sourcemap, uploaded to Sentry then deleted)
+ *   dist-build/           (chunks and sourcemaps, embedded and uploaded)
  */
 
 import { execSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { basename } from "node:path";
 import { buildCarExtract } from "./build-car-extract.js";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { type BuildOptions, build as esbuild } from "esbuild";
-import { uploadSourcemaps } from "../src/lib/api/sourcemaps.js";
-import { injectDebugId, PLACEHOLDER_DEBUG_ID } from "./debug-id.js";
+import {
+  buildMainScript,
+  chunkBuild,
+  type InjectedFile,
+  injectDebugIds,
+  uploadChunkSourcemaps,
+} from "./lib/chunk-build.js";
+import {
+  REQUIRE_ALIAS_FILTER,
+  requireAliasPlugin,
+} from "./lib/require-alias-plugin.js";
+import { buildSplitBundle } from "./lib/split-bundle.js";
 import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
 import { zodV3StubPlugin } from "./lib/zod-v3-stub-plugin.js";
 import { textImportPlugin } from "./text-import-plugin.js";
@@ -51,11 +63,6 @@ const VERSION: string = pkg.version;
 /** Pin to Node 22 LTS for SEA binaries */
 /** Node version for SEA binaries. "lts" resolves to the latest LTS via fossilize. */
 const NODE_VERSION = "lts";
-
-/** Files whose lazy relative imports must be included in the native bundle. */
-const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
-const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /**
  * Optional OAuth client ID override baked into the binary. When unset, the
@@ -96,19 +103,14 @@ function getFossilizePlatform(target: BuildTarget): string {
 const BUILD_DIR = "dist-build";
 
 /**
- * The CLI bundle. Embedded as a SEA asset, so its key is also the filename in
- * stack traces and the URL of its uploaded sourcemap.
+ * The `sentry __complete` bundle. Like every chunk, it is embedded as a SEA
+ * asset under its path, which is also its filename in stack traces and the
+ * URL of its uploaded sourcemap.
  */
-const BUNDLE_JS = `${BUILD_DIR}/bin.js`;
+const COMPLETE_JS = `${BUILD_DIR}/complete.cjs`;
 
-/** The `sentry __complete` bundle, embedded as a second SEA asset. */
-const COMPLETE_JS = `${BUILD_DIR}/complete.js`;
-
-/** The SEA main script, which runs one of the two bundles above. */
+/** The SEA main script, which runs the chunks (`src/chunk-main.ts`). */
 const SEA_MAIN_JS = `${BUILD_DIR}/sea-main.js`;
-
-/** Path to the sourcemap produced by Step 1 (bundle). */
-const SOURCEMAP_FILE = `${BUILD_DIR}/bin.js.map`;
 
 /**
  * esbuild options shared by the CLI and completion bundles.
@@ -120,12 +122,10 @@ const SOURCEMAP_FILE = `${BUILD_DIR}/bin.js.map`;
  * empty names array).
  */
 const BUNDLE_OPTIONS = {
-  bundle: true,
   platform: "node",
   // Target Node 24 LTS. Downlevels `using` declarations (not
   // supported in CJS). Node SEA runs embedded JS as CJS.
   target: "node24",
-  format: "cjs",
   treeShaking: true,
   // Externalize the Ink + React stack from the esbuild bundling
   // step. The main bundle never calls `import("ink")` at runtime —
@@ -149,7 +149,7 @@ const BUNDLE_OPTIONS = {
     "node-sqlite3-wasm",
   ],
   minify: true,
-  metafile: true,
+  sourcemap: true,
   // CJS format needs import.meta.url shimmed via inject + define.
   inject: ["./script/import-meta-url.js"],
   define: {
@@ -159,7 +159,6 @@ const BUNDLE_OPTIONS = {
       SENTRY_CLIENT_ID_BUILD: JSON.stringify(SENTRY_CLIENT_ID),
     }),
     "process.env.NODE_ENV": JSON.stringify("production"),
-    __SENTRY_DEBUG_ID__: JSON.stringify(PLACEHOLDER_DEBUG_ID),
     // Tree-shakes the SDK's runtime module hooks, which can't instrument a
     // bundle and would hook the host app in library mode.
     __SENTRY_CHANNEL_INJECTION__: "false",
@@ -168,118 +167,92 @@ const BUNDLE_OPTIONS = {
     textImportPlugin,
     zodEnglishLocalesPlugin,
     zodV3StubPlugin,
-    // Transform _require() → require() so esbuild resolves lazy relative
-    // requires at bundle time. In tsx dev mode, _require is a file-local
-    // createRequire(import.meta.url) that resolves relative to the file.
-    // esbuild only statically resolves bare require() calls.
-    // Only targets the specific files that use _require with relative paths.
-    {
-      name: "require-alias",
-      setup(b) {
-        b.onLoad({ filter: REQUIRE_ALIAS_FILTER }, async (args) => {
-          const source = await readFile(args.path, "utf-8");
-          return {
-            contents: source.replace(REQUIRE_ALIAS_RE, "require("),
-            loader: args.path.endsWith(".tsx") ? "tsx" : "ts",
-          };
-        });
-      },
-    },
+    // `_require()` → `require()`, so esbuild bundles the lazy requires
+    requireAliasPlugin,
   ],
 } satisfies BuildOptions;
 
-/** Size of a bundle in esbuild's metafile, in MB. */
-async function bundleSizeMb(
-  outputs: Record<string, { bytes: number }> | undefined,
-  file: string,
-): Promise<string> {
-  return (
-    (outputs?.[file]?.bytes ?? (await stat(file)).size) /
-    1024 /
-    1024
-  ).toFixed(2);
+/** Total size of `files`, in MB. */
+async function sizeMb(files: readonly string[]): Promise<string> {
+  const sizes = await Promise.all(
+    files.map(async (file) => (await stat(file)).size),
+  );
+  return (sizes.reduce((a, b) => a + b, 0) / 1024 / 1024).toFixed(2);
 }
+
+/** The JavaScript files that step 1 writes, all embedded as SEA assets. */
+type Bundle = {
+  /** Every chunk, including {@link COMPLETE_JS}. */
+  readonly files: readonly string[];
+  /** The CLI's entry chunk (`src/bin.ts`). */
+  readonly cli: string;
+};
 
 /**
  * Step 1: Bundle TypeScript sources into minified JS files with esbuild:
- * the CLI (`src/bin.ts`) with an external sourcemap, and the
- * shell-completion engine (`src/complete-bin.ts`). The SEA bootstrap that
- * picks one of them is bundled after debug ID injection, because it embeds
- * a hash of each (see {@link bundleSeaMain}).
+ * the CLI (`src/bin.ts`) as code-split chunks, the same way as the npm
+ * package (`script/lib/split-bundle.ts`), and the shell-completion engine
+ * (`src/complete-bin.ts`) as one file. Each has a sourcemap, which is
+ * uploaded to Sentry and never shipped. The main script that runs them is
+ * bundled after debug ID injection, because it embeds a hash of every chunk
+ * (see {@link bundleSeaMain}).
  *
- * This runs once and is shared by all compile targets. The sourcemap
- * is uploaded to Sentry (never shipped to users) for server-side
- * stack trace resolution.
+ * This runs once and is shared by all compile targets.
  */
-async function bundleJs(): Promise<boolean> {
-  console.log("  Step 1: Bundling TypeScript → JS + sourcemap...");
+async function bundleJs(): Promise<Bundle | undefined> {
+  console.log("  Step 1: Bundling TypeScript → JS + sourcemaps...");
 
   try {
-    const result = await esbuild({
-      ...BUNDLE_OPTIONS,
-      entryPoints: ["./src/bin.ts"],
-      outfile: BUNDLE_JS,
-      sourcemap: "linked",
+    const cli = await buildSplitBundle({
+      entryPoints: { cli: "./src/bin.ts" },
+      outdir: BUILD_DIR,
+      format: "cjs",
+      lazyRequireImporters: REQUIRE_ALIAS_FILTER,
+      options: BUNDLE_OPTIONS,
     });
-    // Completion runs with telemetry off and is never symbolicated, so it
-    // gets no sourcemap. `SENTRY_CLI_COMPLETION_BUILD` drops the lazy
-    // telemetry `require` (and `@sentry/node`) from `src/lib/db/index.ts`.
-    const completeResult = await esbuild({
+    // Completion runs with telemetry off: `SENTRY_CLI_COMPLETION_BUILD`
+    // drops the lazy telemetry `require` (and `@sentry/node`) from
+    // `src/lib/db/index.ts`.
+    await esbuild({
       ...BUNDLE_OPTIONS,
       entryPoints: ["./src/complete-bin.ts"],
+      bundle: true,
+      format: "cjs",
       outfile: COMPLETE_JS,
       define: { ...BUNDLE_OPTIONS.define, SENTRY_CLI_COMPLETION_BUILD: "true" },
     });
 
-    const mapSize = ((await stat(SOURCEMAP_FILE)).size / 1024 / 1024).toFixed(
-      2,
-    );
     console.log(
-      `    -> ${BUNDLE_JS} (${await bundleSizeMb(result.metafile?.outputs, BUNDLE_JS)} MB)`,
+      `    -> ${BUILD_DIR}/${basename(cli.entries.cli)}: ${cli.files.length} chunks (${await sizeMb(cli.files)} MB)`,
     );
-    console.log(`    -> ${SOURCEMAP_FILE} (${mapSize} MB, for Sentry upload)`);
-    console.log(
-      `    -> ${COMPLETE_JS} (${await bundleSizeMb(completeResult.metafile?.outputs, COMPLETE_JS)} MB)`,
-    );
-    return true;
+    console.log(`    -> ${COMPLETE_JS} (${await sizeMb([COMPLETE_JS])} MB)`);
+    return { files: [...cli.files, COMPLETE_JS], cli: cli.entries.cli };
   } catch (error) {
     console.error("  Failed to bundle JS:");
     console.error(
       `    ${error instanceof Error ? error.message : String(error)}`,
     );
-    return false;
+    return;
   }
 }
 
-/** First 16 hex digits of the SHA-256 of `file`. */
-async function fileHash(file: string): Promise<string> {
-  return createHash("sha256")
-    .update(await readFile(file))
-    .digest("hex")
-    .slice(0, 16);
-}
-
 /**
- * Bundle the SEA main script (`src/sea-main.ts`). It runs after debug ID
- * injection so the hash it embeds for the CLI bundle covers its final bytes:
- * the hash names each bundle's code cache file, and V8 would otherwise accept
- * a cache from another build whose source has the same length.
+ * Bundle the SEA main script (`src/chunk-main.ts`), which reads the chunks
+ * back with `node:sea.getAsset()`. It runs after debug ID injection, so the
+ * build ID it embeds hashes the chunks' final bytes: the ID names the
+ * directory of their code caches, and V8 would otherwise accept a cache from
+ * another build whose source has the same length.
  */
-async function bundleSeaMain(): Promise<boolean> {
+async function bundleSeaMain(bundle: Bundle): Promise<boolean> {
   try {
-    const chunks = {
-      cli: { asset: BUNDLE_JS, buildId: await fileHash(BUNDLE_JS) },
-      complete: { asset: COMPLETE_JS, buildId: await fileHash(COMPLETE_JS) },
-    };
-    await esbuild({
-      entryPoints: ["./src/sea-main.ts"],
-      bundle: true,
+    await buildMainScript({
       outfile: SEA_MAIN_JS,
-      platform: "node",
+      chunks: await chunkBuild(bundle.files, {
+        cli: basename(bundle.cli),
+        complete: basename(COMPLETE_JS),
+      }),
+      assetDir: BUILD_DIR,
       target: BUNDLE_OPTIONS.target,
-      format: "cjs",
-      minify: true,
-      define: { SEA_CHUNKS: JSON.stringify(chunks) },
     });
     console.log(`    -> ${SEA_MAIN_JS} (SEA main script)`);
     return true;
@@ -293,103 +266,23 @@ async function bundleSeaMain(): Promise<boolean> {
 }
 
 /**
- * Inject debug IDs and upload sourcemap to Sentry.
- *
- * Both injection and upload are done natively — no external binary needed.
- * Uses the chunk-upload + assemble protocol for reliable artifact delivery.
- *
- * Requires SENTRY_AUTH_TOKEN environment variable for upload. Debug ID
- * injection always runs (even without auth token) so local builds get
- * debug IDs for development/testing.
+ * Upload the sourcemaps to Sentry. Runs after compilation. Each chunk's
+ * URL is its SEA asset key, the filename of its stack frames.
  */
-/** Module-level debug ID set by {@link injectDebugIds} for use in {@link uploadSourcemapToSentry}. */
-let currentDebugId: string | undefined;
-
-/**
- * Inject debug IDs into the JS and sourcemap. Runs before compilation.
- * The upload happens separately after compilation (see {@link uploadSourcemapToSentry}).
- */
-async function injectDebugIds(): Promise<void> {
-  // skipSnippet: true — the IIFE snippet breaks ESM (placed before import
-  // declarations). The debug ID is instead registered in constants.ts via
-  // a build-time __SENTRY_DEBUG_ID__ constant.
-  console.log("  Injecting debug IDs...");
-  try {
-    const { debugId } = await injectDebugId(BUNDLE_JS, SOURCEMAP_FILE, {
-      skipSnippet: true,
-    });
-    currentDebugId = debugId;
-    console.log(`    -> Debug ID: ${debugId}`);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn(`    Warning: Debug ID injection failed: ${msg}`);
+async function uploadSourcemapsToSentry(
+  injected: readonly InjectedFile[],
+): Promise<void> {
+  if (injected.length === 0) {
     return;
   }
-
-  // Replace the placeholder UUID with the real debug ID in the JS bundle.
-  // Both are 36-char UUIDs so sourcemap character positions stay valid.
-  try {
-    const jsContent = await readFile(BUNDLE_JS, "utf-8");
-    await writeFile(
-      BUNDLE_JS,
-      jsContent.split(PLACEHOLDER_DEBUG_ID).join(currentDebugId),
-    );
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `    Warning: Debug ID placeholder replacement failed: ${msg}`,
-    );
-  }
-}
-
-/**
- * Upload the sourcemap to Sentry. Runs after compilation.
- */
-async function uploadSourcemapToSentry(): Promise<void> {
-  const debugId = currentDebugId;
-  if (!debugId) {
-    return;
-  }
-
   if (!process.env.SENTRY_AUTH_TOKEN) {
     console.log("  No SENTRY_AUTH_TOKEN, skipping sourcemap upload");
     return;
   }
-
-  console.log(`  Uploading sourcemap to Sentry (release: ${VERSION})...`);
-
-  try {
-    const dir = BUNDLE_JS.slice(0, BUNDLE_JS.lastIndexOf("/") + 1);
-    const urlPrefix = `~/${dir}`;
-    const jsBasename = BUNDLE_JS.split("/").pop() ?? "bin.js";
-    const mapBasename = SOURCEMAP_FILE.split("/").pop() ?? "bin.js.map";
-
-    await uploadSourcemaps({
-      org: "sentry",
-      project: "cli",
-      release: VERSION,
-      files: [
-        {
-          path: BUNDLE_JS,
-          debugId,
-          type: "minified_source",
-          url: `${urlPrefix}${jsBasename}`,
-          sourcemapFilename: mapBasename,
-        },
-        {
-          path: SOURCEMAP_FILE,
-          debugId,
-          type: "source_map",
-          url: `${urlPrefix}${mapBasename}`,
-        },
-      ],
-    });
-    console.log("    -> Sourcemap uploaded to Sentry");
-  } catch (error) {
-    // Non-fatal: don't fail the build if upload fails
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn(`    Warning: Sourcemap upload failed: ${msg}`);
-  }
+  await uploadChunkSourcemaps(injected, {
+    release: VERSION,
+    urlPrefix: `~/${BUILD_DIR}/`,
+  });
 }
 
 /**
@@ -399,12 +292,13 @@ async function uploadSourcemapToSentry(): Promise<void> {
  */
 async function compileAllTargets(
   targets: BuildTarget[],
+  bundle: Bundle,
 ): Promise<{ successes: number; failures: number }> {
   const platforms = targets.map((t) => getFossilizePlatform(t));
 
-  // The SEA main script (SEA_MAIN_JS) runs one of these two bundles, read
-  // back with node:sea.getAsset() under the same keys.
-  const assetArgs: string[] = ["--assets", BUNDLE_JS, "--assets", COMPLETE_JS];
+  // The SEA main script (SEA_MAIN_JS) reads the chunks back with
+  // node:sea.getAsset() under the same keys.
+  const assetArgs = bundle.files.flatMap((file) => ["--assets", file]);
 
   // Add ink sidecar as asset if it exists (pre-bundled by text-import-plugin)
   // The text-import-plugin pre-bundles the Ink sidecar into BUILD_DIR.
@@ -482,7 +376,7 @@ async function compileAllTargets(
         // Make the binary ignore NODE_OPTIONS so user V8 flags (e.g.
         // `NODE_OPTIONS=--max-old-space-size=8192`) don't change V8's
         // flag-hash and reject the code caches ("Code cache data
-        // rejected"), the embedded one and the ones `src/lib/sea-chunk.ts`
+        // rejected"), the embedded one and the ones `src/lib/chunk-loader.ts`
         // writes. process.env is untouched, so child processes still
         // inherit the user's NODE_OPTIONS.
         "--ignore-node-options",
@@ -621,22 +515,26 @@ async function build(): Promise<void> {
     console.log(`\nBuilding for ${targets.length} targets`);
   }
 
-  // Clean and recreate output directory (esbuild requires it to exist)
+  // Clean and recreate output directory (esbuild requires it to exist).
+  // Chunk names hash their content, so the last build's would stay around.
   await rm("dist-bin", { recursive: true, force: true });
+  await rm(BUILD_DIR, { recursive: true, force: true });
   mkdirSync("dist-bin", { recursive: true });
 
   console.log("");
 
-  // Step 1: Bundle TS → JS + sourcemap (shared by all targets)
-  const bundled = await bundleJs();
-  if (!bundled) {
+  // Step 1: Bundle TS → JS + sourcemaps (shared by all targets)
+  const bundle = await bundleJs();
+  if (!bundle) {
     process.exit(1);
   }
 
-  // Inject debug IDs into the JS and sourcemap (non-fatal on failure).
-  await injectDebugIds();
+  // Inject debug IDs into the chunks and sourcemaps (non-fatal on failure).
+  console.log("  Injecting debug IDs...");
+  const injected = await injectDebugIds(bundle.files);
+  console.log(`    -> Debug IDs injected into ${injected.length} files`);
 
-  if (!(await bundleSeaMain())) {
+  if (!(await bundleSeaMain(bundle))) {
     process.exit(1);
   }
 
@@ -644,10 +542,10 @@ async function build(): Promise<void> {
 
   // Step 2: Compile JS → native SEA binary for all targets at once
   const { successes: successCount, failures: failCount } =
-    await compileAllTargets(targets);
+    await compileAllTargets(targets, bundle);
 
-  // Step 3: Upload the sourcemap to Sentry (after compilation)
-  await uploadSourcemapToSentry();
+  // Step 3: Upload the sourcemaps to Sentry (after compilation)
+  await uploadSourcemapsToSentry(injected);
 
   // Clean up intermediate build directory (only the binaries are artifacts).
   // await rm(BUILD_DIR, { recursive: true, force: true });

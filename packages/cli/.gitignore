@@ -11,6 +11,8 @@ out
 dist
 dist-bin
 dist-build
+# Scratch output of script/lib/split-bundle.ts
+.split-*
 *.tgz
 
 # e2e bundle build lock (see test/e2e/bundle-setup.ts)
