@@ -227,7 +227,8 @@ the other's credentials, constraints, or results.
 **Node built-ins.** `nodejs_compat` provides `path`, `crypto`, `util`,
 `zlib`, `async_hooks`, and timers. It does not provide `child_process`,
 `tty`, or an HTTP server, and its `fs` is an in-memory file system that
-likely needs a newer compatibility date than the hosted MCP uses (to confirm in the spike). What matters is
+needs a newer compatibility date than the hosted MCP uses (see the spike
+results below). What matters is
 what the exposed commands import transitively, which only a build answers.
 So the first task is a spike: bundle the SDK for workerd with the exposed
 commands, and list what fails to bundle or run, and the bundle size against
@@ -237,6 +238,97 @@ Commands whose imports cannot be made Workers-safe are marked stdio-only
 until fixed. If a whole domain is blocked, that domain's commands split into
 input resolution and a portable operation (the old
 `unify-sentry-api-layer` 11.1), for that domain only.
+
+#### Spike results (#1882)
+
+A throwaway worker imported `createSentrySDK()` and ran 12 command calls
+against a mocked Sentry API with a synthetic token, under `wrangler dev`
+(wrangler 4.151.3, workerd 1.20261019.1, `nodejs_compat` and
+`nodejs_compat_populate_process_env`). SQLite was swapped for a null store
+at bundle time. The same harness passes every call on Node.
+
+**It runs.** With the small fixes in the table, `org list`, `project list`,
+`issue list`, `issue view`, `event view`, `trace view`, `api`, `schema`,
+`issue resolve`, and `run("issue", "list")` all pass, on a fresh isolate
+and on a warm one.
+
+**Bundling.** wrangler alone fails on one module: `lib/init/ui/ink-ui.ts`
+imports the Ink sidecar `with { type: "file" }`, which esbuild rejects.
+`ROUTE_LOADERS` imports every command, so `init` is in the graph even when
+only `issue list` is called. Bundling first with the CLI's esbuild plugins
+(text imports, `_require` aliasing, zod stubs) and then with wrangler works.
+The result is the whole CLI.
+
+**Size.** 6,971 KiB raw, 1,989 KiB gzip (`wrangler deploy --dry-run
+--minify`). The hosted MCP today is 5,092 KiB raw, 975 KiB gzip. The
+Workers limit is 64 MiB uncompressed, with no compressed limit, so size is
+not a blocker. Code hosted never runs is about half the bundle:
+highlight.js and parse5 (~1.2 MB), `sentry mcp`'s server stack (~1.2 MB,
+partly shared with the hosted worker), `init` (Mastra, AI SDK, Clack,
+~0.75 MB), and `@sentry/node` with its dependencies (~0.5 MB).
+
+**Startup.** `wrangler check startup` measured about 65 ms of startup CPU
+locally, mostly parse and compile; the limit is 1 s. Modules initialize on
+first use, so the first call in a fresh isolate took 155-215 ms against the
+mock, and the same calls warm took 6-28 ms.
+
+**Compatibility date.** Every call fails on 2025-03-21 (hosted today) and on
+every date tried up to 2026-01-01: pngjs, reached from `lib/sixel-image.ts`
+through the chart formatters, calls `util.inherits` on a `stream` class the
+older polyfills lack. Calls pass from 2026-01-28 on. Hosted moves to a 2026
+compatibility date, or the image code loads lazily.
+
+| Failure                                                                             | Where                                                                                                 | Hit by                                     | Fix                                                              | Size  |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------- | ----- |
+| `createRequire(import.meta.url)` throws; workerd leaves `import.meta.url` undefined | 11 modules at load (`db/*`, `telemetry`, `custom-ca`, `formatters/*`, `dif`, `sea-assets`, `init/ui`) | every call                                 | define `import.meta.url` at build                                | small |
+| `Dynamic require of "util" is not supported`                                        | CommonJS dependencies in the ESM output                                                               | every call                                 | a `createRequire` banner, as the npm ESM bundle has              | small |
+| top-level `readFileSync` of `assets/spleen-8x16.bin`                                | `formatters/spleen-font.ts`                                                                           | every call                                 | load the glyphs on first use, or embed them                      | small |
+| a null store whose reads return `null` breaks schema setup (`row.count`)            | `db/schema.ts` through `getDatabase()`                                                                | calls that open the database (`api` first) | no-persistence mode skips database setup, not only reads (#1897) | small |
+| `superCtor.prototype` must be an object                                             | pngjs on dates before 2026                                                                            | every call                                 | 2026 compatibility date, or lazy image code                      | small |
+
+**Other findings.**
+
+- `withEnv()`'s `AsyncLocalStorage` works on workerd. Two tokens, three
+  concurrent `issue list` calls each, in one isolate: every request
+  carried only its own token.
+- Environment inheritance is a correctness bug on hosted.
+  `buildIsolatedEnv()` copies `process.env`, which on Workers holds the
+  worker's vars and secrets (`SENTRY_DSN`, `SENTRY_CLIENT_SECRET`,
+  `COOKIE_SECRET`, provider keys). With the worker's `SENTRY_DSN` set,
+  `issue list` with no target resolved to that DSN's org and project. The
+  SDK needs an option to start from an empty env; small.
+- Library-mode telemetry initializes `@sentry/node` and posts envelopes to
+  the CLI's own DSN (18 for 12 calls). Hosted turns it off; small.
+- `node:fs` is workerd's virtual file system. `homedir()` and `tmpdir()`
+  are `/tmp`, which lasts one request, so config-directory writes succeed
+  and vanish. The current directory is `/bundle`, the worker's own code:
+  `api --input /bundle/<script> --dry-run` returns the bundle as the
+  request body. Hosted rejects path-taking flags.
+- `node:sqlite` exists, but `DatabaseSync` is not constructible, so there
+  is no SQLite on workerd. `child_process` throws
+  `ERR_METHOD_NOT_IMPLEMENTED`; `tty.isatty()` returns `false`.
+- `issue resolve --in @commit` fails cleanly (it runs `git`); the explicit
+  `@commit:<repo>@<sha>` form does not need it.
+- `trace view` fetches span details one request per span (853 for the
+  largest fixture, on Node). That stays under the 10,000-subrequest limit,
+  but with 6 connections per request, large traces are slow on hosted.
+
+**Stdio-only, from the spike.** In addition to the list in "What is
+exposed": `react-native xcode` (it spawns processes), the `api --input`
+flag, and the bare `--in @commit` value of `issue
+resolve`. Commands that fall back to DSN detection need an explicit org
+and project on hosted, from the session constraints.
+
+**What is left, ranked.**
+
+- Small: the five fixes in the table, an SDK option for an empty env,
+  telemetry off on hosted, rejecting path-taking flags, and the
+  compatibility date bump (check the rest of the hosted worker on it).
+- Structural: a hosted entry point whose route loaders cover only exposed
+  commands, which drops the Ink import (so wrangler bundles it directly)
+  and about half the bundle; the no-persistence mode (#1897); and the
+  module-level state audit (#1427), of which the spike checked only the
+  token.
 
 ### One introspection source
 
