@@ -439,6 +439,7 @@ type SchemaFlags = {
 };
 
 export const schemaCommand = buildCommand({
+  exposure: "exposed",
   auth: false,
   docs: {
     brief: "Browse the Sentry API schema",

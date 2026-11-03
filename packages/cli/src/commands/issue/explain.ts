@@ -80,6 +80,7 @@ async function analyzeIssue(
 }
 
 export const explainCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Analyze one or more issues using Seer AI",
     fullDescription:

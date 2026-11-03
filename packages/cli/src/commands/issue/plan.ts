@@ -204,6 +204,7 @@ async function confirmRootCauseAndContinue(
 }
 
 export const planCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Generate a solution plan using Seer AI",
     fullDescription:

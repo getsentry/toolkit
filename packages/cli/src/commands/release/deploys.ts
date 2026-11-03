@@ -32,6 +32,7 @@ function formatDeployList(deploys: SentryDeploy[]): string {
 }
 
 export const deploysCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "List deploys for a release",
     fullDescription: "List all deploys recorded for a specific release.",

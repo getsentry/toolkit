@@ -73,6 +73,7 @@ async function pickAccount(
 }
 
 export const switchCommand = buildCommand({
+  exposure: "hidden",
   auth: false,
   skipRcUrlCheck: true,
   docs: {

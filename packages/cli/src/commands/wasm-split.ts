@@ -54,6 +54,7 @@ type WasmSplitResult = {
 };
 
 export const wasmSplitCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Add build ids to WebAssembly modules and split out debug data",
     fullDescription:

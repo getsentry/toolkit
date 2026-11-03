@@ -37,6 +37,7 @@ type TagsFlags = {
 };
 
 export const tagsCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Show the top values of an issue tag",
     fullDescription:

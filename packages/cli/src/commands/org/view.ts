@@ -27,6 +27,7 @@ type ViewFlags = {
 };
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View details of an organization",
     fullDescription:

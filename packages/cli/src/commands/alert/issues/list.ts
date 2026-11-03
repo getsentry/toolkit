@@ -494,6 +494,7 @@ const jsonTransformIssueAlertList = jsonTransformListResult;
 // Command
 
 export const listCommand = buildListCommand("alert issues", {
+  exposure: "exposed",
   docs: {
     brief: "List issue alert rules",
     fullDescription:

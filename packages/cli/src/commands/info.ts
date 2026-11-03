@@ -110,6 +110,7 @@ function formatInfo(data: InfoStatus): string {
 }
 
 export const infoCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Print configuration and verify authentication",
     fullDescription:

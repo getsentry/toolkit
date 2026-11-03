@@ -61,6 +61,7 @@ function formatInjectResult(data: InjectCommandResult): string {
 }
 
 export const injectCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Inject debug IDs into JavaScript files and sourcemaps",
     fullDescription:

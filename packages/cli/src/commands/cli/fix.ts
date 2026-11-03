@@ -658,6 +658,7 @@ function safeHandleSchemaIssues(
 }
 
 export const fixCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   docs: {
     brief: "Diagnose and repair CLI database issues",

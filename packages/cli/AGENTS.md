@@ -178,6 +178,7 @@ import type { SentryContext } from "../../context.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 
 export const myCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Short description",
     fullDescription: "Detailed description",
@@ -206,6 +207,8 @@ export const myCommand = buildCommand({
 - The wrapper auto-injects `--json` and `--fields` flags. Do NOT add your own `json` flag.
 - A `jsonTransform` replaces the default `--fields` filtering, so it must apply its `fields` argument (`filterFieldsIfSet` from `lib/formatters/json.ts`, or per item for list envelopes). The `sentry-cli/json-transform-uses-fields` lint rule rejects one that never reads it ([#1808](https://github.com/getsentry/toolkit/issues/1808)). Drop a transform that only returns its input; the default path already filters.
 - Do NOT use `stdout.write()` or `if (flags.json)` branching — the wrapper handles it.
+- Every command declares an `exposure`, where agents may run it through the MCP: `exposed`, `stdio-only` (it reads or writes local files, uses the `cwd` or git, reads the local credential store, or needs a terminal), or `hidden` (session management, CLI maintenance, `local`, `monitor run`). The builder types require it. When unsure, use `stdio-only`.
+- The permission class (read, write, destructive) comes from the Sentry API requests `generate:command-api` finds, and `destructive` for destructive commands. Declare `permission` only when `check:command-access` asks for it: requests outside the Sentry API (`event send`, `docs`), source the analysis can't follow, or `method` for `sentry api`. The check rejects any other declaration (`lib/command-access.ts`, [#1880](https://github.com/getsentry/toolkit/issues/1880)).
 
 ### Command File Structure
 

@@ -12,6 +12,7 @@ import { type FeedbackTarget, feedbackPositional } from "./positional.js";
 import { updateFeedbackStatus } from "./utils.js";
 
 export const unresolveCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Return User Feedback to the inbox",
     fullDescription:

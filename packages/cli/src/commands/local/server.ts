@@ -1011,6 +1011,7 @@ function printLocalEventLine(line: string, useJson: boolean): void {
 }
 
 export const serverCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Start the local dev server and tail events",
     fullDescription:

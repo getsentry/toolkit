@@ -211,6 +211,7 @@ function buildArtifactPair(
 }
 
 export const uploadCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Upload sourcemaps to Sentry",
     fullDescription:

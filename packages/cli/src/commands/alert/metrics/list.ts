@@ -500,6 +500,7 @@ const jsonTransformMetricAlertList = jsonTransformListResult;
 // Command
 
 export const listCommand = buildListCommand("alert metrics", {
+  exposure: "exposed",
   docs: {
     brief: "List metric alert rules",
     fullDescription:

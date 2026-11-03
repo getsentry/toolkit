@@ -664,6 +664,7 @@ function buildResultHint(rowCount: number, nav: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 export const exploreCommand = buildListCommand("explore", {
+  exposure: "exposed",
   docs: {
     brief: "Query aggregate event data (Explore)",
     fullDescription:

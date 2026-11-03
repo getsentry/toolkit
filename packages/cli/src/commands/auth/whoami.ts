@@ -51,6 +51,7 @@ function formatWhoami(
 }
 
 export const whoamiCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Show the currently authenticated identity",
     fullDescription:

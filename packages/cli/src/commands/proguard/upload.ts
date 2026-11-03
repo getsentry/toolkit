@@ -148,6 +148,7 @@ function deduplicateMappings(mappings: ProguardMapping[]): ProguardMapping[] {
 // ── Command ─────────────────────────────────────────────────────────
 
 export const uploadCommand = buildCommand({
+  exposure: "stdio-only",
   // Auth is not required for --no-upload (dry-run mode).
   // The upload path calls resolveOrgAndProject which triggers auth.
   auth: false,

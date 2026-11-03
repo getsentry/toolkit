@@ -68,6 +68,7 @@ function prevPageHint(
 // ---------------------------------------------------------------------------
 
 export const eventsCommand = buildListCommand("issue", {
+  exposure: "exposed",
   docs: {
     brief: "List events for a specific issue",
     fullDescription:

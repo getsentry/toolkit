@@ -253,6 +253,7 @@ function jsonTransformReplayList(
 }
 
 export const listCommand = buildListCommand("replay", {
+  exposure: "exposed",
   docs: {
     brief: "List recent Session Replays",
     fullDescription:

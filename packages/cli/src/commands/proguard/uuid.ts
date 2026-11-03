@@ -23,6 +23,7 @@ type ProguardUuidResult = {
 };
 
 export const uuidCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Compute the UUID for a ProGuard mapping file",
     fullDescription:

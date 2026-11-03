@@ -22,6 +22,7 @@ import {
 } from "../lib/help.js";
 
 export const helpCommand = buildCommand({
+  exposure: "exposed",
   auth: false,
   docs: {
     brief: "Display help for a command",

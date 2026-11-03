@@ -62,6 +62,7 @@ function deprecatedBooleanFlag(replacement: string) {
 }
 
 export const mcpCommand = buildCommand({
+  exposure: "hidden",
   // The server resolves its own credential (the CLI session or env token),
   // with its own `.sentryclirc` URL check.
   auth: false,

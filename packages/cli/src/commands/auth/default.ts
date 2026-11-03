@@ -109,6 +109,7 @@ function formatAuthDefaultOutput(data: LoginResult | AuthStatusData): string {
  * an explicit subcommand. Renders through this command's single pipeline.
  */
 export const authDefaultCommand = buildCommand({
+  exposure: "hidden",
   auth: false,
   // Login must run even with a poisoned .sentryclirc URL. Status is also
   // reached through this path when already authenticated — matching the

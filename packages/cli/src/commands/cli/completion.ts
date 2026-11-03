@@ -21,6 +21,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { detectShellType } from "../../lib/shell.js";
 
 export const completionCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   docs: {
     brief: "Print the shell completion script",

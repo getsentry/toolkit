@@ -12,6 +12,7 @@ import { type FeedbackTarget, feedbackPositional } from "./positional.js";
 import { updateFeedbackStatus } from "./utils.js";
 
 export const resolveCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Mark User Feedback as resolved",
     fullDescription:

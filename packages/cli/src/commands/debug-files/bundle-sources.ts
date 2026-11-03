@@ -66,6 +66,7 @@ function formatBundleResult(data: BundleSourcesResult): string {
 }
 
 export const bundleSourcesCommand = buildCommand({
+  exposure: "stdio-only",
   // Local-only: parses + bundles in-process, no API calls.
   auth: false,
   docs: {

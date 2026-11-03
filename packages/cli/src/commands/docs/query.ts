@@ -27,6 +27,8 @@ function formatQueryHuman(data: QueryOutput): string {
 }
 
 export const queryCommand = buildCommand({
+  exposure: "exposed",
+  permission: "read",
   docs: {
     brief: "Ask a cited question about Sentry documentation",
     fullDescription:

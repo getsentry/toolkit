@@ -97,6 +97,7 @@ function jsonTransform(result: ResolveResult, fields?: string[]): unknown {
 }
 
 export const resolveCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Mark an issue as resolved",
     fullDescription:

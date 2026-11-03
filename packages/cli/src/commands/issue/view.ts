@@ -233,6 +233,7 @@ async function openIssuesInBrowser(
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View details of one or more issues",
     fullDescription:

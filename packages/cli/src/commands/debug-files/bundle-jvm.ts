@@ -49,6 +49,7 @@ function formatBundleResult(data: BundleJvmResult): string {
 }
 
 export const bundleJvmCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   docs: {
     brief: "Create a JVM source bundle for source context",

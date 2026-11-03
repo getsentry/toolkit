@@ -27,6 +27,7 @@ type ViewFlags = {
 };
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View a metric alert rule",
     fullDescription:

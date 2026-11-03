@@ -296,6 +296,7 @@ async function listForResolvedProjects<
 }
 
 export const listCommand = buildListCommand("dsn", {
+  exposure: "exposed",
   docs: {
     brief: "List DSNs",
     fullDescription:

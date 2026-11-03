@@ -46,6 +46,7 @@ function formatReleaseRestored(release: ReleaseUpdateOutput): string {
 }
 
 export const restoreCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Restore an archived release",
     fullDescription:

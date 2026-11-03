@@ -123,6 +123,7 @@ function buildArtifacts(
 }
 
 export const gradleCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Upload a React Native bundle + sourcemap (Gradle build step)",
     fullDescription:

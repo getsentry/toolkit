@@ -436,6 +436,7 @@ function fetchTraceSpanDetails(
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View details of a specific trace",
     fullDescription:

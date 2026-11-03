@@ -22,6 +22,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { AccountSummarySchema } from "../../types/account.js";
 
 export const listCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   skipRcUrlCheck: true,
   docs: {

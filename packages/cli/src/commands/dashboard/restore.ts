@@ -54,6 +54,7 @@ function formatRestoreHuman(result: RestoreResult): string {
 }
 
 export const restoreCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Restore a dashboard revision",
     fullDescription:

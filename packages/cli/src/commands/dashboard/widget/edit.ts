@@ -192,6 +192,7 @@ function buildReplacement(
 }
 
 export const editCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Edit a widget in a dashboard",
     fullDescription:

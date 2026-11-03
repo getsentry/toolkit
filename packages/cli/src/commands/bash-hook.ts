@@ -243,6 +243,7 @@ function handleScriptOutput(flags: BashHookFlags): BashHookResult {
 }
 
 export const bashHookCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Print a bash script for shell error reporting",
     fullDescription:

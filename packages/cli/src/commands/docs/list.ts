@@ -34,6 +34,8 @@ function formatListHuman(data: DocsListResponse): string {
 }
 
 export const listCommand = buildCommand({
+  exposure: "exposed",
+  permission: "read",
   docs: {
     brief: "Find Sentry documentation pages by keyword",
     fullDescription:

@@ -152,6 +152,7 @@ export function parseTrialStartArguments(
 }
 
 export const startCommand = buildCommand({
+  exposure: "exposed",
   destructive: true,
   docs: {
     brief: "Start a product trial",

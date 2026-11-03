@@ -356,6 +356,7 @@ export const initCommand = buildCommand<
   [InitArguments],
   SentryContext
 >({
+  exposure: "stdio-only",
   docs: {
     brief: "Initialize Sentry in your project (experimental)",
     customUsage: ["[<target>] [<directory>]"],

@@ -11,11 +11,21 @@
  */
 
 import generatedCommandApi from "../generated/command-api.json";
+import generatedCommandApiAccess from "../generated/command-api-access.json";
+import {
+  type ApiAccess,
+  type CommandExposure,
+  type CommandPermission,
+  commandPermission,
+  type DeclaredPermission,
+} from "./command-access.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   CHOICE_TARGET,
   type CompletionTarget,
+  DIRECTORY_TARGET,
   type DatasetCompletion,
+  FILE_TARGET,
   getCompletionChoices,
   getCompletionDatasets,
   getCompletionTarget,
@@ -74,6 +84,10 @@ export type Command = {
   __examples?: readonly CommandExample[];
   /** Set by `buildCommand({ destructive: true })` and `buildDeleteCommand`. */
   __destructive?: boolean;
+  /** Set by `buildCommand({ exposure })`; every command declares one. */
+  __exposure?: CommandExposure;
+  /** Set by `buildCommand({ permission })` where API requests can't settle it. */
+  __permission?: DeclaredPermission;
 };
 
 /** Positional parameter definitions — either fixed-length tuple or variadic array */
@@ -136,6 +150,10 @@ export type CommandInfo = {
   jsonFields?: SchemaFieldInfo[];
   /** Present (and `true`) when the command is destructive or irreversible */
   destructive?: true;
+  /** What the command may do to Sentry (`lib/command-access.ts`) */
+  permission: CommandPermission;
+  /** Where agents may run the command; `hidden` when it declares none */
+  exposure: CommandExposure;
 };
 
 /** Extracted metadata for a single flag */
@@ -147,6 +165,11 @@ export type FlagInfo = {
   optional: boolean;
   variadic: boolean;
   hidden: boolean;
+  /**
+   * Present (and `true`) when the flag takes a local file or directory path
+   * (`parseFilePath`, `parseDirectoryPath`), which only stdio can serve.
+   */
+  localPath?: true;
 };
 
 /** Extracted metadata for a route group or standalone command */
@@ -279,6 +302,12 @@ export function extractPositionals(
   return [];
 }
 
+/** Completion kinds of flags that take a path on the local machine. */
+const LOCAL_PATH_TARGETS: ReadonlySet<CompletionTarget | undefined> = new Set([
+  FILE_TARGET,
+  DIRECTORY_TARGET,
+]);
+
 /**
  * Extract flag metadata from a command's flag definitions.
  *
@@ -300,6 +329,9 @@ export function extractFlags(
     optional: def.optional ?? def.kind === "boolean",
     variadic: def.variadic ?? false,
     hidden: def.hidden ?? false,
+    ...(LOCAL_PATH_TARGETS.has(getCompletionTarget(def.parse))
+      ? { localPath: true as const }
+      : {}),
   }));
 }
 
@@ -309,7 +341,13 @@ export function extractFlags(
  * @param cmd - The Stricli command to introspect
  * @param path - Full command path (e.g. "sentry issue list")
  */
-export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
+export function buildCommandInfo(
+  cmd: Command,
+  path: string,
+  apiAccessByCommand: Readonly<
+    Record<string, ApiAccess>
+  > = generatedCommandApiAccess as Record<string, ApiAccess>,
+): CommandInfo {
   const jsonFields = cmd.__jsonSchema
     ? extractSchemaFields(cmd.__jsonSchema)
     : undefined;
@@ -334,6 +372,12 @@ export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
     ),
     jsonFields: jsonFields?.length ? jsonFields : undefined,
     ...(cmd.__destructive ? { destructive: true as const } : {}),
+    permission: commandPermission({
+      destructive: cmd.__destructive,
+      declared: cmd.__permission,
+      api: apiAccessByCommand[path],
+    }),
+    exposure: cmd.__exposure ?? "hidden",
   };
 }
 

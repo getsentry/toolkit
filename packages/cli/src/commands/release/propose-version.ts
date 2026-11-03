@@ -62,6 +62,7 @@ const CI_ENV_VARS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 export const proposeVersionCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Propose a release version",
     fullDescription:

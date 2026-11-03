@@ -40,6 +40,7 @@ function formatDeleted(r: MetricAlertDeleteOutput): string {
 }
 
 export const deleteCommand = buildDeleteCommand({
+  exposure: "exposed",
   docs: {
     brief: "Delete a metric alert rule",
     fullDescription:
