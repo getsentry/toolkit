@@ -103,8 +103,9 @@ jobs:
           fi
       - name: Build
         env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          RELEASE_BUILD: "1"
+          # Pull request builds skip the sourcemap upload and the .gz copies.
+          SENTRY_AUTH_TOKEN: ${{ github.event_name != 'pull_request' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          RELEASE_BUILD: ${{ github.event_name != 'pull_request' && '1' || '' }}
           FOSSILIZE_SIGN: ${{ (github.ref_name == 'main' || startsWith(github.ref_name, 'release/cli/')) && 'y' || 'n' }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -150,6 +151,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload compressed artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: sentry-${{ matrix.target }}-gz
@@ -273,7 +275,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Bundle
         env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_AUTH_TOKEN: ${{ github.event_name != 'pull_request' && secrets.SENTRY_AUTH_TOKEN || '' }}
         run: pnpm --filter sentry run bundle
       - name: Pack
         working-directory: packages/cli

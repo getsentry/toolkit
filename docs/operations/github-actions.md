@@ -48,7 +48,8 @@ requires them to be skipped otherwise. The CLI E2E tests run in
 Runs on pull requests, pushes to `main` and `release/cli/**`, and manual
 dispatch. It builds the CLI artifacts that ship: `Build Binary` builds every
 target on `main` and release branches, and only `linux-x64` on pull requests.
-`Build npm Package` packs the npm package, and `Test npm Package` validates that
+Pull request builds get no `SENTRY_AUTH_TOKEN`, so they upload no sourcemaps,
+and they skip the compressed release copies. `Build npm Package` packs the npm package, and `Test npm Package` validates that
 package on Node 20, 22, and 24 with `scripts/validate-npm-runtime.sh`.
 `E2E Tests (Node 24)` downloads the
 Linux binary, the npm package, and the generated sources from those jobs and
