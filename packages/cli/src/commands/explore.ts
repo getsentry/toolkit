@@ -88,6 +88,7 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../lib/time-range.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("explore");
 
@@ -665,7 +666,7 @@ function buildResultHint(rowCount: number, nav: string): string | undefined {
 
 export const exploreCommand = buildListCommand("explore", {
   docs: {
-    brief: "Query aggregate event data (Explore)",
+    brief: topLevelBrief("explore"),
     fullDescription:
       "Query the Sentry Explore API for aggregate event data.\n\n" +
       "Supports arbitrary fields including columns (title, project),\n" +

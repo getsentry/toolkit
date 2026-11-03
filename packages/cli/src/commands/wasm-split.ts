@@ -28,6 +28,7 @@ import { ValidationError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { formatBuildId, uuidToBytes } from "../lib/wasm/build-id.js";
 import { splitWasm } from "../lib/wasm/split.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 /** Flags accepted by `sentry wasm-split`. */
 type WasmSplitFlags = {
@@ -55,7 +56,7 @@ type WasmSplitResult = {
 
 export const wasmSplitCommand = buildCommand({
   docs: {
-    brief: "Add build ids to WebAssembly modules and split out debug data",
+    brief: topLevelBrief("wasm-split"),
     fullDescription:
       "Add a build id to a WebAssembly module and optionally split its debug " +
       "data into a companion file. Sentry matches a wasm stack frame to its " +
