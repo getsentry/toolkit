@@ -493,9 +493,9 @@ function normalizeRepoPath(path: string): string {
 
 /**
  * Whether a Sentry repository is the local repository. Matches the exact
- * name (GitHub, Bitbucket) or the path of the repository URL (GitLab and
- * other providers whose name is a display name), like the reference
- * sentry-cli. A display name such as `Acme / Web` only counts when the
+ * name (GitHub, Bitbucket) or the path of the repository URL (GitLab, whose
+ * name is a display name, and Azure DevOps, whose name leaves out the
+ * `org/project/_git/` path), like the reference sentry-cli. A display name such as `Acme / Web` only counts when the
  * repository has no URL to check, since another group can have a project
  * with the same display path.
  */

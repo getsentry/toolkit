@@ -720,6 +720,60 @@ describe("setCommitsAuto", () => {
       ]);
     },
   );
+
+  // Sentry names Azure DevOps repositories by the bare repository name; the
+  // Azure Pipelines URL has `org/project/_git/repo`.
+  test("matches an Azure Repos repository from Azure Pipelines by its URL path", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+    const ciSha = "1234567890abcdef1234567890abcdef12345678";
+    const repoUrl = "https://dev.azure.com/acme/web/_git/storefront";
+    const azureRepo = {
+      ...SAMPLE_REPO,
+      name: "storefront",
+      url: repoUrl,
+      provider: { id: "integrations:vsts", name: "Azure DevOps" },
+    };
+    const repoQueries: (string | null)[] = [];
+    let sentRefs: unknown;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input!, init);
+      if (req.url.includes("/repos/")) {
+        const query = new URL(req.url).searchParams.get("query") ?? "";
+        repoQueries.push(query);
+        const matches = azureRepo.name.includes(query.toLowerCase());
+        return new Response(JSON.stringify(matches ? [azureRepo] : []), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url.includes("/previous-with-commits/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      sentRefs = ((await req.json()) as { refs: unknown }).refs;
+      return new Response(JSON.stringify(SAMPLE_RELEASE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await withEnv(
+      {
+        [CONFIG_DIR_ENV_VAR]: process.env[CONFIG_DIR_ENV_VAR],
+        SENTRY_CLI_NO_TELEMETRY: "1",
+        BUILD_REPOSITORY_URI: repoUrl,
+        BUILD_SOURCEVERSION: ciSha,
+      },
+      () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    );
+
+    expect(repoQueries).toEqual(["acme/web/_git/storefront", "storefront"]);
+    expect(sentRefs).toEqual([{ repository: "storefront", commit: ciSha }]);
+  });
+
   test.each([
     {
       case: "skips a display name whose URL points to another project",
