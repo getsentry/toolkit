@@ -24,13 +24,15 @@ vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
   normalizeSha: (
     await importOriginal<typeof import("../../../src/lib/git.js")>()
   ).normalizeSha,
+  parseRemoteUrl: (
+    await importOriginal<typeof import("../../../src/lib/git.js")>()
+  ).parseRemoteUrl,
   getRepositoryName: mockGetRepositoryName,
   getHeadCommit: () => "abc123def456789012345678901234567890abcd",
   isInsideGitWorkTree: () => true,
   isShallowRepository: () => false,
   getCommitLog: () => [],
   getUncommittedFiles: () => [],
-  parseRemoteUrl: (url: string) => url,
 }));
 
 // Dynamic import: must run AFTER vi.mock() so setCommitsAuto picks up
@@ -458,7 +460,11 @@ describe("setCommitsAuto", () => {
   );
 
   test("throws ValidationError when the name filter matches nothing but the org has repos", async () => {
-    const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
+    const otherRepo = {
+      ...SAMPLE_REPO,
+      name: "getsentry/sentry",
+      url: "https://github.com/getsentry/sentry",
+    };
     const repoQueries: (string | null)[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -482,11 +488,17 @@ describe("setCommitsAuto", () => {
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
       /No Sentry repository matching/,
     );
-    expect(repoQueries).toEqual(["getsentry/cli", null]);
+    // Full path first, then the last segment (GitLab display names), then
+    // the unfiltered "does the org have any repositories" check.
+    expect(repoQueries).toEqual(["getsentry/cli", "cli", null]);
   });
 
   test("throws ValidationError when no repo matches local remote", async () => {
-    const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
+    const otherRepo = {
+      ...SAMPLE_REPO,
+      name: "getsentry/sentry",
+      url: "https://github.com/getsentry/sentry",
+    };
     globalThis.fetch = mockFetch(
       async () =>
         new Response(JSON.stringify([otherRepo]), {
@@ -502,7 +514,12 @@ describe("setCommitsAuto", () => {
 
   test("paginates through multiple pages to find matching repo", async () => {
     const withCommits = { ...SAMPLE_RELEASE, commitCount: 3 };
-    const otherRepo = { ...SAMPLE_REPO, id: "2", name: "getsentry/sentry" };
+    const otherRepo = {
+      ...SAMPLE_REPO,
+      id: "2",
+      name: "getsentry/sentry",
+      url: "https://github.com/getsentry/sentry",
+    };
     let repoRequestCount = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -638,6 +655,71 @@ describe("setCommitsAuto", () => {
     expect(repoQueries).toEqual(["getsentry/cli"]);
     expect(sentRefs).toEqual([{ repository: "getsentry/cli", commit: ciSha }]);
   });
+
+  // Sentry names GitLab repositories by their display path; the remote has
+  // the slugs, which GitLab derives from the display names.
+  test.each([
+    {
+      remote: "acme/web/storefront",
+      name: "Acme Corp / Web / Storefront",
+      queries: ["acme/web/storefront", "storefront"],
+    },
+    {
+      remote: "acme/web/my-store_front",
+      name: "Acme Corp / Web / My Store Front",
+      queries: ["acme/web/my-store_front", "my-store_front", "my store front"],
+    },
+  ])(
+    "matches GitLab repository '$name' by its URL path",
+    async ({ remote, name, queries }) => {
+      mockGetRepositoryName.mockReturnValue(remote);
+      const gitlabRepo = {
+        ...SAMPLE_REPO,
+        name,
+        url: `https://gitlab.com/${remote}`,
+        provider: { id: "integrations:gitlab", name: "GitLab" },
+      };
+      const repoQueries: (string | null)[] = [];
+      let sentRefs: unknown;
+
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input!, init);
+        if (req.url.includes("/repos/")) {
+          const query = new URL(req.url).searchParams.get("query");
+          repoQueries.push(query);
+          // The server filters with a case-insensitive "name contains".
+          const matches =
+            query &&
+            gitlabRepo.name.toLowerCase().includes(query.toLowerCase());
+          return new Response(JSON.stringify(matches ? [gitlabRepo] : []), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (req.url.includes("/previous-with-commits/")) {
+          return new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        sentRefs = ((await req.json()) as { refs: unknown }).refs;
+        return new Response(JSON.stringify(SAMPLE_RELEASE), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      await setCommitsAuto("test-org", "1.0.0", "/tmp");
+
+      expect(repoQueries).toEqual(queries);
+      expect(sentRefs).toEqual([
+        {
+          repository: name,
+          commit: "abc123def456789012345678901234567890abcd",
+        },
+      ]);
+    },
+  );
 });
 
 describe("setCommitsWithRefs", () => {
