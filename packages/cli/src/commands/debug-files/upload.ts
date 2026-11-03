@@ -368,7 +368,7 @@ function* doDryRun(
   },
 ) {
   const { difs, missingIds, requireAll, oversizedCount } = params;
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     uploaded: false,
     files: difs.map((d) => ({ name: d.name, debugId: d.debugId })),
     filesUploaded: 0,
@@ -408,7 +408,7 @@ function* doNothingToUpload(
   },
 ) {
   const { missingIds, requireAll, oversizedCount, maxFileSize } = params;
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     uploaded: false,
     files: [],
     filesUploaded: 0,
@@ -464,7 +464,7 @@ async function* doUpload(
     (r) => r.state === "error" || r.state === "not_found",
   );
 
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     org: params.org,
     project: params.project,
     uploaded: true,

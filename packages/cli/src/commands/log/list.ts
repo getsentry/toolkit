@@ -493,7 +493,7 @@ async function* yieldFollowItems<T extends LogLike>(
   let contextSent = !extraFields?.length;
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         hasMore: false,
         extraFields,
@@ -501,7 +501,7 @@ async function* yieldFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }
@@ -522,7 +522,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
       // First non-empty batch: yield as LogListResult to set trace context
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         traceId,
         hasMore: false,
@@ -530,7 +530,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }

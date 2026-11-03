@@ -231,7 +231,7 @@ export const deployCommand = buildCommand({
     }
 
     if (flags["dry-run"]) {
-      yield new CommandOutput<DeployOutput>({
+      yield new CommandOutput({
         dryRun: true,
         version,
         environment,
@@ -244,6 +244,6 @@ export const deployCommand = buildCommand({
     }
 
     const deploy = await createReleaseDeploy(org, version, body);
-    yield new CommandOutput<DeployOutput>(deploy);
+    yield new CommandOutput(deploy);
   },
 });

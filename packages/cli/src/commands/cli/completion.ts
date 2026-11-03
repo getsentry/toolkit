@@ -85,6 +85,6 @@ export const completionCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<string>(script);
+    yield new CommandOutput(script);
   },
 });

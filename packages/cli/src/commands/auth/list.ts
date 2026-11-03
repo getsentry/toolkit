@@ -56,7 +56,7 @@ export const listCommand = buildCommand({
     const accounts = envAccount
       ? [...stored, await describeEnvAccount(envAccount)]
       : stored;
-    yield new CommandOutput<AccountListResult>({ accounts });
+    yield new CommandOutput({ accounts });
 
     if (getAuthConfig()?.source.startsWith("env:")) {
       return {

@@ -15,6 +15,10 @@
  * `project`, the `status` label, `dryRun`, `deleted`) are written here.
  */
 
+import type {
+  UpdateOrganizationDetectorResponse,
+  UpdateOrganizationWorkflowResponse,
+} from "@sentry/api";
 import {
   vCreateOrganizationProjectDetectorResponse,
   vCreateOrganizationWorkflowResponse,
@@ -40,6 +44,7 @@ import {
   unknown,
 } from "valibot";
 import { DryRunOutputField } from "../../types/index.js";
+import type { WithOutputFields } from "../../types/output.js";
 
 // Fields the CLI adds to every alert mutation's output.
 const org = pipe(string(), description("Organization slug"));
@@ -193,12 +198,11 @@ export const IssueAlertEditOutputSchema = looseObject({
   ...IssueAlertEditFields.entries,
 });
 
-/**
- * JSON output of `alert issues edit`. The API layer hands the updated
- * workflow over untyped, so only the CLI's fields are typed.
- */
-export type IssueAlertEditOutput = Record<string, unknown> &
-  InferOutput<typeof IssueAlertEditFields>;
+/** JSON output of `alert issues edit`. */
+export type IssueAlertEditOutput = WithOutputFields<
+  UpdateOrganizationWorkflowResponse,
+  typeof IssueAlertEditFields
+>;
 
 /** Fields `alert metrics edit` sets on the updated detector. */
 const MetricAlertEditFields = object({ org, id: editedId, status });
@@ -210,12 +214,11 @@ export const MetricAlertEditOutputSchema = looseObject({
   ...MetricAlertEditFields.entries,
 });
 
-/**
- * JSON output of `alert metrics edit`. The API layer hands the updated
- * detector over untyped, so only the CLI's fields are typed.
- */
-export type MetricAlertEditOutput = Record<string, unknown> &
-  InferOutput<typeof MetricAlertEditFields>;
+/** JSON output of `alert metrics edit`. */
+export type MetricAlertEditOutput = WithOutputFields<
+  UpdateOrganizationDetectorResponse,
+  typeof MetricAlertEditFields
+>;
 
 /** `delete` output: the deleted (or, with `--dry-run`, matched) rule. */
 function deleteEntries<R extends RuleEntries>(rule: R) {

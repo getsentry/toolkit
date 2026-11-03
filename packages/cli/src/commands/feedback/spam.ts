@@ -3,13 +3,13 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { updateIssueStatus } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { formatSpamFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
 import { SentryFeedbackSchema } from "../../types/index.js";
 import { type FeedbackTarget, feedbackPositional } from "./positional.js";
+import { updateFeedbackStatus } from "./utils.js";
 
 export const spamCommand = buildCommand({
   docs: {
@@ -47,11 +47,8 @@ export const spamCommand = buildCommand({
   },
   async *func(this: SentryContext, _flags, target: FeedbackTarget) {
     disableResponseCache();
-    const { org, feedback } = await target.resolved;
-    const updated = await updateIssueStatus(feedback.id, "ignored", {
-      orgSlug: org,
-    });
-
-    yield new CommandOutput(updated);
+    yield new CommandOutput(
+      await updateFeedbackStatus(await target.resolved, "ignored"),
+    );
   },
 });

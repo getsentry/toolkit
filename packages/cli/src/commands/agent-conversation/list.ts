@@ -284,7 +284,7 @@ export const listCommand = buildListCommand("agent-conversation", {
     const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
     const hasMore = !!nextCursor;
 
-    yield new CommandOutput<ConversationListResult>({
+    yield new CommandOutput({
       conversations,
       hasMore,
       hasPrev,
