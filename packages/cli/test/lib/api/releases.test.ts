@@ -571,6 +571,30 @@ describe("setCommitsAuto", () => {
     expect((error as Error).message).toMatch(/--local/);
   });
 
+  test("skips Vercel preview builds and says why", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+    // The bundler plugins skip commit association on previews on purpose,
+    // so --auto must not pick up VERCEL_GIT_* there.
+    const error = await withEnv(
+      {
+        VERCEL: "1",
+        VERCEL_TARGET_ENV: "preview",
+        VERCEL_GIT_REPO_OWNER: "getsentry",
+        VERCEL_GIT_REPO_SLUG: "cli",
+        VERCEL_GIT_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
+      },
+      () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "repository",
+    });
+    expect((error as Error).message).toMatch(
+      /Vercel builds have no .git directory/,
+    );
+  });
+
   test("uses the CI repository and commit when there is no git remote", async () => {
     mockGetRepositoryName.mockReturnValue(null);
     const ciSha = "1234567890abcdef1234567890abcdef12345678";
