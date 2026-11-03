@@ -586,9 +586,13 @@ describe("setCommitsAuto", () => {
       exitCode: 21,
     });
     expect((error as Error).message).toMatch(
-      /Could not determine the repository from the local git remote or CI variables/,
+      /no 'origin' git remote and no CI repository variables/,
     );
+    expect((error as Error).message).toMatch(/--commit owner\/repo@/);
     expect((error as Error).message).toMatch(/--local/);
+    expect((error as Error).message).toMatch(
+      /Docker builds often exclude .git/,
+    );
   });
 
   test("skips Vercel preview builds and says why", async () => {
@@ -724,6 +728,47 @@ describe("setCommitsAuto", () => {
     },
   );
 
+  test("suggests similar repositories and the settings page when nothing matches", async () => {
+    const renamed = {
+      ...SAMPLE_REPO,
+      name: "getsentry/cli-legacy",
+      url: "https://github.com/getsentry/cli-legacy",
+    };
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input!, init).url);
+      if (!url.pathname.endsWith("/repos/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const repos = url.searchParams.get("query") === "cli" ? [renamed] : [];
+      return new Response(JSON.stringify(repos), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "repository",
+    });
+    const message = (error as Error).message;
+    expect(message).toMatch(
+      /No Sentry repository matching 'getsentry\/cli' \(from the 'origin' git remote\)/,
+    );
+    expect(message).toMatch(
+      /similarly named repositories: getsentry\/cli-legacy/,
+    );
+    expect(message).toContain(
+      "sentry release set-commits 1.0.0 --commit 'getsentry/cli-legacy@<commit-sha>'",
+    );
+    expect(message).toMatch(/settings\/repos\//);
+  });
   // Sentry names Azure DevOps repositories by the bare repository name; the
   // Azure Pipelines URL has `org/project/_git/repo`.
   test("matches an Azure Repos repository from Azure Pipelines by its URL path", async () => {
