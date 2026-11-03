@@ -45,8 +45,8 @@ catalog:
   "@ai-sdk/mcp": ^1.0.16
   "@ai-sdk/openai": ^3.0.23
   "@ai-sdk/react": ^3.0.232
-  "@cloudflare/vite-plugin": 1.66.0
-  "@cloudflare/vitest-plugin": 1.4.9
+  "@cloudflare/vite-plugin": 1.67.0
+  "@cloudflare/vitest-plugin": 1.4.12
   "@cloudflare/workers-oauth-provider": ^0.10.3
   "@cloudflare/workers-types": ^4.20260405.1
   "@modelcontextprotocol/sdk": 1.32.2
@@ -84,7 +84,7 @@ catalog:
   mdast-util-gfm: ^3.1.0
   micromark-extension-gfm: ^3.0.0
   # Keep Dynamic Worker tests on the same Miniflare/workerd runtime as Wrangler.
-  miniflare: 5.20261023.1-beta
+  miniflare: 5.20261101.0-beta
   msw: ^2.10.2
   open: ^10.1.2
   oxfmt: 0.72.0
@@ -106,7 +106,7 @@ catalog:
   vitest: ^5.0.5
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3
-  wrangler: 4.154.0
+  wrangler: 4.156.1
   zod: ^4.6.6
 
 minimumReleaseAgeExclude:
@@ -170,6 +170,6 @@ minimumReleaseAgeExclude:
   - oxfmt@0.72.0
   - oxlint@1.87.0
   - "@sentry/api@0.437.0"
-  - miniflare@5.20261023.1-beta
-  - wrangler@4.154.0
+  - miniflare@5.20261101.0-beta
+  - wrangler@4.156.1
   - "@sentry/symbolic@14.0.0-alpha.5"
