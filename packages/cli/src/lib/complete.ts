@@ -74,8 +74,8 @@ type Completion = {
 /**
  * Run `sentry __complete`.
  *
- * `src/bin.ts` and the npm package's `dist/bin.cjs` (`dist/complete.cjs`)
- * call this before anything else of the CLI loads, so a TAB press loads only
+ * `src/bin.ts` and the packages' main script (`src/chunk-main.ts`, which
+ * runs `complete.cjs`) call this before anything else of the CLI loads, so a TAB press loads only
  * this module's imports. `test/script/cli-startup.test.ts` keeps them free of
  * `@sentry/node`, the API client, and the command tree.
  *

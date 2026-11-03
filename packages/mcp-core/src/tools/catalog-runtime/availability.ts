@@ -6,6 +6,10 @@ import {
   getConstraintParametersToInject,
 } from "../../internal/constraint-helpers";
 import { withRoutedCredential } from "../../internal/tool-helpers/credential-routing";
+import {
+  applyDefaultOrganization,
+  isOrganizationSlugRequired,
+} from "../../internal/tool-helpers/default-organization";
 import { type Skill, isEnabledBySkills } from "../../skills";
 import type { ProjectCapabilities, ServerContext } from "../../types";
 import {
@@ -120,6 +124,11 @@ function isMissingFeedbackDsn(key: string): boolean {
   return key === "submit_feedback_to_sentry_team" && !getClient()?.getDsn();
 }
 
+/**
+ * The input schema a session exposes: constrained keys are removed, and a
+ * required `organizationSlug` becomes optional because
+ * {@link applyDefaultOrganization} fills it, or explains which one to pass.
+ */
 export function getFilteredInputSchema(
   tool: ToolConfig<any>,
   context: ServerContext,
@@ -128,11 +137,16 @@ export function getFilteredInputSchema(
     getConstraintKeysToFilter(context.constraints, tool.inputSchema),
   );
 
-  return Object.fromEntries(
+  const schema = Object.fromEntries(
     Object.entries(tool.inputSchema).filter(
       ([key]) => !constraintKeysToFilter.has(key),
     ),
   ) as Record<string, z.ZodType>;
+  const organizationSlug = schema.organizationSlug;
+  if (organizationSlug && isOrganizationSlugRequired(organizationSlug)) {
+    schema.organizationSlug = organizationSlug.optional();
+  }
+  return schema;
 }
 
 export function injectConstraintParams(
@@ -248,7 +262,11 @@ export async function executeToolHandler({
   params: Record<string, unknown>;
   context: ServerContext;
 }) {
-  const paramsWithConstraints = prepareToolParams({ tool, params, context });
+  const paramsWithConstraints = await prepareToolCallParams({
+    tool,
+    params,
+    context,
+  });
 
   return await withRoutedCredential(
     context,
@@ -278,6 +296,28 @@ export function prepareToolParams({
   }
 
   return injectConstraintParams(parsed.data, tool, context);
+}
+
+/**
+ * {@link prepareToolParams}, then {@link applyDefaultOrganization}. Every
+ * tool call runs through this before its credential is routed, so routing
+ * sees the defaulted organization.
+ */
+export async function prepareToolCallParams({
+  tool,
+  params,
+  context,
+}: {
+  tool: ToolConfig<any>;
+  params: Record<string, unknown>;
+  context: ServerContext;
+}): Promise<Record<string, unknown>> {
+  return await applyDefaultOrganization({
+    tool,
+    params: prepareToolParams({ tool, params, context }),
+    rawParams: params,
+    context,
+  });
 }
 
 export function resolveToolDescription(
