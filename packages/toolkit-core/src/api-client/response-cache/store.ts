@@ -17,7 +17,10 @@ export type CacheEntry = {
   tier: TtlTier;
   /** HTTP status of the cached response. */
   status: number;
-  /** Response headers kept for callers, such as `Link` for pagination. */
+  /**
+   * Response headers kept for callers and stores, such as `Link` for
+   * pagination and `Cache-Control`.
+   */
   headers: Readonly<Record<string, string>>;
   /** The response body, encoded by the codec. */
   body: EncodedBody;

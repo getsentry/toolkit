@@ -451,6 +451,7 @@ async function handleAuthenticatedMcpRequest(
     auth.kind === "oauth" && auth.grantId
       ? await getResponseCache({
           mode: resolveResponseCacheMode(env.MCP_RESPONSE_CACHE),
+          bucket: env.MCP_RESPONSE_CACHE_BUCKET,
           userId: auth.userId,
           grantId: auth.grantId,
           sentryHost,

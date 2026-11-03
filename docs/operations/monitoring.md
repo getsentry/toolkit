@@ -355,6 +355,11 @@ off.
   charges against its budget, after each write
 - `app.response_cache.memory.entries` - Gauge of entries in the isolate's
   store, after each write
+- `app.response_cache.r2.lookup` - Count of R2 reads after a memory miss on an
+  allowlisted URL (`MCP_RESPONSE_CACHE=tiered` only), with
+  `app.response_cache.result`: `hit`, `miss`, or `expired` (past its recorded
+  expiry)
+- `app.response_cache.r2.write` - Count of entries written to R2
 
 The first eviction in an isolate also logs `Response cache reached its memory
 budget` at info level, with the budget, bytes, and entry count.
@@ -365,6 +370,11 @@ Interpretation:
   the unfiltered sum
 - A steady eviction rate with `memory.bytes` at the budget means the budget is
   too small for the traffic an isolate serves
+- R2 hit rate: `app.response_cache.r2.lookup` filtered to `result=hit`, over
+  the unfiltered sum. No `r2.write` at all means Sentry is not sending
+  `Cache-Control: private, max-age` on the allowlisted endpoints.
+- R2 read and write failures log `Response cache R2 read failed` and
+  `Response cache R2 write failed` at warning level; a failed read is a miss.
 
 ### Traces Configuration
 

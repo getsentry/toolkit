@@ -72,6 +72,15 @@
       "id": "963817ecb25c4761a2710d3aedc6478d",
     },
   ],
+  // R2 tier of the Sentry API response cache, read only when
+  // MCP_RESPONSE_CACHE=tiered. The bucket needs a 1-day lifecycle rule; see
+  // docs/cloudflare/architecture.md.
+  "r2_buckets": [
+    {
+      "binding": "MCP_RESPONSE_CACHE_BUCKET",
+      "bucket_name": "sentry-mcp-canary-response-cache",
+    },
+  ],
   "ai": {
     "binding": "AI",
   },
