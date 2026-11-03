@@ -39,6 +39,17 @@ import {
   updateClientKey,
 } from "@sentry/toolkit-core/api-client/endpoints/client-keys";
 import {
+  getDashboard,
+  listDashboards,
+} from "@sentry/toolkit-core/api-client/endpoints/dashboards";
+import {
+  getEventCommitters,
+  getRelease,
+  listReleaseCommits,
+  listReleaseDeploys,
+  listReleases,
+} from "@sentry/toolkit-core/api-client/endpoints/releases";
+import {
   linkProjectRepository,
   listRepositories,
 } from "@sentry/toolkit-core/api-client/endpoints/repositories";
@@ -1629,30 +1640,12 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<{ dashboards: DashboardListItem[]; nextCursor: string | null }> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("per_page", String(limit));
-    if (query) {
-      queryParams.set("query", query);
-    }
-    if (sortBy) {
-      queryParams.set("sort", sortBy);
-    }
-    if (cursor) {
-      queryParams.set("cursor", cursor);
-    }
-
-    const response = await this.request(
-      apiPath`/organizations/${organizationSlug}/dashboards/` +
-        `?${queryParams.toString()}`,
-      undefined,
-      opts,
+    const { items, nextCursor } = await listDashboards(
+      this.target(opts?.host),
+      { organizationSlug, query, sortBy, limit, cursor },
+      DashboardListSchema,
     );
-    const body = await readJsonResponse(response);
-
-    return {
-      dashboards: DashboardListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
-    };
+    return { dashboards: items, nextCursor };
   }
 
   async getDashboard(
@@ -1665,12 +1658,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Dashboard> {
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/dashboards/${dashboardId}/`,
-      undefined,
-      opts,
+    return await getDashboard(
+      this.target(opts?.host),
+      { organizationSlug, dashboardId },
+      DashboardSchema,
     );
-    return DashboardSchema.parse(body);
   }
 
   /**
@@ -2565,24 +2557,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ReleaseList> {
-    const searchQuery = new URLSearchParams();
-    if (query) {
-      searchQuery.set("query", query);
-    }
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-
-    const path = projectSlug
-      ? apiPath`/projects/${organizationSlug}/${projectSlug}/releases/`
-      : apiPath`/organizations/${organizationSlug}/releases/`;
-
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    return await listReleases(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug, query, limit },
+      ReleaseListSchema,
     );
-    return ReleaseListSchema.parse(body);
   }
 
   async getReleaseDetails(
@@ -2599,20 +2578,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ReleaseDetails> {
-    const searchQuery = new URLSearchParams();
-    if (includeHealth) {
-      searchQuery.set("health", "1");
-    }
-
-    const path = projectSlugOrId
-      ? apiPath`/projects/${organizationSlug}/${projectSlugOrId}/releases/${releaseVersion}/`
-      : apiPath`/organizations/${organizationSlug}/releases/${releaseVersion}/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    return await getRelease(
+      this.target(opts?.host),
+      { organizationSlug, releaseVersion, projectSlugOrId, includeHealth },
+      ReleaseDetailsSchema,
     );
-    return ReleaseDetailsSchema.parse(body);
   }
 
   async listReleaseDeploys(
@@ -2629,24 +2599,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<DeployList> {
-    const searchQuery = new URLSearchParams();
-    if (projectSlugOrId) {
-      searchQuery.set(
-        isNumericId(projectSlugOrId) ? "project" : "projectSlug",
-        projectSlugOrId,
-      );
-    }
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-
-    const path = apiPath`/organizations/${organizationSlug}/releases/${releaseVersion}/deploys/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    return await listReleaseDeploys(
+      this.target(opts?.host),
+      { organizationSlug, releaseVersion, projectSlugOrId, limit },
+      DeployListSchema,
     );
-    return DeployListSchema.parse(body);
   }
 
   async listReleaseCommits(
@@ -2663,20 +2620,11 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<CommitList> {
-    const searchQuery = new URLSearchParams();
-    if (limit !== undefined) {
-      searchQuery.set("per_page", String(limit));
-    }
-
-    const path = projectSlugOrId
-      ? apiPath`/projects/${organizationSlug}/${projectSlugOrId}/releases/${releaseVersion}/commits/`
-      : apiPath`/organizations/${organizationSlug}/releases/${releaseVersion}/commits/`;
-    const body = await this.requestJSON(
-      searchQuery.toString() ? `${path}?${searchQuery.toString()}` : path,
-      undefined,
-      opts,
+    return await listReleaseCommits(
+      this.target(opts?.host),
+      { organizationSlug, releaseVersion, projectSlugOrId, limit },
+      CommitListSchema,
     );
-    return CommitListSchema.parse(body);
   }
 
   /**
@@ -2696,12 +2644,12 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<CommitterList> {
-    const body = await this.requestJSON(
-      apiPath`/projects/${organizationSlug}/${projectSlug}/events/${eventId}/committers/`,
-      undefined,
-      opts,
+    const { committers } = await getEventCommitters(
+      this.target(opts?.host),
+      { organizationSlug, projectSlug, eventId },
+      CommittersResponseSchema,
     );
-    return CommittersResponseSchema.parse(body).committers;
+    return committers;
   }
 
   async listMonitors(

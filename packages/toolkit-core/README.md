@@ -27,7 +27,8 @@ the one exception.
 - `errors` holds `ApiError` and its status subclasses, `createApiError`, and
   the `UserInputError` and `ConfigurationError` the client throws. The MCP
   re-exports them from `packages/mcp-core/src/errors.ts`.
-- `api-path` builds API paths with every identifier segment encoded.
+- `api-path` builds API paths with every identifier segment encoded, and
+  `withQuery` appends a query string when it is not empty.
 - `validate` checks a response with any
   [Standard Schema](https://standardschema.dev) validator the host passes in:
   Zod in the MCP, valibot in the CLI. Shared code depends only on the
@@ -63,6 +64,9 @@ the one exception.
     `updateClientKey`.
   - `endpoints/repositories`: `listRepositories` and
     `linkProjectRepository`.
+  - `endpoints/dashboards`: `listDashboards` and `getDashboard`.
+  - `endpoints/releases`: `listReleases`, `getRelease`,
+    `listReleaseDeploys`, `listReleaseCommits`, and `getEventCommitters`.
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.
