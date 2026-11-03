@@ -2,7 +2,6 @@ import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { UserInputError } from "../../errors";
 import { createTestContext } from "../../test-utils/context.js";
 import {
   assertStructuredOnlyResult,
@@ -68,7 +67,7 @@ describe("create_monitor", () => {
     const result = await createMonitor.handler(
       {
         ...baseParams,
-        crontab: "0 3 * * *",
+        schedule: { type: "crontab", crontab: "0 3 * * *" },
         timezone: "America/Los_Angeles",
         checkInMargin: 5,
         maxRuntime: 30,
@@ -134,7 +133,10 @@ describe("create_monitor", () => {
     );
 
     const result = await createMonitor.handler(
-      { ...baseParams, interval: { value: 15, unit: "minute" } },
+      {
+        ...baseParams,
+        schedule: { type: "interval", value: 15, unit: "minute" },
+      },
       context,
     );
 
@@ -146,16 +148,70 @@ describe("create_monitor", () => {
     });
   });
 
+  const scheduleSchema = createMonitor.inputSchema.schedule;
+
   it.each([
-    ["neither", {}],
+    ["crontab", { type: "crontab", crontab: "@daily" }],
+    ["interval", { type: "interval", value: 15, unit: "minute" }],
+  ])("accepts a %s schedule in the input schema", (_label, schedule) => {
+    expect(scheduleSchema.safeParse(schedule).success).toBe(true);
+  });
+
+  it.each([
+    ["neither", undefined],
+    ["an empty", {}],
+    ["both", { type: "crontab", crontab: "@daily", value: 1, unit: "day" }],
     [
-      "both",
-      { crontab: "@daily", interval: { value: 1, unit: "day" as const } },
+      "interval fields under crontab type",
+      { type: "crontab", value: 1, unit: "day" },
     ],
-  ])("rejects %s crontab and interval", async (_label, schedule) => {
-    await expect(
-      createMonitor.handler({ ...baseParams, ...schedule }, context),
-    ).rejects.toThrow(UserInputError);
+    ["crontab under interval type", { type: "interval", crontab: "@daily" }],
+    [
+      "both under interval type",
+      { type: "interval", value: 15, unit: "minute", crontab: "@daily" },
+    ],
+  ])("rejects %s schedule in the input schema", (_label, schedule) => {
+    expect(scheduleSchema.safeParse(schedule).success).toBe(false);
+  });
+
+  it("rejects a missing schedule when parsing the full input", () => {
+    expect(
+      z.object(createMonitor.inputSchema).safeParse(baseParams).success,
+    ).toBe(false);
+  });
+
+  it("accepts checkInMargin=0 and forwards it for Sentry to coerce", async () => {
+    expect(createMonitor.inputSchema.checkInMargin.safeParse(0).success).toBe(
+      true,
+    );
+    expect(createMonitor.inputSchema.checkInMargin.safeParse(-1).success).toBe(
+      false,
+    );
+    let requestBody: Record<string, unknown> | null = null;
+    mswServer.use(
+      http.post(endpoint, async ({ request }) => {
+        requestBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          monitorResponse({
+            schedule_type: "crontab",
+            schedule: "@daily",
+            checkin_margin: 1,
+          }),
+          { status: 201 },
+        );
+      }),
+    );
+
+    await createMonitor.handler(
+      {
+        ...baseParams,
+        schedule: { type: "crontab", crontab: "@daily" },
+        checkInMargin: 0,
+      },
+      context,
+    );
+
+    expect(requestBody).toMatchObject({ config: { checkin_margin: 0 } });
   });
 
   it.each(["alice", "team:backend", "user:", "user:1:2"])(
@@ -193,7 +249,7 @@ describe("create_monitor", () => {
     await createMonitor.handler(
       {
         ...baseParams,
-        crontab: "@daily",
+        schedule: { type: "crontab", crontab: "@daily" },
         slug: "nightly-import",
         status: "disabled",
         owner: "team:456",
@@ -221,7 +277,13 @@ describe("create_monitor", () => {
     );
 
     await expect(
-      createMonitor.handler({ ...baseParams, crontab: "0 0 3 * * *" }, context),
+      createMonitor.handler(
+        {
+          ...baseParams,
+          schedule: { type: "crontab", crontab: "0 0 3 * * *" },
+        },
+        context,
+      ),
     ).rejects.toThrow("Only 5 field crontab syntax is supported");
   });
 
@@ -233,9 +295,10 @@ describe("create_monitor", () => {
         return HttpResponse.json({}, { status: 201 });
       }),
     );
-    const parsed = z
-      .object(createMonitor.inputSchema)
-      .parse({ ...baseParams, crontab: "@daily" });
+    const parsed = z.object(createMonitor.inputSchema).parse({
+      ...baseParams,
+      schedule: { type: "crontab", crontab: "@daily" },
+    });
 
     await expect(
       createMonitor.handler(
