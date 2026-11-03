@@ -121,12 +121,22 @@ Top-level layout:
   the whole tree with `getRoutes()`, loads `app.ts`. Add commands to `app.ts`
   only; a new top-level command that reads the whole tree goes in
   `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
-- **`src/sea-main.ts`** — main script of the standalone binary. `script/build.ts`
-  embeds the CLI (`src/bin.ts`) and the completion engine (`src/complete-bin.ts`)
-  as separate SEA assets, and this bootstrap runs one of them through
-  `src/lib/sea-chunk.ts`, which keeps a V8 code cache for each under
-  `<config dir>/cache/code/`. It must import only `node:` builtins and pure
-  helpers (`test/script/cli-startup.test.ts` lists its modules).
+- **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
+  and the standalone binary. `script/lib/split-bundle.ts` builds the CLI
+  (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
+  every lazy `_require()` (telemetry, syntax highlighting, the field-list
+  parser) starts a chunk, so a command loads only its own code. The
+  completion engine (`src/complete-bin.ts`) is one file of its own. The main
+  script runs one of them through `src/lib/chunk-loader.ts`, which reads the
+  chunks from files next to it (npm) or from SEA assets (binary) and keeps a V8
+  code cache for each under `<config dir>/cache/code/`. It must import only
+  `node:` builtins and pure helpers (`test/script/cli-startup.test.ts` lists
+  its modules). `script/lib/chunk-build.ts` holds the build steps both
+  packages share: debug IDs, sourcemap upload, and the main script.
+- **`src/index.ts`** — the library (`createSentrySDK`). It imports no command
+  and no CLI runner: each SDK call loads only the top-level routes it runs
+  (`src/sdk-app.ts`, the SDK's `app-for-args.ts`), from the same split chunks
+  in `dist/index.cjs` and `dist/index.mjs`.
 - **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
   bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
@@ -209,6 +219,31 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
 Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+
+### Declaring Command Output
+
+`output.schema` drives `--fields` completion, the JSON field table in `--help`, and the skill references. Nothing validates output against it, so declare each field once and derive the TypeScript type from the schema; the compiler then keeps the two in sync ([#1824](https://github.com/getsentry/toolkit/issues/1824)).
+
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
+- **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/types/output.ts`) when the fields sit on (or override) an API object.
+- Type the command's data with the derived type: the `human` formatter's parameter, and `yield new CommandOutput<Output>(…)` where the yielded value is not already typed. A field added to the schema without the code that sets it, or removed while code still sets it, is then a compile error.
+- Reuse the shared fields: `DryRunOutputField`, `orgListItemSchema`/`WithOrg` (`lib/org-list.ts`) for org-scoped lists, `opaque<T>()` for a field the docs leave opaque but the code types (a full event payload).
+- Data only the human formatter needs (pre-rendered lines, a resolved target) stays out of the schema; keep it outside the derived type or strip it with `jsonExclude`.
+
+```typescript
+const DeployOutputFields = object({
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+
+output: {
+  human: (deploy: DeployOutput) => …,
+  schema: looseObject({ ...SentryDeploySchema.entries, ...DeployOutputFields.entries }),
+},
+```
+
+Reference: `src/commands/release/deploy.ts`, `src/commands/alert/output-schemas.ts`, `ReplayViewOutputFields` in `src/types/replay.ts`.
 
 ### Route Maps (Stricli)
 
@@ -506,11 +541,11 @@ search grammar) import it when called, so the fast path only loads it for
 the arguments that need it.
 
 The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
-and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
-for `__complete` first and call `runCompletion` without loading `cli.ts`;
-the npm package ships it as the separate `dist/complete.cjs` bundle, and the
-standalone binary as a separate SEA asset (`src/complete-bin.ts`), so a TAB
-press never compiles the CLI bundle. That
+and what that module imports. `src/bin.ts` and the main script of both
+packages (`src/chunk-main.ts`) check for `__complete` first and run
+`runCompletion` without loading `cli.ts`: both ship it as a separate bundle
+(`src/complete-bin.ts`, `complete.cjs`) that shares no chunk with the CLI, so a
+TAB press never loads a CLI chunk. That
 graph must stay free of `@sentry/node`, telemetry, the API client, and the
 command tree: the database modules get spans and cache metrics through
 `withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require

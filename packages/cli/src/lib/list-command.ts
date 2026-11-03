@@ -35,6 +35,7 @@ import {
   jsonTransformListResult,
   type ListResult,
   type OrgListConfig,
+  orgListItemSchema,
 } from "./org-list.js";
 import {
   applyBoundPositionals,
@@ -710,7 +711,7 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
       human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
       jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>
         jsonTransformListResult(result, fields),
-      schema: config.schema,
+      schema: config.schema && orgListItemSchema(config.schema),
     } satisfies OutputConfig<ListResult<TWithOrg>>,
     parameters: {
       positional: config.namesOf

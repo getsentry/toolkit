@@ -502,7 +502,32 @@ describe("buildServer", () => {
     });
   });
 
-  it("explains how to recover a missing organizationSlug", async () => {
+  it("defaults a missing organizationSlug to the only organization", async () => {
+    const server = buildServer({ context: baseContext });
+
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain(
+      "https://sentry-mcp-evals.sentry.io/issues/",
+    );
+  });
+
+  it("lists the organizations when a missing organizationSlug is ambiguous", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/",
+        () =>
+          HttpResponse.json([
+            { id: "1", slug: "org-a", name: "A" },
+            { id: "2", slug: "org-b", name: "B" },
+          ]),
+        { once: true },
+      ),
+    );
     const server = buildServer({ context: baseContext });
 
     const result = await callRegisteredTool(server, "search_issues", {
@@ -512,8 +537,10 @@ describe("buildServer", () => {
 
     expect(result).toMatchObject({ isError: true });
     const text = getTextContent(result);
-    expect(text).toContain("Required. Call `find_organizations()`");
-    expect(text).not.toContain("period");
+    expect(text).toContain(
+      "`search_issues(organizationSlug='org-a', period='1h')`",
+    );
+    expect(text).toContain("Other available organizations: org-b");
   });
 
   it("caps tool input elements", async () => {
@@ -1868,6 +1895,80 @@ describe("buildServer", () => {
       );
     });
 
+    it.each([
+      ["toolName", "arguments"],
+      ["tool", "params"],
+      ["tool_name", "args"],
+    ])(
+      "execute_sentry_tool accepts %s and %s aliases",
+      async (nameKey, argumentsKey) => {
+        const server = buildServer({
+          context: baseContext,
+        });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          [nameKey]: "get_issue_details",
+          [argumentsKey]: {
+            organizationSlug: "sentry-mcp-evals",
+            issueId: "CLOUDFLARE-MCP-41",
+          },
+        });
+
+        expect(getTextContent(result)).toContain(
+          "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+        );
+      },
+    );
+
+    it("execute_sentry_tool explains a missing name", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        arguments: {},
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        "Missing `name`. Pass the tool to run as `name`",
+      );
+    });
+
+    it("execute_sentry_tool runs search_sentry_tools", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "search_sentry_tools",
+        arguments: { query: "issue details" },
+      });
+
+      const payload = getStructuredContent<{
+        results: Array<{ name: string }>;
+      }>(result);
+      expect(payload.results.map((tool) => tool.name)).toContain(
+        "get_issue_details",
+      );
+    });
+
+    it("execute_sentry_tool does not run itself", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "execute_sentry_tool",
+        arguments: { name: "whoami" },
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        'Tool "execute_sentry_tool" is not available in this session',
+      );
+    });
+
     it("execute_sentry_tool dispatches to a catalog-only tool", async () => {
       const server = buildServer({
         context: baseContext,
@@ -2919,6 +3020,7 @@ describe("buildServer", () => {
       ).toEqual([
         "categories",
         "endOffsetSeconds",
+        "fresh",
         "limit",
         "regionUrl",
         "replayId",

@@ -25,10 +25,8 @@
     "sentry": "./dist/bin.cjs"
   },
   "files": [
-    "dist/bin.cjs",
-    "dist/complete.cjs",
-    "dist/index.cjs",
-    "dist/index.mjs",
+    "dist/*.cjs",
+    "dist/*.mjs",
     "dist/index.d.cts",
     "dist/index.d.mts",
     "dist/ink-app.js",

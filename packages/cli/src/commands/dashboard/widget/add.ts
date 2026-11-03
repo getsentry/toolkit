@@ -25,8 +25,6 @@ import {
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   assignDefaultLayout,
-  type DashboardDetail,
-  type DashboardWidget,
   DashboardWidgetChangeOutputSchema,
   DEFAULT_WIDGET_TYPE,
   DISPLAY_TYPES,
@@ -39,6 +37,7 @@ import {
   WIDGET_TYPES,
   type WidgetLayoutFlags,
   type WidgetLayoutMode,
+  type DashboardWidgetChangeOutput,
 } from "../../../types/dashboard.js";
 import {
   type DashboardInput,
@@ -68,12 +67,6 @@ type AddFlags = WidgetQueryFlags &
     readonly json: boolean;
     readonly fields?: string[];
   };
-
-type AddResult = {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-};
 
 const USAGE_HINT =
   "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>";
@@ -380,7 +373,7 @@ export const addCommand = buildCommand({
       dashboard: updated,
       widget: newWidget,
       url,
-    } as AddResult);
+    } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };
   },
 });

@@ -66,9 +66,10 @@ smoke-tests the result.
 The `packages/cli` Craft workspace releases both packages: run the **Release**
 workflow with `product: cli`.
 
-- `packages/cli/script/bump-version.ts` sets `packages/mcp-server/package.json`
-  to the CLI's version, both for the release and for the next `-dev` version,
-  which Craft's `postReleaseBump` writes and pushes after publishing.
+- Craft sets `packages/mcp-server/package.json` to the CLI's version through
+  `versioning.files` in `.craft.yml` (Craft 3.8.0+), both for the release and
+  for the next `-dev` version, which `postReleaseBump` writes and pushes after
+  publishing.
   The bundle script fails if the two versions differ.
 - `.github/workflows/cli-build.yml` bundles, tests, and packs the package next
   to the CLI's npm package and uploads it as `mcp-server-npm-package`.

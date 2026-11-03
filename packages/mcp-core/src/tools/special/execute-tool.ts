@@ -11,10 +11,18 @@ import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
 import {
   getSearchableTools,
-  prepareToolParams,
+  prepareToolCallParams,
   type ToolRegistry,
 } from "../catalog-runtime/availability";
 import type { ToolConfig } from "../types";
+
+// Models often name the target tool or its arguments with these keys instead
+// of `name` and `arguments`. They stay undocumented to keep the schema small.
+const NAME_ALIASES = ["toolName", "tool", "tool_name"] as const;
+const ARGUMENTS_ALIASES = ["params", "args"] as const;
+
+// Read-only, so it is safe to run through this wrapper, which models often do.
+const SEARCH_TOOL_NAME = "search_sentry_tools";
 
 function setToolArgumentAttributes(
   span: Span,
@@ -52,7 +60,7 @@ async function executeCatalogToolWithSpan({
     },
     async (span) => {
       try {
-        const paramsWithConstraints = prepareToolParams({
+        const paramsWithConstraints = await prepareToolCallParams({
           tool,
           params,
           context,
@@ -108,13 +116,23 @@ export function createExecuteTool(getTools: () => ToolRegistry) {
         .string()
         .trim()
         .min(1)
+        .optional()
         .describe("The name of the available tool to execute."),
       arguments: z
         .record(z.string(), z.unknown())
-        .default({})
+        .optional()
         .describe(
           "Arguments for the target tool, matching the schema returned by search_sentry_tools.",
         ),
+      ...Object.fromEntries(
+        NAME_ALIASES.map((key) => [key, z.string().trim().min(1).optional()]),
+      ),
+      ...Object.fromEntries(
+        ARGUMENTS_ALIASES.map((key) => [
+          key,
+          z.record(z.string(), z.unknown()).optional(),
+        ]),
+      ),
     },
     annotations: {
       readOnlyHint: false,
@@ -122,25 +140,48 @@ export function createExecuteTool(getTools: () => ToolRegistry) {
       openWorldHint: true,
     },
     async handler(params, context: ServerContext) {
+      const input = params as Record<string, unknown>;
+      const name =
+        params.name ??
+        NAME_ALIASES.map((key) => input[key]).find(
+          (value): value is string => typeof value === "string",
+        );
+      const args =
+        params.arguments ??
+        ARGUMENTS_ALIASES.map((key) => input[key]).find(
+          (value): value is Record<string, unknown> =>
+            typeof value === "object" && value !== null,
+        ) ??
+        {};
+
+      if (!name) {
+        throw new UserInputError(
+          "Missing `name`. Pass the tool to run as `name` and its arguments as `arguments`, for example execute_sentry_tool(name='find_projects', arguments={}).",
+        );
+      }
+
+      const tools = getTools();
       const availableTools = getSearchableTools({
-        tools: getTools(),
+        tools,
         context,
         experimentalMode: context.experimentalMode ?? false,
         useDefaultSurfacePolicy: true,
       });
-      const match = availableTools.find(
-        ({ key, tool }) => key === params.name || tool.name === params.name,
-      );
+      const matchedTool =
+        availableTools.find(
+          ({ key, tool }) => key === name || tool.name === name,
+        )?.tool ??
+        (name === SEARCH_TOOL_NAME ? tools[SEARCH_TOOL_NAME] : undefined);
 
-      if (!match) {
+      if (!matchedTool) {
         throw new UserInputError(
-          `Tool "${params.name}" is not available in this session. Use search_sentry_tools to find an executable tool.`,
+          `Tool "${name}" is not available in this session. Use search_sentry_tools to find an executable tool.`,
         );
       }
 
       return await executeCatalogToolWithSpan({
-        tool: match.tool,
-        params: params.arguments,
+        tool: matchedTool,
+        params: args,
         context,
       });
     },

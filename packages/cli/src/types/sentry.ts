@@ -14,6 +14,7 @@
  */
 
 import type {
+  EventAttachmentDetailsResponse,
   IssueEventDetailsResponse,
   DeployResponse as SdkDeployResponse,
   GetOrganizationIssueResponse as SdkIssueDetail,
@@ -24,6 +25,7 @@ import type {
   OrgReleaseResponse as SdkReleaseResponse,
   BaseTeam as SdkTeam,
 } from "@sentry/api";
+import { DryRunOutputField, opaque, type WithOutputFields } from "./output.js";
 import type {
   SentryIssueIdentity,
   SentryNamedResource,
@@ -435,44 +437,43 @@ export const SentryIssueSchema = pipe(
 );
 
 /**
+ * Fields `issue view` adds to the issue in its JSON output. The command's
+ * data type (`SingleIssueViewData`) is derived from them.
+ */
+export const IssueViewOutputFields = object({
+  event: pipe(
+    nullable(opaque<SentryEvent>()),
+    description(
+      "Latest event for the issue (full detail). Select named fields with " +
+        "`--fields event.id,event.title` to avoid pulling the whole payload; " +
+        "the `request` entry may include live session data.",
+    ),
+  ),
+  org: pipe(nullable(string()), description("Organization slug")),
+  replayIds: pipe(array(string()), description("Related Session Replay IDs")),
+  trace: pipe(
+    nullable(
+      object({
+        traceId: pipe(string(), description("Trace ID from the latest event")),
+        spans: pipe(array(unknown()), description("Span tree data")),
+      }),
+    ),
+    description("Trace context from the latest event's span tree"),
+  ),
+});
+
+/**
  * Documentation-oriented schema for `issue view` JSON output.
  *
  * The view command's jsonTransform spreads all issue fields at the top level
- * and adds enrichment fields (`event`, `org`, `replayIds`, `trace`). This
- * schema describes that flattened shape for `--help`, `sentry help issue view`,
- * and SKILL.md field table generation.
+ * and adds {@link IssueViewOutputFields}. This schema describes that
+ * flattened shape for `--help`, `sentry help issue view`, and SKILL.md field
+ * table generation.
  */
 export const IssueViewOutputSchema = pipe(
   looseObject({
     ...SentryIssueSchema.entries,
-    event: optional(
-      pipe(
-        nullable(unknown()),
-        description(
-          "Latest event for the issue (full detail). Select named fields with " +
-            "`--fields event.id,event.title` to avoid pulling the whole payload; " +
-            "the `request` entry may include live session data.",
-        ),
-      ),
-    ),
-    org: optional(pipe(nullable(string()), description("Organization slug"))),
-    replayIds: optional(
-      pipe(array(string()), description("Related Session Replay IDs")),
-    ),
-    trace: optional(
-      pipe(
-        nullable(
-          object({
-            traceId: pipe(
-              string(),
-              description("Trace ID from the latest event"),
-            ),
-            spans: pipe(array(unknown()), description("Span tree data")),
-          }),
-        ),
-        description("Trace context from the latest event's span tree"),
-      ),
-    ),
+    ...IssueViewOutputFields.entries,
   }),
   description("Issue view output"),
 );
@@ -527,8 +528,8 @@ export type SentryEvent = Omit<
   culprit?: string | null;
 };
 
-const EventViewAttachmentSchema = looseObject({
-  ...vEventAttachmentDetailsResponse.entries,
+/** Fields `event view` adds to each attachment of the event. */
+const EventViewAttachmentFields = object({
   download: pipe(
     string(),
     url(),
@@ -536,32 +537,51 @@ const EventViewAttachmentSchema = looseObject({
   ),
 });
 
+const EventViewAttachmentSchema = looseObject({
+  ...vEventAttachmentDetailsResponse.entries,
+  ...EventViewAttachmentFields.entries,
+});
+
+/** An event attachment with its authenticated download URL. */
+export type EventViewAttachment = WithOutputFields<
+  EventAttachmentDetailsResponse,
+  typeof EventViewAttachmentFields
+>;
+
+/**
+ * Fields `event view` adds to the event in its JSON output. The command's
+ * data type (`SingleEventViewData`) is derived from them.
+ */
+export const EventViewOutputFields = object({
+  trace: pipe(
+    nullable(
+      object({
+        traceId: pipe(string(), description("Trace ID")),
+        spans: pipe(array(unknown()), description("Span tree data")),
+      }),
+    ),
+    description("Trace context, or null when unavailable"),
+  ),
+  attachments: pipe(
+    array(EventViewAttachmentSchema),
+    description(
+      "Event attachments; each includes metadata and an absolute authenticated download URL",
+    ),
+  ),
+});
+
 /**
  * Documentation schema for the flattened `event view` JSON output.
  *
  * Event API fields remain optional because responses vary by event type. The
- * CLI always adds `trace` and `attachments`; multi-event output is an array of
- * this shape.
+ * CLI always adds {@link EventViewOutputFields}; multi-event output is an
+ * array of this shape.
  */
 export const EventViewOutputSchema = pipe(
   looseObject({
     ...partial(vIssueEventDetailsResponse).entries,
     eventID: pipe(string(), description("UUID-format event ID")),
-    trace: pipe(
-      nullable(
-        object({
-          traceId: pipe(string(), description("Trace ID")),
-          spans: pipe(array(unknown()), description("Span tree data")),
-        }),
-      ),
-      description("Trace context, or null when unavailable"),
-    ),
-    attachments: pipe(
-      array(EventViewAttachmentSchema),
-      description(
-        "Event attachments; each includes metadata and an absolute authenticated download URL",
-      ),
-    ),
+    ...EventViewOutputFields.entries,
   }),
   description("Event view output"),
 );
@@ -902,21 +922,27 @@ export const SentryReleaseSchema = looseObject({
   ),
 });
 
-/** The `dryRun: true` marker of a mutation's `--dry-run` JSON output. */
-export const DryRunOutputField = optional(
-  pipe(boolean(), description("True when --dry-run made no change")),
-);
-
 /**
- * JSON output of the release commands that update a release (`archive`,
- * `restore`): the updated release, or `{ dryRun, version, org }` with
- * `--dry-run`.
+ * Fields the release commands that update a release (`archive`, `restore`,
+ * `finalize`) add with `--dry-run`, which prints `{ dryRun, version, org }`
+ * instead of the updated release.
  */
-export const ReleaseUpdateOutputSchema = looseObject({
-  ...SentryReleaseSchema.entries,
+export const ReleaseUpdateOutputFields = object({
   dryRun: DryRunOutputField,
   org: optional(pipe(string(), description("Organization slug (--dry-run)"))),
 });
+
+/** JSON output of `release archive` and `release restore`. */
+export const ReleaseUpdateOutputSchema = looseObject({
+  ...SentryReleaseSchema.entries,
+  ...ReleaseUpdateOutputFields.entries,
+});
+
+/** The updated release, or the `--dry-run` preview. */
+export type ReleaseUpdateOutput = WithOutputFields<
+  SentryRelease,
+  typeof ReleaseUpdateOutputFields
+>;
 
 // Deploy
 

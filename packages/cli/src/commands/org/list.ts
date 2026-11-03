@@ -6,7 +6,15 @@
  */
 
 import { tableCell } from "@sentry/toolkit-core/markdown";
-import { description, looseObject, optional, pipe, string } from "valibot";
+import {
+  description,
+  type InferOutput,
+  looseObject,
+  object,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
@@ -50,6 +58,7 @@ import { withProgress } from "../../lib/polling.js";
 import {
   type SentryOrganization,
   SentryOrganizationSchema,
+  type WithOutputFields,
   type Writer,
 } from "../../types/index.js";
 
@@ -65,31 +74,35 @@ type ListFlags = {
  * The account an organization was listed under (no secrets): a stored
  * account, or the env token's virtual account.
  */
-type OrgListAccount = {
+const OrgListAccountSchema = object({
   /**
    * What `--account` accepts: `<who>:<server>`, e.g.
    * `jane@acme.com:sentry.io` (just `<who>` when no server is recorded), as
    * `sentry auth login` does too; `env:SENTRY_AUTH_TOKEN` for the env token.
    */
-  name: string;
-  id: string;
-  email?: string;
-  username?: string;
+  name: pipe(string(), description("What --account accepts")),
+  id: pipe(string(), description("Account ID")),
+  email: optional(pipe(string(), description("Account email"))),
+  username: optional(pipe(string(), description("Account username"))),
   /**
    * The server part of `name`: `host[:port]`, or the full origin such as
    * `http://localhost:8000` for a non-HTTPS server.
    */
-  server?: string;
+  server: optional(pipe(string(), description("Account server"))),
   /** The server's full origin, e.g. `https://sentry.io`. */
-  host?: string;
+  host: optional(pipe(string(), description("Server origin"))),
   /** Human label, e.g. `Jane <jane@acme.com> on sentry.io`. */
-  label: string;
+  label: pipe(string(), description("Human-readable account label")),
   /** The variable providing the token, for the env token's account. */
-  envVar?: string;
-};
+  envVar: optional(
+    pipe(string(), description("Variable providing the env token")),
+  ),
+});
+
+type OrgListAccount = InferOutput<typeof OrgListAccountSchema>;
 
 /**
- * An organization enriched with an optional region display name and the
+ * Fields the list adds to each organization: a region display name and the
  * stored account it was listed under.
  *
  * The `region` field is only present when the user's orgs span multiple
@@ -97,34 +110,28 @@ type OrgListAccount = {
  * several stored accounts are listed. Both are included in JSON output as
  * well, providing context to machine consumers.
  */
-type OrgListEntry = SentryOrganization & {
-  region?: string;
-  account?: OrgListAccount;
-};
-
-/** JSON fields of an {@link OrgListEntry}, for `--fields`. */
-const OrgListEntrySchema = looseObject({
-  ...SentryOrganizationSchema.entries,
+const OrgListEntryFields = object({
   region: optional(
     pipe(string(), description("Region, when orgs span several (e.g. US, EU)")),
   ),
   account: optional(
     pipe(
-      looseObject({
-        name: pipe(string(), description("What --account accepts")),
-        id: pipe(string(), description("Account ID")),
-        email: optional(pipe(string(), description("Account email"))),
-        username: optional(pipe(string(), description("Account username"))),
-        server: optional(pipe(string(), description("Account server"))),
-        host: optional(pipe(string(), description("Server origin"))),
-        label: pipe(string(), description("Human-readable account label")),
-        envVar: optional(
-          pipe(string(), description("Variable providing the env token")),
-        ),
-      }),
+      OrgListAccountSchema,
       description("Account the org was listed under, across accounts"),
     ),
   ),
+});
+
+/** An organization with the fields of {@link OrgListEntryFields}. */
+type OrgListEntry = WithOutputFields<
+  SentryOrganization,
+  typeof OrgListEntryFields
+>;
+
+/** JSON fields of an {@link OrgListEntry}, for `--fields`. */
+const OrgListEntrySchema = looseObject({
+  ...SentryOrganizationSchema.entries,
+  ...OrgListEntryFields.entries,
 });
 
 /** One account's fetched orgs plus its slug → region URL cache. */

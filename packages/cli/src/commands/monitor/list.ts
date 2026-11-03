@@ -19,14 +19,14 @@ import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import { type SentryMonitor, SentryMonitorSchema } from "../../types/index.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "monitor-list";
 
 /** Monitor with its organization context for display */
-type MonitorWithOrg = SentryMonitor & { orgSlug?: string };
+type MonitorWithOrg = WithOrg<SentryMonitor>;
 
 /**
  * Render a monitor's schedule for display.

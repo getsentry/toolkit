@@ -39,6 +39,7 @@ List repositories
 | `integrationId` | string | Integration ID |
 | `externalSlug` | string \| null | External slug (e.g. org/repo) |
 | `externalId` | string \| null | External ID |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 

@@ -91,6 +91,11 @@ export const MAX_LIST_PAGES = 50;
 /** Rows from {@link listPage}, and the cursor for the next call. */
 export type ListPage<T> = { items: T[]; nextCursor: string | null };
 
+/** The cursor of the next page in a list response's `Link` header, if any. */
+export function nextPageCursor(response: Response): string | null {
+  return parseSentryLinkHeader(response.headers.get("link")).nextCursor ?? null;
+}
+
 /** Readable messages for common network error codes. */
 const NETWORK_ERROR_MESSAGES: Record<string, string> = {
   EAI_AGAIN: "DNS temporarily unavailable. Check your internet connection.",
@@ -328,8 +333,7 @@ export async function listPage<T>(
       throw new Error("API returned more items than requested");
     }
     items.push(...rows);
-    const nextCursor =
-      parseSentryLinkHeader(response.headers.get("link")).nextCursor ?? null;
+    const nextCursor = nextPageCursor(response);
     if (items.length >= limit || !nextCursor) {
       return { items, nextCursor };
     }
